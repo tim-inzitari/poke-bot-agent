@@ -31,6 +31,68 @@ scripts/run_cabt_container.sh --episodes 1 --out data/cabt_rollouts.jsonl
 The container is for CABT simulation only. Keep Torch training native in VS Code
 so PyTorch can use Apple Silicon via `mps`.
 
+## Elmo Simulation Worker
+
+Elmo is the preferred CABT rollout worker if it is your TrueNAS box with the
+Ryzen 5950X. Run CABT there, then pull the JSONL back to this Mac for Torch/MPS
+training.
+
+On Elmo:
+
+```bash
+git clone https://github.com/tim-inzitari/poke-bot-agent.git
+cd poke-bot-agent
+scripts/elmo_setup.sh
+scripts/elmo_generate.sh --episodes 1000 --workers 16 --out data/elmo-rollouts.jsonl
+```
+
+On this Mac:
+
+```bash
+ELMO_HOST=elmo ELMO_PATH=~/poke-bot-agent scripts/pull_elmo_rollouts.sh
+```
+
+Start with `--workers 16`; try `--workers 24` after benchmarking. The 5950X has
+32 threads, but using all of them may not be fastest if the simulator or NAS I/O
+gets noisy.
+
+### Hard Deck Pools
+
+Put hard-coded deck lists in `decks/`. Each file can be `.csv`, `.txt`, or
+`.deck`, and must contain exactly 60 card IDs, one per line or comma-separated.
+
+Generate sampled matchups from the same pool:
+
+```bash
+scripts/run_cabt_container.sh \
+  --episodes 100 \
+  --deck-dir decks \
+  --matchups sample \
+  --out data/deckpool-rollouts.jsonl
+```
+
+Generate deterministic round-robin matchups:
+
+```bash
+scripts/run_cabt_container.sh \
+  --episodes 100 \
+  --deck-dir decks \
+  --matchups round-robin \
+  --out data/deckpool-rollouts.jsonl
+```
+
+Use separate pools for each side:
+
+```bash
+python scripts/generate_cabt_data.py \
+  --episodes 1000 \
+  --workers 16 \
+  --deck0-dir decks/ours \
+  --deck1-dir decks/opponents \
+  --matchups sample \
+  --out data/elmo-hard-decks.jsonl
+```
+
 ## Competition submission
 
 Kaggle expects a `.tar.gz` with `main.py` and `deck.csv` at the top level.

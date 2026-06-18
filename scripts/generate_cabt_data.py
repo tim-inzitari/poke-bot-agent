@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import math
+import multiprocessing as mp
 import os
 import random
 import sys
@@ -31,7 +33,18 @@ SAMPLE_DECK = [
 ]
 
 
-def read_deck_csv() -> list[int]:
+def read_deck_file(path: Path) -> list[int]:
+    values = []
+    for raw_token in path.read_text().replace(",", "\n").splitlines():
+        token = raw_token.strip()
+        if token:
+            values.append(int(token))
+    if len(values) != 60:
+        raise ValueError(f"{path} must contain exactly 60 card IDs")
+    return values
+
+
+def read_default_deck() -> tuple[str, list[int]]:
     candidates = [
         Path("deck.csv"),
         Path("submission/deck.csv"),
@@ -40,11 +53,22 @@ def read_deck_csv() -> list[int]:
     ]
     for path in candidates:
         if path.exists():
-            values = [int(line.strip()) for line in path.read_text().splitlines() if line.strip()]
-            if len(values) != 60:
-                raise ValueError(f"{path} must contain exactly 60 card IDs")
-            return values
-    return SAMPLE_DECK
+            return (path.stem, read_deck_file(path))
+    return ("sample", SAMPLE_DECK)
+
+
+def read_deck_pool(path: str | None) -> list[tuple[str, list[int]]]:
+    if not path:
+        return [read_default_deck()]
+
+    root = Path(path)
+    files = sorted(
+        p for p in root.iterdir()
+        if p.is_file() and p.suffix.lower() in {".csv", ".txt", ".deck"}
+    )
+    if not files:
+        raise FileNotFoundError(f"no deck files found in {root}")
+    return [(p.stem, read_deck_file(p)) for p in files]
 
 
 def add_cg_lib_to_path() -> str:
@@ -90,11 +114,35 @@ def features_from_observation(obs: dict[str, Any]) -> list[float]:
     ]
 
 
-def play_episode(episode: int, max_steps: int, deck: list[int]) -> list[dict[str, Any]]:
+def choose_matchup(
+    episode: int,
+    deck0_pool: list[tuple[str, list[int]]],
+    deck1_pool: list[tuple[str, list[int]]],
+    mode: str,
+) -> tuple[str, list[int], str, list[int]]:
+    if mode == "round-robin":
+        i = episode % len(deck0_pool)
+        j = (episode // len(deck0_pool)) % len(deck1_pool)
+        name0, deck0 = deck0_pool[i]
+        name1, deck1 = deck1_pool[j]
+    else:
+        name0, deck0 = random.choice(deck0_pool)
+        name1, deck1 = random.choice(deck1_pool)
+    return name0, deck0, name1, deck1
+
+
+def play_episode(
+    episode: int,
+    max_steps: int,
+    deck0_name: str,
+    deck0: list[int],
+    deck1_name: str,
+    deck1: list[int],
+) -> list[dict[str, Any]]:
     from cg.game import battle_finish, battle_select, battle_start
 
     rows: list[dict[str, Any]] = []
-    obs, start_data = battle_start(deck, deck)
+    obs, start_data = battle_start(deck0, deck1)
     if start_data.errorPlayer >= 0:
         raise ValueError(f"deck error type={start_data.errorType} player={start_data.errorPlayer}")
 
@@ -106,12 +154,15 @@ def play_episode(episode: int, max_steps: int, deck: list[int]) -> list[dict[str
                 "step": step,
                 "features": features_from_observation(obs),
                 "player": int(obs["current"]["yourIndex"]),
+                "deck0": deck0_name,
+                "deck1": deck1_name,
             })
             obs = battle_select(random_agent(obs))
             step += 1
 
         result = int(obs["current"]["result"])
         for row in rows:
+            row["result"] = result
             if result == 2:
                 row["value"] = 0.0
             else:
@@ -128,21 +179,76 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             f.write(json.dumps(row, separators=(",", ":")) + "\n")
 
 
+def run_episode_range(
+    args: tuple[
+        int,
+        int,
+        int,
+        list[tuple[str, list[int]]],
+        list[tuple[str, list[int]]],
+        str,
+        int | None,
+    ]
+) -> tuple[int, list[dict[str, Any]]]:
+    start, stop, max_steps, deck0_pool, deck1_pool, matchup_mode, seed = args
+    if seed is not None:
+        random.seed(seed + start)
+    add_cg_lib_to_path()
+    rows: list[dict[str, Any]] = []
+    for episode in range(start, stop):
+        deck0_name, deck0, deck1_name, deck1 = choose_matchup(episode, deck0_pool, deck1_pool, matchup_mode)
+        rows.extend(play_episode(episode, max_steps, deck0_name, deck0, deck1_name, deck1))
+    return start, rows
+
+
+def episode_chunks(episodes: int, workers: int) -> list[tuple[int, int]]:
+    chunk_size = max(1, math.ceil(episodes / workers))
+    return [(start, min(episodes, start + chunk_size)) for start in range(0, episodes, chunk_size)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--max-steps", type=int, default=300)
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--deck-dir", default=None)
+    parser.add_argument("--deck0-dir", default=None)
+    parser.add_argument("--deck1-dir", default=None)
+    parser.add_argument("--matchups", choices=["sample", "round-robin"], default="sample")
     parser.add_argument("--out", default="data/cabt_rollouts.jsonl")
     args = parser.parse_args()
 
     cg_path = add_cg_lib_to_path()
-    deck = read_deck_csv()
-    rows: list[dict[str, Any]] = []
-    for episode in range(args.episodes):
-        rows.extend(play_episode(episode, args.max_steps, deck))
+    deck0_pool = read_deck_pool(args.deck0_dir or args.deck_dir)
+    deck1_pool = read_deck_pool(args.deck1_dir or args.deck_dir)
+    workers = max(1, min(args.workers, args.episodes))
+    if workers == 1:
+        rows: list[dict[str, Any]] = []
+        if args.seed is not None:
+            random.seed(args.seed)
+        for episode in range(args.episodes):
+            deck0_name, deck0, deck1_name, deck1 = choose_matchup(
+                episode, deck0_pool, deck1_pool, args.matchups
+            )
+            rows.extend(play_episode(episode, args.max_steps, deck0_name, deck0, deck1_name, deck1))
+    else:
+        tasks = [
+            (start, stop, args.max_steps, deck0_pool, deck1_pool, args.matchups, args.seed)
+            for start, stop in episode_chunks(args.episodes, workers)
+        ]
+        with mp.get_context("spawn").Pool(processes=workers) as pool:
+            results = pool.map(run_episode_range, tasks)
+        rows = []
+        for _, chunk_rows in sorted(results, key=lambda item: item[0]):
+            rows.extend(chunk_rows)
     write_jsonl(Path(args.out), rows)
     print(f"cg-lib={cg_path}")
-    print(f"deck_cards={len(deck)}")
+    print(f"deck0_pool={len(deck0_pool)}")
+    print(f"deck1_pool={len(deck1_pool)}")
+    print(f"matchups={args.matchups}")
+    print(f"episodes={args.episodes}")
+    print(f"workers={workers}")
     print(f"wrote {len(rows)} rows to {args.out}")
 
 

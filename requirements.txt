@@ -3,3 +3,4 @@ jupyter
 kaggle-environments
 numpy
 torch
+tqdm
