@@ -4086,5 +4086,11 @@
     "442b6cd26544eccdd434685ff31ee14dd62332a0": "2026-04_regional-prague-2026_254th_dragapult-blaziken.csv",
     "37a017f212f4b100aaa9a43c05b8aadea09daa5b": "2026-04_regional-prague-2026_255th_cynthias-garchomp.csv"
   },
-  "notes": []
+  "notes": [
+    "Card pool = post-rotation Standard (sets TEF..MEG/PFL/ASC/POR); excludes newer CRI set and rotated-out SVI/PAL/OBF/MEW/PAR/PAF.",
+    "Processed all 10 Limitless major Standard events in the post-rotation, current window (2026-04-25 NAIC..2026-06-10): tournaments 518,540,559,536,550,535,544,558,565,539.",
+    "Boundary probe (30-deck samples): events on/before 2026-04-04 (Orlando 552, Houston 551, EUIC London 517, Toronto 538) pass 0/30 - pre-rotation, decks built on out-of-pool PAL/SVI/OBF/PAR/PAF. Rotation occurred between 2026-04-04 and 2026-04-25.",
+    "Listing has no Standard events between 2026-04-05 and 2026-04-24, and none after NAIC 2026-06-10 (most recent), so the post-rotation window is fully covered. Earlier events deliberately excluded: not current-Standard, ~0% resolvable.",
+    "Rejections within processed events are overwhelmingly decks running the newer CRI set (post-pool), concentrated at NAIC where CRI had just released."
+  ]
 }
