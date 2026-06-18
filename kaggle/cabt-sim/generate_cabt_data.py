@@ -3,8 +3,8 @@
 
 The CABT simulator depends on `cg/libcg.so`, which is a Linux shared library.
 Run this script on Kaggle by default, or in the optional Linux container.
-It writes simple JSONL rows that the notebook can consume for local Torch/MPS
-experiments later.
+It writes JSONL transition rows that the notebook can consume for local
+Torch/MPS experiments later.
 """
 
 from __future__ import annotations
@@ -114,6 +114,11 @@ def features_from_observation(obs: dict[str, Any]) -> list[float]:
     ]
 
 
+def json_snapshot(value: Any) -> Any:
+    """Deep-copy simulator output while proving it can be written as JSON."""
+    return json.loads(json.dumps(value, separators=(",", ":")))
+
+
 def choose_matchup(
     episode: int,
     deck0_pool: list[tuple[str, list[int]]],
@@ -149,24 +154,40 @@ def play_episode(
     try:
         step = 0
         while obs["current"]["result"] < 0 and step < max_steps:
+            select = obs.get("select") or {}
+            options = select.get("option") or []
+            action = random_agent(obs)
+            next_obs = battle_select(action)
+            terminal = int((next_obs.get("current") or {}).get("result", -1)) >= 0
             rows.append({
                 "episode": episode,
                 "step": step,
                 "features": features_from_observation(obs),
+                "next_features": features_from_observation(next_obs),
+                "observation": json_snapshot(obs),
+                "action": json_snapshot(action),
+                "next_observation": json_snapshot(next_obs),
+                "legal_action_count": len(options),
+                "select_min_count": int(select.get("minCount", 0)),
+                "select_max_count": int(select.get("maxCount", 0)),
+                "terminal": terminal,
+                "reward": 0.0,
                 "player": int(obs["current"]["yourIndex"]),
                 "deck0": deck0_name,
                 "deck1": deck1_name,
             })
-            obs = battle_select(random_agent(obs))
+            obs = next_obs
             step += 1
 
         result = int(obs["current"]["result"])
         for row in rows:
             row["result"] = result
-            if result == 2:
+            if result < 0 or result == 2:
                 row["value"] = 0.0
             else:
                 row["value"] = 1.0 if row["player"] == result else -1.0
+            if row["terminal"]:
+                row["reward"] = row["value"]
         return rows
     finally:
         battle_finish()

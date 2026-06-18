@@ -71,6 +71,28 @@ scripts/run_cabt_container.sh \
   --out data/deckpool-rollouts.jsonl
 ```
 
+Generate the default local 10k-row-ish full-state training file used by the
+notebook. Rows include compact features plus the full current observation,
+chosen action, next observation, terminal flag, simulator result, and value:
+
+```bash
+scripts/run_cabt_container.sh \
+  --episodes 220 \
+  --workers 4 \
+  --max-steps 300 \
+  --deck-dir decks \
+  --matchups sample \
+  --seed 17 \
+  --out data/mac-rollouts-10k-fullstate.jsonl
+```
+
+Fetch the official Kaggle submission results. This is the real competition API
+score history; it is submission-level, not per-position training data:
+
+```bash
+python scripts/fetch_competition_results.py
+```
+
 Generate deterministic round-robin matchups:
 
 ```bash
