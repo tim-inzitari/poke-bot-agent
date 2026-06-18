@@ -216,6 +216,10 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Card reference PDF is 137MB (GitHub rejects files >100MB); keep it local only.
+# The committed cards/EN_Card_Data.csv holds all the card data we actually use.
+cards/*.pdf
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
