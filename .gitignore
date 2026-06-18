@@ -78,6 +78,13 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Local Kaggle inputs
+kaggle/input/
+
+# Generated simulator data and model outputs
+data/
+out/
+
 # IPython
 profile_default/
 ipython_config.py

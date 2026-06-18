@@ -1,0 +1,9 @@
+.git
+.venv
+data
+dist
+out
+__pycache__
+*.pyc
+.ipynb_checkpoints
+kaggle/input

@@ -1,0 +1,17 @@
+{
+  "id": "timinzitari/poke-agent-cabt-simulation",
+  "title": "poke agent cabt simulation",
+  "code_file": "generate_cabt_data.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "dataset_sources": [
+    "kiyotah/cg-lib"
+  ],
+  "competition_sources": [
+    "pokemon-tcg-ai-battle"
+  ],
+  "model_sources": []
+}
