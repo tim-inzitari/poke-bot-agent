@@ -217,7 +217,12 @@ def episode_chunks(episodes: int, workers: int) -> list[tuple[int, int]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--episodes", type=int, default=10)
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=None,
+        help="number of CABT games (default: DATASET_GAMES env or 10)",
+    )
     parser.add_argument("--max-steps", type=int, default=300)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
@@ -227,6 +232,12 @@ def main() -> None:
     parser.add_argument("--matchups", choices=["sample", "round-robin"], default="sample")
     parser.add_argument("--out", default="data/cabt_rollouts.jsonl")
     args = parser.parse_args()
+    if args.episodes is None:
+        if os.environ.get("DATASET_GAMES"):
+            parsed = int(os.environ["DATASET_GAMES"])
+            args.episodes = 0 if parsed <= 0 else parsed
+        else:
+            args.episodes = 10
 
     cg_path = add_cg_lib_to_path()
     deck0_pool = read_deck_pool(args.deck0_dir or args.deck_dir)
@@ -256,7 +267,7 @@ def main() -> None:
     print(f"deck0_pool={len(deck0_pool)}")
     print(f"deck1_pool={len(deck1_pool)}")
     print(f"matchups={args.matchups}")
-    print(f"episodes={args.episodes}")
+    print(f"games={args.episodes}")
     print(f"workers={workers}")
     print(f"wrote {len(rows)} rows to {args.out}")
 

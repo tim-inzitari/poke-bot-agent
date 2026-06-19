@@ -57,10 +57,12 @@ def train_model(
     epochs = train_cfg["epochs"]
     patience = train_cfg["patience"]
     min_delta = train_cfg["min_delta"]
-    batch_size = train_cfg["batch_size"]
+    batch_games = train_cfg["batch_games"]
 
     num_rows = int(tensors.x.shape[0])
-    num_batches = max(1, (num_rows + batch_size - 1) // batch_size)
+    num_games = tensors.num_games
+    num_batches = max(1, (num_games + batch_games - 1) // batch_games)
+    avg_steps = num_rows / max(1, num_games)
 
     best_loss = float("inf")
     best_epoch = 0
@@ -70,11 +72,14 @@ def train_model(
     stopped_early = False
     completed_epochs = 0
 
-    print(f"training batches: rows={num_rows} batch_size={batch_size} batches={num_batches}")
+    print(
+        f"training batches: games={num_games} batch_games={batch_games} "
+        f"batches={num_batches} (~{avg_steps:.0f} steps/game)"
+    )
 
     progress = tqdm(range(epochs), desc="training", unit="epoch")
     for epoch in progress:
-        order = torch.randperm(num_rows, device=device)
+        game_order = torch.randperm(num_games, device=device)
         metric_sums = {
             "total_loss": 0.0,
             "value_loss": 0.0,
@@ -86,14 +91,15 @@ def train_model(
         seen = 0
 
         batch_progress = tqdm(
-            range(0, num_rows, batch_size),
+            range(0, num_games, batch_games),
             desc=f"epoch {epoch + 1}/{epochs} batches",
             unit="batch",
             total=num_batches,
             leave=False,
         )
         for batch_number, start in enumerate(batch_progress, start=1):
-            batch_idx = order[start:start + batch_size]
+            game_ids = game_order[start:start + batch_games]
+            batch_idx = tensors.row_indices_for_games(game_ids)
             xb = tensors.x_padded[tensors.history_index[batch_idx]]
             mask_b = tensors.history_mask[batch_idx]
             yb = tensors.y[batch_idx]
@@ -133,6 +139,8 @@ def train_model(
             metric_sums["uncertainty_loss"] += float(uncertainty_loss.detach().cpu()) * batch_size_actual
             batch_progress.set_postfix({
                 "batch": f"{batch_number}/{num_batches}",
+                "games": int(game_ids.shape[0]),
+                "steps": batch_size_actual,
                 "loss": f"{float(loss.detach().cpu()):.5f}",
                 "v": f"{float(value_loss.detach().cpu()):.4f}",
                 "p": f"{float(policy_loss.detach().cpu()):.4f}",
@@ -182,9 +190,11 @@ def train_model(
         "best_epoch": best_epoch,
         "last_metrics": last_metrics,
         "dataset_rows": int(tensors.x.shape[0]),
+        "dataset_games": tensors.num_games,
+        "train_game_limit": config.get("training", {}).get("games"),
         "input_dim": int(tensors.x.shape[1]),
         "window_size": tensors.window_size,
-        "batch_size": batch_size,
+        "batch_games": batch_games,
         "device": str(device),
         "data_path": str(tensors.data_path) if tensors.data_path else None,
         "loss_note": (

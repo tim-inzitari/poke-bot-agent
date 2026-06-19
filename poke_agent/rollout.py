@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import copy
 import json
 import random
 from pathlib import Path
 from typing import Any, Callable
 
-from poke_agent.simulator import SimulatorState
-
-
 from poke_agent.features import features_from_observation
 from poke_agent.game_tracker import GameEventTracker
+from poke_agent.simulator import SimulatorState
 
 
 def make_random_agent(to_observation_class: Callable[..., Any]) -> Callable[[dict], list[int]]:
@@ -21,11 +20,18 @@ def make_random_agent(to_observation_class: Callable[..., Any]) -> Callable[[dic
     return random_agent
 
 
+def json_snapshot(value: Any) -> Any:
+    return json.loads(json.dumps(value, separators=(",", ":")))
+
+
 def play_episode(
     episode: int,
     deck: list[int],
     simulator: SimulatorState,
     agent: Callable[[dict], list[int]],
+    *,
+    deck0_name: str = "deck0",
+    deck1_name: str = "deck1",
     max_steps: int = 300,
 ) -> list[dict]:
     if not simulator.available or simulator.battle_start is None or simulator.battle_select is None or simulator.battle_finish is None:
@@ -39,17 +45,40 @@ def play_episode(
     try:
         step = 0
         while obs["current"]["result"] < 0 and step < max_steps:
+            select = obs.get("select") or {}
+            options = select.get("option") or []
+            action = agent(obs)
+            next_obs = simulator.battle_select(action)
+            terminal = int((next_obs.get("current") or {}).get("result", -1)) >= 0
+            next_tracker = copy.deepcopy(tracker)
             rows.append({
                 "episode": episode,
                 "step": step,
                 "features": features_from_observation(obs, tracker),
+                "next_features": features_from_observation(next_obs, next_tracker),
+                "observation": json_snapshot(obs),
+                "action": json_snapshot(action),
+                "next_observation": json_snapshot(next_obs),
+                "legal_action_count": len(options),
+                "select_min_count": int(select.get("minCount", 0)),
+                "select_max_count": int(select.get("maxCount", 0)),
+                "terminal": terminal,
+                "reward": 0.0,
                 "player": int(obs["current"]["yourIndex"]),
+                "deck0": deck0_name,
+                "deck1": deck1_name,
             })
-            obs = simulator.battle_select(agent(obs))
+            obs = next_obs
             step += 1
         result = int(obs["current"]["result"])
         for row in rows:
-            row["value"] = 0.0 if result == 2 else (1.0 if row["player"] == result else -1.0)
+            row["result"] = result
+            if result < 0 or result == 2:
+                row["value"] = 0.0
+            else:
+                row["value"] = 1.0 if row["player"] == result else -1.0
+            if row["terminal"]:
+                row["reward"] = row["value"]
         return rows
     finally:
         simulator.battle_finish()
@@ -60,6 +89,8 @@ def generate_rollouts(
     deck: list[int],
     episodes: int,
     output_path: Path,
+    *,
+    deck_name: str | None = None,
 ) -> int:
     if not simulator.available or simulator.to_observation_class is None:
         print("skipping CABT generation in this runtime")
@@ -69,13 +100,23 @@ def generate_rollouts(
         print("skipping CABT generation in this runtime")
         return 0
 
+    label = deck_name or "deck"
     agent = make_random_agent(simulator.to_observation_class)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
     for episode in range(episodes):
-        rows.extend(play_episode(episode, deck, simulator, agent))
+        rows.extend(
+            play_episode(
+                episode,
+                deck,
+                simulator,
+                agent,
+                deck0_name=label,
+                deck1_name=label,
+            )
+        )
+    print(f"generated {len(rows):,} rows from {episodes:,} games -> {output_path}")
     with output_path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, separators=(",", ":")) + "\n")
-    print(f"generated {len(rows)} rows -> {output_path}")
     return len(rows)

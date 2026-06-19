@@ -13,9 +13,44 @@ import torch
 from poke_agent.cabt_validation import (
     CabtEvaluationDataError,
     assert_cabt_evaluation_rows,
-    resolve_cabt_eval_data_path,
+    assert_training_rollout_rows,
+    resolve_training_data_path,
+    uses_generated_training_data,
 )
 from poke_agent.features import build_training_arrays, default_tensor_build_workers
+
+
+def limit_dataset_games(rows: list[dict], max_games: int | None) -> tuple[list[dict], int, int]:
+    """Keep the first max_games complete episodes (by episode id)."""
+    source_games = len({int(row["episode"]) for row in rows})
+    if max_games is None or max_games <= 0 or source_games <= max_games:
+        return rows, len(rows), source_games
+
+    keep_ids = sorted({int(row["episode"]) for row in rows})[:max_games]
+    keep_set = set(keep_ids)
+    limited = [row for row in rows if int(row["episode"]) in keep_set]
+    return limited, len(rows), source_games
+
+
+def limit_training_rows(rows: list[dict], max_rows: int | None) -> tuple[list[dict], int]:
+    """Keep leading complete episodes until row budget is reached."""
+    if max_rows is None or max_rows <= 0 or len(rows) <= max_rows:
+        return rows, len(rows)
+
+    by_episode: dict[int, list[dict]] = {}
+    for row in rows:
+        by_episode.setdefault(int(row["episode"]), []).append(row)
+
+    limited: list[dict] = []
+    for episode_id in sorted(by_episode):
+        episode_rows = sorted(by_episode[episode_id], key=lambda row: int(row["step"]))
+        if len(limited) + len(episode_rows) > max_rows:
+            break
+        limited.extend(episode_rows)
+
+    if not limited:
+        limited = rows[:max_rows]
+    return limited, len(rows)
 
 
 def _parse_jsonl_chunk(lines: list[str]) -> list[dict]:
@@ -53,37 +88,65 @@ class TrainingTensors:
     terminal: torch.Tensor
     history_index: torch.Tensor
     history_mask: torch.Tensor
+    game_lengths: torch.Tensor
     feature_mean: np.ndarray
     feature_std: np.ndarray
     transition_classes: int
     window_size: int
 
+    @property
+    def num_games(self) -> int:
+        return int(self.game_lengths.shape[0])
+
+    @property
+    def game_starts(self) -> torch.Tensor:
+        device = self.game_lengths.device
+        starts = torch.zeros(self.num_games + 1, dtype=torch.long, device=device)
+        starts[1:] = torch.cumsum(self.game_lengths, dim=0)
+        return starts
+
+    def row_indices_for_games(self, game_ids: torch.Tensor) -> torch.Tensor:
+        starts = self.game_starts
+        parts = [
+            torch.arange(int(starts[game_id]), int(starts[game_id + 1]), device=game_ids.device)
+            for game_id in game_ids.tolist()
+        ]
+        return torch.cat(parts) if parts else torch.empty(0, dtype=torch.long, device=game_ids.device)
+
 
 def _synthetic_smoke_arrays(
     transition_classes: int,
     window_size: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(7)
-    x_np = rng.normal(size=(128, 10)).astype(np.float32)
+    games = 8
+    steps_per_game = 16
+    total = games * steps_per_game
+    x_np = rng.normal(size=(total, 10)).astype(np.float32)
     y_np = np.tanh(x_np[:, 0] * 0.1 + x_np[:, 2] * 0.03 - x_np[:, 5] * 0.03).astype(np.float32)
-    transition_np = rng.integers(0, transition_classes, size=(128,), dtype=np.int64)
+    transition_np = rng.integers(0, transition_classes, size=(total,), dtype=np.int64)
     next_x_np = (x_np + rng.normal(scale=0.1, size=x_np.shape)).astype(np.float32)
-    terminal_np = np.zeros((128,), dtype=np.float32)
-    pad_index = len(x_np)
-    history_index_np = np.full((len(x_np), window_size), pad_index, dtype=np.int64)
-    history_mask_np = np.zeros((len(x_np), window_size), dtype=np.float32)
-    for i in range(len(x_np)):
-        context = list(range(max(0, i - window_size + 1), i + 1))
-        history_index_np[i, -len(context):] = context
-        history_mask_np[i, -len(context):] = 1.0
-    return x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np
+    terminal_np = np.zeros((total,), dtype=np.float32)
+    for game in range(games):
+        terminal_np[(game + 1) * steps_per_game - 1] = 1.0
+    pad_index = total
+    history_index_np = np.full((total, window_size), pad_index, dtype=np.int64)
+    history_mask_np = np.zeros((total, window_size), dtype=np.float32)
+    for game in range(games):
+        base = game * steps_per_game
+        for step in range(steps_per_game):
+            i = base + step
+            context = list(range(base, i + 1))[-window_size:]
+            history_index_np[i, -len(context):] = context
+            history_mask_np[i, -len(context):] = 1.0
+    game_lengths = np.full((games,), steps_per_game, dtype=np.int64)
+    return x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths
 
 
 def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> TrainingTensors:
     transition_classes = config["transition_classes"]
     state_hash_dim = config["state_hash_dim"]
     window_size = config["window_size"]
-    data_candidates = config["data_candidates"]
     require_cabt_eval = config.get("require_cabt_eval_data", True)
     workers = config.get("tensor_build_workers")
     if workers is None:
@@ -91,13 +154,12 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
     else:
         workers = max(1, int(workers))
 
-    data_path = resolve_cabt_eval_data_path(data_candidates) if require_cabt_eval else next(
-        (path for path in data_candidates if path.exists()),
-        None,
-    )
+    data_path = resolve_training_data_path(config)
     if data_path is None:
         if require_cabt_eval:
-            searched = ", ".join(str(path) for path in data_candidates)
+            searched = ", ".join(str(path) for path in config.get("data_candidates", []))
+            if config.get("generated_path") is not None:
+                searched = f"{config['generated_path']}, {searched}"
             raise CabtEvaluationDataError(
                 "No CABT evaluation rollout JSONL found. "
                 f"Searched: {searched}. "
@@ -105,15 +167,26 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 "Set REQUIRE_CABT_EVAL_DATA=0 only for smoke tests."
             )
         print("No rollout data found. Using synthetic smoke data so Run All still completes.")
-        x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np = _synthetic_smoke_arrays(
+        x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths_np = _synthetic_smoke_arrays(
             transition_classes,
             window_size,
         )
     else:
         started = time.perf_counter()
         rows = load_jsonl(data_path, workers=workers)
-        assert_cabt_evaluation_rows(rows, path=data_path)
-        x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np = build_training_arrays(
+        if require_cabt_eval and not uses_generated_training_data(config, data_path):
+            assert_cabt_evaluation_rows(rows, path=data_path)
+        else:
+            assert_training_rollout_rows(rows, path=data_path)
+        train_games = config.get("training", {}).get("games")
+        rows, source_rows, source_games = limit_dataset_games(rows, train_games)
+        used_games = len({int(row["episode"]) for row in rows})
+        if train_games is not None:
+            print(
+                f"training size: {used_games:,} / {source_games:,} games "
+                f"({len(rows):,} / {source_rows:,} rows, DATASET_GAMES={train_games})"
+            )
+        x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths_np = build_training_arrays(
             rows,
             transition_classes=transition_classes,
             state_hash_dim=state_hash_dim,
@@ -121,7 +194,7 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
             workers=workers,
         )
         elapsed = time.perf_counter() - started
-        print(f"loaded {len(rows)} CABT evaluation rows from {data_path} in {elapsed:.1f}s ({workers} workers)")
+        print(f"loaded {len(rows)} rollout rows from {data_path} in {elapsed:.1f}s ({workers} workers)")
 
     feature_mean = x_np.mean(axis=0, keepdims=True)
     feature_std = x_np.std(axis=0, keepdims=True) + 1e-6
@@ -136,8 +209,12 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
     terminal = _to_device_tensor(terminal_np, device)
     history_index = _to_device_tensor(history_index_np, device)
     history_mask = _to_device_tensor(history_mask_np, device)
+    game_lengths = _to_device_tensor(game_lengths_np, device)
 
-    print("x", tuple(x.shape), "value", tuple(y.shape), "transition", tuple(transition_target.shape))
+    print(
+        "x", tuple(x.shape), "value", tuple(y.shape), "transition", tuple(transition_target.shape),
+        "games", int(game_lengths.shape[0]),
+    )
     print("history", tuple(history_index.shape), "window", window_size)
 
     return TrainingTensors(
@@ -150,6 +227,7 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         terminal=terminal,
         history_index=history_index,
         history_mask=history_mask,
+        game_lengths=game_lengths,
         feature_mean=feature_mean,
         feature_std=feature_std,
         transition_classes=transition_classes,

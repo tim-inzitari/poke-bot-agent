@@ -112,3 +112,67 @@ def resolve_cabt_eval_data_path(candidates: list[Path]) -> Path | None:
         if rows:
             return path
     return None
+
+
+def is_training_rollout_row(row: dict[str, Any]) -> bool:
+    return (
+        "episode" in row
+        and "step" in row
+        and isinstance(row.get("features"), list)
+        and bool(row["features"])
+        and "value" in row
+    )
+
+
+def assert_training_rollout_rows(
+    rows: list[dict[str, Any]],
+    *,
+    path: Path | str | None = None,
+    min_rows: int = 1,
+) -> None:
+    label = f" at {path}" if path else ""
+    if len(rows) < min_rows:
+        raise CabtEvaluationDataError(
+            f"Expected at least {min_rows} rollout rows{label}, found {len(rows)}."
+        )
+    for index, row in enumerate(rows):
+        if not is_training_rollout_row(row):
+            raise CabtEvaluationDataError(
+                f"Row {index}{label} is missing episode/step/features/value fields."
+            )
+    sample = rows[0]
+    print(
+        f"rollout data OK{label}: {len(rows)} rows, "
+        f"feature_dim={len(sample['features'])}"
+    )
+
+
+def uses_generated_training_data(config: dict[str, Any], data_path: Path) -> bool:
+    generated = config.get("generated_path")
+    if generated is None:
+        return False
+    return Path(data_path).resolve() == Path(generated).resolve()
+
+
+def resolve_training_data_path(config: dict[str, Any]) -> Path | None:
+    """Pick rollout JSONL for training.
+
+    When DATASET_GAMES is set and generated_path exists, use the file just
+    written by inline/script generation instead of PRIMARY_ROLLOUT_DATA.
+    """
+    generated = config.get("generated_path")
+    generated_path = Path(generated) if generated is not None else None
+    dataset_games = config.get("dataset_games")
+    require_cabt_eval = config.get("require_cabt_eval_data", True)
+
+    if dataset_games is not None and generated_path is not None and generated_path.exists():
+        return generated_path
+
+    candidates = list(config.get("data_candidates", []))
+    if generated_path is not None and generated_path.exists():
+        candidates = [generated_path, *[path for path in candidates if path != generated_path]]
+
+    if require_cabt_eval:
+        return resolve_cabt_eval_data_path(candidates)
+
+    return next((path for path in candidates if path.exists()), None)

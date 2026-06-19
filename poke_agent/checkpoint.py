@@ -86,7 +86,7 @@ def print_training_report(training_report: dict[str, Any], output_path: Path) ->
     print("\nFinal training report")
     print("-" * 22)
     print(f"rows: {training_report['dataset_rows']}")
-    print(f"window: {training_report['window_size']} batch: {training_report['batch_size']}")
+    print(f"window: {training_report['window_size']} batch_games: {training_report['batch_games']}")
     print(f"device: {training_report['device']}")
     print(f"epochs: {training_report['completed_epochs']} / {training_report['requested_epochs']}")
     print(f"early stopped: {training_report['stopped_early']}")

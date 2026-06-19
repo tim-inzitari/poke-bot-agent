@@ -33,8 +33,9 @@ MODEL_ID = "temporal_current"
 MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"
 REQUIRE_CABT_EVAL_DATA = True
 
-# --- Simulation ---
-CABT_EPISODES = None  # None = 3 when cg-lib is available, else 0
+# --- Dataset size (games) ---
+DATASET_GAMES = 50  # None = train on all games in file, skip inline generation
+                      # 5000 or 100000 = that many CABT games to generate and/or cap training
 
 # --- Features ---
 TRANSITION_CLASSES = 8
@@ -43,9 +44,9 @@ WINDOW_SIZE = 1024
 TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
-MODEL_D_MODEL = 64
+MODEL_D_MODEL = 16
 MODEL_HEADS = 4
-MODEL_LAYERS = 6
+MODEL_LAYERS = 4
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4
@@ -59,11 +60,11 @@ LOSS_ENTROPY_WEIGHT = 0.01
 LOSS_UNCERTAINTY_WEIGHT = 0.02
 
 # --- Training loop ---
-TRAIN_EPOCHS = 1000 
+TRAIN_EPOCHS = 1000
 EARLY_STOP_PATIENCE = 25
 EARLY_STOP_MIN_DELTA = 1e-5
 TRAIN_PRINT_EVERY = 100
-BATCH_SIZE = 64
+BATCH_GAMES = 4  # games per training batch (each game is one temporal sequence)
 
 # Flat override keys accepted by build_config(..., overrides=...).
 OVERRIDE_KEYS = frozenset({
@@ -75,7 +76,7 @@ OVERRIDE_KEYS = frozenset({
     "model_output_path",
     "model_id",
     "require_cabt_eval_data",
-    "cabt_episodes",
+    "dataset_games",
     "transition_classes",
     "state_hash_dim",
     "window_size",
@@ -95,7 +96,7 @@ OVERRIDE_KEYS = frozenset({
     "early_stop_patience",
     "early_stop_min_delta",
     "train_print_every",
-    "batch_size",
+    "batch_games",
     "tensor_build_workers",
 })
 
@@ -111,7 +112,7 @@ def default_user_config() -> dict[str, Any]:
         "model_output_path": MODEL_OUTPUT_PATH,
         "model_id": MODEL_ID,
         "require_cabt_eval_data": REQUIRE_CABT_EVAL_DATA,
-        "cabt_episodes": CABT_EPISODES,
+        "dataset_games": DATASET_GAMES,
         "transition_classes": TRANSITION_CLASSES,
         "state_hash_dim": STATE_HASH_DIM,
         "window_size": WINDOW_SIZE,
@@ -131,7 +132,7 @@ def default_user_config() -> dict[str, Any]:
         "early_stop_patience": EARLY_STOP_PATIENCE,
         "early_stop_min_delta": EARLY_STOP_MIN_DELTA,
         "train_print_every": TRAIN_PRINT_EVERY,
-        "batch_size": BATCH_SIZE,
+        "batch_games": BATCH_GAMES,
         "tensor_build_workers": TENSOR_BUILD_WORKERS,
     }
 
@@ -143,7 +144,7 @@ _ENV_MAP = {
     "competition_results_path": "COMPETITION_RESULTS_PATH",
     "model_output_path": "MODEL_OUTPUT_PATH",
     "model_id": "MODEL_ID",
-    "cabt_episodes": "CABT_EPISODES",
+    "dataset_games": "DATASET_GAMES",
     "transition_classes": "TRANSITION_CLASSES",
     "state_hash_dim": "STATE_HASH_DIM",
     "window_size": "WINDOW_SIZE",
@@ -159,11 +160,12 @@ _ENV_MAP = {
     "loss_dynamics_weight": "LOSS_DYNAMICS_WEIGHT",
     "loss_entropy_weight": "LOSS_ENTROPY_WEIGHT",
     "loss_uncertainty_weight": "LOSS_UNCERTAINTY_WEIGHT",
+    "dataset_games": "DATASET_GAMES",
     "train_epochs": "TRAIN_EPOCHS",
     "early_stop_patience": "EARLY_STOP_PATIENCE",
     "early_stop_min_delta": "EARLY_STOP_MIN_DELTA",
     "train_print_every": "TRAIN_PRINT_EVERY",
-    "batch_size": "BATCH_SIZE",
+    "batch_games": "BATCH_GAMES",
     "tensor_build_workers": "TENSOR_BUILD_WORKERS",
 }
 
@@ -175,6 +177,11 @@ def _coerce_value(key: str, value: Any) -> Any:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
         return bool(value)
+    if key == "dataset_games":
+        if value is None or value == "":
+            return None
+        parsed = int(value)
+        return None if parsed <= 0 else parsed
     if key in {
         "transition_classes",
         "state_hash_dim",
@@ -186,8 +193,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "train_epochs",
         "early_stop_patience",
         "train_print_every",
-        "batch_size",
-        "cabt_episodes",
+        "batch_games",
         "tensor_build_workers",
     }:
         return int(value)
@@ -215,6 +221,8 @@ def _resolve_settings(overrides: dict[str, Any] | None = None) -> dict[str, Any]
             settings[key] = _coerce_value(key, os.environ[env_name])
     if "REQUIRE_CABT_EVAL_DATA" in os.environ:
         settings["require_cabt_eval_data"] = os.environ["REQUIRE_CABT_EVAL_DATA"] != "0"
+    if "BATCH_SIZE" in os.environ and "BATCH_GAMES" not in os.environ:
+        settings["batch_games"] = _coerce_value("batch_games", os.environ["BATCH_SIZE"])
     if overrides:
         unknown = set(overrides) - OVERRIDE_KEYS
         if unknown:
@@ -248,7 +256,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "output_layout": describe_layout(root),
         "coarse_feature_dim": COARSE_FEATURE_DIM,
         "require_cabt_eval_data": settings["require_cabt_eval_data"],
-        "cabt_episodes": settings["cabt_episodes"],
+        "dataset_games": settings["dataset_games"],
         "transition_classes": settings["transition_classes"],
         "state_hash_dim": settings["state_hash_dim"],
         "window_size": settings["window_size"],
@@ -270,17 +278,25 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "uncertainty": settings["loss_uncertainty_weight"],
         },
         "training": {
+            "games": settings["dataset_games"],
             "epochs": settings["train_epochs"],
             "patience": settings["early_stop_patience"],
             "min_delta": settings["early_stop_min_delta"],
             "print_every": settings["train_print_every"],
-            "batch_size": settings["batch_size"],
+            "batch_games": settings["batch_games"],
         },
     }
 
 
+def resolve_generate_games(config: dict[str, Any]) -> int:
+    """Games to simulate when generating rollouts (0 = skip)."""
+    games = config.get("dataset_games")
+    if games is not None:
+        return max(0, int(games))
+    return 0
+
+
 def resolve_cabt_episodes(config: dict[str, Any], simulator_available: bool) -> int:
-    configured = config.get("cabt_episodes")
-    if configured is not None:
-        return max(0, int(configured))
-    return 3 if simulator_available else 0
+    """Backward-compatible alias for inline rollout generation."""
+    del simulator_available
+    return resolve_generate_games(config)

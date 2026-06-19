@@ -36,6 +36,7 @@ def estimate_dataset_bytes(tensors: TrainingTensors) -> int:
             tensors.terminal,
             tensors.history_index,
             tensors.history_mask,
+            tensors.game_lengths,
         )
     )
 
@@ -58,9 +59,9 @@ def _training_step_peak_bytes(
 ) -> dict[str, int]:
     model_cfg = config["model"]
     loss_cfg = config["loss"]
-    batch_size = int(config["training"]["batch_size"])
-    batch_count = min(batch_size, int(tensors.x.shape[0]))
-    batch_idx = torch.arange(batch_count, device=device)
+    batch_games = int(config["training"]["batch_games"])
+    game_ids = torch.arange(min(batch_games, tensors.num_games), device=device)
+    batch_idx = tensors.row_indices_for_games(game_ids)
 
     value_loss_fn = nn.MSELoss()
     policy_loss_fn = nn.CrossEntropyLoss()
@@ -131,14 +132,15 @@ def print_vram_estimate(
     device: torch.device,
 ) -> None:
     static = _static_training_bytes(param_count, tensors)
-    batch_size = int(config["training"]["batch_size"])
+    batch_games = int(config["training"]["batch_games"])
+    avg_steps = int(tensors.x.shape[0]) / max(1, tensors.num_games)
 
     print("\nVRAM estimate for current config")
     print("-" * 34)
     print(f"device: {device}")
     print(
-        f"data: {int(tensors.x.shape[0]):,} rows x {int(tensors.x.shape[1])} features "
-        f"(window={tensors.window_size}, batch={batch_size})"
+        f"data: {tensors.num_games:,} games / {int(tensors.x.shape[0]):,} steps x {int(tensors.x.shape[1])} features "
+        f"(window={tensors.window_size}, batch_games={batch_games}, ~{avg_steps:.0f} steps/game)"
     )
     print(f"parameters: {param_count:,}")
     print(f"dataset tensors: {format_bytes(static['dataset_bytes'])}")

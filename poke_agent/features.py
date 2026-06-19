@@ -271,7 +271,7 @@ def _episode_worker(args: tuple[list[dict], int, int, int]):
 
 def _merge_episode_arrays(
     episode_arrays: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     xs_parts: list[np.ndarray] = []
     values_parts: list[np.ndarray] = []
     transition_parts: list[np.ndarray] = []
@@ -300,6 +300,7 @@ def _merge_episode_arrays(
     pad_index = row_offset
     history_indices_np = np.concatenate(history_index_parts, axis=0)
     history_indices_np[history_indices_np < 0] = pad_index
+    game_lengths = np.array([len(x_ep) for x_ep, *_ in episode_arrays if len(x_ep) > 0], dtype=np.int64)
 
     return (
         np.concatenate(xs_parts, axis=0),
@@ -309,6 +310,7 @@ def _merge_episode_arrays(
         np.concatenate(terminal_parts, axis=0),
         history_indices_np,
         np.concatenate(history_mask_parts, axis=0),
+        game_lengths,
     )
 
 
@@ -319,7 +321,7 @@ def build_training_arrays(
     state_hash_dim: int,
     window_size: int,
     workers: int | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     episodes = _group_rows_by_episode(rows)
     worker_count = default_tensor_build_workers() if workers is None else max(1, int(workers))
 

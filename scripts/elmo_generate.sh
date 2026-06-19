@@ -9,7 +9,7 @@ if [ ! -x .venv/bin/python ]; then
 fi
 
 .venv/bin/python scripts/generate_cabt_data.py \
-  --episodes "${ELMO_EPISODES:-1000}" \
+  --episodes "${DATASET_GAMES:-${ELMO_EPISODES:-1000}}" \
   --workers "${ELMO_WORKERS:-16}" \
   --max-steps "${ELMO_MAX_STEPS:-300}" \
   --seed "${ELMO_SEED:-7}" \

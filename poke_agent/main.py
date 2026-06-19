@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from poke_agent.checkpoint import print_training_report, save_checkpoint
-from poke_agent.config import build_config, resolve_cabt_episodes
+from poke_agent.config import build_config, resolve_generate_games
 from poke_agent.dataset import prepare_training_tensors
 from poke_agent.deck import read_deck
 from poke_agent.device import torch_device
@@ -33,8 +33,16 @@ def main() -> None:
     print("deck cards", len(deck))
     print("deck source", deck_source)
 
-    generate_episodes = resolve_cabt_episodes(config, simulator.available)
-    generate_rollouts(simulator, deck, generate_episodes, config["generated_path"])
+    generate_games = resolve_generate_games(config)
+    _, deck_source = read_deck(config, root)
+    deck_name = deck_source.stem if deck_source.suffix else str(deck_source)
+    generate_rollouts(
+        simulator,
+        deck,
+        generate_games,
+        config["generated_path"],
+        deck_name=deck_name,
+    )
 
     tensors = prepare_training_tensors(config, device)
     model = build_model(config, tensors, device)
