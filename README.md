@@ -1,16 +1,31 @@
 # poke-bot-agent
 
+## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full system design:
+deployment topologies, data flow, model architecture, rollout schema, configuration
+reference, and competition submission path. Module-level API detail lives in
+[docs/poke-agent-modules.md](docs/poke-agent-modules.md).
+
+Train outside the notebook (settings in `poke_agent/config.py`):
+
+```bash
+python scripts/train_agent.py
+```
+
 ## CABT workflow
 
 Run this notebook in VS Code:
 
 ```text
-notebooks/poke_agent_unified.ipynb
+notebooks/poke_agent_training.ipynb
 ```
 
-It can be run end-to-end. On Mac it uses generated rollout data and trains with
-Torch/MPS. On Kaggle/Linux it can also generate CABT rollouts if `cg-lib` is
-available.
+The training pipeline lives in the `poke_agent/` package. The notebook imports those
+modules step-by-step so you can inspect intermediate state between cells.
+
+The legacy monolithic notebook is still available at
+`notebooks/poke_agent_unified.ipynb`.
 
 Default path: run CABT simulation on Kaggle, then train locally on Mac with
 Torch/MPS.
@@ -37,7 +52,7 @@ Elmo is the preferred CABT rollout worker if it is your TrueNAS box with the
 Ryzen 5950X. Run CABT there, then pull the JSONL back to this Mac for Torch/MPS
 training.
 
-On Elmo:
+On Elmo (requires Python 3.11 for `cg-lib`):
 
 ```bash
 git clone https://github.com/tim-inzitari/poke-bot-agent.git
@@ -45,6 +60,9 @@ cd poke-bot-agent
 scripts/elmo_setup.sh
 scripts/elmo_generate.sh --episodes 1000 --workers 16 --out data/elmo-rollouts.jsonl
 ```
+
+`scripts/elmo_setup.sh` creates `.venv` with Python 3.11. On Debian/Ubuntu:
+`sudo apt install python3.11 python3.11-venv`.
 
 On this Mac:
 
@@ -103,10 +121,10 @@ scripts/run_cabt_container.sh \
   --out data/deckpool-rollouts.jsonl
 ```
 
-Use separate pools for each side:
+Use separate pools for each side (requires Python 3.11 in `.venv`; see Elmo setup):
 
 ```bash
-python scripts/generate_cabt_data.py \
+.venv/bin/python scripts/generate_cabt_data.py \
   --episodes 1000 \
   --workers 16 \
   --deck0-dir decks/ours \
@@ -122,6 +140,9 @@ Competition submissions are limited to 5 per team per day, so use Kaggle
 simulation kernels and local container smoke tests for training/evaluation.
 Only submit the tarball intentionally.
 
+Download the simulator library first (the tarball must include `cg/libcg.so`):
+
 ```bash
+scripts/download-kaggle-inputs.sh
 scripts/build_submission.sh
 ```
