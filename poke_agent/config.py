@@ -43,9 +43,9 @@ WINDOW_SIZE = 1024
 TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
-MODEL_D_MODEL = 256
+MODEL_D_MODEL = 64
 MODEL_HEADS = 4
-MODEL_LAYERS = 4
+MODEL_LAYERS = 6
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4

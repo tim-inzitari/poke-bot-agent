@@ -1,5 +1,5 @@
-from __future__ import annotations
+"""Alias for catalog neural entries."""
 
-from poke_agent.model import TransformerRLModel
+from poke_agent.models.temporal_transformer import TemporalTransformer, TransformerRLModel
 
-__all__ = ["TransformerRLModel"]
+__all__ = ["TemporalTransformer", "TransformerRLModel"]

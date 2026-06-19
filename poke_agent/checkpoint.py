@@ -8,7 +8,7 @@ import torch
 
 from poke_agent.dataset import TrainingTensors
 from poke_agent.features import COARSE_FEATURE_DIM
-from poke_agent.model import TransformerRLModel
+from poke_agent.models.temporal_transformer import TemporalTransformer
 
 
 def load_competition_results(path: Path) -> list[dict]:
@@ -20,7 +20,7 @@ def load_competition_results(path: Path) -> list[dict]:
 
 def save_checkpoint(
     *,
-    model: TransformerRLModel,
+    model: TemporalTransformer,
     tensors: TrainingTensors,
     config: dict[str, Any],
     training_report: dict[str, Any],

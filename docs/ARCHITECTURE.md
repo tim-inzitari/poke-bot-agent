@@ -161,7 +161,8 @@ poke-bot-agent/
 │   ├── rollout.py           # Episode generation (Linux only)
 │   ├── features.py          # Hash features + training array builder
 │   ├── dataset.py           # JSONL load + tensor preparation
-│   ├── model.py             # TransformerRLModel
+│   ├── models/              # Agent implementations (temporal transformer, heuristics, hybrid)
+│   │   └── temporal_transformer.py  # TemporalTransformer
 │   ├── training.py          # Training loop + early stopping
 │   ├── checkpoint.py        # Checkpoint save + report printing
 │   ├── outputs.py           # Output directory layout helpers
@@ -396,7 +397,7 @@ Default `TRANSITION_CLASSES = 8`.
 
 ## Model architecture
 
-`TransformerRLModel` (`poke_agent/model.py`) is a temporal value/policy model:
+`TemporalTransformer` (`poke_agent/models/temporal_transformer.py`) is a temporal value/policy model:
 
 ```mermaid
 flowchart TD
@@ -508,7 +509,7 @@ flowchart TD
 | `rollout.py` | Play episodes, write JSONL | `generate_rollouts`, `play_episode` |
 | `features.py` | Hash encoding + array builder | `build_training_arrays`, `combine_features` |
 | `dataset.py` | Load JSONL, create tensors | `prepare_training_tensors`, `TrainingTensors` |
-| `model.py` | Neural network | `TransformerRLModel` |
+| `models/temporal_transformer.py` | Neural network | `TemporalTransformer` |
 | `training.py` | Train loop | `build_model`, `train_model` |
 | `checkpoint.py` | Save + report | `save_checkpoint`, `print_training_report` |
 | `outputs.py` | Artifact paths | `ensure_output_layout`, `resolve_checkpoint_path` |

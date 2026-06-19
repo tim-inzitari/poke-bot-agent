@@ -3,7 +3,9 @@ from __future__ import annotations
 import torch
 
 
-class TransformerRLModel(torch.nn.Module):
+class TemporalTransformer(torch.nn.Module):
+    """Temporal transformer RL model with value, policy, dynamics, and uncertainty heads."""
+
     def __init__(
         self,
         input_dim: int,
@@ -66,3 +68,7 @@ class TransformerRLModel(torch.nn.Module):
             "next_features": self.next_feature_head(pooled),
             "log_variance": self.uncertainty_head(pooled).squeeze(-1).clamp(-5.0, 5.0),
         }
+
+
+# Checkpoint/submission alias — older code and saved weights use this name.
+TransformerRLModel = TemporalTransformer

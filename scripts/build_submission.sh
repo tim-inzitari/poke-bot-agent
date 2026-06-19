@@ -28,7 +28,8 @@ STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
 cp submission/main.py submission/deck.csv submission/policy_runtime.py "$STAGING/"
-cp poke_agent/model.py poke_agent/features.py poke_agent/game_tracker.py "$STAGING/"
+cp poke_agent/models/temporal_transformer.py poke_agent/features.py poke_agent/game_tracker.py "$STAGING/"
+mv "$STAGING/temporal_transformer.py" "$STAGING/model.py"
 cp -r submission/cg "$STAGING/"
 cp "$CG_LIB" "$STAGING/cg/libcg.so"
 cp "$MODEL_CHECKPOINT" "$STAGING/value_model.pt"

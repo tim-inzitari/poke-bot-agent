@@ -6,17 +6,17 @@ import torch
 from tqdm.auto import tqdm
 
 from poke_agent.dataset import TrainingTensors
-from poke_agent.model import TransformerRLModel
+from poke_agent.models.temporal_transformer import TemporalTransformer
 
 
-def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.device) -> TransformerRLModel:
+def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.device) -> TemporalTransformer:
     model_cfg = config["model"]
     d_model = model_cfg["d_model"]
     heads = model_cfg["heads"]
     if d_model % heads != 0:
         raise ValueError("MODEL_D_MODEL must be divisible by MODEL_HEADS")
 
-    model = TransformerRLModel(
+    model = TemporalTransformer(
         tensors.x.shape[1],
         tensors.transition_classes,
         d_model=d_model,
@@ -36,7 +36,7 @@ def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.
 
 
 def train_model(
-    model: TransformerRLModel,
+    model: TemporalTransformer,
     tensors: TrainingTensors,
     config: dict[str, Any],
     device: torch.device,

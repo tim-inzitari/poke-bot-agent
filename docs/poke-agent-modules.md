@@ -10,7 +10,7 @@ flowchart BT
     main[main.py]
     checkpoint[checkpoint.py]
     training[training.py]
-    model[model.py]
+    model[models/temporal_transformer.py]
     dataset[dataset.py]
     features[features.py]
     rollout[rollout.py]
@@ -40,7 +40,7 @@ flowchart BT
     config --> paths
 ```
 
-No circular imports. Leaf modules: `device.py`, `features.py`, `model.py`, `deck.py`.
+No circular imports. Leaf modules: `device.py`, `features.py`, `models/temporal_transformer.py`, `deck.py`.
 
 ---
 
@@ -329,9 +329,25 @@ Prints tensor shapes for debugging.
 
 ---
 
-## `model.py`
+## `models/` package
 
-### `TransformerRLModel`
+Neural, heuristic, and hybrid **agent implementations** for the multi-model catalog.
+
+| Module | Contents |
+|---|---|
+| `models/temporal_transformer.py` | `TemporalTransformer` (temporal transformer RL) |
+| `models/heuristics.py` | Random / first-legal / max-option baselines |
+| `models/hybrid.py` | Combine neural + heuristic at play time |
+| `models/neural.py` | Alias re-export for catalog `neural` entries |
+
+Catalog **definitions** (`ACTIVE_MODEL`, `TRAIN_MODELS`, hyperparameter overrides)
+live in `model_catalog.py`. Resolution/build helpers live in `model_registry.py`.
+
+---
+
+## `models/temporal_transformer.py`
+
+### `TemporalTransformer`
 
 Standard PyTorch `nn.Module`.
 
@@ -448,5 +464,5 @@ python scripts/train_agent.py
 | Cell 6 — play_episode | `rollout.py` |
 | Cell 7 — generate | `rollout.generate_rollouts` |
 | Cell 8 — arrays | `features.py`, `dataset.py` |
-| Cell 9 — model + train | `model.py`, `training.py` |
+| Cell 9 — model + train | `models/temporal_transformer.py`, `training.py` |
 | Cell 10 — save | `checkpoint.py` |
