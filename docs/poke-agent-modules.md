@@ -60,10 +60,13 @@ Prints repo path and Python version. Called at pipeline start for log provenance
 
 ## `config.py`
 
-### `build_config(root: Path) -> dict[str, Any]`
+Edit the module-level variables at the top of `poke_agent/config.py` to change
+data paths, model architecture, loss weights, and training loop settings.
 
-Single source of truth for all hyperparameters and file paths. Reads exclusively
-from environment variables with documented defaults.
+### `build_config(root: Path, overrides: dict | None = None) -> dict[str, Any]`
+
+Builds the nested runtime config from module constants. Optional `overrides` and
+environment variables can supersede individual settings.
 
 Returns a nested dict with keys:
 
@@ -81,9 +84,9 @@ loss                  dict           # value, policy, dynamics, entropy, uncerta
 training              dict           # epochs, patience, min_delta, print_every, batch_size
 ```
 
-### `env_int` / `env_float`
+### `resolve_cabt_episodes(config, simulator_available) -> int`
 
-Thin `os.environ` parsers. Missing keys fall back to stringified defaults.
+Uses `CABT_EPISODES` from config (`None` = auto: 3 when cg-lib is available).
 
 ---
 

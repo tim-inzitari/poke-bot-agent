@@ -7,7 +7,7 @@ deployment topologies, data flow, model architecture, rollout schema, configurat
 reference, and competition submission path. Module-level API detail lives in
 [docs/poke-agent-modules.md](docs/poke-agent-modules.md).
 
-Train outside the notebook:
+Train outside the notebook (settings in `poke_agent/config.py`):
 
 ```bash
 python scripts/train_agent.py
