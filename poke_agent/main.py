@@ -11,6 +11,7 @@ from poke_agent.paths import print_runtime_info, resolve_root
 from poke_agent.rollout import generate_rollouts
 from poke_agent.simulator import load_simulator, print_simulator_status
 from poke_agent.training import build_model, train_model
+from poke_agent.memory import print_vram_estimate
 
 
 def main() -> None:
@@ -34,6 +35,13 @@ def main() -> None:
 
     tensors = prepare_training_tensors(config, device)
     model = build_model(config, tensors, device)
+    print_vram_estimate(
+        model=model,
+        param_count=sum(p.numel() for p in model.parameters()),
+        tensors=tensors,
+        config=config,
+        device=device,
+    )
     training_report = train_model(model, tensors, config, device)
     training_report = save_checkpoint(
         model=model,

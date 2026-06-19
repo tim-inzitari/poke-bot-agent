@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,12 +15,31 @@ from poke_agent.cabt_validation import (
     assert_cabt_evaluation_rows,
     resolve_cabt_eval_data_path,
 )
-from poke_agent.features import build_training_arrays
+from poke_agent.features import build_training_arrays, default_tensor_build_workers
 
 
-def load_jsonl(path: Path) -> list[dict]:
-    with path.open("r", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+def _parse_jsonl_chunk(lines: list[str]) -> list[dict]:
+    return [json.loads(line) for line in lines]
+
+
+def load_jsonl(path: Path, *, workers: int | None = None) -> list[dict]:
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    worker_count = default_tensor_build_workers() if workers is None else max(1, int(workers))
+    if worker_count <= 1 or len(lines) < 5000:
+        return _parse_jsonl_chunk(lines)
+
+    chunk_size = max(1000, len(lines) // (worker_count * 4))
+    chunks = [lines[index:index + chunk_size] for index in range(0, len(lines), chunk_size)]
+    with ProcessPoolExecutor(max_workers=worker_count) as executor:
+        rows = [row for chunk_rows in executor.map(_parse_jsonl_chunk, chunks) for row in chunk_rows]
+    print(f"jsonl load: {len(rows)} rows using {worker_count} workers")
+    return rows
+
+
+def _to_device_tensor(array: np.ndarray, device: torch.device) -> torch.Tensor:
+    contiguous = np.ascontiguousarray(array)
+    tensor = torch.from_numpy(contiguous)
+    return tensor.to(device=device)
 
 
 @dataclass
@@ -64,6 +85,11 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
     window_size = config["window_size"]
     data_candidates = config["data_candidates"]
     require_cabt_eval = config.get("require_cabt_eval_data", True)
+    workers = config.get("tensor_build_workers")
+    if workers is None:
+        workers = default_tensor_build_workers()
+    else:
+        workers = max(1, int(workers))
 
     data_path = resolve_cabt_eval_data_path(data_candidates) if require_cabt_eval else next(
         (path for path in data_candidates if path.exists()),
@@ -84,29 +110,32 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
             window_size,
         )
     else:
-        rows = load_jsonl(data_path)
+        started = time.perf_counter()
+        rows = load_jsonl(data_path, workers=workers)
         assert_cabt_evaluation_rows(rows, path=data_path)
         x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np = build_training_arrays(
             rows,
             transition_classes=transition_classes,
             state_hash_dim=state_hash_dim,
             window_size=window_size,
+            workers=workers,
         )
-        print(f"loaded {len(rows)} CABT evaluation rows from {data_path}")
+        elapsed = time.perf_counter() - started
+        print(f"loaded {len(rows)} CABT evaluation rows from {data_path} in {elapsed:.1f}s ({workers} workers)")
 
     feature_mean = x_np.mean(axis=0, keepdims=True)
     feature_std = x_np.std(axis=0, keepdims=True) + 1e-6
     x_norm = (x_np - feature_mean) / feature_std
     next_x_norm = (next_x_np - feature_mean) / feature_std
 
-    x = torch.tensor(x_norm, device=device)
+    x = _to_device_tensor(x_norm, device)
     x_padded = torch.cat([x, torch.zeros((1, x.shape[1]), device=device, dtype=x.dtype)], dim=0)
-    y = torch.tensor(y_np, device=device)
-    transition_target = torch.tensor(transition_np, device=device)
-    next_x = torch.tensor(next_x_norm, device=device)
-    terminal = torch.tensor(terminal_np, device=device)
-    history_index = torch.tensor(history_index_np, device=device)
-    history_mask = torch.tensor(history_mask_np, device=device)
+    y = _to_device_tensor(y_np, device)
+    transition_target = _to_device_tensor(transition_np, device)
+    next_x = _to_device_tensor(next_x_norm, device)
+    terminal = _to_device_tensor(terminal_np, device)
+    history_index = _to_device_tensor(history_index_np, device)
+    history_mask = _to_device_tensor(history_mask_np, device)
 
     print("x", tuple(x.shape), "value", tuple(y.shape), "transition", tuple(transition_target.shape))
     print("history", tuple(history_index.shape), "window", window_size)

@@ -35,12 +35,13 @@ CABT_EPISODES = None  # None = 3 when cg-lib is available, else 0
 # --- Features ---
 TRANSITION_CLASSES = 8
 STATE_HASH_DIM = 256
-WINDOW_SIZE = 128
+WINDOW_SIZE = 1024
+TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
-MODEL_D_MODEL = 512
-MODEL_HEADS = 8
-MODEL_LAYERS = 8
+MODEL_D_MODEL = 256
+MODEL_HEADS = 4
+MODEL_LAYERS = 4
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4
@@ -58,7 +59,7 @@ TRAIN_EPOCHS = 1000
 EARLY_STOP_PATIENCE = 25
 EARLY_STOP_MIN_DELTA = 1e-5
 TRAIN_PRINT_EVERY = 100
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 
 # Flat override keys accepted by build_config(..., overrides=...).
 OVERRIDE_KEYS = frozenset({
@@ -90,6 +91,7 @@ OVERRIDE_KEYS = frozenset({
     "early_stop_min_delta",
     "train_print_every",
     "batch_size",
+    "tensor_build_workers",
 })
 
 
@@ -124,6 +126,7 @@ def default_user_config() -> dict[str, Any]:
         "early_stop_min_delta": EARLY_STOP_MIN_DELTA,
         "train_print_every": TRAIN_PRINT_EVERY,
         "batch_size": BATCH_SIZE,
+        "tensor_build_workers": TENSOR_BUILD_WORKERS,
     }
 
 
@@ -154,6 +157,7 @@ _ENV_MAP = {
     "early_stop_min_delta": "EARLY_STOP_MIN_DELTA",
     "train_print_every": "TRAIN_PRINT_EVERY",
     "batch_size": "BATCH_SIZE",
+    "tensor_build_workers": "TENSOR_BUILD_WORKERS",
 }
 
 
@@ -177,6 +181,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "train_print_every",
         "batch_size",
         "cabt_episodes",
+        "tensor_build_workers",
     }:
         return int(value)
     if key in {
@@ -229,6 +234,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "transition_classes": settings["transition_classes"],
         "state_hash_dim": settings["state_hash_dim"],
         "window_size": settings["window_size"],
+        "tensor_build_workers": settings["tensor_build_workers"],
         "model": {
             "d_model": d_model,
             "heads": settings["model_heads"],
