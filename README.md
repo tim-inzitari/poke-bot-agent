@@ -37,7 +37,7 @@ Elmo is the preferred CABT rollout worker if it is your TrueNAS box with the
 Ryzen 5950X. Run CABT there, then pull the JSONL back to this Mac for Torch/MPS
 training.
 
-On Elmo:
+On Elmo (requires Python 3.11 for `cg-lib`):
 
 ```bash
 git clone https://github.com/tim-inzitari/poke-bot-agent.git
@@ -45,6 +45,9 @@ cd poke-bot-agent
 scripts/elmo_setup.sh
 scripts/elmo_generate.sh --episodes 1000 --workers 16 --out data/elmo-rollouts.jsonl
 ```
+
+`scripts/elmo_setup.sh` creates `.venv` with Python 3.11. On Debian/Ubuntu:
+`sudo apt install python3.11 python3.11-venv`.
 
 On this Mac:
 
@@ -103,10 +106,10 @@ scripts/run_cabt_container.sh \
   --out data/deckpool-rollouts.jsonl
 ```
 
-Use separate pools for each side:
+Use separate pools for each side (requires Python 3.11 in `.venv`; see Elmo setup):
 
 ```bash
-python scripts/generate_cabt_data.py \
+.venv/bin/python scripts/generate_cabt_data.py \
   --episodes 1000 \
   --workers 16 \
   --deck0-dir decks/ours \
@@ -122,6 +125,9 @@ Competition submissions are limited to 5 per team per day, so use Kaggle
 simulation kernels and local container smoke tests for training/evaluation.
 Only submit the tarball intentionally.
 
+Download the simulator library first (the tarball must include `cg/libcg.so`):
+
 ```bash
+scripts/download-kaggle-inputs.sh
 scripts/build_submission.sh
 ```
