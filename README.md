@@ -135,14 +135,16 @@ Use separate pools for each side (requires Python 3.11 in `.venv`; see Elmo setu
 
 ## Competition submission
 
-Kaggle expects a `.tar.gz` with `main.py` and `deck.csv` at the top level.
+Kaggle expects a `.tar.gz` with `main.py`, `deck.csv`, the trained checkpoint
+`value_model.pt`, and `cg/` (including `libcg.so`) at the top level.
 Competition submissions are limited to 5 per team per day, so use Kaggle
 simulation kernels and local container smoke tests for training/evaluation.
 Only submit the tarball intentionally.
 
-Download the simulator library first (the tarball must include `cg/libcg.so`):
+Download the simulator library first, train a model, then build:
 
 ```bash
 scripts/download-kaggle-inputs.sh
+scripts/train_agent.py   # or notebooks/poke_agent_training.ipynb
 scripts/build_submission.sh
 ```

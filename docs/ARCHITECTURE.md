@@ -67,9 +67,10 @@ flowchart LR
     end
 ```
 
-**Current state:** training produces a checkpoint at `out/value_model.pt`, but
-`submission/main.py` still uses a random-action baseline. Wiring the trained model
-into the submission agent is an explicit future integration step.
+**Current state:** training produces a checkpoint at `out/value_model.pt`, and
+`scripts/build_submission.sh` bundles it into the submission tarball. At runtime,
+`submission/main.py` loads the checkpoint and uses the policy head to score legal
+actions (with random fallback removed).
 
 ---
 
@@ -598,12 +599,15 @@ Kaggle calls `agent(obs_dict)` in `submission/main.py`:
 1. **Deck selection phase** (`obs.select is None`): return 60 card IDs from `deck.csv`
 2. **Decision phase**: return a list of option indices within `[minCount, maxCount]`
 
-Current implementation: uniform random over legal options.
+Current implementation: load `value_model.pt`, encode the observation window,
+and pick the legal action whose hashed policy class has the highest logit.
 
 ### Packaging checklist
 
 - [ ] `main.py` at tarball root
 - [ ] `deck.csv` at tarball root (60 lines)
+- [ ] `value_model.pt` at tarball root
+- [ ] `model.py`, `features.py`, `policy_runtime.py` at tarball root
 - [ ] `cg/` directory with Python modules **and** `libcg.so`
 - [ ] Agent completes without import errors on Linux amd64
 - [ ] Stay within 5 submissions/day limit
@@ -691,11 +695,10 @@ All configuration is environment-driven via `poke_agent/config.py`.
 
 ## Extension points
 
-### 1. Trained policy in submission agent
+### 1. Stronger action scoring in submission
 
-Load `out/value_model.pt` in `submission/main.py`, rebuild `TransformerRLModel`,
-encode the live observation into the same feature vector, and argmax the policy head
-(or sample from tempered softmax).
+Use the value head or a short CABT search rollout to break ties when multiple legal
+actions share the same hashed policy class.
 
 ### 2. Better rollout policies
 
@@ -725,15 +728,15 @@ main()
 
 ## Known limitations
 
-1. **Submission agent is still random.** Training does not yet affect competition play.
-2. **Policy classes are hashed buckets**, not true action indices — fine for pretraining,
-   but submission needs a mapping from logits to legal option indices.
-3. **Synthetic fallback data** prevents crashes but produces meaningless models if no
+1. **Policy classes are hashed buckets**, not true action indices — the submission
+   agent scores each legal action by its hash class and enumerates permutations for
+   multi-card selections so action ordering matches rollout logging.
+2. **Synthetic fallback data** prevents crashes but produces meaningless models if no
    real JSONL is available.
-4. **Inline rollout generation** in `poke_agent` is single-process and compact-row only;
+3. **Inline rollout generation** in `poke_agent` is single-process and compact-row only;
    use `generate_cabt_data.py` for production datasets.
-5. **Mac cannot run cg-lib natively** — simulation must happen on Linux/Kaggle/Elmo/Docker.
-6. **In-app Cursor updates on Linux .deb** require `apt`, not the IDE auto-updater.
+4. **Mac cannot run cg-lib natively** — simulation must happen on Linux/Kaggle/Elmo/Docker.
+5. **In-app Cursor updates on Linux .deb** require `apt`, not the IDE auto-updater.
 
 ---
 
