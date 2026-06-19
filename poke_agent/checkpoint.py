@@ -7,6 +7,7 @@ from typing import Any
 import torch
 
 from poke_agent.dataset import TrainingTensors
+from poke_agent.features import COARSE_FEATURE_DIM
 from poke_agent.model import TransformerRLModel
 
 
@@ -32,14 +33,20 @@ def save_checkpoint(
         **training_report,
         "competition_results_path": str(competition_results_path),
         "latest_competition_result": latest_competition_result,
+        "checkpoint_path": str(output_path),
+        "report_path": str(config.get("report_path")) if config.get("report_path") else None,
     }
 
     model_cfg = config["model"]
     loss_cfg = config["loss"]
     checkpoint = {
         "model_state_dict": model.state_dict(),
-        "model_type": "temporal_transformer_rl_complex_loss",
+        "model_id": config.get("model_id"),
+        "model_description": config.get("model_description"),
+        "architecture": config.get("architecture", "transformer_rl"),
+        "model_type": config.get("model_type", "temporal_transformer_rl_complex_loss"),
         "input_dim": tensors.x.shape[1],
+        "coarse_feature_dim": int(config.get("coarse_feature_dim", 10)),
         "policy_dim": tensors.transition_classes,
         "model_config": {
             "d_model": model_cfg["d_model"],
@@ -59,11 +66,23 @@ def save_checkpoint(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(checkpoint, output_path)
+
+    report_file = config.get("report_path")
+    if report_file is not None:
+        report_file = Path(report_file)
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        with report_file.open("w", encoding="utf-8") as handle:
+            json.dump(training_report, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+
     return training_report
 
 
 def print_training_report(training_report: dict[str, Any], output_path: Path) -> None:
-    print("saved", output_path)
+    print("saved checkpoint", output_path)
+    report_file = training_report.get("report_path")
+    if report_file:
+        print("saved report", report_file)
     print("\nFinal training report")
     print("-" * 22)
     print(f"rows: {training_report['dataset_rows']}")

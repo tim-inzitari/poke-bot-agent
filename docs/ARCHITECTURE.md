@@ -53,7 +53,7 @@ flowchart LR
 
     subgraph train [Training - local]
         PKG[poke_agent package]
-        CKPT[(value_model.pt)]
+        CKPT[(outputs/checkpoints/*.pt)]
         JSONL --> PKG
         PKG --> CKPT
     end
@@ -67,10 +67,10 @@ flowchart LR
     end
 ```
 
-**Current state:** training produces a checkpoint at `out/value_model.pt`, and
-`scripts/build_submission.sh` bundles it into the submission tarball. At runtime,
-`submission/main.py` loads the checkpoint and uses the policy head to score legal
-actions (with random fallback removed).
+**Current state:** training writes checkpoints under `outputs/checkpoints/` (and
+JSON reports under `outputs/reports/`). Legacy `out/value_model.pt` is still read
+as a fallback. `scripts/build_submission.sh` bundles the checkpoint into the
+submission tarball as `value_model.pt`.
 
 ---
 
@@ -112,7 +112,7 @@ sequenceDiagram
     Kaggle->>Kaggle: generate_cabt_data.py (cg-lib)
     Kaggle-->>Dev: data/kaggle-output/...jsonl
     Dev->>Local: PRIMARY_ROLLOUT_DATA=... python scripts/train_agent.py
-    Local-->>Dev: out/value_model.pt
+    Local-->>Dev: outputs/checkpoints/temporal_current.pt
 ```
 
 Best when Docker is unavailable on the training machine and large rollout batches
@@ -163,7 +163,8 @@ poke-bot-agent/
 │   ├── dataset.py           # JSONL load + tensor preparation
 │   ├── model.py             # TransformerRLModel
 │   ├── training.py          # Training loop + early stopping
-│   └── checkpoint.py        # Checkpoint save + report printing
+│   ├── checkpoint.py        # Checkpoint save + report printing
+│   ├── outputs.py           # Output directory layout helpers
 ├── notebooks/
 │   └── poke_agent_unified.ipynb   # Original monolithic notebook (still supported)
 ├── scripts/
@@ -179,7 +180,13 @@ poke-bot-agent/
 │   └── cg/                    # Vendored cg Python + libcg.so at build time
 ├── decks/                     # Deck pools for simulation matchups
 ├── data/                      # Generated JSONL rollouts (gitignored)
-├── out/                       # Training checkpoints (gitignored)
+├── outputs/                   # Training artifacts (gitignored)
+│   ├── checkpoints/           # Model checkpoints (.pt)
+│   ├── reports/               # Training report JSON per model
+│   ├── logs/                  # Training/runtime logs
+│   ├── rollouts/              # Inline/generated rollout JSONL
+│   └── submissions/           # Optional local submission staging
+├── out/                       # Legacy checkpoints (gitignored, fallback)
 ├── kaggle/                    # Kernel metadata + downloaded inputs
 ├── containers/cabt/           # Dockerfile for Linux sim container
 └── docs/
@@ -242,7 +249,8 @@ stopping, and AdamW. Best weights are restored before checkpoint export.
 
 ### Stage 6 — Checkpoint export
 
-`poke_agent/checkpoint.py` writes `out/value_model.pt` containing:
+`poke_agent/checkpoint.py` writes `outputs/checkpoints/{model_id}.pt` and a JSON
+report to `outputs/reports/{model_id}.json` containing:
 
 - Model weights and architecture metadata
 - Feature normalization stats (`feature_mean`, `feature_std`)
@@ -503,6 +511,7 @@ flowchart TD
 | `model.py` | Neural network | `TransformerRLModel` |
 | `training.py` | Train loop | `build_model`, `train_model` |
 | `checkpoint.py` | Save + report | `save_checkpoint`, `print_training_report` |
+| `outputs.py` | Artifact paths | `ensure_output_layout`, `resolve_checkpoint_path` |
 | `main.py` | Top-level pipeline | `main` |
 
 ### `SimulatorState` dataclass
@@ -640,9 +649,10 @@ All configuration is environment-driven via `poke_agent/config.py`.
 |---|---|---|
 | `AGENT_DECK_PATH` | `decks/competitive/.../dragapult-dudunsparce.csv` | Primary deck file |
 | `PRIMARY_ROLLOUT_DATA` | `data/mac-rollouts-100k-fullstate.jsonl` | First data candidate |
-| `CABT_GENERATED_PATH` | `data/notebook_rollouts.jsonl` | Inline generation output |
+| `CABT_GENERATED_PATH` | `outputs/rollouts/notebook_rollouts.jsonl` | Inline generation output |
 | `COMPETITION_RESULTS_PATH` | `data/competition-results.jsonl` | Kaggle score history |
-| `MODEL_OUTPUT_PATH` | `out/value_model.pt` | Checkpoint output |
+| `MODEL_ID` | `temporal_current` | Checkpoint/report filename stem |
+| `MODEL_OUTPUT_PATH` | `outputs/checkpoints/temporal_current.pt` | Checkpoint output |
 | `REQUIRE_CABT_EVAL_DATA` | `1` | Fail unless rollout JSONL is CABT evaluation format |
 | `CG_LIB_PATH` | (auto-detect) | Override cg-lib location |
 

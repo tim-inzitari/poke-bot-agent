@@ -83,6 +83,7 @@ kaggle/input/
 
 # Generated simulator data and model outputs
 data/
+outputs/
 out/
 
 # IPython

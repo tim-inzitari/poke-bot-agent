@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 REQUIRED_ROOT_FILES = ("main.py", "deck.csv")
-REQUIRED_PATHS = ("cg/libcg.so", "value_model.pt", "policy_runtime.py", "model.py", "features.py")
+REQUIRED_PATHS = ("cg/libcg.so", "value_model.pt", "policy_runtime.py", "model.py", "features.py", "game_tracker.py")
 FORBIDDEN_PREFIXES = ("submission/", "./submission/", "dist/", "./dist/")
 
 

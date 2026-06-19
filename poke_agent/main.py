@@ -20,6 +20,9 @@ def main() -> None:
     print("torch", torch.__version__)
 
     config = build_config(root)
+    print("output layout:")
+    for name, path in config["output_layout"].items():
+        print(f"  {name}: {path}")
     device = torch_device()
     print("device", device)
 

@@ -76,6 +76,9 @@ data_candidates       list[Path]     # tried in order
 generated_path        Path
 competition_results_path Path
 output_path           Path
+report_path           Path
+model_id              str
+output_layout         dict[str, str]
 transition_classes    int
 state_hash_dim        int
 window_size           int
@@ -87,6 +90,63 @@ training              dict           # epochs, patience, min_delta, print_every,
 ### `resolve_cabt_episodes(config, simulator_available) -> int`
 
 Uses `CABT_EPISODES` from config (`None` = auto: 3 when cg-lib is available).
+
+---
+
+## `game_tracker.py`
+
+Stateful inference over CABT `logs` to deduce hidden opponent hand timing from
+observable events. Updated each step in training and inference before encoding.
+
+### `GameEventTracker.observe(obs) -> list[float]`
+
+Processes incremental logs since the last selection, syncs visible self-hand
+serials, and reconciles opponent `handCount` with inferred hidden slots.
+
+Returns **16 derived features** appended after the base 10-d coarse vector:
+
+| Feature | Meaning |
+|---|---|
+| `self_steps_since_last_draw` | Steps since your last deck draw |
+| `self_draws_this_turn` | Your draws this turn |
+| `self_hand_avg_age` | Mean steps your visible hand cards have been held |
+| `self_hand_max_age` | Oldest visible hand card (by steps held) |
+| `self_cards_played_this_turn` | Cards you played from hand this turn |
+| `self_energy_discarded_since_last_draw` | Energy discarded since your last draw |
+| `self_supporter_cost_before_last_draw` | 1.0 if a supporter play preceded your last draw |
+| `opp_steps_since_last_draw` | Steps since opponent's last draw (`DRAW_REVERSE`) |
+| `opp_draws_this_turn` | Opponent deck draws this turn |
+| `opp_hand_avg_age` | Inferred mean time opponent cards have been in hand |
+| `opp_hand_max_age` / `opp_hand_min_age` | Inferred oldest/newest opponent hand cards |
+| `opp_cards_played_this_turn` | Opponent cards played from hand this turn |
+| `opp_energy_discarded_since_last_draw` | Opponent energy discarded since their last draw |
+| `opp_hidden_hand_gains` | Hand count rose without a visible draw log |
+| `opp_visible_deck_to_hand` | Visible deck→hand moves for opponent |
+
+Total coarse input dim: **26** (10 base + 16 derived). Checkpoints store
+`coarse_feature_dim` for backward compatibility with older 10-d models.
+
+---
+
+## `outputs.py`
+
+Central layout for generated training artifacts under `outputs/`:
+
+```
+outputs/
+  checkpoints/   # {model_id}.pt
+  reports/       # {model_id}.json
+  logs/
+  rollouts/
+  submissions/
+```
+
+Key helpers:
+
+- `ensure_output_layout(root)` — create directories
+- `checkpoint_path(root, model_id)` / `report_path(root, model_id)`
+- `resolve_checkpoint_path(root, ...)` — write path (explicit or derived)
+- `resolve_checkpoint_for_load(root, ...)` — read path with legacy `out/value_model.pt` fallback
 
 ---
 
@@ -318,7 +378,8 @@ Reads Kaggle score history JSONL. Returns `[]` if missing.
 ### `save_checkpoint(...) -> dict[str, Any]`
 
 Augments `training_report` with competition result metadata, serializes checkpoint
-to `output_path`.
+to `output_path`, and writes a JSON copy of the training report to
+`config["report_path"]` when set.
 
 Checkpoint schema:
 
@@ -370,7 +431,7 @@ python scripts/train_agent.py
 |---|---|
 | Syntax / import | `python -m compileall poke_agent` |
 | Smoke run (fast) | `TRAIN_EPOCHS=1 BATCH_SIZE=32 python scripts/train_agent.py` |
-| Verify checkpoint | `python -c "import torch; print(torch.load('out/value_model.pt').keys())"` |
+| Verify checkpoint | `python -c "import torch; print(torch.load('outputs/checkpoints/temporal_current.pt').keys())"` |
 | Package import | `python -c "from poke_agent.main import main"` |
 
 ---

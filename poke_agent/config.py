@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 from typing import Any
 
+from poke_agent.features import COARSE_FEATURE_DIM
+from poke_agent.outputs import describe_layout, ensure_output_layout, report_path, resolve_checkpoint_path
+
 # =============================================================================
 # Edit these variables to configure training, data paths, and model settings.
 # Used by the notebook, scripts/train_agent.py, and python -m poke_agent.main.
@@ -24,9 +27,10 @@ AGENT_DECK_PATH = (
     "decks/competitive/high_performing/"
     "2026-05_regional-campinas-2026_4th_dragapult-dudunsparce.csv"
 )
-CABT_GENERATED_PATH = "data/notebook_rollouts.jsonl"
+CABT_GENERATED_PATH = "outputs/rollouts/notebook_rollouts.jsonl"
 COMPETITION_RESULTS_PATH = "data/competition-results.jsonl"
-MODEL_OUTPUT_PATH = "out/value_model.pt"
+MODEL_ID = "temporal_current"
+MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"
 REQUIRE_CABT_EVAL_DATA = True
 
 # --- Simulation ---
@@ -69,6 +73,7 @@ OVERRIDE_KEYS = frozenset({
     "cabt_generated_path",
     "competition_results_path",
     "model_output_path",
+    "model_id",
     "require_cabt_eval_data",
     "cabt_episodes",
     "transition_classes",
@@ -104,6 +109,7 @@ def default_user_config() -> dict[str, Any]:
         "cabt_generated_path": CABT_GENERATED_PATH,
         "competition_results_path": COMPETITION_RESULTS_PATH,
         "model_output_path": MODEL_OUTPUT_PATH,
+        "model_id": MODEL_ID,
         "require_cabt_eval_data": REQUIRE_CABT_EVAL_DATA,
         "cabt_episodes": CABT_EPISODES,
         "transition_classes": TRANSITION_CLASSES,
@@ -136,6 +142,7 @@ _ENV_MAP = {
     "cabt_generated_path": "CABT_GENERATED_PATH",
     "competition_results_path": "COMPETITION_RESULTS_PATH",
     "model_output_path": "MODEL_OUTPUT_PATH",
+    "model_id": "MODEL_ID",
     "cabt_episodes": "CABT_EPISODES",
     "transition_classes": "TRANSITION_CLASSES",
     "state_hash_dim": "STATE_HASH_DIM",
@@ -219,16 +226,27 @@ def _resolve_settings(overrides: dict[str, Any] | None = None) -> dict[str, Any]
 
 def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = _resolve_settings(overrides)
+    ensure_output_layout(root)
     d_model = settings["d_model"]
     model_ff = settings["model_ff"] if settings["model_ff"] is not None else d_model * 4
     fallback_paths = [root / path for path in settings["fallback_rollout_data"]]
+    model_id = str(settings["model_id"])
+    checkpoint = resolve_checkpoint_path(
+        root,
+        model_id=model_id,
+        explicit=settings["model_output_path"],
+    )
 
     return {
         "agent_deck_path": root / settings["agent_deck_path"],
         "data_candidates": [root / settings["primary_rollout_data"], *fallback_paths],
         "generated_path": root / settings["cabt_generated_path"],
         "competition_results_path": root / settings["competition_results_path"],
-        "output_path": root / settings["model_output_path"],
+        "output_path": checkpoint,
+        "report_path": report_path(root, model_id),
+        "model_id": model_id,
+        "output_layout": describe_layout(root),
+        "coarse_feature_dim": COARSE_FEATURE_DIM,
         "require_cabt_eval_data": settings["require_cabt_eval_data"],
         "cabt_episodes": settings["cabt_episodes"],
         "transition_classes": settings["transition_classes"],

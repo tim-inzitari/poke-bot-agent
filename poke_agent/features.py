@@ -8,6 +8,14 @@ from typing import Any
 
 import numpy as np
 
+try:
+    from game_tracker import DERIVED_INFERENCE_DIM, GameEventTracker
+except ImportError:
+    from poke_agent.game_tracker import DERIVED_INFERENCE_DIM, GameEventTracker
+
+COARSE_BASE_DIM = 10
+COARSE_FEATURE_DIM = COARSE_BASE_DIM + DERIVED_INFERENCE_DIM
+
 
 def stable_hash_index(text: str, size: int) -> int:
     digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest()
@@ -50,6 +58,59 @@ def hashed_state_vector(observation: Any, action: Any = None, *, state_hash_dim:
     return vec
 
 
+def base_features_from_observation(obs: dict[str, Any]) -> list[float]:
+    current = obs.get("current") or {}
+    players = current.get("players") or [{}, {}]
+    p0 = players[0] if len(players) > 0 else {}
+    p1 = players[1] if len(players) > 1 else {}
+    select = obs.get("select") or {}
+    return [
+        float(current.get("turn", 0)),
+        float(current.get("yourIndex", 0)),
+        float(p0.get("deckCount", 0)),
+        float(p0.get("handCount", 0)),
+        float(len(p0.get("bench", []))),
+        float(p1.get("deckCount", 0)),
+        float(p1.get("handCount", 0)),
+        float(len(p1.get("bench", []))),
+        float(len(select.get("option", []))),
+        float(select.get("maxCount", 0)),
+    ]
+
+
+def pad_coarse_features(stored: list[float] | np.ndarray) -> list[float]:
+    values = [float(v) for v in stored[:COARSE_BASE_DIM]]
+    if len(values) < COARSE_BASE_DIM:
+        values.extend([0.0] * (COARSE_BASE_DIM - len(values)))
+    if len(stored) >= COARSE_FEATURE_DIM:
+        values.extend(float(v) for v in stored[COARSE_BASE_DIM:COARSE_FEATURE_DIM])
+    else:
+        values.extend([0.0] * DERIVED_INFERENCE_DIM)
+    return values
+
+
+def features_from_observation(
+    obs: dict[str, Any],
+    tracker: GameEventTracker | None = None,
+) -> list[float]:
+    coarse = base_features_from_observation(obs)
+    if tracker is None:
+        tracker = GameEventTracker()
+    derived = tracker.observe(obs)
+    return coarse + derived
+
+
+def encode_observation_step(
+    observation: dict[str, Any],
+    tracker: GameEventTracker,
+    *,
+    state_hash_dim: int,
+    action: Any = None,
+) -> np.ndarray:
+    coarse = features_from_observation(observation, tracker)
+    return combine_features(coarse, observation, action, state_hash_dim=state_hash_dim)
+
+
 def combine_features(
     coarse: list[float],
     observation: Any = None,
@@ -63,14 +124,41 @@ def combine_features(
     return np.concatenate([compact, hashed_state_vector(observation, action, state_hash_dim=state_hash_dim)]).astype(np.float32)
 
 
-def row_feature_vector(row: dict, *, state_hash_dim: int) -> np.ndarray:
-    return combine_features(row["features"], row.get("observation"), row.get("action"), state_hash_dim=state_hash_dim)
+def row_feature_vector(row: dict, *, state_hash_dim: int, tracker: GameEventTracker | None = None) -> np.ndarray:
+    observation = row.get("observation")
+    if observation is not None and tracker is not None:
+        return encode_observation_step(
+            observation,
+            tracker,
+            state_hash_dim=state_hash_dim,
+            action=row.get("action"),
+        )
+    if observation is not None:
+        return combine_features(
+            features_from_observation(observation),
+            observation,
+            row.get("action"),
+            state_hash_dim=state_hash_dim,
+        )
+    return combine_features(
+        pad_coarse_features(row["features"]),
+        None,
+        row.get("action"),
+        state_hash_dim=state_hash_dim,
+    )
 
 
-def row_next_feature_vector(row: dict, *, state_hash_dim: int) -> np.ndarray:
+def row_next_feature_vector(row: dict, *, state_hash_dim: int, tracker: GameEventTracker | None = None) -> np.ndarray:
+    if "next_observation" in row and tracker is not None:
+        return encode_observation_step(row["next_observation"], tracker, state_hash_dim=state_hash_dim)
     if "next_observation" in row and "next_features" in row:
-        return combine_features(row["next_features"], row.get("next_observation"), None, state_hash_dim=state_hash_dim)
-    return row_feature_vector(row, state_hash_dim=state_hash_dim)
+        return combine_features(
+            pad_coarse_features(row["next_features"]),
+            row.get("next_observation"),
+            None,
+            state_hash_dim=state_hash_dim,
+        )
+    return row_feature_vector(row, state_hash_dim=state_hash_dim, tracker=tracker)
 
 
 def default_tensor_build_workers() -> int:
@@ -104,16 +192,36 @@ def _build_episode_arrays(
     history_mask: list[list[float]] = []
     episode_indices: list[int] = []
 
+    tracker = GameEventTracker()
+    encoded_steps: list[np.ndarray | None] = []
+
+    for row in episode_rows:
+        if row.get("observation") is not None:
+            encoded_steps.append(
+                encode_observation_step(
+                    row["observation"],
+                    tracker,
+                    state_hash_dim=state_hash_dim,
+                    action=row.get("action"),
+                )
+            )
+        else:
+            encoded_steps.append(
+                combine_features(
+                    pad_coarse_features(row["features"]),
+                    None,
+                    row.get("action"),
+                    state_hash_dim=state_hash_dim,
+                )
+            )
+
     for idx, row in enumerate(episode_rows):
         current_index = len(xs)
-        features = row_feature_vector(row, state_hash_dim=state_hash_dim)
+        features = encoded_steps[idx]
+        assert features is not None
         value = float(row["value"])
-        if "next_observation" in row and "next_features" in row:
-            next_feature = row_next_feature_vector(row, state_hash_dim=state_hash_dim)
-            is_terminal = float(row.get("terminal", False))
-        elif idx + 1 < len(episode_rows):
-            next_row = episode_rows[idx + 1]
-            next_feature = row_feature_vector(next_row, state_hash_dim=state_hash_dim)
+        if idx + 1 < len(encoded_steps):
+            next_feature = encoded_steps[idx + 1]
             is_terminal = 0.0
         else:
             next_feature = features.copy()
@@ -125,7 +233,7 @@ def _build_episode_arrays(
         elif is_terminal:
             transition_class = transition_classes - 1
         else:
-            delta = next_feature[: len(row["features"])] - features[: len(row["features"])]
+            delta = next_feature[:COARSE_FEATURE_DIM] - features[:COARSE_FEATURE_DIM]
             transition_class = int(abs(delta).argmax()) % transition_classes
 
         context = (episode_indices + [current_index])[-window_size:]

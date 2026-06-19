@@ -8,24 +8,8 @@ from typing import Any, Callable
 from poke_agent.simulator import SimulatorState
 
 
-def features_from_observation(obs: dict) -> list[float]:
-    current = obs.get("current") or {}
-    players = current.get("players") or [{}, {}]
-    p0 = players[0] if len(players) > 0 else {}
-    p1 = players[1] if len(players) > 1 else {}
-    select = obs.get("select") or {}
-    return [
-        float(current.get("turn", 0)),
-        float(current.get("yourIndex", 0)),
-        float(p0.get("deckCount", 0)),
-        float(p0.get("handCount", 0)),
-        float(len(p0.get("bench", []))),
-        float(p1.get("deckCount", 0)),
-        float(p1.get("handCount", 0)),
-        float(len(p1.get("bench", []))),
-        float(len(select.get("option", []))),
-        float(select.get("maxCount", 0)),
-    ]
+from poke_agent.features import features_from_observation
+from poke_agent.game_tracker import GameEventTracker
 
 
 def make_random_agent(to_observation_class: Callable[..., Any]) -> Callable[[dict], list[int]]:
@@ -48,6 +32,7 @@ def play_episode(
         raise RuntimeError("CABT simulator is not available")
 
     rows: list[dict] = []
+    tracker = GameEventTracker()
     obs, start_data = simulator.battle_start(deck, deck)
     if start_data.errorPlayer >= 0:
         raise ValueError(f"deck error type={start_data.errorType} player={start_data.errorPlayer}")
@@ -57,7 +42,7 @@ def play_episode(
             rows.append({
                 "episode": episode,
                 "step": step,
-                "features": features_from_observation(obs),
+                "features": features_from_observation(obs, tracker),
                 "player": int(obs["current"]["yourIndex"]),
             })
             obs = simulator.battle_select(agent(obs))

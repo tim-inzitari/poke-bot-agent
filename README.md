@@ -13,6 +13,30 @@ Train outside the notebook (settings in `poke_agent/config.py`):
 python scripts/train_agent.py
 ```
 
+Train/compare multiple models (settings in `poke_agent/model_catalog.py`):
+
+```bash
+python scripts/train_models.py
+```
+
+See [docs/MULTI_MODEL.md](docs/MULTI_MODEL.md) and `notebooks/poke_agent_multi_model.ipynb`.
+
+## Outputs
+
+Training artifacts are organized under `outputs/` (see `outputs/README.md`):
+
+```text
+outputs/
+  checkpoints/   # model checkpoints (.pt), one per model id
+  reports/       # training report JSON per model
+  logs/          # training/runtime logs
+  rollouts/      # inline/generated rollout JSONL
+  submissions/   # optional local submission staging
+```
+
+Legacy `out/value_model.pt` is still read as a fallback for in-flight runs and
+submission packaging.
+
 ## CABT workflow
 
 Run this notebook in VS Code:

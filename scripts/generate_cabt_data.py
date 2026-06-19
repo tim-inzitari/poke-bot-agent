@@ -10,6 +10,7 @@ Torch/MPS experiments later.
 from __future__ import annotations
 
 import argparse
+import copy
 import glob
 import json
 import math
@@ -85,32 +86,16 @@ def add_cg_lib_to_path() -> str:
     return candidates[0]
 
 
+from poke_agent.features import features_from_observation
+from poke_agent.game_tracker import GameEventTracker
+
+
 def random_agent(obs_dict: dict[str, Any]) -> list[int]:
     from cg.api import to_observation_class
 
     obs = to_observation_class(obs_dict)
     options = list(range(len(obs.select.option)))
     return random.sample(options, min(obs.select.maxCount, len(options)))
-
-
-def features_from_observation(obs: dict[str, Any]) -> list[float]:
-    current = obs.get("current") or {}
-    players = current.get("players") or [{}, {}]
-    p0 = players[0] if len(players) > 0 else {}
-    p1 = players[1] if len(players) > 1 else {}
-    select = obs.get("select") or {}
-    return [
-        float(current.get("turn", 0)),
-        float(current.get("yourIndex", 0)),
-        float(p0.get("deckCount", 0)),
-        float(p0.get("handCount", 0)),
-        float(len(p0.get("bench", []))),
-        float(p1.get("deckCount", 0)),
-        float(p1.get("handCount", 0)),
-        float(len(p1.get("bench", []))),
-        float(len(select.get("option", []))),
-        float(select.get("maxCount", 0)),
-    ]
 
 
 def json_snapshot(value: Any) -> Any:
@@ -146,6 +131,7 @@ def play_episode(
     from cg.game import battle_finish, battle_select, battle_start
 
     rows: list[dict[str, Any]] = []
+    tracker = GameEventTracker()
     obs, start_data = battle_start(deck0, deck1)
     if start_data.errorPlayer >= 0:
         raise ValueError(f"deck error type={start_data.errorType} player={start_data.errorPlayer}")
@@ -158,11 +144,14 @@ def play_episode(
             action = random_agent(obs)
             next_obs = battle_select(action)
             terminal = int((next_obs.get("current") or {}).get("result", -1)) >= 0
+            step_features = features_from_observation(obs, tracker)
+            next_tracker = copy.deepcopy(tracker)
+            step_next_features = features_from_observation(next_obs, next_tracker)
             rows.append({
                 "episode": episode,
                 "step": step,
-                "features": features_from_observation(obs),
-                "next_features": features_from_observation(next_obs),
+                "features": step_features,
+                "next_features": step_next_features,
                 "observation": json_snapshot(obs),
                 "action": json_snapshot(action),
                 "next_observation": json_snapshot(next_obs),
