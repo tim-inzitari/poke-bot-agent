@@ -88,8 +88,9 @@ class TrainedPolicyAgent:
         self._model.load_state_dict(checkpoint["model_state_dict"])
         self._model.eval()
 
-        self._feature_mean = np.array(checkpoint["feature_mean"], dtype=np.float32)
-        self._feature_std = np.array(checkpoint["feature_std"], dtype=np.float32)
+        # Checkpoint stats are saved with shape (1, feature_dim); squeeze for 1D rows.
+        self._feature_mean = np.array(checkpoint["feature_mean"], dtype=np.float32).reshape(-1)
+        self._feature_std = np.array(checkpoint["feature_std"], dtype=np.float32).reshape(-1)
         self._loaded = True
 
     def _encode_observation(self, obs_dict: dict[str, Any]) -> np.ndarray:
@@ -99,7 +100,7 @@ class TrainedPolicyAgent:
             obs_dict,
             None,
             state_hash_dim=self._state_hash_dim,
-        )
+        ).reshape(-1)
         return ((features - self._feature_mean) / self._feature_std).astype(np.float32)
 
     def _model_logits(self) -> np.ndarray:
@@ -108,7 +109,7 @@ class TrainedPolicyAgent:
         window = self._history[-self._window_size :]
         pad_count = self._window_size - len(window)
         if pad_count > 0:
-            pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[-1], dtype=np.float32)
+            pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[0], dtype=np.float32)
             window = [pad] * pad_count + window
 
         x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
