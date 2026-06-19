@@ -32,5 +32,6 @@ cp "$MODEL_CHECKPOINT" "$STAGING/value_model.pt"
 
 tar -czf dist/submission.tar.gz -C "$STAGING" \
   main.py deck.csv cg model.py features.py policy_runtime.py value_model.pt
-tar -tzf dist/submission.tar.gz
+
+python3 scripts/validate_submission.py dist/submission.tar.gz
 echo "built dist/submission.tar.gz with trained model $(basename "$MODEL_CHECKPOINT")"

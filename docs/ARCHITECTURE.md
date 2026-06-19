@@ -560,7 +560,8 @@ python scripts/train_agent.py
 | `scripts/run_cabt_kaggle.sh` | Push simulation to Kaggle kernel |
 | `scripts/run_cabt_container.sh` | Local Docker smoke test / generation |
 | `scripts/download-kaggle-inputs.sh` | Fetch `cg-lib` for local/container builds |
-| `scripts/build_submission.sh` | Build `dist/submission.tar.gz` with `libcg.so` |
+| `scripts/build_submission.sh` | Build `dist/submission.tar.gz` with `libcg.so` + run validation |
+| `scripts/validate_submission.py` | Verify Kaggle tarball layout and optionally smoke-test `agent()` |
 | `scripts/fetch_competition_results.py` | Pull official Kaggle score history |
 | `scripts/elmo_setup.sh` | Bootstrap Python 3.11 venv on Elmo worker |
 | `scripts/elmo_generate.sh` | Generate rollouts on Elmo |
@@ -604,12 +605,12 @@ and pick the legal action whose hashed policy class has the highest logit.
 
 ### Packaging checklist
 
-- [ ] `main.py` at tarball root
-- [ ] `deck.csv` at tarball root (60 lines)
-- [ ] `value_model.pt` at tarball root
-- [ ] `model.py`, `features.py`, `policy_runtime.py` at tarball root
+- [ ] `main.py` at tarball root (not `submission/main.py`)
+- [ ] `deck.csv` at tarball root (60 card IDs, one per line)
 - [ ] `cg/` directory with Python modules **and** `libcg.so`
-- [ ] Agent completes without import errors on Linux amd64
+- [ ] `value_model.pt`, `policy_runtime.py`, `model.py`, `features.py` at tarball root
+- [ ] `scripts/validate_submission.py dist/submission.tar.gz` passes
+- [ ] Agent completes without import errors on Linux amd64 / Python 3.11+
 - [ ] Stay within 5 submissions/day limit
 
 ---

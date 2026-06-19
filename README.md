@@ -135,16 +135,18 @@ Use separate pools for each side (requires Python 3.11 in `.venv`; see Elmo setu
 
 ## Competition submission
 
-Kaggle expects a `.tar.gz` with `main.py`, `deck.csv`, the trained checkpoint
-`value_model.pt`, and `cg/` (including `libcg.so`) at the top level.
+Kaggle expects a `.tar.gz` with `main.py` and `deck.csv` at the **top level** of the
+archive (not inside a subfolder), plus `cg/libcg.so` and the trained checkpoint.
 Competition submissions are limited to 5 per team per day, so use Kaggle
 simulation kernels and local container smoke tests for training/evaluation.
 Only submit the tarball intentionally.
 
-Download the simulator library first, train a model, then build:
+Download the simulator library first, train a model, then build and validate:
 
 ```bash
 scripts/download-kaggle-inputs.sh
 scripts/train_agent.py   # or notebooks/poke_agent_training.ipynb
-scripts/build_submission.sh
+scripts/build_submission.sh          # builds dist/submission.tar.gz + runs validation
+scripts/validate_submission.py       # re-check an existing tarball before upload
+kaggle competitions submit -c pokemon-tcg-ai-battle -f dist/submission.tar.gz -m "message"
 ```
