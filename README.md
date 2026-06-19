@@ -1,16 +1,31 @@
 # poke-bot-agent
 
+## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full system design:
+deployment topologies, data flow, model architecture, rollout schema, configuration
+reference, and competition submission path. Module-level API detail lives in
+[docs/poke-agent-modules.md](docs/poke-agent-modules.md).
+
+Train outside the notebook:
+
+```bash
+python scripts/train_agent.py
+```
+
 ## CABT workflow
 
 Run this notebook in VS Code:
 
 ```text
-notebooks/poke_agent_unified.ipynb
+notebooks/poke_agent_training.ipynb
 ```
 
-It can be run end-to-end. On Mac it uses generated rollout data and trains with
-Torch/MPS. On Kaggle/Linux it can also generate CABT rollouts if `cg-lib` is
-available.
+The training pipeline lives in the `poke_agent/` package. The notebook imports those
+modules step-by-step so you can inspect intermediate state between cells.
+
+The legacy monolithic notebook is still available at
+`notebooks/poke_agent_unified.ipynb`.
 
 Default path: run CABT simulation on Kaggle, then train locally on Mac with
 Torch/MPS.
