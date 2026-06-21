@@ -158,7 +158,8 @@ def resolve_training_data_path(config: dict[str, Any]) -> Path | None:
     """Pick rollout JSONL for training.
 
     Explicit ``training_data_path`` wins (self-play retraining). Otherwise prefer
-    merged multi-deck corpus when present.
+    merged multi-deck corpus, then scraped/multideck sources. Stale mirror-only
+    ``generated_path`` files are a last resort.
     """
     explicit = config.get("training_data_path")
     if explicit is not None:
@@ -166,15 +167,27 @@ def resolve_training_data_path(config: dict[str, Any]) -> Path | None:
         if explicit_path.exists():
             return explicit_path
 
-    generated = config.get("generated_path")
-    generated_path = Path(generated) if generated is not None else None
     merged_path = config.get("merged_rollout_path")
     merged = Path(merged_path) if merged_path is not None else None
-    dataset_games = config.get("dataset_games")
-    require_cabt_eval = config.get("require_cabt_eval_data", True)
-
     if merged is not None and merged.exists():
         return merged
+
+    for key in ("scraped_rollout_path", "multideck_rollout_path"):
+        candidate = config.get(key)
+        if candidate is not None:
+            path = Path(candidate)
+            if path.exists():
+                return path
+
+    for source in config.get("training_rollout_sources", []):
+        path = Path(source)
+        if path.exists():
+            return path
+
+    generated = config.get("generated_path")
+    generated_path = Path(generated) if generated is not None else None
+    dataset_games = config.get("dataset_games")
+    require_cabt_eval = config.get("require_cabt_eval_data", True)
 
     if dataset_games is not None and generated_path is not None and generated_path.exists():
         return generated_path

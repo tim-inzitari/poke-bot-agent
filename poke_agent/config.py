@@ -42,7 +42,7 @@ AGENT_DECK_PATH = (
     "decks/competitive/high_performing/"
     "2026-05_regional-melbourne-2026_10th_mega-lucario.csv"
 )
-CABT_GENERATED_PATH = "outputs/rollouts/notebook_rollouts.jsonl"
+CABT_GENERATED_PATH = "data/multideck_rollouts.jsonl"
 COMPETITION_RESULTS_PATH = "data/competition-results.jsonl"
 MODEL_ID = "temporal_current"
 MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"

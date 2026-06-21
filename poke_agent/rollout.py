@@ -75,6 +75,8 @@ def play_match(
                 "player": player_index,
                 "deck0": deck0_name,
                 "deck1": deck1_name,
+                "deck0_cards": list(deck0),
+                "deck1_cards": list(deck1),
             })
             obs = next_obs
             step += 1

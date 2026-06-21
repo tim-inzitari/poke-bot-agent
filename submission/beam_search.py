@@ -129,6 +129,7 @@ def evaluate_search_leaf(
     agent: TrainedPolicyAgent,
     leaf_obs_dict: dict[str, Any],
     root_your_index: int,
+    our_deck: list[int] | None = None,
 ) -> float:
     assert agent._model is not None
     assert agent._feature_mean is not None and agent._feature_std is not None
@@ -138,6 +139,7 @@ def evaluate_search_leaf(
         leaf_obs_dict,
         leaf_tracker,
         state_hash_dim=agent._state_hash_dim,
+        our_deck=our_deck,
     ).reshape(-1)
     leaf_norm = ((leaf_features - agent._feature_mean) / agent._feature_std).astype(np.float32)
 
@@ -197,16 +199,21 @@ def expand_action_in_search(
             leaf_obs = observation_to_dict(current_state.observation)
             current = leaf_obs.get("current") or {}
             if int(current.get("result", -1)) >= 0:
-                return evaluate_search_leaf(agent, leaf_obs, root_your_index)
+                return evaluate_search_leaf(agent, leaf_obs, root_your_index, our_deck)
             select = leaf_obs.get("select") or {}
             options = select.get("option") or []
             if not options:
-                return evaluate_search_leaf(agent, leaf_obs, root_your_index)
+                return evaluate_search_leaf(agent, leaf_obs, root_your_index, our_deck)
             min_count = int(select.get("minCount", 1))
             max_count = int(select.get("maxCount", 1))
             fallback = legal_actions(len(options), min_count, max_count)
             action = fallback[0] if fallback else [0]
-        return evaluate_search_leaf(agent, observation_to_dict(current_state.observation), root_your_index)
+        return evaluate_search_leaf(
+            agent,
+            observation_to_dict(current_state.observation),
+            root_your_index,
+            our_deck,
+        )
     finally:
         search_end()
 

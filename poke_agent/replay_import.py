@@ -152,6 +152,8 @@ def replay_to_rollout_rows(
                 "player": int(current.get("yourIndex", agent_index)),
                 "deck0": deck0_slug,
                 "deck1": deck1_slug,
+                "deck0_cards": list(setup_decks[0]) if setup_decks[0] is not None else None,
+                "deck1_cards": list(setup_decks[1]) if setup_decks[1] is not None else None,
                 "source": source,
                 "source_episode_id": source_episode_id,
                 "truncated": False,

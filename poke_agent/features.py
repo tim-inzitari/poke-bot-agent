@@ -30,6 +30,36 @@ BASE_FEATURE_NAMES = (
 )
 
 
+def _is_card_id_key(key: str) -> bool:
+    lowered = key.lower()
+    return lowered.endswith(".id") or lowered.endswith("id") or lowered.endswith("cardid")
+
+
+def hashed_deck_composition(deck: list[int] | tuple[int, ...], *, state_hash_dim: int) -> np.ndarray:
+    """Hash **your** full 60-card deck list (private info you know; not opponent deck)."""
+    vec = np.zeros(state_hash_dim, dtype=np.float32)
+    if not deck:
+        return vec
+    counts: dict[int, int] = {}
+    for card_id in deck:
+        counts[int(card_id)] = counts.get(int(card_id), 0) + 1
+    for card_id, count in sorted(counts.items()):
+        token = f"self_deck.card={card_id}"
+        vec[stable_hash_index(token, state_hash_dim)] += count / 60.0
+    return vec
+
+
+def seat_deck_from_row(row: dict[str, Any]) -> list[int] | None:
+    """Return the seated player's own deck list (never the opponent's hidden deck)."""
+    obs = row.get("observation") or {}
+    your_index = int((obs.get("current") or {}).get("yourIndex", row.get("player", 0)))
+    key = "deck0_cards" if your_index == 0 else "deck1_cards"
+    deck = row.get(key)
+    if isinstance(deck, list) and deck:
+        return [int(card_id) for card_id in deck]
+    return None
+
+
 def going_first_feature(obs: dict[str, Any]) -> float:
     """1.0 if this seat goes first, 0.0 if second, 0.5 if undetermined."""
     current = obs.get("current") or {}
@@ -68,6 +98,9 @@ def hashed_state_vector(observation: Any, action: Any = None, *, state_hash_dim:
             if isinstance(value, bool):
                 token = f"{label}.{key}:bool"
                 amount = 1.0 if value else -1.0
+            elif isinstance(value, (int, float)) and _is_card_id_key(key):
+                token = f"{label}.{key}={int(value)}"
+                amount = 1.0
             elif isinstance(value, (int, float)):
                 token = f"{label}.{key}:num"
                 amount = float(np.tanh(float(value) / 100.0))
@@ -132,9 +165,16 @@ def encode_observation_step(
     *,
     state_hash_dim: int,
     action: Any = None,
+    our_deck: list[int] | None = None,
 ) -> np.ndarray:
     coarse = features_from_observation(observation, tracker)
-    return combine_features(coarse, observation, action, state_hash_dim=state_hash_dim)
+    return combine_features(
+        coarse,
+        observation,
+        action,
+        state_hash_dim=state_hash_dim,
+        our_deck=our_deck,
+    )
 
 
 def combine_features(
@@ -143,14 +183,23 @@ def combine_features(
     action: Any = None,
     *,
     state_hash_dim: int,
+    our_deck: list[int] | None = None,
 ) -> np.ndarray:
     compact = np.array(coarse, dtype=np.float32)
-    if observation is None:
+    if observation is None and our_deck is None:
         return compact
-    return np.concatenate([compact, hashed_state_vector(observation, action, state_hash_dim=state_hash_dim)]).astype(np.float32)
+    state_hash = (
+        hashed_state_vector(observation, action, state_hash_dim=state_hash_dim)
+        if observation is not None
+        else np.zeros(state_hash_dim, dtype=np.float32)
+    )
+    if our_deck is not None:
+        state_hash = state_hash + hashed_deck_composition(our_deck, state_hash_dim=state_hash_dim)
+    return np.concatenate([compact, state_hash]).astype(np.float32)
 
 
 def row_feature_vector(row: dict, *, state_hash_dim: int, tracker: GameEventTracker | None = None) -> np.ndarray:
+    our_deck = seat_deck_from_row(row)
     observation = row.get("observation")
     if observation is not None and tracker is not None:
         return encode_observation_step(
@@ -158,6 +207,7 @@ def row_feature_vector(row: dict, *, state_hash_dim: int, tracker: GameEventTrac
             tracker,
             state_hash_dim=state_hash_dim,
             action=row.get("action"),
+            our_deck=our_deck,
         )
     if observation is not None:
         return combine_features(
@@ -165,6 +215,7 @@ def row_feature_vector(row: dict, *, state_hash_dim: int, tracker: GameEventTrac
             observation,
             row.get("action"),
             state_hash_dim=state_hash_dim,
+            our_deck=our_deck,
         )
     return combine_features(
         pad_coarse_features(row["features"]),
@@ -222,6 +273,7 @@ def _build_episode_arrays(
     encoded_steps: list[np.ndarray | None] = []
 
     for row in episode_rows:
+        our_deck = seat_deck_from_row(row)
         if row.get("observation") is not None:
             encoded_steps.append(
                 encode_observation_step(
@@ -229,6 +281,7 @@ def _build_episode_arrays(
                     tracker,
                     state_hash_dim=state_hash_dim,
                     action=row.get("action"),
+                    our_deck=our_deck,
                 )
             )
         else:

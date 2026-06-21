@@ -187,6 +187,8 @@ def play_episode(
                 "player": int(obs["current"]["yourIndex"]),
                 "deck0": deck0_slug,
                 "deck1": deck1_slug,
+                "deck0_cards": list(deck0),
+                "deck1_cards": list(deck1),
                 "source": "multideck-cabt",
                 "source_episode_id": str(episode),
             })

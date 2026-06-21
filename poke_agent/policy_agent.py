@@ -76,12 +76,19 @@ class PolicyRuntime:
         self._feature_std = np.array(checkpoint["feature_std"], dtype=np.float32).reshape(-1)
         self._loaded = True
 
-    def _encode_observation(self, obs_dict: dict[str, Any], session: PolicySession) -> np.ndarray:
+    def _encode_observation(
+        self,
+        obs_dict: dict[str, Any],
+        session: PolicySession,
+        *,
+        our_deck: list[int] | None = None,
+    ) -> np.ndarray:
         assert self._feature_mean is not None and self._feature_std is not None
         features = encode_observation_step(
             obs_dict,
             session.tracker,
             state_hash_dim=self._state_hash_dim,
+            our_deck=our_deck,
         ).reshape(-1)
         return ((features - self._feature_mean) / self._feature_std).astype(np.float32)
 
@@ -133,7 +140,7 @@ class PolicyRuntime:
         if not actions:
             return []
 
-        session.history.append(self._encode_observation(obs_dict, session))
+        session.history.append(self._encode_observation(obs_dict, session, our_deck=our_deck))
         logits = self._model_logits(session)
         root_your_index = int((obs_dict.get("current") or {}).get("yourIndex", 0))
 
