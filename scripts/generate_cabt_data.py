@@ -27,7 +27,6 @@ if str(ROOT) not in sys.path:
 
 from poke_agent.archetypes import weighted_deck_pool, slug_from_deck_name, load_archetype_registry
 
-
 SAMPLE_DECK = [
     119, 119, 119, 119, 120, 120, 120, 120, 121, 121, 121,
     305, 305, 66, 66, 112, 112, 235, 1071, 140, 1227,
@@ -234,16 +233,41 @@ def run_episode_range(
         list[tuple[str, list[int]]],
         str,
         int | None,
-    ]
+        list[tuple[str, list[int], float]] | None,
+        list[tuple[str, list[int], float]] | None,
+        dict[str, float],
+    ],
 ) -> tuple[int, list[dict[str, Any]]]:
-    start, stop, max_steps, deck0_pool, deck1_pool, matchup_mode, seed = args
+    start, stop, max_steps, deck0_pool, deck1_pool, matchup_mode, seed, weighted0, weighted1, reward_cfg = args
     if seed is not None:
         random.seed(seed + start)
     add_cg_lib_to_path()
     rows: list[dict[str, Any]] = []
-    for episode in range(start, stop):
-        deck0_name, deck0, deck1_name, deck1 = choose_matchup(episode, deck0_pool, deck1_pool, matchup_mode)
-        rows.extend(play_episode(episode, max_steps, deck0_name, deck0, deck1_name, deck1))
+    target = stop - start
+    complete = 0
+    attempt = start
+    while complete < target and attempt < start + target * 5:
+        deck0_name, deck0, deck1_name, deck1 = choose_matchup(
+            attempt,
+            deck0_pool,
+            deck1_pool,
+            matchup_mode,
+            weighted0=weighted0,
+            weighted1=weighted1,
+        )
+        episode_rows = play_episode(
+            start + complete,
+            max_steps,
+            deck0_name,
+            deck0,
+            deck1_name,
+            deck1,
+            rewards=reward_cfg,
+        )
+        if episode_rows:
+            rows.extend(episode_rows)
+            complete += 1
+        attempt += 1
     return start, rows
 
 
@@ -261,7 +285,12 @@ def main() -> None:
         help="number of CABT games (default: DATASET_GAMES env or 10)",
     )
     parser.add_argument("--max-steps", type=int, default=300)
-    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="parallel CABT workers (0 = auto from CPU count)",
+    )
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--deck-dir", default=None)
     parser.add_argument("--deck0-dir", default=None)
@@ -290,7 +319,10 @@ def main() -> None:
         "value_not_win": float(os.environ.get("VALUE_NOT_WIN", "-1.0")),
         "value_timeout": float(os.environ.get("VALUE_TIMEOUT", "-2.0")),
     }
-    workers = max(1, min(args.workers, args.episodes))
+    from poke_agent.data_pipeline import default_cabt_generation_workers
+
+    worker_count = args.workers if args.workers > 0 else default_cabt_generation_workers(episodes=args.episodes)
+    workers = max(1, min(worker_count, args.episodes))
     complete_games = 0
     if workers == 1:
         rows: list[dict[str, Any]] = []
@@ -312,7 +344,18 @@ def main() -> None:
             attempt += 1
     else:
         tasks = [
-            (start, stop, args.max_steps, deck0_pool, deck1_pool, args.matchups, args.seed)
+            (
+                start,
+                stop,
+                args.max_steps,
+                deck0_pool,
+                deck1_pool,
+                args.matchups,
+                args.seed,
+                weighted0,
+                weighted1,
+                reward_cfg,
+            )
             for start, stop in episode_chunks(args.episodes, workers)
         ]
         with mp.get_context("spawn").Pool(processes=workers) as pool:

@@ -154,6 +154,15 @@ def uses_generated_training_data(config: dict[str, Any], data_path: Path) -> boo
     return Path(data_path).resolve() == Path(generated).resolve()
 
 
+DEPRECATED_TRAINING_PATH_NAMES = frozenset({
+    "notebook_rollouts.jsonl",
+})
+
+
+def _is_deprecated_training_path(path: Path) -> bool:
+    return path.name in DEPRECATED_TRAINING_PATH_NAMES
+
+
 def resolve_training_data_path(config: dict[str, Any]) -> Path | None:
     """Pick rollout JSONL for training.
 
@@ -176,12 +185,12 @@ def resolve_training_data_path(config: dict[str, Any]) -> Path | None:
         candidate = config.get(key)
         if candidate is not None:
             path = Path(candidate)
-            if path.exists():
+            if path.exists() and not _is_deprecated_training_path(path):
                 return path
 
     for source in config.get("training_rollout_sources", []):
         path = Path(source)
-        if path.exists():
+        if path.exists() and not _is_deprecated_training_path(path):
             return path
 
     generated = config.get("generated_path")
@@ -189,11 +198,19 @@ def resolve_training_data_path(config: dict[str, Any]) -> Path | None:
     dataset_games = config.get("dataset_games")
     require_cabt_eval = config.get("require_cabt_eval_data", True)
 
-    if dataset_games is not None and generated_path is not None and generated_path.exists():
+    if (
+        dataset_games is not None
+        and generated_path is not None
+        and generated_path.exists()
+        and not _is_deprecated_training_path(generated_path)
+    ):
         return generated_path
 
-    candidates = list(config.get("data_candidates", []))
-    if generated_path is not None and generated_path.exists():
+    candidates = [
+        path for path in config.get("data_candidates", [])
+        if not _is_deprecated_training_path(Path(path))
+    ]
+    if generated_path is not None and generated_path.exists() and not _is_deprecated_training_path(generated_path):
         candidates = [generated_path, *[path for path in candidates if path != generated_path]]
 
     if require_cabt_eval:

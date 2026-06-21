@@ -9,6 +9,9 @@ import numpy as np
 from poke_agent.features import COARSE_FEATURE_DIM, row_feature_vector
 
 
+from poke_agent.archetypes import load_archetype_registry, slug_from_deck_name
+
+
 class TrainingDiversityError(ValueError):
     """Training data or loop violates multi-deck training requirements."""
 
@@ -62,6 +65,12 @@ def training_matchup_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _normalize_deck_slug(slug: str | None, registry) -> str | None:
+    if not slug:
+        return None
+    return slug_from_deck_name(str(slug), registry)
+
+
 def submission_deck_slug(config: dict[str, Any]) -> str | None:
     path = config.get("agent_deck_path")
     if path is None:
@@ -70,8 +79,6 @@ def submission_deck_slug(config: dict[str, Any]) -> str | None:
     if not deck_path.exists():
         return None
     try:
-        from poke_agent.archetypes import load_archetype_registry, slug_from_deck_name
-
         root = deck_path.parents[2] if len(deck_path.parents) >= 3 else deck_path.parent
         registry = load_archetype_registry(root)
         return slug_from_deck_name(deck_path.stem, registry)
@@ -100,9 +107,16 @@ def assert_submission_deck_separate_from_training(
     if stats["games"] == 0:
         return
 
+    deck_path = Path(config["agent_deck_path"])
+    root = deck_path.parents[2] if len(deck_path.parents) >= 3 else deck_path.parent
+    registry = load_archetype_registry(root)
+
     starts = episode_start_rows(rows)
     submission_mirror_games = sum(
-        1 for row in starts if row.get("deck0") == slug and row.get("deck1") == slug
+        1
+        for row in starts
+        if _normalize_deck_slug(row.get("deck0"), registry) == slug
+        and _normalize_deck_slug(row.get("deck1"), registry) == slug
     )
     if submission_mirror_games == stats["games"]:
         raise TrainingDiversityError(
