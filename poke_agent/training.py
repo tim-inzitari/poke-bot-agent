@@ -7,6 +7,7 @@ from tqdm.auto import tqdm
 
 from poke_agent.dataset import TrainingTensors
 from poke_agent.models.temporal_transformer import TemporalTransformer
+from poke_agent.training_diversity import assert_generic_model_inputs
 
 
 def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.device) -> TemporalTransformer:
@@ -58,6 +59,8 @@ def train_model(
     patience = train_cfg["patience"]
     min_delta = train_cfg["min_delta"]
     batch_games = train_cfg["batch_games"]
+
+    assert_generic_model_inputs(model, tensors, config)
 
     num_rows = int(tensors.x.shape[0])
     num_games = tensors.num_games

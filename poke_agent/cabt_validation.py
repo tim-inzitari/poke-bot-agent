@@ -157,13 +157,24 @@ def uses_generated_training_data(config: dict[str, Any], data_path: Path) -> boo
 def resolve_training_data_path(config: dict[str, Any]) -> Path | None:
     """Pick rollout JSONL for training.
 
-    When DATASET_GAMES is set and generated_path exists, use the file just
-    written by inline/script generation instead of PRIMARY_ROLLOUT_DATA.
+    Explicit ``training_data_path`` wins (self-play retraining). Otherwise prefer
+    merged multi-deck corpus when present.
     """
+    explicit = config.get("training_data_path")
+    if explicit is not None:
+        explicit_path = Path(explicit)
+        if explicit_path.exists():
+            return explicit_path
+
     generated = config.get("generated_path")
     generated_path = Path(generated) if generated is not None else None
+    merged_path = config.get("merged_rollout_path")
+    merged = Path(merged_path) if merged_path is not None else None
     dataset_games = config.get("dataset_games")
     require_cabt_eval = config.get("require_cabt_eval_data", True)
+
+    if merged is not None and merged.exists():
+        return merged
 
     if dataset_games is not None and generated_path is not None and generated_path.exists():
         return generated_path

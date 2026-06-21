@@ -25,8 +25,9 @@ from poke_agent.simulator import load_simulator, print_simulator_status
 def main() -> None:
     parser = argparse.ArgumentParser(description="AlphaGo-style self-play: collect games, train, repeat.")
     parser.add_argument("--iterations", type=int, default=None, help="outer loop iterations")
-    parser.add_argument("--games", type=int, default=None, help="self-play games per iteration")
-    parser.add_argument("--eval-games", type=int, default=None, help="eval games vs random per iteration")
+    parser.add_argument("--games", type=int, default=None, help="CABT games per collect→train iteration")
+    parser.add_argument("--eval-games", type=int, default=None, help="eval games vs random after each iteration")
+    parser.add_argument("--train-epochs", type=int, default=None, help="transformer epochs per self-play retrain")
     parser.add_argument("--no-beam", action="store_true", help="policy-only during collection")
     parser.add_argument("--no-train", action="store_true", help="collect/eval only, skip training step")
     parser.add_argument("--checkpoint", type=Path, default=None, help="initial checkpoint path")
@@ -52,6 +53,8 @@ def main() -> None:
         overrides["self_play_games"] = args.games
     if args.eval_games is not None:
         overrides["self_play_eval_games"] = args.eval_games
+    if args.train_epochs is not None:
+        overrides["self_play_train_epochs"] = args.train_epochs
     if args.no_beam:
         overrides["self_play_use_beam"] = False
     if args.matchup_mode is not None:

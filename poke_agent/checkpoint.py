@@ -9,6 +9,7 @@ import torch
 from poke_agent.dataset import TrainingTensors
 from poke_agent.features import COARSE_FEATURE_DIM
 from poke_agent.models.temporal_transformer import TemporalTransformer
+from poke_agent.training_diversity import assert_checkpoint_has_no_deck
 
 
 def load_competition_results(path: Path) -> list[dict]:
@@ -65,6 +66,7 @@ def save_checkpoint(
         "device_used": training_report["device"],
         "data_path": training_report["data_path"],
     }
+    assert_checkpoint_has_no_deck(checkpoint)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(checkpoint, output_path)

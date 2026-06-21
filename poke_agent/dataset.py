@@ -204,6 +204,29 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         elapsed = time.perf_counter() - started
         print(f"loaded {len(rows)} rollout rows from {data_path} in {elapsed:.1f}s ({workers} workers)")
 
+        if config.get("require_training_matchup_diversity", True):
+            from poke_agent.training_diversity import (
+                assert_deck_metadata_not_in_features,
+                assert_submission_deck_separate_from_training,
+                assert_training_matchup_diversity,
+                training_matchup_stats,
+            )
+
+            assert_submission_deck_separate_from_training(config, rows, data_path=data_path)
+            stats = assert_training_matchup_diversity(
+                rows,
+                min_matchups=int(config.get("min_training_matchups", 2)),
+                min_deck_slugs=int(config.get("min_training_deck_slugs", 2)),
+                allow_single_matchup=False,
+            )
+            assert_deck_metadata_not_in_features(rows, state_hash_dim=state_hash_dim)
+            print(
+                "training data diversity:"
+                f" {stats['games']} games,"
+                f" {stats['unique_matchups']} matchups,"
+                f" {stats['unique_deck_slugs']} deck slugs"
+            )
+
     feature_mean = x_np.mean(axis=0, keepdims=True)
     feature_std = x_np.std(axis=0, keepdims=True) + 1e-6
     x_norm = (x_np - feature_mean) / feature_std

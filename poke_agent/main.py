@@ -8,7 +8,6 @@ from poke_agent.dataset import prepare_training_tensors
 from poke_agent.deck import read_deck
 from poke_agent.device import torch_device
 from poke_agent.paths import print_runtime_info, resolve_root
-from poke_agent.rollout import generate_rollouts
 from poke_agent.simulator import load_simulator, print_simulator_status
 from poke_agent.training import build_model, train_model
 from poke_agent.memory import print_vram_estimate
@@ -34,15 +33,13 @@ def main() -> None:
     print("deck source", deck_source)
 
     generate_games = resolve_generate_games(config)
-    _, deck_source = read_deck(config, root)
-    deck_name = deck_source.stem if deck_source.suffix else str(deck_source)
-    generate_rollouts(
-        simulator,
-        deck,
-        generate_games,
-        config["generated_path"],
-        deck_name=deck_name,
-    )
+    if generate_games > 0:
+        print(
+            "skipping mirror inline rollout generation "
+            f"({generate_games} games requested). "
+            "Use scripts/generate_cabt_data.py --matchups weighted and scripts/merge_rollouts.py "
+            "for multi-deck training data."
+        )
 
     tensors = prepare_training_tensors(config, device)
     model = build_model(config, tensors, device)

@@ -27,6 +27,9 @@ TRAINING_ROLLOUT_SOURCES = [
     "data/multideck_rollouts.jsonl",
 ]
 REQUIRE_COMPLETE_GAMES = True
+REQUIRE_TRAINING_MATCHUP_DIVERSITY = True
+MIN_TRAINING_MATCHUPS = 2
+MIN_TRAINING_DECK_SLUGS = 2
 FALLBACK_ROLLOUT_DATA = [
     "data/mac-rollouts-10k.jsonl",
     "data/notebook_rollouts.jsonl",
@@ -46,7 +49,7 @@ MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"
 REQUIRE_CABT_EVAL_DATA = True
 
 # --- Dataset size (games) ---
-DATASET_GAMES = 100  # None = train on all games in file, skip inline generation
+DATASET_GAMES = 500  # None = train on all games in file, skip inline generation
                       # 5000 or 100000 = that many CABT games to generate and/or cap training
 
 # --- Features ---
@@ -56,9 +59,9 @@ WINDOW_SIZE = 256
 TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
-MODEL_D_MODEL = 16
-MODEL_HEADS = 4
-MODEL_LAYERS = 5
+MODEL_D_MODEL = 128
+MODEL_HEADS = 8
+MODEL_LAYERS = 8
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4
@@ -78,31 +81,33 @@ VALUE_TIMEOUT = -2.0  # harsh penalty for stalling to the time limit
 
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 8
-BEAM_SEARCH_DEPTH = 1
-BEAM_TIME_BUDGET_MS = 150
+BEAM_TIME_BUDGET_MS = 1000  # 10s wall-clock budget; search depth is not capped
 BEAM_MIN_REMAINING_SEC = 120
 
 # --- Self-play (AlphaGo-style loop) ---
-SELF_PLAY_GAMES = 20
-SELF_PLAY_ITERATIONS = 3
-SELF_PLAY_EVAL_GAMES = 10
+# One "iteration" = play SELF_PLAY_GAMES cabt games, then retrain on ALL self-play JSONL so far.
+# SELF_PLAY_ITERATIONS = max collect→train cycles (stops early on plateau or target win rate).
+SELF_PLAY_GAMES = 20  # CABT games per iteration (your deck vs field + past checkpoints)
+SELF_PLAY_ITERATIONS = 100
+SELF_PLAY_TRAIN_EPOCHS = 500  # transformer epochs after each iteration (uses TRAIN_EPOCHS if unset)
+SELF_PLAY_EVAL_GAMES = 20
 SELF_PLAY_OPPONENT_POOL_SIZE = 5
 SELF_PLAY_USE_BEAM = True
 SELF_PLAY_OUTPUT_PATH = "outputs/rollouts/self_play_rollouts.jsonl"
 SELF_PLAY_CHECKPOINT_DIR = "outputs/checkpoints/self_play"
-SELF_PLAY_TRAIN_AFTER_COLLECT = True
+SELF_PLAY_TRAIN_AFTER_COLLECT = True  # retrain every iteration on accumulated self-play data
 SELF_PLAY_FIELD_DECK_DIR = "decks/competitive/high_performing"
 SELF_PLAY_MATCHUP_MODE = "sample"  # sample | round-robin
 SELF_PLAY_TARGET_RANK = 1000  # eval/bar: win vs opponent decks with placement <= this
 SELF_PLAY_TARGET_WIN_RATE = 0.55
-SELF_PLAY_PLATEAU_PATIENCE = 3
+SELF_PLAY_PLATEAU_PATIENCE = 5
 
 # --- Training loop ---
 TRAIN_EPOCHS = 1000
 EARLY_STOP_PATIENCE = 25
 EARLY_STOP_MIN_DELTA = 1e-5
 TRAIN_PRINT_EVERY = 100
-BATCH_GAMES = 4  # games per training batch (each game is one temporal sequence)
+BATCH_GAMES = 2  # games per training batch (each game is one temporal sequence)
 
 # Flat override keys accepted by build_config(..., overrides=...).
 OVERRIDE_KEYS = frozenset({
@@ -139,11 +144,11 @@ OVERRIDE_KEYS = frozenset({
     "value_win",
     "value_not_win",
     "beam_width",
-    "beam_search_depth",
     "beam_time_budget_ms",
     "beam_min_remaining_sec",
     "self_play_games",
     "self_play_iterations",
+    "self_play_train_epochs",
     "self_play_eval_games",
     "self_play_opponent_pool_size",
     "self_play_use_beam",
@@ -158,10 +163,14 @@ OVERRIDE_KEYS = frozenset({
     "scraped_rollout_data",
     "multideck_rollout_data",
     "merged_rollout_data",
+    "training_rollout_sources",
     "episodes_index_path",
     "top_episode_percent",
     "training_deck_dirs",
     "require_complete_games",
+    "require_training_matchup_diversity",
+    "min_training_matchups",
+    "min_training_deck_slugs",
     "value_timeout",
 })
 
@@ -203,11 +212,11 @@ def default_user_config() -> dict[str, Any]:
         "value_not_win": VALUE_NOT_WIN,
         "value_timeout": VALUE_TIMEOUT,
         "beam_width": BEAM_WIDTH,
-        "beam_search_depth": BEAM_SEARCH_DEPTH,
         "beam_time_budget_ms": BEAM_TIME_BUDGET_MS,
         "beam_min_remaining_sec": BEAM_MIN_REMAINING_SEC,
         "self_play_games": SELF_PLAY_GAMES,
         "self_play_iterations": SELF_PLAY_ITERATIONS,
+        "self_play_train_epochs": SELF_PLAY_TRAIN_EPOCHS,
         "self_play_eval_games": SELF_PLAY_EVAL_GAMES,
         "self_play_opponent_pool_size": SELF_PLAY_OPPONENT_POOL_SIZE,
         "self_play_use_beam": SELF_PLAY_USE_BEAM,
@@ -222,10 +231,14 @@ def default_user_config() -> dict[str, Any]:
         "scraped_rollout_data": SCRAPED_ROLLOUT_DATA,
         "multideck_rollout_data": MULTIDECK_ROLLOUT_DATA,
         "merged_rollout_data": MERGED_ROLLOUT_DATA,
+        "training_rollout_sources": list(TRAINING_ROLLOUT_SOURCES),
         "episodes_index_path": EPISODES_INDEX_PATH,
         "top_episode_percent": TOP_EPISODE_PERCENT,
         "training_deck_dirs": list(TRAINING_DECK_DIRS),
         "require_complete_games": REQUIRE_COMPLETE_GAMES,
+        "require_training_matchup_diversity": REQUIRE_TRAINING_MATCHUP_DIVERSITY,
+        "min_training_matchups": MIN_TRAINING_MATCHUPS,
+        "min_training_deck_slugs": MIN_TRAINING_DECK_SLUGS,
     }
 
 
@@ -263,11 +276,11 @@ _ENV_MAP = {
     "value_not_win": "VALUE_NOT_WIN",
     "value_timeout": "VALUE_TIMEOUT",
     "beam_width": "BEAM_WIDTH",
-    "beam_search_depth": "BEAM_SEARCH_DEPTH",
     "beam_time_budget_ms": "BEAM_TIME_BUDGET_MS",
     "beam_min_remaining_sec": "BEAM_MIN_REMAINING_SEC",
     "self_play_games": "SELF_PLAY_GAMES",
     "self_play_iterations": "SELF_PLAY_ITERATIONS",
+    "self_play_train_epochs": "SELF_PLAY_TRAIN_EPOCHS",
     "self_play_eval_games": "SELF_PLAY_EVAL_GAMES",
     "self_play_opponent_pool_size": "SELF_PLAY_OPPONENT_POOL_SIZE",
     "self_play_use_beam": "SELF_PLAY_USE_BEAM",
@@ -299,6 +312,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_use_beam",
         "self_play_train_after_collect",
         "require_complete_games",
+        "require_training_matchup_diversity",
     }:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
@@ -317,15 +331,17 @@ def _coerce_value(key: str, value: Any) -> Any:
         "batch_games",
         "tensor_build_workers",
         "beam_width",
-        "beam_search_depth",
         "beam_time_budget_ms",
         "beam_min_remaining_sec",
         "self_play_games",
         "self_play_iterations",
+        "self_play_train_epochs",
         "self_play_eval_games",
         "self_play_opponent_pool_size",
         "self_play_target_rank",
         "self_play_plateau_patience",
+        "min_training_matchups",
+        "min_training_deck_slugs",
     }:
         return int(value)
     if key == "top_episode_percent":
@@ -348,7 +364,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_target_win_rate",
     }:
         return float(value)
-    if key == "fallback_rollout_data":
+    if key in {"fallback_rollout_data", "training_rollout_sources"}:
         return list(value)
     return value
 
@@ -403,6 +419,10 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "top_episode_percent": settings["top_episode_percent"],
         "training_deck_dirs": [root / path for path in settings["training_deck_dirs"]],
         "require_complete_games": settings["require_complete_games"],
+        "require_training_matchup_diversity": settings["require_training_matchup_diversity"],
+        "min_training_matchups": settings["min_training_matchups"],
+        "min_training_deck_slugs": settings["min_training_deck_slugs"],
+        "submission_deck_path": root / settings["agent_deck_path"],
         "generated_path": root / settings["cabt_generated_path"],
         "competition_results_path": root / settings["competition_results_path"],
         "output_path": checkpoint,
@@ -447,13 +467,13 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         },
         "beam_search": {
             "width": settings["beam_width"],
-            "depth": settings["beam_search_depth"],
             "time_budget_ms": settings["beam_time_budget_ms"],
             "min_remaining_sec": settings["beam_min_remaining_sec"],
         },
         "self_play": {
             "games_per_iteration": settings["self_play_games"],
             "iterations": settings["self_play_iterations"],
+            "train_epochs": settings["self_play_train_epochs"],
             "eval_games": settings["self_play_eval_games"],
             "opponent_pool_size": settings["self_play_opponent_pool_size"],
             "use_beam": settings["self_play_use_beam"],

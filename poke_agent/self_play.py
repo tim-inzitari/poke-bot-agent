@@ -286,10 +286,22 @@ def train_on_rollouts(
     data_path: Path,
     checkpoint_path: Path | None = None,
 ) -> tuple[Any, Any, dict[str, Any]]:
+    """Retrain on accumulated self-play JSONL (all games in file, not DATASET_GAMES cap)."""
     train_config = dict(config)
+    train_config["training_data_path"] = data_path
     train_config["generated_path"] = data_path
-    if train_config.get("dataset_games") is None:
-        train_config["dataset_games"] = 1
+    train_config["dataset_games"] = None
+    train_config["require_cabt_eval_data"] = False
+    train_config["require_training_matchup_diversity"] = False
+
+    sp = dict(config.get("self_play", {}))
+    train_cfg = dict(train_config.get("training", {}))
+    if sp.get("train_epochs") is not None:
+        train_cfg["epochs"] = int(sp["train_epochs"])
+    train_config["training"] = train_cfg
+
+    row_count = sum(1 for line in data_path.read_text(encoding="utf-8").splitlines() if line.strip())
+    print(f"self-play retrain: {data_path} ({row_count:,} rows, all collected games)")
 
     tensors = prepare_training_tensors(train_config, device)
     model = build_model(train_config, tensors, device)

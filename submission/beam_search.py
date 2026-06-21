@@ -28,8 +28,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 BEAM_WIDTH = _env_int("BEAM_WIDTH", 8)
-BEAM_SEARCH_DEPTH = _env_int("BEAM_SEARCH_DEPTH", 1)
-BEAM_TIME_BUDGET_MS = _env_int("BEAM_TIME_BUDGET_MS", 150)
+BEAM_TIME_BUDGET_MS = _env_int("BEAM_TIME_BUDGET_MS", 10_000)
 BEAM_MIN_REMAINING_SEC = _env_int("BEAM_MIN_REMAINING_SEC", 120)
 
 OPPONENT_FILLER_CARD = 1072
@@ -39,7 +38,6 @@ OPPONENT_ENERGY_CARD = 1
 @dataclass
 class BeamSearchConfig:
     width: int = BEAM_WIDTH
-    depth: int = BEAM_SEARCH_DEPTH
     time_budget_ms: int = BEAM_TIME_BUDGET_MS
     min_remaining_sec: int = BEAM_MIN_REMAINING_SEC
 
@@ -171,7 +169,7 @@ def expand_action_in_search(
     our_deck: list[int],
     action: list[int],
     root_your_index: int,
-    depth: int,
+    deadline: float,
 ) -> float:
     obs = to_observation_class(obs_dict)
     (
@@ -194,7 +192,7 @@ def expand_action_in_search(
     )
     current_state = search_state
     try:
-        for _ in range(max(1, depth)):
+        while time.perf_counter() < deadline:
             current_state = search_step(current_state.searchId, action)
             leaf_obs = observation_to_dict(current_state.observation)
             current = leaf_obs.get("current") or {}
@@ -238,7 +236,7 @@ def run_beam_search(
                 our_deck,
                 action,
                 root_your_index,
-                config.depth,
+                deadline,
             )
         except Exception:
             leaf_value = policy_score

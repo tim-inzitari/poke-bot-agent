@@ -21,8 +21,7 @@ if TYPE_CHECKING:
 @dataclass
 class BeamSearchConfig:
     width: int = 8
-    depth: int = 1
-    time_budget_ms: int = 150
+    time_budget_ms: int = 10_000
     min_remaining_sec: int = 120
     sim_mode: bool = False
 
@@ -31,8 +30,7 @@ class BeamSearchConfig:
         beam = dict(config.get("beam_search", {}))
         return cls(
             width=int(beam.get("width", 8)),
-            depth=int(beam.get("depth", 1)),
-            time_budget_ms=int(beam.get("time_budget_ms", 150)),
+            time_budget_ms=int(beam.get("time_budget_ms", 10_000)),
             min_remaining_sec=0 if beam.get("sim_mode") else int(beam.get("min_remaining_sec", 120)),
             sim_mode=bool(beam.get("sim_mode", False)),
         )
@@ -175,7 +173,7 @@ def expand_action_in_search(
     our_deck: list[int],
     action: list[int],
     root_your_index: int,
-    depth: int,
+    deadline: float,
 ) -> float:
     from cg.api import search_begin, search_end, search_step, to_observation_class
 
@@ -200,7 +198,7 @@ def expand_action_in_search(
     )
     current_state = search_state
     try:
-        for _ in range(max(1, depth)):
+        while time.perf_counter() < deadline:
             current_state = search_step(current_state.searchId, action)
             leaf_obs = observation_to_dict(current_state.observation)
             current = leaf_obs.get("current") or {}
@@ -246,7 +244,7 @@ def run_beam_search(
                 our_deck,
                 action,
                 root_your_index,
-                config.depth,
+                deadline,
             )
         except Exception:
             leaf_value = policy_score
