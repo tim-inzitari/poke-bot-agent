@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from poke_agent.features import features_from_observation
 from poke_agent.game_tracker import GameEventTracker
-from poke_agent.rewards import assign_episode_values
+from poke_agent.rewards import assign_episode_values, is_complete_episode
 from poke_agent.simulator import SimulatorState
 
 
@@ -36,6 +36,7 @@ def play_match(
     deck0_name: str = "deck0",
     deck1_name: str = "deck1",
     max_steps: int = 300,
+    rewards: dict[str, float] | None = None,
 ) -> list[dict]:
     """Play one CABT game between two seat-specific agents."""
     if not simulator.available or simulator.battle_start is None or simulator.battle_select is None or simulator.battle_finish is None:
@@ -47,7 +48,9 @@ def play_match(
     if start_data.errorPlayer >= 0:
         raise ValueError(f"deck error type={start_data.errorType} player={start_data.errorPlayer}")
     try:
+        reward_cfg = rewards or {}
         step = 0
+        truncated = False
         while obs["current"]["result"] < 0 and step < max_steps:
             select = obs.get("select") or {}
             options = select.get("option") or []
@@ -75,8 +78,24 @@ def play_match(
             })
             obs = next_obs
             step += 1
+        if obs["current"]["result"] < 0:
+            truncated = True
         result = int(obs["current"]["result"])
-        assign_episode_values(rows, result, terminal_obs=obs)
+        if truncated and result < 0:
+            return []
+        if not is_complete_episode(result, terminal_obs=obs, truncated=truncated):
+            return []
+        assign_episode_values(
+            rows,
+            result,
+            terminal_obs=obs,
+            value_win=float(reward_cfg.get("value_win", 1.0)),
+            value_not_win=float(reward_cfg.get("value_not_win", -1.0)),
+            value_timeout=float(reward_cfg.get("value_timeout", -2.0)),
+        )
+        for row in rows:
+            row["complete"] = True
+            row["truncated"] = False
         return rows
     finally:
         simulator.battle_finish()
@@ -91,6 +110,7 @@ def play_episode(
     deck0_name: str = "deck0",
     deck1_name: str = "deck1",
     max_steps: int = 300,
+    rewards: dict[str, float] | None = None,
 ) -> list[dict]:
     return play_match(
         episode,
@@ -102,6 +122,7 @@ def play_episode(
         deck0_name=deck0_name,
         deck1_name=deck1_name,
         max_steps=max_steps,
+        rewards=rewards,
     )
 
 

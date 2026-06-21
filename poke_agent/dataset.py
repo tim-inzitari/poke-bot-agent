@@ -178,6 +178,14 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
             assert_cabt_evaluation_rows(rows, path=data_path)
         else:
             assert_training_rollout_rows(rows, path=data_path)
+        if config.get("require_complete_games", True):
+            from poke_agent.rewards import filter_complete_episode_rows
+
+            before = len({int(row["episode"]) for row in rows})
+            rows = filter_complete_episode_rows(rows)
+            after = len({int(row["episode"]) for row in rows})
+            if before != after:
+                print(f"complete games only: {after:,} / {before:,} episodes kept")
         train_games = config.get("training", {}).get("games")
         rows, source_rows, source_games = limit_dataset_games(rows, train_games)
         used_games = len({int(row["episode"]) for row in rows})

@@ -66,6 +66,18 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Optional
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from poke_agent.episodes_index import (
+    EpisodeRecord,
+    default_index_path,
+    export_episode_ids,
+    filter_top_percent,
+    load_episode_pool,
+)
+
 DEFAULT_COMPETITION = "pokemon-tcg-ai-battle"
 
 
@@ -319,6 +331,9 @@ def main() -> int:
     parser.add_argument("--competition", default=DEFAULT_COMPETITION)
     parser.add_argument("--teams", type=int, default=10, help="top N leaderboard teams")
     parser.add_argument("--episodes-per-sub", type=int, default=20, help="most recent K episodes per submission")
+    parser.add_argument("--top-percent", type=float, default=0.0, help="use episodes index pool and keep top N%% by score")
+    parser.add_argument("--episodes-index", default=None, help="path to episodes index manifest.csv")
+    parser.add_argument("--episode-ids-file", default=None, help="file with episode ids to download (one per line)")
     parser.add_argument("--out", default="data/ladder-replays", help="output directory")
     parser.add_argument("--sleep", type=float, default=1.0, help="seconds between API calls (be polite)")
     parser.add_argument("--max-replays", type=int, default=0, help="cap total downloads this run (0 = no cap)")
@@ -349,6 +364,20 @@ def main() -> int:
     replays_dir = out_dir / "replays"
     logs_dir = out_dir / "logs"
     index_path = out_dir / "index.csv"
+
+    if args.episode_ids_file or args.top_percent > 0:
+        downloaded = _download_from_episode_pool(
+            kaggle=kaggle,
+            args=args,
+            out_dir=out_dir,
+            manifest=manifest,
+            replays_dir=replays_dir,
+            logs_dir=logs_dir,
+            index_path=index_path,
+            log=log,
+        )
+        _finish(manifest, out_dir, log, downloaded)
+        return 0
 
     teams = top_teams(kaggle, args.competition, args.teams, log)
     log.write(f"top teams: {len(teams)}")
@@ -432,6 +461,79 @@ def main() -> int:
 
     _finish(manifest, out_dir, log, downloaded)
     return 0
+
+
+def _download_from_episode_pool(
+    *,
+    kaggle: list[str],
+    args: argparse.Namespace,
+    out_dir: Path,
+    manifest: set[str],
+    replays_dir: Path,
+    logs_dir: Path,
+    index_path: Path,
+    log: Logger,
+) -> int:
+    records: list[EpisodeRecord] = []
+    if args.episode_ids_file:
+        ids_path = Path(args.episode_ids_file)
+        for line in ids_path.read_text(encoding="utf-8").splitlines():
+            episode_id = line.strip()
+            if episode_id:
+                records.append(EpisodeRecord(episode_id=episode_id, replay_path=None, source="episode-ids-file"))
+    else:
+        index_path_arg = Path(args.episodes_index) if args.episodes_index else default_index_path(ROOT)
+        records = load_episode_pool(ROOT, index_path=index_path_arg, scrape_index_csv=out_dir / "index.csv")
+        if args.top_percent > 0:
+            records = filter_top_percent(records, args.top_percent)
+            export_episode_ids(records, out_dir / "selected_episode_ids.txt")
+
+    downloaded = 0
+    summarized = False
+    for record in records:
+        ep_id = record.episode_id
+        if not ep_id or ep_id in manifest:
+            continue
+        if args.max_replays and downloaded >= args.max_replays:
+            break
+        if args.dry_run:
+            log.write(f"  [dry-run] would download episode {ep_id}")
+            continue
+        time.sleep(args.sleep)
+        replay_path = download_replay(kaggle, ep_id, replays_dir, log)
+        if replay_path is None:
+            log.write(f"  episode {ep_id}: replay download produced no file, skipping")
+            continue
+        if args.include_logs:
+            for agent_idx in (0, 1):
+                time.sleep(args.sleep)
+                run_kaggle(
+                    kaggle,
+                    ["competitions", "logs", ep_id, str(agent_idx), "-p", str(logs_dir)],
+                    log=log,
+                    check=False,
+                )
+        append_index(
+            index_path,
+            {
+                "episode_id": ep_id,
+                "rank": "",
+                "team_id": record.team_id,
+                "team_name": record.team_name,
+                "submission_id": record.submission_id,
+                "submission_score": record.score,
+                "created_time": "",
+                "replay_file": replay_path.name,
+                "downloaded_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        manifest.add(ep_id)
+        downloaded += 1
+        log.write(f"  episode {ep_id}: saved {replay_path.name} ({downloaded} this run)")
+        if not summarized:
+            summarize_replay(replay_path, log)
+            summarized = True
+    return downloaded
 
 
 def _finish(manifest: set[str], out_dir: Path, log: Logger, downloaded: int = 0) -> None:

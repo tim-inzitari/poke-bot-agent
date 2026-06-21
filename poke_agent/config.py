@@ -14,7 +14,19 @@ from poke_agent.outputs import describe_layout, ensure_output_layout, report_pat
 # =============================================================================
 
 # --- Data paths ---
-PRIMARY_ROLLOUT_DATA = "data/mac-rollouts-100k-fullstate.jsonl"
+# AGENT_DECK_PATH is the deck we submit to Kaggle (hard-played at runtime).
+PRIMARY_ROLLOUT_DATA = "data/training_rollouts_merged.jsonl"
+SCRAPED_ROLLOUT_DATA = "data/scraped_rollouts.jsonl"
+MULTIDECK_ROLLOUT_DATA = "data/multideck_rollouts.jsonl"
+MERGED_ROLLOUT_DATA = "data/training_rollouts_merged.jsonl"
+EPISODES_INDEX_PATH = "kaggle/input/pokemon-tcg-ai-battle-episodes-index/manifest.csv"
+TOP_EPISODE_PERCENT = 1.0
+TRAINING_DECK_DIRS = ["decks/archetype-samples"]
+TRAINING_ROLLOUT_SOURCES = [
+    "data/scraped_rollouts.jsonl",
+    "data/multideck_rollouts.jsonl",
+]
+REQUIRE_COMPLETE_GAMES = True
 FALLBACK_ROLLOUT_DATA = [
     "data/mac-rollouts-10k.jsonl",
     "data/notebook_rollouts.jsonl",
@@ -61,7 +73,8 @@ LOSS_UNCERTAINTY_WEIGHT = 0.02
 
 # --- Rewards (training labels) ---
 VALUE_WIN = 1.0
-VALUE_NOT_WIN = -1.0  # loss, draw, timeout
+VALUE_NOT_WIN = -1.0  # loss or draw
+VALUE_TIMEOUT = -2.0  # harsh penalty for stalling to the time limit
 
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 8
@@ -142,6 +155,14 @@ OVERRIDE_KEYS = frozenset({
     "self_play_target_rank",
     "self_play_target_win_rate",
     "self_play_plateau_patience",
+    "scraped_rollout_data",
+    "multideck_rollout_data",
+    "merged_rollout_data",
+    "episodes_index_path",
+    "top_episode_percent",
+    "training_deck_dirs",
+    "require_complete_games",
+    "value_timeout",
 })
 
 
@@ -180,6 +201,7 @@ def default_user_config() -> dict[str, Any]:
         "tensor_build_workers": TENSOR_BUILD_WORKERS,
         "value_win": VALUE_WIN,
         "value_not_win": VALUE_NOT_WIN,
+        "value_timeout": VALUE_TIMEOUT,
         "beam_width": BEAM_WIDTH,
         "beam_search_depth": BEAM_SEARCH_DEPTH,
         "beam_time_budget_ms": BEAM_TIME_BUDGET_MS,
@@ -197,6 +219,13 @@ def default_user_config() -> dict[str, Any]:
         "self_play_target_rank": SELF_PLAY_TARGET_RANK,
         "self_play_target_win_rate": SELF_PLAY_TARGET_WIN_RATE,
         "self_play_plateau_patience": SELF_PLAY_PLATEAU_PATIENCE,
+        "scraped_rollout_data": SCRAPED_ROLLOUT_DATA,
+        "multideck_rollout_data": MULTIDECK_ROLLOUT_DATA,
+        "merged_rollout_data": MERGED_ROLLOUT_DATA,
+        "episodes_index_path": EPISODES_INDEX_PATH,
+        "top_episode_percent": TOP_EPISODE_PERCENT,
+        "training_deck_dirs": list(TRAINING_DECK_DIRS),
+        "require_complete_games": REQUIRE_COMPLETE_GAMES,
     }
 
 
@@ -232,6 +261,7 @@ _ENV_MAP = {
     "tensor_build_workers": "TENSOR_BUILD_WORKERS",
     "value_win": "VALUE_WIN",
     "value_not_win": "VALUE_NOT_WIN",
+    "value_timeout": "VALUE_TIMEOUT",
     "beam_width": "BEAM_WIDTH",
     "beam_search_depth": "BEAM_SEARCH_DEPTH",
     "beam_time_budget_ms": "BEAM_TIME_BUDGET_MS",
@@ -265,8 +295,10 @@ def _coerce_value(key: str, value: Any) -> Any:
         parsed = int(value)
         return None if parsed <= 0 else parsed
     if key in {
+        "require_cabt_eval_data",
         "self_play_use_beam",
         "self_play_train_after_collect",
+        "require_complete_games",
     }:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
@@ -296,6 +328,10 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_plateau_patience",
     }:
         return int(value)
+    if key == "top_episode_percent":
+        return float(value)
+    if key == "training_deck_dirs":
+        return list(value)
     if key in {
         "model_dropout",
         "learning_rate",
@@ -308,6 +344,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "early_stop_min_delta",
         "value_win",
         "value_not_win",
+        "value_timeout",
         "self_play_target_win_rate",
     }:
         return float(value)
@@ -340,16 +377,32 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
     d_model = settings["d_model"]
     model_ff = settings["model_ff"] if settings["model_ff"] is not None else d_model * 4
     fallback_paths = [root / path for path in settings["fallback_rollout_data"]]
+    training_sources = [root / path for path in settings["training_rollout_sources"]]
+    merged_path = root / settings["merged_rollout_data"]
     model_id = str(settings["model_id"])
     checkpoint = resolve_checkpoint_path(
         root,
         model_id=model_id,
         explicit=settings["model_output_path"],
     )
+    data_candidates = [
+        merged_path,
+        *[path for path in training_sources if path != merged_path],
+        root / settings["primary_rollout_data"],
+        *fallback_paths,
+    ]
 
     return {
         "agent_deck_path": root / settings["agent_deck_path"],
-        "data_candidates": [root / settings["primary_rollout_data"], *fallback_paths],
+        "data_candidates": data_candidates,
+        "training_rollout_sources": training_sources,
+        "merged_rollout_path": merged_path,
+        "scraped_rollout_path": root / settings["scraped_rollout_data"],
+        "multideck_rollout_path": root / settings["multideck_rollout_data"],
+        "episodes_index_path": root / settings["episodes_index_path"],
+        "top_episode_percent": settings["top_episode_percent"],
+        "training_deck_dirs": [root / path for path in settings["training_deck_dirs"]],
+        "require_complete_games": settings["require_complete_games"],
         "generated_path": root / settings["cabt_generated_path"],
         "competition_results_path": root / settings["competition_results_path"],
         "output_path": checkpoint,
@@ -390,6 +443,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "rewards": {
             "value_win": settings["value_win"],
             "value_not_win": settings["value_not_win"],
+            "value_timeout": settings["value_timeout"],
         },
         "beam_search": {
             "width": settings["beam_width"],
