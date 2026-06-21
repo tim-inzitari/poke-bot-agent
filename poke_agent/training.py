@@ -197,6 +197,8 @@ def train_model(
         "batch_games": batch_games,
         "device": str(device),
         "data_path": str(tensors.data_path) if tensors.data_path else None,
+        "reward_scheme": config.get("rewards"),
+        "beam_search": config.get("beam_search"),
         "loss_note": (
             "Loss is the training objective, not winrate. Winrate requires CABT evaluation games "
             "using the model as the action policy."

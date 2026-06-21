@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from poke_agent.features import features_from_observation
 from poke_agent.game_tracker import GameEventTracker
+from poke_agent.rewards import assign_episode_values
 from poke_agent.simulator import SimulatorState
 
 
@@ -71,14 +72,7 @@ def play_episode(
             obs = next_obs
             step += 1
         result = int(obs["current"]["result"])
-        for row in rows:
-            row["result"] = result
-            if result < 0 or result == 2:
-                row["value"] = 0.0
-            else:
-                row["value"] = 1.0 if row["player"] == result else -1.0
-            if row["terminal"]:
-                row["reward"] = row["value"]
+        assign_episode_values(rows, result, terminal_obs=obs)
         return rows
     finally:
         simulator.battle_finish()

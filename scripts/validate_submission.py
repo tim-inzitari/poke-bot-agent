@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 REQUIRED_ROOT_FILES = ("main.py", "deck.csv")
-REQUIRED_PATHS = ("cg/libcg.so", "value_model.pt", "policy_runtime.py", "model.py", "features.py", "game_tracker.py")
+REQUIRED_PATHS = ("cg/libcg.so", "value_model.pt", "policy_runtime.py", "beam_search.py", "model.py", "features.py", "game_tracker.py")
 FORBIDDEN_PREFIXES = ("submission/", "./submission/", "dist/", "./dist/")
 
 
@@ -123,18 +123,73 @@ def smoke_test_agent(extract_dir: Path, sample_observation: dict | None) -> list
     return errors
 
 
-def load_sample_observation(path: Path | None) -> dict | None:
+def load_sample_observation(path: Path | None, *, require_search_begin: bool = False) -> dict | None:
     if path is None or not path.exists():
         return None
     import json
 
+    fallback: dict | None = None
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
-            if line.strip():
-                row = json.loads(line)
-                if "observation" in row:
-                    return row["observation"]
-    return None
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            obs = row.get("observation")
+            if not isinstance(obs, dict):
+                continue
+            if obs.get("search_begin_input"):
+                return obs
+            if fallback is None:
+                fallback = obs
+    if require_search_begin:
+        return None
+    return fallback
+
+
+def smoke_test_beam_search(extract_dir: Path, sample_observation: dict | None) -> list[str]:
+    if sys.version_info < (3, 10):
+        print(
+            "warning: skipping beam smoke test on Python "
+            f"{sys.version_info.major}.{sys.version_info.minor} "
+            "(Kaggle runs Python 3.11+; layout checks still applied)",
+            file=sys.stderr,
+        )
+        return []
+
+    if sample_observation is None or not sample_observation.get("search_begin_input"):
+        return ["beam smoke test: no observation with search_begin_input in sample data"]
+
+    errors: list[str] = []
+    sys.path.insert(0, str(extract_dir))
+    try:
+        from policy_runtime import get_policy_agent, legal_actions
+
+        policy = get_policy_agent()
+        policy.reset()
+        deck_path = extract_dir / "deck.csv"
+        deck = [int(line.strip()) for line in deck_path.read_text(encoding="utf-8").splitlines() if line.strip()][:60]
+
+        obs = dict(sample_observation)
+        obs["remainingOverageTime"] = max(float(obs.get("remainingOverageTime") or 0), 9999.0)
+
+        select = obs.get("select") or {}
+        options = select.get("option") or []
+        min_count = int(select.get("minCount", 1))
+        max_count = int(select.get("maxCount", 1))
+        legal = legal_actions(len(options), min_count, max_count)
+
+        action = policy.choose_action(obs, our_deck=deck)
+        if not isinstance(action, list) or not action:
+            errors.append(f"beam choose_action returned unexpected value: {action!r}")
+            return errors
+        if action not in legal:
+            errors.append(f"beam choose_action returned illegal indices: {action!r}")
+    except Exception as exc:
+        errors.append(f"beam smoke test failed: {exc}")
+    finally:
+        if str(extract_dir) in sys.path:
+            sys.path.remove(str(extract_dir))
+    return errors
 
 
 def validate_submission(archive: Path, *, smoke_test: bool, sample_data: Path | None) -> list[str]:
@@ -161,11 +216,13 @@ def validate_submission(archive: Path, *, smoke_test: bool, sample_data: Path | 
         return errors
 
     sample_observation = load_sample_observation(sample_data)
+    beam_sample = load_sample_observation(sample_data, require_search_begin=True)
     with tempfile.TemporaryDirectory(prefix="submission-validate-") as tmp:
         extract_dir = Path(tmp)
         with tarfile.open(archive, "r:gz") as tar:
             tar.extractall(extract_dir)
         errors.extend(smoke_test_agent(extract_dir, sample_observation))
+        errors.extend(smoke_test_beam_search(extract_dir, beam_sample))
 
     return errors
 
@@ -181,8 +238,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--sample-data",
-        default="data/mac-rollouts-100k-fullstate.jsonl",
-        help="JSONL file used for one-step agent smoke test (default: 100k rollouts)",
+        default="outputs/rollouts/notebook_rollouts.jsonl",
+        help="JSONL file used for agent and beam smoke tests",
     )
     args = parser.parse_args()
 
@@ -211,8 +268,10 @@ def main() -> None:
     print("layout: main.py and deck.csv at archive root (Kaggle requirement)")
     if not args.no_smoke_test and sys.version_info >= (3, 10):
         print("smoke test: imported main.py and ran agent() on one rollout observation")
+        print("beam smoke test: choose_action with search_begin_input returned legal indices")
     elif not args.no_smoke_test:
         print("smoke test: skipped locally (run on Python 3.11+ before upload if possible)")
+        print("beam smoke test: skipped locally (requires Python 3.10+)")
 
 
 if __name__ == "__main__":

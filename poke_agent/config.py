@@ -25,7 +25,7 @@ FALLBACK_ROLLOUT_DATA = [
 ]
 AGENT_DECK_PATH = (
     "decks/competitive/high_performing/"
-    "2026-05_regional-campinas-2026_4th_dragapult-dudunsparce.csv"
+    "2026-05_regional-melbourne-2026_10th_mega-lucario.csv"
 )
 CABT_GENERATED_PATH = "outputs/rollouts/notebook_rollouts.jsonl"
 COMPETITION_RESULTS_PATH = "data/competition-results.jsonl"
@@ -34,7 +34,7 @@ MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"
 REQUIRE_CABT_EVAL_DATA = True
 
 # --- Dataset size (games) ---
-DATASET_GAMES = 50  # None = train on all games in file, skip inline generation
+DATASET_GAMES = 100  # None = train on all games in file, skip inline generation
                       # 5000 or 100000 = that many CABT games to generate and/or cap training
 
 # --- Features ---
@@ -46,7 +46,7 @@ TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 # --- Model ---
 MODEL_D_MODEL = 16
 MODEL_HEADS = 4
-MODEL_LAYERS = 4
+MODEL_LAYERS = 6
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4
@@ -58,6 +58,16 @@ LOSS_POLICY_WEIGHT = 0.35
 LOSS_DYNAMICS_WEIGHT = 0.15
 LOSS_ENTROPY_WEIGHT = 0.01
 LOSS_UNCERTAINTY_WEIGHT = 0.02
+
+# --- Rewards (training labels) ---
+VALUE_WIN = 1.0
+VALUE_NOT_WIN = -1.0  # loss, draw, timeout
+
+# --- Beam search (Kaggle inference) ---
+BEAM_WIDTH = 8
+BEAM_SEARCH_DEPTH = 1
+BEAM_TIME_BUDGET_MS = 150
+BEAM_MIN_REMAINING_SEC = 120
 
 # --- Training loop ---
 TRAIN_EPOCHS = 1000
@@ -98,6 +108,12 @@ OVERRIDE_KEYS = frozenset({
     "train_print_every",
     "batch_games",
     "tensor_build_workers",
+    "value_win",
+    "value_not_win",
+    "beam_width",
+    "beam_search_depth",
+    "beam_time_budget_ms",
+    "beam_min_remaining_sec",
 })
 
 
@@ -134,6 +150,12 @@ def default_user_config() -> dict[str, Any]:
         "train_print_every": TRAIN_PRINT_EVERY,
         "batch_games": BATCH_GAMES,
         "tensor_build_workers": TENSOR_BUILD_WORKERS,
+        "value_win": VALUE_WIN,
+        "value_not_win": VALUE_NOT_WIN,
+        "beam_width": BEAM_WIDTH,
+        "beam_search_depth": BEAM_SEARCH_DEPTH,
+        "beam_time_budget_ms": BEAM_TIME_BUDGET_MS,
+        "beam_min_remaining_sec": BEAM_MIN_REMAINING_SEC,
     }
 
 
@@ -167,6 +189,12 @@ _ENV_MAP = {
     "train_print_every": "TRAIN_PRINT_EVERY",
     "batch_games": "BATCH_GAMES",
     "tensor_build_workers": "TENSOR_BUILD_WORKERS",
+    "value_win": "VALUE_WIN",
+    "value_not_win": "VALUE_NOT_WIN",
+    "beam_width": "BEAM_WIDTH",
+    "beam_search_depth": "BEAM_SEARCH_DEPTH",
+    "beam_time_budget_ms": "BEAM_TIME_BUDGET_MS",
+    "beam_min_remaining_sec": "BEAM_MIN_REMAINING_SEC",
 }
 
 
@@ -195,6 +223,10 @@ def _coerce_value(key: str, value: Any) -> Any:
         "train_print_every",
         "batch_games",
         "tensor_build_workers",
+        "beam_width",
+        "beam_search_depth",
+        "beam_time_budget_ms",
+        "beam_min_remaining_sec",
     }:
         return int(value)
     if key in {
@@ -207,6 +239,8 @@ def _coerce_value(key: str, value: Any) -> Any:
         "loss_entropy_weight",
         "loss_uncertainty_weight",
         "early_stop_min_delta",
+        "value_win",
+        "value_not_win",
     }:
         return float(value)
     if key == "fallback_rollout_data":
@@ -284,6 +318,16 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "min_delta": settings["early_stop_min_delta"],
             "print_every": settings["train_print_every"],
             "batch_games": settings["batch_games"],
+        },
+        "rewards": {
+            "value_win": settings["value_win"],
+            "value_not_win": settings["value_not_win"],
+        },
+        "beam_search": {
+            "width": settings["beam_width"],
+            "depth": settings["beam_search_depth"],
+            "time_budget_ms": settings["beam_time_budget_ms"],
+            "min_remaining_sec": settings["beam_min_remaining_sec"],
         },
     }
 

@@ -4,6 +4,8 @@ from cg.api import Observation, to_observation_class
 
 from policy_runtime import get_policy_agent
 
+_DECK: list[int] | None = None
+
 
 def read_deck_csv() -> list[int]:
     """Read deck.csv.
@@ -31,10 +33,13 @@ def agent(obs_dict: dict) -> list[int]:
     Returns:
         list[int]: A list of option index.
     """
+    global _DECK
     obs: Observation = to_observation_class(obs_dict)
     if obs.select is None:
         policy = get_policy_agent()
         policy.reset()
-        return read_deck_csv()
+        _DECK = read_deck_csv()
+        return _DECK
 
-    return get_policy_agent().choose_action(obs_dict)
+    policy = get_policy_agent()
+    return policy.choose_action(obs_dict, our_deck=_DECK)

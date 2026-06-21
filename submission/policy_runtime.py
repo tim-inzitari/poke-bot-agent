@@ -95,6 +95,18 @@ class TrainedPolicyAgent:
             ).reshape(-1)
         return ((features - self._feature_mean) / self._feature_std).astype(np.float32)
 
+    def _choose_from_policy_logits(self, logits: np.ndarray, actions: list[list[int]]) -> list[int]:
+        best_action = actions[0]
+        best_score = float("-inf")
+        for action in actions:
+            action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
+            action_class = stable_hash_index(action_key, self._policy_dim)
+            score = float(logits[action_class])
+            if score > best_score:
+                best_score = score
+                best_action = action
+        return best_action
+
     def _model_logits(self) -> np.ndarray:
         assert self._model is not None
         assert self._feature_mean is not None
@@ -110,7 +122,7 @@ class TrainedPolicyAgent:
             logits = self._model(x, mask)["policy_logits"].squeeze(0).cpu().numpy()
         return logits
 
-    def choose_action(self, obs_dict: dict[str, Any]) -> list[int]:
+    def choose_action(self, obs_dict: dict[str, Any], *, our_deck: list[int] | None = None) -> list[int]:
         self._load()
         select = obs_dict.get("select") or {}
         options = select.get("option") or []
@@ -119,20 +131,36 @@ class TrainedPolicyAgent:
         if not options:
             return []
 
+        actions = legal_actions(len(options), min_count, max_count)
+        if not actions:
+            return []
+
         self._history.append(self._encode_observation(obs_dict))
         logits = self._model_logits()
+        root_your_index = int((obs_dict.get("current") or {}).get("yourIndex", 0))
 
-        best_action: list[int] | None = None
-        best_score = float("-inf")
-        for action in legal_actions(len(options), min_count, max_count):
-            action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
-            action_class = stable_hash_index(action_key, self._policy_dim)
-            score = float(logits[action_class])
-            if score > best_score:
-                best_score = score
-                best_action = action
+        use_beam = our_deck is not None and obs_dict.get("search_begin_input")
+        if use_beam:
+            from beam_search import BeamSearchConfig, run_beam_search, should_skip_beam_search
 
-        return best_action if best_action is not None else legal_actions(len(options), min_count, max_count)[0]
+            config = BeamSearchConfig()
+            if not should_skip_beam_search(obs_dict, config):
+                try:
+                    return run_beam_search(
+                        self,
+                        obs_dict,
+                        our_deck,
+                        actions,
+                        root_your_index,
+                        config,
+                    )
+                except Exception:
+                    pass
+
+        return self._choose_from_policy_logits(logits, actions)
+
+    def choose_action_with_beam(self, obs_dict: dict[str, Any], our_deck: list[int]) -> list[int]:
+        return self.choose_action(obs_dict, our_deck=our_deck)
 
 
 _AGENT: TrainedPolicyAgent | None = None

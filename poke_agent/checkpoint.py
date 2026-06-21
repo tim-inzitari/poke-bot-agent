@@ -59,6 +59,8 @@ def save_checkpoint(
         "feature_mean": tensors.feature_mean.astype("float32").tolist(),
         "feature_std": tensors.feature_std.astype("float32").tolist(),
         "loss_weights": dict(loss_cfg),
+        "rewards": dict(config.get("rewards", {})),
+        "beam_search": dict(config.get("beam_search", {})),
         "training_report": training_report,
         "device_used": training_report["device"],
         "data_path": training_report["data_path"],
