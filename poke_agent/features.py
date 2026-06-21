@@ -13,8 +13,31 @@ try:
 except ImportError:
     from poke_agent.game_tracker import DERIVED_INFERENCE_DIM, GameEventTracker
 
-COARSE_BASE_DIM = 10
+COARSE_BASE_DIM = 11
 COARSE_FEATURE_DIM = COARSE_BASE_DIM + DERIVED_INFERENCE_DIM
+BASE_FEATURE_NAMES = (
+    "turn",
+    "your_index",
+    "self_deck_count",
+    "self_hand_count",
+    "self_bench_count",
+    "opp_deck_count",
+    "opp_hand_count",
+    "opp_bench_count",
+    "legal_option_count",
+    "select_max_count",
+    "going_first",
+)
+
+
+def going_first_feature(obs: dict[str, Any]) -> float:
+    """1.0 if this seat goes first, 0.0 if second, 0.5 if undetermined."""
+    current = obs.get("current") or {}
+    first_player = int(current.get("firstPlayer", -1))
+    your_index = int(current.get("yourIndex", 0))
+    if first_player < 0:
+        return 0.5
+    return 1.0 if your_index == first_player else 0.0
 
 
 def stable_hash_index(text: str, size: int) -> int:
@@ -75,11 +98,14 @@ def base_features_from_observation(obs: dict[str, Any]) -> list[float]:
         float(len(p1.get("bench", []))),
         float(len(select.get("option", []))),
         float(select.get("maxCount", 0)),
+        going_first_feature(obs),
     ]
 
 
 def pad_coarse_features(stored: list[float] | np.ndarray) -> list[float]:
     values = [float(v) for v in stored[:COARSE_BASE_DIM]]
+    if len(stored) == COARSE_BASE_DIM - 1:
+        values.append(0.5)
     if len(values) < COARSE_BASE_DIM:
         values.extend([0.0] * (COARSE_BASE_DIM - len(values)))
     if len(stored) >= COARSE_FEATURE_DIM:

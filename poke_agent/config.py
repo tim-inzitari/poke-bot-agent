@@ -69,6 +69,21 @@ BEAM_SEARCH_DEPTH = 1
 BEAM_TIME_BUDGET_MS = 150
 BEAM_MIN_REMAINING_SEC = 120
 
+# --- Self-play (AlphaGo-style loop) ---
+SELF_PLAY_GAMES = 20
+SELF_PLAY_ITERATIONS = 3
+SELF_PLAY_EVAL_GAMES = 10
+SELF_PLAY_OPPONENT_POOL_SIZE = 5
+SELF_PLAY_USE_BEAM = True
+SELF_PLAY_OUTPUT_PATH = "outputs/rollouts/self_play_rollouts.jsonl"
+SELF_PLAY_CHECKPOINT_DIR = "outputs/checkpoints/self_play"
+SELF_PLAY_TRAIN_AFTER_COLLECT = True
+SELF_PLAY_FIELD_DECK_DIR = "decks/competitive/high_performing"
+SELF_PLAY_MATCHUP_MODE = "sample"  # sample | round-robin
+SELF_PLAY_TARGET_RANK = 1000  # eval/bar: win vs opponent decks with placement <= this
+SELF_PLAY_TARGET_WIN_RATE = 0.55
+SELF_PLAY_PLATEAU_PATIENCE = 3
+
 # --- Training loop ---
 TRAIN_EPOCHS = 1000
 EARLY_STOP_PATIENCE = 25
@@ -114,6 +129,19 @@ OVERRIDE_KEYS = frozenset({
     "beam_search_depth",
     "beam_time_budget_ms",
     "beam_min_remaining_sec",
+    "self_play_games",
+    "self_play_iterations",
+    "self_play_eval_games",
+    "self_play_opponent_pool_size",
+    "self_play_use_beam",
+    "self_play_output_path",
+    "self_play_checkpoint_dir",
+    "self_play_train_after_collect",
+    "self_play_field_deck_dir",
+    "self_play_matchup_mode",
+    "self_play_target_rank",
+    "self_play_target_win_rate",
+    "self_play_plateau_patience",
 })
 
 
@@ -156,6 +184,19 @@ def default_user_config() -> dict[str, Any]:
         "beam_search_depth": BEAM_SEARCH_DEPTH,
         "beam_time_budget_ms": BEAM_TIME_BUDGET_MS,
         "beam_min_remaining_sec": BEAM_MIN_REMAINING_SEC,
+        "self_play_games": SELF_PLAY_GAMES,
+        "self_play_iterations": SELF_PLAY_ITERATIONS,
+        "self_play_eval_games": SELF_PLAY_EVAL_GAMES,
+        "self_play_opponent_pool_size": SELF_PLAY_OPPONENT_POOL_SIZE,
+        "self_play_use_beam": SELF_PLAY_USE_BEAM,
+        "self_play_output_path": SELF_PLAY_OUTPUT_PATH,
+        "self_play_checkpoint_dir": SELF_PLAY_CHECKPOINT_DIR,
+        "self_play_train_after_collect": SELF_PLAY_TRAIN_AFTER_COLLECT,
+        "self_play_field_deck_dir": SELF_PLAY_FIELD_DECK_DIR,
+        "self_play_matchup_mode": SELF_PLAY_MATCHUP_MODE,
+        "self_play_target_rank": SELF_PLAY_TARGET_RANK,
+        "self_play_target_win_rate": SELF_PLAY_TARGET_WIN_RATE,
+        "self_play_plateau_patience": SELF_PLAY_PLATEAU_PATIENCE,
     }
 
 
@@ -195,6 +236,19 @@ _ENV_MAP = {
     "beam_search_depth": "BEAM_SEARCH_DEPTH",
     "beam_time_budget_ms": "BEAM_TIME_BUDGET_MS",
     "beam_min_remaining_sec": "BEAM_MIN_REMAINING_SEC",
+    "self_play_games": "SELF_PLAY_GAMES",
+    "self_play_iterations": "SELF_PLAY_ITERATIONS",
+    "self_play_eval_games": "SELF_PLAY_EVAL_GAMES",
+    "self_play_opponent_pool_size": "SELF_PLAY_OPPONENT_POOL_SIZE",
+    "self_play_use_beam": "SELF_PLAY_USE_BEAM",
+    "self_play_output_path": "SELF_PLAY_OUTPUT_PATH",
+    "self_play_checkpoint_dir": "SELF_PLAY_CHECKPOINT_DIR",
+    "self_play_train_after_collect": "SELF_PLAY_TRAIN_AFTER_COLLECT",
+    "self_play_field_deck_dir": "SELF_PLAY_FIELD_DECK_DIR",
+    "self_play_matchup_mode": "SELF_PLAY_MATCHUP_MODE",
+    "self_play_target_rank": "SELF_PLAY_TARGET_RANK",
+    "self_play_target_win_rate": "SELF_PLAY_TARGET_WIN_RATE",
+    "self_play_plateau_patience": "SELF_PLAY_PLATEAU_PATIENCE",
 }
 
 
@@ -210,6 +264,13 @@ def _coerce_value(key: str, value: Any) -> Any:
             return None
         parsed = int(value)
         return None if parsed <= 0 else parsed
+    if key in {
+        "self_play_use_beam",
+        "self_play_train_after_collect",
+    }:
+        if isinstance(value, str):
+            return value not in {"0", "false", "False", "no", "No"}
+        return bool(value)
     if key in {
         "transition_classes",
         "state_hash_dim",
@@ -227,6 +288,12 @@ def _coerce_value(key: str, value: Any) -> Any:
         "beam_search_depth",
         "beam_time_budget_ms",
         "beam_min_remaining_sec",
+        "self_play_games",
+        "self_play_iterations",
+        "self_play_eval_games",
+        "self_play_opponent_pool_size",
+        "self_play_target_rank",
+        "self_play_plateau_patience",
     }:
         return int(value)
     if key in {
@@ -241,6 +308,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "early_stop_min_delta",
         "value_win",
         "value_not_win",
+        "self_play_target_win_rate",
     }:
         return float(value)
     if key == "fallback_rollout_data":
@@ -328,6 +396,21 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "depth": settings["beam_search_depth"],
             "time_budget_ms": settings["beam_time_budget_ms"],
             "min_remaining_sec": settings["beam_min_remaining_sec"],
+        },
+        "self_play": {
+            "games_per_iteration": settings["self_play_games"],
+            "iterations": settings["self_play_iterations"],
+            "eval_games": settings["self_play_eval_games"],
+            "opponent_pool_size": settings["self_play_opponent_pool_size"],
+            "use_beam": settings["self_play_use_beam"],
+            "output_path": settings["self_play_output_path"],
+            "checkpoint_dir": settings["self_play_checkpoint_dir"],
+            "train_after_collect": settings["self_play_train_after_collect"],
+            "field_deck_dir": settings["self_play_field_deck_dir"],
+            "matchup_mode": settings["self_play_matchup_mode"],
+            "target_rank": settings["self_play_target_rank"],
+            "target_win_rate": settings["self_play_target_win_rate"],
+            "plateau_patience": settings["self_play_plateau_patience"],
         },
     }
 

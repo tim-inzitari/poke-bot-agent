@@ -25,22 +25,25 @@ def json_snapshot(value: Any) -> Any:
     return json.loads(json.dumps(value, separators=(",", ":")))
 
 
-def play_episode(
+def play_match(
     episode: int,
-    deck: list[int],
+    deck0: list[int],
+    deck1: list[int],
     simulator: SimulatorState,
-    agent: Callable[[dict], list[int]],
+    agent0: Callable[[dict], list[int]],
+    agent1: Callable[[dict], list[int]],
     *,
     deck0_name: str = "deck0",
     deck1_name: str = "deck1",
     max_steps: int = 300,
 ) -> list[dict]:
+    """Play one CABT game between two seat-specific agents."""
     if not simulator.available or simulator.battle_start is None or simulator.battle_select is None or simulator.battle_finish is None:
         raise RuntimeError("CABT simulator is not available")
 
     rows: list[dict] = []
     tracker = GameEventTracker()
-    obs, start_data = simulator.battle_start(deck, deck)
+    obs, start_data = simulator.battle_start(deck0, deck1)
     if start_data.errorPlayer >= 0:
         raise ValueError(f"deck error type={start_data.errorType} player={start_data.errorPlayer}")
     try:
@@ -48,7 +51,8 @@ def play_episode(
         while obs["current"]["result"] < 0 and step < max_steps:
             select = obs.get("select") or {}
             options = select.get("option") or []
-            action = agent(obs)
+            player_index = int(obs["current"]["yourIndex"])
+            action = agent0(obs) if player_index == 0 else agent1(obs)
             next_obs = simulator.battle_select(action)
             terminal = int((next_obs.get("current") or {}).get("result", -1)) >= 0
             next_tracker = copy.deepcopy(tracker)
@@ -65,7 +69,7 @@ def play_episode(
                 "select_max_count": int(select.get("maxCount", 0)),
                 "terminal": terminal,
                 "reward": 0.0,
-                "player": int(obs["current"]["yourIndex"]),
+                "player": player_index,
                 "deck0": deck0_name,
                 "deck1": deck1_name,
             })
@@ -76,6 +80,29 @@ def play_episode(
         return rows
     finally:
         simulator.battle_finish()
+
+
+def play_episode(
+    episode: int,
+    deck: list[int],
+    simulator: SimulatorState,
+    agent: Callable[[dict], list[int]],
+    *,
+    deck0_name: str = "deck0",
+    deck1_name: str = "deck1",
+    max_steps: int = 300,
+) -> list[dict]:
+    return play_match(
+        episode,
+        deck,
+        deck,
+        simulator,
+        agent,
+        agent,
+        deck0_name=deck0_name,
+        deck1_name=deck1_name,
+        max_steps=max_steps,
+    )
 
 
 def generate_rollouts(
