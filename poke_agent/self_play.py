@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -21,6 +22,11 @@ from poke_agent.device import torch_device
 from poke_agent.policy_agent import PolicyRuntime, PolicySession, make_policy_fn
 from poke_agent.rollout import make_random_agent, play_match
 from poke_agent.simulator import SimulatorState
+from poke_agent.kaggle_submit import (
+    DEFAULT_SUBMISSION_MESSAGE,
+    champion_checkpoint_from_manifest,
+    submit_champion_checkpoint,
+)
 from poke_agent.training import build_model, train_model
 
 
@@ -416,6 +422,9 @@ def run_self_play_loop(
     settings: SelfPlaySettings,
     device: torch.device | None = None,
     initial_checkpoint: Path | None = None,
+    submit_on_stop: bool = False,
+    submission_message: str = DEFAULT_SUBMISSION_MESSAGE,
+    root: Path | None = None,
 ) -> list[dict[str, Any]]:
     device = device or torch_device()
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -484,6 +493,27 @@ def run_self_play_loop(
     if stop_reason:
         manifest["stop_reason"] = stop_reason
         save_manifest(manifest_path, manifest)
+
+    if submit_on_stop and reports:
+        submit_root = root or settings.checkpoint_dir.parent.parent.parent
+        champion_ckpt = champion_checkpoint_from_manifest(manifest, current_checkpoint)
+        try:
+            submission = submit_champion_checkpoint(
+                champion_ckpt,
+                root=submit_root,
+                message=submission_message,
+            )
+            manifest["kaggle_submission"] = submission
+            save_manifest(manifest_path, manifest)
+        except subprocess.CalledProcessError as exc:
+            manifest["kaggle_submission_error"] = {
+                "checkpoint": str(champion_ckpt),
+                "returncode": exc.returncode,
+                "stdout": exc.stdout or "",
+                "stderr": exc.stderr or "",
+            }
+            save_manifest(manifest_path, manifest)
+            raise
 
     return reports
 
