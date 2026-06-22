@@ -13,7 +13,12 @@ try:
 except ImportError:
     from poke_agent.game_tracker import DERIVED_INFERENCE_DIM, GameEventTracker
 
-COARSE_BASE_DIM = 11
+try:
+    from rewards import DEFAULT_PRIZE_COUNT, prize_count
+except ImportError:
+    from poke_agent.rewards import DEFAULT_PRIZE_COUNT, prize_count
+
+COARSE_BASE_DIM = 13
 COARSE_FEATURE_DIM = COARSE_BASE_DIM + DERIVED_INFERENCE_DIM
 BASE_FEATURE_NAMES = (
     "turn",
@@ -21,9 +26,11 @@ BASE_FEATURE_NAMES = (
     "self_deck_count",
     "self_hand_count",
     "self_bench_count",
+    "self_prize_count",
     "opp_deck_count",
     "opp_hand_count",
     "opp_bench_count",
+    "opp_prize_count",
     "legal_option_count",
     "select_max_count",
     "going_first",
@@ -117,18 +124,22 @@ def hashed_state_vector(observation: Any, action: Any = None, *, state_hash_dim:
 def base_features_from_observation(obs: dict[str, Any]) -> list[float]:
     current = obs.get("current") or {}
     players = current.get("players") or [{}, {}]
-    p0 = players[0] if len(players) > 0 else {}
-    p1 = players[1] if len(players) > 1 else {}
+    your_index = int(current.get("yourIndex", 0))
+    opp_index = 1 - your_index
+    self_player = players[your_index] if your_index < len(players) else {}
+    opp_player = players[opp_index] if opp_index < len(players) else {}
     select = obs.get("select") or {}
     return [
         float(current.get("turn", 0)),
-        float(current.get("yourIndex", 0)),
-        float(p0.get("deckCount", 0)),
-        float(p0.get("handCount", 0)),
-        float(len(p0.get("bench", []))),
-        float(p1.get("deckCount", 0)),
-        float(p1.get("handCount", 0)),
-        float(len(p1.get("bench", []))),
+        float(your_index),
+        float(self_player.get("deckCount", 0)),
+        float(self_player.get("handCount", 0)),
+        float(len(self_player.get("bench", []))),
+        float(prize_count(obs, your_index)),
+        float(opp_player.get("deckCount", 0)),
+        float(opp_player.get("handCount", 0)),
+        float(len(opp_player.get("bench", []))),
+        float(prize_count(obs, opp_index)),
         float(len(select.get("option", []))),
         float(select.get("maxCount", 0)),
         going_first_feature(obs),
@@ -137,7 +148,17 @@ def base_features_from_observation(obs: dict[str, Any]) -> list[float]:
 
 def pad_coarse_features(stored: list[float] | np.ndarray) -> list[float]:
     values = [float(v) for v in stored[:COARSE_BASE_DIM]]
-    if len(stored) == COARSE_BASE_DIM - 1:
+    # Legacy rows: 11 coarse dims before prize + seat-relative fix (append neutral prize + going_first).
+    if len(stored) == 11:
+        legacy = [float(v) for v in stored]
+        values = (
+            legacy[:5]
+            + [float(DEFAULT_PRIZE_COUNT)]
+            + legacy[5:8]
+            + [float(DEFAULT_PRIZE_COUNT)]
+            + legacy[8:11]
+        )
+    elif len(stored) == COARSE_BASE_DIM - 1:
         values.append(0.5)
     if len(values) < COARSE_BASE_DIM:
         values.extend([0.0] * (COARSE_BASE_DIM - len(values)))

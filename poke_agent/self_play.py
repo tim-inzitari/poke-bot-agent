@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
 import random
 import subprocess
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ from typing import Any, Callable
 import torch
 
 from poke_agent.checkpoint import save_checkpoint
+from poke_agent.data_pipeline import default_self_play_workers, episode_chunks
 from poke_agent.dataset import prepare_training_tensors
 from poke_agent.deck_pool import (
     FieldMatchup,
@@ -21,7 +23,7 @@ from poke_agent.deck_pool import (
 from poke_agent.device import torch_device
 from poke_agent.policy_agent import PolicyRuntime, PolicySession, make_policy_fn
 from poke_agent.rollout import make_random_agent, play_match
-from poke_agent.simulator import SimulatorState
+from poke_agent.simulator import SimulatorState, load_simulator
 from poke_agent.kaggle_submit import (
     DEFAULT_SUBMISSION_MESSAGE,
     champion_checkpoint_from_manifest,
@@ -67,6 +69,30 @@ class SelfPlaySettings:
     target_win_rate: float = 0.55
     plateau_patience: int = 3
     target_eval_pool: list[tuple[str, list[int]]] = field(default_factory=list)
+    workers: int | None = None
+
+
+def resolve_self_play_workers(settings: SelfPlaySettings, *, games: int) -> int:
+    if settings.workers is not None and int(settings.workers) > 0:
+        return max(1, min(int(settings.workers), games))
+    return default_self_play_workers(games=games)
+
+
+def _matchup_settings(settings: SelfPlaySettings) -> SelfPlaySettings:
+    """Pickle-friendly settings subset for worker processes."""
+    return SelfPlaySettings(
+        games_per_iteration=0,
+        eval_games=0,
+        iterations=0,
+        opponent_pool_size=0,
+        use_beam=settings.use_beam,
+        output_path=Path("."),
+        checkpoint_dir=Path("."),
+        matchup_mode=settings.matchup_mode,
+        field_pool=list(settings.field_pool),
+        use_field=settings.use_field,
+        target_eval_pool=list(settings.target_eval_pool),
+    )
 
 
 def summarize_results(results: list[int], *, seat_index: int) -> dict[str, float]:
@@ -162,25 +188,18 @@ def _seat_agent(
     return make_policy_fn(runtime, session, deck, use_beam=use_beam)
 
 
-def evaluate_agent_vs_field(
+def _evaluate_games_sequential(
     simulator: SimulatorState,
-    agent_fn: Callable[[dict], list[int]],
     *,
+    agent_fn: Callable[[dict], list[int]],
+    opponent_fn: Callable[[dict], list[int]],
     agent_name: str,
     agent_deck: list[int],
-    opponent_fn: Callable[[dict], list[int]],
     games: int,
     settings: SelfPlaySettings,
-    start_episode: int = 0,
-    use_target_pool: bool = False,
+    start_episode: int,
+    use_target_pool: bool,
 ) -> dict[str, Any]:
-    if games <= 0:
-        return {
-            "agent_a": {"games": 0.0, "wins": 0.0, "losses": 0.0, "draws": 0.0, "win_rate": 0.0},
-            "results": [],
-            "matchups": [],
-        }
-
     results: list[int] = []
     matchup_names: list[str] = []
     agent_a_wins = 0
@@ -211,6 +230,8 @@ def evaluate_agent_vs_field(
             deck0_name=matchup.deck0_name,
             deck1_name=matchup.deck1_name,
         )
+        if not rows:
+            continue
         result = int(next(row for row in reversed(rows) if row.get("terminal")).get("result", -1))
         results.append(result)
         if result == 2:
@@ -234,13 +255,134 @@ def evaluate_agent_vs_field(
     }
 
 
-def collect_self_play_games(
+def _eval_agent_vs_field_range(task: tuple[Any, ...]) -> tuple[int, dict[str, Any]]:
+    (
+        root_str,
+        start_episode,
+        game_count,
+        agent_name,
+        agent_deck,
+        agent_checkpoint,
+        use_target_pool,
+        settings,
+    ) = task
+    simulator = load_simulator(Path(root_str))
+    if not simulator.available or simulator.to_observation_class is None:
+        raise RuntimeError("CABT simulator is not available in eval worker")
+
+    matchup_settings = _matchup_settings(settings)
+    agent_runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device("cpu"))
+    agent_session = agent_runtime.new_session()
+    agent_fn = make_policy_fn(
+        agent_runtime,
+        agent_session,
+        agent_deck,
+        use_beam=matchup_settings.use_beam,
+    )
+    opponent_fn = make_random_agent(simulator.to_observation_class)
+    report = _evaluate_games_sequential(
+        simulator,
+        agent_fn=agent_fn,
+        opponent_fn=opponent_fn,
+        agent_name=agent_name,
+        agent_deck=agent_deck,
+        games=game_count,
+        settings=matchup_settings,
+        start_episode=start_episode,
+        use_target_pool=use_target_pool,
+    )
+    return start_episode, report
+
+
+def _merge_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
+    results: list[int] = []
+    matchups: list[str] = []
+    agent_a_wins = 0
+    agent_a_losses = 0
+    draws = 0
+    for report in reports:
+        results.extend(report["results"])
+        matchups.extend(report["matchups"])
+        agent_a_wins += int(report["agent_a"]["wins"])
+        agent_a_losses += int(report["agent_a"]["losses"])
+        draws += int(report["agent_a"]["draws"])
+    decided = agent_a_wins + agent_a_losses
+    return {
+        "agent_a": {
+            "games": float(len(results)),
+            "wins": float(agent_a_wins),
+            "losses": float(agent_a_losses),
+            "draws": float(draws),
+            "win_rate": (agent_a_wins / decided) if decided else 0.0,
+        },
+        "results": results,
+        "matchups": matchups,
+    }
+
+
+def evaluate_agent_vs_field(
+    simulator: SimulatorState,
+    agent_fn: Callable[[dict], list[int]],
+    *,
+    agent_name: str,
+    agent_deck: list[int],
+    opponent_fn: Callable[[dict], list[int]],
+    games: int,
+    settings: SelfPlaySettings,
+    start_episode: int = 0,
+    use_target_pool: bool = False,
+    root: Path | None = None,
+    agent_checkpoint: Path | None = None,
+) -> dict[str, Any]:
+    if games <= 0:
+        return {
+            "agent_a": {"games": 0.0, "wins": 0.0, "losses": 0.0, "draws": 0.0, "win_rate": 0.0},
+            "results": [],
+            "matchups": [],
+        }
+
+    workers = resolve_self_play_workers(settings, games=games)
+    if workers <= 1 or root is None or agent_checkpoint is None:
+        return _evaluate_games_sequential(
+            simulator,
+            agent_fn=agent_fn,
+            opponent_fn=opponent_fn,
+            agent_name=agent_name,
+            agent_deck=agent_deck,
+            games=games,
+            settings=settings,
+            start_episode=start_episode,
+            use_target_pool=use_target_pool,
+        )
+
+    matchup_settings = _matchup_settings(settings)
+    tasks = [
+        (
+            str(root),
+            start_episode + offset,
+            stop - offset,
+            agent_name,
+            agent_deck,
+            str(agent_checkpoint),
+            use_target_pool,
+            matchup_settings,
+        )
+        for offset, stop in episode_chunks(games, workers)
+    ]
+    with mp.get_context("spawn").Pool(processes=workers) as pool:
+        chunk_reports = pool.map(_eval_agent_vs_field_range, tasks)
+    chunk_reports.sort(key=lambda item: item[0])
+    return _merge_eval_reports([report for _, report in chunk_reports])
+
+
+def _collect_self_play_games_sequential(
     simulator: SimulatorState,
     agent_deck: list[int],
     *,
     agent_name: str,
     games: int,
     start_episode: int,
+    collect_start_episode: int,
     current_runtime: PolicyRuntime,
     opponent_runtime: PolicyRuntime,
     settings: SelfPlaySettings,
@@ -255,7 +397,8 @@ def collect_self_play_games(
         current_session.reset()
         opponent_session.reset()
         matchup = resolve_matchup(episode, agent_name, agent_deck, settings)
-        current_plays_seat0 = offset % 2 == 0
+        game_index = episode - collect_start_episode
+        current_plays_seat0 = game_index % 2 == 0
 
         if current_plays_seat0:
             agent0 = _seat_agent(current_runtime, current_session, matchup, 0, use_beam=use_beam)
@@ -276,6 +419,95 @@ def collect_self_play_games(
         )
         annotate_matchup_metadata(match_rows, matchup)
         rows.extend(match_rows)
+    return rows
+
+
+def _collect_self_play_range(task: tuple[Any, ...]) -> tuple[int, list[dict[str, Any]]]:
+    (
+        root_str,
+        agent_name,
+        agent_deck,
+        start_episode,
+        game_count,
+        collect_start_episode,
+        current_checkpoint,
+        opponent_checkpoint,
+        settings,
+    ) = task
+    simulator = load_simulator(Path(root_str))
+    if not simulator.available:
+        raise RuntimeError("CABT simulator is not available in self-play worker")
+
+    matchup_settings = _matchup_settings(settings)
+    device = torch.device("cpu")
+    current_runtime = PolicyRuntime(Path(current_checkpoint), device=device)
+    opponent_runtime = PolicyRuntime(Path(opponent_checkpoint), device=device)
+    rows = _collect_self_play_games_sequential(
+        simulator,
+        agent_deck,
+        agent_name=agent_name,
+        games=game_count,
+        start_episode=start_episode,
+        collect_start_episode=collect_start_episode,
+        current_runtime=current_runtime,
+        opponent_runtime=opponent_runtime,
+        settings=matchup_settings,
+    )
+    return start_episode, rows
+
+
+def collect_self_play_games(
+    simulator: SimulatorState,
+    agent_deck: list[int],
+    *,
+    agent_name: str,
+    games: int,
+    start_episode: int,
+    current_runtime: PolicyRuntime,
+    opponent_runtime: PolicyRuntime,
+    settings: SelfPlaySettings,
+    root: Path | None = None,
+    current_checkpoint: Path | None = None,
+    opponent_checkpoint: Path | None = None,
+) -> list[dict[str, Any]]:
+    workers = resolve_self_play_workers(settings, games=games)
+    if workers <= 1:
+        return _collect_self_play_games_sequential(
+            simulator,
+            agent_deck,
+            agent_name=agent_name,
+            games=games,
+            start_episode=start_episode,
+            collect_start_episode=start_episode,
+            current_runtime=current_runtime,
+            opponent_runtime=opponent_runtime,
+            settings=settings,
+        )
+
+    if root is None or current_checkpoint is None or opponent_checkpoint is None:
+        raise ValueError("parallel self-play requires root and checkpoint paths")
+
+    matchup_settings = _matchup_settings(settings)
+    tasks = [
+        (
+            str(root),
+            agent_name,
+            agent_deck,
+            start_episode + offset,
+            stop - offset,
+            start_episode,
+            str(current_checkpoint),
+            str(opponent_checkpoint),
+            matchup_settings,
+        )
+        for offset, stop in episode_chunks(games, workers)
+    ]
+    with mp.get_context("spawn").Pool(processes=workers) as pool:
+        chunk_rows = pool.map(_collect_self_play_range, tasks)
+    chunk_rows.sort(key=lambda item: item[0])
+    rows: list[dict[str, Any]] = []
+    for _, chunk in chunk_rows:
+        rows.extend(chunk)
     return rows
 
 
@@ -301,7 +533,7 @@ def train_on_rollouts(
     train_config["training"] = train_cfg
 
     row_count = sum(1 for line in data_path.read_text(encoding="utf-8").splitlines() if line.strip())
-    print(f"self-play retrain: {data_path} ({row_count:,} rows, all collected games)")
+    print(f"self-play retrain on {device}: {data_path} ({row_count:,} rows, all collected games)")
 
     tensors = prepare_training_tensors(train_config, device)
     model = build_model(train_config, tensors, device)
@@ -325,23 +557,27 @@ def run_self_play_iteration(
     current_checkpoint: Path,
     pool: OpponentPool,
     start_episode: int,
+    root: Path,
 ) -> dict[str, Any]:
     if not simulator.available:
         raise RuntimeError("CABT simulator is required for self-play")
 
-    current_runtime = PolicyRuntime(current_checkpoint, device=device)
+    workers = resolve_self_play_workers(settings, games=settings.games_per_iteration)
     opponent_path = pool.sample(exclude=current_checkpoint) or current_checkpoint
-    opponent_runtime = PolicyRuntime(opponent_path, device=device)
+    inference_device = device if workers <= 1 else torch.device("cpu")
+    current_runtime = PolicyRuntime(current_checkpoint, device=inference_device)
+    opponent_runtime = PolicyRuntime(opponent_path, device=inference_device)
 
     field_note = (
         f"field={len(settings.field_pool)} decks ({settings.matchup_mode})"
         if settings.use_field
         else "mirror deck"
     )
+    worker_note = f"workers={workers}" + (" (inference on cpu)" if workers > 1 else "")
     print(
         f"self-play iter {iteration}: collect {settings.games_per_iteration} games "
-        f"(current={current_checkpoint.name}, opponent={opponent_path.name}, "
-        f"beam={settings.use_beam}, {field_note})"
+        f"({worker_note}, train_device={device}, current={current_checkpoint.name}, "
+        f"opponent={opponent_path.name}, beam={settings.use_beam}, {field_note})"
     )
     rows = collect_self_play_games(
         simulator,
@@ -352,6 +588,9 @@ def run_self_play_iteration(
         current_runtime=current_runtime,
         opponent_runtime=opponent_runtime,
         settings=settings,
+        root=root,
+        current_checkpoint=current_checkpoint,
+        opponent_checkpoint=opponent_path,
     )
     unique_matchups = len({(row.get("deck0"), row.get("deck1")) for row in rows if int(row.get("step", -1)) == 0})
     append = settings.output_path.exists() and iteration > 1
@@ -380,6 +619,8 @@ def run_self_play_iteration(
         settings=settings,
         start_episode=start_episode + settings.games_per_iteration,
         use_target_pool=True,
+        root=root,
+        agent_checkpoint=current_checkpoint,
     )
     sample_matchups = eval_vs_random.get("matchups", [])[:5]
     print(
@@ -439,6 +680,7 @@ def run_self_play_loop(
     root: Path | None = None,
 ) -> list[dict[str, Any]]:
     device = device or torch_device()
+    print(f"self-play device: {device}")
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
     settings.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -460,6 +702,7 @@ def run_self_play_loop(
     best_target_rate = float((manifest.get("champion") or {}).get("eval_vs_random", {}).get("win_rate", -1.0))
     plateau_count = int(manifest.get("plateau_count", 0))
     stop_reason: str | None = None
+    play_root = root or settings.checkpoint_dir.parent.parent.parent
 
     for iteration in range(1, settings.iterations + 1):
         report = run_self_play_iteration(
@@ -473,6 +716,7 @@ def run_self_play_loop(
             current_checkpoint=current_checkpoint,
             pool=pool,
             start_episode=start_episode,
+            root=play_root,
         )
         reports.append(report)
         start_episode += settings.games_per_iteration
@@ -507,7 +751,7 @@ def run_self_play_loop(
         save_manifest(manifest_path, manifest)
 
     if submit_on_stop and reports:
-        submit_root = root or settings.checkpoint_dir.parent.parent.parent
+        submit_root = play_root
         champion_ckpt = champion_checkpoint_from_manifest(manifest, current_checkpoint)
         try:
             submission = submit_champion_checkpoint(
@@ -583,4 +827,5 @@ def self_play_settings_from_config(
         target_win_rate=float(sp.get("target_win_rate", 0.55)),
         plateau_patience=int(sp.get("plateau_patience", 3)),
         target_eval_pool=target_eval_pool,
+        workers=sp.get("workers"),
     )

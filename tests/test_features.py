@@ -16,8 +16,9 @@ def test_going_first_feature():
 
 
 def test_going_first_is_base_feature():
-    assert COARSE_BASE_DIM == 11
+    assert COARSE_BASE_DIM == 13
     assert "going_first" in __import__("poke_agent.features", fromlist=["BASE_FEATURE_NAMES"]).BASE_FEATURE_NAMES
+    assert "self_prize_count" in __import__("poke_agent.features", fromlist=["BASE_FEATURE_NAMES"]).BASE_FEATURE_NAMES
 
 
 def test_parse_deck_placement():

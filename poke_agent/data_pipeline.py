@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import subprocess
 import sys
@@ -11,6 +12,16 @@ def default_cabt_generation_workers(*, episodes: int) -> int:
     cpu_count = os.cpu_count() or 1
     reserve = 2 if cpu_count > 4 else 0
     return max(1, min(cpu_count - reserve, int(episodes)))
+
+
+def default_self_play_workers(*, games: int) -> int:
+    """Parallel CABT game workers for self-play collection/eval."""
+    return default_cabt_generation_workers(episodes=games)
+
+
+def episode_chunks(episodes: int, workers: int) -> list[tuple[int, int]]:
+    chunk_size = max(1, math.ceil(episodes / workers))
+    return [(start, min(episodes, start + chunk_size)) for start in range(0, episodes, chunk_size)]
 
 
 def generate_multideck_rollouts(

@@ -1,4 +1,10 @@
 import os
+import sys
+
+# Kaggle loads main.py via exec(); __file__ is not defined there.
+for _candidate in ("/kaggle_simulations/agent", os.getcwd(), "."):
+    if os.path.isdir(_candidate) and _candidate not in sys.path:
+        sys.path.insert(0, _candidate)
 
 from cg.api import Observation, to_observation_class
 

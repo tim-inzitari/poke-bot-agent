@@ -94,6 +94,12 @@ def play_match(
             value_win=float(reward_cfg.get("value_win", 1.0)),
             value_not_win=float(reward_cfg.get("value_not_win", -1.0)),
             value_timeout=float(reward_cfg.get("value_timeout", -2.0)),
+            value_per_own_prize_taken=float(
+                reward_cfg.get("value_per_own_prize_taken", 1.0 / 6)
+            ),
+            value_per_opp_prize_taken=float(
+                reward_cfg.get("value_per_opp_prize_taken", -1.0 / 6)
+            ),
         )
         for row in rows:
             row["complete"] = True

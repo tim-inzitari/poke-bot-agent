@@ -125,6 +125,28 @@ def observation_to_dict(observation: Any) -> dict[str, Any]:
     return _normalize_json(asdict(observation))
 
 
+def _winner_from_prizes(leaf_obs_dict: dict[str, Any]) -> int | None:
+    players = (leaf_obs_dict.get("current") or {}).get("players") or [{}, {}]
+
+    def prize_count(player_index: int) -> int:
+        if player_index >= len(players):
+            return 6
+        player = players[player_index] or {}
+        prize = player.get("prize")
+        if isinstance(prize, list):
+            return len(prize)
+        raw = player.get("prizeCount")
+        return int(raw) if raw is not None else 6
+
+    p0 = prize_count(0)
+    p1 = prize_count(1)
+    if p0 == 0 and p1 > 0:
+        return 0
+    if p1 == 0 and p0 > 0:
+        return 1
+    return None
+
+
 def evaluate_search_leaf(
     agent: TrainedPolicyAgent,
     leaf_obs_dict: dict[str, Any],
@@ -158,7 +180,9 @@ def evaluate_search_leaf(
     if int(current.get("yourIndex", root_your_index)) != root_your_index:
         value = -value
     if int(current.get("result", -1)) >= 0:
-        if int(current.get("result")) == root_your_index:
+        prize_winner = _winner_from_prizes(leaf_obs_dict)
+        winner = prize_winner if prize_winner is not None else int(current.get("result"))
+        if winner == root_your_index:
             value = max(value, 1.0)
         else:
             value = min(value, -1.0)

@@ -23,4 +23,5 @@ def test_convert_sample_replay():
     assert rows[0]["action"]
     assert rows[0].get("complete") is True
     assert "deck0" in rows[0]
-    assert all(row.get("value") in (-1.0, 1.0, -2.0) for row in rows)
+    assert -1.0 <= float(rows[-1].get("value", 0.0)) <= 1.0
+    assert all(-1.0 <= float(row.get("value", 0.0)) <= 1.0 for row in rows)

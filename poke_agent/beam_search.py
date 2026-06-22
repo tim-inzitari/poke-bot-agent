@@ -13,6 +13,7 @@ import torch
 from poke_agent.actions import legal_actions
 from poke_agent.features import encode_observation_step, stable_hash_index
 from poke_agent.game_tracker import GameEventTracker
+from poke_agent.rewards import winner_from_prizes
 
 if TYPE_CHECKING:
     from poke_agent.policy_agent import PolicyRuntime, PolicySession
@@ -161,7 +162,9 @@ def evaluate_search_leaf(
     if int(current.get("yourIndex", root_your_index)) != root_your_index:
         value = -value
     if int(current.get("result", -1)) >= 0:
-        if int(current.get("result")) == root_your_index:
+        prize_winner = winner_from_prizes(leaf_obs_dict)
+        winner = prize_winner if prize_winner is not None else int(current.get("result"))
+        if winner == root_your_index:
             value = max(value, 1.0)
         else:
             value = min(value, -1.0)

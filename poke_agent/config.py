@@ -55,13 +55,13 @@ DATASET_GAMES = 500  # None = train on all games in file, skip inline generation
 # --- Features ---
 TRANSITION_CLASSES = 8
 STATE_HASH_DIM = 256
-WINDOW_SIZE = 256
+WINDOW_SIZE = 512
 TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
-MODEL_D_MODEL = 128
-MODEL_HEADS = 8
-MODEL_LAYERS = 8
+MODEL_D_MODEL = 64
+MODEL_HEADS = 4
+MODEL_LAYERS = 6
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4
@@ -75,6 +75,7 @@ LOSS_ENTROPY_WEIGHT = 0.01
 LOSS_UNCERTAINTY_WEIGHT = 0.02
 
 # --- Rewards (training labels) ---
+# Win = YOUR prize cards reach 0 (take prizes when you KO opponent Pokémon).
 VALUE_WIN = 1.0
 VALUE_NOT_WIN = -1.0  # loss or draw
 VALUE_TIMEOUT = -2.0  # harsh penalty for stalling to the time limit
@@ -101,6 +102,7 @@ SELF_PLAY_MATCHUP_MODE = "sample"  # sample | round-robin
 SELF_PLAY_TARGET_RANK = 1000  # eval/bar: win vs opponent decks with placement <= this
 SELF_PLAY_TARGET_WIN_RATE = 0.55
 SELF_PLAY_PLATEAU_PATIENCE = 5
+SELF_PLAY_WORKERS = None  # None = auto (cpu_count - 2); parallel CABT games per iteration
 
 # --- Training loop ---
 TRAIN_EPOCHS = 1000
@@ -160,6 +162,7 @@ OVERRIDE_KEYS = frozenset({
     "self_play_target_rank",
     "self_play_target_win_rate",
     "self_play_plateau_patience",
+    "self_play_workers",
     "scraped_rollout_data",
     "multideck_rollout_data",
     "merged_rollout_data",
@@ -228,6 +231,7 @@ def default_user_config() -> dict[str, Any]:
         "self_play_target_rank": SELF_PLAY_TARGET_RANK,
         "self_play_target_win_rate": SELF_PLAY_TARGET_WIN_RATE,
         "self_play_plateau_patience": SELF_PLAY_PLATEAU_PATIENCE,
+        "self_play_workers": SELF_PLAY_WORKERS,
         "scraped_rollout_data": SCRAPED_ROLLOUT_DATA,
         "multideck_rollout_data": MULTIDECK_ROLLOUT_DATA,
         "merged_rollout_data": MERGED_ROLLOUT_DATA,
@@ -292,6 +296,7 @@ _ENV_MAP = {
     "self_play_target_rank": "SELF_PLAY_TARGET_RANK",
     "self_play_target_win_rate": "SELF_PLAY_TARGET_WIN_RATE",
     "self_play_plateau_patience": "SELF_PLAY_PLATEAU_PATIENCE",
+    "self_play_workers": "SELF_PLAY_WORKERS",
 }
 
 
@@ -340,6 +345,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_opponent_pool_size",
         "self_play_target_rank",
         "self_play_plateau_patience",
+        "self_play_workers",
         "min_training_matchups",
         "min_training_deck_slugs",
     }:
@@ -485,6 +491,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "target_rank": settings["self_play_target_rank"],
             "target_win_rate": settings["self_play_target_win_rate"],
             "plateau_patience": settings["self_play_plateau_patience"],
+            "workers": settings["self_play_workers"],
         },
     }
 

@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from poke_agent.deck_pool import choose_agent_vs_field_matchup, mirror_matchup, read_deck_file
-from poke_agent.self_play import OpponentPool, summarize_results
+from poke_agent.self_play import OpponentPool, SelfPlaySettings, resolve_self_play_workers, summarize_results
+from poke_agent.data_pipeline import episode_chunks
 
 
 def test_opponent_pool_keeps_recent_checkpoints():
@@ -55,3 +56,23 @@ def test_read_deck_file(tmp_path: Path):
     deck_path = tmp_path / "test.csv"
     deck_path.write_text("\n".join(str(i) for i in range(60)), encoding="utf-8")
     assert read_deck_file(deck_path) == list(range(60))
+
+
+def test_resolve_self_play_workers_auto_caps_to_games():
+    settings = SelfPlaySettings(
+        games_per_iteration=3,
+        eval_games=0,
+        iterations=1,
+        opponent_pool_size=1,
+        use_beam=False,
+        output_path=Path("out.jsonl"),
+        checkpoint_dir=Path("ckpt"),
+    )
+    assert resolve_self_play_workers(settings, games=3) <= 3
+
+
+def test_episode_chunks_cover_all_games():
+    chunks = episode_chunks(20, 6)
+    assert chunks[0][0] == 0
+    assert chunks[-1][1] == 20
+    assert sum(stop - start for start, stop in chunks) == 20

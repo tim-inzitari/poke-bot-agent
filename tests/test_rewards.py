@@ -1,4 +1,5 @@
 from poke_agent.rewards import (
+    DEFAULT_PRIZE_COUNT,
     VALUE_NOT_WIN,
     VALUE_TIMEOUT,
     VALUE_WIN,
@@ -7,7 +8,26 @@ from poke_agent.rewards import (
     is_complete_episode,
     is_timeout_observation,
     player_outcome_value,
+    prize_count,
+    prize_progress_value,
+    resolve_game_result,
+    seat_prize_counts,
+    step_prize_reward,
+    winner_from_prizes,
 )
+
+
+def _obs(*, p0_prize: int = 6, p1_prize: int = 6, result: int = -1, your_index: int = 0) -> dict:
+    return {
+        "current": {
+            "yourIndex": your_index,
+            "result": result,
+            "players": [
+                {"prize": [None] * p0_prize, "deckCount": 40, "handCount": 5, "bench": []},
+                {"prize": [None] * p1_prize, "deckCount": 40, "handCount": 5, "bench": []},
+            ],
+        }
+    }
 
 
 def test_win_value():
@@ -26,6 +46,46 @@ def test_loss_draw_timeout_values():
 def test_timeout_harsh_penalty():
     assert player_outcome_value(2, 0, terminal_obs={"remainingOverageTime": 0}) == VALUE_TIMEOUT
     assert VALUE_TIMEOUT < VALUE_NOT_WIN
+
+
+def test_winner_from_prizes_uses_own_prize_zero():
+    terminal = _obs(p0_prize=0, p1_prize=6, result=1)
+    assert winner_from_prizes(terminal) == 0
+    terminal = _obs(p0_prize=6, p1_prize=0, result=0)
+    assert winner_from_prizes(terminal) == 1
+
+
+def test_resolve_game_result_prefers_prizes_over_wrong_result_index():
+    terminal = _obs(p0_prize=0, p1_prize=6, result=1)
+    assert resolve_game_result(1, terminal) == 0
+
+
+def test_step_prize_reward_own_prize_taken_on_enemy_ko():
+    before = _obs(p0_prize=6, p1_prize=6, your_index=0)
+    after = _obs(p0_prize=5, p1_prize=6, your_index=0)
+    reward = step_prize_reward(before, after, player=0)
+    assert reward > 0
+    assert abs(reward - VALUE_WIN / DEFAULT_PRIZE_COUNT) < 1e-6
+
+
+def test_step_prize_reward_opp_prize_taken_when_we_get_koed():
+    before = _obs(p0_prize=6, p1_prize=6, your_index=0)
+    after = _obs(p0_prize=6, p1_prize=5, your_index=0)
+    reward = step_prize_reward(before, after, player=0)
+    assert reward < 0
+
+
+def test_prize_progress_value_favors_own_prizes_to_zero():
+    start = prize_progress_value(_obs(p0_prize=6, p1_prize=6), player=0)
+    winning = prize_progress_value(_obs(p0_prize=0, p1_prize=6), player=0)
+    losing = prize_progress_value(_obs(p0_prize=6, p1_prize=0), player=0)
+    assert winning > start > losing
+
+
+def test_seat_prize_counts_from_acting_seat():
+    obs = _obs(p0_prize=4, p1_prize=6, your_index=1)
+    assert seat_prize_counts(obs, seat=1) == (6, 4)
+    assert prize_count(obs, 1) == 6
 
 
 def test_filter_complete_episode_rows():
@@ -48,14 +108,23 @@ def test_is_complete_episode():
     assert not is_timeout_observation({"remainingOverageTime": 30, "current": {"result": -1}})
 
 
-def test_is_timeout_observation():
+def test_assign_episode_values_prize_step_rewards():
     rows = [
-        {"player": 0, "terminal": False},
-        {"player": 1, "terminal": False},
-        {"player": 0, "terminal": True},
+        {
+            "player": 0,
+            "terminal": False,
+            "observation": _obs(p0_prize=6, p1_prize=6),
+            "next_observation": _obs(p0_prize=5, p1_prize=6),
+        },
+        {
+            "player": 0,
+            "terminal": True,
+            "observation": _obs(p0_prize=1, p1_prize=6),
+            "next_observation": _obs(p0_prize=0, p1_prize=6, result=0),
+        },
     ]
-    assign_episode_values(rows, 0)
-    assert rows[0]["value"] == VALUE_WIN
-    assert rows[1]["value"] == VALUE_NOT_WIN
-    assert rows[2]["value"] == VALUE_WIN
-    assert rows[2]["reward"] == VALUE_WIN
+    assign_episode_values(rows, 0, terminal_obs=rows[-1]["next_observation"])
+    assert rows[0]["reward"] > 0
+    assert rows[0]["value"] > rows[1]["value"] or rows[1]["value"] == VALUE_WIN
+    assert rows[1]["value"] == VALUE_WIN
+    assert rows[1]["self_prize_remaining"] == 1

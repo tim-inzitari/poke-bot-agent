@@ -43,6 +43,12 @@ def main() -> None:
         default=None,
         help="how to pick opponent decks from the field",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="parallel CABT workers for collect/eval (0 or omit = auto from CPU count)",
+    )
     args = parser.parse_args()
 
     root = resolve_root()
@@ -59,6 +65,8 @@ def main() -> None:
         overrides["self_play_use_beam"] = False
     if args.matchup_mode is not None:
         overrides["self_play_matchup_mode"] = args.matchup_mode
+    if args.workers is not None:
+        overrides["self_play_workers"] = args.workers
 
     config = build_config(root, overrides=overrides or None)
 

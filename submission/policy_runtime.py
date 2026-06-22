@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import itertools
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,47 @@ import torch
 from features import COARSE_FEATURE_DIM, base_features_from_observation, combine_features, encode_observation_step, stable_hash_index
 from game_tracker import GameEventTracker
 from model import TransformerRLModel
+
+_BEAM_SEARCH_MODULE: Any | None = None
+
+
+def _agent_dir() -> Path:
+    kaggle = Path("/kaggle_simulations/agent")
+    if (kaggle / "beam_search.py").is_file():
+        return kaggle
+    here = globals().get("__file__")
+    if here:
+        return Path(here).resolve().parent
+    for candidate in (Path.cwd(), Path(".")):
+        resolved = candidate.resolve()
+        if (resolved / "beam_search.py").is_file():
+            return resolved
+    return Path.cwd()
+
+
+def _load_beam_search() -> Any:
+    """Load beam_search.py from the submission bundle (Kaggle cwd may omit agent dir)."""
+    global _BEAM_SEARCH_MODULE
+    if _BEAM_SEARCH_MODULE is not None:
+        return _BEAM_SEARCH_MODULE
+
+    agent_dir = _agent_dir()
+    if str(agent_dir) not in sys.path:
+        sys.path.insert(0, str(agent_dir))
+
+    beam_path = agent_dir / "beam_search.py"
+    if not beam_path.is_file():
+        raise ModuleNotFoundError(f"beam_search.py missing next to policy_runtime: {beam_path}")
+
+    spec = importlib.util.spec_from_file_location("beam_search", beam_path)
+    if spec is None or spec.loader is None:
+        raise ModuleNotFoundError(f"failed to load beam_search from {beam_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["beam_search"] = module
+    spec.loader.exec_module(module)
+    _BEAM_SEARCH_MODULE = module
+    return module
 
 
 def legal_actions(option_count: int, min_count: int, max_count: int) -> list[list[int]]:
@@ -148,12 +191,11 @@ class TrainedPolicyAgent:
 
         use_beam = our_deck is not None and obs_dict.get("search_begin_input")
         if use_beam:
-            from beam_search import BeamSearchConfig, run_beam_search, should_skip_beam_search
-
-            config = BeamSearchConfig()
-            if not should_skip_beam_search(obs_dict, config):
+            beam = _load_beam_search()
+            config = beam.BeamSearchConfig()
+            if not beam.should_skip_beam_search(obs_dict, config):
                 try:
-                    return run_beam_search(
+                    return beam.run_beam_search(
                         self,
                         obs_dict,
                         our_deck,
