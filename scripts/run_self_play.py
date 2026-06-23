@@ -16,6 +16,8 @@ from poke_agent.deck import read_deck
 from poke_agent.device import torch_device
 from poke_agent.paths import resolve_root
 from poke_agent.self_play import (
+    run_baseline_phase_loop,
+    run_curriculum_self_play,
     run_self_play_loop,
     self_play_settings_from_config,
 )
@@ -48,6 +50,16 @@ def main() -> None:
         type=int,
         default=None,
         help="parallel CABT workers for collect/eval (0 or omit = auto from CPU count)",
+    )
+    parser.add_argument(
+        "--curriculum",
+        action="store_true",
+        help="baseline phase vs official Kaggle agents, then transformer self-play at 60%% gate",
+    )
+    parser.add_argument(
+        "--baseline-only",
+        action="store_true",
+        help="train/eval vs official baseline agents only (no transformer self-play)",
     )
     args = parser.parse_args()
 
@@ -108,24 +120,56 @@ def main() -> None:
         print("field pool unavailable; using mirror matchups")
 
     initial_checkpoint = args.checkpoint or config["output_path"]
-    reports = run_self_play_loop(
-        config=config,
-        simulator=simulator,
-        agent_deck=deck,
-        agent_name=deck_name,
-        settings=settings,
-        device=device,
-        initial_checkpoint=initial_checkpoint,
-    )
+    if args.baseline_only:
+        from poke_agent.baseline_agents import load_baseline_agents
+
+        settings.baseline_agents = load_baseline_agents(
+            root,
+            baseline_dir=settings.baseline_dir or "baselines/official",
+            cg_lib_path=simulator.lib_path,
+        )
+        print("baseline-only: official heuristic agents vs our transformer")
+        reports = run_baseline_phase_loop(
+            config=config,
+            simulator=simulator,
+            agent_deck=deck,
+            agent_name=deck_name,
+            settings=settings,
+            device=device,
+            initial_checkpoint=initial_checkpoint,
+            root=root,
+        )
+    else:
+        run_fn = run_curriculum_self_play if args.curriculum else run_self_play_loop
+        if args.curriculum:
+            print("curriculum: official baseline agents → transformer self-play at gate")
+        reports = run_fn(
+            config=config,
+            simulator=simulator,
+            agent_deck=deck,
+            agent_name=deck_name,
+            settings=settings,
+            device=device,
+            initial_checkpoint=initial_checkpoint,
+        )
 
     print("\nSelf-play summary")
     print("-" * 17)
     for report in reports:
-        print(
-            f"iter {report['iteration']}: rows={report['rows_collected']} "
-            f"win_rate={report['eval_vs_random']['win_rate']:.1%} "
-            f"checkpoint={Path(report['saved_checkpoint']).name}"
-        )
+        phase = report.get("phase", "transformer")
+        if phase == "baseline":
+            agg = report.get("eval_vs_baselines_aggregate", {})
+            print(
+                f"baseline iter {report['iteration']}: rows={report['rows_collected']} "
+                f"baseline_wr={agg.get('win_rate', 0):.1%} "
+                f"checkpoint={Path(report['saved_checkpoint']).name}"
+            )
+        else:
+            print(
+                f"iter {report['iteration']}: rows={report['rows_collected']} "
+                f"win_rate={report['eval_vs_random']['win_rate']:.1%} "
+                f"checkpoint={Path(report['saved_checkpoint']).name}"
+            )
 
 
 if __name__ == "__main__":

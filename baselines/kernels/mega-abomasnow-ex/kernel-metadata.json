@@ -1,0 +1,24 @@
+{
+  "id": "kiyotah/a-sample-rule-based-agent-mega-abomasnow-ex-deck",
+  "id_no": 112069154,
+  "title": "A Sample Rule-Based Agent Mega Abomasnow ex Deck",
+  "code_file": "a-sample-rule-based-agent-mega-abomasnow-ex-deck.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": false,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [],
+  "dataset_sources": [
+    "kiyotah/cg-lib",
+    "kiyotah/mega-abomasnow-ex-deck"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [
+    "pokemon-tcg-ai-battle"
+  ],
+  "model_sources": [],
+  "docker_image": "gcr.io/kaggle-images/python@sha256:221c8b519c4f2efa4e712ac0f2e85878a403ea4d523a2cedf8ebf60cf1136c45",
+  "machine_shape": "None"
+}

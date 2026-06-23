@@ -141,13 +141,15 @@ class PolicyRuntime:
             return []
 
         session.history.append(self._encode_observation(obs_dict, session, our_deck=our_deck))
+        if self._window_size > 0 and len(session.history) > self._window_size:
+            session.history = session.history[-self._window_size :]
         logits = self._model_logits(session)
         root_your_index = int((obs_dict.get("current") or {}).get("yourIndex", 0))
 
         if use_beam and our_deck is not None and obs_dict.get("search_begin_input"):
             from poke_agent.beam_search import BeamSearchConfig, run_beam_search, should_skip_beam_search
 
-            config = beam_config or BeamSearchConfig(sim_mode=True, time_budget_ms=150)
+            config = beam_config or BeamSearchConfig(sim_mode=True, time_budget_ms=150, width=3)
             if not should_skip_beam_search(obs_dict, config):
                 try:
                     return run_beam_search(
@@ -171,11 +173,15 @@ def make_policy_fn(
     deck: list[int],
     *,
     use_beam: bool,
+    beam_config: Any | None = None,
 ) -> Any:
     def agent(obs_dict: dict[str, Any]) -> list[int]:
-        obs = dict(obs_dict)
-        if use_beam:
-            obs["remainingOverageTime"] = max(float(obs.get("remainingOverageTime") or 0), 9999.0)
-        return runtime.choose_action(obs, session, our_deck=deck if use_beam else None, use_beam=use_beam)
+        return runtime.choose_action(
+            obs_dict,
+            session,
+            our_deck=deck if use_beam else None,
+            use_beam=use_beam,
+            beam_config=beam_config,
+        )
 
     return agent

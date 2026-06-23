@@ -128,3 +128,47 @@ def test_assign_episode_values_prize_step_rewards():
     assert rows[0]["value"] > rows[1]["value"] or rows[1]["value"] == VALUE_WIN
     assert rows[1]["value"] == VALUE_WIN
     assert rows[1]["self_prize_remaining"] == 1
+
+
+def test_screenshot_scenario_winner_has_zero_own_prizes():
+    """Winner took all their prizes; loser still has full prize count (6)."""
+    terminal = _obs(p0_prize=6, p1_prize=0, result=0)
+    assert winner_from_prizes(terminal) == 1
+    assert player_outcome_value(0, 1, terminal_obs=terminal) == VALUE_WIN
+    assert player_outcome_value(0, 0, terminal_obs=terminal) == VALUE_NOT_WIN
+    terminal_flip = _obs(p0_prize=0, p1_prize=6, result=1)
+    assert winner_from_prizes(terminal_flip) == 0
+    assert player_outcome_value(1, 0, terminal_obs=terminal_flip) == VALUE_WIN
+
+
+def test_inverted_wincon_opponent_prizes_zero_does_not_win_other_player():
+    """Wrong rule (opp prizes=0 means you win) would pick the loser — we reject that."""
+    terminal = _obs(p0_prize=6, p1_prize=0)
+    assert winner_from_prizes(terminal) == 1
+    assert winner_from_prizes(terminal) != 0
+    terminal = _obs(p0_prize=0, p1_prize=6)
+    assert winner_from_prizes(terminal) == 0
+    assert winner_from_prizes(terminal) != 1
+
+
+def test_both_at_zero_prizes_is_ambiguous_no_winner():
+    assert winner_from_prizes(_obs(p0_prize=0, p1_prize=0)) is None
+
+
+def test_neither_at_zero_no_prize_winner():
+    assert winner_from_prizes(_obs(p0_prize=3, p1_prize=4)) is None
+
+
+def test_step_reward_only_own_prize_decrease_is_positive():
+    """Taking from opponent's pile (their prizes down, ours unchanged) is a penalty."""
+    before = _obs(p0_prize=6, p1_prize=6)
+    opp_took_only = _obs(p0_prize=6, p1_prize=5)
+    assert step_prize_reward(before, opp_took_only, player=0) < 0
+    own_took = _obs(p0_prize=5, p1_prize=6)
+    assert step_prize_reward(before, own_took, player=0) > 0
+
+
+def test_terminal_value_uses_prize_winner_not_misleading_result_index():
+    terminal = _obs(p0_prize=0, p1_prize=6, result=1)
+    assert player_outcome_value(1, 0, terminal_obs=terminal) == VALUE_WIN
+    assert player_outcome_value(1, 1, terminal_obs=terminal) == VALUE_NOT_WIN

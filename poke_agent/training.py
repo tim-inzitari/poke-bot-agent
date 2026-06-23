@@ -58,6 +58,7 @@ def train_model(
     epochs = train_cfg["epochs"]
     patience = train_cfg["patience"]
     min_delta = train_cfg["min_delta"]
+    monitor_metric = str(train_cfg.get("early_stop_metric", "value_loss"))
     batch_games = train_cfg["batch_games"]
 
     assert_generic_model_inputs(model, tensors, config)
@@ -79,8 +80,19 @@ def train_model(
         f"training batches: games={num_games} batch_games={batch_games} "
         f"batches={num_batches} (~{avg_steps:.0f} steps/game)"
     )
+    print(
+        f"early stop: monitor={monitor_metric} patience={patience} "
+        f"min_delta={min_delta} (stop when meaningful improvement plateaus)"
+    )
 
-    progress = tqdm(range(epochs), desc="training", unit="epoch")
+    print_every = max(1, int(train_cfg.get("print_every", 1)))
+    progress = tqdm(
+        range(epochs),
+        desc="training",
+        unit="epoch",
+        leave=False,
+        dynamic_ncols=True,
+    )
     for epoch in progress:
         game_order = torch.randperm(num_games, device=device)
         metric_sums = {
@@ -93,14 +105,7 @@ def train_model(
         }
         seen = 0
 
-        batch_progress = tqdm(
-            range(0, num_games, batch_games),
-            desc=f"epoch {epoch + 1}/{epochs} batches",
-            unit="batch",
-            total=num_batches,
-            leave=False,
-        )
-        for batch_number, start in enumerate(batch_progress, start=1):
+        for batch_number, start in enumerate(range(0, num_games, batch_games), start=1):
             game_ids = game_order[start:start + batch_games]
             batch_idx = tensors.row_indices_for_games(game_ids)
             xb = tensors.x_padded[tensors.history_index[batch_idx]]
@@ -140,21 +145,27 @@ def train_model(
             metric_sums["dynamics_loss"] += float(dynamics_loss.detach().cpu()) * batch_size_actual
             metric_sums["entropy"] += float(entropy.detach().cpu()) * batch_size_actual
             metric_sums["uncertainty_loss"] += float(uncertainty_loss.detach().cpu()) * batch_size_actual
-            batch_progress.set_postfix({
-                "batch": f"{batch_number}/{num_batches}",
-                "games": int(game_ids.shape[0]),
-                "steps": batch_size_actual,
-                "loss": f"{float(loss.detach().cpu()):.5f}",
-                "v": f"{float(value_loss.detach().cpu()):.4f}",
-                "p": f"{float(policy_loss.detach().cpu()):.4f}",
-                "dyn": f"{float(dynamics_loss.detach().cpu()):.4f}",
-            })
+            if batch_number % print_every == 0 or batch_number == num_batches:
+                progress.set_postfix({
+                    "ep": f"{epoch + 1}/{epochs}",
+                    "batch": f"{batch_number}/{num_batches}",
+                    "loss": f"{float(loss.detach().cpu()):.5f}",
+                    "v": f"{float(value_loss.detach().cpu()):.4f}",
+                    "p": f"{float(policy_loss.detach().cpu()):.4f}",
+                }, refresh=False)
 
         loss_value = metric_sums["total_loss"] / max(1, seen)
         last_metrics = {name: total / max(1, seen) for name, total in metric_sums.items()}
         completed_epochs = epoch + 1
-        if loss_value < best_loss - min_delta:
-            best_loss = loss_value
+        if monitor_metric == "total_loss":
+            epoch_score = loss_value
+        else:
+            if monitor_metric not in last_metrics:
+                raise ValueError(f"unknown early_stop_metric: {monitor_metric}")
+            epoch_score = last_metrics[monitor_metric]
+
+        if epoch_score < best_loss - min_delta:
+            best_loss = epoch_score
             best_epoch = epoch + 1
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             epochs_without_improvement = 0
@@ -167,6 +178,7 @@ def train_model(
             "p": f"{last_metrics['policy_loss']:.4f}",
             "dyn": f"{last_metrics['dynamics_loss']:.4f}",
             "best": f"{best_loss:.5f}@{best_epoch}",
+            "mon": monitor_metric[:3],
             "patience": f"{epochs_without_improvement}/{patience}",
         })
 
@@ -174,10 +186,15 @@ def train_model(
             progress.set_postfix({
                 "loss": f"{loss_value:.5f}",
                 "best": f"{best_loss:.5f}@{best_epoch}",
+                "mon": monitor_metric[:3],
                 "patience": f"{epochs_without_improvement}/{patience}",
                 "stopped": "early",
             })
-            print(f"early stopping at epoch={epoch + 1}; best={best_loss:.5f}@{best_epoch}")
+            print(
+                f"early stopping at epoch={epoch + 1}; "
+                f"best {monitor_metric}={best_loss:.5f}@{best_epoch} "
+                f"(no improvement >= {min_delta} for {patience} epochs)"
+            )
             stopped_early = True
             break
     progress.close()
@@ -189,7 +206,9 @@ def train_model(
         "completed_epochs": completed_epochs,
         "requested_epochs": epochs,
         "stopped_early": stopped_early,
-        "best_total_loss": best_loss,
+        "early_stop_metric": monitor_metric,
+        "best_total_loss": best_loss if monitor_metric == "total_loss" else last_metrics.get("total_loss", 0.0),
+        "best_monitor_loss": best_loss,
         "best_epoch": best_epoch,
         "last_metrics": last_metrics,
         "dataset_rows": int(tensors.x.shape[0]),

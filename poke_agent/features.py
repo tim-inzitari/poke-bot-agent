@@ -16,7 +16,25 @@ except ImportError:
 try:
     from rewards import DEFAULT_PRIZE_COUNT, prize_count
 except ImportError:
-    from poke_agent.rewards import DEFAULT_PRIZE_COUNT, prize_count
+    try:
+        from poke_agent.rewards import DEFAULT_PRIZE_COUNT, prize_count
+    except ImportError:
+        DEFAULT_PRIZE_COUNT = 6
+
+        def prize_count(obs: dict[str, Any] | None, player_index: int) -> int:
+            if obs is None:
+                return DEFAULT_PRIZE_COUNT
+            players = (obs.get("current") or {}).get("players") or [{}, {}]
+            if player_index >= len(players):
+                return DEFAULT_PRIZE_COUNT
+            player = players[player_index] or {}
+            prize = player.get("prize")
+            if isinstance(prize, list):
+                return len(prize)
+            raw = player.get("prizeCount")
+            if raw is not None:
+                return int(raw)
+            return DEFAULT_PRIZE_COUNT
 
 COARSE_BASE_DIM = 13
 COARSE_FEATURE_DIM = COARSE_BASE_DIM + DERIVED_INFERENCE_DIM

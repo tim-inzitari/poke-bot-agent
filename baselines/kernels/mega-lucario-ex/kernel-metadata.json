@@ -1,0 +1,24 @@
+{
+  "id": "kiyotah/a-sample-rule-based-agent-mega-lucario-ex-deck",
+  "id_no": 114973099,
+  "title": "A Sample Rule-Based Agent Mega Lucario ex Deck",
+  "code_file": "a-sample-rule-based-agent-mega-lucario-ex-deck.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": false,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [],
+  "dataset_sources": [
+    "kiyotah/cg-lib",
+    "kiyotah/mega-lucario-ex-deck"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [
+    "pokemon-tcg-ai-battle"
+  ],
+  "model_sources": [],
+  "docker_image": "gcr.io/kaggle-images/python@sha256:c370a5ff133d162d17c2dca332b50f3e85c0b0ed1471ee18e98e3009eee80b08",
+  "machine_shape": "None"
+}

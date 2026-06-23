@@ -49,7 +49,7 @@ MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"
 REQUIRE_CABT_EVAL_DATA = True
 
 # --- Dataset size (games) ---
-DATASET_GAMES = 500  # None = train on all games in file, skip inline generation
+DATASET_GAMES = 2000  # None = train on all games in file, skip inline generation
                       # 5000 or 100000 = that many CABT games to generate and/or cap training
 
 # --- Features ---
@@ -61,7 +61,7 @@ TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 # --- Model ---
 MODEL_D_MODEL = 64
 MODEL_HEADS = 4
-MODEL_LAYERS = 6
+MODEL_LAYERS = 4
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4
@@ -82,8 +82,12 @@ VALUE_TIMEOUT = -2.0  # harsh penalty for stalling to the time limit
 
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 8
-BEAM_TIME_BUDGET_MS = 1000  # 10s wall-clock budget; search depth is not capped
+BEAM_TIME_BUDGET_MS = 1000
 BEAM_MIN_REMAINING_SEC = 120
+# Self-play: short sim beam (separate from Kaggle inference defaults).
+SELF_PLAY_BEAM_WIDTH = 3
+SELF_PLAY_BEAM_TIME_BUDGET_MS = 150
+SELF_PLAY_BEAM_MAX_SEARCH_STEPS = 64
 
 # --- Self-play (AlphaGo-style loop) ---
 # One "iteration" = play SELF_PLAY_GAMES cabt games, then retrain on ALL self-play JSONL so far.
@@ -103,11 +107,20 @@ SELF_PLAY_TARGET_RANK = 1000  # eval/bar: win vs opponent decks with placement <
 SELF_PLAY_TARGET_WIN_RATE = 0.55
 SELF_PLAY_PLATEAU_PATIENCE = 5
 SELF_PLAY_WORKERS = None  # None = auto (cpu_count - 2); parallel CABT games per iteration
+# Official Kaggle sample agents (main.py + deck.csv each) — see baselines/README.md
+SELF_PLAY_BASELINE_DIR = "baselines/official"
+SELF_PLAY_BASELINE_WIN_RATE = 0.60  # aggregate vs all baselines → start transformer self-play
+SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY = True  # our-side decks = high-performing baseline archetype lists
+SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE = 3  # best N lists per baseline agent (by event placement)
+SELF_PLAY_AGENT_DECK_DIR = "decks/archetype-samples"  # used when BASELINE_ARCHETYPE_DECKS_ONLY=0
+SELF_PLAY_PER_DECK_CHECKPOINT_DIR = None  # None = skip per-deck checkpoint copies (saves disk)
 
 # --- Training loop ---
 TRAIN_EPOCHS = 1000
-EARLY_STOP_PATIENCE = 25
-EARLY_STOP_MIN_DELTA = 1e-5
+# Stop when value_loss (win/loss prediction) plateaus — not on tiny total-loss noise.
+EARLY_STOP_METRIC = "value_loss"  # value_loss | total_loss
+EARLY_STOP_PATIENCE = 20  # epochs without meaningful improvement → stop
+EARLY_STOP_MIN_DELTA = 5e-4  # minimum drop on monitor metric to count as improvement
 TRAIN_PRINT_EVERY = 100
 BATCH_GAMES = 2  # games per training batch (each game is one temporal sequence)
 
@@ -140,6 +153,7 @@ OVERRIDE_KEYS = frozenset({
     "train_epochs",
     "early_stop_patience",
     "early_stop_min_delta",
+    "early_stop_metric",
     "train_print_every",
     "batch_games",
     "tensor_build_workers",
@@ -148,6 +162,9 @@ OVERRIDE_KEYS = frozenset({
     "beam_width",
     "beam_time_budget_ms",
     "beam_min_remaining_sec",
+    "self_play_beam_width",
+    "self_play_beam_time_budget_ms",
+    "self_play_beam_max_search_steps",
     "self_play_games",
     "self_play_iterations",
     "self_play_train_epochs",
@@ -163,6 +180,12 @@ OVERRIDE_KEYS = frozenset({
     "self_play_target_win_rate",
     "self_play_plateau_patience",
     "self_play_workers",
+    "self_play_baseline_dir",
+    "self_play_baseline_win_rate",
+    "self_play_baseline_archetype_decks_only",
+    "self_play_baseline_top_decks_per_archetype",
+    "self_play_agent_deck_dir",
+    "self_play_per_deck_checkpoint_dir",
     "scraped_rollout_data",
     "multideck_rollout_data",
     "merged_rollout_data",
@@ -208,6 +231,7 @@ def default_user_config() -> dict[str, Any]:
         "train_epochs": TRAIN_EPOCHS,
         "early_stop_patience": EARLY_STOP_PATIENCE,
         "early_stop_min_delta": EARLY_STOP_MIN_DELTA,
+        "early_stop_metric": EARLY_STOP_METRIC,
         "train_print_every": TRAIN_PRINT_EVERY,
         "batch_games": BATCH_GAMES,
         "tensor_build_workers": TENSOR_BUILD_WORKERS,
@@ -217,6 +241,9 @@ def default_user_config() -> dict[str, Any]:
         "beam_width": BEAM_WIDTH,
         "beam_time_budget_ms": BEAM_TIME_BUDGET_MS,
         "beam_min_remaining_sec": BEAM_MIN_REMAINING_SEC,
+        "self_play_beam_width": SELF_PLAY_BEAM_WIDTH,
+        "self_play_beam_time_budget_ms": SELF_PLAY_BEAM_TIME_BUDGET_MS,
+        "self_play_beam_max_search_steps": SELF_PLAY_BEAM_MAX_SEARCH_STEPS,
         "self_play_games": SELF_PLAY_GAMES,
         "self_play_iterations": SELF_PLAY_ITERATIONS,
         "self_play_train_epochs": SELF_PLAY_TRAIN_EPOCHS,
@@ -232,6 +259,12 @@ def default_user_config() -> dict[str, Any]:
         "self_play_target_win_rate": SELF_PLAY_TARGET_WIN_RATE,
         "self_play_plateau_patience": SELF_PLAY_PLATEAU_PATIENCE,
         "self_play_workers": SELF_PLAY_WORKERS,
+        "self_play_baseline_dir": SELF_PLAY_BASELINE_DIR,
+        "self_play_baseline_win_rate": SELF_PLAY_BASELINE_WIN_RATE,
+        "self_play_baseline_archetype_decks_only": SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY,
+        "self_play_baseline_top_decks_per_archetype": SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE,
+        "self_play_agent_deck_dir": SELF_PLAY_AGENT_DECK_DIR,
+        "self_play_per_deck_checkpoint_dir": SELF_PLAY_PER_DECK_CHECKPOINT_DIR,
         "scraped_rollout_data": SCRAPED_ROLLOUT_DATA,
         "multideck_rollout_data": MULTIDECK_ROLLOUT_DATA,
         "merged_rollout_data": MERGED_ROLLOUT_DATA,
@@ -273,6 +306,7 @@ _ENV_MAP = {
     "train_epochs": "TRAIN_EPOCHS",
     "early_stop_patience": "EARLY_STOP_PATIENCE",
     "early_stop_min_delta": "EARLY_STOP_MIN_DELTA",
+    "early_stop_metric": "EARLY_STOP_METRIC",
     "train_print_every": "TRAIN_PRINT_EVERY",
     "batch_games": "BATCH_GAMES",
     "tensor_build_workers": "TENSOR_BUILD_WORKERS",
@@ -282,6 +316,9 @@ _ENV_MAP = {
     "beam_width": "BEAM_WIDTH",
     "beam_time_budget_ms": "BEAM_TIME_BUDGET_MS",
     "beam_min_remaining_sec": "BEAM_MIN_REMAINING_SEC",
+    "self_play_beam_width": "SELF_PLAY_BEAM_WIDTH",
+    "self_play_beam_time_budget_ms": "SELF_PLAY_BEAM_TIME_BUDGET_MS",
+    "self_play_beam_max_search_steps": "SELF_PLAY_BEAM_MAX_SEARCH_STEPS",
     "self_play_games": "SELF_PLAY_GAMES",
     "self_play_iterations": "SELF_PLAY_ITERATIONS",
     "self_play_train_epochs": "SELF_PLAY_TRAIN_EPOCHS",
@@ -297,6 +334,12 @@ _ENV_MAP = {
     "self_play_target_win_rate": "SELF_PLAY_TARGET_WIN_RATE",
     "self_play_plateau_patience": "SELF_PLAY_PLATEAU_PATIENCE",
     "self_play_workers": "SELF_PLAY_WORKERS",
+    "self_play_baseline_dir": "SELF_PLAY_BASELINE_DIR",
+    "self_play_baseline_win_rate": "SELF_PLAY_BASELINE_WIN_RATE",
+    "self_play_baseline_archetype_decks_only": "SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY",
+    "self_play_baseline_top_decks_per_archetype": "SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE",
+    "self_play_agent_deck_dir": "SELF_PLAY_AGENT_DECK_DIR",
+    "self_play_per_deck_checkpoint_dir": "SELF_PLAY_PER_DECK_CHECKPOINT_DIR",
 }
 
 
@@ -307,6 +350,8 @@ def _coerce_value(key: str, value: Any) -> Any:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
         return bool(value)
+    if key == "self_play_per_deck_checkpoint_dir" and value in {"", "none", "None", "null"}:
+        return None
     if key == "dataset_games":
         if value is None or value == "":
             return None
@@ -316,6 +361,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "require_cabt_eval_data",
         "self_play_use_beam",
         "self_play_train_after_collect",
+        "self_play_baseline_archetype_decks_only",
         "require_complete_games",
         "require_training_matchup_diversity",
     }:
@@ -338,6 +384,9 @@ def _coerce_value(key: str, value: Any) -> Any:
         "beam_width",
         "beam_time_budget_ms",
         "beam_min_remaining_sec",
+        "self_play_beam_width",
+        "self_play_beam_time_budget_ms",
+        "self_play_beam_max_search_steps",
         "self_play_games",
         "self_play_iterations",
         "self_play_train_epochs",
@@ -368,6 +417,8 @@ def _coerce_value(key: str, value: Any) -> Any:
         "value_not_win",
         "value_timeout",
         "self_play_target_win_rate",
+        "self_play_baseline_win_rate",
+        "self_play_baseline_top_decks_per_archetype",
     }:
         return float(value)
     if key in {"fallback_rollout_data", "training_rollout_sources"}:
@@ -463,6 +514,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "epochs": settings["train_epochs"],
             "patience": settings["early_stop_patience"],
             "min_delta": settings["early_stop_min_delta"],
+            "early_stop_metric": settings["early_stop_metric"],
             "print_every": settings["train_print_every"],
             "batch_games": settings["batch_games"],
         },
@@ -492,6 +544,15 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "target_win_rate": settings["self_play_target_win_rate"],
             "plateau_patience": settings["self_play_plateau_patience"],
             "workers": settings["self_play_workers"],
+            "baseline_dir": settings["self_play_baseline_dir"],
+            "baseline_win_rate": settings["self_play_baseline_win_rate"],
+            "baseline_archetype_decks_only": settings["self_play_baseline_archetype_decks_only"],
+            "baseline_top_decks_per_archetype": settings["self_play_baseline_top_decks_per_archetype"],
+            "agent_deck_dir": settings["self_play_agent_deck_dir"],
+            "per_deck_checkpoint_dir": settings["self_play_per_deck_checkpoint_dir"],
+            "beam_width": settings["self_play_beam_width"],
+            "beam_time_budget_ms": settings["self_play_beam_time_budget_ms"],
+            "beam_max_search_steps": settings["self_play_beam_max_search_steps"],
         },
     }
 

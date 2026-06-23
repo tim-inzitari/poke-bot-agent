@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 import torch
+from tqdm.auto import tqdm
 
 from poke_agent.checkpoint import save_checkpoint
+from poke_agent.baseline_agents import BaselineAgent, load_baseline_agents, summarize_baseline_eval
+from poke_agent.beam_search import BeamSearchConfig
 from poke_agent.data_pipeline import default_self_play_workers, episode_chunks
 from poke_agent.dataset import prepare_training_tensors
 from poke_agent.deck_pool import (
@@ -70,6 +73,12 @@ class SelfPlaySettings:
     plateau_patience: int = 3
     target_eval_pool: list[tuple[str, list[int]]] = field(default_factory=list)
     workers: int | None = None
+    baseline_dir: str | None = None
+    baseline_win_rate_threshold: float = 0.60
+    baseline_agents: list[BaselineAgent] = field(default_factory=list)
+    agent_deck_pool: list[tuple[str, list[int]]] = field(default_factory=list)
+    per_deck_checkpoint_dir: Path | None = None
+    beam_config: BeamSearchConfig | None = None
 
 
 def resolve_self_play_workers(settings: SelfPlaySettings, *, games: int) -> int:
@@ -92,7 +101,44 @@ def _matchup_settings(settings: SelfPlaySettings) -> SelfPlaySettings:
         field_pool=list(settings.field_pool),
         use_field=settings.use_field,
         target_eval_pool=list(settings.target_eval_pool),
+        beam_config=settings.beam_config,
     )
+
+
+def _terminal_result(match_rows: list[dict[str, Any]]) -> int | None:
+    if not match_rows:
+        return None
+    return int(next(row for row in reversed(match_rows) if row.get("terminal")).get("result", -1))
+
+
+def _record_seat_outcome(
+    result: int,
+    our_seat: int,
+    *,
+    wins: int,
+    losses: int,
+    draws: int,
+) -> tuple[int, int, int]:
+    if result == 2:
+        return wins, losses, draws + 1
+    if result == our_seat:
+        return wins + 1, losses, draws
+    if result >= 0:
+        return wins, losses + 1, draws
+    return wins, losses, draws
+
+
+def _win_rate_postfix(wins: int, losses: int, *, draws: int = 0, **extra: Any) -> dict[str, Any]:
+    decided = wins + losses
+    postfix: dict[str, Any] = {
+        "wr": f"{(wins / decided):.0%}" if decided else "—",
+        "W": wins,
+        "L": losses,
+    }
+    if draws:
+        postfix["D"] = draws
+    postfix.update(extra)
+    return postfix
 
 
 def summarize_results(results: list[int], *, seat_index: int) -> dict[str, float]:
@@ -168,6 +214,184 @@ def resolve_target_eval_matchup(
     return mirror_matchup(agent_name, agent_deck)
 
 
+def choose_pool_deck(pool: list[tuple[str, list[int]]], episode: int) -> tuple[str, list[int]]:
+    if not pool:
+        raise ValueError("agent deck pool is empty")
+    return pool[episode % len(pool)]
+
+
+def _evaluate_vs_fixed_opponent(
+    simulator: SimulatorState,
+    *,
+    agent_fn: Callable[[dict], list[int]],
+    opponent_fn: Callable[[dict], list[int]],
+    agent_deck: list[int],
+    agent_name: str,
+    opponent_deck: list[int],
+    opponent_name: str,
+    games: int,
+    start_episode: int,
+    progress_desc: str | None = None,
+) -> dict[str, Any]:
+    results: list[int] = []
+    agent_a_wins = 0
+    agent_a_losses = 0
+    draws = 0
+
+    game_range: Any = range(games)
+    if progress_desc is not None:
+        game_range = tqdm(range(games), desc=progress_desc, unit="game", leave=False)
+
+    for game_index in game_range:
+        episode = start_episode + game_index
+        agent_seat = game_index % 2
+        if agent_seat == 0:
+            deck0, deck0_name = agent_deck, agent_name
+            deck1, deck1_name = opponent_deck, opponent_name
+            seat0, seat1 = agent_fn, opponent_fn
+        else:
+            deck0, deck0_name = opponent_deck, opponent_name
+            deck1, deck1_name = agent_deck, agent_name
+            seat0, seat1 = opponent_fn, agent_fn
+
+        rows = play_match(
+            episode,
+            deck0,
+            deck1,
+            simulator,
+            seat0,
+            seat1,
+            deck0_name=deck0_name,
+            deck1_name=deck1_name,
+        )
+        if not rows:
+            continue
+        result = int(next(row for row in reversed(rows) if row.get("terminal")).get("result", -1))
+        results.append(result)
+        if result == 2:
+            draws += 1
+        elif result == agent_seat:
+            agent_a_wins += 1
+        elif result >= 0:
+            agent_a_losses += 1
+
+        if progress_desc is not None and isinstance(game_range, tqdm):
+            decided = agent_a_wins + agent_a_losses
+            game_range.set_postfix(
+                wins=agent_a_wins,
+                wr=f"{(agent_a_wins / decided) if decided else 0:.0%}",
+            )
+
+    decided = agent_a_wins + agent_a_losses
+    return {
+        "agent_a": {
+            "games": float(len(results)),
+            "wins": float(agent_a_wins),
+            "losses": float(agent_a_losses),
+            "draws": float(draws),
+            "win_rate": (agent_a_wins / decided) if decided else 0.0,
+        },
+        "results": results,
+        "opponent": opponent_name,
+    }
+
+
+def collect_games_vs_baselines(
+    simulator: SimulatorState,
+    *,
+    baselines: list[BaselineAgent],
+    agent_deck_pool: list[tuple[str, list[int]]],
+    current_runtime: PolicyRuntime,
+    games: int,
+    start_episode: int,
+    use_beam: bool,
+    beam_config: BeamSearchConfig | None = None,
+) -> tuple[list[dict[str, Any]], str, str]:
+    """Play our transformer vs official baseline agents; rotate our deck each game."""
+    if not baselines:
+        raise ValueError("baseline agent list is empty")
+
+    rows: list[dict[str, Any]] = []
+    session = current_runtime.new_session()
+    deck_name = ""
+    baseline_name = ""
+    wins = losses = draws = 0
+
+    with tqdm(total=games, desc="baseline games", unit="game", leave=False, dynamic_ncols=True) as progress:
+        for offset in range(games):
+            episode = start_episode + offset
+            baseline = baselines[episode % len(baselines)]
+            deck_name, our_deck = choose_pool_deck(agent_deck_pool, episode)
+            baseline_name = baseline.name
+            session.reset()
+            agent_seat = offset % 2
+            our_fn = make_policy_fn(
+                current_runtime, session, our_deck, use_beam=use_beam, beam_config=beam_config
+            )
+
+            if agent_seat == 0:
+                deck0, deck0_name = our_deck, deck_name
+                deck1, deck1_name = baseline.deck, baseline.agent_id
+                agent0, agent1 = our_fn, baseline.act
+            else:
+                deck0, deck0_name = baseline.deck, baseline.agent_id
+                deck1, deck1_name = our_deck, deck_name
+                agent0, agent1 = baseline.act, our_fn
+
+            match_rows = play_match(
+                episode,
+                deck0,
+                deck1,
+                simulator,
+                agent0,
+                agent1,
+                deck0_name=deck0_name,
+                deck1_name=deck1_name,
+            )
+            rows.extend(match_rows)
+            result = _terminal_result(match_rows)
+            if result is not None:
+                wins, losses, draws = _record_seat_outcome(
+                    result, agent_seat, wins=wins, losses=losses, draws=draws
+                )
+            progress.update(1)
+            progress.set_postfix(
+                **_win_rate_postfix(wins, losses, draws=draws, our=deck_name[:10], vs=baseline.agent_id)
+            )
+
+    return rows, deck_name, baseline_name
+
+
+def evaluate_vs_baselines(
+    simulator: SimulatorState,
+    *,
+    agent_fn: Callable[[dict], list[int]],
+    agent_deck: list[int],
+    agent_name: str,
+    baselines: list[BaselineAgent],
+    games: int,
+    start_episode: int,
+) -> tuple[dict[str, dict[str, float]], dict[str, float]]:
+    """Win rate vs each official baseline agent."""
+    per_baseline: dict[str, dict[str, float]] = {}
+    games_each = max(1, games // max(1, len(baselines)))
+    for index, baseline in enumerate(baselines):
+        report = _evaluate_vs_fixed_opponent(
+            simulator,
+            agent_fn=agent_fn,
+            opponent_fn=baseline.act,
+            agent_deck=agent_deck,
+            agent_name=agent_name,
+            opponent_deck=baseline.deck,
+            opponent_name=baseline.name,
+            games=games_each,
+            start_episode=start_episode + index * games_each,
+            progress_desc=f"eval vs {baseline.agent_id}",
+        )
+        per_baseline[baseline.agent_id] = report["agent_a"]
+    return per_baseline, summarize_baseline_eval(per_baseline)
+
+
 def annotate_matchup_metadata(rows: list[dict[str, Any]], matchup: FieldMatchup) -> None:
     """JSONL metadata only — not used in feature encoding."""
     if matchup.opponent_placement is None:
@@ -183,9 +407,10 @@ def _seat_agent(
     seat: int,
     *,
     use_beam: bool,
+    beam_config: BeamSearchConfig | None = None,
 ) -> Callable[[dict], list[int]]:
     deck = matchup.deck_for_seat(seat)
-    return make_policy_fn(runtime, session, deck, use_beam=use_beam)
+    return make_policy_fn(runtime, session, deck, use_beam=use_beam, beam_config=beam_config)
 
 
 def _evaluate_games_sequential(
@@ -199,6 +424,7 @@ def _evaluate_games_sequential(
     settings: SelfPlaySettings,
     start_episode: int,
     use_target_pool: bool,
+    progress_desc: str | None = None,
 ) -> dict[str, Any]:
     results: list[int] = []
     matchup_names: list[str] = []
@@ -206,7 +432,11 @@ def _evaluate_games_sequential(
     agent_a_losses = 0
     draws = 0
 
-    for game_index in range(games):
+    game_range = range(games)
+    if progress_desc is not None:
+        game_range = tqdm(game_range, desc=progress_desc, unit="game", leave=False)
+
+    for game_index in game_range:
         episode = start_episode + game_index
         if use_target_pool:
             matchup = resolve_target_eval_matchup(episode, agent_name, agent_deck, settings)
@@ -240,6 +470,13 @@ def _evaluate_games_sequential(
             agent_a_wins += 1
         elif result >= 0:
             agent_a_losses += 1
+
+        if progress_desc is not None and isinstance(game_range, tqdm):
+            game_range.set_postfix(
+                wins=agent_a_wins,
+                losses=agent_a_losses,
+                wr=f"{(agent_a_wins / max(1, agent_a_wins + agent_a_losses)):.0%}",
+            )
 
     decided = agent_a_wins + agent_a_losses
     return {
@@ -278,6 +515,7 @@ def _eval_agent_vs_field_range(task: tuple[Any, ...]) -> tuple[int, dict[str, An
         agent_session,
         agent_deck,
         use_beam=matchup_settings.use_beam,
+        beam_config=matchup_settings.beam_config,
     )
     opponent_fn = make_random_agent(simulator.to_observation_class)
     report = _evaluate_games_sequential(
@@ -333,6 +571,7 @@ def evaluate_agent_vs_field(
     use_target_pool: bool = False,
     root: Path | None = None,
     agent_checkpoint: Path | None = None,
+    progress_desc: str | None = None,
 ) -> dict[str, Any]:
     if games <= 0:
         return {
@@ -353,6 +592,7 @@ def evaluate_agent_vs_field(
             settings=settings,
             start_episode=start_episode,
             use_target_pool=use_target_pool,
+            progress_desc=progress_desc,
         )
 
     matchup_settings = _matchup_settings(settings)
@@ -369,8 +609,16 @@ def evaluate_agent_vs_field(
         )
         for offset, stop in episode_chunks(games, workers)
     ]
+    chunk_reports: list[tuple[int, dict[str, Any]]] = []
     with mp.get_context("spawn").Pool(processes=workers) as pool:
-        chunk_reports = pool.map(_eval_agent_vs_field_range, tasks)
+        iterator = pool.imap_unordered(_eval_agent_vs_field_range, tasks)
+        if progress_desc is not None:
+            with tqdm(total=games, desc=progress_desc, unit="game", leave=False) as progress:
+                for start_ep, report in iterator:
+                    chunk_reports.append((start_ep, report))
+                    progress.update(int(report["agent_a"]["games"]))
+        else:
+            chunk_reports = list(iterator)
     chunk_reports.sort(key=lambda item: item[0])
     return _merge_eval_reports([report for _, report in chunk_reports])
 
@@ -386,13 +634,20 @@ def _collect_self_play_games_sequential(
     current_runtime: PolicyRuntime,
     opponent_runtime: PolicyRuntime,
     settings: SelfPlaySettings,
+    progress_desc: str | None = "self-play games",
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     current_session = current_runtime.new_session()
     opponent_session = opponent_runtime.new_session()
     use_beam = settings.use_beam
+    beam_config = settings.beam_config
+    wins = losses = draws = 0
 
-    for offset in range(games):
+    game_range: Any = range(games)
+    if progress_desc is not None:
+        game_range = tqdm(range(games), desc=progress_desc, unit="game", leave=False, dynamic_ncols=True)
+
+    for offset in game_range:
         episode = start_episode + offset
         current_session.reset()
         opponent_session.reset()
@@ -401,11 +656,19 @@ def _collect_self_play_games_sequential(
         current_plays_seat0 = game_index % 2 == 0
 
         if current_plays_seat0:
-            agent0 = _seat_agent(current_runtime, current_session, matchup, 0, use_beam=use_beam)
-            agent1 = _seat_agent(opponent_runtime, opponent_session, matchup, 1, use_beam=use_beam)
+            agent0 = _seat_agent(
+                current_runtime, current_session, matchup, 0, use_beam=use_beam, beam_config=beam_config
+            )
+            agent1 = _seat_agent(
+                opponent_runtime, opponent_session, matchup, 1, use_beam=use_beam, beam_config=beam_config
+            )
         else:
-            agent0 = _seat_agent(opponent_runtime, opponent_session, matchup, 0, use_beam=use_beam)
-            agent1 = _seat_agent(current_runtime, current_session, matchup, 1, use_beam=use_beam)
+            agent0 = _seat_agent(
+                opponent_runtime, opponent_session, matchup, 0, use_beam=use_beam, beam_config=beam_config
+            )
+            agent1 = _seat_agent(
+                current_runtime, current_session, matchup, 1, use_beam=use_beam, beam_config=beam_config
+            )
 
         match_rows = play_match(
             episode,
@@ -419,6 +682,14 @@ def _collect_self_play_games_sequential(
         )
         annotate_matchup_metadata(match_rows, matchup)
         rows.extend(match_rows)
+        our_seat = 0 if current_plays_seat0 else 1
+        result = _terminal_result(match_rows)
+        if result is not None:
+            wins, losses, draws = _record_seat_outcome(
+                result, our_seat, wins=wins, losses=losses, draws=draws
+            )
+        if progress_desc is not None and isinstance(game_range, tqdm):
+            game_range.set_postfix(**_win_rate_postfix(wins, losses, draws=draws))
     return rows
 
 
@@ -452,6 +723,7 @@ def _collect_self_play_range(task: tuple[Any, ...]) -> tuple[int, list[dict[str,
         current_runtime=current_runtime,
         opponent_runtime=opponent_runtime,
         settings=matchup_settings,
+        progress_desc=None,
     )
     return start_episode, rows
 
@@ -469,6 +741,7 @@ def collect_self_play_games(
     root: Path | None = None,
     current_checkpoint: Path | None = None,
     opponent_checkpoint: Path | None = None,
+    progress_desc: str | None = "self-play games",
 ) -> list[dict[str, Any]]:
     workers = resolve_self_play_workers(settings, games=games)
     if workers <= 1:
@@ -482,6 +755,7 @@ def collect_self_play_games(
             current_runtime=current_runtime,
             opponent_runtime=opponent_runtime,
             settings=settings,
+            progress_desc=progress_desc,
         )
 
     if root is None or current_checkpoint is None or opponent_checkpoint is None:
@@ -502,8 +776,28 @@ def collect_self_play_games(
         )
         for offset, stop in episode_chunks(games, workers)
     ]
+    chunk_rows: list[tuple[int, list[dict[str, Any]]]] = []
     with mp.get_context("spawn").Pool(processes=workers) as pool:
-        chunk_rows = pool.map(_collect_self_play_range, tasks)
+        iterator = pool.imap(_collect_self_play_range, tasks)
+        if progress_desc is not None:
+            wins = losses = draws = 0
+            with tqdm(total=games, desc=progress_desc, unit="game", leave=False, dynamic_ncols=True) as progress:
+                for start_ep, chunk in iterator:
+                    chunk_rows.append((start_ep, chunk))
+                    for episode in sorted({int(row["episode"]) for row in chunk}):
+                        ep_rows = [row for row in chunk if int(row["episode"]) == episode]
+                        result = _terminal_result(ep_rows)
+                        if result is None:
+                            continue
+                        game_index = episode - start_episode
+                        our_seat = 0 if game_index % 2 == 0 else 1
+                        wins, losses, draws = _record_seat_outcome(
+                            result, our_seat, wins=wins, losses=losses, draws=draws
+                        )
+                    progress.update(len({int(row["episode"]) for row in chunk}))
+                    progress.set_postfix(**_win_rate_postfix(wins, losses, draws=draws))
+        else:
+            chunk_rows = list(iterator)
     chunk_rows.sort(key=lambda item: item[0])
     rows: list[dict[str, Any]] = []
     for _, chunk in chunk_rows:
@@ -591,6 +885,7 @@ def run_self_play_iteration(
         root=root,
         current_checkpoint=current_checkpoint,
         opponent_checkpoint=opponent_path,
+        progress_desc="self-play",
     )
     unique_matchups = len({(row.get("deck0"), row.get("deck1")) for row in rows if int(row.get("step", -1)) == 0})
     append = settings.output_path.exists() and iteration > 1
@@ -607,6 +902,7 @@ def run_self_play_iteration(
         current_session,
         agent_deck,
         use_beam=settings.use_beam,
+        beam_config=settings.beam_config,
     )
 
     eval_vs_random = evaluate_agent_vs_field(
@@ -621,6 +917,7 @@ def run_self_play_iteration(
         use_target_pool=True,
         root=root,
         agent_checkpoint=current_checkpoint,
+        progress_desc=f"iter {iteration} eval",
     )
     sample_matchups = eval_vs_random.get("matchups", [])[:5]
     print(
@@ -654,6 +951,7 @@ def run_self_play_iteration(
 
     return {
         "iteration": iteration,
+        "phase": "transformer",
         "rows_collected": len(rows),
         "unique_matchups": unique_matchups,
         "data_path": str(settings.output_path),
@@ -664,6 +962,315 @@ def run_self_play_iteration(
         "field_decks": len(settings.field_pool),
         "training_report": training_report,
     }
+
+
+def _save_per_deck_checkpoint(
+    *,
+    source_checkpoint: Path,
+    per_deck_dir: Path | None,
+    deck_name: str,
+    model: Any | None,
+    tensors: Any | None,
+    config: dict[str, Any],
+    training_report: dict[str, Any] | None,
+) -> Path | None:
+    if per_deck_dir is None:
+        return None
+    per_deck_dir.mkdir(parents=True, exist_ok=True)
+    slug = Path(deck_name).stem if deck_name else "unknown"
+    target = per_deck_dir / f"{slug}.pt"
+    if model is not None and tensors is not None and training_report is not None:
+        save_checkpoint(
+            model=model,
+            tensors=tensors,
+            config=config,
+            training_report=training_report,
+            output_path=target,
+        )
+    elif source_checkpoint.exists():
+        target.write_bytes(source_checkpoint.read_bytes())
+    else:
+        return None
+    print(f"per-deck checkpoint -> {target}")
+    return target
+
+
+def run_baseline_iteration(
+    *,
+    iteration: int,
+    config: dict[str, Any],
+    simulator: SimulatorState,
+    agent_deck: list[int],
+    agent_name: str,
+    settings: SelfPlaySettings,
+    device: torch.device,
+    current_checkpoint: Path,
+    start_episode: int,
+) -> dict[str, Any]:
+    if not simulator.available:
+        raise RuntimeError("CABT simulator is required for baseline training")
+    if not settings.baseline_agents:
+        raise RuntimeError("baseline agents not loaded — see baselines/README.md")
+    if not settings.agent_deck_pool:
+        raise RuntimeError("agent deck pool is empty — set SELF_PLAY_AGENT_DECK_DIR")
+
+    current_runtime = PolicyRuntime(current_checkpoint, device=device)
+    print(
+        f"baseline iter {iteration}: collect {settings.games_per_iteration} games "
+        f"vs {len(settings.baseline_agents)} official agents, "
+        f"our deck pool={len(settings.agent_deck_pool)}, checkpoint={current_checkpoint.name}"
+    )
+    rows, last_deck_name, last_baseline = collect_games_vs_baselines(
+        simulator,
+        baselines=settings.baseline_agents,
+        agent_deck_pool=settings.agent_deck_pool,
+        current_runtime=current_runtime,
+        games=settings.games_per_iteration,
+        start_episode=start_episode,
+        use_beam=settings.use_beam,
+        beam_config=settings.beam_config,
+    )
+    append = settings.output_path.exists() and iteration > 1
+    write_jsonl(settings.output_path, rows, append=append)
+    print(
+        f"baseline data -> {settings.output_path} ({len(rows):,} rows, "
+        f"last our={last_deck_name} vs {last_baseline}, append={append})"
+    )
+
+    eval_deck_name, eval_deck = choose_pool_deck(settings.agent_deck_pool, start_episode)
+    eval_session = current_runtime.new_session()
+    eval_fn = make_policy_fn(
+        current_runtime,
+        eval_session,
+        eval_deck,
+        use_beam=settings.use_beam,
+        beam_config=settings.beam_config,
+    )
+    per_baseline, aggregate = evaluate_vs_baselines(
+        simulator,
+        agent_fn=eval_fn,
+        agent_deck=eval_deck,
+        agent_name=eval_deck_name,
+        baselines=settings.baseline_agents,
+        games=settings.eval_games,
+        start_episode=start_episode + settings.games_per_iteration,
+    )
+    for baseline_id, stats in per_baseline.items():
+        print(
+            f"  vs {baseline_id}: {stats['win_rate']:.1%} "
+            f"({int(stats['wins'])}/{int(stats['games'])})"
+        )
+    print(
+        f"baseline eval aggregate: {aggregate['win_rate']:.1%} "
+        f"(gate {settings.baseline_win_rate_threshold:.0%})"
+    )
+
+    training_report: dict[str, Any] | None = None
+    saved_checkpoint = current_checkpoint
+    model = None
+    tensors = None
+    if settings.train_after_collect:
+        print("training on baseline rollout data...")
+        model, tensors, training_report = train_on_rollouts(
+            config,
+            device,
+            data_path=settings.output_path,
+            checkpoint_path=current_checkpoint,
+        )
+        iter_path = settings.checkpoint_dir / f"baseline_{iteration:03d}.pt"
+        training_report = save_checkpoint(
+            model=model,
+            tensors=tensors,
+            config=config,
+            training_report=training_report,
+            output_path=iter_path,
+        )
+        saved_checkpoint = iter_path
+
+    per_deck_path = _save_per_deck_checkpoint(
+        source_checkpoint=saved_checkpoint,
+        per_deck_dir=settings.per_deck_checkpoint_dir,
+        deck_name=last_deck_name,
+        model=model,
+        tensors=tensors,
+        config=config,
+        training_report=training_report,
+    )
+
+    return {
+        "iteration": iteration,
+        "phase": "baseline",
+        "rows_collected": len(rows),
+        "data_path": str(settings.output_path),
+        "current_checkpoint": str(current_checkpoint),
+        "saved_checkpoint": str(saved_checkpoint),
+        "our_deck_pool_size": len(settings.agent_deck_pool),
+        "last_our_deck": last_deck_name,
+        "last_baseline": last_baseline,
+        "eval_deck": eval_deck_name,
+        "eval_vs_baselines": per_baseline,
+        "eval_vs_baselines_aggregate": aggregate,
+        "per_deck_checkpoint": str(per_deck_path) if per_deck_path else None,
+        "training_report": training_report,
+    }
+
+
+def run_baseline_phase_loop(
+    *,
+    config: dict[str, Any],
+    simulator: SimulatorState,
+    agent_deck: list[int],
+    agent_name: str,
+    settings: SelfPlaySettings,
+    device: torch.device | None = None,
+    initial_checkpoint: Path | None = None,
+    root: Path | None = None,
+) -> list[dict[str, Any]]:
+    device = device or torch_device()
+    settings.output_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if settings.per_deck_checkpoint_dir is not None:
+        settings.per_deck_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_path = settings.checkpoint_dir / "manifest.json"
+    manifest = load_manifest(manifest_path)
+    manifest["phase"] = "baseline"
+    current_checkpoint = Path(initial_checkpoint or config["output_path"])
+    if not current_checkpoint.exists():
+        raise FileNotFoundError(f"initial checkpoint not found: {current_checkpoint}")
+
+    start_episode = int(manifest.get("next_episode", 0))
+    reports: list[dict[str, Any]] = []
+    stop_reason: str | None = None
+
+    for iteration in range(1, settings.iterations + 1):
+        print(f"baseline iteration {iteration}/{settings.iterations}")
+        report = run_baseline_iteration(
+            iteration=iteration,
+            config=config,
+            simulator=simulator,
+            agent_deck=agent_deck,
+            agent_name=agent_name,
+            settings=settings,
+            device=device,
+            current_checkpoint=current_checkpoint,
+            start_episode=start_episode,
+        )
+        reports.append(report)
+        start_episode += settings.games_per_iteration
+        current_checkpoint = Path(report["saved_checkpoint"])
+        manifest["next_episode"] = start_episode
+        manifest.setdefault("baseline_iterations", []).append(report)
+        aggregate_rate = float(report["eval_vs_baselines_aggregate"]["win_rate"])
+        if aggregate_rate >= settings.baseline_win_rate_threshold:
+            stop_reason = (
+                f"baseline gate passed: {aggregate_rate:.1%} >= "
+                f"{settings.baseline_win_rate_threshold:.0%} vs official agents"
+            )
+            manifest["champion"] = report
+            print(stop_reason)
+            break
+        if iteration >= settings.iterations:
+            stop_reason = f"baseline iterations exhausted ({settings.iterations})"
+            print(stop_reason)
+
+    if stop_reason:
+        manifest["stop_reason"] = stop_reason
+    manifest["phase"] = (
+        "transformer"
+        if reports
+        and float(reports[-1]["eval_vs_baselines_aggregate"]["win_rate"])
+        >= settings.baseline_win_rate_threshold
+        else "baseline"
+    )
+    save_manifest(manifest_path, manifest)
+    return reports
+
+
+def run_curriculum_self_play(
+    *,
+    config: dict[str, Any],
+    simulator: SimulatorState,
+    agent_deck: list[int],
+    agent_name: str,
+    settings: SelfPlaySettings,
+    device: torch.device | None = None,
+    initial_checkpoint: Path | None = None,
+    submit_on_stop: bool = False,
+    submission_message: str = DEFAULT_SUBMISSION_MESSAGE,
+    root: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Baseline phase vs official Kaggle agents, then transformer self-play at 60% gate."""
+    device = device or torch_device()
+    play_root = root or Path(config["output_path"]).resolve().parents[2]
+    manifest_path = settings.checkpoint_dir / "manifest.json"
+    manifest = load_manifest(manifest_path)
+    phase = str(manifest.get("phase", "baseline"))
+
+    if phase == "transformer":
+        print("curriculum: resuming transformer self-play phase")
+        return run_self_play_loop(
+            config=config,
+            simulator=simulator,
+            agent_deck=agent_deck,
+            agent_name=agent_name,
+            settings=settings,
+            device=device,
+            initial_checkpoint=initial_checkpoint,
+            submit_on_stop=submit_on_stop,
+            submission_message=submission_message,
+            root=play_root,
+        )
+
+    if not settings.baseline_agents:
+        settings.baseline_agents = load_baseline_agents(
+            play_root,
+            baseline_dir=settings.baseline_dir or "baselines/official",
+            cg_lib_path=simulator.lib_path,
+        )
+
+    print(
+        f"curriculum phase 1: baseline agents ({len(settings.baseline_agents)}), "
+        f"our deck pool={len(settings.agent_deck_pool)}, "
+        f"gate={settings.baseline_win_rate_threshold:.0%}"
+    )
+    baseline_reports = run_baseline_phase_loop(
+        config=config,
+        simulator=simulator,
+        agent_deck=agent_deck,
+        agent_name=agent_name,
+        settings=settings,
+        device=device,
+        initial_checkpoint=initial_checkpoint,
+        root=play_root,
+    )
+
+    if not baseline_reports:
+        return baseline_reports
+
+    aggregate = float(baseline_reports[-1]["eval_vs_baselines_aggregate"]["win_rate"])
+    if aggregate < settings.baseline_win_rate_threshold:
+        print(
+            f"baseline gate not reached ({aggregate:.1%} < "
+            f"{settings.baseline_win_rate_threshold:.0%}); staying in baseline phase"
+        )
+        return baseline_reports
+
+    champion_ckpt = Path(baseline_reports[-1]["saved_checkpoint"])
+    print("curriculum phase 2: pure transformer self-play")
+    transformer_reports = run_self_play_loop(
+        config=config,
+        simulator=simulator,
+        agent_deck=agent_deck,
+        agent_name=agent_name,
+        settings=settings,
+        device=device,
+        initial_checkpoint=champion_ckpt,
+        submit_on_stop=submit_on_stop,
+        submission_message=submission_message,
+        root=play_root,
+    )
+    return baseline_reports + transformer_reports
 
 
 def run_self_play_loop(
@@ -705,6 +1312,7 @@ def run_self_play_loop(
     play_root = root or settings.checkpoint_dir.parent.parent.parent
 
     for iteration in range(1, settings.iterations + 1):
+        print(f"self-play iteration {iteration}/{settings.iterations}")
         report = run_self_play_iteration(
             iteration=iteration,
             config=config,
@@ -810,6 +1418,17 @@ def self_play_settings_from_config(
             f"target eval pool: {len(target_eval_pool)} decks with placement<={target_rank}"
         )
 
+    agent_deck_pool = _resolve_agent_deck_pool(config, root, agent_name=agent_name, agent_deck=agent_deck)
+    beam_config = BeamSearchConfig.from_self_play_config(config)
+    if sp.get("use_beam", True):
+        print(
+            f"self-play beam: width={beam_config.width} "
+            f"budget_ms={beam_config.time_budget_ms} max_steps={beam_config.max_search_steps}"
+        )
+
+    per_deck_dir = sp.get("per_deck_checkpoint_dir")
+    per_deck_checkpoint_dir = (root / per_deck_dir) if per_deck_dir else None
+
     return SelfPlaySettings(
         games_per_iteration=int(sp.get("games_per_iteration", 20)),
         eval_games=int(sp.get("eval_games", 10)),
@@ -828,4 +1447,51 @@ def self_play_settings_from_config(
         plateau_patience=int(sp.get("plateau_patience", 3)),
         target_eval_pool=target_eval_pool,
         workers=sp.get("workers"),
+        baseline_dir=str(sp.get("baseline_dir", "baselines/official")),
+        baseline_win_rate_threshold=float(sp.get("baseline_win_rate", 0.60)),
+        agent_deck_pool=agent_deck_pool,
+        per_deck_checkpoint_dir=per_deck_checkpoint_dir,
+        beam_config=beam_config,
     )
+
+
+def _resolve_agent_deck_pool(
+    config: dict[str, Any],
+    root: Path,
+    *,
+    agent_name: str,
+    agent_deck: list[int],
+) -> list[tuple[str, list[int]]]:
+    sp = dict(config.get("self_play", {}))
+    if sp.get("baseline_archetype_decks_only", True):
+        try:
+            from poke_agent.baseline_agents import resolve_baseline_archetype_deck_pool
+
+            pool = resolve_baseline_archetype_deck_pool(
+                root,
+                baseline_dir=str(sp.get("baseline_dir", "baselines/official")),
+                top_decks_per_archetype=int(sp.get("baseline_top_decks_per_archetype", 3)),
+            )
+            print(
+                f"our-side deck pool: {len(pool)} decks "
+                f"(top {int(sp.get('baseline_top_decks_per_archetype', 3))} placements per baseline archetype + official)"
+            )
+            return pool
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"baseline archetype deck pool unavailable ({exc}); falling back to agent_deck_dir")
+
+    deck_dir = sp.get("agent_deck_dir")
+    if not deck_dir:
+        return [(agent_name, agent_deck)]
+    try:
+        from poke_agent.deck_pool import read_deck_pool
+
+        pool = read_deck_pool(deck_dir, root=root)
+        agent_key = tuple(agent_deck)
+        filtered = [(name, deck) for name, deck in pool if tuple(deck) != agent_key]
+        if filtered:
+            print(f"our-side fine-tune deck pool: {len(filtered)} decks from {deck_dir}")
+            return filtered
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"agent deck pool unavailable ({exc}); using submission deck only")
+    return [(agent_name, agent_deck)]

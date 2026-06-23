@@ -25,6 +25,7 @@ class BeamSearchConfig:
     time_budget_ms: int = 10_000
     min_remaining_sec: int = 120
     sim_mode: bool = False
+    max_search_steps: int = 64
 
     @classmethod
     def from_training_config(cls, config: dict[str, Any]) -> BeamSearchConfig:
@@ -34,6 +35,18 @@ class BeamSearchConfig:
             time_budget_ms=int(beam.get("time_budget_ms", 10_000)),
             min_remaining_sec=0 if beam.get("sim_mode") else int(beam.get("min_remaining_sec", 120)),
             sim_mode=bool(beam.get("sim_mode", False)),
+            max_search_steps=int(beam.get("max_search_steps", 64)),
+        )
+
+    @classmethod
+    def from_self_play_config(cls, config: dict[str, Any]) -> BeamSearchConfig:
+        sp = dict(config.get("self_play", {}))
+        return cls(
+            width=int(sp.get("beam_width", 3)),
+            time_budget_ms=int(sp.get("beam_time_budget_ms", 150)),
+            min_remaining_sec=0,
+            sim_mode=True,
+            max_search_steps=int(sp.get("beam_max_search_steps", 64)),
         )
 
 
@@ -179,6 +192,8 @@ def expand_action_in_search(
     action: list[int],
     root_your_index: int,
     deadline: float,
+    *,
+    max_search_steps: int = 64,
 ) -> float:
     from cg.api import search_begin, search_end, search_step, to_observation_class
 
@@ -202,8 +217,10 @@ def expand_action_in_search(
         opponent_active=opponent_active,
     )
     current_state = search_state
+    steps = 0
     try:
-        while time.perf_counter() < deadline:
+        while time.perf_counter() < deadline and steps < max_search_steps:
+            steps += 1
             current_state = search_step(current_state.searchId, action)
             leaf_obs = observation_to_dict(current_state.observation)
             current = leaf_obs.get("current") or {}
@@ -256,6 +273,7 @@ def run_beam_search(
                 action,
                 root_your_index,
                 deadline,
+                max_search_steps=config.max_search_steps,
             )
         except Exception:
             leaf_value = policy_score

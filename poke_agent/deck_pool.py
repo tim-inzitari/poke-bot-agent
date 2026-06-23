@@ -8,6 +8,7 @@ from pathlib import Path
 from poke_agent.deck import SAMPLE_DECK
 
 _PLACEMENT_RE = re.compile(r"_(\d+)(?:st|nd|rd|th)_", re.IGNORECASE)
+_ARCHETYPE_FROM_EVENT_RE = re.compile(r"_\d+(?:st|nd|rd|th)_(?P<slug>.+)$", re.IGNORECASE)
 
 
 def parse_deck_placement(deck_name: str) -> int | None:
@@ -16,6 +17,19 @@ def parse_deck_placement(deck_name: str) -> int | None:
     if match is None:
         return None
     return int(match.group(1))
+
+
+def competitive_deck_archetype_slug(stem: str) -> str:
+    """Archetype slug from competitive deck filename (after placement token)."""
+    match = _ARCHETYPE_FROM_EVENT_RE.search(stem)
+    return match.group("slug") if match else stem
+
+
+def deck_matches_archetype_patterns(slug: str, patterns: list[str]) -> bool:
+    for pattern in patterns:
+        if slug == pattern or slug.startswith(f"{pattern}-"):
+            return True
+    return False
 
 
 def read_deck_file(path: Path) -> list[int]:

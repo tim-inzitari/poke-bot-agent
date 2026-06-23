@@ -54,11 +54,13 @@ def _terminal_observation(payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _final_result(payload: dict[str, Any]) -> int:
+    from poke_agent.rewards import resolve_game_result
+
     terminal_obs = _terminal_observation(payload)
     if terminal_obs is not None:
-        result = int((terminal_obs.get("current") or {}).get("result", -1))
-        if result >= 0:
-            return result
+        raw = int((terminal_obs.get("current") or {}).get("result", -1))
+        if raw >= 0:
+            return resolve_game_result(raw, terminal_obs)
     rewards = payload.get("rewards") or []
     if len(rewards) >= 2:
         if rewards[0] > rewards[1]:

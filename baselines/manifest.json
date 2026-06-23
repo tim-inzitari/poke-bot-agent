@@ -1,0 +1,28 @@
+{
+  "agents": [
+    {
+      "id": "iono",
+      "name": "Iono's Deck",
+      "dir": "iono",
+      "deck_source": "decks/archetype-samples/lopunny-dudunsparce1.csv"
+    },
+    {
+      "id": "dragapult-ex",
+      "name": "Dragapult ex Deck",
+      "dir": "dragapult-ex",
+      "deck_source": "decks/archetype-samples/dragapult1.csv"
+    },
+    {
+      "id": "mega-abomasnow-ex",
+      "name": "Mega Abomasnow ex Deck",
+      "dir": "mega-abomasnow-ex",
+      "deck_source": "decks/archetype-samples/hydrapple1.csv"
+    },
+    {
+      "id": "mega-lucario-ex",
+      "name": "Mega Lucario ex Deck",
+      "dir": "mega-lucario-ex",
+      "deck_source": "decks/competitive/high_performing/2026-05_regional-melbourne-2026_10th_mega-lucario.csv"
+    }
+  ]
+}
