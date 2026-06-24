@@ -58,11 +58,13 @@ def play_match(
             next_obs = simulator.battle_select(action)
             terminal = int((next_obs.get("current") or {}).get("result", -1)) >= 0
             next_tracker = copy.deepcopy(tracker)
+            step_features, _ = features_from_observation(obs, tracker)
+            step_next_features, _ = features_from_observation(next_obs, next_tracker)
             rows.append({
                 "episode": episode,
                 "step": step,
-                "features": features_from_observation(obs, tracker),
-                "next_features": features_from_observation(next_obs, next_tracker),
+                "features": [float(v) for v in step_features],
+                "next_features": [float(v) for v in step_next_features],
                 "observation": json_snapshot(obs),
                 "action": json_snapshot(action),
                 "next_observation": json_snapshot(next_obs),

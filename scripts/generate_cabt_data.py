@@ -167,9 +167,11 @@ def play_episode(
             action = random_agent(obs)
             next_obs = battle_select(action)
             terminal = int((next_obs.get("current") or {}).get("result", -1)) >= 0
-            step_features = features_from_observation(obs, tracker)
+            step_features, _ = features_from_observation(obs, tracker)
             next_tracker = copy.deepcopy(tracker)
-            step_next_features = features_from_observation(next_obs, next_tracker)
+            step_next_features, _ = features_from_observation(next_obs, next_tracker)
+            step_features = [float(v) for v in step_features]
+            step_next_features = [float(v) for v in step_next_features]
             rows.append({
                 "episode": episode,
                 "step": step,

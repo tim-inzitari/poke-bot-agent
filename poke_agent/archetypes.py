@@ -129,14 +129,29 @@ def load_archetype_shares(path: Path) -> dict[str, float]:
     return priors
 
 
+_REGISTRY_CACHE: dict[tuple[str, str], ArchetypeRegistry] = {}
+
+
 def load_archetype_registry(
     root: Path,
     *,
     samples_dir: Path | None = None,
     shares_path: Path | None = None,
 ) -> ArchetypeRegistry:
+    """Build the (read-only) archetype registry, memoized per process.
+
+    The registry globs and parses every deck CSV, so callers that build it in a
+    hot loop (e.g. once per generated episode) would otherwise cause heavy,
+    contended disk I/O. The result is immutable and safe to share, so we cache
+    it keyed by the resolved sample/shares paths.
+    """
     samples_dir = samples_dir or (root / "decks/archetype-samples")
     shares_path = shares_path or (root / "decks/archetype-shares.txt")
+    cache_key = (str(samples_dir.resolve()), str(shares_path.resolve()))
+    cached = _REGISTRY_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     priors = load_archetype_shares(shares_path)
     variants: list[DeckVariant] = []
     if samples_dir.is_dir():
@@ -151,7 +166,9 @@ def load_archetype_registry(
                 )
             )
             priors.setdefault(slug, 0.0)
-    return ArchetypeRegistry(priors=priors, variants=variants)
+    registry = ArchetypeRegistry(priors=priors, variants=variants)
+    _REGISTRY_CACHE[cache_key] = registry
+    return registry
 
 
 def slug_from_deck_name(name: str, registry: ArchetypeRegistry) -> str:
