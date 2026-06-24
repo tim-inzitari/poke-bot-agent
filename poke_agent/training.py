@@ -226,7 +226,7 @@ def train_model(
         total=epochs,
     )
     for epoch in progress:
-        seq_order = torch.randperm(num_seqs, device=device)
+        seq_order = torch.randperm(num_seqs, device=tensors.x_seq.device)
         metric_sums = {
             "total_loss": 0.0,
             "value_loss": 0.0,
@@ -237,16 +237,19 @@ def train_model(
         }
         seen = 0.0
 
+        stream = tensors.x_seq.device != device
         for batch_number, start in enumerate(range(0, num_seqs, batch_games), start=1):
             seq_ids = seq_order[start:start + batch_games]
-            xb = tensors.x_seq[seq_ids]
-            mask_b = tensors.seq_mask[seq_ids]
-            card_b = tensors.card_ids[seq_ids]
-            yb = tensors.y[seq_ids]
-            returns_b = tensors.returns[seq_ids]
-            transition_b = tensors.transition_target[seq_ids]
-            next_xb = tensors.next_x[seq_ids]
-            terminal_b = tensors.terminal[seq_ids]
+            # Gather the batch where the dataset lives, then move only that slice to
+            # the compute device. When data is already on `device` this is a no-op.
+            xb = tensors.x_seq[seq_ids].to(device, non_blocking=stream)
+            mask_b = tensors.seq_mask[seq_ids].to(device, non_blocking=stream)
+            card_b = tensors.card_ids[seq_ids].to(device, non_blocking=stream)
+            yb = tensors.y[seq_ids].to(device, non_blocking=stream)
+            returns_b = tensors.returns[seq_ids].to(device, non_blocking=stream)
+            transition_b = tensors.transition_target[seq_ids].to(device, non_blocking=stream)
+            next_xb = tensors.next_x[seq_ids].to(device, non_blocking=stream)
+            terminal_b = tensors.terminal[seq_ids].to(device, non_blocking=stream)
 
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_amp):

@@ -141,6 +141,11 @@ TRAIN_PRINT_EVERY = 100
 BATCH_GAMES = 4  # seat-sequences per training batch
 TRAIN_USE_AMP = True
 TRAIN_GRAD_CHECKPOINT = False
+# Where the full dataset tensors live. "cpu" keeps them in system RAM and streams
+# each batch to the GPU (lets you train on far more games than fit in VRAM, bounded
+# by RAM instead). "cuda"/"device" keeps the whole dataset resident on the GPU
+# (fastest, but caps dataset size to VRAM). "auto" = cpu when training on CUDA.
+TRAIN_DATA_DEVICE = "auto"
 # Crash/OOM resilience: write a resumable checkpoint every N epochs (0 = off) plus
 # a best-so-far copy. Files sit beside the final checkpoint as <name>.latest.pt /
 # <name>.best.pt. TRAIN_RESUME: "auto" resumes <name>.latest.pt if present,
@@ -173,6 +178,7 @@ OVERRIDE_KEYS = frozenset({
     "train_grad_checkpoint",
     "train_checkpoint_every",
     "train_resume",
+    "train_data_device",
     "d_model",
     "model_heads",
     "model_layers",
@@ -268,6 +274,7 @@ def default_user_config() -> dict[str, Any]:
         "train_grad_checkpoint": TRAIN_GRAD_CHECKPOINT,
         "train_checkpoint_every": TRAIN_CHECKPOINT_EVERY,
         "train_resume": TRAIN_RESUME,
+        "train_data_device": TRAIN_DATA_DEVICE,
         "d_model": MODEL_D_MODEL,
         "model_heads": MODEL_HEADS,
         "model_layers": MODEL_LAYERS,
@@ -359,6 +366,7 @@ _ENV_MAP = {
     "train_grad_checkpoint": "TRAIN_GRAD_CHECKPOINT",
     "train_checkpoint_every": "TRAIN_CHECKPOINT_EVERY",
     "train_resume": "TRAIN_RESUME",
+    "train_data_device": "TRAIN_DATA_DEVICE",
     "require_top_of_ladder_data": "REQUIRE_TOP_OF_LADDER_DATA",
     "min_top_of_ladder_fraction": "MIN_TOP_OF_LADDER_FRACTION",
     "d_model": "MODEL_D_MODEL",
@@ -429,7 +437,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
         return bool(value)
-    if key == "policy_weighting":
+    if key in {"policy_weighting", "train_resume", "train_data_device"}:
         return str(value)
     if key == "self_play_per_deck_checkpoint_dir" and value in {"", "none", "None", "null"}:
         return None
@@ -605,6 +613,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "tensor_build_workers": settings["tensor_build_workers"],
         "train_use_amp": settings["train_use_amp"],
         "train_grad_checkpoint": settings["train_grad_checkpoint"],
+        "train_data_device": settings["train_data_device"],
         "objective": {
             "value_return_gamma": settings["value_return_gamma"],
             "value_shaping_alpha": settings["value_shaping_alpha"],

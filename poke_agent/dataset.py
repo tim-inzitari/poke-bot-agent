@@ -90,6 +90,25 @@ def _to_device_tensor(array: np.ndarray, device: torch.device) -> torch.Tensor:
     return tensor.to(device=device)
 
 
+def resolve_data_device(compute_device: torch.device, mode: str | None) -> torch.device:
+    """Where to hold the full dataset tensors.
+
+    "cpu" streams batches to the GPU (dataset bounded by RAM, not VRAM);
+    "cuda"/"device" keeps the whole dataset resident on the compute device;
+    "auto" (default) keeps data on CPU whenever training on CUDA so large
+    datasets fit in system RAM.
+    """
+    normalized = (mode or "auto").strip().lower()
+    if normalized in {"cpu"}:
+        return torch.device("cpu")
+    if normalized in {"cuda", "gpu", "device"}:
+        return compute_device
+    # auto
+    if compute_device.type == "cuda":
+        return torch.device("cpu")
+    return compute_device
+
+
 @dataclass
 class TrainingTensors:
     """Sequence-major training tensors: one row per (episode, seat) sequence.
@@ -301,15 +320,22 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
     x_norm = (x_seq_np - feature_mean) / feature_std
     next_x_norm = (next_x_seq_np - feature_mean) / feature_std
 
-    x_seq = _to_device_tensor(x_norm, device)
-    y = _to_device_tensor(y_seq_np, device)
-    returns = _to_device_tensor(returns_seq_np, device)
-    transition_target = _to_device_tensor(transition_seq_np, device)
-    next_x = _to_device_tensor(next_x_norm, device)
-    terminal = _to_device_tensor(terminal_seq_np, device)
-    seq_mask = _to_device_tensor(seq_mask_np, device)
-    card_ids = _to_device_tensor(card_ids_np, device)
-    seq_lengths = _to_device_tensor(seq_lengths_np, device)
+    data_device = resolve_data_device(device, config.get("train_data_device", "auto"))
+    if data_device != device:
+        print(
+            f"dataset on {data_device} (compute on {device}); "
+            "batches stream to the GPU so dataset size is bounded by RAM, not VRAM"
+        )
+
+    x_seq = _to_device_tensor(x_norm, data_device)
+    y = _to_device_tensor(y_seq_np, data_device)
+    returns = _to_device_tensor(returns_seq_np, data_device)
+    transition_target = _to_device_tensor(transition_seq_np, data_device)
+    next_x = _to_device_tensor(next_x_norm, data_device)
+    terminal = _to_device_tensor(terminal_seq_np, data_device)
+    seq_mask = _to_device_tensor(seq_mask_np, data_device)
+    card_ids = _to_device_tensor(card_ids_np, data_device)
+    seq_lengths = _to_device_tensor(seq_lengths_np, data_device)
 
     print(
         "x_seq",

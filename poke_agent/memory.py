@@ -61,7 +61,7 @@ def _training_step_peak_bytes(
     loss_cfg = config["loss"]
     objective_cfg = config.get("objective", {})
     batch_games = int(config["training"]["batch_games"])
-    seq_ids = torch.arange(min(batch_games, tensors.num_seqs), device=device)
+    seq_ids = torch.arange(min(batch_games, tensors.num_seqs), device=tensors.x_seq.device)
 
     value_loss_fn = nn.MSELoss(reduction="none")
     policy_loss_fn = nn.CrossEntropyLoss(reduction="none")
@@ -77,14 +77,14 @@ def _training_step_peak_bytes(
     allocated_before_step = torch.cuda.memory_allocated(device)
 
     model.train()
-    xb = tensors.x_seq[seq_ids]
-    mask_b = tensors.seq_mask[seq_ids]
-    card_b = tensors.card_ids[seq_ids]
-    yb = tensors.y[seq_ids]
-    returns_b = tensors.returns[seq_ids]
-    transition_b = tensors.transition_target[seq_ids]
-    next_xb = tensors.next_x[seq_ids]
-    terminal_b = tensors.terminal[seq_ids]
+    xb = tensors.x_seq[seq_ids].to(device)
+    mask_b = tensors.seq_mask[seq_ids].to(device)
+    card_b = tensors.card_ids[seq_ids].to(device)
+    yb = tensors.y[seq_ids].to(device)
+    returns_b = tensors.returns[seq_ids].to(device)
+    transition_b = tensors.transition_target[seq_ids].to(device)
+    next_xb = tensors.next_x[seq_ids].to(device)
+    terminal_b = tensors.terminal[seq_ids].to(device)
 
     optimizer.zero_grad(set_to_none=True)
     out = model(xb, mask_b, card_ids=card_b)
@@ -143,6 +143,8 @@ def print_vram_estimate(
     static = _static_training_bytes(param_count, tensors)
     batch_games = int(config["training"]["batch_games"])
     avg_steps = float(tensors.seq_mask.sum().item()) / max(1, tensors.num_seqs)
+    data_device = tensors.x_seq.device
+    streamed = data_device != device
 
     print("\nVRAM estimate for current config")
     print("-" * 34)
@@ -153,7 +155,13 @@ def print_vram_estimate(
         f"(batch_games={batch_games}, ~{avg_steps:.0f} valid steps/seq)"
     )
     print(f"parameters: {param_count:,}")
-    print(f"dataset tensors: {format_bytes(static['dataset_bytes'])}")
+    if streamed:
+        print(
+            f"dataset tensors: {format_bytes(static['dataset_bytes'])} on {data_device} "
+            "(RAM-resident; streamed to GPU per batch, not counted against VRAM)"
+        )
+    else:
+        print(f"dataset tensors: {format_bytes(static['dataset_bytes'])} (resident on {data_device})")
     print(f"model weights:   {format_bytes(static['model_weights'])}")
 
     if device.type == "cuda":
