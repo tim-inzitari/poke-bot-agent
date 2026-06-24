@@ -3,7 +3,9 @@ from pathlib import Path
 import pytest
 
 from poke_agent.episodes_index import (
+    DailyDatasetEntry,
     EpisodeRecord,
+    daily_slugs_for_top_games,
     default_index_path,
     filter_top_percent,
     load_daily_manifest,
@@ -30,6 +32,31 @@ def test_filter_top_percent():
     top = filter_top_percent(records, 34.0)
     assert len(top) == 1
     assert top[0].episode_id == "a"
+
+
+def test_daily_slugs_for_top_games_latest_day_at_100_percent():
+    entries = [
+        DailyDatasetEntry(
+            date="2026-06-01",
+            slug="pokemon-tcg-ai-battle-episodes-2026-06-01",
+            url="",
+            episode_count=100,
+            total_bytes=0,
+            top_avg_score=0.5,
+            median_avg_score=0.3,
+        ),
+        DailyDatasetEntry(
+            date="2026-06-02",
+            slug="pokemon-tcg-ai-battle-episodes-2026-06-02",
+            url="",
+            episode_count=100,
+            total_bytes=0,
+            top_avg_score=0.9,
+            median_avg_score=0.4,
+        ),
+    ]
+    slugs = daily_slugs_for_top_games(entries, top_percent=100.0)
+    assert slugs == ["pokemon-tcg-ai-battle-episodes-2026-06-02"]
 
 
 def test_load_episode_pool_includes_sample_replay():

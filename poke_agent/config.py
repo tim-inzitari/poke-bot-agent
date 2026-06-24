@@ -20,6 +20,7 @@ SCRAPED_ROLLOUT_DATA = "data/scraped_rollouts.jsonl"
 MULTIDECK_ROLLOUT_DATA = "data/multideck_rollouts.jsonl"
 MERGED_ROLLOUT_DATA = "data/training_rollouts_merged.jsonl"
 EPISODES_INDEX_PATH = "kaggle/input/pokemon-tcg-ai-battle-episodes-index/manifest.csv"
+# Top N%% of episodes within each loaded daily bundle (by replay score). 1.0 = top 1%%.
 TOP_EPISODE_PERCENT = 1.0
 TRAINING_DECK_DIRS = ["decks/archetype-samples"]
 TRAINING_ROLLOUT_SOURCES = [
@@ -30,10 +31,8 @@ REQUIRE_COMPLETE_GAMES = True
 REQUIRE_TRAINING_MATCHUP_DIVERSITY = True
 MIN_TRAINING_MATCHUPS = 2
 MIN_TRAINING_DECK_SLUGS = 2
-# Bootstrap data quality: require the training corpus to include top-of-ladder
-# replay games (scraped from the Kaggle leaderboard / episodes index), not only
-# synthetic CABT self-play. MIN_TOP_OF_LADDER_FRACTION optionally enforces a
-# minimum share of episodes from ladder sources (0 = require >=1 ladder game).
+# Bootstrap data quality: require competition replay games from the official
+# pokemon-tcg-ai-battle-episodes-index dataset (not synthetic multideck only).
 REQUIRE_TOP_OF_LADDER_DATA = True
 MIN_TOP_OF_LADDER_FRACTION = 0.0
 FALLBACK_ROLLOUT_DATA = [

@@ -201,19 +201,19 @@ def assert_top_of_ladder_data(
 
     if stats["ladder_games"] == 0:
         raise TrainingDiversityError(
-            "No top-of-ladder games found in the bootstrap training data "
-            f"(sources: {stats['source_counts']}). "
-            "Scrape leaderboard replays (scripts/scrape_ladder_replays.py), convert them "
-            "(scripts/replays_to_rollouts.py), and merge into the training corpus "
-            "(scripts/merge_rollouts.py). Set REQUIRE_TOP_OF_LADDER_DATA=0 to bypass."
+            "No competition replay games from the episodes-index dataset found in bootstrap "
+            f"training data (sources: {stats['source_counts']}). "
+            "Run: bash scripts/download-episodes-index.sh "
+            "then python scripts/prepare_training_data.py. "
+            "Set REQUIRE_TOP_OF_LADDER_DATA=0 to bypass."
         )
 
     fraction = float(stats["ladder_fraction"])
     if min_fraction > 0.0 and fraction < min_fraction:
         raise TrainingDiversityError(
-            f"Top-of-ladder games are only {fraction:.1%} of training episodes "
+            f"Episodes-index games are only {fraction:.1%} of training episodes "
             f"({stats['ladder_games']}/{stats['games']}); need >= {min_fraction:.1%}. "
-            "Merge more scraped leaderboard replays or lower MIN_TOP_OF_LADDER_FRACTION."
+            "Increase TOP_EPISODE_PERCENT or lower MIN_TOP_OF_LADDER_FRACTION."
         )
     return stats
 

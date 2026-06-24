@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Refresh bootstrap training data: ladder scrape → rollouts → multideck → merge → validate.
+"""Refresh bootstrap training data: episodes-index → rollouts → multideck → merge → validate.
 
-Run before ``scripts/train_agent.py`` or let ``scripts/run_full_pipeline.sh`` call
-this automatically as step 0.
+Top competition games come from the official Kaggle episodes-index dataset:
+https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-index
 
 Examples:
   python scripts/prepare_training_data.py
-  python scripts/prepare_training_data.py --no-scrape --no-generate   # merge+validate only
-  python scripts/prepare_training_data.py --teams 15 --episodes 3000
+  python scripts/prepare_training_data.py --no-download   # use local kaggle/input only
+  python scripts/prepare_training_data.py --no-generate   # merge+validate only
+  python scripts/prepare_training_data.py --top-percent 5 --episodes 3000
   python scripts/prepare_training_data.py --validate-only
 """
 
@@ -30,13 +31,13 @@ from poke_agent.simulator import load_simulator, print_simulator_status
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "--scrape",
-        dest="scrape",
+        "--download",
+        dest="download_index",
         action="store_true",
         default=True,
-        help="incremental Kaggle ladder scrape (default: on)",
+        help="download episodes-index manifest + latest daily bundle if missing (default: on)",
     )
-    parser.add_argument("--no-scrape", dest="scrape", action="store_false")
+    parser.add_argument("--no-download", dest="download_index", action="store_false")
     parser.add_argument(
         "--generate",
         dest="generate",
@@ -45,35 +46,22 @@ def parse_args() -> argparse.Namespace:
         help="generate multideck CABT rollouts when cg-lib is available (default: on)",
     )
     parser.add_argument("--no-generate", dest="generate", action="store_false")
-    parser.add_argument("--teams", type=int, default=10, help="top N leaderboard teams to scrape")
     parser.add_argument(
-        "--episodes-per-sub",
-        type=int,
-        default=20,
-        help="recent episodes per submission when scraping",
+        "--scrape",
+        dest="scrape",
+        action="store_true",
+        default=False,
+        help="also scrape live leaderboard via Kaggle API (off by default; use episodes-index instead)",
     )
-    parser.add_argument(
-        "--episodes",
-        type=int,
-        default=None,
-        help="multideck CABT games to generate (default: DATASET_GAMES from config)",
-    )
+    parser.add_argument("--episodes", type=int, default=None, help="multideck CABT games (default: DATASET_GAMES)")
     parser.add_argument(
         "--top-percent",
         type=float,
         default=None,
-        help="keep top N%% ladder episodes by score (default: TOP_EPISODE_PERCENT)",
+        help="top N%% episodes by replay score within each daily bundle (default: TOP_EPISODE_PERCENT)",
     )
-    parser.add_argument(
-        "--validate-only",
-        action="store_true",
-        help="skip scrape/generate/merge; only validate existing merged JSONL",
-    )
-    parser.add_argument(
-        "--no-validate",
-        action="store_true",
-        help="skip ladder/matchup validation after merge",
-    )
+    parser.add_argument("--validate-only", action="store_true", help="only validate existing merged JSONL")
+    parser.add_argument("--no-validate", action="store_true", help="skip ladder/matchup validation after merge")
     return parser.parse_args()
 
 
@@ -91,25 +79,27 @@ def main() -> int:
     simulator = load_simulator(root)
     print_simulator_status(simulator)
 
-    print("prepare bootstrap training data")
+    print("prepare bootstrap training data (episodes-index + multideck)")
     print(f"  merged -> {config['merged_rollout_path']}")
-    print(f"  scrape={'on' if args.scrape else 'off'}  generate={'on' if args.generate else 'off'}")
+    print(
+        f"  download_index={'on' if args.download_index else 'off'}  "
+        f"generate={'on' if args.generate else 'off'}  "
+        f"scrape={'on' if args.scrape else 'off'}"
+    )
 
     paths = prepare_bootstrap_training_data(
         config,
         root,
         simulator_available=simulator.available,
         scrape=args.scrape,
-        scrape_teams=args.teams,
-        scrape_episodes_per_sub=args.episodes_per_sub,
+        download_index=args.download_index,
         generate_multideck=args.generate,
         episodes=args.episodes,
         top_percent=args.top_percent,
         validate=not args.no_validate,
     )
 
-    train_path = paths.get("training_path")
-    print(f"ready for bootstrap train: {train_path}")
+    print(f"ready for bootstrap train: {paths.get('training_path')}")
     return 0
 
 

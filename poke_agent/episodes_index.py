@@ -33,14 +33,11 @@ def default_index_path(root: Path) -> Path:
     return root / "kaggle/input/pokemon-tcg-ai-battle-episodes-index/manifest.csv"
 
 
-# Substrings that mark a rollout row's ``source`` as a real top-of-ladder game
-# downloaded from the Kaggle competition (leaderboard scrape or episodes index),
-# as opposed to synthetic CABT self-play (``multideck-cabt``, ``self_play``, ...).
+# Substrings that mark a rollout row's ``source`` as real competition replay data
+# (episodes-index daily bundles), as opposed to synthetic CABT self-play.
 TOP_OF_LADDER_SOURCE_MARKERS: tuple[str, ...] = (
-    "ladder",                 # scrape index rows (source="ladder-scrape"), data/ladder-replays/...
-    "replay",                 # replays_to_rollouts default ("replay" / replay dir names)
-    "episode",                # episode-ids-file / episodes-index pools
-    "pokemon-tcg-ai-battle",  # daily-dataset slugs for this competition
+    "pokemon-tcg-ai-battle",  # daily-dataset slugs from episodes-index manifest
+    "episode",                # episode-ids-file pools
 )
 
 
@@ -82,6 +79,33 @@ def load_daily_manifest(path: Path) -> list[DailyDatasetEntry]:
 def latest_daily_entry(manifest: Iterable[DailyDatasetEntry]) -> DailyDatasetEntry | None:
     rows = sorted(manifest, key=lambda entry: entry.date)
     return rows[-1] if rows else None
+
+
+def daily_slugs_for_top_games(
+    manifest: list[DailyDatasetEntry],
+    *,
+    top_percent: float = 100.0,
+    max_slugs: int = 0,
+) -> list[str]:
+    """Pick daily episode-bundle slugs from the episodes-index manifest.
+
+    Days are ranked by ``top_avg_score`` (competition metadata). ``top_percent``
+    keeps the best N%% of days; at 100%% only the latest day is used so we do
+    not download the entire history every run.
+    """
+    if not manifest:
+        return []
+    ranked = sorted(manifest, key=lambda entry: entry.top_avg_score, reverse=True)
+    percent = max(0.0, min(float(top_percent), 100.0))
+    if percent >= 100.0:
+        latest = latest_daily_entry(manifest)
+        slugs = [latest.slug] if latest and latest.slug else []
+    else:
+        keep = max(1, int(round(len(ranked) * percent / 100.0)))
+        slugs = [entry.slug for entry in ranked[:keep] if entry.slug]
+    if max_slugs > 0:
+        slugs = slugs[:max_slugs]
+    return slugs
 
 
 def local_daily_episodes_dir(root: Path, slug: str) -> Path:
@@ -190,22 +214,28 @@ def load_episode_pool(
     index_path: Path | None = None,
     scrape_index_csv: Path | None = None,
     daily_slugs: list[str] | None = None,
+    include_scrape: bool = False,
+    top_percent_days: float = 100.0,
 ) -> list[EpisodeRecord]:
+    """Load replay JSON paths from the episodes-index dataset (and optionally ladder scrape).
+
+    Bootstrap training uses ``include_scrape=False`` — top games come from the
+    official ``pokemon-tcg-ai-battle-episodes-index`` dataset only.
+    """
     pool: list[EpisodeRecord] = []
     manifest_path = index_path or default_index_path(root)
     if manifest_path.is_file():
         manifest = load_daily_manifest(manifest_path)
-        slugs = daily_slugs or []
+        slugs = list(daily_slugs or [])
         if not slugs:
-            latest = latest_daily_entry(manifest)
-            if latest is not None:
-                slugs = [latest.slug]
+            slugs = daily_slugs_for_top_games(manifest, top_percent=top_percent_days)
         for slug in slugs:
             directory = local_daily_episodes_dir(root, slug)
             pool.extend(episode_records_from_directory(directory, source=slug))
 
-    scrape_path = scrape_index_csv or (root / "data/ladder-replays/index.csv")
-    pool.extend(episode_records_from_scrape_index(scrape_path))
+    if include_scrape:
+        scrape_path = scrape_index_csv or (root / "data/ladder-replays/index.csv")
+        pool.extend(episode_records_from_scrape_index(scrape_path))
 
     deduped: dict[str, EpisodeRecord] = {}
     for record in pool:

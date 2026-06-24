@@ -24,18 +24,17 @@ def _rows(sources: list[str]) -> list[dict]:
 
 
 def test_is_top_of_ladder_source():
-    assert is_top_of_ladder_source("ladder-scrape")
-    assert is_top_of_ladder_source("data/ladder-replays/replays")
     assert is_top_of_ladder_source("pokemon-tcg-ai-battle-episodes-2026-06-20")
-    assert is_top_of_ladder_source("replay")
+    assert is_top_of_ladder_source("episode-ids-file")
     assert not is_top_of_ladder_source("multideck-cabt")
     assert not is_top_of_ladder_source("self_play")
+    assert not is_top_of_ladder_source("ladder-scrape")
     assert not is_top_of_ladder_source("")
     assert not is_top_of_ladder_source(None)
 
 
-def test_assert_top_of_ladder_data_passes_with_ladder_games():
-    rows = _rows(["multideck-cabt", "ladder-scrape", "multideck-cabt"])
+def test_assert_top_of_ladder_data_passes_with_index_games():
+    rows = _rows(["multideck-cabt", "pokemon-tcg-ai-battle-episodes-2026-06-20", "multideck-cabt"])
     stats = assert_top_of_ladder_data(rows)
     assert stats["ladder_games"] == 1
     assert stats["games"] == 3
@@ -43,12 +42,12 @@ def test_assert_top_of_ladder_data_passes_with_ladder_games():
 
 def test_assert_top_of_ladder_data_rejects_synthetic_only():
     rows = _rows(["multideck-cabt", "multideck-cabt"])
-    with pytest.raises(TrainingDiversityError, match="top-of-ladder"):
+    with pytest.raises(TrainingDiversityError, match="episodes-index|top-of-ladder|competition"):
         assert_top_of_ladder_data(rows)
 
 
 def test_assert_top_of_ladder_data_enforces_min_fraction():
-    rows = _rows(["multideck-cabt"] * 9 + ["ladder-scrape"])
+    rows = _rows(["multideck-cabt"] * 9 + ["pokemon-tcg-ai-battle-episodes-2026-06-20"])
     # 10% ladder; requiring 50% should fail.
     with pytest.raises(TrainingDiversityError, match="only"):
         assert_top_of_ladder_data(rows, min_fraction=0.5)
@@ -57,7 +56,11 @@ def test_assert_top_of_ladder_data_enforces_min_fraction():
 
 
 def test_top_of_ladder_stats_counts_sources():
-    rows = _rows(["ladder-scrape", "ladder-scrape", "multideck-cabt"])
+    rows = _rows([
+        "pokemon-tcg-ai-battle-episodes-2026-06-20",
+        "pokemon-tcg-ai-battle-episodes-2026-06-20",
+        "multideck-cabt",
+    ])
     stats = top_of_ladder_stats(rows)
     assert stats["ladder_games"] == 2
     assert stats["ladder_fraction"] == pytest.approx(2 / 3)

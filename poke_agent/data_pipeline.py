@@ -71,6 +71,78 @@ def merge_training_rollouts(
     return subprocess.run(cmd, cwd=root, check=check)
 
 
+def ensure_episodes_index_data(
+    root: Path,
+    *,
+    index_path: Path,
+    top_percent_days: float = 100.0,
+    download: bool = True,
+) -> list[str]:
+    """Ensure manifest + daily episode JSON bundles from episodes-index are on disk.
+
+    Uses the official Kaggle dataset
+    https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-index
+    (not live leaderboard scraping).
+    """
+    from poke_agent.episodes_index import (
+        daily_slugs_for_top_games,
+        list_local_episode_files,
+        load_daily_manifest,
+        local_daily_episodes_dir,
+    )
+
+    if download and not index_path.is_file():
+        print(f"downloading episodes index -> {index_path.parent}")
+        subprocess.run(
+            ["bash", "scripts/download-episodes-index.sh"],
+            cwd=root,
+            check=True,
+        )
+
+    if not index_path.is_file():
+        raise FileNotFoundError(
+            f"episodes index manifest missing: {index_path}\n"
+            "Run: bash scripts/download-episodes-index.sh"
+        )
+
+    manifest = load_daily_manifest(index_path)
+    slugs = daily_slugs_for_top_games(manifest, top_percent=top_percent_days)
+    if not slugs:
+        raise ValueError(f"no daily slugs in episodes index manifest: {index_path}")
+
+    for slug in slugs:
+        directory = local_daily_episodes_dir(root, slug)
+        if list_local_episode_files(directory):
+            print(f"episodes index: {slug} already local ({len(list_local_episode_files(directory))} files)")
+            continue
+        if not download:
+            print(f"WARN: missing daily bundle {directory} (pass --download-index to fetch)")
+            continue
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        print(f"downloading daily episodes bundle: kaggle/{slug}")
+        subprocess.run(
+            [
+                "kaggle",
+                "datasets",
+                "download",
+                f"kaggle/{slug}",
+                "-p",
+                str(directory),
+                "--unzip",
+            ],
+            cwd=root,
+            check=True,
+        )
+        count = len(list_local_episode_files(directory))
+        print(f"episodes index: {slug} -> {count} replay files")
+        if count == 0:
+            raise FileNotFoundError(
+                f"downloaded {slug} but found no .json replays under {directory}"
+            )
+
+    return slugs
+
+
 def scrape_ladder_replays(
     root: Path,
     *,
@@ -104,32 +176,29 @@ def scrape_ladder_replays(
     return True
 
 
-def convert_ladder_replays_to_rollouts(
+def convert_episodes_index_to_rollouts(
     root: Path,
     *,
     out_path: Path,
-    scrape_index_csv: Path | None = None,
-    episodes_index: Path | None = None,
-    top_percent: float = 100.0,
+    episodes_index: Path,
+    top_percent: float = 1.0,
+    top_percent_days: float = 100.0,
     max_episodes: int = 0,
+    daily_slugs: list[str] | None = None,
 ) -> int:
-    """Convert scraped / indexed replay JSON into rollout JSONL (top-of-ladder corpus).
-
-    Returns the number of episodes converted.
-    """
+    """Convert episodes-index replay JSON into rollout JSONL (top competition games)."""
     import json
 
     from poke_agent.archetypes import load_archetype_registry
-    from poke_agent.episodes_index import default_index_path, filter_top_percent, load_episode_pool
+    from poke_agent.episodes_index import filter_top_percent, load_episode_pool
     from poke_agent.replay_import import convert_replay_file
-
-    scrape_csv = scrape_index_csv or (root / "data/ladder-replays/index.csv")
-    index_path = episodes_index or default_index_path(root)
 
     records = load_episode_pool(
         root,
-        index_path=index_path if index_path.is_file() else None,
-        scrape_index_csv=scrape_csv if scrape_csv.is_file() else None,
+        index_path=episodes_index,
+        daily_slugs=daily_slugs,
+        include_scrape=False,
+        top_percent_days=top_percent_days,
     )
     records = [r for r in records if r.replay_path is not None and r.replay_path.is_file()]
     if top_percent > 0 and top_percent < 100:
@@ -138,10 +207,11 @@ def convert_ladder_replays_to_rollouts(
         records = records[:max_episodes]
 
     if not records:
-        print("WARN: no replay files found to convert (scrape first or add kaggle/input episodes)")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text("", encoding="utf-8")
-        return 0
+        raise FileNotFoundError(
+            "no episodes-index replay files found. Run:\n"
+            "  bash scripts/download-episodes-index.sh\n"
+            "  python scripts/prepare_training_data.py"
+        )
 
     registry = load_archetype_registry(root)
     all_rows: list[dict] = []
@@ -153,19 +223,22 @@ def convert_ladder_replays_to_rollouts(
             episode=episode_index,
             registry=registry,
             root=root,
-            source=record.source or "ladder-scrape",
+            source=record.source or "pokemon-tcg-ai-battle-episodes",
         )
         all_rows.extend(rows)
         if (episode_index + 1) % 25 == 0 or episode_index + 1 == total:
-            print(f"  replays -> rollouts: {episode_index + 1}/{total} episodes, {len(all_rows):,} rows")
+            print(f"  episodes-index -> rollouts: {episode_index + 1}/{total} episodes, {len(all_rows):,} rows")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as handle:
         for row in all_rows:
             handle.write(json.dumps(row, separators=(",", ":")) + "\n")
 
-    print(f"ladder rollouts: {total} episodes -> {len(all_rows):,} rows -> {out_path}")
+    print(f"episodes-index rollouts: {total} episodes -> {len(all_rows):,} rows -> {out_path}")
     return total
+
+
+convert_ladder_replays_to_rollouts = convert_episodes_index_to_rollouts
 
 
 def validate_bootstrap_training_data(
@@ -221,28 +294,27 @@ def prepare_bootstrap_training_data(
     root: Path,
     *,
     simulator_available: bool,
-    scrape: bool = True,
+    scrape: bool = False,
     scrape_teams: int = 10,
     scrape_episodes_per_sub: int = 20,
+    download_index: bool = True,
     generate_multideck: bool = True,
     episodes: int | None = None,
     workers: int | None = None,
     top_percent: float | None = None,
     validate: bool = True,
 ) -> dict[str, Path | None]:
-    """Refresh ladder + multideck corpora and write the merged bootstrap JSONL.
+    """Refresh episodes-index + multideck corpora and write merged bootstrap JSONL.
 
-    Typical call before ``scripts/train_agent.py``:
-      1. incremental Kaggle ladder scrape (optional)
-      2. convert replays + local episodes index -> scraped_rollouts.jsonl
-      3. generate multideck CABT games (optional, needs cg-lib)
-      4. merge -> training_rollouts_merged.jsonl
-      5. validate ladder + matchup diversity gates
+    Top competition games come from the official episodes-index dataset only
+    (https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-index),
+    not live leaderboard scraping.
     """
     scraped_path = Path(config["scraped_rollout_path"])
     multideck_path = Path(config["multideck_rollout_path"])
     merged_path = Path(config["merged_rollout_path"])
-    top_pct = float(top_percent if top_percent is not None else config.get("top_episode_percent", 100.0))
+    index_path = Path(config["episodes_index_path"])
+    top_pct = float(top_percent if top_percent is not None else config.get("top_episode_percent", 1.0))
 
     if scrape:
         scrape_ladder_replays(
@@ -251,11 +323,18 @@ def prepare_bootstrap_training_data(
             episodes_per_sub=scrape_episodes_per_sub,
         )
 
-    convert_ladder_replays_to_rollouts(
+    daily_slugs = ensure_episodes_index_data(
+        root,
+        index_path=index_path,
+        download=download_index,
+    )
+
+    convert_episodes_index_to_rollouts(
         root,
         out_path=scraped_path,
-        episodes_index=Path(config["episodes_index_path"]),
+        episodes_index=index_path,
         top_percent=top_pct,
+        daily_slugs=daily_slugs,
     )
 
     generate_games = episodes
