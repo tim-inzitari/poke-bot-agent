@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from poke_agent.checkpoint import print_training_report, save_checkpoint
+from poke_agent.checkpoint import print_training_report, resolve_resume_path, save_checkpoint
 from poke_agent.config import build_config, resolve_generate_games
 from poke_agent.dataset import prepare_training_tensors
 from poke_agent.deck import read_deck
@@ -50,7 +50,17 @@ def main() -> None:
         config=config,
         device=device,
     )
-    training_report = train_model(model, tensors, config, device)
+    train_cfg = config["training"]
+    resume_path = resolve_resume_path(config["output_path"], train_cfg.get("resume", "auto"))
+    training_report = train_model(
+        model,
+        tensors,
+        config,
+        device,
+        checkpoint_path=config["output_path"],
+        checkpoint_every_epochs=int(train_cfg.get("checkpoint_every", 0)),
+        resume_path=resume_path,
+    )
     training_report = save_checkpoint(
         model=model,
         tensors=tensors,

@@ -157,24 +157,15 @@ def evaluate_search_leaf(
     assert agent._feature_mean is not None and agent._feature_std is not None
 
     leaf_tracker = GameEventTracker()
-    leaf_features = encode_observation_step(
+    leaf_features, leaf_cards = encode_observation_step(
         leaf_obs_dict,
         leaf_tracker,
         state_hash_dim=agent._state_hash_dim,
         our_deck=our_deck,
-    ).reshape(-1)
-    leaf_norm = ((leaf_features - agent._feature_mean) / agent._feature_std).astype(np.float32)
-
-    window = (agent._history + [leaf_norm])[-agent._window_size :]
-    pad_count = agent._window_size - len(window)
-    if pad_count > 0:
-        pad = np.zeros_like(leaf_norm)
-        window = [pad] * pad_count + window
-
-    x = torch.tensor(np.stack(window), dtype=torch.float32, device=agent.device).unsqueeze(0)
-    mask = torch.ones((1, agent._window_size), dtype=torch.float32, device=agent.device)
-    with torch.no_grad():
-        value = float(agent._model(x, mask)["value"].squeeze().cpu().item())
+        card_vocab_size=agent._card_vocab_size,
+    )
+    leaf_norm = ((leaf_features.reshape(-1) - agent._feature_mean) / agent._feature_std).astype(np.float32)
+    value = agent._model_value(leaf_features=leaf_norm, leaf_cards=leaf_cards)
 
     current = leaf_obs_dict.get("current") or {}
     if int(current.get("yourIndex", root_your_index)) != root_your_index:

@@ -141,24 +141,20 @@ def evaluate_search_leaf(
     assert runtime._feature_mean is not None and runtime._feature_std is not None
 
     leaf_tracker = GameEventTracker()
-    leaf_features = encode_observation_step(
+    leaf_features, leaf_cards = encode_observation_step(
         leaf_obs_dict,
         leaf_tracker,
         state_hash_dim=runtime._state_hash_dim,
         our_deck=our_deck,
-    ).reshape(-1)
-    leaf_norm = ((leaf_features - runtime._feature_mean) / runtime._feature_std).astype(np.float32)
+        card_vocab_size=runtime._card_vocab_size,
+    )
+    leaf_norm = ((leaf_features.reshape(-1) - runtime._feature_mean) / runtime._feature_std).astype(np.float32)
 
-    window = (session.history + [leaf_norm])[-runtime._window_size :]
-    pad_count = runtime._window_size - len(window)
-    if pad_count > 0:
-        pad = np.zeros_like(leaf_norm)
-        window = [pad] * pad_count + window
-
-    x = torch.tensor(np.stack(window), dtype=torch.float32, device=runtime.device).unsqueeze(0)
-    mask = torch.ones((1, runtime._window_size), dtype=torch.float32, device=runtime.device)
-    with torch.no_grad():
-        value = float(runtime._model(x, mask)["value"].squeeze().cpu().item())
+    value = runtime._model_value(
+        session,
+        leaf_features=leaf_norm,
+        leaf_cards=leaf_cards,
+    )
 
     current = leaf_obs_dict.get("current") or {}
     if int(current.get("yourIndex", root_your_index)) != root_your_index:

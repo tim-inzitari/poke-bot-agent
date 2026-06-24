@@ -203,6 +203,60 @@ def assign_episode_values(
             )
 
 
+def episode_outcome_returns(
+    rows: list[dict[str, Any]],
+    gamma: float,
+    *,
+    seat: int,
+    value_win: float = VALUE_WIN,
+    value_not_win: float = VALUE_NOT_WIN,
+    value_timeout: float = VALUE_TIMEOUT,
+    terminal_obs: dict[str, Any] | None = None,
+    result: int = -1,
+) -> list[float]:
+    """Per-row discounted Monte Carlo return for one seat's decision sequence."""
+    if not rows:
+        return []
+    terminal_observation = terminal_obs
+    if terminal_observation is None:
+        terminal_observation = rows[-1].get("next_observation") or rows[-1].get("observation")
+    resolved = resolve_game_result(int(result), terminal_observation)
+    outcome = player_outcome_value(
+        resolved,
+        int(seat),
+        value_win=value_win,
+        value_not_win=value_not_win,
+        value_timeout=value_timeout,
+        terminal_obs=terminal_observation,
+    )
+    last_index = len(rows) - 1
+    returns: list[float] = []
+    for index in range(len(rows)):
+        distance = last_index - index
+        returns.append(float(outcome) * (float(gamma) ** distance))
+    return returns
+
+
+def blended_value_target(
+    mc_return: float,
+    obs: dict[str, Any] | None,
+    seat: int,
+    *,
+    shaping_alpha: float = 0.15,
+    value_win: float = VALUE_WIN,
+    value_not_win: float = VALUE_NOT_WIN,
+) -> float:
+    """Blend discounted outcome return with bounded prize-progress shaping."""
+    shaping = prize_progress_value(
+        obs,
+        int(seat),
+        value_win=value_win,
+        value_not_win=value_not_win,
+    )
+    target = (1.0 - float(shaping_alpha)) * float(mc_return) + float(shaping_alpha) * float(shaping)
+    return float(max(-1.0, min(1.0, target)))
+
+
 def filter_complete_episode_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop incomplete, truncated, draw, or timeout episodes from a JSONL row list."""
     by_episode: dict[int, list[dict[str, Any]]] = {}

@@ -836,6 +836,7 @@ def train_on_rollouts(
     checkpoint_path: Path | None = None,
     iteration: int = 1,
     apply_lr_warmup: bool = False,
+    periodic_checkpoint_path: Path | None = None,
 ) -> tuple[Any, Any, dict[str, Any]]:
     """Retrain on self-play JSONL, optionally capped to the most recent games."""
     train_config = dict(config)
@@ -843,6 +844,9 @@ def train_on_rollouts(
     train_config["generated_path"] = data_path
     train_config["require_cabt_eval_data"] = False
     train_config["require_training_matchup_diversity"] = False
+    # Self-play / baseline rollouts are not top-of-ladder replays; that data-quality
+    # gate only applies to the bootstrap corpus.
+    train_config["require_top_of_ladder_data"] = False
 
     sp = dict(config.get("self_play", {}))
     train_cfg = dict(train_config.get("training", {}))
@@ -884,7 +888,19 @@ def train_on_rollouts(
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model_state_dict"])
         print(f"loaded weights from {checkpoint_path.name} before self-play training")
-    training_report = train_model(model, tensors, train_config, device)
+    # Periodic .latest.pt beside the iteration checkpoint; no cross-iteration resume.
+    checkpoint_every = (
+        int(train_cfg.get("checkpoint_every", 0)) if periodic_checkpoint_path is not None else 0
+    )
+    training_report = train_model(
+        model,
+        tensors,
+        train_config,
+        device,
+        checkpoint_path=periodic_checkpoint_path,
+        checkpoint_every_epochs=checkpoint_every,
+        resume_path=None,
+    )
     return model, tensors, training_report
 
 
@@ -983,6 +999,7 @@ def run_self_play_iteration(
     saved_checkpoint = current_checkpoint
     if settings.train_after_collect:
         print("training on self-play rollouts...")
+        iter_path = settings.checkpoint_dir / f"iter_{iteration:03d}.pt"
         model, tensors, training_report = train_on_rollouts(
             config,
             device,
@@ -990,8 +1007,8 @@ def run_self_play_iteration(
             checkpoint_path=current_checkpoint,
             iteration=iteration,
             apply_lr_warmup=True,
+            periodic_checkpoint_path=iter_path,
         )
-        iter_path = settings.checkpoint_dir / f"iter_{iteration:03d}.pt"
         training_report = save_checkpoint(
             model=model,
             tensors=tensors,
@@ -1128,14 +1145,15 @@ def run_baseline_iteration(
     tensors = None
     if settings.train_after_collect:
         print("training on baseline rollout data...")
+        iter_path = settings.checkpoint_dir / f"baseline_{iteration:03d}.pt"
         model, tensors, training_report = train_on_rollouts(
             config,
             device,
             data_path=settings.output_path,
             checkpoint_path=current_checkpoint,
             iteration=iteration,
+            periodic_checkpoint_path=iter_path,
         )
-        iter_path = settings.checkpoint_dir / f"baseline_{iteration:03d}.pt"
         training_report = save_checkpoint(
             model=model,
             tensors=tensors,
@@ -1259,6 +1277,7 @@ def run_curriculum_self_play(
     device: torch.device | None = None,
     initial_checkpoint: Path | None = None,
     submit_on_stop: bool = False,
+    submit_after_baseline: bool = False,
     submission_message: str = DEFAULT_SUBMISSION_MESSAGE,
     root: Path | None = None,
 ) -> list[dict[str, Any]]:
@@ -1319,6 +1338,26 @@ def run_curriculum_self_play(
         return baseline_reports
 
     champion_ckpt = Path(baseline_reports[-1]["saved_checkpoint"])
+
+    if submit_after_baseline:
+        print(f"baseline gate beaten ({aggregate:.1%}); submitting {champion_ckpt.name} to Kaggle")
+        manifest = load_manifest(manifest_path)
+        try:
+            submission = submit_champion_checkpoint(
+                champion_ckpt,
+                root=play_root,
+                message=f"{submission_message} (baseline gate {aggregate:.0%})",
+            )
+            manifest["kaggle_submission_baseline"] = submission
+        except subprocess.CalledProcessError as exc:
+            manifest["kaggle_submission_baseline_error"] = {
+                "checkpoint": str(champion_ckpt),
+                "returncode": exc.returncode,
+                "output": (exc.stdout or "") + (exc.stderr or ""),
+            }
+            print(f"WARN: baseline-gate Kaggle submission failed: {exc}")
+        save_manifest(manifest_path, manifest)
+
     print("curriculum phase 2: pure transformer self-play")
     if settings.output_path.exists():
         settings.output_path.unlink()

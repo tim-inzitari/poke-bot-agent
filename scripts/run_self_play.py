@@ -61,6 +61,16 @@ def main() -> None:
         action="store_true",
         help="train/eval vs official baseline agents only (no transformer self-play)",
     )
+    parser.add_argument(
+        "--submit-on-stop",
+        action="store_true",
+        help="submit the champion checkpoint to Kaggle when self-play stops",
+    )
+    parser.add_argument(
+        "--submit-after-baseline",
+        action="store_true",
+        help="submit the champion to Kaggle when the baseline gate is beaten (curriculum only)",
+    )
     args = parser.parse_args()
 
     root = resolve_root()
@@ -139,11 +149,9 @@ def main() -> None:
             initial_checkpoint=initial_checkpoint,
             root=root,
         )
-    else:
-        run_fn = run_curriculum_self_play if args.curriculum else run_self_play_loop
-        if args.curriculum:
-            print("curriculum: official baseline agents → transformer self-play at gate")
-        reports = run_fn(
+    elif args.curriculum:
+        print("curriculum: official baseline agents → transformer self-play at gate")
+        reports = run_curriculum_self_play(
             config=config,
             simulator=simulator,
             agent_deck=deck,
@@ -151,6 +159,21 @@ def main() -> None:
             settings=settings,
             device=device,
             initial_checkpoint=initial_checkpoint,
+            submit_on_stop=args.submit_on_stop,
+            submit_after_baseline=args.submit_after_baseline,
+            root=root,
+        )
+    else:
+        reports = run_self_play_loop(
+            config=config,
+            simulator=simulator,
+            agent_deck=deck,
+            agent_name=deck_name,
+            settings=settings,
+            device=device,
+            initial_checkpoint=initial_checkpoint,
+            submit_on_stop=args.submit_on_stop,
+            root=root,
         )
 
     print("\nSelf-play summary")

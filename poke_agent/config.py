@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from poke_agent.features import COARSE_FEATURE_DIM
+from poke_agent.features import FEATURE_SCHEMA_VERSION, STRUCTURED_FEATURE_DIM, total_feature_dim
 from poke_agent.outputs import describe_layout, ensure_output_layout, report_path, resolve_checkpoint_path
 
 # =============================================================================
@@ -30,6 +30,12 @@ REQUIRE_COMPLETE_GAMES = True
 REQUIRE_TRAINING_MATCHUP_DIVERSITY = True
 MIN_TRAINING_MATCHUPS = 2
 MIN_TRAINING_DECK_SLUGS = 2
+# Bootstrap data quality: require the training corpus to include top-of-ladder
+# replay games (scraped from the Kaggle leaderboard / episodes index), not only
+# synthetic CABT self-play. MIN_TOP_OF_LADDER_FRACTION optionally enforces a
+# minimum share of episodes from ladder sources (0 = require >=1 ladder game).
+REQUIRE_TOP_OF_LADDER_DATA = True
+MIN_TOP_OF_LADDER_FRACTION = 0.0
 FALLBACK_ROLLOUT_DATA = [
     "data/mac-rollouts-10k.jsonl",
     "data/notebook_rollouts.jsonl",
@@ -53,16 +59,18 @@ DATASET_GAMES = 2000  # None = train on all games in file, skip inline generatio
                       # 5000 or 100000 = that many CABT games to generate and/or cap training
 
 # --- Features ---
-TRANSITION_CLASSES = 8
-STATE_HASH_DIM = 256
-WINDOW_SIZE = 512
+TRANSITION_CLASSES = 64
+STATE_HASH_DIM = 32
+WINDOW_SIZE = 256
+CARD_VOCAB_SIZE = 2000
+CARD_EMBED_DIM = 32
 TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
-MODEL_D_MODEL = 64
-MODEL_HEADS = 4
-MODEL_LAYERS = 4
-MODEL_FF = None  # None = MODEL_D_MODEL * 4
+MODEL_D_MODEL = 256
+MODEL_HEADS = 8
+MODEL_LAYERS = 6
+MODEL_FF = 1024
 MODEL_DROPOUT = 0.1
 LEARNING_RATE = 3e-4
 WEIGHT_DECAY = 1e-2
@@ -79,6 +87,11 @@ LOSS_UNCERTAINTY_WEIGHT = 0.02
 VALUE_WIN = 1.0
 VALUE_NOT_WIN = -1.0  # loss or draw
 VALUE_TIMEOUT = -2.0  # harsh penalty for stalling to the time limit
+VALUE_RETURN_GAMMA = 0.997
+VALUE_SHAPING_ALPHA = 0.15
+POLICY_WEIGHTING = "awr"  # awr | none
+POLICY_AWR_BETA = 0.5
+POLICY_AWR_WEIGHT_MAX = 20.0
 
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 8
@@ -126,7 +139,15 @@ EARLY_STOP_METRIC = "value_loss"  # value_loss | total_loss
 EARLY_STOP_PATIENCE = 20  # epochs without meaningful improvement → stop
 EARLY_STOP_MIN_DELTA = 5e-4  # minimum drop on monitor metric to count as improvement
 TRAIN_PRINT_EVERY = 100
-BATCH_GAMES = 2  # games per training batch (each game is one temporal sequence)
+BATCH_GAMES = 4  # seat-sequences per training batch
+TRAIN_USE_AMP = True
+TRAIN_GRAD_CHECKPOINT = False
+# Crash/OOM resilience: write a resumable checkpoint every N epochs (0 = off) plus
+# a best-so-far copy. Files sit beside the final checkpoint as <name>.latest.pt /
+# <name>.best.pt. TRAIN_RESUME: "auto" resumes <name>.latest.pt if present,
+# "0" never resumes, "1" requires it.
+TRAIN_CHECKPOINT_EVERY = 5
+TRAIN_RESUME = "auto"
 
 # Flat override keys accepted by build_config(..., overrides=...).
 OVERRIDE_KEYS = frozenset({
@@ -142,6 +163,17 @@ OVERRIDE_KEYS = frozenset({
     "transition_classes",
     "state_hash_dim",
     "window_size",
+    "card_vocab_size",
+    "card_embed_dim",
+    "value_return_gamma",
+    "value_shaping_alpha",
+    "policy_weighting",
+    "policy_awr_beta",
+    "policy_awr_weight_max",
+    "train_use_amp",
+    "train_grad_checkpoint",
+    "train_checkpoint_every",
+    "train_resume",
     "d_model",
     "model_heads",
     "model_layers",
@@ -205,6 +237,8 @@ OVERRIDE_KEYS = frozenset({
     "require_training_matchup_diversity",
     "min_training_matchups",
     "min_training_deck_slugs",
+    "require_top_of_ladder_data",
+    "min_top_of_ladder_fraction",
     "value_timeout",
 })
 
@@ -224,6 +258,17 @@ def default_user_config() -> dict[str, Any]:
         "transition_classes": TRANSITION_CLASSES,
         "state_hash_dim": STATE_HASH_DIM,
         "window_size": WINDOW_SIZE,
+        "card_vocab_size": CARD_VOCAB_SIZE,
+        "card_embed_dim": CARD_EMBED_DIM,
+        "value_return_gamma": VALUE_RETURN_GAMMA,
+        "value_shaping_alpha": VALUE_SHAPING_ALPHA,
+        "policy_weighting": POLICY_WEIGHTING,
+        "policy_awr_beta": POLICY_AWR_BETA,
+        "policy_awr_weight_max": POLICY_AWR_WEIGHT_MAX,
+        "train_use_amp": TRAIN_USE_AMP,
+        "train_grad_checkpoint": TRAIN_GRAD_CHECKPOINT,
+        "train_checkpoint_every": TRAIN_CHECKPOINT_EVERY,
+        "train_resume": TRAIN_RESUME,
         "d_model": MODEL_D_MODEL,
         "model_heads": MODEL_HEADS,
         "model_layers": MODEL_LAYERS,
@@ -288,6 +333,8 @@ def default_user_config() -> dict[str, Any]:
         "require_training_matchup_diversity": REQUIRE_TRAINING_MATCHUP_DIVERSITY,
         "min_training_matchups": MIN_TRAINING_MATCHUPS,
         "min_training_deck_slugs": MIN_TRAINING_DECK_SLUGS,
+        "require_top_of_ladder_data": REQUIRE_TOP_OF_LADDER_DATA,
+        "min_top_of_ladder_fraction": MIN_TOP_OF_LADDER_FRACTION,
     }
 
 
@@ -302,6 +349,19 @@ _ENV_MAP = {
     "transition_classes": "TRANSITION_CLASSES",
     "state_hash_dim": "STATE_HASH_DIM",
     "window_size": "WINDOW_SIZE",
+    "card_vocab_size": "CARD_VOCAB_SIZE",
+    "card_embed_dim": "CARD_EMBED_DIM",
+    "value_return_gamma": "VALUE_RETURN_GAMMA",
+    "value_shaping_alpha": "VALUE_SHAPING_ALPHA",
+    "policy_weighting": "POLICY_WEIGHTING",
+    "policy_awr_beta": "POLICY_AWR_BETA",
+    "policy_awr_weight_max": "POLICY_AWR_WEIGHT_MAX",
+    "train_use_amp": "TRAIN_USE_AMP",
+    "train_grad_checkpoint": "TRAIN_GRAD_CHECKPOINT",
+    "train_checkpoint_every": "TRAIN_CHECKPOINT_EVERY",
+    "train_resume": "TRAIN_RESUME",
+    "require_top_of_ladder_data": "REQUIRE_TOP_OF_LADDER_DATA",
+    "min_top_of_ladder_fraction": "MIN_TOP_OF_LADDER_FRACTION",
     "d_model": "MODEL_D_MODEL",
     "model_heads": "MODEL_HEADS",
     "model_layers": "MODEL_LAYERS",
@@ -361,10 +421,17 @@ _ENV_MAP = {
 def _coerce_value(key: str, value: Any) -> Any:
     if value is None:
         return None
-    if key == "require_cabt_eval_data":
+    if key in {
+        "require_cabt_eval_data",
+        "train_use_amp",
+        "train_grad_checkpoint",
+        "require_top_of_ladder_data",
+    }:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
         return bool(value)
+    if key == "policy_weighting":
+        return str(value)
     if key == "self_play_per_deck_checkpoint_dir" and value in {"", "none", "None", "null"}:
         return None
     if key == "self_play_train_window_games":
@@ -392,6 +459,8 @@ def _coerce_value(key: str, value: Any) -> Any:
         "transition_classes",
         "state_hash_dim",
         "window_size",
+        "card_vocab_size",
+        "card_embed_dim",
         "d_model",
         "model_heads",
         "model_layers",
@@ -418,6 +487,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_warmup_iterations",
         "min_training_matchups",
         "min_training_deck_slugs",
+        "train_checkpoint_every",
     }:
         return int(value)
     if key == "top_episode_percent":
@@ -437,10 +507,15 @@ def _coerce_value(key: str, value: Any) -> Any:
         "value_win",
         "value_not_win",
         "value_timeout",
+        "value_return_gamma",
+        "value_shaping_alpha",
+        "policy_awr_beta",
+        "policy_awr_weight_max",
         "self_play_target_win_rate",
         "self_play_baseline_win_rate",
         "self_play_baseline_top_decks_per_archetype",
         "self_play_warmup_lr_multiplier",
+        "min_top_of_ladder_fraction",
     }:
         return float(value)
     if key in {"fallback_rollout_data", "training_rollout_sources"}:
@@ -507,19 +582,35 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "require_training_matchup_diversity": settings["require_training_matchup_diversity"],
         "min_training_matchups": settings["min_training_matchups"],
         "min_training_deck_slugs": settings["min_training_deck_slugs"],
+        "require_top_of_ladder_data": settings["require_top_of_ladder_data"],
+        "min_top_of_ladder_fraction": settings["min_top_of_ladder_fraction"],
         "generated_path": root / settings["cabt_generated_path"],
         "competition_results_path": root / settings["competition_results_path"],
         "output_path": checkpoint,
         "report_path": report_path(root, model_id),
         "model_id": model_id,
         "output_layout": describe_layout(root),
-        "coarse_feature_dim": COARSE_FEATURE_DIM,
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "structured_feature_dim": STRUCTURED_FEATURE_DIM,
+        "coarse_feature_dim": STRUCTURED_FEATURE_DIM,
         "require_cabt_eval_data": settings["require_cabt_eval_data"],
         "dataset_games": settings["dataset_games"],
         "transition_classes": settings["transition_classes"],
         "state_hash_dim": settings["state_hash_dim"],
         "window_size": settings["window_size"],
+        "card_vocab_size": settings["card_vocab_size"],
+        "card_embed_dim": settings["card_embed_dim"],
+        "input_dim": total_feature_dim(state_hash_dim=settings["state_hash_dim"]),
         "tensor_build_workers": settings["tensor_build_workers"],
+        "train_use_amp": settings["train_use_amp"],
+        "train_grad_checkpoint": settings["train_grad_checkpoint"],
+        "objective": {
+            "value_return_gamma": settings["value_return_gamma"],
+            "value_shaping_alpha": settings["value_shaping_alpha"],
+            "policy_weighting": settings["policy_weighting"],
+            "policy_awr_beta": settings["policy_awr_beta"],
+            "policy_awr_weight_max": settings["policy_awr_weight_max"],
+        },
         "model": {
             "d_model": d_model,
             "heads": settings["model_heads"],
@@ -544,6 +635,8 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "early_stop_metric": settings["early_stop_metric"],
             "print_every": settings["train_print_every"],
             "batch_games": settings["batch_games"],
+            "checkpoint_every": settings["train_checkpoint_every"],
+            "resume": settings["train_resume"],
         },
         "rewards": {
             "value_win": settings["value_win"],

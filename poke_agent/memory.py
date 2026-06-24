@@ -28,15 +28,15 @@ def estimate_dataset_bytes(tensors: TrainingTensors) -> int:
     return sum(
         _tensor_bytes(tensor)
         for tensor in (
-            tensors.x,
-            tensors.x_padded,
+            tensors.x_seq,
             tensors.y,
+            tensors.returns,
             tensors.transition_target,
             tensors.next_x,
             tensors.terminal,
-            tensors.history_index,
-            tensors.history_mask,
-            tensors.game_lengths,
+            tensors.seq_mask,
+            tensors.card_ids,
+            tensors.seq_lengths,
         )
     )
 
@@ -59,12 +59,12 @@ def _training_step_peak_bytes(
 ) -> dict[str, int]:
     model_cfg = config["model"]
     loss_cfg = config["loss"]
+    objective_cfg = config.get("objective", {})
     batch_games = int(config["training"]["batch_games"])
-    game_ids = torch.arange(min(batch_games, tensors.num_games), device=device)
-    batch_idx = tensors.row_indices_for_games(game_ids)
+    seq_ids = torch.arange(min(batch_games, tensors.num_seqs), device=device)
 
-    value_loss_fn = nn.MSELoss()
-    policy_loss_fn = nn.CrossEntropyLoss()
+    value_loss_fn = nn.MSELoss(reduction="none")
+    policy_loss_fn = nn.CrossEntropyLoss(reduction="none")
     dynamics_loss_fn = nn.SmoothL1Loss(reduction="none")
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -77,27 +77,35 @@ def _training_step_peak_bytes(
     allocated_before_step = torch.cuda.memory_allocated(device)
 
     model.train()
-    xb = tensors.x_padded[tensors.history_index[batch_idx]]
-    mask_b = tensors.history_mask[batch_idx]
-    yb = tensors.y[batch_idx]
-    transition_b = tensors.transition_target[batch_idx]
-    next_xb = tensors.next_x[batch_idx]
-    terminal_b = tensors.terminal[batch_idx]
+    xb = tensors.x_seq[seq_ids]
+    mask_b = tensors.seq_mask[seq_ids]
+    card_b = tensors.card_ids[seq_ids]
+    yb = tensors.y[seq_ids]
+    returns_b = tensors.returns[seq_ids]
+    transition_b = tensors.transition_target[seq_ids]
+    next_xb = tensors.next_x[seq_ids]
+    terminal_b = tensors.terminal[seq_ids]
 
     optimizer.zero_grad(set_to_none=True)
-    out = model(xb, mask_b)
-
-    value_loss = value_loss_fn(out["value"], yb)
-    policy_loss = policy_loss_fn(out["policy_logits"], transition_b)
-    nonterminal = (1.0 - terminal_b).unsqueeze(-1)
+    out = model(xb, mask_b, card_ids=card_b)
+    valid = mask_b > 0
+    valid_count = valid.sum().clamp(min=1.0)
+    value_loss = (value_loss_fn(out["value"], yb) * valid).sum() / valid_count
+    policy_raw = policy_loss_fn(
+        out["policy_logits"].reshape(-1, out["policy_logits"].shape[-1]),
+        transition_b.reshape(-1),
+    ).reshape_as(transition_b)
+    policy_loss = (policy_raw * valid).sum() / valid_count
+    nonterminal = (1.0 - terminal_b) * valid
     dynamics_loss = (
-        dynamics_loss_fn(out["next_features"], next_xb) * nonterminal
-    ).sum() / nonterminal.sum().clamp_min(1.0)
+        dynamics_loss_fn(out["next_features"], next_xb) * nonterminal.unsqueeze(-1)
+    ).sum() / nonterminal.sum().clamp(min=1.0)
     probs = torch.softmax(out["policy_logits"], dim=-1)
-    entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(dim=-1).mean()
-    uncertainty_loss = torch.mean(
-        torch.exp(-out["log_variance"]) * (out["value"] - yb).pow(2) + out["log_variance"]
-    )
+    entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(dim=-1)
+    entropy = (entropy * valid).sum() / valid_count
+    uncertainty_loss = (
+        (torch.exp(-out["log_variance"]) * (out["value"] - yb).pow(2) + out["log_variance"]) * valid
+    ).sum() / valid_count
     loss = (
         loss_cfg["value"] * value_loss
         + loss_cfg["policy"] * policy_loss
@@ -105,6 +113,7 @@ def _training_step_peak_bytes(
         - loss_cfg["entropy"] * entropy
         + loss_cfg["uncertainty"] * uncertainty_loss
     )
+    _ = returns_b, objective_cfg
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     optimizer.step()
@@ -112,7 +121,7 @@ def _training_step_peak_bytes(
     torch.cuda.synchronize(device)
     peak_allocated = torch.cuda.max_memory_allocated(device)
 
-    del optimizer, out, loss, xb, mask_b, yb, transition_b, next_xb, terminal_b
+    del optimizer, out, loss, xb, mask_b, card_b, yb, transition_b, next_xb, terminal_b
     model.zero_grad(set_to_none=True)
     torch.cuda.empty_cache()
 
@@ -133,14 +142,15 @@ def print_vram_estimate(
 ) -> None:
     static = _static_training_bytes(param_count, tensors)
     batch_games = int(config["training"]["batch_games"])
-    avg_steps = int(tensors.x.shape[0]) / max(1, tensors.num_games)
+    avg_steps = float(tensors.seq_mask.sum().item()) / max(1, tensors.num_seqs)
 
     print("\nVRAM estimate for current config")
     print("-" * 34)
     print(f"device: {device}")
     print(
-        f"data: {tensors.num_games:,} games / {int(tensors.x.shape[0]):,} steps x {int(tensors.x.shape[1])} features "
-        f"(window={tensors.window_size}, batch_games={batch_games}, ~{avg_steps:.0f} steps/game)"
+        f"data: {tensors.num_seqs:,} seat-sequences x window={tensors.window_size} x "
+        f"{int(tensors.x_seq.shape[-1])} features "
+        f"(batch_games={batch_games}, ~{avg_steps:.0f} valid steps/seq)"
     )
     print(f"parameters: {param_count:,}")
     print(f"dataset tensors: {format_bytes(static['dataset_bytes'])}")

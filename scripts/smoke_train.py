@@ -49,6 +49,7 @@ def main() -> None:
         "require_cabt_eval_data": False,
         "require_complete_games": True,
         "require_training_matchup_diversity": False,
+        "require_top_of_ladder_data": False,
         "dataset_games": args.games,
         "train_epochs": args.epochs,
         "batch_games": 1,
@@ -65,7 +66,10 @@ def main() -> None:
     print(f"smoke data: {len(rows)} rows, {episodes} episodes from {config['merged_rollout_path']}")
 
     tensors = prepare_training_tensors(config, device)
-    print(f"feature dim {tensors.x.shape[1]}, games {tensors.num_games}, steps {tensors.x.shape[0]}")
+    print(
+        f"feature dim {tensors.x_seq.shape[-1]}, seat-sequences {tensors.num_seqs}, "
+        f"decision rows {tensors.dataset_rows}"
+    )
 
     model = build_model(config, tensors, device)
     report = train_model(model, tensors, config, device)

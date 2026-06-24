@@ -1,13 +1,58 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import torch
 from tqdm.auto import tqdm
 
+from poke_agent.checkpoint import (
+    load_training_checkpoint,
+    save_training_checkpoint,
+    training_checkpoint_paths,
+)
 from poke_agent.dataset import TrainingTensors
+from poke_agent.features import CARD_ID_SLOT_COUNT
 from poke_agent.models.temporal_transformer import TemporalTransformer
 from poke_agent.training_diversity import assert_generic_model_inputs
+
+
+def _restore_training_state(
+    resume_path: Path,
+    *,
+    model: TemporalTransformer,
+    optimizer: torch.optim.Optimizer,
+    scaler: "torch.amp.GradScaler",
+    device: torch.device,
+    use_amp: bool,
+) -> tuple[int, float, int, int]:
+    """Load model + optimizer + loop counters from a `.latest.pt` checkpoint.
+
+    Returns (start_epoch, best_loss, best_epoch, epochs_without_improvement).
+    """
+    checkpoint, training_state = load_training_checkpoint(resume_path)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(device)
+    if not training_state:
+        print(f"resume: {resume_path.name} has weights but no training_state; restarting epoch count.")
+        return 0, float("inf"), 0, 0
+
+    opt_state = training_state.get("optimizer_state_dict")
+    if opt_state is not None:
+        optimizer.load_state_dict(opt_state)
+    scaler_state = training_state.get("scaler_state_dict")
+    if use_amp and scaler_state is not None:
+        scaler.load_state_dict(scaler_state)
+
+    start_epoch = int(training_state.get("completed_epochs", 0))
+    best_loss = float(training_state.get("best_monitor_loss", float("inf")))
+    best_epoch = int(training_state.get("best_epoch", 0))
+    without_improvement = int(training_state.get("epochs_without_improvement", 0))
+    print(
+        f"resume: {resume_path.name} -> start_epoch={start_epoch} "
+        f"best={best_loss:.5f}@{best_epoch} patience_used={without_improvement}"
+    )
+    return start_epoch, best_loss, best_epoch, without_improvement
 
 
 def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.device) -> TemporalTransformer:
@@ -18,7 +63,7 @@ def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.
         raise ValueError("MODEL_D_MODEL must be divisible by MODEL_HEADS")
 
     model = TemporalTransformer(
-        tensors.x.shape[1],
+        tensors.x_seq.shape[-1],
         tensors.transition_classes,
         d_model=d_model,
         nhead=heads,
@@ -26,7 +71,12 @@ def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.
         dim_feedforward=model_cfg["ff"],
         dropout=model_cfg["dropout"],
         window_size=tensors.window_size,
+        card_vocab_size=int(config.get("card_vocab_size", 2000)),
+        card_embed_dim=int(config.get("card_embed_dim", 32)),
+        card_slot_count=CARD_ID_SLOT_COUNT,
     ).to(device)
+    if bool(config.get("train_grad_checkpoint", False)):
+        model.set_gradient_checkpointing(True)
     print(
         f"model: d_model={d_model} heads={heads} "
         f"layers={model_cfg['layers']} ff={model_cfg['ff']} "
@@ -36,23 +86,43 @@ def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.
     return model
 
 
+def _policy_weights(
+    returns: torch.Tensor,
+    values: torch.Tensor,
+    *,
+    mode: str,
+    beta: float,
+    weight_max: float,
+) -> torch.Tensor:
+    if mode == "none":
+        return torch.ones_like(returns)
+    advantages = (returns - values.detach()) / max(beta, 1e-6)
+    weights = torch.exp(advantages).clamp(max=weight_max)
+    return weights / weights.mean().clamp(min=1e-6)
+
+
 def train_model(
     model: TemporalTransformer,
     tensors: TrainingTensors,
     config: dict[str, Any],
     device: torch.device,
+    *,
+    checkpoint_path: Path | None = None,
+    checkpoint_every_epochs: int = 0,
+    resume_path: Path | None = None,
 ) -> dict[str, Any]:
     model_cfg = config["model"]
     loss_cfg = config["loss"]
     train_cfg = config["training"]
+    objective_cfg = config.get("objective", {})
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=model_cfg["learning_rate"],
         weight_decay=model_cfg["weight_decay"],
     )
-    value_loss_fn = torch.nn.MSELoss()
-    policy_loss_fn = torch.nn.CrossEntropyLoss()
+    value_loss_fn = torch.nn.MSELoss(reduction="none")
+    policy_loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
     dynamics_loss_fn = torch.nn.SmoothL1Loss(reduction="none")
 
     epochs = train_cfg["epochs"]
@@ -60,13 +130,16 @@ def train_model(
     min_delta = train_cfg["min_delta"]
     monitor_metric = str(train_cfg.get("early_stop_metric", "value_loss"))
     batch_games = train_cfg["batch_games"]
+    use_amp = bool(config.get("train_use_amp", False)) and device.type == "cuda"
+    policy_weighting = str(objective_cfg.get("policy_weighting", "awr"))
+    awr_beta = float(objective_cfg.get("policy_awr_beta", 0.5))
+    awr_weight_max = float(objective_cfg.get("policy_awr_weight_max", 20.0))
 
     assert_generic_model_inputs(model, tensors, config)
 
-    num_rows = int(tensors.x.shape[0])
-    num_games = tensors.num_games
-    num_batches = max(1, (num_games + batch_games - 1) // batch_games)
-    avg_steps = num_rows / max(1, num_games)
+    num_seqs = tensors.num_seqs
+    num_batches = max(1, (num_seqs + batch_games - 1) // batch_games)
+    avg_steps = float(tensors.seq_mask.sum().item()) / max(1, num_seqs)
 
     best_loss = float("inf")
     best_epoch = 0
@@ -75,26 +148,85 @@ def train_model(
     last_metrics: dict[str, float] = {}
     stopped_early = False
     completed_epochs = 0
+    start_epoch = 0
+
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+
+    ckpt_paths = training_checkpoint_paths(checkpoint_path) if checkpoint_path is not None else None
+    save_every = max(0, int(checkpoint_every_epochs))
+
+    if resume_path is not None and Path(resume_path).exists():
+        start_epoch, best_loss, best_epoch, epochs_without_improvement = _restore_training_state(
+            resume_path,
+            model=model,
+            optimizer=optimizer,
+            scaler=scaler,
+            device=device,
+            use_amp=use_amp,
+        )
+        completed_epochs = start_epoch
+
+    def _persist(target: Path, epoch_index: int) -> None:
+        if ckpt_paths is None:
+            return
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+        interim_report = {
+            "device": str(device),
+            "data_path": str(tensors.data_path) if tensors.data_path else None,
+            "completed_epochs": epoch_index + 1,
+            "requested_epochs": epochs,
+            "best_epoch": best_epoch,
+            "best_monitor_loss": best_loss,
+            "early_stop_metric": monitor_metric,
+            "last_metrics": last_metrics,
+        }
+        training_state = {
+            "completed_epochs": epoch_index + 1,
+            "requested_epochs": epochs,
+            "best_epoch": best_epoch,
+            "best_monitor_loss": best_loss,
+            "epochs_without_improvement": epochs_without_improvement,
+            "early_stop_metric": monitor_metric,
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scaler_state_dict": scaler.state_dict() if use_amp else None,
+        }
+        save_training_checkpoint(
+            model=model,
+            tensors=tensors,
+            config=config,
+            training_report=interim_report,
+            output_path=target,
+            training_state=training_state,
+        )
 
     print(
-        f"training batches: games={num_games} batch_games={batch_games} "
-        f"batches={num_batches} (~{avg_steps:.0f} steps/game)"
+        f"training batches: seqs={num_seqs} batch_games={batch_games} "
+        f"batches={num_batches} (~{avg_steps:.0f} valid steps/seq)"
     )
     print(
         f"early stop: monitor={monitor_metric} patience={patience} "
         f"min_delta={min_delta} (stop when meaningful improvement plateaus)"
     )
+    print(f"policy weighting: {policy_weighting} amp={use_amp}")
+    if ckpt_paths is not None and save_every > 0:
+        print(
+            f"periodic checkpoints: every {save_every} epoch(s) -> {ckpt_paths['latest'].name} "
+            f"(best -> {ckpt_paths['best'].name}); start_epoch={start_epoch}"
+        )
 
     print_every = max(1, int(train_cfg.get("print_every", 1)))
     progress = tqdm(
-        range(epochs),
+        range(start_epoch, epochs),
         desc="training",
         unit="epoch",
         leave=False,
         dynamic_ncols=True,
+        initial=start_epoch,
+        total=epochs,
     )
     for epoch in progress:
-        game_order = torch.randperm(num_games, device=device)
+        seq_order = torch.randperm(num_seqs, device=device)
         metric_sums = {
             "total_loss": 0.0,
             "value_loss": 0.0,
@@ -103,41 +235,70 @@ def train_model(
             "entropy": 0.0,
             "uncertainty_loss": 0.0,
         }
-        seen = 0
+        seen = 0.0
 
-        for batch_number, start in enumerate(range(0, num_games, batch_games), start=1):
-            game_ids = game_order[start:start + batch_games]
-            batch_idx = tensors.row_indices_for_games(game_ids)
-            xb = tensors.x_padded[tensors.history_index[batch_idx]]
-            mask_b = tensors.history_mask[batch_idx]
-            yb = tensors.y[batch_idx]
-            transition_b = tensors.transition_target[batch_idx]
-            next_xb = tensors.next_x[batch_idx]
-            terminal_b = tensors.terminal[batch_idx]
+        for batch_number, start in enumerate(range(0, num_seqs, batch_games), start=1):
+            seq_ids = seq_order[start:start + batch_games]
+            xb = tensors.x_seq[seq_ids]
+            mask_b = tensors.seq_mask[seq_ids]
+            card_b = tensors.card_ids[seq_ids]
+            yb = tensors.y[seq_ids]
+            returns_b = tensors.returns[seq_ids]
+            transition_b = tensors.transition_target[seq_ids]
+            next_xb = tensors.next_x[seq_ids]
+            terminal_b = tensors.terminal[seq_ids]
 
             optimizer.zero_grad(set_to_none=True)
-            out = model(xb, mask_b)
+            with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_amp):
+                out = model(xb, mask_b, card_ids=card_b)
+                valid = mask_b > 0
+                valid_count = valid.sum().clamp(min=1.0)
 
-            value_loss = value_loss_fn(out["value"], yb)
-            policy_loss = policy_loss_fn(out["policy_logits"], transition_b)
-            nonterminal = (1.0 - terminal_b).unsqueeze(-1)
-            dynamics_loss = (dynamics_loss_fn(out["next_features"], next_xb) * nonterminal).sum() / nonterminal.sum().clamp_min(1.0)
-            probs = torch.softmax(out["policy_logits"], dim=-1)
-            entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(dim=-1).mean()
-            uncertainty_loss = torch.mean(torch.exp(-out["log_variance"]) * (out["value"] - yb).pow(2) + out["log_variance"])
+                value_loss = (value_loss_fn(out["value"], yb) * valid).sum() / valid_count
+                policy_raw = policy_loss_fn(
+                    out["policy_logits"].reshape(-1, out["policy_logits"].shape[-1]),
+                    transition_b.reshape(-1),
+                ).reshape_as(transition_b)
+                policy_weights = _policy_weights(
+                    returns_b,
+                    out["value"],
+                    mode=policy_weighting,
+                    beta=awr_beta,
+                    weight_max=awr_weight_max,
+                )
+                policy_loss = (policy_raw * policy_weights * valid).sum() / valid_count
 
-            loss = (
-                loss_cfg["value"] * value_loss
-                + loss_cfg["policy"] * policy_loss
-                + loss_cfg["dynamics"] * dynamics_loss
-                - loss_cfg["entropy"] * entropy
-                + loss_cfg["uncertainty"] * uncertainty_loss
-            )
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+                nonterminal = (1.0 - terminal_b) * valid
+                dynamics_loss = (
+                    dynamics_loss_fn(out["next_features"], next_xb) * nonterminal.unsqueeze(-1)
+                ).sum() / nonterminal.sum().clamp(min=1.0)
+                probs = torch.softmax(out["policy_logits"], dim=-1)
+                entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(dim=-1)
+                entropy = (entropy * valid).sum() / valid_count
+                uncertainty_loss = (
+                    (torch.exp(-out["log_variance"]) * (out["value"] - yb).pow(2) + out["log_variance"]) * valid
+                ).sum() / valid_count
 
-            batch_size_actual = int(xb.shape[0])
+                loss = (
+                    loss_cfg["value"] * value_loss
+                    + loss_cfg["policy"] * policy_loss
+                    + loss_cfg["dynamics"] * dynamics_loss
+                    - loss_cfg["entropy"] * entropy
+                    + loss_cfg["uncertainty"] * uncertainty_loss
+                )
+
+            if use_amp:
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+
+            batch_size_actual = float(valid_count.detach().cpu())
             seen += batch_size_actual
             metric_sums["total_loss"] += float(loss.detach().cpu()) * batch_size_actual
             metric_sums["value_loss"] += float(value_loss.detach().cpu()) * batch_size_actual
@@ -154,8 +315,8 @@ def train_model(
                     "p": f"{float(policy_loss.detach().cpu()):.4f}",
                 }, refresh=False)
 
-        loss_value = metric_sums["total_loss"] / max(1, seen)
-        last_metrics = {name: total / max(1, seen) for name, total in metric_sums.items()}
+        loss_value = metric_sums["total_loss"] / max(1.0, seen)
+        last_metrics = {name: total / max(1.0, seen) for name, total in metric_sums.items()}
         completed_epochs = epoch + 1
         if monitor_metric == "total_loss":
             epoch_score = loss_value
@@ -164,13 +325,21 @@ def train_model(
                 raise ValueError(f"unknown early_stop_metric: {monitor_metric}")
             epoch_score = last_metrics[monitor_metric]
 
-        if epoch_score < best_loss - min_delta:
+        improved = epoch_score < best_loss - min_delta
+        if improved:
             best_loss = epoch_score
             best_epoch = epoch + 1
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
+
+        if ckpt_paths is not None:
+            # Best weights are the current model right after an improvement.
+            if improved:
+                _persist(ckpt_paths["best"], epoch)
+            if save_every > 0 and ((epoch + 1) % save_every == 0 or epoch == start_epoch):
+                _persist(ckpt_paths["latest"], epoch)
 
         progress.set_postfix({
             "loss": f"{loss_value:.5f}",
@@ -205,21 +374,25 @@ def train_model(
     return {
         "completed_epochs": completed_epochs,
         "requested_epochs": epochs,
+        "resumed_from_epoch": start_epoch,
+        "resume_path": str(resume_path) if resume_path is not None else None,
         "stopped_early": stopped_early,
         "early_stop_metric": monitor_metric,
         "best_total_loss": best_loss if monitor_metric == "total_loss" else last_metrics.get("total_loss", 0.0),
         "best_monitor_loss": best_loss,
         "best_epoch": best_epoch,
         "last_metrics": last_metrics,
-        "dataset_rows": int(tensors.x.shape[0]),
+        "dataset_rows": tensors.dataset_rows,
         "dataset_games": tensors.num_games,
+        "dataset_seqs": tensors.num_seqs,
         "train_game_limit": config.get("training", {}).get("games"),
-        "input_dim": int(tensors.x.shape[1]),
+        "input_dim": int(tensors.x_seq.shape[-1]),
         "window_size": tensors.window_size,
         "batch_games": batch_games,
         "device": str(device),
         "data_path": str(tensors.data_path) if tensors.data_path else None,
         "reward_scheme": config.get("rewards"),
+        "objective": config.get("objective"),
         "beam_search": config.get("beam_search"),
         "loss_note": (
             "Loss is the training objective, not winrate. Winrate requires CABT evaluation games "

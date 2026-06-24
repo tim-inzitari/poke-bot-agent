@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from poke_agent.actions import legal_actions
-from poke_agent.features import COARSE_FEATURE_DIM, encode_observation_step, stable_hash_index
+from poke_agent.features import CARD_ID_SLOT_COUNT, STRUCTURED_FEATURE_DIM, encode_observation_step, stable_hash_index
 from poke_agent.game_tracker import GameEventTracker
 from poke_agent.models.temporal_transformer import TemporalTransformer
 
@@ -19,10 +19,12 @@ class PolicySession:
     """Per-player game memory for one loaded checkpoint."""
 
     history: list[np.ndarray] = field(default_factory=list)
+    card_history: list[np.ndarray] = field(default_factory=list)
     tracker: GameEventTracker = field(default_factory=GameEventTracker)
 
     def reset(self) -> None:
         self.history.clear()
+        self.card_history.clear()
         self.tracker.reset()
 
 
@@ -39,7 +41,8 @@ class PolicyRuntime:
         self._window_size = 0
         self._policy_dim = 0
         self._state_hash_dim = 0
-        self._coarse_feature_dim = COARSE_FEATURE_DIM
+        self._structured_feature_dim = STRUCTURED_FEATURE_DIM
+        self._card_vocab_size = 2000
 
     def new_session(self) -> PolicySession:
         return PolicySession()
@@ -56,8 +59,9 @@ class PolicyRuntime:
         policy_dim = int(checkpoint["policy_dim"])
         self._window_size = int(model_cfg["window_size"])
         self._policy_dim = policy_dim
-        self._coarse_feature_dim = int(checkpoint.get("coarse_feature_dim", COARSE_FEATURE_DIM))
-        self._state_hash_dim = input_dim - self._coarse_feature_dim
+        self._structured_feature_dim = int(checkpoint.get("coarse_feature_dim", STRUCTURED_FEATURE_DIM))
+        self._state_hash_dim = input_dim - self._structured_feature_dim
+        self._card_vocab_size = int(model_cfg.get("card_vocab_size", 2000))
 
         self._model = TemporalTransformer(
             input_dim,
@@ -68,7 +72,10 @@ class PolicyRuntime:
             dim_feedforward=int(model_cfg["dim_feedforward"]),
             dropout=float(model_cfg["dropout"]),
             window_size=self._window_size,
-        ).to(self.device)
+            card_vocab_size=self._card_vocab_size,
+            card_embed_dim=int(model_cfg.get("card_embed_dim", 32)),
+            card_slot_count=CARD_ID_SLOT_COUNT,
+        ).to(device=self.device)
         self._model.load_state_dict(checkpoint["model_state_dict"])
         self._model.eval()
 
@@ -82,30 +89,67 @@ class PolicyRuntime:
         session: PolicySession,
         *,
         our_deck: list[int] | None = None,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         assert self._feature_mean is not None and self._feature_std is not None
-        features = encode_observation_step(
+        features, card_ids = encode_observation_step(
             obs_dict,
             session.tracker,
             state_hash_dim=self._state_hash_dim,
             our_deck=our_deck,
-        ).reshape(-1)
-        return ((features - self._feature_mean) / self._feature_std).astype(np.float32)
+            card_vocab_size=self._card_vocab_size,
+        )
+        features = features.reshape(-1)
+        normalized = ((features - self._feature_mean) / self._feature_std).astype(np.float32)
+        return normalized, card_ids.astype(np.int64)
 
     def _model_logits(self, session: PolicySession) -> np.ndarray:
         assert self._model is not None
         assert self._feature_mean is not None
         window = session.history[-self._window_size :]
+        card_window = session.card_history[-self._window_size :]
         pad_count = self._window_size - len(window)
         if pad_count > 0:
             pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[0], dtype=np.float32)
             window = [pad] * pad_count + window
+            card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
+            card_window = [card_pad] * pad_count + card_window
 
         x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
+        cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
         mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            logits = self._model(x, mask)["policy_logits"].squeeze(0).cpu().numpy()
+            logits = self._model.forward_last(x, mask, card_ids=cards)["policy_logits"].squeeze(0).cpu().numpy()
         return logits
+
+    def _model_value(
+        self,
+        session: PolicySession,
+        *,
+        leaf_features: np.ndarray | None = None,
+        leaf_cards: np.ndarray | None = None,
+    ) -> float:
+        assert self._model is not None
+        history = list(session.history)
+        card_history = list(session.card_history)
+        if leaf_features is not None:
+            history.append(leaf_features)
+        if leaf_cards is not None:
+            card_history.append(leaf_cards)
+
+        window = history[-self._window_size :]
+        card_window = card_history[-self._window_size :]
+        pad_count = self._window_size - len(window)
+        if pad_count > 0:
+            pad = np.zeros_like(window[0])
+            window = [pad] * pad_count + window
+            card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
+            card_window = [card_pad] * pad_count + card_window
+
+        x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
+        cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
+        mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            return float(self._model.forward_last(x, mask, card_ids=cards)["value"].squeeze().cpu().item())
 
     def _choose_from_policy_logits(self, logits: np.ndarray, actions: list[list[int]]) -> list[int]:
         best_action = actions[0]
@@ -140,9 +184,12 @@ class PolicyRuntime:
         if not actions:
             return []
 
-        session.history.append(self._encode_observation(obs_dict, session, our_deck=our_deck))
+        features, card_ids = self._encode_observation(obs_dict, session, our_deck=our_deck)
+        session.history.append(features)
+        session.card_history.append(card_ids)
         if self._window_size > 0 and len(session.history) > self._window_size:
             session.history = session.history[-self._window_size :]
+            session.card_history = session.card_history[-self._window_size :]
         logits = self._model_logits(session)
         root_your_index = int((obs_dict.get("current") or {}).get("yourIndex", 0))
 

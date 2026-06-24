@@ -37,7 +37,10 @@ def test_choose_action_caps_session_history(monkeypatch):
     monkeypatch.setattr(
         runtime,
         "_encode_observation",
-        lambda obs, session, our_deck=None: np.arange(8, dtype=np.float32),
+        lambda obs, session, our_deck=None: (
+            np.arange(8, dtype=np.float32),
+            np.zeros(30, dtype=np.int64),
+        ),
     )
     monkeypatch.setattr(runtime, "_model_logits", lambda session: np.zeros(8, dtype=np.float32))
     monkeypatch.setattr(runtime, "_choose_from_policy_logits", lambda logits, actions: actions[0])
@@ -92,9 +95,19 @@ def test_run_beam_search_does_not_grow_python_heap_unboundedly(monkeypatch):
     assert end_peak - baseline_peak < 10_000_000
 
 
+def _checkpoint_compatible(path: Path) -> bool:
+    if not path.exists():
+        return False
+    import torch
+
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    state = checkpoint.get("model_state_dict") or {}
+    return "card_embed.weight" in state
+
+
 @pytest.mark.skipif(
-    not Path("outputs/checkpoints/pre_self_train.pt").exists(),
-    reason="requires local checkpoint for integration memory probe",
+    not _checkpoint_compatible(Path("outputs/checkpoints/pre_self_train.pt")),
+    reason="requires phase-1 checkpoint with card embeddings",
 )
 def test_beam_choose_action_rss_stable_with_real_checkpoint():
     """RSS should not balloon after many short beam decisions on a real checkpoint."""

@@ -4,6 +4,8 @@ from poke_agent.rewards import (
     VALUE_TIMEOUT,
     VALUE_WIN,
     assign_episode_values,
+    blended_value_target,
+    episode_outcome_returns,
     filter_complete_episode_rows,
     is_complete_episode,
     is_timeout_observation,
@@ -86,6 +88,22 @@ def test_seat_prize_counts_from_acting_seat():
     obs = _obs(p0_prize=4, p1_prize=6, your_index=1)
     assert seat_prize_counts(obs, seat=1) == (6, 4)
     assert prize_count(obs, 1) == 6
+
+
+def test_episode_outcome_returns_discounts_to_terminal():
+    rows = [
+        {"player": 0, "step": 0},
+        {"player": 0, "step": 1},
+    ]
+    returns = episode_outcome_returns(rows, 0.9, seat=0, result=0)
+    assert returns[0] < returns[1]
+    assert abs(returns[-1] - VALUE_WIN) < 1e-6
+
+
+def test_blended_value_target_is_clipped():
+    obs = _obs(p0_prize=0, p1_prize=6)
+    target = blended_value_target(2.0, obs, seat=0, shaping_alpha=0.15)
+    assert -1.0 <= target <= 1.0
 
 
 def test_filter_complete_episode_rows():

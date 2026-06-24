@@ -11,7 +11,15 @@ from typing import Any
 import numpy as np
 import torch
 
-from features import COARSE_FEATURE_DIM, base_features_from_observation, combine_features, encode_observation_step, stable_hash_index
+from features import (
+    CARD_ID_SLOT_COUNT,
+    COARSE_FEATURE_DIM,
+    STRUCTURED_FEATURE_DIM,
+    base_features_from_observation,
+    combine_features,
+    encode_observation_step,
+    stable_hash_index,
+)
 from game_tracker import GameEventTracker
 from model import TransformerRLModel
 
@@ -75,6 +83,7 @@ class TrainedPolicyAgent:
         self.device = torch.device(device or "cpu")
         self._loaded = False
         self._history: list[np.ndarray] = []
+        self._card_history: list[np.ndarray] = []
         self._tracker = GameEventTracker()
         self._model: TransformerRLModel | None = None
         self._feature_mean: np.ndarray | None = None
@@ -82,10 +91,12 @@ class TrainedPolicyAgent:
         self._window_size = 0
         self._policy_dim = 0
         self._state_hash_dim = 0
-        self._coarse_feature_dim = COARSE_FEATURE_DIM
+        self._structured_feature_dim = STRUCTURED_FEATURE_DIM
+        self._card_vocab_size = 2000
 
     def reset(self) -> None:
         self._history.clear()
+        self._card_history.clear()
         self._tracker.reset()
 
     def _load(self) -> None:
@@ -100,8 +111,9 @@ class TrainedPolicyAgent:
         policy_dim = int(checkpoint["policy_dim"])
         self._window_size = int(model_cfg["window_size"])
         self._policy_dim = policy_dim
-        self._coarse_feature_dim = int(checkpoint.get("coarse_feature_dim", 10))
-        self._state_hash_dim = input_dim - self._coarse_feature_dim
+        self._structured_feature_dim = int(checkpoint.get("coarse_feature_dim", STRUCTURED_FEATURE_DIM))
+        self._state_hash_dim = input_dim - self._structured_feature_dim
+        self._card_vocab_size = int(model_cfg.get("card_vocab_size", 2000))
 
         self._model = TransformerRLModel(
             input_dim,
@@ -112,11 +124,13 @@ class TrainedPolicyAgent:
             dim_feedforward=int(model_cfg["dim_feedforward"]),
             dropout=float(model_cfg["dropout"]),
             window_size=self._window_size,
+            card_vocab_size=self._card_vocab_size,
+            card_embed_dim=int(model_cfg.get("card_embed_dim", 32)),
+            card_slot_count=CARD_ID_SLOT_COUNT,
         ).to(self.device)
         self._model.load_state_dict(checkpoint["model_state_dict"])
         self._model.eval()
 
-        # Checkpoint stats are saved with shape (1, feature_dim); squeeze for 1D rows.
         self._feature_mean = np.array(checkpoint["feature_mean"], dtype=np.float32).reshape(-1)
         self._feature_std = np.array(checkpoint["feature_std"], dtype=np.float32).reshape(-1)
         self._loaded = True
@@ -126,24 +140,29 @@ class TrainedPolicyAgent:
         obs_dict: dict[str, Any],
         *,
         our_deck: list[int] | None = None,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         assert self._feature_mean is not None and self._feature_std is not None
-        if self._coarse_feature_dim >= COARSE_FEATURE_DIM:
-            features = encode_observation_step(
+        if self._structured_feature_dim >= COARSE_FEATURE_DIM:
+            features, card_ids = encode_observation_step(
                 obs_dict,
                 self._tracker,
                 state_hash_dim=self._state_hash_dim,
                 our_deck=our_deck,
-            ).reshape(-1)
+                card_vocab_size=self._card_vocab_size,
+            )
+            features = features.reshape(-1)
         else:
-            features = combine_features(
+            features, card_ids = combine_features(
                 base_features_from_observation(obs_dict),
                 obs_dict,
                 None,
                 state_hash_dim=self._state_hash_dim,
                 our_deck=our_deck,
-            ).reshape(-1)
-        return ((features - self._feature_mean) / self._feature_std).astype(np.float32)
+                card_vocab_size=self._card_vocab_size,
+            )
+            features = features.reshape(-1)
+        normalized = ((features - self._feature_mean) / self._feature_std).astype(np.float32)
+        return normalized, card_ids.astype(np.int64)
 
     def _choose_from_policy_logits(self, logits: np.ndarray, actions: list[list[int]]) -> list[int]:
         best_action = actions[0]
@@ -161,16 +180,49 @@ class TrainedPolicyAgent:
         assert self._model is not None
         assert self._feature_mean is not None
         window = self._history[-self._window_size :]
+        card_window = self._card_history[-self._window_size :]
         pad_count = self._window_size - len(window)
         if pad_count > 0:
             pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[0], dtype=np.float32)
             window = [pad] * pad_count + window
+            card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
+            card_window = [card_pad] * pad_count + card_window
 
         x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
+        cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
         mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            logits = self._model(x, mask)["policy_logits"].squeeze(0).cpu().numpy()
+            logits = self._model.forward_last(x, mask, card_ids=cards)["policy_logits"].squeeze(0).cpu().numpy()
         return logits
+
+    def _model_value(
+        self,
+        *,
+        leaf_features: np.ndarray | None = None,
+        leaf_cards: np.ndarray | None = None,
+    ) -> float:
+        assert self._model is not None
+        history = list(self._history)
+        card_history = list(self._card_history)
+        if leaf_features is not None:
+            history.append(leaf_features)
+        if leaf_cards is not None:
+            card_history.append(leaf_cards)
+
+        window = history[-self._window_size :]
+        card_window = card_history[-self._window_size :]
+        pad_count = self._window_size - len(window)
+        if pad_count > 0:
+            pad = np.zeros_like(window[0])
+            window = [pad] * pad_count + window
+            card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
+            card_window = [card_pad] * pad_count + card_window
+
+        x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
+        cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
+        mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            return float(self._model.forward_last(x, mask, card_ids=cards)["value"].squeeze().cpu().item())
 
     def choose_action(self, obs_dict: dict[str, Any], *, our_deck: list[int] | None = None) -> list[int]:
         self._load()
@@ -185,7 +237,12 @@ class TrainedPolicyAgent:
         if not actions:
             return []
 
-        self._history.append(self._encode_observation(obs_dict, our_deck=our_deck))
+        features, card_ids = self._encode_observation(obs_dict, our_deck=our_deck)
+        self._history.append(features)
+        self._card_history.append(card_ids)
+        if self._window_size > 0 and len(self._history) > self._window_size:
+            self._history = self._history[-self._window_size :]
+            self._card_history = self._card_history[-self._window_size :]
         logits = self._model_logits()
         root_your_index = int((obs_dict.get("current") or {}).get("yourIndex", 0))
 

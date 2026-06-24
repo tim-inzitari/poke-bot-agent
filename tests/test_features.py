@@ -1,10 +1,13 @@
 from poke_agent.deck_pool import parse_deck_placement
 from poke_agent.features import (
-    COARSE_BASE_DIM,
+    GLOBAL_FEATURE_DIM,
+    STRUCTURED_FEATURE_DIM,
     encode_observation_step,
+    feature_spec,
     going_first_feature,
     hashed_deck_composition,
     seat_deck_from_row,
+    total_feature_dim,
 )
 from poke_agent.game_tracker import GameEventTracker
 
@@ -15,10 +18,11 @@ def test_going_first_feature():
     assert going_first_feature({"current": {"firstPlayer": -1, "yourIndex": 0}}) == 0.5
 
 
-def test_going_first_is_base_feature():
-    assert COARSE_BASE_DIM == 13
-    assert "going_first" in __import__("poke_agent.features", fromlist=["BASE_FEATURE_NAMES"]).BASE_FEATURE_NAMES
-    assert "self_prize_count" in __import__("poke_agent.features", fromlist=["BASE_FEATURE_NAMES"]).BASE_FEATURE_NAMES
+def test_feature_spec_matches_structured_layout():
+    spec = feature_spec(state_hash_dim=32)
+    assert spec.structured_dim == STRUCTURED_FEATURE_DIM
+    assert spec.total_dim == total_feature_dim(state_hash_dim=32)
+    assert GLOBAL_FEATURE_DIM == 18
 
 
 def test_parse_deck_placement():
@@ -64,9 +68,10 @@ def test_visible_card_ids_change_features():
     }
     tracker_a = GameEventTracker()
     tracker_b = GameEventTracker()
-    vec_a = encode_observation_step(obs, tracker_a, state_hash_dim=64)
-    vec_b = encode_observation_step(obs_other, tracker_b, state_hash_dim=64)
+    vec_a, cards_a = encode_observation_step(obs, tracker_a, state_hash_dim=32)
+    vec_b, cards_b = encode_observation_step(obs_other, tracker_b, state_hash_dim=32)
     assert not np.allclose(vec_a, vec_b)
+    assert not np.array_equal(cards_a, cards_b)
 
 
 def test_full_deck_composition_changes_features():
@@ -80,8 +85,8 @@ def test_full_deck_composition_changes_features():
     deck_a = [1] * 60
     deck_b = [2] * 60
     tracker = GameEventTracker()
-    vec_a = encode_observation_step(obs, tracker, state_hash_dim=64, our_deck=deck_a)
-    vec_b = encode_observation_step(obs, tracker, state_hash_dim=64, our_deck=deck_b)
+    vec_a, _ = encode_observation_step(obs, tracker, state_hash_dim=32, our_deck=deck_a)
+    vec_b, _ = encode_observation_step(obs, tracker, state_hash_dim=32, our_deck=deck_b)
     assert not np.allclose(vec_a, vec_b)
 
 
@@ -117,13 +122,21 @@ def test_opponent_deck_list_not_in_features():
     }
     tracker_a = GameEventTracker()
     tracker_b = GameEventTracker()
-    vec_self = encode_observation_step(obs, tracker_a, state_hash_dim=64, our_deck=seat_deck_from_row(row_self))
-    vec_opp = encode_observation_step(
+    vec_self, _ = encode_observation_step(obs, tracker_a, state_hash_dim=32, our_deck=seat_deck_from_row(row_self))
+    vec_opp, _ = encode_observation_step(
         row_opp["observation"],
         tracker_b,
-        state_hash_dim=64,
+        state_hash_dim=32,
         our_deck=seat_deck_from_row(row_opp),
     )
     assert not np.allclose(vec_self, vec_opp)
     assert seat_deck_from_row(row_self) == [10] * 60
     assert seat_deck_from_row(row_opp) == [99] * 60
+
+
+def test_hashed_deck_composition_is_nonzero():
+    import numpy as np
+
+    vec = hashed_deck_composition([1, 2, 3], state_hash_dim=32)
+    assert vec.shape == (32,)
+    assert np.any(vec != 0)

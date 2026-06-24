@@ -17,7 +17,7 @@ from poke_agent.cabt_validation import (
     resolve_training_data_path,
     uses_generated_training_data,
 )
-from poke_agent.features import build_training_arrays, default_tensor_build_workers
+from poke_agent.features import CARD_ID_SLOT_COUNT, build_training_arrays, default_tensor_build_workers
 
 
 def limit_dataset_games(rows: list[dict], max_games: int | None) -> tuple[list[dict], int, int]:
@@ -92,16 +92,23 @@ def _to_device_tensor(array: np.ndarray, device: torch.device) -> torch.Tensor:
 
 @dataclass
 class TrainingTensors:
+    """Sequence-major training tensors: one row per (episode, seat) sequence.
+
+    All tensors are padded to ``window_size`` on the time axis with left-padding;
+    ``seq_mask`` marks valid (non-padded) timesteps. There is no per-row window
+    gather — the causal transformer attends within each padded sequence directly.
+    """
+
     data_path: Path | None
-    x: torch.Tensor
-    x_padded: torch.Tensor
+    x_seq: torch.Tensor
+    seq_lengths: torch.Tensor
+    seq_mask: torch.Tensor
     y: torch.Tensor
+    returns: torch.Tensor
     transition_target: torch.Tensor
     next_x: torch.Tensor
     terminal: torch.Tensor
-    history_index: torch.Tensor
-    history_mask: torch.Tensor
-    game_lengths: torch.Tensor
+    card_ids: torch.Tensor
     feature_mean: np.ndarray
     feature_std: np.ndarray
     transition_classes: int
@@ -109,51 +116,63 @@ class TrainingTensors:
 
     @property
     def num_games(self) -> int:
-        return int(self.game_lengths.shape[0])
+        return int(self.x_seq.shape[0])
 
     @property
-    def game_starts(self) -> torch.Tensor:
-        device = self.game_lengths.device
-        starts = torch.zeros(self.num_games + 1, dtype=torch.long, device=device)
-        starts[1:] = torch.cumsum(self.game_lengths, dim=0)
-        return starts
+    def num_seqs(self) -> int:
+        return int(self.x_seq.shape[0])
 
-    def row_indices_for_games(self, game_ids: torch.Tensor) -> torch.Tensor:
-        starts = self.game_starts
-        parts = [
-            torch.arange(int(starts[game_id]), int(starts[game_id + 1]), device=game_ids.device)
-            for game_id in game_ids.tolist()
-        ]
-        return torch.cat(parts) if parts else torch.empty(0, dtype=torch.long, device=game_ids.device)
+    @property
+    def dataset_rows(self) -> int:
+        return int(self.seq_lengths.sum().item())
 
 
 def _synthetic_smoke_arrays(
     transition_classes: int,
     window_size: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    *,
+    feat_dim: int = 32,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
     rng = np.random.default_rng(7)
-    games = 8
-    steps_per_game = 16
-    total = games * steps_per_game
-    x_np = rng.normal(size=(total, 10)).astype(np.float32)
-    y_np = np.tanh(x_np[:, 0] * 0.1 + x_np[:, 2] * 0.03 - x_np[:, 5] * 0.03).astype(np.float32)
-    transition_np = rng.integers(0, transition_classes, size=(total,), dtype=np.int64)
-    next_x_np = (x_np + rng.normal(scale=0.1, size=x_np.shape)).astype(np.float32)
-    terminal_np = np.zeros((total,), dtype=np.float32)
-    for game in range(games):
-        terminal_np[(game + 1) * steps_per_game - 1] = 1.0
-    pad_index = total
-    history_index_np = np.full((total, window_size), pad_index, dtype=np.int64)
-    history_mask_np = np.zeros((total, window_size), dtype=np.float32)
-    for game in range(games):
-        base = game * steps_per_game
-        for step in range(steps_per_game):
-            i = base + step
-            context = list(range(base, i + 1))[-window_size:]
-            history_index_np[i, -len(context):] = context
-            history_mask_np[i, -len(context):] = 1.0
-    game_lengths = np.full((games,), steps_per_game, dtype=np.int64)
-    return x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths
+    seqs = 8
+    steps_per_seq = min(16, window_size)
+    x_seq = rng.normal(size=(seqs, window_size, feat_dim)).astype(np.float32)
+    y_seq = np.tanh(x_seq[:, :, 0] * 0.1).astype(np.float32)
+    returns_seq = y_seq.copy()
+    transition_seq = rng.integers(0, transition_classes, size=(seqs, window_size), dtype=np.int64)
+    next_x_seq = (x_seq + rng.normal(scale=0.1, size=x_seq.shape)).astype(np.float32)
+    terminal_seq = np.zeros((seqs, window_size), dtype=np.float32)
+    for seq in range(seqs):
+        terminal_seq[seq, steps_per_seq - 1] = 1.0
+    pad_count = window_size - steps_per_seq
+    seq_mask = np.zeros((seqs, window_size), dtype=np.float32)
+    seq_mask[:, pad_count:] = 1.0
+    card_ids = rng.integers(0, 100, size=(seqs, window_size, CARD_ID_SLOT_COUNT), dtype=np.int64)
+    seq_lengths = np.full((seqs,), steps_per_seq, dtype=np.int64)
+    seq_ids = np.arange(seqs, dtype=np.int64)
+    return (
+        x_seq,
+        y_seq,
+        returns_seq,
+        transition_seq,
+        next_x_seq,
+        terminal_seq,
+        seq_mask,
+        card_ids,
+        seq_lengths,
+        seq_ids,
+    )
 
 
 def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> TrainingTensors:
@@ -166,6 +185,10 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         workers = default_tensor_build_workers()
     else:
         workers = max(1, int(workers))
+
+    reward_cfg = config.get("rewards", {})
+    objective_cfg = config.get("objective", {})
+    card_vocab_size = int(config.get("card_vocab_size", 2000))
 
     data_path = resolve_training_data_path(config)
     if data_path is None:
@@ -180,10 +203,7 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 "Set REQUIRE_CABT_EVAL_DATA=0 only for smoke tests."
             )
         print("No rollout data found. Using synthetic smoke data so Run All still completes.")
-        x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths_np = _synthetic_smoke_arrays(
-            transition_classes,
-            window_size,
-        )
+        arrays = _synthetic_smoke_arrays(transition_classes, window_size)
     else:
         started = time.perf_counter()
         rows = load_jsonl(data_path, workers=workers)
@@ -210,12 +230,18 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 f"training size: {used_games:,} / {source_games:,} games "
                 f"({len(rows):,} / {source_rows:,} rows, window={train_games} {which})"
             )
-        x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths_np = build_training_arrays(
+        arrays = build_training_arrays(
             rows,
             transition_classes=transition_classes,
             state_hash_dim=state_hash_dim,
             window_size=window_size,
             workers=workers,
+            card_vocab_size=card_vocab_size,
+            value_gamma=float(objective_cfg.get("value_return_gamma", 0.997)),
+            value_shaping_alpha=float(objective_cfg.get("value_shaping_alpha", 0.15)),
+            value_win=float(reward_cfg.get("value_win", 1.0)),
+            value_not_win=float(reward_cfg.get("value_not_win", -1.0)),
+            value_timeout=float(reward_cfg.get("value_timeout", -2.0)),
         )
         elapsed = time.perf_counter() - started
         print(f"loaded {len(rows)} rollout rows from {data_path} in {elapsed:.1f}s ({workers} workers)")
@@ -243,38 +269,71 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 f" {stats['unique_deck_slugs']} deck slugs"
             )
 
-    feature_mean = x_np.mean(axis=0, keepdims=True)
-    feature_std = x_np.std(axis=0, keepdims=True) + 1e-6
-    x_norm = (x_np - feature_mean) / feature_std
-    next_x_norm = (next_x_np - feature_mean) / feature_std
+        if config.get("require_top_of_ladder_data", False):
+            from poke_agent.training_diversity import assert_top_of_ladder_data
 
-    x = _to_device_tensor(x_norm, device)
-    x_padded = torch.cat([x, torch.zeros((1, x.shape[1]), device=device, dtype=x.dtype)], dim=0)
-    y = _to_device_tensor(y_np, device)
-    transition_target = _to_device_tensor(transition_np, device)
+            ladder_stats = assert_top_of_ladder_data(
+                rows,
+                min_fraction=float(config.get("min_top_of_ladder_fraction", 0.0)),
+            )
+            print(
+                "top-of-ladder data:"
+                f" {ladder_stats['ladder_games']}/{ladder_stats['games']} games"
+                f" ({ladder_stats['ladder_fraction']:.1%})"
+                f" sources={ladder_stats['source_counts']}"
+            )
+
+    (
+        x_seq_np,
+        y_seq_np,
+        returns_seq_np,
+        transition_seq_np,
+        next_x_seq_np,
+        terminal_seq_np,
+        seq_mask_np,
+        card_ids_np,
+        seq_lengths_np,
+        _seq_ids_np,
+    ) = arrays
+
+    feature_mean = x_seq_np.reshape(-1, x_seq_np.shape[-1]).mean(axis=0, keepdims=True)
+    feature_std = x_seq_np.reshape(-1, x_seq_np.shape[-1]).std(axis=0, keepdims=True) + 1e-6
+    x_norm = (x_seq_np - feature_mean) / feature_std
+    next_x_norm = (next_x_seq_np - feature_mean) / feature_std
+
+    x_seq = _to_device_tensor(x_norm, device)
+    y = _to_device_tensor(y_seq_np, device)
+    returns = _to_device_tensor(returns_seq_np, device)
+    transition_target = _to_device_tensor(transition_seq_np, device)
     next_x = _to_device_tensor(next_x_norm, device)
-    terminal = _to_device_tensor(terminal_np, device)
-    history_index = _to_device_tensor(history_index_np, device)
-    history_mask = _to_device_tensor(history_mask_np, device)
-    game_lengths = _to_device_tensor(game_lengths_np, device)
+    terminal = _to_device_tensor(terminal_seq_np, device)
+    seq_mask = _to_device_tensor(seq_mask_np, device)
+    card_ids = _to_device_tensor(card_ids_np, device)
+    seq_lengths = _to_device_tensor(seq_lengths_np, device)
 
     print(
-        "x", tuple(x.shape), "value", tuple(y.shape), "transition", tuple(transition_target.shape),
-        "games", int(game_lengths.shape[0]),
+        "x_seq",
+        tuple(x_seq.shape),
+        "value",
+        tuple(y.shape),
+        "transition",
+        tuple(transition_target.shape),
+        "seqs",
+        int(x_seq.shape[0]),
     )
-    print("history", tuple(history_index.shape), "window", window_size)
+    print("seq_mask", tuple(seq_mask.shape), "window", window_size)
 
     return TrainingTensors(
         data_path=data_path,
-        x=x,
-        x_padded=x_padded,
+        x_seq=x_seq,
+        seq_lengths=seq_lengths,
+        seq_mask=seq_mask,
         y=y,
+        returns=returns,
         transition_target=transition_target,
         next_x=next_x,
         terminal=terminal,
-        history_index=history_index,
-        history_mask=history_mask,
-        game_lengths=game_lengths,
+        card_ids=card_ids,
         feature_mean=feature_mean,
         feature_std=feature_std,
         transition_classes=transition_classes,

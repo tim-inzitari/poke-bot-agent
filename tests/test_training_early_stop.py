@@ -6,32 +6,36 @@ import numpy as np
 import torch
 
 from poke_agent.dataset import TrainingTensors
+from poke_agent.features import CARD_ID_SLOT_COUNT
 from poke_agent.models.temporal_transformer import TemporalTransformer
 from poke_agent.training import train_model
 
 
-def _tiny_tensors(*, steps: int = 4, input_dim: int = 8, window: int = 2) -> TrainingTensors:
-    x = torch.randn(steps, input_dim)
-    y = torch.randn(steps, 1)
-    transition = torch.zeros(steps, dtype=torch.long)
-    next_x = torch.randn(steps, input_dim)
-    terminal = torch.zeros(steps, 1)
-    history_index = torch.arange(steps).unsqueeze(1).expand(-1, window)
-    history_mask = torch.ones(steps, window)
-    game_lengths = torch.tensor([2, 2], dtype=torch.long)
+def _tiny_tensors(*, seqs: int = 2, steps: int = 4, input_dim: int = 16, window: int = 4) -> TrainingTensors:
+    x_seq = torch.randn(seqs, window, input_dim)
+    seq_mask = torch.zeros(seqs, window)
+    for seq in range(seqs):
+        seq_mask[seq, window - steps :] = 1.0
+    y = torch.randn(seqs, window)
+    returns = y.clone()
+    transition = torch.zeros(seqs, window, dtype=torch.long)
+    next_x = torch.randn(seqs, window, input_dim)
+    terminal = torch.zeros(seqs, window)
+    card_ids = torch.zeros(seqs, window, CARD_ID_SLOT_COUNT, dtype=torch.long)
+    seq_lengths = torch.full((seqs,), steps, dtype=torch.long)
     feature_mean = np.zeros((1, input_dim), dtype=np.float32)
     feature_std = np.ones((1, input_dim), dtype=np.float32)
     return TrainingTensors(
         data_path=None,
-        x=x,
-        x_padded=torch.zeros(steps + 1, input_dim),
+        x_seq=x_seq,
+        seq_lengths=seq_lengths,
+        seq_mask=seq_mask,
         y=y,
+        returns=returns,
         transition_target=transition,
         next_x=next_x,
         terminal=terminal,
-        history_index=history_index,
-        history_mask=history_mask,
-        game_lengths=game_lengths,
+        card_ids=card_ids,
         feature_mean=feature_mean,
         feature_std=feature_std,
         transition_classes=4,
@@ -45,7 +49,7 @@ def test_early_stop_triggers_on_value_loss_plateau(monkeypatch):
 
     tensors = _tiny_tensors()
     model = TemporalTransformer(
-        tensors.x.shape[1],
+        tensors.x_seq.shape[-1],
         4,
         d_model=16,
         nhead=2,
@@ -53,6 +57,9 @@ def test_early_stop_triggers_on_value_loss_plateau(monkeypatch):
         dim_feedforward=32,
         dropout=0.0,
         window_size=tensors.window_size,
+        card_vocab_size=128,
+        card_embed_dim=8,
+        card_slot_count=CARD_ID_SLOT_COUNT,
     )
     config = {
         "model": {
@@ -78,18 +85,22 @@ def test_early_stop_triggers_on_value_loss_plateau(monkeypatch):
             "early_stop_metric": "value_loss",
             "batch_games": 2,
         },
+        "objective": {"policy_weighting": "none"},
         "rewards": {},
         "beam_search": {},
+        "state_hash_dim": 32,
+        "card_vocab_size": 128,
+        "train_use_amp": False,
     }
 
     value_losses = iter([0.5, 0.4, 0.39, 0.385, 0.384, 0.383])
 
     def fake_mse_forward(pred, target):
         value = next(value_losses)
-        return torch.tensor(value, dtype=pred.dtype, device=pred.device, requires_grad=True)
+        return torch.full(pred.shape, value, dtype=pred.dtype, device=pred.device, requires_grad=True)
 
     mock_mse = MagicMock(side_effect=fake_mse_forward)
-    monkeypatch.setattr("poke_agent.training.torch.nn.MSELoss", lambda: mock_mse)
+    monkeypatch.setattr("poke_agent.training.torch.nn.MSELoss", lambda reduction="mean": mock_mse)
 
     report = train_model(model, tensors, config, torch.device("cpu"))
     assert report["stopped_early"] is True

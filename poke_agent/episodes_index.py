@@ -33,6 +33,30 @@ def default_index_path(root: Path) -> Path:
     return root / "kaggle/input/pokemon-tcg-ai-battle-episodes-index/manifest.csv"
 
 
+# Substrings that mark a rollout row's ``source`` as a real top-of-ladder game
+# downloaded from the Kaggle competition (leaderboard scrape or episodes index),
+# as opposed to synthetic CABT self-play (``multideck-cabt``, ``self_play``, ...).
+TOP_OF_LADDER_SOURCE_MARKERS: tuple[str, ...] = (
+    "ladder",                 # scrape index rows (source="ladder-scrape"), data/ladder-replays/...
+    "replay",                 # replays_to_rollouts default ("replay" / replay dir names)
+    "episode",                # episode-ids-file / episodes-index pools
+    "pokemon-tcg-ai-battle",  # daily-dataset slugs for this competition
+)
+
+
+def is_top_of_ladder_source(source: str | None, markers: tuple[str, ...] | None = None) -> bool:
+    """True if a rollout ``source`` denotes a top-of-ladder / replay-derived game."""
+    if not source:
+        return False
+    lowered = str(source).strip().lower()
+    if not lowered:
+        return False
+    for marker in (markers or TOP_OF_LADDER_SOURCE_MARKERS):
+        if marker in lowered:
+            return True
+    return False
+
+
 def load_daily_manifest(path: Path) -> list[DailyDatasetEntry]:
     if not path.is_file():
         raise FileNotFoundError(f"episodes index manifest not found: {path}")

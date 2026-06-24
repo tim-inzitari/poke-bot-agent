@@ -6,10 +6,11 @@ from typing import Any
 
 import numpy as np
 
-from poke_agent.features import COARSE_FEATURE_DIM, row_feature_vector
+from poke_agent.features import STRUCTURED_FEATURE_DIM, row_feature_vector, total_feature_dim
 
 
 from poke_agent.archetypes import load_archetype_registry, slug_from_deck_name
+from poke_agent.episodes_index import is_top_of_ladder_source
 
 
 class TrainingDiversityError(ValueError):
@@ -163,6 +164,60 @@ def assert_training_matchup_diversity(
     return stats
 
 
+def top_of_ladder_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Per-episode provenance breakdown of how many games are top-of-ladder."""
+    starts = episode_start_rows(rows)
+    total = len(starts)
+    ladder = 0
+    source_counts: Counter[str] = Counter()
+    for row in starts:
+        source = str(row.get("source", ""))
+        source_counts[source] += 1
+        if is_top_of_ladder_source(source):
+            ladder += 1
+    return {
+        "games": total,
+        "ladder_games": ladder,
+        "ladder_fraction": (ladder / total) if total else 0.0,
+        "source_counts": source_counts.most_common(),
+    }
+
+
+def assert_top_of_ladder_data(
+    rows: list[dict[str, Any]],
+    *,
+    min_fraction: float = 0.0,
+) -> dict[str, Any]:
+    """Require the training corpus to include top-of-ladder replay games.
+
+    The bootstrap model must learn from real top-of-leaderboard play (scraped
+    replays / episodes index), not only synthetic CABT self-play. By default at
+    least one ladder game is required; ``min_fraction`` optionally enforces a
+    minimum share of episodes from ladder sources.
+    """
+    stats = top_of_ladder_stats(rows)
+    if stats["games"] == 0:
+        raise TrainingDiversityError("Training rows contain no episodes.")
+
+    if stats["ladder_games"] == 0:
+        raise TrainingDiversityError(
+            "No top-of-ladder games found in the bootstrap training data "
+            f"(sources: {stats['source_counts']}). "
+            "Scrape leaderboard replays (scripts/scrape_ladder_replays.py), convert them "
+            "(scripts/replays_to_rollouts.py), and merge into the training corpus "
+            "(scripts/merge_rollouts.py). Set REQUIRE_TOP_OF_LADDER_DATA=0 to bypass."
+        )
+
+    fraction = float(stats["ladder_fraction"])
+    if min_fraction > 0.0 and fraction < min_fraction:
+        raise TrainingDiversityError(
+            f"Top-of-ladder games are only {fraction:.1%} of training episodes "
+            f"({stats['ladder_games']}/{stats['games']}); need >= {min_fraction:.1%}. "
+            "Merge more scraped leaderboard replays or lower MIN_TOP_OF_LADDER_FRACTION."
+        )
+    return stats
+
+
 def assert_deck_metadata_not_in_features(
     rows: list[dict[str, Any]],
     *,
@@ -193,8 +248,8 @@ def assert_generic_model_inputs(
     tensors: Any,
     config: dict[str, Any],
 ) -> None:
-    expected = COARSE_FEATURE_DIM + int(config["state_hash_dim"])
-    actual = int(tensors.x.shape[1])
+    expected = total_feature_dim(state_hash_dim=int(config["state_hash_dim"]))
+    actual = int(tensors.x_seq.shape[-1])
     if actual != expected:
         raise TrainingDiversityError(
             f"Unexpected input dim {actual}; expected {expected} from board/hand features only."
