@@ -290,15 +290,20 @@ def convert_episodes_index_to_rollouts(
 
     from poke_agent.episodes_index import filter_top_percent, load_episode_pool
 
+    # Scoring (a full parse of every replay) is only needed to rank for a partial
+    # top-percent selection. At 100% (or max-episodes-only) skip it entirely.
+    needs_scoring = 0 < top_percent < 100
     records = load_episode_pool(
         root,
         index_path=episodes_index,
         daily_slugs=daily_slugs,
         include_scrape=False,
         top_percent_days=top_percent_days,
+        needs_scoring=needs_scoring,
+        workers=workers,
     )
     records = [r for r in records if r.replay_path is not None and r.replay_path.is_file()]
-    if top_percent > 0 and top_percent < 100:
+    if needs_scoring:
         records = filter_top_percent(records, top_percent)
     if max_episodes > 0:
         records = records[:max_episodes]

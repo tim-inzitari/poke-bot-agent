@@ -2,9 +2,26 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+
+def _default_score_workers() -> int:
+    cpu_count = os.cpu_count() or 1
+    return max(1, cpu_count - 2 if cpu_count > 4 else cpu_count)
+
+
+def _score_replay_path(path_str: str) -> tuple[str, str, float] | None:
+    """Worker: score one replay. Returns (path, episode_id, score) or None on error."""
+    path = Path(path_str)
+    try:
+        episode_id, score = load_replay_score(path)
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
+    return (path_str, episode_id, score)
 
 
 @dataclass(frozen=True)
@@ -145,21 +162,68 @@ def load_replay_score(replay_path: Path) -> tuple[str, float]:
     return replay_episode_id(replay_path, payload), score_replay(payload)
 
 
-def episode_records_from_directory(directory: Path, *, source: str) -> list[EpisodeRecord]:
-    records: list[EpisodeRecord] = []
-    for replay_path in list_local_episode_files(directory):
-        try:
-            episode_id, score = load_replay_score(replay_path)
-        except (json.JSONDecodeError, OSError, ValueError):
-            continue
-        records.append(
-            EpisodeRecord(
-                episode_id=episode_id,
-                replay_path=replay_path,
-                score=score,
-                source=source,
+def episode_records_from_directory(
+    directory: Path,
+    *,
+    source: str,
+    scored: bool = True,
+    workers: int | None = None,
+) -> list[EpisodeRecord]:
+    """Build episode records for a daily replay directory.
+
+    ``scored=False`` skips opening any files (episode id taken from the filename
+    stem, score 0) — use it when top-percent ranking is not needed, which avoids
+    a full single-threaded parse pass over the whole bundle. When scoring is
+    needed, replays are parsed in parallel across ``workers`` processes.
+    """
+    files = list_local_episode_files(directory)
+    if not files:
+        return []
+
+    if not scored:
+        return [
+            EpisodeRecord(episode_id=path.stem, replay_path=path, score=0.0, source=source)
+            for path in files
+        ]
+
+    worker_count = _default_score_workers() if workers is None else max(1, int(workers))
+    if worker_count <= 1 or len(files) < worker_count * 2:
+        records: list[EpisodeRecord] = []
+        for replay_path in files:
+            try:
+                episode_id, score = load_replay_score(replay_path)
+            except (json.JSONDecodeError, OSError, ValueError):
+                continue
+            records.append(
+                EpisodeRecord(
+                    episode_id=episode_id,
+                    replay_path=replay_path,
+                    score=score,
+                    source=source,
+                )
             )
-        )
+        return records
+
+    records = []
+    chunksize = max(1, len(files) // (worker_count * 4))
+    with ProcessPoolExecutor(max_workers=worker_count) as executor:
+        for result in executor.map(
+            _score_replay_path,
+            [str(path) for path in files],
+            chunksize=chunksize,
+        ):
+            if result is None:
+                continue
+            path_str, episode_id, score = result
+            records.append(
+                EpisodeRecord(
+                    episode_id=episode_id,
+                    replay_path=Path(path_str),
+                    score=score,
+                    source=source,
+                )
+            )
+    print(f"scored {len(records):,} replays in {directory.name} using {worker_count} workers")
     return records
 
 
@@ -216,11 +280,15 @@ def load_episode_pool(
     daily_slugs: list[str] | None = None,
     include_scrape: bool = False,
     top_percent_days: float = 100.0,
+    needs_scoring: bool = True,
+    workers: int | None = None,
 ) -> list[EpisodeRecord]:
     """Load replay JSON paths from the episodes-index dataset (and optionally ladder scrape).
 
     Bootstrap training uses ``include_scrape=False`` — top games come from the
-    official ``pokemon-tcg-ai-battle-episodes-index`` dataset only.
+    official ``pokemon-tcg-ai-battle-episodes-index`` dataset only. ``needs_scoring``
+    can be set False to skip the (otherwise single-threaded) score pass when no
+    top-percent ranking is required; scoring otherwise runs in parallel.
     """
     pool: list[EpisodeRecord] = []
     manifest_path = index_path or default_index_path(root)
@@ -231,7 +299,14 @@ def load_episode_pool(
             slugs = daily_slugs_for_top_games(manifest, top_percent=top_percent_days)
         for slug in slugs:
             directory = local_daily_episodes_dir(root, slug)
-            pool.extend(episode_records_from_directory(directory, source=slug))
+            pool.extend(
+                episode_records_from_directory(
+                    directory,
+                    source=slug,
+                    scored=needs_scoring,
+                    workers=workers,
+                )
+            )
 
     if include_scrape:
         scrape_path = scrape_index_csv or (root / "data/ladder-replays/index.csv")
