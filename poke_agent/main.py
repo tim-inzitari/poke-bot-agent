@@ -13,7 +13,7 @@ from poke_agent.training import build_model, train_model
 from poke_agent.memory import print_vram_estimate
 
 
-def main() -> None:
+def main(*, tensors_only: bool = False) -> None:
     root = resolve_root()
     print_runtime_info(root)
     print("torch", torch.__version__)
@@ -24,6 +24,17 @@ def main() -> None:
         print(f"  {name}: {path}")
     device = torch_device()
     print("device", device)
+
+    from poke_agent.tensor_cache import describe_training_tensor_cache
+
+    cache_status = describe_training_tensor_cache(config)
+    if cache_status:
+        print(cache_status)
+
+    tensors = prepare_training_tensors(config, device)
+    if tensors_only:
+        print("tensor cache ready; exiting without training")
+        return
 
     simulator = load_simulator(root)
     print_simulator_status(simulator)
@@ -41,7 +52,6 @@ def main() -> None:
             "for multi-deck training data."
         )
 
-    tensors = prepare_training_tensors(config, device)
     model = build_model(config, tensors, device)
     print_vram_estimate(
         model=model,

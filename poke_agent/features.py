@@ -901,15 +901,38 @@ def build_training_arrays(
             np.zeros((0,), dtype=np.int64),
         )
 
+    count = len(x_parts)
+    feat_dim = int(x_parts[0].shape[-1])
+    x_out = np.empty((count, window_size, feat_dim), dtype=np.float32)
+    y_out = np.empty((count, window_size), dtype=np.float32)
+    returns_out = np.empty((count, window_size), dtype=np.float32)
+    transition_out = np.empty((count, window_size), dtype=np.int64)
+    next_x_out = np.empty((count, window_size, feat_dim), dtype=np.float32)
+    terminal_out = np.empty((count, window_size), dtype=np.float32)
+    mask_out = np.empty((count, window_size), dtype=np.float32)
+    card_out = np.empty((count, window_size, CARD_ID_SLOT_COUNT), dtype=np.int64)
+    for index, (x_seq, y_seq, returns_seq, transition_seq, next_x_seq, terminal_seq, seq_mask, card_seq) in enumerate(
+        zip(x_parts, y_parts, returns_parts, transition_parts, next_x_parts, terminal_parts, mask_parts, card_parts)
+    ):
+        x_out[index] = x_seq
+        y_out[index] = y_seq
+        returns_out[index] = returns_seq
+        transition_out[index] = transition_seq
+        next_x_out[index] = next_x_seq
+        terminal_out[index] = terminal_seq
+        mask_out[index] = seq_mask
+        card_out[index] = card_seq
+    del seat_arrays, x_parts, y_parts, returns_parts, transition_parts, next_x_parts, terminal_parts, mask_parts, card_parts
+
     return (
-        np.stack(x_parts).astype(np.float32),
-        np.stack(y_parts).astype(np.float32),
-        np.stack(returns_parts).astype(np.float32),
-        np.stack(transition_parts).astype(np.int64),
-        np.stack(next_x_parts).astype(np.float32),
-        np.stack(terminal_parts).astype(np.float32),
-        np.stack(mask_parts).astype(np.float32),
-        np.stack(card_parts).astype(np.int64),
-        np.array(lengths, dtype=np.int64),
-        np.arange(len(lengths), dtype=np.int64),
+        x_out,
+        y_out,
+        returns_out,
+        transition_out,
+        next_x_out,
+        terminal_out,
+        mask_out,
+        card_out,
+        np.asarray(lengths, dtype=np.int64),
+        np.arange(count, dtype=np.int64),
     )

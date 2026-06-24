@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -194,6 +195,87 @@ def _synthetic_smoke_arrays(
     )
 
 
+def _normalize_features_inplace(
+    x_seq_np: np.ndarray,
+    next_x_seq_np: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Normalize in-place to avoid duplicating large float feature arrays during build."""
+    flat = x_seq_np.reshape(-1, x_seq_np.shape[-1])
+    feature_mean = flat.mean(axis=0, keepdims=True)
+    feature_std = flat.std(axis=0, keepdims=True) + 1e-6
+    np.subtract(x_seq_np, feature_mean, out=x_seq_np)
+    np.divide(x_seq_np, feature_std, out=x_seq_np)
+    np.subtract(next_x_seq_np, feature_mean, out=next_x_seq_np)
+    np.divide(next_x_seq_np, feature_std, out=next_x_seq_np)
+    return feature_mean, feature_std
+
+
+def _finalize_training_tensors(
+    *,
+    data_path: Path | None,
+    x_seq_np: np.ndarray,
+    y_seq_np: np.ndarray,
+    returns_seq_np: np.ndarray,
+    transition_seq_np: np.ndarray,
+    next_x_seq_np: np.ndarray,
+    terminal_seq_np: np.ndarray,
+    seq_mask_np: np.ndarray,
+    card_ids_np: np.ndarray,
+    seq_lengths_np: np.ndarray,
+    feature_mean: np.ndarray,
+    feature_std: np.ndarray,
+    transition_classes: int,
+    window_size: int,
+    device: torch.device,
+    train_data_device: str | None,
+) -> TrainingTensors:
+    data_device = resolve_data_device(device, train_data_device)
+    if data_device != device:
+        print(
+            f"dataset on {data_device} (compute on {device}); "
+            "batches stream to the GPU so dataset size is bounded by RAM, not VRAM"
+        )
+
+    x_seq = _to_device_tensor(x_seq_np, data_device)
+    y = _to_device_tensor(y_seq_np, data_device)
+    returns = _to_device_tensor(returns_seq_np, data_device)
+    transition_target = _to_device_tensor(transition_seq_np, data_device)
+    next_x = _to_device_tensor(next_x_seq_np, data_device)
+    terminal = _to_device_tensor(terminal_seq_np, data_device)
+    seq_mask = _to_device_tensor(seq_mask_np, data_device)
+    card_ids = _to_device_tensor(card_ids_np, data_device)
+    seq_lengths = _to_device_tensor(seq_lengths_np, data_device)
+
+    print(
+        "x_seq",
+        tuple(x_seq.shape),
+        "value",
+        tuple(y.shape),
+        "transition",
+        tuple(transition_target.shape),
+        "seqs",
+        int(x_seq.shape[0]),
+    )
+    print("seq_mask", tuple(seq_mask.shape), "window", window_size)
+
+    return TrainingTensors(
+        data_path=data_path,
+        x_seq=x_seq,
+        seq_lengths=seq_lengths,
+        seq_mask=seq_mask,
+        y=y,
+        returns=returns,
+        transition_target=transition_target,
+        next_x=next_x,
+        terminal=terminal,
+        card_ids=card_ids,
+        feature_mean=feature_mean,
+        feature_std=feature_std,
+        transition_classes=transition_classes,
+        window_size=window_size,
+    )
+
+
 def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> TrainingTensors:
     transition_classes = config["transition_classes"]
     state_hash_dim = config["state_hash_dim"]
@@ -210,6 +292,29 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
     card_vocab_size = int(config.get("card_vocab_size", 2000))
 
     data_path = resolve_training_data_path(config)
+    cache_mode = "off"
+    cache_path: Path | None = None
+    fingerprint: dict[str, Any] | None = None
+    if data_path is not None:
+        from poke_agent.tensor_cache import (
+            resolve_tensor_cache_mode,
+            resolve_training_tensor_cache,
+            save_tensor_cache,
+            try_load_training_tensors_from_cache,
+        )
+
+        cache_mode = resolve_tensor_cache_mode(config.get("train_tensor_cache"))
+        data_path, fingerprint, cache_path = resolve_training_tensor_cache(config)
+        if cache_mode != "rebuild":
+            cached = try_load_training_tensors_from_cache(config, device)
+            if cached is not None:
+                return cached
+        if cache_mode == "require":
+            raise FileNotFoundError(
+                f"TRAIN_TENSOR_CACHE=require but no valid cache at {cache_path}. "
+                "Run scripts/build_tensor_cache.py or train once with TRAIN_TENSOR_CACHE=auto."
+            )
+
     if data_path is None:
         if require_cabt_eval:
             searched = ", ".join(str(path) for path in config.get("data_candidates", []))
@@ -249,28 +354,11 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 f"training size: {used_games:,} / {source_games:,} games "
                 f"({len(rows):,} / {source_rows:,} rows, window={train_games} {which})"
             )
-        arrays = build_training_arrays(
-            rows,
-            transition_classes=transition_classes,
-            state_hash_dim=state_hash_dim,
-            window_size=window_size,
-            workers=workers,
-            card_vocab_size=card_vocab_size,
-            value_gamma=float(objective_cfg.get("value_return_gamma", 0.997)),
-            value_shaping_alpha=float(objective_cfg.get("value_shaping_alpha", 0.15)),
-            value_win=float(reward_cfg.get("value_win", 1.0)),
-            value_not_win=float(reward_cfg.get("value_not_win", -1.0)),
-            value_timeout=float(reward_cfg.get("value_timeout", -2.0)),
-        )
-        elapsed = time.perf_counter() - started
-        print(f"loaded {len(rows)} rollout rows from {data_path} in {elapsed:.1f}s ({workers} workers)")
-
         if config.get("require_training_matchup_diversity", True):
             from poke_agent.training_diversity import (
                 assert_deck_metadata_not_in_features,
                 assert_submission_deck_separate_from_training,
                 assert_training_matchup_diversity,
-                training_matchup_stats,
             )
 
             assert_submission_deck_separate_from_training(config, rows, data_path=data_path)
@@ -302,6 +390,24 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 f" sources={ladder_stats['source_counts']}"
             )
 
+        arrays = build_training_arrays(
+            rows,
+            transition_classes=transition_classes,
+            state_hash_dim=state_hash_dim,
+            window_size=window_size,
+            workers=workers,
+            card_vocab_size=card_vocab_size,
+            value_gamma=float(objective_cfg.get("value_return_gamma", 0.997)),
+            value_shaping_alpha=float(objective_cfg.get("value_shaping_alpha", 0.15)),
+            value_win=float(reward_cfg.get("value_win", 1.0)),
+            value_not_win=float(reward_cfg.get("value_not_win", -1.0)),
+            value_timeout=float(reward_cfg.get("value_timeout", -2.0)),
+        )
+        del rows
+        gc.collect()
+        elapsed = time.perf_counter() - started
+        print(f"built training tensors from {data_path} in {elapsed:.1f}s ({workers} workers)")
+
     (
         x_seq_np,
         y_seq_np,
@@ -315,53 +421,47 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         _seq_ids_np,
     ) = arrays
 
-    feature_mean = x_seq_np.reshape(-1, x_seq_np.shape[-1]).mean(axis=0, keepdims=True)
-    feature_std = x_seq_np.reshape(-1, x_seq_np.shape[-1]).std(axis=0, keepdims=True) + 1e-6
-    x_norm = (x_seq_np - feature_mean) / feature_std
-    next_x_norm = (next_x_seq_np - feature_mean) / feature_std
+    feature_mean, feature_std = _normalize_features_inplace(x_seq_np, next_x_seq_np)
 
-    data_device = resolve_data_device(device, config.get("train_data_device", "auto"))
-    if data_device != device:
-        print(
-            f"dataset on {data_device} (compute on {device}); "
-            "batches stream to the GPU so dataset size is bounded by RAM, not VRAM"
+    if data_path is not None and cache_mode != "off" and cache_path is not None and fingerprint is not None:
+        from poke_agent.tensor_cache import save_tensor_cache
+
+        save_tensor_cache(
+            cache_path,
+            fingerprint=fingerprint,
+            data_path=data_path,
+            arrays={
+                "x_seq": x_seq_np,
+                "y": y_seq_np,
+                "returns": returns_seq_np,
+                "transition_target": transition_seq_np,
+                "next_x": next_x_seq_np,
+                "terminal": terminal_seq_np,
+                "seq_mask": seq_mask_np,
+                "card_ids": card_ids_np,
+                "seq_lengths": seq_lengths_np,
+                "feature_mean": feature_mean,
+                "feature_std": feature_std,
+            },
+            transition_classes=transition_classes,
+            window_size=window_size,
         )
 
-    x_seq = _to_device_tensor(x_norm, data_device)
-    y = _to_device_tensor(y_seq_np, data_device)
-    returns = _to_device_tensor(returns_seq_np, data_device)
-    transition_target = _to_device_tensor(transition_seq_np, data_device)
-    next_x = _to_device_tensor(next_x_norm, data_device)
-    terminal = _to_device_tensor(terminal_seq_np, data_device)
-    seq_mask = _to_device_tensor(seq_mask_np, data_device)
-    card_ids = _to_device_tensor(card_ids_np, data_device)
-    seq_lengths = _to_device_tensor(seq_lengths_np, data_device)
-
-    print(
-        "x_seq",
-        tuple(x_seq.shape),
-        "value",
-        tuple(y.shape),
-        "transition",
-        tuple(transition_target.shape),
-        "seqs",
-        int(x_seq.shape[0]),
-    )
-    print("seq_mask", tuple(seq_mask.shape), "window", window_size)
-
-    return TrainingTensors(
+    return _finalize_training_tensors(
         data_path=data_path,
-        x_seq=x_seq,
-        seq_lengths=seq_lengths,
-        seq_mask=seq_mask,
-        y=y,
-        returns=returns,
-        transition_target=transition_target,
-        next_x=next_x,
-        terminal=terminal,
-        card_ids=card_ids,
+        x_seq_np=x_seq_np,
+        y_seq_np=y_seq_np,
+        returns_seq_np=returns_seq_np,
+        transition_seq_np=transition_seq_np,
+        next_x_seq_np=next_x_seq_np,
+        terminal_seq_np=terminal_seq_np,
+        seq_mask_np=seq_mask_np,
+        card_ids_np=card_ids_np,
+        seq_lengths_np=seq_lengths_np,
         feature_mean=feature_mean,
         feature_std=feature_std,
         transition_classes=transition_classes,
         window_size=window_size,
+        device=device,
+        train_data_device=config.get("train_data_device"),
     )

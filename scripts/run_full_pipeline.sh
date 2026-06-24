@@ -13,6 +13,7 @@
 #
 # Resume bootstrap after OOM:  SKIP_DATA=1 bash scripts/run_full_pipeline.sh
 # Fresh bootstrap:             FRESH=1 bash scripts/run_full_pipeline.sh
+# Rebuild tensor cache:        REBUILD_TENSORS=1 bash scripts/run_full_pipeline.sh
 
 set -uo pipefail
 
@@ -22,6 +23,7 @@ PYTHON="${PYTHON:-python}"
 CHECKPOINT="${CHECKPOINT:-outputs/checkpoints/temporal_current.pt}"
 MESSAGE="${MESSAGE:-Phase1 pipeline}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
+export TRAIN_TENSOR_CACHE="${TRAIN_TENSOR_CACHE:-auto}"
 
 DATA_PREP_ARGS=()
 if [[ "${NO_DOWNLOAD:-0}" != "0" ]]; then
@@ -41,6 +43,17 @@ if [[ "${SKIP_DATA:-0}" == "0" ]]; then
   fi
 else
   echo "==> [0/5] Skipping data prep (SKIP_DATA=1)"
+fi
+
+TENSOR_CACHE_ARGS=()
+if [[ "${REBUILD_TENSORS:-0}" != "0" ]]; then
+  TENSOR_CACHE_ARGS+=(--rebuild)
+elif [[ "${SKIP_TENSOR_CACHE:-0}" == "0" ]]; then
+  if ! $PYTHON scripts/build_tensor_cache.py "${TENSOR_CACHE_ARGS[@]}"; then
+    echo "WARN: tensor cache prep failed; train_agent will build from JSONL if needed." >&2
+  fi
+else
+  echo "==> Skipping tensor cache prep (SKIP_TENSOR_CACHE=1)"
 fi
 
 RESUME_FLAG=""

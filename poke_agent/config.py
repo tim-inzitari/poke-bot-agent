@@ -152,6 +152,10 @@ TRAIN_DATA_DEVICE = "auto"
 # "0" never resumes, "1" requires it.
 TRAIN_CHECKPOINT_EVERY = 5
 TRAIN_RESUME = "auto"
+# Persist built training tensors to disk so resume skips JSONL parse + feature build.
+# auto = load cache when valid, save after build; 0 = off; 1 = require cache; rebuild = ignore.
+TRAIN_TENSOR_CACHE = "auto"
+TRAIN_TENSOR_CACHE_DIR = "outputs/cache/training_tensors"
 
 # Flat override keys accepted by build_config(..., overrides=...).
 OVERRIDE_KEYS = frozenset({
@@ -179,6 +183,8 @@ OVERRIDE_KEYS = frozenset({
     "train_checkpoint_every",
     "train_resume",
     "train_data_device",
+    "train_tensor_cache",
+    "train_tensor_cache_dir",
     "d_model",
     "model_heads",
     "model_layers",
@@ -275,6 +281,8 @@ def default_user_config() -> dict[str, Any]:
         "train_checkpoint_every": TRAIN_CHECKPOINT_EVERY,
         "train_resume": TRAIN_RESUME,
         "train_data_device": TRAIN_DATA_DEVICE,
+        "train_tensor_cache": TRAIN_TENSOR_CACHE,
+        "train_tensor_cache_dir": TRAIN_TENSOR_CACHE_DIR,
         "d_model": MODEL_D_MODEL,
         "model_heads": MODEL_HEADS,
         "model_layers": MODEL_LAYERS,
@@ -367,6 +375,8 @@ _ENV_MAP = {
     "train_checkpoint_every": "TRAIN_CHECKPOINT_EVERY",
     "train_resume": "TRAIN_RESUME",
     "train_data_device": "TRAIN_DATA_DEVICE",
+    "train_tensor_cache": "TRAIN_TENSOR_CACHE",
+    "train_tensor_cache_dir": "TRAIN_TENSOR_CACHE_DIR",
     "top_episode_percent": "TOP_EPISODE_PERCENT",
     "require_top_of_ladder_data": "REQUIRE_TOP_OF_LADDER_DATA",
     "min_top_of_ladder_fraction": "MIN_TOP_OF_LADDER_FRACTION",
@@ -438,7 +448,9 @@ def _coerce_value(key: str, value: Any) -> Any:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
         return bool(value)
-    if key in {"policy_weighting", "train_resume", "train_data_device"}:
+    if key in {"policy_weighting", "train_resume", "train_data_device", "train_tensor_cache"}:
+        return str(value)
+    if key == "train_tensor_cache_dir":
         return str(value)
     if key == "self_play_per_deck_checkpoint_dir" and value in {"", "none", "None", "null"}:
         return None
@@ -580,6 +592,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
     train_window_games = resolve_self_play_train_window(settings)
 
     return {
+        "root": root,
         "agent_deck_path": root / settings["agent_deck_path"],
         "data_candidates": data_candidates,
         "training_rollout_sources": training_sources,
@@ -615,6 +628,8 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "train_use_amp": settings["train_use_amp"],
         "train_grad_checkpoint": settings["train_grad_checkpoint"],
         "train_data_device": settings["train_data_device"],
+        "train_tensor_cache": settings["train_tensor_cache"],
+        "train_tensor_cache_dir": settings["train_tensor_cache_dir"],
         "objective": {
             "value_return_gamma": settings["value_return_gamma"],
             "value_shaping_alpha": settings["value_shaping_alpha"],
