@@ -578,6 +578,8 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "merged_rollout_path": merged_path,
         "scraped_rollout_path": root / settings["scraped_rollout_data"],
         "multideck_rollout_path": root / settings["multideck_rollout_data"],
+        "episodes_index_path": root / settings["episodes_index_path"],
+        "top_episode_percent": settings["top_episode_percent"],
         "require_complete_games": settings["require_complete_games"],
         "require_training_matchup_diversity": settings["require_training_matchup_diversity"],
         "min_training_matchups": settings["min_training_matchups"],
