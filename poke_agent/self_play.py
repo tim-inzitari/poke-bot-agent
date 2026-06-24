@@ -177,6 +177,34 @@ def maybe_trim_rollout_file(settings: SelfPlaySettings) -> None:
     trim_rollout_jsonl(settings.output_path, settings.train_window_games)
 
 
+def rollout_buffer_overwrites(settings: SelfPlaySettings) -> bool:
+    """True when each iteration should replace the JSONL with only this batch."""
+    if not settings.trim_rollout_file:
+        return False
+    window = settings.train_window_games
+    if window is None or int(window) <= 0:
+        return False
+    return int(settings.games_per_iteration) == int(window)
+
+
+def write_rollout_buffer(
+    settings: SelfPlaySettings,
+    rows: list[dict[str, Any]],
+    *,
+    iteration: int,
+) -> tuple[bool, int]:
+    """Persist collected rows; returns (overwrote_file, games_on_disk)."""
+    if rollout_buffer_overwrites(settings):
+        write_jsonl(settings.output_path, rows, append=False)
+        kept_games = _count_rollout_games(settings.output_path)
+        return True, kept_games
+
+    append = settings.output_path.exists() and iteration > 1
+    write_jsonl(settings.output_path, rows, append=append)
+    maybe_trim_rollout_file(settings)
+    return append, _count_rollout_games(settings.output_path)
+
+
 def _count_rollout_games(path: Path) -> int:
     if not path.exists():
         return 0
@@ -953,13 +981,11 @@ def run_self_play_iteration(
         progress_desc="self-play",
     )
     unique_matchups = len({(row.get("deck0"), row.get("deck1")) for row in rows if int(row.get("step", -1)) == 0})
-    append = settings.output_path.exists() and iteration > 1
-    write_jsonl(settings.output_path, rows, append=append)
-    maybe_trim_rollout_file(settings)
-    kept_games = _count_rollout_games(settings.output_path)
+    overwrite, kept_games = write_rollout_buffer(settings, rows, iteration=iteration)
     print(
         f"self-play data -> {settings.output_path} ({len(rows):,} rows, "
-        f"{unique_matchups} unique deck pairings, append={append}, "
+        f"{unique_matchups} unique deck pairings, "
+        f"mode={'rolling' if overwrite else 'accumulate'}, "
         f"buffer={kept_games} games, train_window={settings.train_window_games})"
     )
 
@@ -1101,13 +1127,11 @@ def run_baseline_iteration(
         use_beam=settings.use_beam,
         beam_config=settings.beam_config,
     )
-    append = settings.output_path.exists() and iteration > 1
-    write_jsonl(settings.output_path, rows, append=append)
-    maybe_trim_rollout_file(settings)
-    kept_games = _count_rollout_games(settings.output_path)
+    overwrite, kept_games = write_rollout_buffer(settings, rows, iteration=iteration)
     print(
         f"baseline data -> {settings.output_path} ({len(rows):,} rows, "
-        f"last our={last_deck_name} vs {last_baseline}, append={append}, "
+        f"last our={last_deck_name} vs {last_baseline}, "
+        f"mode={'rolling' if overwrite else 'accumulate'}, "
         f"buffer={kept_games} games, train_window={settings.train_window_games})"
     )
 
@@ -1213,7 +1237,8 @@ def run_baseline_phase_loop(
     manifest["phase"] = "baseline"
     print(
         f"baseline training window: {settings.train_window_games} games "
-        f"(collect {settings.games_per_iteration} per iteration)"
+        f"(collect {settings.games_per_iteration} per iteration, "
+        f"rollout buffer={'rolling overwrite' if rollout_buffer_overwrites(settings) else 'accumulate+trim'})"
     )
     current_checkpoint = Path(initial_checkpoint or config["output_path"])
     if not current_checkpoint.exists():

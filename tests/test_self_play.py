@@ -2,7 +2,13 @@ from pathlib import Path
 
 from poke_agent.config import build_config, resolve_self_play_train_window
 from poke_agent.deck_pool import choose_agent_vs_field_matchup, mirror_matchup, read_deck_file
-from poke_agent.self_play import OpponentPool, SelfPlaySettings, resolve_self_play_workers, summarize_results
+from poke_agent.self_play import (
+    OpponentPool,
+    SelfPlaySettings,
+    resolve_self_play_workers,
+    rollout_buffer_overwrites,
+    summarize_results,
+)
 from poke_agent.data_pipeline import episode_chunks
 
 
@@ -88,3 +94,21 @@ def test_build_config_train_window_follows_games_override(tmp_path):
     config = build_config(tmp_path, overrides={"self_play_games": 50, "self_play_train_window_games": None})
     assert config["self_play"]["train_window_games"] == 50
     assert config["self_play"]["games_per_iteration"] == 50
+
+
+def test_rollout_buffer_overwrites_when_games_match_window(tmp_path):
+    settings = SelfPlaySettings(
+        games_per_iteration=150,
+        eval_games=0,
+        iterations=1,
+        opponent_pool_size=1,
+        use_beam=False,
+        output_path=tmp_path / "rollouts.jsonl",
+        checkpoint_dir=tmp_path / "ckpt",
+        train_window_games=150,
+        trim_rollout_file=True,
+    )
+    assert rollout_buffer_overwrites(settings) is True
+
+    settings.train_window_games = 300
+    assert rollout_buffer_overwrites(settings) is False
