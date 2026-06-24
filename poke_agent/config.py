@@ -367,6 +367,7 @@ _ENV_MAP = {
     "train_checkpoint_every": "TRAIN_CHECKPOINT_EVERY",
     "train_resume": "TRAIN_RESUME",
     "train_data_device": "TRAIN_DATA_DEVICE",
+    "top_episode_percent": "TOP_EPISODE_PERCENT",
     "require_top_of_ladder_data": "REQUIRE_TOP_OF_LADDER_DATA",
     "min_top_of_ladder_fraction": "MIN_TOP_OF_LADDER_FRACTION",
     "d_model": "MODEL_D_MODEL",
