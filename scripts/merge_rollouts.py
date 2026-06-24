@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,12 +17,26 @@ if str(ROOT) not in sys.path:
 from poke_agent.rewards import filter_complete_episode_rows
 
 
-def load_jsonl(path: Path) -> list[dict]:
-    rows: list[dict] = []
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                rows.append(json.loads(line))
+def _default_workers() -> int:
+    cpu_count = os.cpu_count() or 1
+    return max(1, cpu_count - 2 if cpu_count > 4 else cpu_count)
+
+
+def _parse_chunk(lines: list[str]) -> list[dict]:
+    return [json.loads(line) for line in lines]
+
+
+def load_jsonl(path: Path, *, workers: int | None = None) -> list[dict]:
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    worker_count = _default_workers() if workers is None else max(1, int(workers))
+    if worker_count <= 1 or len(lines) < 5000:
+        return [json.loads(line) for line in lines]
+
+    chunk_size = max(1000, len(lines) // (worker_count * 4))
+    chunks = [lines[index:index + chunk_size] for index in range(0, len(lines), chunk_size)]
+    with ProcessPoolExecutor(max_workers=worker_count) as executor:
+        rows = [row for chunk_rows in executor.map(_parse_chunk, chunks) for row in chunk_rows]
+    print(f"jsonl load: {len(rows):,} rows from {path.name} using {worker_count} workers")
     return rows
 
 
@@ -33,14 +49,14 @@ def dedupe_key(row: dict) -> tuple[str, str, int, int]:
     )
 
 
-def merge_sources(paths: list[Path], *, require_complete: bool = True) -> list[dict]:
+def merge_sources(paths: list[Path], *, require_complete: bool = True, workers: int | None = None) -> list[dict]:
     merged: list[dict] = []
     seen: set[tuple[str, str, int, int]] = set()
     for path in paths:
         if not path.is_file():
             print(f"skip missing {path}")
             continue
-        rows = load_jsonl(path)
+        rows = load_jsonl(path, workers=workers)
         for row in rows:
             row.setdefault("source", path.stem)
             key = dedupe_key(row)
@@ -90,9 +106,15 @@ def main() -> int:
         action="store_true",
         help="keep truncated/draw/timeout episodes (default: complete decisive games only)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="parallel JSON parse workers (default: auto from CPU count)",
+    )
     args = parser.parse_args()
 
-    rows = merge_sources(args.sources, require_complete=not args.allow_incomplete)
+    rows = merge_sources(args.sources, require_complete=not args.allow_incomplete, workers=args.workers)
     write_jsonl(args.out, rows)
     games = len({int(row["episode"]) for row in rows})
     print(f"merged {len(args.sources)} sources -> {games} games / {len(rows)} rows -> {args.out}")

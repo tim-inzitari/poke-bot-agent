@@ -127,9 +127,11 @@ def replay_to_rollout_rows(
             terminal = int((next_observation.get("current") or {}).get("result", -1)) >= 0
 
             tracker = GameEventTracker()
-            step_features = features_from_observation(observation, tracker)
+            step_features, _ = features_from_observation(observation, tracker)
             next_tracker = copy.deepcopy(tracker)
-            next_features = features_from_observation(next_observation, next_tracker)
+            next_features, _ = features_from_observation(next_observation, next_tracker)
+            step_features = [float(v) for v in step_features]
+            next_features = [float(v) for v in next_features]
 
             deck0_slug = deck0_name or slug_from_deck_name(agent0_name, registry)
             deck1_slug = deck1_name or slug_from_deck_name(agent1_name, registry)

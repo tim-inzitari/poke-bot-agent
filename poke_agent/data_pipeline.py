@@ -24,6 +24,101 @@ def episode_chunks(episodes: int, workers: int) -> list[tuple[int, int]]:
     return [(start, min(episodes, start + chunk_size)) for start in range(0, episodes, chunk_size)]
 
 
+def default_replay_convert_workers() -> int:
+    cpu_count = os.cpu_count() or 1
+    return max(1, cpu_count - 2 if cpu_count > 4 else cpu_count)
+
+
+# Per-worker globals so the (read-only) archetype registry is loaded once per
+# process instead of pickled for every replay task.
+_WORKER_REGISTRY: Any = None
+_WORKER_ROOT: Path | None = None
+
+
+def _init_replay_worker(root_str: str) -> None:
+    global _WORKER_REGISTRY, _WORKER_ROOT
+    from poke_agent.archetypes import load_archetype_registry
+
+    _WORKER_ROOT = Path(root_str)
+    _WORKER_REGISTRY = load_archetype_registry(_WORKER_ROOT)
+
+
+def _convert_replay_task(task: tuple[str, int, str]) -> list[dict]:
+    replay_path_str, episode_index, source = task
+    from poke_agent.replay_import import convert_replay_file
+
+    return convert_replay_file(
+        Path(replay_path_str),
+        episode=episode_index,
+        registry=_WORKER_REGISTRY,
+        root=_WORKER_ROOT,
+        source=source,
+    )
+
+
+def convert_records_to_rollout_rows(
+    root: Path,
+    records: list,
+    *,
+    default_source: str,
+    workers: int | None = None,
+    progress_label: str = "replays -> rollouts",
+) -> list[dict]:
+    """Convert replay records to rollout rows, parallel across episodes when worth it.
+
+    Each replay file is independent, so conversion is embarrassingly parallel.
+    Episode indices are baked into the tasks and ``executor.map`` preserves order,
+    so output is deterministic regardless of worker count.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    from poke_agent.archetypes import load_archetype_registry
+    from poke_agent.replay_import import convert_replay_file
+
+    total = len(records)
+    if total == 0:
+        return []
+
+    worker_count = default_replay_convert_workers() if workers is None else max(1, int(workers))
+    all_rows: list[dict] = []
+
+    if worker_count <= 1 or total < worker_count * 2:
+        registry = load_archetype_registry(root)
+        for index, record in enumerate(records):
+            rows = convert_replay_file(
+                Path(record.replay_path),
+                episode=index,
+                registry=registry,
+                root=root,
+                source=record.source or default_source,
+            )
+            all_rows.extend(rows)
+            if (index + 1) % 25 == 0 or index + 1 == total:
+                print(f"  {progress_label}: {index + 1}/{total} episodes, {len(all_rows):,} rows")
+        return all_rows
+
+    tasks = [
+        (str(record.replay_path), index, record.source or default_source)
+        for index, record in enumerate(records)
+    ]
+    chunksize = max(1, total // (worker_count * 4))
+    done = 0
+    with ProcessPoolExecutor(
+        max_workers=worker_count,
+        initializer=_init_replay_worker,
+        initargs=(str(root),),
+    ) as executor:
+        for rows in executor.map(_convert_replay_task, tasks, chunksize=chunksize):
+            all_rows.extend(rows)
+            done += 1
+            if done % 100 == 0 or done == total:
+                print(
+                    f"  {progress_label}: {done}/{total} episodes, "
+                    f"{len(all_rows):,} rows ({worker_count} workers)"
+                )
+    return all_rows
+
+
 def generate_multideck_rollouts(
     root: Path,
     *,
@@ -56,6 +151,7 @@ def merge_training_rollouts(
     sources: list[Path],
     out_path: Path,
     check: bool = True,
+    workers: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     existing = [path for path in sources if path.exists()]
     if not existing:
@@ -67,6 +163,8 @@ def merge_training_rollouts(
         "--out",
         str(out_path),
     ]
+    if workers is not None:
+        cmd += ["--workers", str(int(workers))]
     print(f"merge rollouts: {len(existing)} sources -> {out_path}")
     return subprocess.run(cmd, cwd=root, check=check)
 
@@ -185,13 +283,12 @@ def convert_episodes_index_to_rollouts(
     top_percent_days: float = 100.0,
     max_episodes: int = 0,
     daily_slugs: list[str] | None = None,
+    workers: int | None = None,
 ) -> int:
     """Convert episodes-index replay JSON into rollout JSONL (top competition games)."""
     import json
 
-    from poke_agent.archetypes import load_archetype_registry
     from poke_agent.episodes_index import filter_top_percent, load_episode_pool
-    from poke_agent.replay_import import convert_replay_file
 
     records = load_episode_pool(
         root,
@@ -213,21 +310,14 @@ def convert_episodes_index_to_rollouts(
             "  python scripts/prepare_training_data.py"
         )
 
-    registry = load_archetype_registry(root)
-    all_rows: list[dict] = []
     total = len(records)
-    for episode_index, record in enumerate(records):
-        assert record.replay_path is not None
-        rows = convert_replay_file(
-            record.replay_path,
-            episode=episode_index,
-            registry=registry,
-            root=root,
-            source=record.source or "pokemon-tcg-ai-battle-episodes",
-        )
-        all_rows.extend(rows)
-        if (episode_index + 1) % 25 == 0 or episode_index + 1 == total:
-            print(f"  episodes-index -> rollouts: {episode_index + 1}/{total} episodes, {len(all_rows):,} rows")
+    all_rows = convert_records_to_rollout_rows(
+        root,
+        records,
+        default_source="pokemon-tcg-ai-battle-episodes",
+        workers=workers,
+        progress_label="episodes-index -> rollouts",
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as handle:
@@ -257,7 +347,8 @@ def validate_bootstrap_training_data(
     if not merged_path.is_file():
         raise FileNotFoundError(f"merged training file missing: {merged_path}")
 
-    rows = load_jsonl(merged_path, workers=1)
+    # Merged corpus can be multi-GB; parse it in parallel (load_jsonl auto-scales).
+    rows = load_jsonl(merged_path, workers=config.get("tensor_build_workers"))
     if not rows:
         raise ValueError(f"merged training file is empty: {merged_path}")
 
@@ -335,6 +426,7 @@ def prepare_bootstrap_training_data(
         episodes_index=index_path,
         top_percent=top_pct,
         daily_slugs=daily_slugs,
+        workers=workers,
     )
 
     generate_games = episodes
@@ -357,6 +449,7 @@ def prepare_bootstrap_training_data(
         sources=[scraped_path, multideck_path],
         out_path=merged_path,
         check=True,
+        workers=workers,
     )
 
     if validate:

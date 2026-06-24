@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from poke_agent.archetypes import load_archetype_registry
+from poke_agent.data_pipeline import convert_records_to_rollout_rows
 from poke_agent.episodes_index import (
     EpisodeRecord,
     default_index_path,
@@ -21,7 +21,6 @@ from poke_agent.episodes_index import (
     load_episode_pool,
     load_replay_score,
 )
-from poke_agent.replay_import import convert_replay_file
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -58,9 +57,9 @@ def main() -> int:
     parser.add_argument("--max-episodes", type=int, default=0, help="cap episodes converted (0 = all)")
     parser.add_argument("--out", type=Path, default="data/scraped_rollouts.jsonl")
     parser.add_argument("--episode-ids-out", type=Path, default=None, help="optional export of selected episode ids")
+    parser.add_argument("--workers", type=int, default=None, help="parallel conversion workers (default: auto)")
     args = parser.parse_args()
 
-    registry = load_archetype_registry(ROOT)
     if args.replays_dir is not None:
         records = records_from_replays_dir(args.replays_dir)
     else:
@@ -79,17 +78,13 @@ def main() -> int:
     if args.episode_ids_out is not None:
         export_episode_ids(records, args.episode_ids_out)
 
-    all_rows: list[dict] = []
-    for episode_index, record in enumerate(records):
-        assert record.replay_path is not None
-        rows = convert_replay_file(
-            record.replay_path,
-            episode=episode_index,
-            registry=registry,
-            root=ROOT,
-            source=record.source or "replay",
-        )
-        all_rows.extend(rows)
+    all_rows = convert_records_to_rollout_rows(
+        ROOT,
+        records,
+        default_source="replay",
+        workers=args.workers,
+        progress_label="replays -> rollouts",
+    )
 
     write_jsonl(args.out, all_rows)
     print(f"converted {len(records)} episodes -> {len(all_rows)} rows -> {args.out}")

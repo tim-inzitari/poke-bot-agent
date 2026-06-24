@@ -55,6 +55,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--episodes", type=int, default=None, help="multideck CABT games (default: DATASET_GAMES)")
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="parallel workers for replay conversion / multideck gen / merge (default: auto from CPU)",
+    )
+    parser.add_argument(
         "--top-percent",
         type=float,
         default=None,
@@ -95,6 +101,7 @@ def main() -> int:
         download_index=args.download_index,
         generate_multideck=args.generate,
         episodes=args.episodes,
+        workers=args.workers,
         top_percent=args.top_percent,
         validate=not args.no_validate,
     )
