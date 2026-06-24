@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from poke_agent.replay_import import convert_replay_file, is_replay_complete, load_replay_payload
 
 
@@ -7,7 +9,7 @@ def test_sample_replay_is_complete():
     root = Path(__file__).resolve().parents[1]
     sample = root / "data/sample-replays/80560722.json"
     if not sample.is_file():
-        return
+        pytest.skip(f"sample replay not present: {sample}")
     payload = load_replay_payload(sample)
     assert is_replay_complete(payload)
 
@@ -16,7 +18,7 @@ def test_convert_sample_replay():
     root = Path(__file__).resolve().parents[1]
     sample = root / "data/sample-replays/80560722.json"
     if not sample.is_file():
-        return
+        pytest.skip(f"sample replay not present: {sample}")
     rows = convert_replay_file(sample, episode=0, root=root, source="sample")
     assert rows
     assert rows[0]["observation"]

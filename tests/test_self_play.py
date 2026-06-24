@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from poke_agent.config import build_config, resolve_self_play_train_window
 from poke_agent.deck_pool import choose_agent_vs_field_matchup, mirror_matchup, read_deck_file
 from poke_agent.self_play import OpponentPool, SelfPlaySettings, resolve_self_play_workers, summarize_results
 from poke_agent.data_pipeline import episode_chunks
@@ -76,3 +77,14 @@ def test_episode_chunks_cover_all_games():
     assert chunks[0][0] == 0
     assert chunks[-1][1] == 20
     assert sum(stop - start for start, stop in chunks) == 20
+
+
+def test_train_window_defaults_to_games_per_iteration():
+    assert resolve_self_play_train_window({"self_play_games": 50, "self_play_train_window_games": None}) == 50
+    assert resolve_self_play_train_window({"self_play_games": 20, "self_play_train_window_games": 40}) == 40
+
+
+def test_build_config_train_window_follows_games_override(tmp_path):
+    config = build_config(tmp_path, overrides={"self_play_games": 50, "self_play_train_window_games": None})
+    assert config["self_play"]["train_window_games"] == 50
+    assert config["self_play"]["games_per_iteration"] == 50

@@ -94,7 +94,7 @@ SELF_PLAY_BEAM_MAX_SEARCH_STEPS = 64
 # SELF_PLAY_ITERATIONS = max collect→train cycles (stops early on plateau or target win rate).
 SELF_PLAY_GAMES = 20  # CABT games per iteration (your deck vs field + past checkpoints)
 SELF_PLAY_ITERATIONS = 100
-SELF_PLAY_TRAIN_EPOCHS = 500  # transformer epochs after each iteration (uses TRAIN_EPOCHS if unset)
+SELF_PLAY_TRAIN_EPOCHS = 500  # transformer epochs after each self-play iteration
 SELF_PLAY_EVAL_GAMES = 20
 SELF_PLAY_OPPONENT_POOL_SIZE = 5
 SELF_PLAY_USE_BEAM = True
@@ -114,6 +114,10 @@ SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY = True  # our-side decks = high-performi
 SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE = 3  # best N lists per baseline agent (by event placement)
 SELF_PLAY_AGENT_DECK_DIR = "decks/archetype-samples"  # used when BASELINE_ARCHETYPE_DECKS_ONLY=0
 SELF_PLAY_PER_DECK_CHECKPOINT_DIR = None  # None = skip per-deck checkpoint copies (saves disk)
+SELF_PLAY_TRAIN_WINDOW_GAMES = None  # None = match SELF_PLAY_GAMES (--games per iteration)
+SELF_PLAY_TRIM_ROLLOUT_FILE = True  # keep JSONL on disk trimmed to the train window
+SELF_PLAY_WARMUP_ITERATIONS = 10  # first N transformer self-play cycles use boosted LR (0 = off)
+SELF_PLAY_WARMUP_LR_MULTIPLIER = 25.0  # LR multiplier during warmup (3e-4 → 7.5e-3 at default)
 
 # --- Training loop ---
 TRAIN_EPOCHS = 1000
@@ -186,6 +190,10 @@ OVERRIDE_KEYS = frozenset({
     "self_play_baseline_top_decks_per_archetype",
     "self_play_agent_deck_dir",
     "self_play_per_deck_checkpoint_dir",
+    "self_play_train_window_games",
+    "self_play_trim_rollout_file",
+    "self_play_warmup_iterations",
+    "self_play_warmup_lr_multiplier",
     "scraped_rollout_data",
     "multideck_rollout_data",
     "merged_rollout_data",
@@ -265,6 +273,10 @@ def default_user_config() -> dict[str, Any]:
         "self_play_baseline_top_decks_per_archetype": SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE,
         "self_play_agent_deck_dir": SELF_PLAY_AGENT_DECK_DIR,
         "self_play_per_deck_checkpoint_dir": SELF_PLAY_PER_DECK_CHECKPOINT_DIR,
+        "self_play_train_window_games": SELF_PLAY_TRAIN_WINDOW_GAMES,
+        "self_play_trim_rollout_file": SELF_PLAY_TRIM_ROLLOUT_FILE,
+        "self_play_warmup_iterations": SELF_PLAY_WARMUP_ITERATIONS,
+        "self_play_warmup_lr_multiplier": SELF_PLAY_WARMUP_LR_MULTIPLIER,
         "scraped_rollout_data": SCRAPED_ROLLOUT_DATA,
         "multideck_rollout_data": MULTIDECK_ROLLOUT_DATA,
         "merged_rollout_data": MERGED_ROLLOUT_DATA,
@@ -302,7 +314,6 @@ _ENV_MAP = {
     "loss_dynamics_weight": "LOSS_DYNAMICS_WEIGHT",
     "loss_entropy_weight": "LOSS_ENTROPY_WEIGHT",
     "loss_uncertainty_weight": "LOSS_UNCERTAINTY_WEIGHT",
-    "dataset_games": "DATASET_GAMES",
     "train_epochs": "TRAIN_EPOCHS",
     "early_stop_patience": "EARLY_STOP_PATIENCE",
     "early_stop_min_delta": "EARLY_STOP_MIN_DELTA",
@@ -340,6 +351,10 @@ _ENV_MAP = {
     "self_play_baseline_top_decks_per_archetype": "SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE",
     "self_play_agent_deck_dir": "SELF_PLAY_AGENT_DECK_DIR",
     "self_play_per_deck_checkpoint_dir": "SELF_PLAY_PER_DECK_CHECKPOINT_DIR",
+    "self_play_train_window_games": "SELF_PLAY_TRAIN_WINDOW_GAMES",
+    "self_play_trim_rollout_file": "SELF_PLAY_TRIM_ROLLOUT_FILE",
+    "self_play_warmup_iterations": "SELF_PLAY_WARMUP_ITERATIONS",
+    "self_play_warmup_lr_multiplier": "SELF_PLAY_WARMUP_LR_MULTIPLIER",
 }
 
 
@@ -352,16 +367,21 @@ def _coerce_value(key: str, value: Any) -> Any:
         return bool(value)
     if key == "self_play_per_deck_checkpoint_dir" and value in {"", "none", "None", "null"}:
         return None
+    if key == "self_play_train_window_games":
+        if value is None or value == "":
+            return None
+        parsed = int(value)
+        return None if parsed <= 0 else parsed
     if key == "dataset_games":
         if value is None or value == "":
             return None
         parsed = int(value)
         return None if parsed <= 0 else parsed
     if key in {
-        "require_cabt_eval_data",
         "self_play_use_beam",
         "self_play_train_after_collect",
         "self_play_baseline_archetype_decks_only",
+        "self_play_trim_rollout_file",
         "require_complete_games",
         "require_training_matchup_diversity",
     }:
@@ -395,6 +415,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_target_rank",
         "self_play_plateau_patience",
         "self_play_workers",
+        "self_play_warmup_iterations",
         "min_training_matchups",
         "min_training_deck_slugs",
     }:
@@ -419,6 +440,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_target_win_rate",
         "self_play_baseline_win_rate",
         "self_play_baseline_top_decks_per_archetype",
+        "self_play_warmup_lr_multiplier",
     }:
         return float(value)
     if key in {"fallback_rollout_data", "training_rollout_sources"}:
@@ -444,6 +466,14 @@ def _resolve_settings(overrides: dict[str, Any] | None = None) -> dict[str, Any]
     return settings
 
 
+def resolve_self_play_train_window(settings: dict[str, Any]) -> int:
+    """Games to keep for retrain/trim; defaults to games collected per iteration (--games)."""
+    explicit = settings.get("self_play_train_window_games")
+    if explicit is not None and int(explicit) > 0:
+        return int(explicit)
+    return max(1, int(settings["self_play_games"]))
+
+
 def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = _resolve_settings(overrides)
     ensure_output_layout(root)
@@ -458,12 +488,13 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         model_id=model_id,
         explicit=settings["model_output_path"],
     )
-    data_candidates = [
+    data_candidates = list(dict.fromkeys([
         merged_path,
         *[path for path in training_sources if path != merged_path],
         root / settings["primary_rollout_data"],
         *fallback_paths,
-    ]
+    ]))
+    train_window_games = resolve_self_play_train_window(settings)
 
     return {
         "agent_deck_path": root / settings["agent_deck_path"],
@@ -472,14 +503,10 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "merged_rollout_path": merged_path,
         "scraped_rollout_path": root / settings["scraped_rollout_data"],
         "multideck_rollout_path": root / settings["multideck_rollout_data"],
-        "episodes_index_path": root / settings["episodes_index_path"],
-        "top_episode_percent": settings["top_episode_percent"],
-        "training_deck_dirs": [root / path for path in settings["training_deck_dirs"]],
         "require_complete_games": settings["require_complete_games"],
         "require_training_matchup_diversity": settings["require_training_matchup_diversity"],
         "min_training_matchups": settings["min_training_matchups"],
         "min_training_deck_slugs": settings["min_training_deck_slugs"],
-        "submission_deck_path": root / settings["agent_deck_path"],
         "generated_path": root / settings["cabt_generated_path"],
         "competition_results_path": root / settings["competition_results_path"],
         "output_path": checkpoint,
@@ -550,6 +577,10 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "baseline_top_decks_per_archetype": settings["self_play_baseline_top_decks_per_archetype"],
             "agent_deck_dir": settings["self_play_agent_deck_dir"],
             "per_deck_checkpoint_dir": settings["self_play_per_deck_checkpoint_dir"],
+            "train_window_games": train_window_games,
+            "trim_rollout_file": settings["self_play_trim_rollout_file"],
+            "warmup_iterations": settings["self_play_warmup_iterations"],
+            "warmup_lr_multiplier": settings["self_play_warmup_lr_multiplier"],
             "beam_width": settings["self_play_beam_width"],
             "beam_time_budget_ms": settings["self_play_beam_time_budget_ms"],
             "beam_max_search_steps": settings["self_play_beam_max_search_steps"],
@@ -563,9 +594,3 @@ def resolve_generate_games(config: dict[str, Any]) -> int:
     if games is not None:
         return max(0, int(games))
     return 0
-
-
-def resolve_cabt_episodes(config: dict[str, Any], simulator_available: bool) -> int:
-    """Backward-compatible alias for inline rollout generation."""
-    del simulator_available
-    return resolve_generate_games(config)

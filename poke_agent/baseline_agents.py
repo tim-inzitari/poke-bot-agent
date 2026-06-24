@@ -16,17 +16,6 @@ from poke_agent.deck_pool import (
 )
 
 
-def make_first_legal_fn(to_observation_class) -> Callable[[dict[str, Any]], list[int]]:
-    def act(obs_dict: dict[str, Any]) -> list[int]:
-        obs = to_observation_class(obs_dict)
-        if obs.select is None:
-            raise RuntimeError("baseline heuristic called before deck submission")
-        count = min(int(obs.select.maxCount), len(obs.select.option))
-        return list(range(count))
-
-    return act
-
-
 @dataclass(frozen=True)
 class BaselineAgent:
     """Competition opponent: official main.py model or first-legal heuristic fallback."""

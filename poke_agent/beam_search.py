@@ -28,17 +28,6 @@ class BeamSearchConfig:
     max_search_steps: int = 64
 
     @classmethod
-    def from_training_config(cls, config: dict[str, Any]) -> BeamSearchConfig:
-        beam = dict(config.get("beam_search", {}))
-        return cls(
-            width=int(beam.get("width", 8)),
-            time_budget_ms=int(beam.get("time_budget_ms", 10_000)),
-            min_remaining_sec=0 if beam.get("sim_mode") else int(beam.get("min_remaining_sec", 120)),
-            sim_mode=bool(beam.get("sim_mode", False)),
-            max_search_steps=int(beam.get("max_search_steps", 64)),
-        )
-
-    @classmethod
     def from_self_play_config(cls, config: dict[str, Any]) -> BeamSearchConfig:
         sp = dict(config.get("self_play", {}))
         return cls(

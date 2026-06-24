@@ -23,7 +23,7 @@ See [docs/MULTI_MODEL.md](docs/MULTI_MODEL.md) and `notebooks/poke_agent_multi_m
 
 ## Outputs
 
-Training artifacts are organized under `outputs/` (see `outputs/README.md`):
+Training artifacts are organized under `outputs/` (gitignored locally; created at runtime):
 
 ```text
 outputs/

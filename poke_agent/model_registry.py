@@ -9,7 +9,6 @@ from poke_agent.model_catalog import (
     MODEL_CATALOG,
     NEURAL_OVERRIDE_KEYS,
     TRAIN_MODELS,
-    ModelKind,
 )
 from poke_agent.models.heuristics import HEURISTIC_BUILDERS, HeuristicAgent
 from poke_agent.models.hybrid import HybridAgent
@@ -17,12 +16,6 @@ from poke_agent.models.hybrid import HybridAgent
 
 class ModelRegistryError(ValueError):
     pass
-
-
-def list_models(*, kind: ModelKind | None = None) -> list[str]:
-    if kind is None:
-        return list(MODEL_CATALOG)
-    return [name for name, spec in MODEL_CATALOG.items() if spec.get("kind") == kind]
 
 
 def get_model_spec(model_id: str) -> dict[str, Any]:

@@ -78,6 +78,10 @@ class SelfPlaySettings:
     baseline_agents: list[BaselineAgent] = field(default_factory=list)
     agent_deck_pool: list[tuple[str, list[int]]] = field(default_factory=list)
     per_deck_checkpoint_dir: Path | None = None
+    train_window_games: int | None = None
+    trim_rollout_file: bool = True
+    warmup_iterations: int = 10
+    warmup_lr_multiplier: float = 25.0
     beam_config: BeamSearchConfig | None = None
 
 
@@ -163,6 +167,25 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]], *, append: bool = False)
     with path.open(mode, encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, separators=(",", ":")) + "\n")
+
+
+def maybe_trim_rollout_file(settings: SelfPlaySettings) -> None:
+    if not settings.trim_rollout_file:
+        return
+    from poke_agent.dataset import trim_rollout_jsonl
+
+    trim_rollout_jsonl(settings.output_path, settings.train_window_games)
+
+
+def _count_rollout_games(path: Path) -> int:
+    if not path.exists():
+        return 0
+    episodes: set[int] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        episodes.add(int(json.loads(line)["episode"]))
+    return len(episodes)
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
@@ -811,23 +834,49 @@ def train_on_rollouts(
     *,
     data_path: Path,
     checkpoint_path: Path | None = None,
+    iteration: int = 1,
+    apply_lr_warmup: bool = False,
 ) -> tuple[Any, Any, dict[str, Any]]:
-    """Retrain on accumulated self-play JSONL (all games in file, not DATASET_GAMES cap)."""
+    """Retrain on self-play JSONL, optionally capped to the most recent games."""
     train_config = dict(config)
     train_config["training_data_path"] = data_path
     train_config["generated_path"] = data_path
-    train_config["dataset_games"] = None
     train_config["require_cabt_eval_data"] = False
     train_config["require_training_matchup_diversity"] = False
 
     sp = dict(config.get("self_play", {}))
     train_cfg = dict(train_config.get("training", {}))
+    window = sp.get("train_window_games")
+    if window is not None and int(window) > 0:
+        train_cfg["games"] = int(window)
+        train_cfg["recent_games"] = True
+        window_note = f"last {window} games"
+    else:
+        train_config["dataset_games"] = None
+        window_note = "all collected games"
     if sp.get("train_epochs") is not None:
         train_cfg["epochs"] = int(sp["train_epochs"])
     train_config["training"] = train_cfg
 
+    base_lr = float(train_config["model"]["learning_rate"])
+    warmup_iters = int(sp.get("warmup_iterations", 0) or 0)
+    warmup_mult = float(sp.get("warmup_lr_multiplier", 1.0) or 1.0)
+    if apply_lr_warmup and warmup_iters > 0 and iteration <= warmup_iters and warmup_mult > 1.0:
+        model_cfg = dict(train_config["model"])
+        model_cfg["learning_rate"] = base_lr * warmup_mult
+        train_config["model"] = model_cfg
+        lr_note = (
+            f"warmup lr {model_cfg['learning_rate']:g} "
+            f"({warmup_mult:g}x, iter {iteration}/{warmup_iters})"
+        )
+    else:
+        lr_note = f"lr {base_lr:g}"
+
     row_count = sum(1 for line in data_path.read_text(encoding="utf-8").splitlines() if line.strip())
-    print(f"self-play retrain on {device}: {data_path} ({row_count:,} rows, all collected games)")
+    print(
+        f"self-play retrain on {device}: {data_path} "
+        f"({row_count:,} rows on disk, train on {window_note}, {lr_note})"
+    )
 
     tensors = prepare_training_tensors(train_config, device)
     model = build_model(train_config, tensors, device)
@@ -890,9 +939,12 @@ def run_self_play_iteration(
     unique_matchups = len({(row.get("deck0"), row.get("deck1")) for row in rows if int(row.get("step", -1)) == 0})
     append = settings.output_path.exists() and iteration > 1
     write_jsonl(settings.output_path, rows, append=append)
+    maybe_trim_rollout_file(settings)
+    kept_games = _count_rollout_games(settings.output_path)
     print(
         f"self-play data -> {settings.output_path} ({len(rows):,} rows, "
-        f"{unique_matchups} unique deck pairings, append={append})"
+        f"{unique_matchups} unique deck pairings, append={append}, "
+        f"buffer={kept_games} games, train_window={settings.train_window_games})"
     )
 
     random_agent = make_random_agent(simulator.to_observation_class)
@@ -936,6 +988,8 @@ def run_self_play_iteration(
             device,
             data_path=settings.output_path,
             checkpoint_path=current_checkpoint,
+            iteration=iteration,
+            apply_lr_warmup=True,
         )
         iter_path = settings.checkpoint_dir / f"iter_{iteration:03d}.pt"
         training_report = save_checkpoint(
@@ -1032,9 +1086,12 @@ def run_baseline_iteration(
     )
     append = settings.output_path.exists() and iteration > 1
     write_jsonl(settings.output_path, rows, append=append)
+    maybe_trim_rollout_file(settings)
+    kept_games = _count_rollout_games(settings.output_path)
     print(
         f"baseline data -> {settings.output_path} ({len(rows):,} rows, "
-        f"last our={last_deck_name} vs {last_baseline}, append={append})"
+        f"last our={last_deck_name} vs {last_baseline}, append={append}, "
+        f"buffer={kept_games} games, train_window={settings.train_window_games})"
     )
 
     eval_deck_name, eval_deck = choose_pool_deck(settings.agent_deck_pool, start_episode)
@@ -1076,6 +1133,7 @@ def run_baseline_iteration(
             device,
             data_path=settings.output_path,
             checkpoint_path=current_checkpoint,
+            iteration=iteration,
         )
         iter_path = settings.checkpoint_dir / f"baseline_{iteration:03d}.pt"
         training_report = save_checkpoint(
@@ -1135,6 +1193,10 @@ def run_baseline_phase_loop(
     manifest_path = settings.checkpoint_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
     manifest["phase"] = "baseline"
+    print(
+        f"baseline training window: {settings.train_window_games} games "
+        f"(collect {settings.games_per_iteration} per iteration)"
+    )
     current_checkpoint = Path(initial_checkpoint or config["output_path"])
     if not current_checkpoint.exists():
         raise FileNotFoundError(f"initial checkpoint not found: {current_checkpoint}")
@@ -1258,6 +1320,9 @@ def run_curriculum_self_play(
 
     champion_ckpt = Path(baseline_reports[-1]["saved_checkpoint"])
     print("curriculum phase 2: pure transformer self-play")
+    if settings.output_path.exists():
+        settings.output_path.unlink()
+        print(f"cleared baseline rollout buffer -> {settings.output_path}")
     transformer_reports = run_self_play_loop(
         config=config,
         simulator=simulator,
@@ -1288,6 +1353,13 @@ def run_self_play_loop(
 ) -> list[dict[str, Any]]:
     device = device or torch_device()
     print(f"self-play device: {device}")
+    window = settings.train_window_games
+    window_note = f"last {window} games" if window else "all collected games"
+    print(
+        f"self-play training buffer: {window_note} "
+        f"(collect {settings.games_per_iteration} per iteration), "
+        f"warmup={settings.warmup_iterations} iters at {settings.warmup_lr_multiplier:g}x lr"
+    )
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
     settings.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1451,6 +1523,10 @@ def self_play_settings_from_config(
         baseline_win_rate_threshold=float(sp.get("baseline_win_rate", 0.60)),
         agent_deck_pool=agent_deck_pool,
         per_deck_checkpoint_dir=per_deck_checkpoint_dir,
+        train_window_games=sp.get("train_window_games"),
+        trim_rollout_file=bool(sp.get("trim_rollout_file", True)),
+        warmup_iterations=int(sp.get("warmup_iterations", 10) or 0),
+        warmup_lr_multiplier=float(sp.get("warmup_lr_multiplier", 25.0) or 1.0),
         beam_config=beam_config,
     )
 

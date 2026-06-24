@@ -87,9 +87,9 @@ loss                  dict           # value, policy, dynamics, entropy, uncerta
 training              dict           # epochs, patience, min_delta, print_every, batch_size
 ```
 
-### `resolve_cabt_episodes(config, simulator_available) -> int`
+### `resolve_generate_games(config) -> int`
 
-Uses `CABT_EPISODES` from config (`None` = auto: 3 when cg-lib is available).
+Uses `DATASET_GAMES` from config (`None` or `0` = skip inline generation).
 
 ---
 
@@ -216,14 +216,14 @@ Extracts the 10-dim compact vector. Pure function, no cg-lib dependency.
 
 Factory returning an agent that uniformly samples legal option indices.
 
-### `play_episode(episode, deck, simulator, agent, max_steps=300) -> list[dict]`
+### `play_match(episode, deck0, deck1, simulator, agent0, agent1, ...) -> list[dict]`
 
-Runs one self-play game (same deck both sides). Raises if simulator unavailable.
+Runs one CABT game between two seat-specific agents. Raises if simulator unavailable.
 
 Lifecycle:
 
 ```
-battle_start(DECK, DECK)
+battle_start(deck0, deck1)
   loop while result < 0 and step < max_steps:
     append row with features
     battle_select(agent(obs))
@@ -231,10 +231,7 @@ battle_start(DECK, DECK)
 battle_finish()  # always in finally
 ```
 
-### `generate_rollouts(simulator, deck, episodes, output_path) -> int`
-
-Writes JSONL if `simulator.available` and `episodes > 0`. Returns row count (0 if
-skipped). Prints skip message otherwise.
+Use `scripts/generate_cabt_data.py` for bulk multideck rollout generation.
 
 ---
 
@@ -461,8 +458,7 @@ python scripts/train_agent.py
 | Cell 3 — DEVICE | `device.py` |
 | Cell 4 — cg-lib | `simulator.py` |
 | Cell 5 — deck | `deck.py` |
-| Cell 6 — play_episode | `rollout.py` |
-| Cell 7 — generate | `rollout.generate_rollouts` |
+| Cell 6 — rollouts | `scripts/generate_cabt_data.py`, `rollout.play_match` |
 | Cell 8 — arrays | `features.py`, `dataset.py` |
 | Cell 9 — model + train | `models/temporal_transformer.py`, `training.py` |
 | Cell 10 — save | `checkpoint.py` |

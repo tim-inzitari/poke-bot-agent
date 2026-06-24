@@ -5,8 +5,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from poke_agent.deck import SAMPLE_DECK
-
 _PLACEMENT_RE = re.compile(r"_(\d+)(?:st|nd|rd|th)_", re.IGNORECASE)
 _ARCHETYPE_FROM_EVENT_RE = re.compile(r"_\d+(?:st|nd|rd|th)_(?P<slug>.+)$", re.IGNORECASE)
 
@@ -71,23 +69,6 @@ def read_deck_pool(path: str | Path | None, *, root: Path | None = None) -> list
     if not pool:
         raise ValueError(f"no valid 60-card decks in {pool_path}")
     return pool
-
-
-def choose_matchup(
-    episode: int,
-    deck0_pool: list[tuple[str, list[int]]],
-    deck1_pool: list[tuple[str, list[int]]],
-    mode: str,
-) -> tuple[str, list[int], str, list[int]]:
-    if mode == "round-robin":
-        i = episode % len(deck0_pool)
-        j = (episode // len(deck0_pool)) % len(deck1_pool)
-        name0, deck0 = deck0_pool[i]
-        name1, deck1 = deck1_pool[j]
-    else:
-        name0, deck0 = random.choice(deck0_pool)
-        name1, deck1 = random.choice(deck1_pool)
-    return name0, deck0, name1, deck1
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import random
-from pathlib import Path
 from typing import Any, Callable
 
 from poke_agent.features import features_from_observation
@@ -107,66 +106,3 @@ def play_match(
         return rows
     finally:
         simulator.battle_finish()
-
-
-def play_episode(
-    episode: int,
-    deck: list[int],
-    simulator: SimulatorState,
-    agent: Callable[[dict], list[int]],
-    *,
-    deck0_name: str = "deck0",
-    deck1_name: str = "deck1",
-    max_steps: int = 300,
-    rewards: dict[str, float] | None = None,
-) -> list[dict]:
-    return play_match(
-        episode,
-        deck,
-        deck,
-        simulator,
-        agent,
-        agent,
-        deck0_name=deck0_name,
-        deck1_name=deck1_name,
-        max_steps=max_steps,
-        rewards=rewards,
-    )
-
-
-def generate_rollouts(
-    simulator: SimulatorState,
-    deck: list[int],
-    episodes: int,
-    output_path: Path,
-    *,
-    deck_name: str | None = None,
-) -> int:
-    if not simulator.available or simulator.to_observation_class is None:
-        print("skipping CABT generation in this runtime")
-        return 0
-
-    if episodes <= 0:
-        print("skipping CABT generation in this runtime")
-        return 0
-
-    label = deck_name or "deck"
-    agent = make_random_agent(simulator.to_observation_class)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    rows: list[dict] = []
-    for episode in range(episodes):
-        rows.extend(
-            play_episode(
-                episode,
-                deck,
-                simulator,
-                agent,
-                deck0_name=label,
-                deck1_name=label,
-            )
-        )
-    print(f"generated {len(rows):,} rows from {episodes:,} games -> {output_path}")
-    with output_path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, separators=(",", ":")) + "\n")
-    return len(rows)

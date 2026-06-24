@@ -53,19 +53,6 @@ def winner_from_prizes(terminal_obs: dict[str, Any] | None) -> int | None:
     return None
 
 
-def inverted_opponent_prize_wincon(terminal_obs: dict[str, Any] | None) -> int | None:
-    """WRONG wincon (opponent prizes → 0). Used only in tests to guard against regressions."""
-    if terminal_obs is None:
-        return None
-    p0_own = prize_count(terminal_obs, 0)
-    p1_own = prize_count(terminal_obs, 1)
-    if p1_own == 0 and p0_own > 0:
-        return 0
-    if p0_own == 0 and p1_own > 0:
-        return 1
-    return None
-
-
 def resolve_game_result(result: int, terminal_obs: dict[str, Any] | None) -> int:
     """Prefer prize-based winner; fall back to CABT result index."""
     prize_winner = winner_from_prizes(terminal_obs)

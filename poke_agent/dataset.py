@@ -32,29 +32,42 @@ def limit_dataset_games(rows: list[dict], max_games: int | None) -> tuple[list[d
     return limited, len(rows), source_games
 
 
-def limit_training_rows(rows: list[dict], max_rows: int | None) -> tuple[list[dict], int]:
-    """Keep leading complete episodes until row budget is reached."""
-    if max_rows is None or max_rows <= 0 or len(rows) <= max_rows:
-        return rows, len(rows)
+def limit_recent_dataset_games(rows: list[dict], max_games: int | None) -> tuple[list[dict], int, int]:
+    """Keep the most recent max_games complete episodes (by episode id)."""
+    source_games = len({int(row["episode"]) for row in rows})
+    if max_games is None or max_games <= 0 or source_games <= max_games:
+        return rows, len(rows), source_games
 
-    by_episode: dict[int, list[dict]] = {}
-    for row in rows:
-        by_episode.setdefault(int(row["episode"]), []).append(row)
-
-    limited: list[dict] = []
-    for episode_id in sorted(by_episode):
-        episode_rows = sorted(by_episode[episode_id], key=lambda row: int(row["step"]))
-        if len(limited) + len(episode_rows) > max_rows:
-            break
-        limited.extend(episode_rows)
-
-    if not limited:
-        limited = rows[:max_rows]
-    return limited, len(rows)
+    keep_ids = sorted({int(row["episode"]) for row in rows})[-max_games:]
+    keep_set = set(keep_ids)
+    limited = [row for row in rows if int(row["episode"]) in keep_set]
+    return limited, len(rows), source_games
 
 
 def _parse_jsonl_chunk(lines: list[str]) -> list[dict]:
     return [json.loads(line) for line in lines]
+
+
+def trim_rollout_jsonl(path: Path, max_games: int | None) -> tuple[int, int]:
+    """Rewrite JSONL to only the most recent max_games episodes."""
+    if max_games is None or max_games <= 0 or not path.exists():
+        return 0, 0
+
+    rows = load_jsonl(path, workers=1)
+    before = len({int(row["episode"]) for row in rows})
+    limited, _, _ = limit_recent_dataset_games(rows, max_games)
+    after = len({int(row["episode"]) for row in limited})
+    if after >= before:
+        return before, after
+
+    with path.open("w", encoding="utf-8") as handle:
+        for row in limited:
+            handle.write(json.dumps(row, separators=(",", ":")) + "\n")
+    print(
+        f"trimmed rollout file: {before:,} -> {after:,} games "
+        f"({len(limited):,} rows) at {path}"
+    )
+    return before, after
 
 
 def load_jsonl(path: Path, *, workers: int | None = None) -> list[dict]:
@@ -187,12 +200,15 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
             if before != after:
                 print(f"complete games only: {after:,} / {before:,} episodes kept")
         train_games = config.get("training", {}).get("games")
-        rows, source_rows, source_games = limit_dataset_games(rows, train_games)
+        use_recent = bool(config.get("training", {}).get("recent_games", False))
+        limit_fn = limit_recent_dataset_games if use_recent else limit_dataset_games
+        rows, source_rows, source_games = limit_fn(rows, train_games)
         used_games = len({int(row["episode"]) for row in rows})
         if train_games is not None:
+            which = "recent" if use_recent else "first"
             print(
                 f"training size: {used_games:,} / {source_games:,} games "
-                f"({len(rows):,} / {source_rows:,} rows, DATASET_GAMES={train_games})"
+                f"({len(rows):,} / {source_rows:,} rows, window={train_games} {which})"
             )
         x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths_np = build_training_arrays(
             rows,

@@ -489,8 +489,7 @@ flowchart TD
     CFG --> DEV[torch_device]
     DEV --> SIM[load_simulator]
     SIM --> DECK[read_deck]
-    DECK --> GEN[generate_rollouts optional]
-    GEN --> DATA[prepare_training_tensors]
+    DECK --> DATA[prepare_training_tensors]
     DATA --> MODEL[build_model]
     MODEL --> TRAIN[train_model]
     TRAIN --> SAVE[save_checkpoint]
@@ -506,7 +505,7 @@ flowchart TD
 | `device.py` | Select Torch device | `torch_device` |
 | `simulator.py` | Locate and import cg-lib | `load_simulator`, `SimulatorState` |
 | `deck.py` | Load 60-card deck | `read_deck`, `SAMPLE_DECK` |
-| `rollout.py` | Play episodes, write JSONL | `generate_rollouts`, `play_episode` |
+| `rollout.py` | Play CABT matches, write JSONL rows | `play_match`, `make_random_agent` |
 | `features.py` | Hash encoding + array builder | `build_training_arrays`, `combine_features` |
 | `dataset.py` | Load JSONL, create tensors | `prepare_training_tensors`, `TrainingTensors` |
 | `models/temporal_transformer.py` | Neural network | `TemporalTransformer` |
@@ -629,7 +628,7 @@ and pick the legal action whose hashed policy class has the highest logit.
 
 | Aspect | `notebooks/poke_agent_unified.ipynb` | `poke_agent/` package |
 |---|---|---|
-| Structure | 11 cells, linear execution | 12 modules, explicit imports |
+| Structure | 11 cells, linear execution | Modular package with explicit imports |
 | State | Cell-global variables | Function args + dataclasses |
 | Best for | Interactive exploration, plots | CLI runs, CI, refactoring |
 | Behavior | Reference implementation | Extracted equivalent (same logic) |
@@ -648,9 +647,9 @@ All configuration is environment-driven via `poke_agent/config.py`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_DECK_PATH` | `decks/competitive/.../dragapult-dudunsparce.csv` | Primary deck file |
-| `PRIMARY_ROLLOUT_DATA` | `data/mac-rollouts-100k-fullstate.jsonl` | First data candidate |
-| `CABT_GENERATED_PATH` | `outputs/rollouts/notebook_rollouts.jsonl` | Inline generation output |
+| `AGENT_DECK_PATH` | `decks/competitive/.../mega-lucario.csv` | Primary deck file |
+| `PRIMARY_ROLLOUT_DATA` | `data/training_rollouts_merged.jsonl` | First data candidate |
+| `CABT_GENERATED_PATH` | `data/multideck_rollouts.jsonl` | Multideck rollout JSONL |
 | `COMPETITION_RESULTS_PATH` | `data/competition-results.jsonl` | Kaggle score history |
 | `MODEL_ID` | `temporal_current` | Checkpoint/report filename stem |
 | `MODEL_OUTPUT_PATH` | `outputs/checkpoints/temporal_current.pt` | Checkpoint output |
@@ -661,15 +660,15 @@ All configuration is environment-driven via `poke_agent/config.py`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `CABT_EPISODES` | `3` if cg available else `0` | Inline episodes to generate |
+| `DATASET_GAMES` | `2000` | Cap training games; `0`/`None` = use all games in file |
 
 ### Model
 
 | Variable | Default |
 |---|---|
-| `MODEL_D_MODEL` | 512 |
-| `MODEL_HEADS` | 8 |
-| `MODEL_LAYERS` | 8 |
+| `MODEL_D_MODEL` | 64 |
+| `MODEL_HEADS` | 4 |
+| `MODEL_LAYERS` | 4 |
 | `MODEL_FF` | `MODEL_D_MODEL * 4` |
 | `MODEL_DROPOUT` | 0.1 |
 | `LEARNING_RATE` | 3e-4 |

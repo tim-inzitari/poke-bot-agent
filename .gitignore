@@ -77,6 +77,11 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.executed.ipynb
+
+# Deck collection artifacts (regenerable via tools/collect.py)
+decks/competitive/rejected.log
+decks/competitive/progress.json
 
 # Local Kaggle inputs
 kaggle/input/
