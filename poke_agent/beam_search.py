@@ -8,7 +8,6 @@ from enum import IntEnum
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import torch
 
 from poke_agent.actions import legal_actions
 from poke_agent.features import encode_observation_step, stable_hash_index
@@ -26,16 +25,18 @@ class BeamSearchConfig:
     min_remaining_sec: int = 120
     sim_mode: bool = False
     max_search_steps: int = 64
+    rollout_policy_width: int = 8
 
     @classmethod
     def from_self_play_config(cls, config: dict[str, Any]) -> BeamSearchConfig:
         sp = dict(config.get("self_play", {}))
         return cls(
-            width=int(sp.get("beam_width", 3)),
-            time_budget_ms=int(sp.get("beam_time_budget_ms", 150)),
+            width=int(sp.get("beam_width", 8)),
+            time_budget_ms=int(sp.get("beam_time_budget_ms", 1500)),
             min_remaining_sec=0,
             sim_mode=True,
-            max_search_steps=int(sp.get("beam_max_search_steps", 64)),
+            max_search_steps=int(sp.get("beam_max_search_steps", 128)),
+            rollout_policy_width=int(sp.get("beam_rollout_policy_width", 12)),
         )
 
 
@@ -61,6 +62,38 @@ def should_skip_beam_search(obs_dict: dict[str, Any], config: BeamSearchConfig) 
     return False
 
 
+def _hidden_card_seed(obs_dict: dict[str, Any]) -> int:
+    current = obs_dict.get("current") or {}
+    players = current.get("players") or []
+    parts = [
+        int(current.get("yourIndex", 0)),
+        int(current.get("turn", 0)),
+        int(current.get("phase", 0)),
+    ]
+    for player in players[:2]:
+        if not isinstance(player, dict):
+            continue
+        parts.extend(
+            [
+                int(player.get("deckCount", 0)),
+                int(player.get("handCount", 0)),
+                len(player.get("prize") or []),
+            ]
+        )
+    return stable_hash_index("|".join(str(part) for part in parts), 1_000_003)
+
+
+def _deterministic_fill(pool: list[int], count: int, seed: int) -> list[int]:
+    if count <= 0:
+        return []
+    rng = random.Random(seed)
+    if count <= len(pool):
+        return rng.sample(pool, count)
+    picked = list(pool)
+    picked.extend(rng.choices(pool, k=count - len(pool)))
+    return picked
+
+
 def guess_hidden_cards(obs_dict: dict[str, Any], our_deck: list[int]) -> tuple[list[int], ...]:
     from cg.api import to_observation_class
 
@@ -72,14 +105,9 @@ def guess_hidden_cards(obs_dict: dict[str, Any], our_deck: list[int]) -> tuple[l
     opponent_player = state.players[opponent_index]
 
     deck_pool = list(our_deck) if our_deck else [OPPONENT_FILLER_CARD]
-    your_deck_guess = random.sample(deck_pool, min(your_player.deckCount, len(deck_pool)))
-    if len(your_deck_guess) < your_player.deckCount:
-        your_deck_guess.extend(random.choices(deck_pool, k=your_player.deckCount - len(your_deck_guess)))
-
-    prize_count = len(your_player.prize)
-    your_prize_guess = random.sample(deck_pool, min(prize_count, len(deck_pool)))
-    if len(your_prize_guess) < prize_count:
-        your_prize_guess.extend(random.choices(deck_pool, k=prize_count - len(your_prize_guess)))
+    seed = _hidden_card_seed(obs_dict)
+    your_deck_guess = _deterministic_fill(deck_pool, your_player.deckCount, seed)
+    your_prize_guess = _deterministic_fill(deck_pool, len(your_player.prize), seed + 1)
 
     opponent_deck_guess = [OPPONENT_FILLER_CARD] * opponent_player.deckCount
     opponent_prize_guess = [OPPONENT_ENERGY_CARD] * len(opponent_player.prize)
@@ -130,16 +158,12 @@ def observation_to_dict(observation: Any) -> dict[str, Any]:
     return _normalize_json(asdict(observation))
 
 
-def evaluate_search_leaf(
+def _encode_leaf_step(
     runtime: PolicyRuntime,
-    session: PolicySession,
     leaf_obs_dict: dict[str, Any],
-    root_your_index: int,
-    our_deck: list[int] | None = None,
-) -> float:
-    assert runtime._model is not None
+    our_deck: list[int] | None,
+) -> tuple[np.ndarray, np.ndarray]:
     assert runtime._feature_mean is not None and runtime._feature_std is not None
-
     leaf_tracker = GameEventTracker()
     leaf_features, leaf_cards = encode_observation_step(
         leaf_obs_dict,
@@ -149,7 +173,17 @@ def evaluate_search_leaf(
         card_vocab_size=runtime._card_vocab_size,
     )
     leaf_norm = ((leaf_features.reshape(-1) - runtime._feature_mean) / runtime._feature_std).astype(np.float32)
+    return leaf_norm, leaf_cards.astype(np.int64)
 
+
+def evaluate_search_leaf(
+    runtime: PolicyRuntime,
+    session: PolicySession,
+    leaf_obs_dict: dict[str, Any],
+    root_your_index: int,
+    our_deck: list[int] | None = None,
+) -> float:
+    leaf_norm, leaf_cards = _encode_leaf_step(runtime, leaf_obs_dict, our_deck)
     value = runtime._model_value(
         session,
         leaf_features=leaf_norm,
@@ -169,6 +203,31 @@ def evaluate_search_leaf(
     return value
 
 
+def choose_rollout_action(
+    runtime: PolicyRuntime,
+    session: PolicySession,
+    leaf_obs_dict: dict[str, Any],
+    actions: list[list[int]],
+    our_deck: list[int] | None,
+    *,
+    policy_width: int,
+) -> list[int]:
+    if not actions:
+        return [0]
+    if len(actions) == 1:
+        return actions[0]
+
+    leaf_norm, leaf_cards = _encode_leaf_step(runtime, leaf_obs_dict, our_deck)
+    logits = runtime._model_logits(
+        session,
+        leaf_features=leaf_norm,
+        leaf_cards=leaf_cards,
+    )
+    ranked = rank_actions_by_policy(runtime, logits, actions)
+    width = max(1, min(policy_width, len(ranked)))
+    return ranked[0][1] if width == 1 else runtime._choose_from_policy_logits(logits, [a for _, a in ranked[:width]])
+
+
 def expand_action_in_search(
     runtime: PolicyRuntime,
     session: PolicySession,
@@ -179,6 +238,7 @@ def expand_action_in_search(
     deadline: float,
     *,
     max_search_steps: int = 64,
+    rollout_policy_width: int = 8,
 ) -> float:
     from cg.api import search_begin, search_end, search_step, to_observation_class
 
@@ -217,8 +277,15 @@ def expand_action_in_search(
                 return evaluate_search_leaf(runtime, session, leaf_obs, root_your_index, our_deck)
             min_count = int(select.get("minCount", 1))
             max_count = int(select.get("maxCount", 1))
-            fallback = legal_actions(len(options), min_count, max_count)
-            action = fallback[0] if fallback else [0]
+            candidates = legal_actions(len(options), min_count, max_count)
+            action = choose_rollout_action(
+                runtime,
+                session,
+                leaf_obs,
+                candidates,
+                our_deck,
+                policy_width=rollout_policy_width,
+            )
         return evaluate_search_leaf(
             runtime,
             session,
@@ -259,6 +326,7 @@ def run_beam_search(
                 root_your_index,
                 deadline,
                 max_search_steps=config.max_search_steps,
+                rollout_policy_width=config.rollout_policy_width,
             )
         except Exception:
             leaf_value = policy_score

@@ -19,8 +19,15 @@ def default_self_play_workers(*, games: int) -> int:
     return default_cabt_generation_workers(episodes=games)
 
 
-def episode_chunks(episodes: int, workers: int) -> list[tuple[int, int]]:
+def episode_chunks(
+    episodes: int,
+    workers: int,
+    *,
+    max_chunk_size: int | None = None,
+) -> list[tuple[int, int]]:
     chunk_size = max(1, math.ceil(episodes / workers))
+    if max_chunk_size is not None:
+        chunk_size = min(chunk_size, max(1, max_chunk_size))
     return [(start, min(episodes, start + chunk_size)) for start in range(0, episodes, chunk_size)]
 
 

@@ -93,13 +93,14 @@ POLICY_AWR_BETA = 0.5
 POLICY_AWR_WEIGHT_MAX = 20.0
 
 # --- Beam search (Kaggle inference) ---
-BEAM_WIDTH = 8
-BEAM_TIME_BUDGET_MS = 1000
+BEAM_WIDTH = 12
+BEAM_TIME_BUDGET_MS = 5000
 BEAM_MIN_REMAINING_SEC = 120
-# Self-play: short sim beam (separate from Kaggle inference defaults).
-SELF_PLAY_BEAM_WIDTH = 3
-SELF_PLAY_BEAM_TIME_BUDGET_MS = 150
-SELF_PLAY_BEAM_MAX_SEARCH_STEPS = 64
+# Self-play: sim beam used during baseline/self-play collection and eval.
+SELF_PLAY_BEAM_WIDTH = 8
+SELF_PLAY_BEAM_TIME_BUDGET_MS = 1500
+SELF_PLAY_BEAM_MAX_SEARCH_STEPS = 128
+SELF_PLAY_BEAM_ROLLOUT_POLICY_WIDTH = 12
 
 # --- Self-play (AlphaGo-style loop) ---
 # One "iteration" = play SELF_PLAY_GAMES cabt games, then retrain on ALL self-play JSONL so far.
@@ -118,7 +119,7 @@ SELF_PLAY_MATCHUP_MODE = "sample"  # sample | round-robin
 SELF_PLAY_TARGET_RANK = 1000  # eval/bar: win vs opponent decks with placement <= this
 SELF_PLAY_TARGET_WIN_RATE = 0.55
 SELF_PLAY_PLATEAU_PATIENCE = 5
-SELF_PLAY_WORKERS = None  # None = auto (cpu_count - 2); parallel CABT games per iteration
+SELF_PLAY_WORKERS = 4  # parallel CABT games per iteration (baseline + self-play collect)
 # Official Kaggle sample agents (main.py + deck.csv each) — see baselines/README.md
 SELF_PLAY_BASELINE_DIR = "baselines/official"
 SELF_PLAY_BASELINE_WIN_RATE = 0.60  # aggregate vs all baselines → start transformer self-play
@@ -212,6 +213,7 @@ OVERRIDE_KEYS = frozenset({
     "self_play_beam_width",
     "self_play_beam_time_budget_ms",
     "self_play_beam_max_search_steps",
+    "self_play_beam_rollout_policy_width",
     "self_play_games",
     "self_play_iterations",
     "self_play_train_epochs",
@@ -311,6 +313,7 @@ def default_user_config() -> dict[str, Any]:
         "self_play_beam_width": SELF_PLAY_BEAM_WIDTH,
         "self_play_beam_time_budget_ms": SELF_PLAY_BEAM_TIME_BUDGET_MS,
         "self_play_beam_max_search_steps": SELF_PLAY_BEAM_MAX_SEARCH_STEPS,
+        "self_play_beam_rollout_policy_width": SELF_PLAY_BEAM_ROLLOUT_POLICY_WIDTH,
         "self_play_games": SELF_PLAY_GAMES,
         "self_play_iterations": SELF_PLAY_ITERATIONS,
         "self_play_train_epochs": SELF_PLAY_TRAIN_EPOCHS,
@@ -408,6 +411,7 @@ _ENV_MAP = {
     "self_play_beam_width": "SELF_PLAY_BEAM_WIDTH",
     "self_play_beam_time_budget_ms": "SELF_PLAY_BEAM_TIME_BUDGET_MS",
     "self_play_beam_max_search_steps": "SELF_PLAY_BEAM_MAX_SEARCH_STEPS",
+    "self_play_beam_rollout_policy_width": "SELF_PLAY_BEAM_ROLLOUT_POLICY_WIDTH",
     "self_play_games": "SELF_PLAY_GAMES",
     "self_play_iterations": "SELF_PLAY_ITERATIONS",
     "self_play_train_epochs": "SELF_PLAY_TRAIN_EPOCHS",
@@ -496,6 +500,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_beam_width",
         "self_play_beam_time_budget_ms",
         "self_play_beam_max_search_steps",
+        "self_play_beam_rollout_policy_width",
         "self_play_games",
         "self_play_iterations",
         "self_play_train_epochs",
@@ -703,6 +708,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "beam_width": settings["self_play_beam_width"],
             "beam_time_budget_ms": settings["self_play_beam_time_budget_ms"],
             "beam_max_search_steps": settings["self_play_beam_max_search_steps"],
+            "beam_rollout_policy_width": settings["self_play_beam_rollout_policy_width"],
         },
     }
 

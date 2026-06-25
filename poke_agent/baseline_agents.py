@@ -119,6 +119,7 @@ def load_baseline_agents(
     *,
     baseline_dir: Path | str,
     cg_lib_path: str | None,
+    quiet: bool = False,
 ) -> list[BaselineAgent]:
     """Load all official baseline agents that are present on disk."""
     base = Path(baseline_dir)
@@ -146,12 +147,13 @@ def load_baseline_agents(
             "no baseline agents found. Install official Kaggle sample submissions under "
             f"{base} — see baselines/README.md. Missing: {', '.join(missing)}"
         )
-    if missing:
+    if missing and not quiet:
         print("baseline agents partial load; missing:", ", ".join(missing))
-    print(
-        "baseline agents loaded:",
-        ", ".join(f"{agent.name}@{agent.path.name}" for agent in agents),
-    )
+    if not quiet:
+        print(
+            "baseline agents loaded:",
+            ", ".join(f"{agent.name}@{agent.path.name}" for agent in agents),
+        )
     return agents
 
 

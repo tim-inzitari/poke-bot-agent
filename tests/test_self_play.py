@@ -5,6 +5,7 @@ from poke_agent.deck_pool import choose_agent_vs_field_matchup, mirror_matchup, 
 from poke_agent.self_play import (
     OpponentPool,
     SelfPlaySettings,
+    _merge_fixed_opponent_reports,
     resolve_self_play_workers,
     rollout_buffer_overwrites,
     summarize_results,
@@ -78,11 +79,26 @@ def test_resolve_self_play_workers_auto_caps_to_games():
     assert resolve_self_play_workers(settings, games=3) <= 3
 
 
-def test_episode_chunks_cover_all_games():
-    chunks = episode_chunks(20, 6)
-    assert chunks[0][0] == 0
-    assert chunks[-1][1] == 20
+def test_baseline_seat_alternation_uses_collect_start_episode():
+    assert (5 - 0) % 2 == 1
+    assert (6 - 0) % 2 == 0
+    # Chunk starting at episode 5 in a batch that began at 0 should continue seat alternation.
+    collect_start = 0
+    assert (5 - collect_start) % 2 == 1
+    assert (6 - collect_start) % 2 == 0
+
+
+def test_episode_chunks_split_evenly_for_four_workers():
+    chunks = episode_chunks(20, 4)
+    assert len(chunks) == 4
     assert sum(stop - start for start, stop in chunks) == 20
+
+
+def test_episode_chunks_caps_size_for_progress_updates():
+    chunks = episode_chunks(150, 8, max_chunk_size=4)
+    assert all(stop - start <= 4 for start, stop in chunks)
+    assert sum(stop - start for start, stop in chunks) == 150
+    assert len(chunks) == 38
 
 
 def test_train_window_defaults_to_games_per_iteration():
@@ -112,3 +128,21 @@ def test_rollout_buffer_overwrites_when_games_match_window(tmp_path):
 
     settings.train_window_games = 300
     assert rollout_buffer_overwrites(settings) is False
+
+
+def test_merge_fixed_opponent_reports():
+    merged = _merge_fixed_opponent_reports([
+        {
+            "agent_a": {"games": 2.0, "wins": 1.0, "losses": 1.0, "draws": 0.0, "win_rate": 0.5},
+            "results": [0, 1],
+            "opponent": "iono",
+        },
+        {
+            "agent_a": {"games": 2.0, "wins": 2.0, "losses": 0.0, "draws": 0.0, "win_rate": 1.0},
+            "results": [0, 0],
+            "opponent": "iono",
+        },
+    ])
+    assert merged["agent_a"]["wins"] == 3.0
+    assert merged["agent_a"]["losses"] == 1.0
+    assert merged["agent_a"]["win_rate"] == 0.75

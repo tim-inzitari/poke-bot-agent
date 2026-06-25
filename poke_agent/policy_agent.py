@@ -102,33 +102,14 @@ class PolicyRuntime:
         normalized = ((features - self._feature_mean) / self._feature_std).astype(np.float32)
         return normalized, card_ids.astype(np.int64)
 
-    def _model_logits(self, session: PolicySession) -> np.ndarray:
-        assert self._model is not None
-        assert self._feature_mean is not None
-        window = session.history[-self._window_size :]
-        card_window = session.card_history[-self._window_size :]
-        pad_count = self._window_size - len(window)
-        if pad_count > 0:
-            pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[0], dtype=np.float32)
-            window = [pad] * pad_count + window
-            card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
-            card_window = [card_pad] * pad_count + card_window
-
-        x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
-        cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
-        mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
-        with torch.no_grad():
-            logits = self._model.forward_last(x, mask, card_ids=cards)["policy_logits"].squeeze(0).cpu().numpy()
-        return logits
-
-    def _model_value(
+    def _stack_model_window(
         self,
         session: PolicySession,
         *,
         leaf_features: np.ndarray | None = None,
         leaf_cards: np.ndarray | None = None,
-    ) -> float:
-        assert self._model is not None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        assert self._feature_mean is not None
         history = list(session.history)
         card_history = list(session.card_history)
         if leaf_features is not None:
@@ -140,7 +121,7 @@ class PolicyRuntime:
         card_window = card_history[-self._window_size :]
         pad_count = self._window_size - len(window)
         if pad_count > 0:
-            pad = np.zeros_like(window[0])
+            pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[0], dtype=np.float32)
             window = [pad] * pad_count + window
             card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
             card_window = [card_pad] * pad_count + card_window
@@ -148,6 +129,37 @@ class PolicyRuntime:
         x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
         cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
         mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
+        return x, cards, mask
+
+    def _model_logits(
+        self,
+        session: PolicySession,
+        *,
+        leaf_features: np.ndarray | None = None,
+        leaf_cards: np.ndarray | None = None,
+    ) -> np.ndarray:
+        assert self._model is not None
+        x, cards, mask = self._stack_model_window(
+            session,
+            leaf_features=leaf_features,
+            leaf_cards=leaf_cards,
+        )
+        with torch.no_grad():
+            return self._model.forward_last(x, mask, card_ids=cards)["policy_logits"].squeeze(0).cpu().numpy()
+
+    def _model_value(
+        self,
+        session: PolicySession,
+        *,
+        leaf_features: np.ndarray | None = None,
+        leaf_cards: np.ndarray | None = None,
+    ) -> float:
+        assert self._model is not None
+        x, cards, mask = self._stack_model_window(
+            session,
+            leaf_features=leaf_features,
+            leaf_cards=leaf_cards,
+        )
         with torch.no_grad():
             return float(self._model.forward_last(x, mask, card_ids=cards)["value"].squeeze().cpu().item())
 
@@ -196,7 +208,7 @@ class PolicyRuntime:
         if use_beam and our_deck is not None and obs_dict.get("search_begin_input"):
             from poke_agent.beam_search import BeamSearchConfig, run_beam_search, should_skip_beam_search
 
-            config = beam_config or BeamSearchConfig(sim_mode=True, time_budget_ms=150, width=3)
+            config = beam_config or BeamSearchConfig.from_self_play_config({"self_play": {}})
             if not should_skip_beam_search(obs_dict, config):
                 try:
                     return run_beam_search(

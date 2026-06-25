@@ -38,7 +38,11 @@ class TemporalTransformer(torch.nn.Module):
             activation="gelu",
             norm_first=True,
         )
-        self.encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.encoder = torch.nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=num_layers,
+            enable_nested_tensor=False,
+        )
         self.norm = torch.nn.LayerNorm(d_model)
         self.value_head = torch.nn.Sequential(
             torch.nn.Linear(d_model, d_model),

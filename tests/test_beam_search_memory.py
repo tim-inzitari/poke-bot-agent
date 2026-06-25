@@ -14,15 +14,17 @@ from poke_agent.policy_agent import PolicyRuntime, PolicySession
 def test_self_play_beam_config_is_short_and_sim_mode():
     config = BeamSearchConfig.from_self_play_config({
         "self_play": {
-            "beam_width": 3,
-            "beam_time_budget_ms": 150,
-            "beam_max_search_steps": 64,
+            "beam_width": 8,
+            "beam_time_budget_ms": 1500,
+            "beam_max_search_steps": 128,
+            "beam_rollout_policy_width": 12,
         },
     })
     assert config.sim_mode is True
-    assert config.width == 3
-    assert config.time_budget_ms == 150
-    assert config.max_search_steps == 64
+    assert config.width == 8
+    assert config.time_budget_ms == 1500
+    assert config.max_search_steps == 128
+    assert config.rollout_policy_width == 12
 
 
 def test_choose_action_caps_session_history(monkeypatch):
