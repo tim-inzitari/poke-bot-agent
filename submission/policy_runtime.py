@@ -176,32 +176,14 @@ class TrainedPolicyAgent:
                 best_action = action
         return best_action
 
-    def _model_logits(self) -> np.ndarray:
-        assert self._model is not None
-        assert self._feature_mean is not None
-        window = self._history[-self._window_size :]
-        card_window = self._card_history[-self._window_size :]
-        pad_count = self._window_size - len(window)
-        if pad_count > 0:
-            pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[0], dtype=np.float32)
-            window = [pad] * pad_count + window
-            card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
-            card_window = [card_pad] * pad_count + card_window
-
-        x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
-        cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
-        mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
-        with torch.no_grad():
-            logits = self._model.forward_last(x, mask, card_ids=cards)["policy_logits"].squeeze(0).cpu().numpy()
-        return logits
-
-    def _model_value(
+    def _stack_model_window(
         self,
         *,
         leaf_features: np.ndarray | None = None,
         leaf_cards: np.ndarray | None = None,
-    ) -> float:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         assert self._model is not None
+        assert self._feature_mean is not None
         history = list(self._history)
         card_history = list(self._card_history)
         if leaf_features is not None:
@@ -213,7 +195,7 @@ class TrainedPolicyAgent:
         card_window = card_history[-self._window_size :]
         pad_count = self._window_size - len(window)
         if pad_count > 0:
-            pad = np.zeros_like(window[0])
+            pad = np.zeros_like(window[0]) if window else np.zeros(self._feature_mean.shape[0], dtype=np.float32)
             window = [pad] * pad_count + window
             card_pad = np.zeros(CARD_ID_SLOT_COUNT, dtype=np.int64)
             card_window = [card_pad] * pad_count + card_window
@@ -221,6 +203,27 @@ class TrainedPolicyAgent:
         x = torch.tensor(np.stack(window), dtype=torch.float32, device=self.device).unsqueeze(0)
         cards = torch.tensor(np.stack(card_window), dtype=torch.long, device=self.device).unsqueeze(0)
         mask = torch.ones((1, self._window_size), dtype=torch.float32, device=self.device)
+        return x, cards, mask
+
+    def _model_logits(
+        self,
+        *,
+        leaf_features: np.ndarray | None = None,
+        leaf_cards: np.ndarray | None = None,
+    ) -> np.ndarray:
+        assert self._model is not None
+        x, cards, mask = self._stack_model_window(leaf_features=leaf_features, leaf_cards=leaf_cards)
+        with torch.no_grad():
+            return self._model.forward_last(x, mask, card_ids=cards)["policy_logits"].squeeze(0).cpu().numpy()
+
+    def _model_value(
+        self,
+        *,
+        leaf_features: np.ndarray | None = None,
+        leaf_cards: np.ndarray | None = None,
+    ) -> float:
+        assert self._model is not None
+        x, cards, mask = self._stack_model_window(leaf_features=leaf_features, leaf_cards=leaf_cards)
         with torch.no_grad():
             return float(self._model.forward_last(x, mask, card_ids=cards)["value"].squeeze().cpu().item())
 

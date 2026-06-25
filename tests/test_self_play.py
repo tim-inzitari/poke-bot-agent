@@ -5,6 +5,7 @@ from poke_agent.deck_pool import choose_agent_vs_field_matchup, mirror_matchup, 
 from poke_agent.self_play import (
     OpponentPool,
     SelfPlaySettings,
+    _calibration_metrics_from_rows,
     _merge_fixed_opponent_reports,
     _resolve_baseline_resume,
     resolve_self_play_workers,
@@ -181,3 +182,28 @@ def test_opponent_pool_sample_pfsp_prefers_latest(monkeypatch):
     latest = Path("latest.pt")
     monkeypatch.setattr("poke_agent.self_play.random.random", lambda: 0.1)
     assert pool.sample_pfsp(latest=latest, latest_prob=0.6) == latest
+
+
+def test_calibration_metrics_from_rows_with_search_values():
+    rows = [
+        {
+            "episode": 1,
+            "step": 0,
+            "player": 0,
+            "search_value": 0.5,
+            "terminal": True,
+            "result": 0,
+        },
+        {
+            "episode": 1,
+            "step": 1,
+            "player": 1,
+            "search_value": -0.5,
+            "terminal": True,
+            "result": 0,
+        },
+    ]
+    metrics = _calibration_metrics_from_rows(rows)
+    assert metrics["samples"] == 2.0
+    assert metrics["brier"] >= 0.0
+    assert metrics["ece"] >= 0.0

@@ -77,7 +77,9 @@ WEIGHT_DECAY = 1e-2
 # --- Loss weights ---
 LOSS_VALUE_WEIGHT = 1.0
 LOSS_POLICY_WEIGHT = 0.85
-LOSS_DYNAMICS_WEIGHT = 0.15
+# Auxiliary next-state prediction; keep small so it does not dominate the shared
+# trunk gradient (raw dynamics loss ~12-16 swamped value/policy at weight 0.15).
+LOSS_DYNAMICS_WEIGHT = 0.05
 LOSS_ENTROPY_WEIGHT = 0.01
 LOSS_UNCERTAINTY_WEIGHT = 0.02
 
@@ -138,15 +140,17 @@ SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY = True  # our-side decks = high-performi
 SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE = 3  # best N lists per baseline agent (by event placement)
 SELF_PLAY_AGENT_DECK_DIR = "decks/archetype-samples"  # used when BASELINE_ARCHETYPE_DECKS_ONLY=0
 SELF_PLAY_PER_DECK_CHECKPOINT_DIR = None  # None = skip per-deck checkpoint copies (saves disk)
-SELF_PLAY_TRAIN_WINDOW_GAMES = None  # None = match SELF_PLAY_GAMES (--games per iteration)
+SELF_PLAY_TRAIN_WINDOW_GAMES = 1000  # train on accumulated recent games, not just the latest
+                                      # --games window (None = match --games; 150 overfits badly)
 SELF_PLAY_TRIM_ROLLOUT_FILE = True  # keep JSONL on disk trimmed to the train window
 SELF_PLAY_WARMUP_ITERATIONS = 10  # first N transformer self-play cycles use boosted LR (0 = off)
 SELF_PLAY_WARMUP_LR_MULTIPLIER = 25.0  # LR multiplier during warmup (3e-4 → 7.5e-3 at default)
 
 # --- Training loop ---
 TRAIN_EPOCHS = 1000
-# Stop when value_loss (win/loss prediction) plateaus — not on tiny total-loss noise.
-EARLY_STOP_METRIC = "value_loss"  # value_loss | total_loss
+# Stop when value+policy (objective_loss) plateaus — value_loss alone saturates while
+# the policy head (which picks moves) is still learning; total_loss is dynamics-dominated.
+EARLY_STOP_METRIC = "objective_loss"  # objective_loss | value_loss | total_loss
 EARLY_STOP_PATIENCE = 20  # epochs without meaningful improvement → stop
 EARLY_STOP_MIN_DELTA = 5e-4  # minimum drop on monitor metric to count as improvement
 TRAIN_PRINT_EVERY = 100

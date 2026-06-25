@@ -376,6 +376,11 @@ def train_model(
 
         loss_value = metric_sums["total_loss"] / max(1.0, seen)
         last_metrics = {name: total / max(1.0, seen) for name, total in metric_sums.items()}
+        # Play strength depends on value + policy; track them jointly so early stop
+        # does not quit the moment value_loss saturates while policy is still learning.
+        last_metrics["objective_loss"] = last_metrics.get("value_loss", 0.0) + last_metrics.get(
+            "policy_loss", 0.0
+        )
         completed_epochs = epoch + 1
         if monitor_metric == "total_loss":
             epoch_score = loss_value

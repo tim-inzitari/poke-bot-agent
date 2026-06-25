@@ -181,7 +181,88 @@ def value_calibration_metrics(rows: list[dict[str, Any]], *, seat: int) -> dict[
     return {"brier": brier, "ece": ece, "samples": float(len(preds))}
 
 
-def probe_value_calibration(
+def _calibration_metrics_from_rows(rows: list[dict[str, Any]]) -> dict[str, float]:
+    seat0 = value_calibration_metrics(rows, seat=0)
+    seat1 = value_calibration_metrics(rows, seat=1)
+    samples = seat0["samples"] + seat1["samples"]
+    if samples <= 0:
+        return {"brier": 0.0, "ece": 0.0, "samples": 0.0}
+    brier = (seat0["brier"] * seat0["samples"] + seat1["brier"] * seat1["samples"]) / samples
+    ece = (seat0["ece"] * seat0["samples"] + seat1["ece"] * seat1["samples"]) / samples
+    return {"brier": brier, "ece": ece, "samples": samples}
+
+
+def _calibration_probe_range(task: tuple[Any, ...]) -> tuple[int, list[dict[str, Any]]]:
+    import warnings
+
+    warnings.filterwarnings("ignore", message=".*enable_nested_tensor.*")
+    (
+        root_str,
+        probe_start_episode,
+        chunk_start_offset,
+        game_count,
+        agent_checkpoint,
+        agent_deck,
+        agent_name,
+        opponent_agent_id,
+        inference_device,
+        cg_lib_path,
+        worker_settings,
+    ) = task
+    root = Path(root_str)
+    simulator = load_simulator(root)
+    if not simulator.available:
+        raise RuntimeError("CABT simulator is not available in calibration worker")
+
+    baselines = load_baseline_agents(
+        root,
+        baseline_dir=worker_settings.baseline_dir or "baselines/official",
+        cg_lib_path=cg_lib_path,
+        quiet=True,
+    )
+    baseline = next(agent for agent in baselines if agent.agent_id == opponent_agent_id)
+    runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device(inference_device))
+    session = runtime.new_session()
+    agent_fn = make_policy_fn(
+        runtime,
+        session,
+        agent_deck,
+        use_beam=worker_settings.use_beam,
+        beam_config=worker_settings.beam_config,
+    )
+
+    rows: list[dict[str, Any]] = []
+    for local_index in range(game_count):
+        offset = chunk_start_offset + local_index
+        episode = probe_start_episode + offset
+        agent_seat = offset % 2
+        if agent_seat == 0:
+            match_rows = play_match(
+                episode,
+                agent_deck,
+                baseline.deck,
+                simulator,
+                agent_fn,
+                baseline.act,
+                deck0_name=agent_name,
+                deck1_name=baseline.name,
+            )
+        else:
+            match_rows = play_match(
+                episode,
+                baseline.deck,
+                agent_deck,
+                simulator,
+                baseline.act,
+                agent_fn,
+                deck0_name=baseline.name,
+                deck1_name=agent_name,
+            )
+        rows.extend(match_rows)
+    return chunk_start_offset, rows
+
+
+def _probe_value_calibration_sequential(
     simulator: SimulatorState,
     *,
     agent_fn: Callable[[dict], list[int]],
@@ -192,7 +273,7 @@ def probe_value_calibration(
     opponent_name: str,
     games: int,
     start_episode: int,
-) -> dict[str, float]:
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for offset in range(games):
         episode = start_episode + offset
@@ -220,14 +301,96 @@ def probe_value_calibration(
                 deck1_name=agent_name,
             )
         rows.extend(match_rows)
-    seat0 = value_calibration_metrics(rows, seat=0)
-    seat1 = value_calibration_metrics(rows, seat=1)
-    samples = seat0["samples"] + seat1["samples"]
-    if samples <= 0:
+    return rows
+
+
+def probe_value_calibration(
+    simulator: SimulatorState,
+    *,
+    agent_fn: Callable[[dict], list[int]],
+    agent_deck: list[int],
+    agent_name: str,
+    opponent_fn: Callable[[dict], list[int]],
+    opponent_deck: list[int],
+    opponent_name: str,
+    opponent_agent_id: str,
+    games: int,
+    start_episode: int,
+    settings: SelfPlaySettings | None = None,
+    root: Path | None = None,
+    agent_checkpoint: Path | None = None,
+    config: dict[str, Any] | None = None,
+    train_device: torch.device | None = None,
+) -> dict[str, float]:
+    if games <= 0:
         return {"brier": 0.0, "ece": 0.0, "samples": 0.0}
-    brier = (seat0["brier"] * seat0["samples"] + seat1["brier"] * seat1["samples"]) / samples
-    ece = (seat0["ece"] * seat0["samples"] + seat1["ece"] * seat1["samples"]) / samples
-    return {"brier": brier, "ece": ece, "samples": samples}
+
+    workers = resolve_self_play_workers(settings, games=games) if settings is not None else 1
+    can_parallel = (
+        workers > 1
+        and games > 1
+        and root is not None
+        and agent_checkpoint is not None
+        and config is not None
+        and train_device is not None
+        and simulator.lib_path is not None
+    )
+
+    if not can_parallel:
+        rows = _probe_value_calibration_sequential(
+            simulator,
+            agent_fn=agent_fn,
+            agent_deck=agent_deck,
+            agent_name=agent_name,
+            opponent_fn=opponent_fn,
+            opponent_deck=opponent_deck,
+            opponent_name=opponent_name,
+            games=games,
+            start_episode=start_episode,
+        )
+        return _calibration_metrics_from_rows(rows)
+
+    worker_settings = _baseline_worker_settings(settings)
+    inference_device = str(resolve_collection_device(config, train_device))
+    chunks = episode_chunks(games, workers, max_chunk_size=1)
+    tasks = [
+        (
+            str(root),
+            start_episode,
+            offset,
+            stop - offset,
+            str(agent_checkpoint),
+            agent_deck,
+            agent_name,
+            opponent_agent_id,
+            inference_device,
+            simulator.lib_path,
+            worker_settings,
+        )
+        for offset, stop in chunks
+    ]
+    tqdm.write(
+        f"calibration probe: {workers} workers, {len(tasks)} tasks "
+        f"({games} games, inference={inference_device})"
+    )
+    chunk_rows: list[tuple[int, list[dict[str, Any]]]] = []
+    with mp.get_context("spawn").Pool(processes=min(workers, len(tasks))) as pool:
+        iterator = pool.imap_unordered(_calibration_probe_range, tasks)
+        with tqdm(
+            total=games,
+            desc="calibration probe",
+            unit="game",
+            leave=False,
+            dynamic_ncols=True,
+            mininterval=0.3,
+            file=sys.stderr,
+        ) as progress:
+            for _chunk_start, chunk in iterator:
+                chunk_rows.append((_chunk_start, chunk))
+                progress.update(len({int(row["episode"]) for row in chunk}))
+    chunk_rows.sort(key=lambda item: item[0])
+    rows = [row for _, chunk in chunk_rows for row in chunk]
+    return _calibration_metrics_from_rows(rows)
 
 
 def resolve_self_play_workers(settings: SelfPlaySettings, *, games: int) -> int:
@@ -1649,8 +1812,14 @@ def run_baseline_iteration(
             opponent_fn=probe_baseline.act,
             opponent_deck=probe_baseline.deck,
             opponent_name=probe_baseline.name,
+            opponent_agent_id=probe_baseline.agent_id,
             games=min(16, max(4, settings.eval_games // 2)),
             start_episode=start_episode + settings.games_per_iteration + 10_000,
+            settings=settings,
+            root=play_root,
+            agent_checkpoint=current_checkpoint,
+            config=config,
+            train_device=device,
         )
         print(
             f"value calibration (search): brier={calibration['brier']:.4f} "
