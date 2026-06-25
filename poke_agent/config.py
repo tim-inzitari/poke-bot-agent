@@ -109,6 +109,7 @@ SELF_PLAY_BEAM_TIME_BUDGET_MS = 1500
 SELF_PLAY_BEAM_MAX_SEARCH_STEPS = 128
 SELF_PLAY_BEAM_ROLLOUT_POLICY_WIDTH = 12
 SEARCH_DETERMINIZATIONS = 2
+# auto = GPU forward when training on CUDA (features in RAM); cpu = all workers on CPU
 COLLECTION_INFERENCE_DEVICE = "auto"  # auto | cpu | cuda
 
 # --- Self-play (AlphaGo-style loop) ---

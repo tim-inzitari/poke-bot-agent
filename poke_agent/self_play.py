@@ -16,7 +16,10 @@ from tqdm.auto import tqdm
 from poke_agent.checkpoint import save_checkpoint
 from poke_agent.baseline_agents import BaselineAgent, load_baseline_agents, summarize_baseline_eval
 from poke_agent.beam_search import BeamSearchConfig
-from poke_agent.collection_device import resolve_collection_inference_device
+from poke_agent.collection_device import (
+    resolve_collection_inference_device,
+    warn_if_many_cuda_collection_workers,
+)
 
 # Max games per worker task — smaller chunks = more frequent tqdm updates during parallel collect.
 PARALLEL_PROGRESS_CHUNK_GAMES = 4
@@ -1575,19 +1578,21 @@ def run_baseline_iteration(
     if not settings.agent_deck_pool:
         raise RuntimeError("agent deck pool is empty — set SELF_PLAY_AGENT_DECK_DIR")
 
-    collection_device = resolve_collection_device(config, device)
-    current_runtime = PolicyRuntime(current_checkpoint, device=collection_device)
     workers = resolve_self_play_workers(settings, games=settings.games_per_iteration)
     collection_device = resolve_collection_device(config, device)
     play_root = root or settings.checkpoint_dir.parent.parent
-    worker_note = f"workers={workers}"
-    if workers > 1:
-        worker_note += f", inference={collection_device}"
+    worker_note = f"workers={workers}, inference={collection_device}"
+    vram_note = warn_if_many_cuda_collection_workers(
+        workers=workers,
+        inference_device=collection_device,
+    )
     print(
         f"baseline iter {iteration}: collect {settings.games_per_iteration} games "
         f"({worker_note}, train={device}) vs {len(settings.baseline_agents)} official agents, "
         f"our deck pool={len(settings.agent_deck_pool)}, checkpoint={current_checkpoint.name}"
     )
+    if vram_note:
+        print(vram_note)
     current_runtime = PolicyRuntime(current_checkpoint, device=collection_device)
     rows, last_deck_name, last_baseline = collect_games_vs_baselines(
         simulator,
