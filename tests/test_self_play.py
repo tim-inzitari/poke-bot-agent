@@ -6,6 +6,7 @@ from poke_agent.self_play import (
     OpponentPool,
     SelfPlaySettings,
     _merge_fixed_opponent_reports,
+    _resolve_baseline_resume,
     resolve_self_play_workers,
     rollout_buffer_overwrites,
     summarize_results,
@@ -146,3 +147,37 @@ def test_merge_fixed_opponent_reports():
     assert merged["agent_a"]["wins"] == 3.0
     assert merged["agent_a"]["losses"] == 1.0
     assert merged["agent_a"]["win_rate"] == 0.75
+
+
+def test_resolve_baseline_resume_from_manifest():
+    manifest = {
+        "baseline_iterations": [
+            {"iteration": 151, "saved_checkpoint": "outputs/checkpoints/self_play/baseline_151.pt"},
+        ],
+    }
+    start, checkpoint = _resolve_baseline_resume(
+        manifest,
+        initial_checkpoint=Path("outputs/checkpoints/self_play/baseline_001.pt"),
+    )
+    assert start == 152
+    assert checkpoint == Path("outputs/checkpoints/self_play/baseline_151.pt")
+
+
+def test_resolve_baseline_resume_from_checkpoint_name(tmp_path: Path):
+    ckpt = tmp_path / "baseline_151.pt"
+    ckpt.write_bytes(b"stub")
+    start, checkpoint = _resolve_baseline_resume(
+        {},
+        initial_checkpoint=ckpt,
+    )
+    assert start == 152
+    assert checkpoint == ckpt
+
+
+def test_opponent_pool_sample_pfsp_prefers_latest(monkeypatch):
+    pool = OpponentPool(max_size=3)
+    pool.add(Path("older.pt"))
+    pool.add(Path("middle.pt"))
+    latest = Path("latest.pt")
+    monkeypatch.setattr("poke_agent.self_play.random.random", lambda: 0.1)
+    assert pool.sample_pfsp(latest=latest, latest_prob=0.6) == latest

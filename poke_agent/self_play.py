@@ -5,6 +5,7 @@ import multiprocessing as mp
 import random
 import subprocess
 import sys
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,7 @@ from tqdm.auto import tqdm
 from poke_agent.checkpoint import save_checkpoint
 from poke_agent.baseline_agents import BaselineAgent, load_baseline_agents, summarize_baseline_eval
 from poke_agent.beam_search import BeamSearchConfig
+from poke_agent.collection_device import resolve_collection_inference_device
 
 # Max games per worker task — smaller chunks = more frequent tqdm updates during parallel collect.
 PARALLEL_PROGRESS_CHUNK_GAMES = 4
@@ -57,6 +59,25 @@ class OpponentPool:
             return None
         return random.choice(choices)
 
+    def sample_pfsp(
+        self,
+        *,
+        latest: Path,
+        exclude: Path | None = None,
+        latest_prob: float = 0.6,
+        strength: dict[str, float] | None = None,
+    ) -> Path:
+        """PFSP-lite: mostly play latest, sometimes sample a strong historical checkpoint."""
+        if random.random() < float(latest_prob):
+            return latest
+        choices = [path for path in self.checkpoints if exclude is None or path != exclude]
+        if not choices:
+            return latest
+        if not strength:
+            return random.choice(choices)
+        weights = [max(0.05, float(strength.get(str(path), 0.5))) for path in choices]
+        return random.choices(choices, weights=weights, k=1)[0]
+
 
 @dataclass
 class SelfPlaySettings:
@@ -87,6 +108,123 @@ class SelfPlaySettings:
     warmup_iterations: int = 10
     warmup_lr_multiplier: float = 25.0
     beam_config: BeamSearchConfig | None = None
+
+
+def resolve_collection_device(config: dict[str, Any], train_device: torch.device) -> torch.device:
+    configured = (config.get("self_play") or {}).get("collection_inference_device")
+    return resolve_collection_inference_device(configured, train_device=train_device)
+
+
+def _resolve_baseline_resume(
+    manifest: dict[str, Any],
+    *,
+    initial_checkpoint: Path,
+) -> tuple[int, Path]:
+    baseline_iters = manifest.get("baseline_iterations") or []
+    if baseline_iters:
+        last = baseline_iters[-1]
+        start_iteration = int(last.get("iteration", len(baseline_iters))) + 1
+        saved = Path(str(last.get("saved_checkpoint", initial_checkpoint)))
+        if saved.exists():
+            return start_iteration, saved
+
+    match = re.search(r"baseline_(\d+)", Path(initial_checkpoint).stem)
+    if match:
+        return int(match.group(1)) + 1, Path(initial_checkpoint)
+    return 1, Path(initial_checkpoint)
+
+
+def value_calibration_metrics(rows: list[dict[str, Any]], *, seat: int) -> dict[str, float]:
+    """Brier score and ECE from search/root value predictions vs game outcome."""
+    by_episode: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_episode.setdefault(int(row["episode"]), []).append(row)
+
+    preds: list[float] = []
+    labels: list[float] = []
+    for episode_rows in by_episode.values():
+        episode_rows.sort(key=lambda row: int(row["step"]))
+        outcome = _terminal_result(episode_rows)
+        if outcome is None:
+            continue
+        label = 1.0 if int(outcome) == int(seat) else -1.0
+        for row in episode_rows:
+            if int(row.get("player", -1)) != int(seat):
+                continue
+            if "search_value" not in row:
+                continue
+            preds.append(float(row["search_value"]))
+            labels.append(label)
+
+    if not preds:
+        return {"brier": 0.0, "ece": 0.0, "samples": 0.0}
+
+    pred_t = torch.tensor(preds, dtype=torch.float32)
+    label_t = torch.tensor(labels, dtype=torch.float32)
+    brier = float(((pred_t - label_t) ** 2).mean().item())
+
+    # Expected calibration error with 10 equal-width bins on [-1, 1].
+    bins = torch.linspace(-1.0, 1.0, steps=11)
+    ece = 0.0
+    total = float(len(preds))
+    for start, end in zip(bins[:-1], bins[1:]):
+        mask = (pred_t >= start) & (pred_t < end)
+        if not bool(mask.any()):
+            continue
+        bin_pred = float(pred_t[mask].mean().item())
+        bin_label = float(label_t[mask].mean().item())
+        ece += float(mask.sum().item()) / total * abs(bin_pred - bin_label)
+
+    return {"brier": brier, "ece": ece, "samples": float(len(preds))}
+
+
+def probe_value_calibration(
+    simulator: SimulatorState,
+    *,
+    agent_fn: Callable[[dict], list[int]],
+    agent_deck: list[int],
+    agent_name: str,
+    opponent_fn: Callable[[dict], list[int]],
+    opponent_deck: list[int],
+    opponent_name: str,
+    games: int,
+    start_episode: int,
+) -> dict[str, float]:
+    rows: list[dict[str, Any]] = []
+    for offset in range(games):
+        episode = start_episode + offset
+        agent_seat = offset % 2
+        if agent_seat == 0:
+            match_rows = play_match(
+                episode,
+                agent_deck,
+                opponent_deck,
+                simulator,
+                agent_fn,
+                opponent_fn,
+                deck0_name=agent_name,
+                deck1_name=opponent_name,
+            )
+        else:
+            match_rows = play_match(
+                episode,
+                opponent_deck,
+                agent_deck,
+                simulator,
+                opponent_fn,
+                agent_fn,
+                deck0_name=opponent_name,
+                deck1_name=agent_name,
+            )
+        rows.extend(match_rows)
+    seat0 = value_calibration_metrics(rows, seat=0)
+    seat1 = value_calibration_metrics(rows, seat=1)
+    samples = seat0["samples"] + seat1["samples"]
+    if samples <= 0:
+        return {"brier": 0.0, "ece": 0.0, "samples": 0.0}
+    brier = (seat0["brier"] * seat0["samples"] + seat1["brier"] * seat1["samples"]) / samples
+    ece = (seat0["ece"] * seat0["samples"] + seat1["ece"] * seat1["samples"]) / samples
+    return {"brier": brier, "ece": ece, "samples": samples}
 
 
 def resolve_self_play_workers(settings: SelfPlaySettings, *, games: int) -> int:
@@ -1270,17 +1408,22 @@ def run_self_play_iteration(
         raise RuntimeError("CABT simulator is required for self-play")
 
     workers = resolve_self_play_workers(settings, games=settings.games_per_iteration)
-    opponent_path = pool.sample(exclude=current_checkpoint) or current_checkpoint
-    inference_device = device if workers <= 1 else torch.device("cpu")
-    current_runtime = PolicyRuntime(current_checkpoint, device=inference_device)
-    opponent_runtime = PolicyRuntime(opponent_path, device=inference_device)
+    collection_device = resolve_collection_device(config, device)
+    latest_prob = float((config.get("self_play") or {}).get("opponent_latest_prob", 0.6))
+    opponent_path = pool.sample_pfsp(
+        latest=current_checkpoint,
+        exclude=current_checkpoint,
+        latest_prob=latest_prob,
+    )
+    current_runtime = PolicyRuntime(current_checkpoint, device=collection_device)
+    opponent_runtime = PolicyRuntime(opponent_path, device=collection_device)
 
     field_note = (
         f"field={len(settings.field_pool)} decks ({settings.matchup_mode})"
         if settings.use_field
         else "mirror deck"
     )
-    worker_note = f"workers={workers}" + (" (inference on cpu)" if workers > 1 else "")
+    worker_note = f"workers={workers}, inference={collection_device}"
     print(
         f"self-play iter {iteration}: collect {settings.games_per_iteration} games "
         f"({worker_note}, train_device={device}, current={current_checkpoint.name}, "
@@ -1432,17 +1575,20 @@ def run_baseline_iteration(
     if not settings.agent_deck_pool:
         raise RuntimeError("agent deck pool is empty — set SELF_PLAY_AGENT_DECK_DIR")
 
-    current_runtime = PolicyRuntime(current_checkpoint, device=device)
+    collection_device = resolve_collection_device(config, device)
+    current_runtime = PolicyRuntime(current_checkpoint, device=collection_device)
     workers = resolve_self_play_workers(settings, games=settings.games_per_iteration)
+    collection_device = resolve_collection_device(config, device)
     play_root = root or settings.checkpoint_dir.parent.parent
     worker_note = f"workers={workers}"
     if workers > 1:
-        worker_note += f", inference={device}"
+        worker_note += f", inference={collection_device}"
     print(
         f"baseline iter {iteration}: collect {settings.games_per_iteration} games "
-        f"({worker_note}) vs {len(settings.baseline_agents)} official agents, "
+        f"({worker_note}, train={device}) vs {len(settings.baseline_agents)} official agents, "
         f"our deck pool={len(settings.agent_deck_pool)}, checkpoint={current_checkpoint.name}"
     )
+    current_runtime = PolicyRuntime(current_checkpoint, device=collection_device)
     rows, last_deck_name, last_baseline = collect_games_vs_baselines(
         simulator,
         baselines=settings.baseline_agents,
@@ -1455,7 +1601,7 @@ def run_baseline_iteration(
         settings=settings,
         root=play_root,
         current_checkpoint=current_checkpoint,
-        device=device,
+        device=collection_device,
     )
     overwrite, kept_games = write_rollout_buffer(settings, rows, iteration=iteration)
     print(
@@ -1485,8 +1631,26 @@ def run_baseline_iteration(
         settings=settings,
         root=play_root,
         agent_checkpoint=current_checkpoint,
-        device=device,
+        device=collection_device,
     )
+    calibration = {"brier": 0.0, "ece": 0.0, "samples": 0.0}
+    if settings.baseline_agents and settings.use_beam:
+        probe_baseline = settings.baseline_agents[0]
+        calibration = probe_value_calibration(
+            simulator,
+            agent_fn=eval_fn,
+            agent_deck=eval_deck,
+            agent_name=eval_deck_name,
+            opponent_fn=probe_baseline.act,
+            opponent_deck=probe_baseline.deck,
+            opponent_name=probe_baseline.name,
+            games=min(16, max(4, settings.eval_games // 2)),
+            start_episode=start_episode + settings.games_per_iteration + 10_000,
+        )
+        print(
+            f"value calibration (search): brier={calibration['brier']:.4f} "
+            f"ece={calibration['ece']:.4f} n={int(calibration['samples'])}"
+        )
     for baseline_id, stats in per_baseline.items():
         print(
             f"  vs {baseline_id}: {stats['win_rate']:.1%} "
@@ -1544,6 +1708,7 @@ def run_baseline_iteration(
         "eval_deck": eval_deck_name,
         "eval_vs_baselines": per_baseline,
         "eval_vs_baselines_aggregate": aggregate,
+        "value_calibration": calibration,
         "per_deck_checkpoint": str(per_deck_path) if per_deck_path else None,
         "training_report": training_report,
     }
@@ -1578,11 +1743,21 @@ def run_baseline_phase_loop(
     if not current_checkpoint.exists():
         raise FileNotFoundError(f"initial checkpoint not found: {current_checkpoint}")
 
+    start_iteration, current_checkpoint = _resolve_baseline_resume(
+        manifest,
+        initial_checkpoint=current_checkpoint,
+    )
+    if start_iteration > 1:
+        print(
+            f"baseline resume: continuing from iteration {start_iteration} "
+            f"with checkpoint {current_checkpoint.name}"
+        )
+
     start_episode = int(manifest.get("next_episode", 0))
     reports: list[dict[str, Any]] = []
     stop_reason: str | None = None
 
-    for iteration in range(1, settings.iterations + 1):
+    for iteration in range(start_iteration, settings.iterations + 1):
         print(f"baseline iteration {iteration}/{settings.iterations}")
         report = run_baseline_iteration(
             iteration=iteration,
@@ -1600,6 +1775,7 @@ def run_baseline_phase_loop(
         start_episode += settings.games_per_iteration
         current_checkpoint = Path(report["saved_checkpoint"])
         manifest["next_episode"] = start_episode
+        manifest["baseline_iteration"] = iteration
         manifest.setdefault("baseline_iterations", []).append(report)
         aggregate_rate = float(report["eval_vs_baselines_aggregate"]["win_rate"])
         if aggregate_rate >= settings.baseline_win_rate_threshold:

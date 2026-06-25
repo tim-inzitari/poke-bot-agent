@@ -101,6 +101,49 @@ def _policy_weights(
     return weights / weights.mean().clamp(min=1e-6)
 
 
+def _optimizer_param_groups(model: TemporalTransformer, config: dict[str, Any]) -> list[dict[str, Any]]:
+    model_cfg = config["model"]
+    head_lr = float(model_cfg.get("head_learning_rate", model_cfg["learning_rate"]))
+    encoder_lr = float(model_cfg.get("encoder_learning_rate", model_cfg["learning_rate"]))
+    head_modules = (
+        model.value_head,
+        model.policy_head,
+        model.next_feature_head,
+        model.uncertainty_head,
+    )
+    head_param_ids = {id(param) for module in head_modules for param in module.parameters()}
+    encoder_params = [param for param in model.parameters() if id(param) not in head_param_ids]
+    head_params = [param for param in model.parameters() if id(param) in head_param_ids]
+    return [
+        {"params": encoder_params, "lr": encoder_lr},
+        {"params": head_params, "lr": head_lr},
+    ]
+
+
+def _policy_loss_batch(
+    policy_logits: torch.Tensor,
+    transition_b: torch.Tensor,
+    *,
+    soft_idx: torch.Tensor | None,
+    soft_prob: torch.Tensor | None,
+    use_soft_search: bool,
+    policy_loss_fn: torch.nn.Module,
+) -> torch.Tensor:
+    hard_loss = policy_loss_fn(
+        policy_logits.reshape(-1, policy_logits.shape[-1]),
+        transition_b.reshape(-1),
+    ).reshape_as(transition_b)
+
+    if not use_soft_search or soft_idx is None or soft_prob is None:
+        return hard_loss
+
+    log_probs = torch.log_softmax(policy_logits, dim=-1)
+    gathered = log_probs.gather(-1, soft_idx.clamp(min=0))
+    soft_loss = -(gathered * soft_prob).sum(dim=-1)
+    has_soft = (soft_prob.sum(dim=-1) > 0).to(dtype=hard_loss.dtype)
+    return soft_loss * has_soft + hard_loss * (1.0 - has_soft)
+
+
 def train_model(
     model: TemporalTransformer,
     tensors: TrainingTensors,
@@ -117,8 +160,7 @@ def train_model(
     objective_cfg = config.get("objective", {})
 
     optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=model_cfg["learning_rate"],
+        _optimizer_param_groups(model, config),
         weight_decay=model_cfg["weight_decay"],
     )
     value_loss_fn = torch.nn.MSELoss(reduction="none")
@@ -134,6 +176,8 @@ def train_model(
     policy_weighting = str(objective_cfg.get("policy_weighting", "awr"))
     awr_beta = float(objective_cfg.get("policy_awr_beta", 0.5))
     awr_weight_max = float(objective_cfg.get("policy_awr_weight_max", 20.0))
+    use_soft_search = bool(objective_cfg.get("use_soft_search_policy", True))
+    search_kl_weight = float(objective_cfg.get("search_policy_kl_weight", 1.0))
 
     assert_generic_model_inputs(model, tensors, config)
 
@@ -208,7 +252,11 @@ def train_model(
         f"early stop: monitor={monitor_metric} patience={patience} "
         f"min_delta={min_delta} (stop when meaningful improvement plateaus)"
     )
-    print(f"policy weighting: {policy_weighting} amp={use_amp}")
+    print(
+        f"optimizer: encoder_lr={config['model'].get('encoder_learning_rate')} "
+        f"head_lr={config['model'].get('head_learning_rate')}"
+    )
+    print(f"policy weighting: {policy_weighting} amp={use_amp} soft_search={use_soft_search}")
     if ckpt_paths is not None and save_every > 0:
         print(
             f"periodic checkpoints: every {save_every} epoch(s) -> {ckpt_paths['latest'].name} "
@@ -248,6 +296,9 @@ def train_model(
             yb = tensors.y[seq_ids].to(device, non_blocking=stream)
             returns_b = tensors.returns[seq_ids].to(device, non_blocking=stream)
             transition_b = tensors.transition_target[seq_ids].to(device, non_blocking=stream)
+            soft_idx_b = tensors.transition_soft_idx[seq_ids].to(device, non_blocking=stream)
+            soft_prob_b = tensors.transition_soft_prob[seq_ids].to(device, non_blocking=stream)
+            policy_step_weight_b = tensors.policy_step_weight[seq_ids].to(device, non_blocking=stream)
             next_xb = tensors.next_x[seq_ids].to(device, non_blocking=stream)
             terminal_b = tensors.terminal[seq_ids].to(device, non_blocking=stream)
 
@@ -258,10 +309,14 @@ def train_model(
                 valid_count = valid.sum().clamp(min=1.0)
 
                 value_loss = (value_loss_fn(out["value"], yb) * valid).sum() / valid_count
-                policy_raw = policy_loss_fn(
-                    out["policy_logits"].reshape(-1, out["policy_logits"].shape[-1]),
-                    transition_b.reshape(-1),
-                ).reshape_as(transition_b)
+                policy_raw = _policy_loss_batch(
+                    out["policy_logits"],
+                    transition_b,
+                    soft_idx=soft_idx_b,
+                    soft_prob=soft_prob_b,
+                    use_soft_search=use_soft_search,
+                    policy_loss_fn=policy_loss_fn,
+                )
                 policy_weights = _policy_weights(
                     returns_b,
                     out["value"],
@@ -269,6 +324,7 @@ def train_model(
                     beta=awr_beta,
                     weight_max=awr_weight_max,
                 )
+                policy_weights = policy_weights * policy_step_weight_b.pow(search_kl_weight)
                 policy_loss = (policy_raw * policy_weights * valid).sum() / valid_count
 
                 nonterminal = (1.0 - terminal_b) * valid

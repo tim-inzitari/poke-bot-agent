@@ -24,6 +24,16 @@ def json_snapshot(value: Any) -> Any:
     return json.loads(json.dumps(value, separators=(",", ":")))
 
 
+def _search_fields_from_agent(agent: Callable[[dict], list[int]]) -> dict[str, Any]:
+    session = getattr(agent, "policy_session", None)
+    if session is None:
+        return {}
+    diagnostics = getattr(session, "last_search_diagnostics", None)
+    if diagnostics is None:
+        return {}
+    return diagnostics.to_row_fields()
+
+
 def play_match(
     episode: int,
     deck0: list[int],
@@ -54,13 +64,14 @@ def play_match(
             select = obs.get("select") or {}
             options = select.get("option") or []
             player_index = int(obs["current"]["yourIndex"])
-            action = agent0(obs) if player_index == 0 else agent1(obs)
+            active_agent = agent0 if player_index == 0 else agent1
+            action = active_agent(obs)
             next_obs = simulator.battle_select(action)
             terminal = int((next_obs.get("current") or {}).get("result", -1)) >= 0
             next_tracker = copy.deepcopy(tracker)
             step_features, _ = features_from_observation(obs, tracker)
             step_next_features, _ = features_from_observation(next_obs, next_tracker)
-            rows.append({
+            row = {
                 "episode": episode,
                 "step": step,
                 "features": [float(v) for v in step_features],
@@ -78,7 +89,9 @@ def play_match(
                 "deck1": deck1_name,
                 "deck0_cards": list(deck0),
                 "deck1_cards": list(deck1),
-            })
+            }
+            row.update(_search_fields_from_agent(active_agent))
+            rows.append(row)
             obs = next_obs
             step += 1
         if obs["current"]["result"] < 0:

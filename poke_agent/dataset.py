@@ -129,6 +129,9 @@ class TrainingTensors:
     next_x: torch.Tensor
     terminal: torch.Tensor
     card_ids: torch.Tensor
+    policy_step_weight: torch.Tensor
+    transition_soft_idx: torch.Tensor
+    transition_soft_prob: torch.Tensor
     feature_mean: np.ndarray
     feature_std: np.ndarray
     transition_classes: int
@@ -163,10 +166,14 @@ def _synthetic_smoke_arrays(
     np.ndarray,
     np.ndarray,
     np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     rng = np.random.default_rng(7)
     seqs = 8
     steps_per_seq = min(16, window_size)
+    topk = 8
     x_seq = rng.normal(size=(seqs, window_size, feat_dim)).astype(np.float32)
     y_seq = np.tanh(x_seq[:, :, 0] * 0.1).astype(np.float32)
     returns_seq = y_seq.copy()
@@ -179,6 +186,9 @@ def _synthetic_smoke_arrays(
     seq_mask = np.zeros((seqs, window_size), dtype=np.float32)
     seq_mask[:, pad_count:] = 1.0
     card_ids = rng.integers(0, 100, size=(seqs, window_size, CARD_ID_SLOT_COUNT), dtype=np.int64)
+    policy_step_weight = np.ones((seqs, window_size), dtype=np.float32)
+    transition_soft_idx = np.full((seqs, window_size, topk), -1, dtype=np.int64)
+    transition_soft_prob = np.zeros((seqs, window_size, topk), dtype=np.float32)
     seq_lengths = np.full((seqs,), steps_per_seq, dtype=np.int64)
     seq_ids = np.arange(seqs, dtype=np.int64)
     return (
@@ -190,6 +200,9 @@ def _synthetic_smoke_arrays(
         terminal_seq,
         seq_mask,
         card_ids,
+        policy_step_weight,
+        transition_soft_idx,
+        transition_soft_prob,
         seq_lengths,
         seq_ids,
     )
@@ -221,6 +234,9 @@ def _finalize_training_tensors(
     terminal_seq_np: np.ndarray,
     seq_mask_np: np.ndarray,
     card_ids_np: np.ndarray,
+    policy_weight_np: np.ndarray,
+    transition_soft_idx_np: np.ndarray,
+    transition_soft_prob_np: np.ndarray,
     seq_lengths_np: np.ndarray,
     feature_mean: np.ndarray,
     feature_std: np.ndarray,
@@ -244,6 +260,9 @@ def _finalize_training_tensors(
     terminal = _to_device_tensor(terminal_seq_np, data_device)
     seq_mask = _to_device_tensor(seq_mask_np, data_device)
     card_ids = _to_device_tensor(card_ids_np, data_device)
+    policy_step_weight = _to_device_tensor(policy_weight_np, data_device)
+    transition_soft_idx = _to_device_tensor(transition_soft_idx_np, data_device)
+    transition_soft_prob = _to_device_tensor(transition_soft_prob_np, data_device)
     seq_lengths = _to_device_tensor(seq_lengths_np, data_device)
 
     print(
@@ -269,6 +288,9 @@ def _finalize_training_tensors(
         next_x=next_x,
         terminal=terminal,
         card_ids=card_ids,
+        policy_step_weight=policy_step_weight,
+        transition_soft_idx=transition_soft_idx,
+        transition_soft_prob=transition_soft_prob,
         feature_mean=feature_mean,
         feature_std=feature_std,
         transition_classes=transition_classes,
@@ -402,6 +424,9 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
             value_win=float(reward_cfg.get("value_win", 1.0)),
             value_not_win=float(reward_cfg.get("value_not_win", -1.0)),
             value_timeout=float(reward_cfg.get("value_timeout", -2.0)),
+            value_lambda=float(objective_cfg.get("value_lambda", 0.9)),
+            value_mc_blend=float(objective_cfg.get("value_mc_blend", 0.6)),
+            policy_soft_topk=int(objective_cfg.get("policy_soft_topk", 8)),
         )
         del rows
         gc.collect()
@@ -417,6 +442,9 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         terminal_seq_np,
         seq_mask_np,
         card_ids_np,
+        policy_weight_np,
+        transition_soft_idx_np,
+        transition_soft_prob_np,
         seq_lengths_np,
         _seq_ids_np,
     ) = arrays
@@ -439,6 +467,9 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 "terminal": terminal_seq_np,
                 "seq_mask": seq_mask_np,
                 "card_ids": card_ids_np,
+                "policy_step_weight": policy_weight_np,
+                "transition_soft_idx": transition_soft_idx_np,
+                "transition_soft_prob": transition_soft_prob_np,
                 "seq_lengths": seq_lengths_np,
                 "feature_mean": feature_mean,
                 "feature_std": feature_std,
@@ -457,6 +488,9 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         terminal_seq_np=terminal_seq_np,
         seq_mask_np=seq_mask_np,
         card_ids_np=card_ids_np,
+        policy_weight_np=policy_weight_np,
+        transition_soft_idx_np=transition_soft_idx_np,
+        transition_soft_prob_np=transition_soft_prob_np,
         seq_lengths_np=seq_lengths_np,
         feature_mean=feature_mean,
         feature_std=feature_std,

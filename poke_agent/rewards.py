@@ -257,6 +257,46 @@ def blended_value_target(
     return float(max(-1.0, min(1.0, target)))
 
 
+def episode_blended_returns(
+    rows: list[dict[str, Any]],
+    gamma: float,
+    lam: float,
+    *,
+    seat: int,
+    mc_blend: float = 0.6,
+    value_win: float = VALUE_WIN,
+    value_not_win: float = VALUE_NOT_WIN,
+    value_timeout: float = VALUE_TIMEOUT,
+    terminal_obs: dict[str, Any] | None = None,
+    result: int = -1,
+) -> list[float]:
+    """Blend Monte Carlo outcome returns with a simple λ-style backup."""
+    mc = episode_outcome_returns(
+        rows,
+        gamma,
+        seat=seat,
+        value_win=value_win,
+        value_not_win=value_not_win,
+        value_timeout=value_timeout,
+        terminal_obs=terminal_obs,
+        result=result,
+    )
+    if not mc:
+        return []
+    lam_returns: list[float] = []
+    for index in range(len(rows)):
+        step_reward = float(rows[index].get("reward", 0.0))
+        if index + 1 < len(mc):
+            lam_ret = step_reward + float(gamma) * (
+                float(lam) * mc[index + 1] + (1.0 - float(lam)) * mc[index]
+            )
+        else:
+            lam_ret = mc[index]
+        lam_returns.append(float(lam_ret))
+    blend = float(mc_blend)
+    return [blend * mc[index] + (1.0 - blend) * lam_returns[index] for index in range(len(mc))]
+
+
 def filter_complete_episode_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop incomplete, truncated, draw, or timeout episodes from a JSONL row list."""
     by_episode: dict[int, list[dict[str, Any]]] = {}

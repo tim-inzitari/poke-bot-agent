@@ -12,6 +12,7 @@ from poke_agent.actions import legal_actions
 from poke_agent.features import CARD_ID_SLOT_COUNT, STRUCTURED_FEATURE_DIM, encode_observation_step, stable_hash_index
 from poke_agent.game_tracker import GameEventTracker
 from poke_agent.models.temporal_transformer import TemporalTransformer
+from poke_agent.search_targets import SearchDiagnostics
 
 
 @dataclass
@@ -21,11 +22,13 @@ class PolicySession:
     history: list[np.ndarray] = field(default_factory=list)
     card_history: list[np.ndarray] = field(default_factory=list)
     tracker: GameEventTracker = field(default_factory=GameEventTracker)
+    last_search_diagnostics: SearchDiagnostics | None = None
 
     def reset(self) -> None:
         self.history.clear()
         self.card_history.clear()
         self.tracker.reset()
+        self.last_search_diagnostics = None
 
 
 class PolicyRuntime:
@@ -211,7 +214,7 @@ class PolicyRuntime:
             config = beam_config or BeamSearchConfig.from_self_play_config({"self_play": {}})
             if not should_skip_beam_search(obs_dict, config):
                 try:
-                    return run_beam_search(
+                    action, diagnostics = run_beam_search(
                         self,
                         obs_dict,
                         session,
@@ -219,10 +222,14 @@ class PolicyRuntime:
                         actions,
                         root_your_index,
                         config,
+                        return_diagnostics=True,
                     )
+                    session.last_search_diagnostics = diagnostics
+                    return action
                 except Exception:
-                    pass
+                    session.last_search_diagnostics = None
 
+        session.last_search_diagnostics = None
         return self._choose_from_policy_logits(logits, actions)
 
 
@@ -243,4 +250,5 @@ def make_policy_fn(
             beam_config=beam_config,
         )
 
+    agent.policy_session = session  # type: ignore[attr-defined]
     return agent

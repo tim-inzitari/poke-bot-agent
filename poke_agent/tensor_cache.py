@@ -14,7 +14,7 @@ import torch
 from poke_agent.dataset import TrainingTensors, _to_device_tensor, resolve_data_device
 from poke_agent.features import FEATURE_SCHEMA_VERSION
 
-TENSOR_CACHE_FORMAT_VERSION = 1
+TENSOR_CACHE_FORMAT_VERSION = 2
 
 _ARRAY_FILES = (
     "x_seq",
@@ -25,6 +25,9 @@ _ARRAY_FILES = (
     "terminal",
     "seq_mask",
     "card_ids",
+    "policy_step_weight",
+    "transition_soft_idx",
+    "transition_soft_prob",
     "seq_lengths",
     "feature_mean",
     "feature_std",
@@ -65,6 +68,9 @@ def build_tensor_cache_fingerprint(data_path: Path, config: dict[str, Any]) -> d
         "value_win": float(reward_cfg.get("value_win", 1.0)),
         "value_not_win": float(reward_cfg.get("value_not_win", -1.0)),
         "value_timeout": float(reward_cfg.get("value_timeout", -2.0)),
+        "value_lambda": float(objective_cfg.get("value_lambda", 0.9)),
+        "value_mc_blend": float(objective_cfg.get("value_mc_blend", 0.6)),
+        "policy_soft_topk": int(objective_cfg.get("policy_soft_topk", 8)),
     }
 
 
@@ -252,6 +258,9 @@ def load_tensor_cache(
         next_x=_to_device_tensor(arrays["next_x"], data_device),
         terminal=_to_device_tensor(arrays["terminal"], data_device),
         card_ids=_to_device_tensor(arrays["card_ids"], data_device),
+        policy_step_weight=_to_device_tensor(arrays["policy_step_weight"], data_device),
+        transition_soft_idx=_to_device_tensor(arrays["transition_soft_idx"], data_device),
+        transition_soft_prob=_to_device_tensor(arrays["transition_soft_prob"], data_device),
         feature_mean=arrays["feature_mean"],
         feature_std=arrays["feature_std"],
         transition_classes=transition_classes,

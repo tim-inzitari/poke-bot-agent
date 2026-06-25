@@ -76,7 +76,7 @@ WEIGHT_DECAY = 1e-2
 
 # --- Loss weights ---
 LOSS_VALUE_WEIGHT = 1.0
-LOSS_POLICY_WEIGHT = 0.35
+LOSS_POLICY_WEIGHT = 0.85
 LOSS_DYNAMICS_WEIGHT = 0.15
 LOSS_ENTROPY_WEIGHT = 0.01
 LOSS_UNCERTAINTY_WEIGHT = 0.02
@@ -88,9 +88,16 @@ VALUE_NOT_WIN = -1.0  # loss or draw
 VALUE_TIMEOUT = -2.0  # harsh penalty for stalling to the time limit
 VALUE_RETURN_GAMMA = 0.997
 VALUE_SHAPING_ALPHA = 0.15
+VALUE_LAMBDA = 0.9
+VALUE_MC_BLEND = 0.6
 POLICY_WEIGHTING = "awr"  # awr | none
 POLICY_AWR_BETA = 0.5
 POLICY_AWR_WEIGHT_MAX = 20.0
+POLICY_SOFT_TOPK = 8
+OBJECTIVE_USE_SOFT_SEARCH_POLICY = True
+OBJECTIVE_SEARCH_POLICY_KL_WEIGHT = 1.0
+TRAIN_ENCODER_LR = 1e-4
+TRAIN_HEAD_LR = 3e-4
 
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 12
@@ -101,6 +108,8 @@ SELF_PLAY_BEAM_WIDTH = 8
 SELF_PLAY_BEAM_TIME_BUDGET_MS = 1500
 SELF_PLAY_BEAM_MAX_SEARCH_STEPS = 128
 SELF_PLAY_BEAM_ROLLOUT_POLICY_WIDTH = 12
+SEARCH_DETERMINIZATIONS = 2
+COLLECTION_INFERENCE_DEVICE = "auto"  # auto | cpu | cuda
 
 # --- Self-play (AlphaGo-style loop) ---
 # One "iteration" = play SELF_PLAY_GAMES cabt games, then retrain on ALL self-play JSONL so far.
@@ -109,7 +118,7 @@ SELF_PLAY_GAMES = 20  # CABT games per iteration (your deck vs field + past chec
 SELF_PLAY_ITERATIONS = 100
 SELF_PLAY_TRAIN_EPOCHS = 500  # transformer epochs after each self-play iteration
 SELF_PLAY_EVAL_GAMES = 20
-SELF_PLAY_OPPONENT_POOL_SIZE = 5
+SELF_PLAY_OPPONENT_POOL_SIZE = 16
 SELF_PLAY_USE_BEAM = True
 SELF_PLAY_OUTPUT_PATH = "outputs/rollouts/self_play_rollouts.jsonl"
 SELF_PLAY_CHECKPOINT_DIR = "outputs/checkpoints/self_play"
@@ -119,7 +128,8 @@ SELF_PLAY_MATCHUP_MODE = "sample"  # sample | round-robin
 SELF_PLAY_TARGET_RANK = 1000  # eval/bar: win vs opponent decks with placement <= this
 SELF_PLAY_TARGET_WIN_RATE = 0.55
 SELF_PLAY_PLATEAU_PATIENCE = 5
-SELF_PLAY_WORKERS = 4  # parallel CABT games per iteration (baseline + self-play collect)
+SELF_PLAY_WORKERS = 10  # parallel CABT games per iteration (baseline + self-play collect)
+SELF_PLAY_OPPONENT_LATEST_PROB = 0.6  # PFSP-lite: fraction of games vs latest checkpoint
 # Official Kaggle sample agents (main.py + deck.csv each) — see baselines/README.md
 SELF_PLAY_BASELINE_DIR = "baselines/official"
 SELF_PLAY_BASELINE_WIN_RATE = 0.60  # aggregate vs all baselines → start transformer self-play
@@ -176,9 +186,16 @@ OVERRIDE_KEYS = frozenset({
     "card_embed_dim",
     "value_return_gamma",
     "value_shaping_alpha",
+    "value_lambda",
+    "value_mc_blend",
     "policy_weighting",
     "policy_awr_beta",
     "policy_awr_weight_max",
+    "policy_soft_topk",
+    "objective_use_soft_search_policy",
+    "objective_search_policy_kl_weight",
+    "train_encoder_lr",
+    "train_head_lr",
     "train_use_amp",
     "train_grad_checkpoint",
     "train_checkpoint_every",
@@ -214,6 +231,9 @@ OVERRIDE_KEYS = frozenset({
     "self_play_beam_time_budget_ms",
     "self_play_beam_max_search_steps",
     "self_play_beam_rollout_policy_width",
+    "search_determinizations",
+    "collection_inference_device",
+    "self_play_opponent_latest_prob",
     "self_play_games",
     "self_play_iterations",
     "self_play_train_epochs",
@@ -275,9 +295,16 @@ def default_user_config() -> dict[str, Any]:
         "card_embed_dim": CARD_EMBED_DIM,
         "value_return_gamma": VALUE_RETURN_GAMMA,
         "value_shaping_alpha": VALUE_SHAPING_ALPHA,
+        "value_lambda": VALUE_LAMBDA,
+        "value_mc_blend": VALUE_MC_BLEND,
         "policy_weighting": POLICY_WEIGHTING,
         "policy_awr_beta": POLICY_AWR_BETA,
         "policy_awr_weight_max": POLICY_AWR_WEIGHT_MAX,
+        "policy_soft_topk": POLICY_SOFT_TOPK,
+        "objective_use_soft_search_policy": OBJECTIVE_USE_SOFT_SEARCH_POLICY,
+        "objective_search_policy_kl_weight": OBJECTIVE_SEARCH_POLICY_KL_WEIGHT,
+        "train_encoder_lr": TRAIN_ENCODER_LR,
+        "train_head_lr": TRAIN_HEAD_LR,
         "train_use_amp": TRAIN_USE_AMP,
         "train_grad_checkpoint": TRAIN_GRAD_CHECKPOINT,
         "train_checkpoint_every": TRAIN_CHECKPOINT_EVERY,
@@ -314,11 +341,14 @@ def default_user_config() -> dict[str, Any]:
         "self_play_beam_time_budget_ms": SELF_PLAY_BEAM_TIME_BUDGET_MS,
         "self_play_beam_max_search_steps": SELF_PLAY_BEAM_MAX_SEARCH_STEPS,
         "self_play_beam_rollout_policy_width": SELF_PLAY_BEAM_ROLLOUT_POLICY_WIDTH,
+        "search_determinizations": SEARCH_DETERMINIZATIONS,
+        "collection_inference_device": COLLECTION_INFERENCE_DEVICE,
         "self_play_games": SELF_PLAY_GAMES,
         "self_play_iterations": SELF_PLAY_ITERATIONS,
         "self_play_train_epochs": SELF_PLAY_TRAIN_EPOCHS,
         "self_play_eval_games": SELF_PLAY_EVAL_GAMES,
         "self_play_opponent_pool_size": SELF_PLAY_OPPONENT_POOL_SIZE,
+        "self_play_opponent_latest_prob": SELF_PLAY_OPPONENT_LATEST_PROB,
         "self_play_use_beam": SELF_PLAY_USE_BEAM,
         "self_play_output_path": SELF_PLAY_OUTPUT_PATH,
         "self_play_checkpoint_dir": SELF_PLAY_CHECKPOINT_DIR,
@@ -370,9 +400,16 @@ _ENV_MAP = {
     "card_embed_dim": "CARD_EMBED_DIM",
     "value_return_gamma": "VALUE_RETURN_GAMMA",
     "value_shaping_alpha": "VALUE_SHAPING_ALPHA",
+    "value_lambda": "VALUE_LAMBDA",
+    "value_mc_blend": "VALUE_MC_BLEND",
     "policy_weighting": "POLICY_WEIGHTING",
     "policy_awr_beta": "POLICY_AWR_BETA",
     "policy_awr_weight_max": "POLICY_AWR_WEIGHT_MAX",
+    "policy_soft_topk": "POLICY_SOFT_TOPK",
+    "objective_use_soft_search_policy": "OBJECTIVE_USE_SOFT_SEARCH_POLICY",
+    "objective_search_policy_kl_weight": "OBJECTIVE_SEARCH_POLICY_KL_WEIGHT",
+    "train_encoder_lr": "TRAIN_ENCODER_LR",
+    "train_head_lr": "TRAIN_HEAD_LR",
     "train_use_amp": "TRAIN_USE_AMP",
     "train_grad_checkpoint": "TRAIN_GRAD_CHECKPOINT",
     "train_checkpoint_every": "TRAIN_CHECKPOINT_EVERY",
@@ -412,6 +449,9 @@ _ENV_MAP = {
     "self_play_beam_time_budget_ms": "SELF_PLAY_BEAM_TIME_BUDGET_MS",
     "self_play_beam_max_search_steps": "SELF_PLAY_BEAM_MAX_SEARCH_STEPS",
     "self_play_beam_rollout_policy_width": "SELF_PLAY_BEAM_ROLLOUT_POLICY_WIDTH",
+    "search_determinizations": "SEARCH_DETERMINIZATIONS",
+    "collection_inference_device": "COLLECTION_INFERENCE_DEVICE",
+    "self_play_opponent_latest_prob": "SELF_PLAY_OPPONENT_LATEST_PROB",
     "self_play_games": "SELF_PLAY_GAMES",
     "self_play_iterations": "SELF_PLAY_ITERATIONS",
     "self_play_train_epochs": "SELF_PLAY_TRAIN_EPOCHS",
@@ -638,9 +678,14 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "objective": {
             "value_return_gamma": settings["value_return_gamma"],
             "value_shaping_alpha": settings["value_shaping_alpha"],
+            "value_lambda": settings["value_lambda"],
+            "value_mc_blend": settings["value_mc_blend"],
             "policy_weighting": settings["policy_weighting"],
             "policy_awr_beta": settings["policy_awr_beta"],
             "policy_awr_weight_max": settings["policy_awr_weight_max"],
+            "policy_soft_topk": settings["policy_soft_topk"],
+            "use_soft_search_policy": settings["objective_use_soft_search_policy"],
+            "search_policy_kl_weight": settings["objective_search_policy_kl_weight"],
         },
         "model": {
             "d_model": d_model,
@@ -649,6 +694,8 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "ff": model_ff,
             "dropout": settings["model_dropout"],
             "learning_rate": settings["learning_rate"],
+            "encoder_learning_rate": settings["train_encoder_lr"],
+            "head_learning_rate": settings["train_head_lr"],
             "weight_decay": settings["weight_decay"],
         },
         "loss": {
@@ -709,6 +756,9 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "beam_time_budget_ms": settings["self_play_beam_time_budget_ms"],
             "beam_max_search_steps": settings["self_play_beam_max_search_steps"],
             "beam_rollout_policy_width": settings["self_play_beam_rollout_policy_width"],
+            "search_determinizations": settings["search_determinizations"],
+            "collection_inference_device": settings["collection_inference_device"],
+            "opponent_latest_prob": settings["self_play_opponent_latest_prob"],
         },
     }
 

@@ -13,6 +13,7 @@ from poke_agent.actions import legal_actions
 from poke_agent.features import encode_observation_step, stable_hash_index
 from poke_agent.game_tracker import GameEventTracker
 from poke_agent.rewards import winner_from_prizes
+from poke_agent.search_targets import SearchDiagnostics, build_search_diagnostics
 
 if TYPE_CHECKING:
     from poke_agent.policy_agent import PolicyRuntime, PolicySession
@@ -26,6 +27,7 @@ class BeamSearchConfig:
     sim_mode: bool = False
     max_search_steps: int = 64
     rollout_policy_width: int = 8
+    num_determinizations: int = 1
 
     @classmethod
     def from_self_play_config(cls, config: dict[str, Any]) -> BeamSearchConfig:
@@ -37,6 +39,7 @@ class BeamSearchConfig:
             sim_mode=True,
             max_search_steps=int(sp.get("beam_max_search_steps", 128)),
             rollout_policy_width=int(sp.get("beam_rollout_policy_width", 12)),
+            num_determinizations=max(1, int(sp.get("search_determinizations", 1))),
         )
 
 
@@ -94,7 +97,12 @@ def _deterministic_fill(pool: list[int], count: int, seed: int) -> list[int]:
     return picked
 
 
-def guess_hidden_cards(obs_dict: dict[str, Any], our_deck: list[int]) -> tuple[list[int], ...]:
+def guess_hidden_cards(
+    obs_dict: dict[str, Any],
+    our_deck: list[int],
+    *,
+    seed_offset: int = 0,
+) -> tuple[list[int], ...]:
     from cg.api import to_observation_class
 
     obs = to_observation_class(obs_dict)
@@ -105,7 +113,7 @@ def guess_hidden_cards(obs_dict: dict[str, Any], our_deck: list[int]) -> tuple[l
     opponent_player = state.players[opponent_index]
 
     deck_pool = list(our_deck) if our_deck else [OPPONENT_FILLER_CARD]
-    seed = _hidden_card_seed(obs_dict)
+    seed = _hidden_card_seed(obs_dict) + int(seed_offset)
     your_deck_guess = _deterministic_fill(deck_pool, your_player.deckCount, seed)
     your_prize_guess = _deterministic_fill(deck_pool, len(your_player.prize), seed + 1)
 
@@ -239,6 +247,7 @@ def expand_action_in_search(
     *,
     max_search_steps: int = 64,
     rollout_policy_width: int = 8,
+    determinization_seed_offset: int = 0,
 ) -> float:
     from cg.api import search_begin, search_end, search_step, to_observation_class
 
@@ -250,7 +259,7 @@ def expand_action_in_search(
         opponent_prize_guess,
         opponent_hand_guess,
         opponent_active,
-    ) = guess_hidden_cards(obs_dict, our_deck)
+    ) = guess_hidden_cards(obs_dict, our_deck, seed_offset=determinization_seed_offset)
 
     search_state = search_begin(
         obs,
@@ -297,23 +306,21 @@ def expand_action_in_search(
         search_end()
 
 
-def run_beam_search(
+def _expand_action_value(
     runtime: PolicyRuntime,
-    obs_dict: dict[str, Any],
     session: PolicySession,
+    obs_dict: dict[str, Any],
     our_deck: list[int],
-    actions: list[list[int]],
+    action: list[int],
     root_your_index: int,
-    config: BeamSearchConfig | None = None,
-) -> list[int]:
-    config = config or BeamSearchConfig()
-    deadline = time.perf_counter() + (config.time_budget_ms / 1000.0)
-    logits = runtime._model_logits(session)
-    ranked = rank_actions_by_policy(runtime, logits, actions)[: max(1, config.width)]
-
-    best_action = ranked[0][1]
-    best_value = float("-inf")
-    for policy_score, action in ranked:
+    deadline: float,
+    config: BeamSearchConfig,
+    *,
+    policy_score: float,
+) -> float:
+    num_worlds = max(1, int(config.num_determinizations))
+    values: list[float] = []
+    for world_index in range(num_worlds):
         if time.perf_counter() >= deadline:
             break
         try:
@@ -327,10 +334,62 @@ def run_beam_search(
                 deadline,
                 max_search_steps=config.max_search_steps,
                 rollout_policy_width=config.rollout_policy_width,
+                determinization_seed_offset=world_index * 17,
             )
         except Exception:
             leaf_value = policy_score
-        if leaf_value > best_value:
-            best_value = leaf_value
-            best_action = action
+        values.append(float(leaf_value))
+    if not values:
+        return float(policy_score)
+    return float(sum(values) / len(values))
+
+
+def run_beam_search(
+    runtime: PolicyRuntime,
+    obs_dict: dict[str, Any],
+    session: PolicySession,
+    our_deck: list[int],
+    actions: list[list[int]],
+    root_your_index: int,
+    config: BeamSearchConfig | None = None,
+    *,
+    return_diagnostics: bool = False,
+) -> list[int] | tuple[list[int], SearchDiagnostics]:
+    config = config or BeamSearchConfig()
+    deadline = time.perf_counter() + (config.time_budget_ms / 1000.0)
+    logits = runtime._model_logits(session)
+    ranked = rank_actions_by_policy(runtime, logits, actions)[: max(1, config.width)]
+
+    scored: list[tuple[float, list[int]]] = []
+    for policy_score, action in ranked:
+        if time.perf_counter() >= deadline:
+            break
+        leaf_value = _expand_action_value(
+            runtime,
+            session,
+            obs_dict,
+            our_deck,
+            action,
+            root_your_index,
+            deadline,
+            config,
+            policy_score=policy_score,
+        )
+        scored.append((leaf_value, action))
+
+    if not scored:
+        scored = list(ranked)
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    best_value, best_action = scored[0]
+    diagnostics = build_search_diagnostics(
+        logits=logits,
+        actions=actions,
+        ranked=scored,
+        best_action=best_action,
+        best_value=best_value,
+        policy_dim=runtime._policy_dim,
+    )
+    if return_diagnostics:
+        return best_action, diagnostics
     return best_action
