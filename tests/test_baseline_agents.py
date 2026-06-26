@@ -77,6 +77,52 @@ def test_resolve_baseline_archetype_deck_pool_uses_high_performing(tmp_path: Pat
     assert len(pool) == 3
 
 
+def test_resolve_baseline_archetype_deck_pool_only_archetype(tmp_path: Path):
+    hp = tmp_path / "decks" / "competitive" / "high_performing"
+    hp.mkdir(parents=True)
+    (hp / "2026-05_regional_4th_dragapult.csv").write_text("\n".join(str(i) for i in range(60)), encoding="utf-8")
+    (hp / "2026-05_regional_2nd_lopunny-dudunsparce.csv").write_text("\n".join(str(i + 1) for i in range(60)), encoding="utf-8")
+
+    manifest = tmp_path / "baselines" / "manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps({
+            "agents": [
+                {"id": "dragapult-ex", "name": "Dragapult", "dir": "dragapult-ex"},
+                {"id": "iono", "name": "Iono", "dir": "iono"},
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    from poke_agent.baseline_agents import resolve_baseline_archetype_deck_pool
+
+    pool = resolve_baseline_archetype_deck_pool(
+        tmp_path, top_decks_per_archetype=1, only_archetype="dragapult-ex"
+    )
+    names = {name for name, _ in pool}
+    assert "2026-05_regional_4th_dragapult" in names
+    assert "2026-05_regional_2nd_lopunny-dudunsparce" not in names
+
+
+def test_resolve_baseline_archetype_deck_pool_rejects_unknown_archetype(tmp_path: Path):
+    hp = tmp_path / "decks" / "competitive" / "high_performing"
+    hp.mkdir(parents=True)
+    (hp / "2026-05_regional_4th_dragapult.csv").write_text("\n".join(str(i) for i in range(60)), encoding="utf-8")
+
+    manifest = tmp_path / "baselines" / "manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps({"agents": [{"id": "dragapult-ex", "name": "Dragapult", "dir": "dragapult-ex"}]}),
+        encoding="utf-8",
+    )
+
+    from poke_agent.baseline_agents import resolve_baseline_archetype_deck_pool
+
+    with pytest.raises(ValueError):
+        resolve_baseline_archetype_deck_pool(tmp_path, only_archetype="not-a-real-archetype")
+
+
 def test_competitive_deck_archetype_slug():
     from poke_agent.deck_pool import competitive_deck_archetype_slug, deck_matches_archetype_patterns
 

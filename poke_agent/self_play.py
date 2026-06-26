@@ -22,7 +22,7 @@ from poke_agent.collection_device import (
 )
 
 # Max games per worker task — smaller chunks = more frequent tqdm updates during parallel collect.
-PARALLEL_PROGRESS_CHUNK_GAMES = 4
+PARALLEL_PROGRESS_CHUNK_GAMES = 16
 from poke_agent.data_pipeline import default_self_play_workers, episode_chunks
 from poke_agent.dataset import prepare_training_tensors
 from poke_agent.deck_pool import (
@@ -42,6 +42,7 @@ from poke_agent.kaggle_submit import (
     submit_champion_checkpoint,
 )
 from poke_agent.training import build_model, train_model
+from poke_agent.worker_pool import emit_game_progress, imap_persistent, iter_with_live_progress
 
 
 @dataclass
@@ -192,76 +193,6 @@ def _calibration_metrics_from_rows(rows: list[dict[str, Any]]) -> dict[str, floa
     return {"brier": brier, "ece": ece, "samples": samples}
 
 
-def _calibration_probe_range(task: tuple[Any, ...]) -> tuple[int, list[dict[str, Any]]]:
-    import warnings
-
-    warnings.filterwarnings("ignore", message=".*enable_nested_tensor.*")
-    (
-        root_str,
-        probe_start_episode,
-        chunk_start_offset,
-        game_count,
-        agent_checkpoint,
-        agent_deck,
-        agent_name,
-        opponent_agent_id,
-        inference_device,
-        cg_lib_path,
-        worker_settings,
-    ) = task
-    root = Path(root_str)
-    simulator = load_simulator(root)
-    if not simulator.available:
-        raise RuntimeError("CABT simulator is not available in calibration worker")
-
-    baselines = load_baseline_agents(
-        root,
-        baseline_dir=worker_settings.baseline_dir or "baselines/official",
-        cg_lib_path=cg_lib_path,
-        quiet=True,
-    )
-    baseline = next(agent for agent in baselines if agent.agent_id == opponent_agent_id)
-    runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device(inference_device))
-    session = runtime.new_session()
-    agent_fn = make_policy_fn(
-        runtime,
-        session,
-        agent_deck,
-        use_beam=worker_settings.use_beam,
-        beam_config=worker_settings.beam_config,
-    )
-
-    rows: list[dict[str, Any]] = []
-    for local_index in range(game_count):
-        offset = chunk_start_offset + local_index
-        episode = probe_start_episode + offset
-        agent_seat = offset % 2
-        if agent_seat == 0:
-            match_rows = play_match(
-                episode,
-                agent_deck,
-                baseline.deck,
-                simulator,
-                agent_fn,
-                baseline.act,
-                deck0_name=agent_name,
-                deck1_name=baseline.name,
-            )
-        else:
-            match_rows = play_match(
-                episode,
-                baseline.deck,
-                agent_deck,
-                simulator,
-                baseline.act,
-                agent_fn,
-                deck0_name=baseline.name,
-                deck1_name=agent_name,
-            )
-        rows.extend(match_rows)
-    return chunk_start_offset, rows
-
-
 def _probe_value_calibration_sequential(
     simulator: SimulatorState,
     *,
@@ -353,12 +284,20 @@ def probe_value_calibration(
     worker_settings = _baseline_worker_settings(settings)
     inference_device = str(resolve_collection_device(config, train_device))
     chunks = episode_chunks(games, workers, max_chunk_size=1)
-    tasks = [
-        (
+    tasks = [(offset, stop - offset) for offset, stop in chunks]
+    tqdm.write(
+        f"calibration probe: {workers} workers, {len(tasks)} tasks "
+        f"({games} games, inference={inference_device})"
+    )
+    chunk_rows: list[tuple[int, list[dict[str, Any]]]] = []
+    ctx = mp.get_context("spawn")
+    progress_queue = ctx.Queue()
+    iterator = imap_persistent(
+        workers=min(workers, len(tasks)),
+        initializer=_init_calibration_probe_worker,
+        initargs=(
             str(root),
             start_episode,
-            offset,
-            stop - offset,
             str(agent_checkpoint),
             agent_deck,
             agent_name,
@@ -366,28 +305,22 @@ def probe_value_calibration(
             inference_device,
             simulator.lib_path,
             worker_settings,
-        )
-        for offset, stop in chunks
-    ]
-    tqdm.write(
-        f"calibration probe: {workers} workers, {len(tasks)} tasks "
-        f"({games} games, inference={inference_device})"
+        ),
+        task_fn=_calibration_probe_task,
+        tasks=tasks,
+        progress_queue=progress_queue,
     )
-    chunk_rows: list[tuple[int, list[dict[str, Any]]]] = []
-    with mp.get_context("spawn").Pool(processes=min(workers, len(tasks))) as pool:
-        iterator = pool.imap_unordered(_calibration_probe_range, tasks)
-        with tqdm(
-            total=games,
-            desc="calibration probe",
-            unit="game",
-            leave=False,
-            dynamic_ncols=True,
-            mininterval=0.3,
-            file=sys.stderr,
-        ) as progress:
-            for _chunk_start, chunk in iterator:
-                chunk_rows.append((_chunk_start, chunk))
-                progress.update(len({int(row["episode"]) for row in chunk}))
+    with tqdm(
+        total=games,
+        desc="calibration probe",
+        unit="game",
+        leave=False,
+        dynamic_ncols=True,
+        mininterval=0.3,
+        file=sys.stderr,
+    ) as progress:
+        for _chunk_start, chunk in iter_with_live_progress(iterator, progress_queue, progress):
+            chunk_rows.append((_chunk_start, chunk))
     chunk_rows.sort(key=lambda item: item[0])
     rows = [row for _, chunk in chunk_rows for row in chunk]
     return _calibration_metrics_from_rows(rows)
@@ -433,6 +366,319 @@ def _matchup_settings(settings: SelfPlaySettings) -> SelfPlaySettings:
     )
 
 
+def _worker_suppress_torch_warnings() -> None:
+    import warnings
+
+    warnings.filterwarnings("ignore", message=".*enable_nested_tensor.*")
+
+
+# Persistent worker globals — loaded once per imap_persistent batch via spawn initializer.
+_baseline_collect_sim: SimulatorState | None = None
+_baseline_collect_baselines: list[BaselineAgent] | None = None
+_baseline_collect_runtime: PolicyRuntime | None = None
+_baseline_collect_settings: SelfPlaySettings | None = None
+
+_calibration_sim: SimulatorState | None = None
+_calibration_baseline: BaselineAgent | None = None
+_calibration_runtime: PolicyRuntime | None = None
+_calibration_agent_deck: list[int] | None = None
+_calibration_agent_name: str = ""
+_calibration_probe_start: int = 0
+_calibration_settings: SelfPlaySettings | None = None
+
+_baseline_eval_sim: SimulatorState | None = None
+_baseline_eval_baselines: dict[str, BaselineAgent] | None = None
+_baseline_eval_runtime: PolicyRuntime | None = None
+_baseline_eval_agent_deck: list[int] | None = None
+_baseline_eval_agent_name: str = ""
+_baseline_eval_settings: SelfPlaySettings | None = None
+
+_self_play_sim: SimulatorState | None = None
+_self_play_current_runtime: PolicyRuntime | None = None
+_self_play_opponent_runtime: PolicyRuntime | None = None
+_self_play_settings: SelfPlaySettings | None = None
+
+_field_eval_sim: SimulatorState | None = None
+_field_eval_runtime: PolicyRuntime | None = None
+_field_eval_settings: SelfPlaySettings | None = None
+
+
+def _init_baseline_collect_worker(
+    root_str: str,
+    agent_checkpoint: str,
+    inference_device: str,
+    cg_lib_path: str | None,
+    worker_settings: SelfPlaySettings,
+) -> None:
+    global _baseline_collect_sim, _baseline_collect_baselines, _baseline_collect_runtime, _baseline_collect_settings
+    _worker_suppress_torch_warnings()
+    root = Path(root_str)
+    _baseline_collect_sim = load_simulator(root)
+    if _baseline_collect_sim is None or not _baseline_collect_sim.available:
+        raise RuntimeError("CABT simulator is not available in baseline worker")
+    _baseline_collect_baselines = load_baseline_agents(
+        root,
+        baseline_dir=worker_settings.baseline_dir or "baselines/official",
+        cg_lib_path=cg_lib_path,
+        quiet=True,
+    )
+    _baseline_collect_runtime = PolicyRuntime(
+        Path(agent_checkpoint),
+        device=torch.device(inference_device),
+    )
+    _baseline_collect_settings = worker_settings
+
+
+def _baseline_collect_task(task: tuple[int, int, int]) -> tuple[int, list[dict[str, Any]]]:
+    start_episode, game_count, collect_start_episode = task
+    assert _baseline_collect_sim is not None
+    assert _baseline_collect_baselines is not None
+    assert _baseline_collect_runtime is not None
+    assert _baseline_collect_settings is not None
+    rows, _, _ = _collect_games_vs_baselines_sequential(
+        _baseline_collect_sim,
+        baselines=_baseline_collect_baselines,
+        agent_deck_pool=_baseline_collect_settings.agent_deck_pool,
+        current_runtime=_baseline_collect_runtime,
+        games=game_count,
+        start_episode=start_episode,
+        collect_start_episode=collect_start_episode,
+        use_beam=_baseline_collect_settings.use_beam,
+        beam_config=_baseline_collect_settings.beam_config,
+        progress_desc=None,
+    )
+    return start_episode, rows
+
+
+def _init_calibration_probe_worker(
+    root_str: str,
+    probe_start_episode: int,
+    agent_checkpoint: str,
+    agent_deck: list[int],
+    agent_name: str,
+    opponent_agent_id: str,
+    inference_device: str,
+    cg_lib_path: str | None,
+    worker_settings: SelfPlaySettings,
+) -> None:
+    global _calibration_sim, _calibration_baseline, _calibration_runtime
+    global _calibration_agent_deck, _calibration_agent_name, _calibration_probe_start
+    global _calibration_settings
+    _worker_suppress_torch_warnings()
+    root = Path(root_str)
+    _calibration_sim = load_simulator(root)
+    if _calibration_sim is None or not _calibration_sim.available:
+        raise RuntimeError("CABT simulator is not available in calibration worker")
+    baselines = load_baseline_agents(
+        root,
+        baseline_dir=worker_settings.baseline_dir or "baselines/official",
+        cg_lib_path=cg_lib_path,
+        quiet=True,
+    )
+    _calibration_baseline = next(agent for agent in baselines if agent.agent_id == opponent_agent_id)
+    _calibration_runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device(inference_device))
+    _calibration_agent_deck = agent_deck
+    _calibration_agent_name = agent_name
+    _calibration_probe_start = probe_start_episode
+    _calibration_settings = worker_settings
+
+
+def _calibration_probe_task(task: tuple[int, int]) -> tuple[int, list[dict[str, Any]]]:
+    chunk_start_offset, game_count = task
+    assert _calibration_sim is not None
+    assert _calibration_baseline is not None
+    assert _calibration_runtime is not None
+    assert _calibration_agent_deck is not None
+    assert _calibration_settings is not None
+    session = _calibration_runtime.new_session()
+    agent_fn = make_policy_fn(
+        _calibration_runtime,
+        session,
+        _calibration_agent_deck,
+        use_beam=_calibration_settings.use_beam,
+        beam_config=_calibration_settings.beam_config,
+    )
+    rows: list[dict[str, Any]] = []
+    for local_index in range(game_count):
+        offset = chunk_start_offset + local_index
+        episode = _calibration_probe_start + offset
+        agent_seat = offset % 2
+        if agent_seat == 0:
+            match_rows = play_match(
+                episode,
+                _calibration_agent_deck,
+                _calibration_baseline.deck,
+                _calibration_sim,
+                agent_fn,
+                _calibration_baseline.act,
+                deck0_name=_calibration_agent_name,
+                deck1_name=_calibration_baseline.name,
+            )
+        else:
+            match_rows = play_match(
+                episode,
+                _calibration_baseline.deck,
+                _calibration_agent_deck,
+                _calibration_sim,
+                _calibration_baseline.act,
+                agent_fn,
+                deck0_name=_calibration_baseline.name,
+                deck1_name=_calibration_agent_name,
+            )
+        rows.extend(match_rows)
+        emit_game_progress()
+    return chunk_start_offset, rows
+
+
+def _init_baseline_eval_worker(
+    root_str: str,
+    agent_checkpoint: str,
+    agent_deck: list[int],
+    agent_name: str,
+    inference_device: str,
+    cg_lib_path: str | None,
+    worker_settings: SelfPlaySettings,
+) -> None:
+    global _baseline_eval_sim, _baseline_eval_baselines, _baseline_eval_runtime
+    global _baseline_eval_agent_deck, _baseline_eval_agent_name, _baseline_eval_settings
+    _worker_suppress_torch_warnings()
+    root = Path(root_str)
+    _baseline_eval_sim = load_simulator(root)
+    if _baseline_eval_sim is None or not _baseline_eval_sim.available:
+        raise RuntimeError("CABT simulator is not available in baseline eval worker")
+    loaded = load_baseline_agents(
+        root,
+        baseline_dir=worker_settings.baseline_dir or "baselines/official",
+        cg_lib_path=cg_lib_path,
+        quiet=True,
+    )
+    _baseline_eval_baselines = {agent.agent_id: agent for agent in loaded}
+    _baseline_eval_runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device(inference_device))
+    _baseline_eval_agent_deck = agent_deck
+    _baseline_eval_agent_name = agent_name
+    _baseline_eval_settings = worker_settings
+
+
+def _baseline_eval_task(
+    task: tuple[int, int, int, str, str],
+) -> tuple[str, int, int, dict[str, Any]]:
+    chunk_start_episode, game_count, eval_batch_start, opponent_agent_id, opponent_name = task
+    assert _baseline_eval_sim is not None
+    assert _baseline_eval_baselines is not None
+    assert _baseline_eval_runtime is not None
+    assert _baseline_eval_agent_deck is not None
+    assert _baseline_eval_settings is not None
+    baseline = _baseline_eval_baselines[opponent_agent_id]
+    session = _baseline_eval_runtime.new_session()
+    agent_fn = make_policy_fn(
+        _baseline_eval_runtime,
+        session,
+        _baseline_eval_agent_deck,
+        use_beam=_baseline_eval_settings.use_beam,
+        beam_config=_baseline_eval_settings.beam_config,
+    )
+    report = _evaluate_vs_fixed_opponent(
+        _baseline_eval_sim,
+        agent_fn=agent_fn,
+        opponent_fn=baseline.act,
+        agent_deck=_baseline_eval_agent_deck,
+        agent_name=_baseline_eval_agent_name,
+        opponent_deck=baseline.deck,
+        opponent_name=opponent_name,
+        games=game_count,
+        start_episode=chunk_start_episode,
+        eval_batch_start=eval_batch_start,
+        progress_desc=None,
+    )
+    return opponent_agent_id, eval_batch_start, chunk_start_episode, report
+
+
+def _init_self_play_collect_worker(
+    root_str: str,
+    current_checkpoint: str,
+    opponent_checkpoint: str,
+    inference_device: str,
+    settings: SelfPlaySettings,
+) -> None:
+    global _self_play_sim, _self_play_current_runtime, _self_play_opponent_runtime, _self_play_settings
+    _worker_suppress_torch_warnings()
+    _self_play_sim = load_simulator(Path(root_str))
+    if _self_play_sim is None or not _self_play_sim.available:
+        raise RuntimeError("CABT simulator is not available in self-play worker")
+    device = torch.device(inference_device)
+    _self_play_current_runtime = PolicyRuntime(Path(current_checkpoint), device=device)
+    _self_play_opponent_runtime = PolicyRuntime(Path(opponent_checkpoint), device=device)
+    _self_play_settings = settings
+
+
+def _self_play_collect_task(
+    task: tuple[str, list[int], int, int, int],
+) -> tuple[int, list[dict[str, Any]]]:
+    agent_name, agent_deck, start_episode, game_count, collect_start_episode = task
+    assert _self_play_sim is not None
+    assert _self_play_current_runtime is not None
+    assert _self_play_opponent_runtime is not None
+    assert _self_play_settings is not None
+    rows = _collect_self_play_games_sequential(
+        _self_play_sim,
+        agent_deck,
+        agent_name=agent_name,
+        games=game_count,
+        start_episode=start_episode,
+        collect_start_episode=collect_start_episode,
+        current_runtime=_self_play_current_runtime,
+        opponent_runtime=_self_play_opponent_runtime,
+        settings=_self_play_settings,
+        progress_desc=None,
+    )
+    return start_episode, rows
+
+
+def _init_field_eval_worker(
+    root_str: str,
+    agent_checkpoint: str,
+    inference_device: str,
+    settings: SelfPlaySettings,
+) -> None:
+    global _field_eval_sim, _field_eval_runtime, _field_eval_settings
+    _worker_suppress_torch_warnings()
+    _field_eval_sim = load_simulator(Path(root_str))
+    if _field_eval_sim is None or not _field_eval_sim.available or _field_eval_sim.to_observation_class is None:
+        raise RuntimeError("CABT simulator is not available in eval worker")
+    _field_eval_runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device(inference_device))
+    _field_eval_settings = settings
+
+
+def _field_eval_task(
+    task: tuple[int, int, str, list[int], bool],
+) -> tuple[int, dict[str, Any]]:
+    start_episode, game_count, agent_name, agent_deck, use_target_pool = task
+    assert _field_eval_sim is not None
+    assert _field_eval_runtime is not None
+    assert _field_eval_settings is not None
+    session = _field_eval_runtime.new_session()
+    agent_fn = make_policy_fn(
+        _field_eval_runtime,
+        session,
+        agent_deck,
+        use_beam=_field_eval_settings.use_beam,
+        beam_config=_field_eval_settings.beam_config,
+    )
+    opponent_fn = make_random_agent(_field_eval_sim.to_observation_class)
+    report = _evaluate_games_sequential(
+        _field_eval_sim,
+        agent_fn=agent_fn,
+        opponent_fn=opponent_fn,
+        agent_name=agent_name,
+        agent_deck=agent_deck,
+        games=game_count,
+        settings=_field_eval_settings,
+        start_episode=start_episode,
+        use_target_pool=use_target_pool,
+    )
+    return start_episode, report
+
+
 def _terminal_result(match_rows: list[dict[str, Any]]) -> int | None:
     if not match_rows:
         return None
@@ -467,6 +713,30 @@ def _win_rate_postfix(wins: int, losses: int, *, draws: int = 0, **extra: Any) -
         postfix["D"] = draws
     postfix.update(extra)
     return postfix
+
+
+def _outcome_progress_hook(
+    progress: Any,
+    state: dict[str, int],
+) -> Callable[[Any], None]:
+    """Update win-rate postfix when workers emit per-game outcomes."""
+
+    def on_game(message: Any) -> None:
+        if not isinstance(message, dict):
+            return
+        state["wins"], state["losses"], state["draws"] = _record_seat_outcome(
+            int(message["result"]),
+            int(message["our_seat"]),
+            wins=state["wins"],
+            losses=state["losses"],
+            draws=state["draws"],
+        )
+        progress.set_postfix(
+            **_win_rate_postfix(state["wins"], state["losses"], draws=state["draws"]),
+            refresh=True,
+        )
+
+    return on_game
 
 
 def summarize_results(results: list[int], *, seat_index: int) -> dict[str, float]:
@@ -652,6 +922,8 @@ def _evaluate_vs_fixed_opponent(
         elif result >= 0:
             agent_a_losses += 1
 
+        emit_game_progress(result=result, our_seat=agent_seat)
+
         if progress_desc is not None and isinstance(game_range, tqdm):
             decided = agent_a_wins + agent_a_losses
             game_range.set_postfix(
@@ -732,53 +1004,13 @@ def _collect_games_vs_baselines_sequential(
             wins, losses, draws = _record_seat_outcome(
                 result, agent_seat, wins=wins, losses=losses, draws=draws
             )
+            emit_game_progress(result=result, our_seat=agent_seat)
         if progress_desc is not None and isinstance(game_range, tqdm):
             game_range.set_postfix(
                 **_win_rate_postfix(wins, losses, draws=draws, our=deck_name[:10], vs=baseline.agent_id)
             )
 
     return rows, deck_name, baseline_name
-
-
-def _collect_baselines_range(task: tuple[Any, ...]) -> tuple[int, list[dict[str, Any]]]:
-    import warnings
-
-    warnings.filterwarnings("ignore", message=".*enable_nested_tensor.*")
-    (
-        root_str,
-        start_episode,
-        game_count,
-        collect_start_episode,
-        agent_checkpoint,
-        inference_device,
-        cg_lib_path,
-        worker_settings,
-    ) = task
-    root = Path(root_str)
-    simulator = load_simulator(root)
-    if not simulator.available:
-        raise RuntimeError("CABT simulator is not available in baseline worker")
-
-    baselines = load_baseline_agents(
-        root,
-        baseline_dir=worker_settings.baseline_dir or "baselines/official",
-        cg_lib_path=cg_lib_path,
-        quiet=True,
-    )
-    runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device(inference_device))
-    rows, _, _ = _collect_games_vs_baselines_sequential(
-        simulator,
-        baselines=baselines,
-        agent_deck_pool=worker_settings.agent_deck_pool,
-        current_runtime=runtime,
-        games=game_count,
-        start_episode=start_episode,
-        collect_start_episode=collect_start_episode,
-        use_beam=worker_settings.use_beam,
-        beam_config=worker_settings.beam_config,
-        progress_desc=None,
-    )
-    return start_episode, rows
 
 
 def collect_games_vs_baselines(
@@ -818,48 +1050,47 @@ def collect_games_vs_baselines(
     inference_device = str(device or torch.device("cpu"))
     chunks = episode_chunks(games, workers, max_chunk_size=PARALLEL_PROGRESS_CHUNK_GAMES)
     tasks = [
-        (
-            str(root),
-            start_episode + offset,
-            stop - offset,
-            start_episode,
-            str(current_checkpoint),
-            inference_device,
-            simulator.lib_path,
-            worker_settings,
-        )
+        (start_episode + offset, stop - offset, start_episode)
         for offset, stop in chunks
     ]
     chunk_rows: list[tuple[int, list[dict[str, Any]]]] = []
     tqdm.write(
-        f"baseline games: {workers} workers, {len(tasks)} tasks "
-        f"(up to {max(stop - start for start, stop in chunks)} games per progress tick)"
+        f"baseline games: {workers} workers, {len(tasks)} tasks, live per-game progress"
     )
-    with mp.get_context("spawn").Pool(processes=workers) as pool:
-        iterator = pool.imap_unordered(_collect_baselines_range, tasks)
-        wins = losses = draws = 0
-        with tqdm(
-            total=games,
-            desc="baseline games",
-            unit="game",
-            leave=False,
-            dynamic_ncols=True,
-            mininterval=0.3,
-            file=sys.stderr,
-        ) as progress:
-            for chunk_start, chunk in iterator:
-                chunk_rows.append((chunk_start, chunk))
-                for episode in sorted({int(row["episode"]) for row in chunk}):
-                    ep_rows = [row for row in chunk if int(row["episode"]) == episode]
-                    result = _terminal_result(ep_rows)
-                    if result is None:
-                        continue
-                    agent_seat = (episode - start_episode) % 2
-                    wins, losses, draws = _record_seat_outcome(
-                        result, agent_seat, wins=wins, losses=losses, draws=draws
-                    )
-                progress.update(len({int(row["episode"]) for row in chunk}))
-                progress.set_postfix(**_win_rate_postfix(wins, losses, draws=draws), refresh=True)
+    ctx = mp.get_context("spawn")
+    progress_queue = ctx.Queue()
+    iterator = imap_persistent(
+        workers=min(workers, len(tasks)),
+        initializer=_init_baseline_collect_worker,
+        initargs=(
+            str(root),
+            str(current_checkpoint),
+            inference_device,
+            simulator.lib_path,
+            worker_settings,
+        ),
+        task_fn=_baseline_collect_task,
+        tasks=tasks,
+        progress_queue=progress_queue,
+    )
+    outcome_state = {"wins": 0, "losses": 0, "draws": 0}
+    with tqdm(
+        total=games,
+        desc="baseline games",
+        unit="game",
+        leave=False,
+        dynamic_ncols=True,
+        mininterval=0.3,
+        file=sys.stderr,
+    ) as progress:
+        live = iter_with_live_progress(
+            iterator,
+            progress_queue,
+            progress,
+            on_game=_outcome_progress_hook(progress, outcome_state),
+        )
+        for chunk_start, chunk in live:
+            chunk_rows.append((chunk_start, chunk))
     chunk_rows.sort(key=lambda item: item[0])
     rows: list[dict[str, Any]] = []
     for _, chunk in chunk_rows:
@@ -894,61 +1125,6 @@ def _merge_fixed_opponent_reports(reports: list[dict[str, Any]]) -> dict[str, An
         "results": results,
         "opponent": opponent,
     }
-
-
-def _evaluate_vs_baseline_range(task: tuple[Any, ...]) -> tuple[str, int, int, dict[str, Any]]:
-    import warnings
-
-    warnings.filterwarnings("ignore", message=".*enable_nested_tensor.*")
-    (
-        root_str,
-        chunk_start_episode,
-        game_count,
-        eval_batch_start,
-        agent_checkpoint,
-        agent_deck,
-        agent_name,
-        opponent_agent_id,
-        opponent_name,
-        inference_device,
-        cg_lib_path,
-        worker_settings,
-    ) = task
-    root = Path(root_str)
-    simulator = load_simulator(root)
-    if not simulator.available:
-        raise RuntimeError("CABT simulator is not available in baseline eval worker")
-
-    baselines = load_baseline_agents(
-        root,
-        baseline_dir=worker_settings.baseline_dir or "baselines/official",
-        cg_lib_path=cg_lib_path,
-        quiet=True,
-    )
-    baseline = next(agent for agent in baselines if agent.agent_id == opponent_agent_id)
-    runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device(inference_device))
-    session = runtime.new_session()
-    agent_fn = make_policy_fn(
-        runtime,
-        session,
-        agent_deck,
-        use_beam=worker_settings.use_beam,
-        beam_config=worker_settings.beam_config,
-    )
-    report = _evaluate_vs_fixed_opponent(
-        simulator,
-        agent_fn=agent_fn,
-        opponent_fn=baseline.act,
-        agent_deck=agent_deck,
-        agent_name=agent_name,
-        opponent_deck=baseline.deck,
-        opponent_name=opponent_name,
-        games=game_count,
-        start_episode=chunk_start_episode,
-        eval_batch_start=eval_batch_start,
-        progress_desc=None,
-    )
-    return opponent_agent_id, eval_batch_start, chunk_start_episode, report
 
 
 def evaluate_vs_baselines(
@@ -990,7 +1166,7 @@ def evaluate_vs_baselines(
     worker_settings = _baseline_worker_settings(settings)
     inference_device = str(device or torch.device("cpu"))
     total_eval_games = games_each * len(baselines)
-    tasks: list[tuple[Any, ...]] = []
+    tasks: list[tuple[int, int, int, str, str]] = []
     for index, baseline in enumerate(baselines):
         eval_batch_start = start_episode + index * games_each
         for offset, stop in episode_chunks(
@@ -1000,18 +1176,11 @@ def evaluate_vs_baselines(
         ):
             tasks.append(
                 (
-                    str(root),
                     eval_batch_start + offset,
                     stop - offset,
                     eval_batch_start,
-                    str(agent_checkpoint),
-                    agent_deck,
-                    agent_name,
                     baseline.agent_id,
                     baseline.name,
-                    inference_device,
-                    simulator.lib_path,
-                    worker_settings,
                 )
             )
 
@@ -1020,29 +1189,42 @@ def evaluate_vs_baselines(
         f"({total_eval_games} games vs {len(baselines)} baselines)"
     )
     reports_by_baseline: dict[str, list[dict[str, Any]]] = {baseline.agent_id: [] for baseline in baselines}
-    with mp.get_context("spawn").Pool(processes=workers) as pool:
-        iterator = pool.imap_unordered(_evaluate_vs_baseline_range, tasks)
-        wins = losses = draws = 0
-        with tqdm(
-            total=total_eval_games,
-            desc="baseline eval",
-            unit="game",
-            leave=False,
-            dynamic_ncols=True,
-            mininterval=0.3,
-            file=sys.stderr,
-        ) as progress:
-            for opponent_id, _batch_start, _chunk_start, report in iterator:
-                reports_by_baseline[opponent_id].append(report)
-                chunk_games = int(report["agent_a"]["games"])
-                chunk_wins = int(report["agent_a"]["wins"])
-                chunk_losses = int(report["agent_a"]["losses"])
-                chunk_draws = int(report["agent_a"]["draws"])
-                wins += chunk_wins
-                losses += chunk_losses
-                draws += chunk_draws
-                progress.update(chunk_games)
-                progress.set_postfix(**_win_rate_postfix(wins, losses, draws=draws), refresh=True)
+    ctx = mp.get_context("spawn")
+    progress_queue = ctx.Queue()
+    iterator = imap_persistent(
+        workers=min(workers, len(tasks)),
+        initializer=_init_baseline_eval_worker,
+        initargs=(
+            str(root),
+            str(agent_checkpoint),
+            agent_deck,
+            agent_name,
+            inference_device,
+            simulator.lib_path,
+            worker_settings,
+        ),
+        task_fn=_baseline_eval_task,
+        tasks=tasks,
+        progress_queue=progress_queue,
+    )
+    outcome_state = {"wins": 0, "losses": 0, "draws": 0}
+    with tqdm(
+        total=total_eval_games,
+        desc="baseline eval",
+        unit="game",
+        leave=False,
+        dynamic_ncols=True,
+        mininterval=0.3,
+        file=sys.stderr,
+    ) as progress:
+        live = iter_with_live_progress(
+            iterator,
+            progress_queue,
+            progress,
+            on_game=_outcome_progress_hook(progress, outcome_state),
+        )
+        for opponent_id, _batch_start, _chunk_start, report in live:
+            reports_by_baseline[opponent_id].append(report)
 
     for baseline in baselines:
         merged = _merge_fixed_opponent_reports(reports_by_baseline[baseline.agent_id])
@@ -1129,6 +1311,8 @@ def _evaluate_games_sequential(
         elif result >= 0:
             agent_a_losses += 1
 
+        emit_game_progress(result=result, our_seat=matchup.agent_seat)
+
         if progress_desc is not None and isinstance(game_range, tqdm):
             game_range.set_postfix(
                 wins=agent_a_wins,
@@ -1148,46 +1332,6 @@ def _evaluate_games_sequential(
         "results": results,
         "matchups": matchup_names,
     }
-
-
-def _eval_agent_vs_field_range(task: tuple[Any, ...]) -> tuple[int, dict[str, Any]]:
-    (
-        root_str,
-        start_episode,
-        game_count,
-        agent_name,
-        agent_deck,
-        agent_checkpoint,
-        use_target_pool,
-        settings,
-    ) = task
-    simulator = load_simulator(Path(root_str))
-    if not simulator.available or simulator.to_observation_class is None:
-        raise RuntimeError("CABT simulator is not available in eval worker")
-
-    matchup_settings = _matchup_settings(settings)
-    agent_runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device("cpu"))
-    agent_session = agent_runtime.new_session()
-    agent_fn = make_policy_fn(
-        agent_runtime,
-        agent_session,
-        agent_deck,
-        use_beam=matchup_settings.use_beam,
-        beam_config=matchup_settings.beam_config,
-    )
-    opponent_fn = make_random_agent(simulator.to_observation_class)
-    report = _evaluate_games_sequential(
-        simulator,
-        agent_fn=agent_fn,
-        opponent_fn=opponent_fn,
-        agent_name=agent_name,
-        agent_deck=agent_deck,
-        games=game_count,
-        settings=matchup_settings,
-        start_episode=start_episode,
-        use_target_pool=use_target_pool,
-    )
-    return start_episode, report
 
 
 def _merge_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1229,6 +1373,7 @@ def evaluate_agent_vs_field(
     use_target_pool: bool = False,
     root: Path | None = None,
     agent_checkpoint: Path | None = None,
+    inference_device: torch.device | None = None,
     progress_desc: str | None = None,
 ) -> dict[str, Any]:
     if games <= 0:
@@ -1254,29 +1399,41 @@ def evaluate_agent_vs_field(
         )
 
     matchup_settings = _matchup_settings(settings)
+    device_str = str(inference_device or torch.device("cpu"))
     tasks = [
         (
-            str(root),
             start_episode + offset,
             stop - offset,
             agent_name,
             agent_deck,
-            str(agent_checkpoint),
             use_target_pool,
-            matchup_settings,
         )
         for offset, stop in episode_chunks(games, workers)
     ]
     chunk_reports: list[tuple[int, dict[str, Any]]] = []
-    with mp.get_context("spawn").Pool(processes=workers) as pool:
-        iterator = pool.imap_unordered(_eval_agent_vs_field_range, tasks)
-        if progress_desc is not None:
-            with tqdm(total=games, desc=progress_desc, unit="game", leave=False) as progress:
-                for start_ep, report in iterator:
-                    chunk_reports.append((start_ep, report))
-                    progress.update(int(report["agent_a"]["games"]))
-        else:
-            chunk_reports = list(iterator)
+    ctx = mp.get_context("spawn")
+    progress_queue = ctx.Queue()
+    iterator = imap_persistent(
+        workers=min(workers, len(tasks)),
+        initializer=_init_field_eval_worker,
+        initargs=(str(root), str(agent_checkpoint), device_str, matchup_settings),
+        task_fn=_field_eval_task,
+        tasks=tasks,
+        progress_queue=progress_queue,
+    )
+    if progress_desc is not None:
+        outcome_state = {"wins": 0, "losses": 0, "draws": 0}
+        with tqdm(total=games, desc=progress_desc, unit="game", leave=False) as progress:
+            live = iter_with_live_progress(
+                iterator,
+                progress_queue,
+                progress,
+                on_game=_outcome_progress_hook(progress, outcome_state),
+            )
+            for start_ep, report in live:
+                chunk_reports.append((start_ep, report))
+    else:
+        chunk_reports = list(iterator)
     chunk_reports.sort(key=lambda item: item[0])
     return _merge_eval_reports([report for _, report in chunk_reports])
 
@@ -1346,47 +1503,10 @@ def _collect_self_play_games_sequential(
             wins, losses, draws = _record_seat_outcome(
                 result, our_seat, wins=wins, losses=losses, draws=draws
             )
+            emit_game_progress(result=result, our_seat=our_seat)
         if progress_desc is not None and isinstance(game_range, tqdm):
             game_range.set_postfix(**_win_rate_postfix(wins, losses, draws=draws))
     return rows
-
-
-def _collect_self_play_range(task: tuple[Any, ...]) -> tuple[int, list[dict[str, Any]]]:
-    import warnings
-
-    warnings.filterwarnings("ignore", message=".*enable_nested_tensor.*")
-    (
-        root_str,
-        agent_name,
-        agent_deck,
-        start_episode,
-        game_count,
-        collect_start_episode,
-        current_checkpoint,
-        opponent_checkpoint,
-        settings,
-    ) = task
-    simulator = load_simulator(Path(root_str))
-    if not simulator.available:
-        raise RuntimeError("CABT simulator is not available in self-play worker")
-
-    matchup_settings = _matchup_settings(settings)
-    device = torch.device("cpu")
-    current_runtime = PolicyRuntime(Path(current_checkpoint), device=device)
-    opponent_runtime = PolicyRuntime(Path(opponent_checkpoint), device=device)
-    rows = _collect_self_play_games_sequential(
-        simulator,
-        agent_deck,
-        agent_name=agent_name,
-        games=game_count,
-        start_episode=start_episode,
-        collect_start_episode=collect_start_episode,
-        current_runtime=current_runtime,
-        opponent_runtime=opponent_runtime,
-        settings=matchup_settings,
-        progress_desc=None,
-    )
-    return start_episode, rows
 
 
 def collect_self_play_games(
@@ -1402,6 +1522,7 @@ def collect_self_play_games(
     root: Path | None = None,
     current_checkpoint: Path | None = None,
     opponent_checkpoint: Path | None = None,
+    inference_device: torch.device | None = None,
     progress_desc: str | None = "self-play games",
 ) -> list[dict[str, Any]]:
     workers = resolve_self_play_workers(settings, games=games)
@@ -1423,56 +1544,60 @@ def collect_self_play_games(
         raise ValueError("parallel self-play requires root and checkpoint paths")
 
     matchup_settings = _matchup_settings(settings)
+    device_str = str(inference_device or torch.device("cpu"))
     chunks = episode_chunks(games, workers, max_chunk_size=PARALLEL_PROGRESS_CHUNK_GAMES)
     tasks = [
         (
-            str(root),
             agent_name,
             agent_deck,
             start_episode + offset,
             stop - offset,
             start_episode,
-            str(current_checkpoint),
-            str(opponent_checkpoint),
-            matchup_settings,
         )
         for offset, stop in chunks
     ]
     chunk_rows: list[tuple[int, list[dict[str, Any]]]] = []
     if progress_desc is not None:
         tqdm.write(
-            f"{progress_desc}: {workers} workers, {len(tasks)} tasks "
-            f"(up to {max(stop - start for start, stop in chunks)} games per progress tick)"
+            f"{progress_desc}: {workers} workers, {len(tasks)} tasks, live per-game progress"
         )
-    with mp.get_context("spawn").Pool(processes=workers) as pool:
-        iterator = pool.imap_unordered(_collect_self_play_range, tasks)
-        if progress_desc is not None:
-            wins = losses = draws = 0
-            with tqdm(
-                total=games,
-                desc=progress_desc,
-                unit="game",
-                leave=False,
-                dynamic_ncols=True,
-                mininterval=0.3,
-                file=sys.stderr,
-            ) as progress:
-                for start_ep, chunk in iterator:
-                    chunk_rows.append((start_ep, chunk))
-                    for episode in sorted({int(row["episode"]) for row in chunk}):
-                        ep_rows = [row for row in chunk if int(row["episode"]) == episode]
-                        result = _terminal_result(ep_rows)
-                        if result is None:
-                            continue
-                        game_index = episode - start_episode
-                        our_seat = 0 if game_index % 2 == 0 else 1
-                        wins, losses, draws = _record_seat_outcome(
-                            result, our_seat, wins=wins, losses=losses, draws=draws
-                        )
-                    progress.update(len({int(row["episode"]) for row in chunk}))
-                    progress.set_postfix(**_win_rate_postfix(wins, losses, draws=draws), refresh=True)
-        else:
-            chunk_rows = list(iterator)
+    ctx = mp.get_context("spawn")
+    progress_queue = ctx.Queue()
+    iterator = imap_persistent(
+        workers=min(workers, len(tasks)),
+        initializer=_init_self_play_collect_worker,
+        initargs=(
+            str(root),
+            str(current_checkpoint),
+            str(opponent_checkpoint),
+            device_str,
+            matchup_settings,
+        ),
+        task_fn=_self_play_collect_task,
+        tasks=tasks,
+        progress_queue=progress_queue,
+    )
+    if progress_desc is not None:
+        outcome_state = {"wins": 0, "losses": 0, "draws": 0}
+        with tqdm(
+            total=games,
+            desc=progress_desc,
+            unit="game",
+            leave=False,
+            dynamic_ncols=True,
+            mininterval=0.3,
+            file=sys.stderr,
+        ) as progress:
+            live = iter_with_live_progress(
+                iterator,
+                progress_queue,
+                progress,
+                on_game=_outcome_progress_hook(progress, outcome_state),
+            )
+            for start_ep, chunk in live:
+                chunk_rows.append((start_ep, chunk))
+    else:
+        chunk_rows = list(iterator)
     chunk_rows.sort(key=lambda item: item[0])
     rows: list[dict[str, Any]] = []
     for _, chunk in chunk_rows:
@@ -1607,6 +1732,7 @@ def run_self_play_iteration(
         root=root,
         current_checkpoint=current_checkpoint,
         opponent_checkpoint=opponent_path,
+        inference_device=collection_device,
         progress_desc="self-play",
     )
     unique_matchups = len({(row.get("deck0"), row.get("deck1")) for row in rows if int(row.get("step", -1)) == 0})
@@ -1640,6 +1766,7 @@ def run_self_play_iteration(
         use_target_pool=True,
         root=root,
         agent_checkpoint=current_checkpoint,
+        inference_device=collection_device,
         progress_desc=f"iter {iteration} eval",
     )
     sample_matchups = eval_vs_random.get("matchups", [])[:5]
@@ -2292,14 +2419,18 @@ def _resolve_agent_deck_pool(
         try:
             from poke_agent.baseline_agents import resolve_baseline_archetype_deck_pool
 
+            only_archetype = sp.get("our_archetype")
             pool = resolve_baseline_archetype_deck_pool(
                 root,
                 baseline_dir=str(sp.get("baseline_dir", "baselines/official")),
                 top_decks_per_archetype=int(sp.get("baseline_top_decks_per_archetype", 3)),
+                only_archetype=only_archetype,
             )
+            archetype_note = f" [{only_archetype} only]" if only_archetype else ""
             print(
                 f"our-side deck pool: {len(pool)} decks "
                 f"(top {int(sp.get('baseline_top_decks_per_archetype', 3))} placements per baseline archetype + official)"
+                f"{archetype_note}"
             )
             return pool
         except (FileNotFoundError, ValueError) as exc:

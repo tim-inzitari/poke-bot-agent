@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 from poke_agent.config import build_config
 from poke_agent.deck import read_deck
-from poke_agent.device import torch_device
+from poke_agent.device import describe_torch_device, torch_device
 from poke_agent.paths import resolve_root
 from poke_agent.self_play import (
     run_baseline_phase_loop,
@@ -116,7 +116,7 @@ def main() -> None:
         )
 
     device = torch_device()
-    print("device", device)
+    print("device", describe_torch_device(device))
 
     simulator = load_simulator(root)
     print_simulator_status(simulator)

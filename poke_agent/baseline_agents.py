@@ -173,8 +173,14 @@ def resolve_baseline_archetype_deck_pool(
     baseline_dir: str = "baselines/official",
     include_official: bool = True,
     top_decks_per_archetype: int = 3,
+    only_archetype: str | None = None,
 ) -> list[tuple[str, list[int]]]:
-    """Our-side decks: best high-performing lists per baseline archetype (+ official lists)."""
+    """Our-side decks: best high-performing lists per baseline archetype (+ official lists).
+
+    When ``only_archetype`` is set (e.g. ``"dragapult-ex"``), restrict the our-side pool to
+    that single baseline archetype instead of rotating all four. Baseline opponents are
+    chosen elsewhere and are unaffected.
+    """
     hp_dir = Path(high_performing_dir)
     if not hp_dir.is_absolute():
         hp_dir = root / hp_dir
@@ -201,7 +207,16 @@ def resolve_baseline_archetype_deck_pool(
         if path.is_file() and path.suffix.lower() in {".csv", ".txt", ".deck"}
     )
 
-    for entry in load_baseline_manifest(root):
+    manifest_entries = load_baseline_manifest(root)
+    if only_archetype is not None:
+        manifest_entries = [e for e in manifest_entries if str(e["id"]) == only_archetype]
+        if not manifest_entries:
+            known = ", ".join(sorted(BASELINE_OUR_DECK_ARCHETYPE_PATTERNS))
+            raise ValueError(
+                f"unknown our-side archetype {only_archetype!r}; expected one of: {known}"
+            )
+
+    for entry in manifest_entries:
         agent_id = str(entry["id"])
         patterns = BASELINE_OUR_DECK_ARCHETYPE_PATTERNS.get(agent_id, [agent_id])
         matched: list[tuple[int, str, list[int]]] = []
@@ -231,9 +246,14 @@ def resolve_baseline_archetype_deck_pool(
                     print(f"skipping official baseline deck {official_deck}: {exc}")
 
     if not pool:
+        patterns_checked = (
+            {only_archetype: BASELINE_OUR_DECK_ARCHETYPE_PATTERNS.get(only_archetype, [only_archetype])}
+            if only_archetype is not None
+            else BASELINE_OUR_DECK_ARCHETYPE_PATTERNS
+        )
         raise ValueError(
             "no baseline archetype decks found in high_performing pool; "
-            f"checked {hp_dir} for patterns {BASELINE_OUR_DECK_ARCHETYPE_PATTERNS}"
+            f"checked {hp_dir} for patterns {patterns_checked}"
         )
     return pool
 

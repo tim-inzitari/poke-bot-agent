@@ -83,6 +83,10 @@ target/
 decks/competitive/rejected.log
 decks/competitive/progress.json
 
+# Generated single-archetype deck pools (rebuild via scripts/filter_deck_dir.py)
+decks/dragapult-only/
+decks/lucario-only/
+
 # Local Kaggle inputs
 kaggle/input/
 

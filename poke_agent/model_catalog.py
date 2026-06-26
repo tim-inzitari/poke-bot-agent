@@ -101,6 +101,18 @@ MODEL_CATALOG: dict[str, dict[str, Any]] = {
         "batch_games": 8,
         "early_stop_patience": 25,
     },
+    "transformer_blackwell": {
+        "kind": "neural",
+        "description": "Blackwell 48GB scale-up (~40M params) for Dragapult specialization",
+        "architecture": "transformer_rl",
+        "d_model": 512,
+        "model_heads": 8,
+        "model_layers": 8,
+        "model_ff": 2048,
+        "train_epochs": 500,
+        "batch_games": 32,
+        "early_stop_patience": 25,
+    },
     "hybrid_default_random": {
         "kind": "hybrid",
         "description": "Current temporal model with random fallback on failure",

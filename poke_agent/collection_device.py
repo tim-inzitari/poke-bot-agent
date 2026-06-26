@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import torch
 
+from poke_agent.device import pick_largest_cuda_device
+
 
 def resolve_collection_inference_device(
     configured: str | None,
@@ -22,14 +24,18 @@ def resolve_collection_inference_device(
         if normalized in {"cpu"}:
             return torch.device("cpu")
         if normalized in {"cuda", "gpu", "device"}:
-            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            if train_device is not None and train_device.type == "cuda":
+                return train_device
+            return pick_largest_cuda_device()
         if normalized not in {"auto", ""}:
             return torch.device(configured)
 
     if train_device is not None and train_device.type == "cuda" and torch.cuda.is_available():
         return train_device
+    if train_device is not None:
+        return torch.device("cpu")
     if torch.cuda.is_available():
-        return torch.device("cuda")
+        return pick_largest_cuda_device()
     return torch.device("cpu")
 
 

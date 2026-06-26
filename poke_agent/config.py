@@ -43,9 +43,12 @@ FALLBACK_ROLLOUT_DATA = [
     "data/container-mp-smoke.jsonl",
     "data/container-smoke.jsonl",
 ]
+# Dragapult specialization: submission deck = top Dragapult-Dusknoir list. Train what
+# you submit. For a parallel Lucario run, override AGENT_DECK_PATH back to a Mega Lucario
+# list (e.g. the former default below) via env var.
 AGENT_DECK_PATH = (
     "decks/competitive/high_performing/"
-    "2026-05_regional-melbourne-2026_10th_mega-lucario.csv"
+    "2026-05_regional-indianapolis-2026_3rd_dragapult-dusknoir.csv"
 )
 CABT_GENERATED_PATH = "data/multideck_rollouts.jsonl"
 COMPETITION_RESULTS_PATH = "data/competition-results.jsonl"
@@ -66,6 +69,11 @@ CARD_EMBED_DIM = 32
 TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
+# Defaults are the compact 256d/6L model (~5.4M params) — kept so the 3080 Ti Lucario
+# run and resume-from-baseline_153 stay compatible. The Blackwell Dragapult run scales up
+# to ~40M params by overriding these via env vars (see transformer_blackwell in
+# model_catalog.py):
+#   MODEL_D_MODEL=512 MODEL_HEADS=8 MODEL_LAYERS=8 MODEL_FF=2048 BATCH_GAMES=32 TRAIN_DATA_DEVICE=cuda
 MODEL_D_MODEL = 256
 MODEL_HEADS = 8
 MODEL_LAYERS = 6
@@ -135,9 +143,13 @@ SELF_PLAY_WORKERS = 10  # parallel CABT games per iteration (baseline + self-pla
 SELF_PLAY_OPPONENT_LATEST_PROB = 0.6  # PFSP-lite: fraction of games vs latest checkpoint
 # Official Kaggle sample agents (main.py + deck.csv each) — see baselines/README.md
 SELF_PLAY_BASELINE_DIR = "baselines/official"
-SELF_PLAY_BASELINE_WIN_RATE = 0.60  # aggregate vs all baselines → start transformer self-play
+SELF_PLAY_BASELINE_WIN_RATE = 0.50  # aggregate vs all baselines → start transformer self-play
 SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY = True  # our-side decks = high-performing baseline archetype lists
 SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE = 3  # best N lists per baseline agent (by event placement)
+# Restrict the our-side deck rotation to a single baseline archetype id (e.g. "dragapult-ex"
+# or "mega-lucario-ex"). None = rotate all four baseline archetypes. Baseline OPPONENTS are
+# unaffected — all official agents still play for the Kaggle gate.
+SELF_PLAY_OUR_ARCHETYPE = None
 SELF_PLAY_AGENT_DECK_DIR = "decks/archetype-samples"  # used when BASELINE_ARCHETYPE_DECKS_ONLY=0
 SELF_PLAY_PER_DECK_CHECKPOINT_DIR = None  # None = skip per-deck checkpoint copies (saves disk)
 SELF_PLAY_TRAIN_WINDOW_GAMES = 1000  # train on accumulated recent games, not just the latest
@@ -258,6 +270,7 @@ OVERRIDE_KEYS = frozenset({
     "self_play_baseline_win_rate",
     "self_play_baseline_archetype_decks_only",
     "self_play_baseline_top_decks_per_archetype",
+    "self_play_our_archetype",
     "self_play_agent_deck_dir",
     "self_play_per_deck_checkpoint_dir",
     "self_play_train_window_games",
@@ -368,6 +381,7 @@ def default_user_config() -> dict[str, Any]:
         "self_play_baseline_win_rate": SELF_PLAY_BASELINE_WIN_RATE,
         "self_play_baseline_archetype_decks_only": SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY,
         "self_play_baseline_top_decks_per_archetype": SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE,
+        "self_play_our_archetype": SELF_PLAY_OUR_ARCHETYPE,
         "self_play_agent_deck_dir": SELF_PLAY_AGENT_DECK_DIR,
         "self_play_per_deck_checkpoint_dir": SELF_PLAY_PER_DECK_CHECKPOINT_DIR,
         "self_play_train_window_games": SELF_PLAY_TRAIN_WINDOW_GAMES,
@@ -476,6 +490,7 @@ _ENV_MAP = {
     "self_play_baseline_win_rate": "SELF_PLAY_BASELINE_WIN_RATE",
     "self_play_baseline_archetype_decks_only": "SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY",
     "self_play_baseline_top_decks_per_archetype": "SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE",
+    "self_play_our_archetype": "SELF_PLAY_OUR_ARCHETYPE",
     "self_play_agent_deck_dir": "SELF_PLAY_AGENT_DECK_DIR",
     "self_play_per_deck_checkpoint_dir": "SELF_PLAY_PER_DECK_CHECKPOINT_DIR",
     "self_play_train_window_games": "SELF_PLAY_TRAIN_WINDOW_GAMES",
@@ -503,6 +518,10 @@ def _coerce_value(key: str, value: Any) -> Any:
         return str(value)
     if key == "self_play_per_deck_checkpoint_dir" and value in {"", "none", "None", "null"}:
         return None
+    if key == "self_play_our_archetype":
+        if value in {"", "none", "None", "null"}:
+            return None
+        return str(value)
     if key == "self_play_train_window_games":
         if value is None or value == "":
             return None
@@ -751,6 +770,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "baseline_win_rate": settings["self_play_baseline_win_rate"],
             "baseline_archetype_decks_only": settings["self_play_baseline_archetype_decks_only"],
             "baseline_top_decks_per_archetype": settings["self_play_baseline_top_decks_per_archetype"],
+            "our_archetype": settings["self_play_our_archetype"],
             "agent_deck_dir": settings["self_play_agent_deck_dir"],
             "per_deck_checkpoint_dir": settings["self_play_per_deck_checkpoint_dir"],
             "train_window_games": train_window_games,
