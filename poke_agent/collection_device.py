@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import torch
 
-from poke_agent.device import pick_largest_cuda_device
+from poke_agent.device import _env_device, pick_largest_cuda_device
+
+
+def _fallback_cuda_device(train_device: torch.device | None) -> torch.device:
+    """Prefer explicit TORCH_DEVICE, then train_device, never jump to another GPU."""
+    explicit = _env_device()
+    if explicit is not None and explicit.type == "cuda":
+        return explicit
+    if train_device is not None and train_device.type == "cuda":
+        return train_device
+    return pick_largest_cuda_device()
 
 
 def resolve_collection_inference_device(
@@ -24,9 +34,7 @@ def resolve_collection_inference_device(
         if normalized in {"cpu"}:
             return torch.device("cpu")
         if normalized in {"cuda", "gpu", "device"}:
-            if train_device is not None and train_device.type == "cuda":
-                return train_device
-            return pick_largest_cuda_device()
+            return _fallback_cuda_device(train_device)
         if normalized not in {"auto", ""}:
             return torch.device(configured)
 
@@ -35,7 +43,7 @@ def resolve_collection_inference_device(
     if train_device is not None:
         return torch.device("cpu")
     if torch.cuda.is_available():
-        return pick_largest_cuda_device()
+        return _fallback_cuda_device(None)
     return torch.device("cpu")
 
 
