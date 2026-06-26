@@ -427,6 +427,12 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
             value_lambda=float(objective_cfg.get("value_lambda", 0.9)),
             value_mc_blend=float(objective_cfg.get("value_mc_blend", 0.6)),
             policy_soft_topk=int(objective_cfg.get("policy_soft_topk", 8)),
+            value_archetype_shaping_lucario=float(
+                objective_cfg.get("value_archetype_shaping_weight_lucario", 0.0)
+            ),
+            value_archetype_shaping_dragapult=float(
+                objective_cfg.get("value_archetype_shaping_weight_dragapult", 0.0)
+            ),
         )
         del rows
         gc.collect()

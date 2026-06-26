@@ -27,7 +27,7 @@ mkdir -p dist
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
-cp submission/main.py submission/deck.csv submission/policy_runtime.py submission/beam_search.py submission/rewards.py "$STAGING/"
+cp submission/main.py submission/deck.csv submission/policy_runtime.py submission/beam_search.py submission/rewards.py submission/archetype_heuristics.py "$STAGING/"
 cp poke_agent/models/temporal_transformer.py poke_agent/features.py poke_agent/game_tracker.py "$STAGING/"
 mv "$STAGING/temporal_transformer.py" "$STAGING/model.py"
 cp -r submission/cg "$STAGING/"
@@ -35,7 +35,7 @@ cp "$CG_LIB" "$STAGING/cg/libcg.so"
 cp "$MODEL_CHECKPOINT" "$STAGING/value_model.pt"
 
 tar -czf dist/submission.tar.gz -C "$STAGING" \
-  main.py deck.csv cg model.py features.py game_tracker.py rewards.py policy_runtime.py beam_search.py value_model.pt
+  main.py deck.csv cg model.py features.py game_tracker.py rewards.py policy_runtime.py beam_search.py archetype_heuristics.py value_model.pt
 
 python3 scripts/validate_submission.py dist/submission.tar.gz
 echo "built dist/submission.tar.gz with trained model $(basename "$MODEL_CHECKPOINT")"

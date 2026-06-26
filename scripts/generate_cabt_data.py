@@ -347,6 +347,14 @@ def main() -> None:
                 complete_games += 1
             attempt += 1
     else:
+        # Cap chunk size so there are many more tasks than workers — imap_unordered then
+        # yields finished chunks steadily, giving a live progress bar instead of one silent
+        # block until all games are done.
+        chunk_cap = max(1, min(25, math.ceil(args.episodes / workers)))
+        chunks = [
+            (start, min(args.episodes, start + chunk_cap))
+            for start in range(0, args.episodes, chunk_cap)
+        ]
         tasks = [
             (
                 start,
@@ -360,12 +368,19 @@ def main() -> None:
                 weighted1,
                 reward_cfg,
             )
-            for start, stop in episode_chunks(args.episodes, workers)
+            for start, stop in chunks
         ]
+        from tqdm.auto import tqdm
+
+        collected: list[tuple[int, list[dict[str, Any]]]] = []
         with mp.get_context("spawn").Pool(processes=workers) as pool:
-            results = pool.map(run_episode_range, tasks)
+            with tqdm(total=args.episodes, desc="cabt games", unit="game") as progress:
+                for start, chunk_rows in pool.imap_unordered(run_episode_range, tasks):
+                    collected.append((start, chunk_rows))
+                    done = len({int(row["episode"]) for row in chunk_rows})
+                    progress.update(done)
         rows = []
-        for _, chunk_rows in sorted(results, key=lambda item: item[0]):
+        for _, chunk_rows in sorted(collected, key=lambda item: item[0]):
             rows.extend(chunk_rows)
     write_jsonl(Path(args.out), rows)
     print(f"cg-lib={cg_path}")

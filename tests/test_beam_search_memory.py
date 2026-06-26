@@ -47,7 +47,11 @@ def test_choose_action_caps_session_history(monkeypatch):
         ),
     )
     monkeypatch.setattr(runtime, "_model_logits", lambda session: np.zeros(8, dtype=np.float32))
-    monkeypatch.setattr(runtime, "_choose_from_policy_logits", lambda logits, actions: actions[0])
+    monkeypatch.setattr(
+        runtime,
+        "_choose_from_policy_logits",
+        lambda logits, actions, **kwargs: actions[0],
+    )
 
     session = PolicySession()
     obs = {

@@ -14,6 +14,21 @@ try:
 except ImportError:
     from poke_agent.game_tracker import DERIVED_INFERENCE_DIM, GameEventTracker
 
+# Archetype game-plan value shaping is training-only; degrade to no-op if the module
+# is unavailable (e.g. the trimmed Kaggle submission package).
+try:
+    from poke_agent.archetype_heuristics import (
+        classify_archetype as _classify_archetype,
+        resolve_value_shaping_weight as _resolve_value_shaping_weight,
+        value_shaping_bonus as _value_shaping_bonus,
+        game_phase as _archetype_game_phase,
+        matchup_context as _archetype_matchup_context,
+    )
+
+    _ARCHETYPE_HEURISTICS_AVAILABLE = True
+except ImportError:
+    _ARCHETYPE_HEURISTICS_AVAILABLE = False
+
 try:
     from rewards import (
         DEFAULT_PRIZE_COUNT,
@@ -663,6 +678,8 @@ def _build_seat_sequence(
     value_lambda: float = 0.9,
     value_mc_blend: float = 0.6,
     policy_soft_topk: int = 8,
+    value_archetype_shaping_lucario: float = 0.0,
+    value_archetype_shaping_dragapult: float = 0.0,
 ) -> tuple[
     np.ndarray,
     np.ndarray,
@@ -693,6 +710,19 @@ def _build_seat_sequence(
     seat = int(seat_rows[0]["player"])
     terminal_obs = seat_rows[-1].get("next_observation") or seat_rows[-1].get("observation")
     result = int(seat_rows[-1].get("result", -1))
+
+    # Resolve the seated archetype once; pick its value-shaping weight (0 disables).
+    shaping_archetype = ""
+    shaping_weight = 0.0
+    if _ARCHETYPE_HEURISTICS_AVAILABLE and (
+        value_archetype_shaping_lucario > 0.0 or value_archetype_shaping_dragapult > 0.0
+    ):
+        shaping_archetype = _classify_archetype(seat_deck_from_row(seat_rows[0]))
+        shaping_weight = _resolve_value_shaping_weight(
+            shaping_archetype,
+            lucario_weight=value_archetype_shaping_lucario,
+            dragapult_weight=value_archetype_shaping_dragapult,
+        )
     mc_returns = episode_outcome_returns(
         seat_rows,
         value_gamma,
@@ -772,7 +802,7 @@ def _build_seat_sequence(
         row = seat_rows[row_index]
         features, _ = encoded[row_index]
         obs_after = row.get("next_observation") or row.get("observation")
-        values[local_index] = blended_value_target(
+        value_target = blended_value_target(
             blended_returns[row_index],
             obs_after,
             seat,
@@ -780,6 +810,20 @@ def _build_seat_sequence(
             value_win=value_win,
             value_not_win=value_not_win,
         )
+        if shaping_weight > 0.0:
+            obs_before = row.get("observation")
+            phase = _archetype_game_phase(obs_before or obs_after or {}, seat)
+            context = _archetype_matchup_context(obs_before or obs_after or {}, seat, shaping_archetype)
+            bonus = _value_shaping_bonus(
+                obs_before,
+                obs_after,
+                seat,
+                archetype=shaping_archetype,
+                phase=phase,
+                context=context,
+            )
+            value_target = float(max(-1.0, min(1.0, value_target + shaping_weight * bonus)))
+        values[local_index] = value_target
         returns[local_index] = float(mc_returns[row_index])
 
         if row_index + 1 < seq_len:
@@ -861,6 +905,8 @@ def _seat_worker(args: tuple[Any, ...]):
         value_lambda,
         value_mc_blend,
         policy_soft_topk,
+        value_archetype_shaping_lucario,
+        value_archetype_shaping_dragapult,
     ) = args
     return _build_seat_sequence(
         seat_rows,
@@ -876,6 +922,8 @@ def _seat_worker(args: tuple[Any, ...]):
         value_lambda=value_lambda,
         value_mc_blend=value_mc_blend,
         policy_soft_topk=policy_soft_topk,
+        value_archetype_shaping_lucario=value_archetype_shaping_lucario,
+        value_archetype_shaping_dragapult=value_archetype_shaping_dragapult,
     )
 
 
@@ -895,6 +943,8 @@ def build_training_arrays(
     value_lambda: float = 0.9,
     value_mc_blend: float = 0.6,
     policy_soft_topk: int = 8,
+    value_archetype_shaping_lucario: float = 0.0,
+    value_archetype_shaping_dragapult: float = 0.0,
 ) -> tuple[
     np.ndarray,
     np.ndarray,
@@ -925,6 +975,8 @@ def build_training_arrays(
         value_lambda,
         value_mc_blend,
         policy_soft_topk,
+        value_archetype_shaping_lucario,
+        value_archetype_shaping_dragapult,
     )
     if worker_count <= 1 or len(sequences) < worker_count * 2:
         seat_arrays = [
@@ -942,6 +994,8 @@ def build_training_arrays(
                 value_lambda=value_lambda,
                 value_mc_blend=value_mc_blend,
                 policy_soft_topk=policy_soft_topk,
+                value_archetype_shaping_lucario=value_archetype_shaping_lucario,
+                value_archetype_shaping_dragapult=value_archetype_shaping_dragapult,
             )
             for sequence_rows in sequences
         ]

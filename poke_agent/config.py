@@ -109,6 +109,16 @@ OBJECTIVE_SEARCH_POLICY_KL_WEIGHT = 1.0
 TRAIN_ENCODER_LR = 1e-4
 TRAIN_HEAD_LR = 3e-4
 
+# --- Archetype game-plan heuristics (SME-guided) ---
+# Lucario is linear → tolerates a stronger policy prior + value shaping; Dragapult is
+# non-linear at the top level → softer prior so multiple lines stay viable.
+HEURISTIC_POLICY_BETA_LUCARIO = 0.35    # logit bias strength on root action ranking
+HEURISTIC_POLICY_BETA_DRAGAPULT = 0.15
+VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO = 0.12   # blend of bounded game-plan bonus into value target
+VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT = 0.08
+HEURISTIC_TARGET_MIX_LUCARIO = 0.20     # blend of heuristic mass into soft search-policy target
+HEURISTIC_TARGET_MIX_DRAGAPULT = 0.10
+
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 12
 BEAM_TIME_BUDGET_MS = 5000
@@ -211,6 +221,12 @@ OVERRIDE_KEYS = frozenset({
     "policy_soft_topk",
     "objective_use_soft_search_policy",
     "objective_search_policy_kl_weight",
+    "heuristic_policy_beta_lucario",
+    "heuristic_policy_beta_dragapult",
+    "value_archetype_shaping_weight_lucario",
+    "value_archetype_shaping_weight_dragapult",
+    "heuristic_target_mix_lucario",
+    "heuristic_target_mix_dragapult",
     "train_encoder_lr",
     "train_head_lr",
     "train_use_amp",
@@ -321,6 +337,12 @@ def default_user_config() -> dict[str, Any]:
         "policy_soft_topk": POLICY_SOFT_TOPK,
         "objective_use_soft_search_policy": OBJECTIVE_USE_SOFT_SEARCH_POLICY,
         "objective_search_policy_kl_weight": OBJECTIVE_SEARCH_POLICY_KL_WEIGHT,
+        "heuristic_policy_beta_lucario": HEURISTIC_POLICY_BETA_LUCARIO,
+        "heuristic_policy_beta_dragapult": HEURISTIC_POLICY_BETA_DRAGAPULT,
+        "value_archetype_shaping_weight_lucario": VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO,
+        "value_archetype_shaping_weight_dragapult": VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT,
+        "heuristic_target_mix_lucario": HEURISTIC_TARGET_MIX_LUCARIO,
+        "heuristic_target_mix_dragapult": HEURISTIC_TARGET_MIX_DRAGAPULT,
         "train_encoder_lr": TRAIN_ENCODER_LR,
         "train_head_lr": TRAIN_HEAD_LR,
         "train_use_amp": TRAIN_USE_AMP,
@@ -427,6 +449,12 @@ _ENV_MAP = {
     "policy_soft_topk": "POLICY_SOFT_TOPK",
     "objective_use_soft_search_policy": "OBJECTIVE_USE_SOFT_SEARCH_POLICY",
     "objective_search_policy_kl_weight": "OBJECTIVE_SEARCH_POLICY_KL_WEIGHT",
+    "heuristic_policy_beta_lucario": "HEURISTIC_POLICY_BETA_LUCARIO",
+    "heuristic_policy_beta_dragapult": "HEURISTIC_POLICY_BETA_DRAGAPULT",
+    "value_archetype_shaping_weight_lucario": "VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO",
+    "value_archetype_shaping_weight_dragapult": "VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT",
+    "heuristic_target_mix_lucario": "HEURISTIC_TARGET_MIX_LUCARIO",
+    "heuristic_target_mix_dragapult": "HEURISTIC_TARGET_MIX_DRAGAPULT",
     "train_encoder_lr": "TRAIN_ENCODER_LR",
     "train_head_lr": "TRAIN_HEAD_LR",
     "train_use_amp": "TRAIN_USE_AMP",
@@ -605,6 +633,12 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_baseline_top_decks_per_archetype",
         "self_play_warmup_lr_multiplier",
         "min_top_of_ladder_fraction",
+        "heuristic_policy_beta_lucario",
+        "heuristic_policy_beta_dragapult",
+        "value_archetype_shaping_weight_lucario",
+        "value_archetype_shaping_weight_dragapult",
+        "heuristic_target_mix_lucario",
+        "heuristic_target_mix_dragapult",
     }:
         return float(value)
     if key in {"fallback_rollout_data", "training_rollout_sources"}:
@@ -710,6 +744,10 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "policy_soft_topk": settings["policy_soft_topk"],
             "use_soft_search_policy": settings["objective_use_soft_search_policy"],
             "search_policy_kl_weight": settings["objective_search_policy_kl_weight"],
+            "value_archetype_shaping_weight_lucario": settings["value_archetype_shaping_weight_lucario"],
+            "value_archetype_shaping_weight_dragapult": settings["value_archetype_shaping_weight_dragapult"],
+            "heuristic_target_mix_lucario": settings["heuristic_target_mix_lucario"],
+            "heuristic_target_mix_dragapult": settings["heuristic_target_mix_dragapult"],
         },
         "model": {
             "d_model": d_model,
@@ -784,6 +822,10 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "search_determinizations": settings["search_determinizations"],
             "collection_inference_device": settings["collection_inference_device"],
             "opponent_latest_prob": settings["self_play_opponent_latest_prob"],
+            "heuristic_policy_beta_lucario": settings["heuristic_policy_beta_lucario"],
+            "heuristic_policy_beta_dragapult": settings["heuristic_policy_beta_dragapult"],
+            "heuristic_target_mix_lucario": settings["heuristic_target_mix_lucario"],
+            "heuristic_target_mix_dragapult": settings["heuristic_target_mix_dragapult"],
         },
     }
 

@@ -27,13 +27,28 @@ def _env_int(name: str, default: int) -> int:
     return int(raw)
 
 
-# Kaggle inference: wider time budget than self-play sim (1.5s); structure matches training.
+# Kaggle inference: 5s/move keeps the per-side overage bank (default 600s) from draining
+# in long games — a 10s budget burned out late and forced unsearched "whimper" moves.
+# Matches poke_agent/config.py BEAM_TIME_BUDGET_MS.
 BEAM_WIDTH = _env_int("BEAM_WIDTH", 12)
-BEAM_TIME_BUDGET_MS = _env_int("BEAM_TIME_BUDGET_MS", 10_000)
+BEAM_TIME_BUDGET_MS = _env_int("BEAM_TIME_BUDGET_MS", 5_000)
 BEAM_MIN_REMAINING_SEC = _env_int("BEAM_MIN_REMAINING_SEC", 120)
 BEAM_MAX_SEARCH_STEPS = _env_int("BEAM_MAX_SEARCH_STEPS", 128)
 BEAM_ROLLOUT_POLICY_WIDTH = _env_int("BEAM_ROLLOUT_POLICY_WIDTH", 12)
 SEARCH_DETERMINIZATIONS = _env_int("SEARCH_DETERMINIZATIONS", 2)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    return float(raw)
+
+
+# Archetype game-plan policy prior — defaults match training (config.py) so Kaggle
+# inference biases root action ranking identically to collection-time search.
+HEURISTIC_POLICY_BETA_LUCARIO = _env_float("HEURISTIC_POLICY_BETA_LUCARIO", 0.35)
+HEURISTIC_POLICY_BETA_DRAGAPULT = _env_float("HEURISTIC_POLICY_BETA_DRAGAPULT", 0.15)
 
 OPPONENT_FILLER_CARD = 1072
 OPPONENT_ENERGY_CARD = 1
@@ -48,6 +63,8 @@ class BeamSearchConfig:
     max_search_steps: int = BEAM_MAX_SEARCH_STEPS
     rollout_policy_width: int = BEAM_ROLLOUT_POLICY_WIDTH
     num_determinizations: int = SEARCH_DETERMINIZATIONS
+    heuristic_policy_beta_lucario: float = HEURISTIC_POLICY_BETA_LUCARIO
+    heuristic_policy_beta_dragapult: float = HEURISTIC_POLICY_BETA_DRAGAPULT
 
 
 def remaining_overage_seconds(obs_dict: dict[str, Any]) -> float | None:
@@ -66,6 +83,26 @@ def should_skip_beam_search(obs_dict: dict[str, Any], config: BeamSearchConfig) 
     if remaining is not None and remaining < config.min_remaining_sec:
         return True
     return False
+
+
+# Per-move budget never exceeds this fraction of the remaining overage bank, so long
+# games taper search smoothly instead of hitting a hard floor and "whimpering".
+_OVERAGE_BUDGET_FRACTION = 0.06
+_MIN_ADAPTIVE_BUDGET_MS = 1_000
+
+
+def effective_time_budget_ms(obs_dict: dict[str, Any], config: BeamSearchConfig) -> int:
+    """Scale the per-move search budget down as the overage bank drains."""
+    if config.sim_mode:
+        return int(config.time_budget_ms)
+    remaining = remaining_overage_seconds(obs_dict)
+    if remaining is None:
+        return int(config.time_budget_ms)
+    # Reserve the safety floor; spend only a fraction of what is left above it.
+    spendable_ms = max(0.0, (remaining - config.min_remaining_sec)) * 1000.0
+    adaptive = spendable_ms * _OVERAGE_BUDGET_FRACTION
+    capped = min(float(config.time_budget_ms), adaptive)
+    return int(max(_MIN_ADAPTIVE_BUDGET_MS, capped))
 
 
 def _hidden_card_seed(obs_dict: dict[str, Any]) -> int:
@@ -141,12 +178,27 @@ def rank_actions_by_policy(
     agent: TrainedPolicyAgent,
     logits: np.ndarray,
     actions: list[list[int]],
+    *,
+    heuristic_scorer: Any | None = None,
+    beta: float = 0.0,
 ) -> list[tuple[float, list[int]]]:
     ranked: list[tuple[float, list[int]]] = []
     for action in actions:
         action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
         action_class = stable_hash_index(action_key, agent._policy_dim)
         ranked.append((float(logits[action_class]), action))
+
+    if heuristic_scorer is not None and beta > 0.0 and len(ranked) > 1:
+        values = np.array([score for score, _ in ranked], dtype=np.float64)
+        low = float(values.min())
+        high = float(values.max())
+        span = (high - low) if high > low else 1.0
+        ranked.sort(
+            key=lambda item: (item[0] - low) / span + beta * float(heuristic_scorer(item[1])),
+            reverse=True,
+        )
+        return ranked
+
     ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
 
@@ -339,9 +391,31 @@ def run_beam_search(
     config: BeamSearchConfig | None = None,
 ) -> list[int]:
     config = config or BeamSearchConfig()
-    deadline = time.perf_counter() + (config.time_budget_ms / 1000.0)
+    budget_ms = effective_time_budget_ms(obs_dict, config)
+    deadline = time.perf_counter() + (budget_ms / 1000.0)
     logits = agent._model_logits()
-    ranked = rank_actions_by_policy(agent, logits, actions)[: max(1, config.width)]
+
+    heuristic_scorer = None
+    heuristic_beta = 0.0
+    if config.heuristic_policy_beta_lucario > 0.0 or config.heuristic_policy_beta_dragapult > 0.0:
+        from archetype_heuristics import heuristic_for_deck
+
+        heuristic = heuristic_for_deck(
+            our_deck,
+            lucario_beta=config.heuristic_policy_beta_lucario,
+            dragapult_beta=config.heuristic_policy_beta_dragapult,
+        )
+        if heuristic.active:
+            heuristic_beta = heuristic.beta
+            heuristic_scorer = heuristic.make_action_scorer(obs_dict, root_your_index)
+
+    ranked = rank_actions_by_policy(
+        agent,
+        logits,
+        actions,
+        heuristic_scorer=heuristic_scorer,
+        beta=heuristic_beta,
+    )[: max(1, config.width)]
 
     scored: list[tuple[float, list[int]]] = []
     for policy_score, action in ranked:

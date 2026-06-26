@@ -166,13 +166,34 @@ class PolicyRuntime:
         with torch.no_grad():
             return float(self._model.forward_last(x, mask, card_ids=cards)["value"].squeeze().cpu().item())
 
-    def _choose_from_policy_logits(self, logits: np.ndarray, actions: list[list[int]]) -> list[int]:
+    def _choose_from_policy_logits(
+        self,
+        logits: np.ndarray,
+        actions: list[list[int]],
+        *,
+        heuristic_scorer: Any | None = None,
+        beta: float = 0.0,
+    ) -> list[int]:
+        use_heuristic = heuristic_scorer is not None and beta > 0.0 and len(actions) > 1
+        norm_low = norm_span = 0.0
+        if use_heuristic:
+            raw = [float(logits[stable_hash_index(
+                json.dumps(action, sort_keys=True, separators=(",", ":")), self._policy_dim
+            )]) for action in actions]
+            norm_low = min(raw)
+            high = max(raw)
+            norm_span = (high - norm_low) if high > norm_low else 1.0
+
         best_action = actions[0]
         best_score = float("-inf")
         for action in actions:
             action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
             action_class = stable_hash_index(action_key, self._policy_dim)
-            score = float(logits[action_class])
+            logit = float(logits[action_class])
+            if use_heuristic:
+                score = (logit - norm_low) / norm_span + beta * float(heuristic_scorer(action))
+            else:
+                score = logit
             if score > best_score:
                 best_score = score
                 best_action = action
@@ -230,7 +251,37 @@ class PolicyRuntime:
                     session.last_search_diagnostics = None
 
         session.last_search_diagnostics = None
-        return self._choose_from_policy_logits(logits, actions)
+        heuristic_scorer, heuristic_beta = self._resolve_policy_prior(
+            obs_dict, our_deck, root_your_index, beam_config
+        )
+        return self._choose_from_policy_logits(
+            logits, actions, heuristic_scorer=heuristic_scorer, beta=heuristic_beta
+        )
+
+    def _resolve_policy_prior(
+        self,
+        obs_dict: dict[str, Any],
+        our_deck: list[int] | None,
+        root_your_index: int,
+        beam_config: Any | None,
+    ) -> tuple[Any | None, float]:
+        """Build an archetype action scorer for the no-beam fallback path (parity)."""
+        if our_deck is None or beam_config is None:
+            return None, 0.0
+        lucario_beta = float(getattr(beam_config, "heuristic_policy_beta_lucario", 0.0) or 0.0)
+        dragapult_beta = float(getattr(beam_config, "heuristic_policy_beta_dragapult", 0.0) or 0.0)
+        if lucario_beta <= 0.0 and dragapult_beta <= 0.0:
+            return None, 0.0
+        from poke_agent.archetype_heuristics import heuristic_for_deck
+
+        heuristic = heuristic_for_deck(
+            our_deck,
+            lucario_beta=lucario_beta,
+            dragapult_beta=dragapult_beta,
+        )
+        if not heuristic.active:
+            return None, 0.0
+        return heuristic.make_action_scorer(obs_dict, root_your_index), heuristic.beta
 
 
 def make_policy_fn(

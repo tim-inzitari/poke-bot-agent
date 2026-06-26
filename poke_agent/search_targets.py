@@ -98,6 +98,50 @@ def kl_divergence(target: dict[str, float], approximate: dict[str, float]) -> fl
     return float(max(0.0, kl))
 
 
+def heuristic_distribution_over_actions(
+    actions: list[list[int]],
+    scorer: Any,
+    *,
+    temperature: float = 1.0,
+) -> dict[str, float]:
+    """Softmax distribution over actions from a heuristic action scorer."""
+    if not actions:
+        return {}
+    scores = np.array([float(scorer(action)) for action in actions], dtype=np.float64)
+    scores = scores / max(temperature, 1e-6)
+    scores -= scores.max()
+    probs = np.exp(scores)
+    total = probs.sum()
+    if total <= 0:
+        uniform = 1.0 / len(actions)
+        return {action_key(action): uniform for action in actions}
+    probs /= total
+    return {action_key(actions[index]): float(probs[index]) for index in range(len(actions))}
+
+
+def blend_distributions(
+    base: dict[str, float],
+    extra: dict[str, float],
+    *,
+    mix: float,
+) -> dict[str, float]:
+    """Convex blend of two action distributions, renormalized over the key union."""
+    if mix <= 0.0 or not extra:
+        return base
+    if not base:
+        return extra
+    mix = min(1.0, max(0.0, float(mix)))
+    keys = set(base) | set(extra)
+    blended = {
+        key: (1.0 - mix) * float(base.get(key, 0.0)) + mix * float(extra.get(key, 0.0))
+        for key in keys
+    }
+    total = sum(blended.values())
+    if total <= 0:
+        return base
+    return {key: value / total for key, value in blended.items()}
+
+
 def build_search_diagnostics(
     *,
     logits: np.ndarray,
@@ -106,8 +150,13 @@ def build_search_diagnostics(
     best_action: list[int],
     best_value: float,
     policy_dim: int,
+    heuristic_scorer: Any | None = None,
+    heuristic_target_mix: float = 0.0,
 ) -> SearchDiagnostics:
     search_target = search_distribution_from_ranked(ranked, policy_dim=policy_dim)
+    if heuristic_scorer is not None and heuristic_target_mix > 0.0:
+        heuristic_dist = heuristic_distribution_over_actions(actions, heuristic_scorer)
+        search_target = blend_distributions(search_target, heuristic_dist, mix=heuristic_target_mix)
     policy_target = policy_distribution_over_actions(logits, actions, policy_dim=policy_dim)
     kl = kl_divergence(search_target, policy_target)
     return SearchDiagnostics(
