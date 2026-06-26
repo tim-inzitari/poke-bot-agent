@@ -100,12 +100,25 @@ def test_lucario_evolve_into_mega_or_hariyama_scores_high():
 
 def test_dragapult_mirror_reduces_early_aggression():
     options = [{"type": 13, "attackId": PHANTOM_DIVE_ATTACK}]
-    default_obs = _obs(turn=1, own_prizes=6, opp_prizes=6, opp_in_play=[{"id": 500, "hp": 1, "maxHp": 1}, 1, 2], options=options)
-    mirror_obs = _obs(turn=1, own_prizes=6, opp_prizes=6, opp_in_play=[{"id": DRAGAPULT_EX, "hp": 1, "maxHp": 1}, DRAKLOAK, 2], options=options)
+    default_obs = _obs(
+        turn=1,
+        own_prizes=6,
+        opp_prizes=6,
+        opp_in_play=[{"id": 9000, "hp": 1, "maxHp": 1}, 9001, 9002],
+        options=options,
+    )
+    mirror_obs = _obs(
+        turn=1,
+        own_prizes=6,
+        opp_prizes=6,
+        opp_in_play=[{"id": DRAGAPULT_EX, "hp": 1, "maxHp": 1}, DRAKLOAK, 9002],
+        options=options,
+    )
 
     default_ctx = matchup_context(default_obs, 0, ARCHETYPE_DRAGAPULT)
     mirror_ctx = matchup_context(mirror_obs, 0, ARCHETYPE_DRAGAPULT)
     assert mirror_ctx == "mirror"
+    assert default_ctx != "mirror"
 
     pd_default = score_action([0], default_obs, 0, archetype=ARCHETYPE_DRAGAPULT, phase="early", context=default_ctx)
     pd_mirror = score_action([0], mirror_obs, 0, archetype=ARCHETYPE_DRAGAPULT, phase="early", context=mirror_ctx)

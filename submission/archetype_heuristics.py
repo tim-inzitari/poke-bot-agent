@@ -14,9 +14,20 @@ from typing import Any, Callable
 
 from rewards import prize_count
 
+try:
+    from archetype_signatures_data import VISIBLE_ARCHETYPE_SIGNATURES, _WEIGHT_SCALE
+except ImportError:
+    VISIBLE_ARCHETYPE_SIGNATURES: dict[str, dict[int, int]] = {}
+    _WEIGHT_SCALE = 10_000
+
 ARCHETYPE_DRAGAPULT = "dragapult-ex"
 ARCHETYPE_LUCARIO = "mega-lucario-ex"
 ARCHETYPE_UNKNOWN = "unknown"
+
+HEURISTIC_ARCHETYPE_SLUG_PATTERNS = {
+    ARCHETYPE_DRAGAPULT: ["dragapult"],
+    ARCHETYPE_LUCARIO: ["mega-lucario", "lucario-hariyama"],
+}
 
 DREEPY, DRAKLOAK, DRAGAPULT_EX = 119, 120, 121
 DUSKULL, DUSCLOPS, DUSKNOIR = 131, 132, 133
@@ -34,6 +45,27 @@ OPPONENT_ARCHETYPE_SIGNATURES = {
     ARCHETYPE_DRAGAPULT: DRAGAPULT_SIGNATURE | DUSKNOIR_LINE,
     ARCHETYPE_LUCARIO: LUCARIO_SIGNATURE | LUCARIO_ENGINE | frozenset({MAKUHITA, HARIYAMA}),
 }
+
+_VISIBLE_MIN_SCORE = 0.15
+
+def _deck_matches_archetype_patterns(slug: str, patterns: list[str]) -> bool:
+    for pattern in patterns:
+        if slug == pattern or slug.startswith(f"{pattern}-"):
+            return True
+    return False
+
+
+def opponent_matches_family(opponent_slug: str, family: str) -> bool:
+    if opponent_slug == ARCHETYPE_UNKNOWN:
+        return False
+    patterns = HEURISTIC_ARCHETYPE_SLUG_PATTERNS.get(family)
+    if not patterns:
+        return False
+    return _deck_matches_archetype_patterns(opponent_slug, patterns)
+
+
+def _our_family_patterns(our_archetype: str) -> list[str]:
+    return list(HEURISTIC_ARCHETYPE_SLUG_PATTERNS.get(our_archetype) or [])
 
 PHANTOM_DIVE_ATTACK = 154
 ITCHY_POLLEN_ATTACK = 323
@@ -133,23 +165,59 @@ def game_phase(obs: dict[str, Any], seat: int) -> str:
     return "mid"
 
 
-def predict_opponent_archetype(obs: dict[str, Any], seat: int) -> str:
-    opp_ids = set(_cards_in_play(_player(obs, 1 - seat)))
-    if not opp_ids:
-        return ARCHETYPE_UNKNOWN
+def _visible_card_counter(player: dict[str, Any]) -> Counter[int]:
+    return Counter(_cards_in_play(player))
+
+
+def _weighted_visible_score(visible: Counter[int], weights: dict[int, int]) -> float:
+    if not visible or not weights:
+        return 0.0
+    matched = [(card, weights.get(card, 0)) for card in visible if weights.get(card, 0) > 0]
+    if not matched:
+        return 0.0
+    hit = sum(visible[card] * weight for card, weight in matched)
+    match_count = len(matched)
+    coverage = match_count / len(visible)
+    strength = (hit / match_count) / _WEIGHT_SCALE
+    return coverage * strength
+
+
+def _predict_opponent_from_deck_signatures(visible: Counter[int]) -> tuple[str, float]:
+    best = ARCHETYPE_UNKNOWN
+    best_score = 0.0
+    for slug, raw_weights in VISIBLE_ARCHETYPE_SIGNATURES.items():
+        score = _weighted_visible_score(visible, raw_weights)
+        if score > best_score:
+            best = slug
+            best_score = score
+    return best, best_score
+
+
+def _predict_opponent_from_hardcoded(visible: Counter[int]) -> str:
     best = ARCHETYPE_UNKNOWN
     best_overlap = 0
     for candidate, signature in OPPONENT_ARCHETYPE_SIGNATURES.items():
-        overlap = len(opp_ids & signature)
+        overlap = sum(1 for card in visible if card in signature)
         if overlap > best_overlap:
             best = candidate
             best_overlap = overlap
-    return best
+    return best if best_overlap > 0 else ARCHETYPE_UNKNOWN
+
+
+def predict_opponent_archetype(obs: dict[str, Any], seat: int) -> str:
+    visible = _visible_card_counter(_player(obs, 1 - seat))
+    if not visible:
+        return ARCHETYPE_UNKNOWN
+    slug, score = _predict_opponent_from_deck_signatures(visible)
+    if slug != ARCHETYPE_UNKNOWN and score >= _VISIBLE_MIN_SCORE:
+        return slug
+    return _predict_opponent_from_hardcoded(visible)
 
 
 def matchup_context(obs: dict[str, Any], seat: int, archetype: str) -> str:
-    opponent = predict_opponent_archetype(obs, seat)
-    if archetype != ARCHETYPE_UNKNOWN and opponent == archetype:
+    opponent_slug = predict_opponent_archetype(obs, seat)
+    our_patterns = _our_family_patterns(archetype)
+    if our_patterns and _deck_matches_archetype_patterns(opponent_slug, our_patterns):
         return "mirror"
     own_prizes, opp_prizes = _seat_prize_counts(obs, seat)
     turn = int(_current(obs).get("turn", 0) or 0)
@@ -167,7 +235,7 @@ def _score_lucario_option(
     option: dict[str, Any], player: dict[str, Any], *, phase: str, opponent_archetype: str
 ) -> float:
     otype = int(option.get("type", -1))
-    vs_dragapult = opponent_archetype == ARCHETYPE_DRAGAPULT
+    vs_dragapult = opponent_matches_family(opponent_archetype, ARCHETYPE_DRAGAPULT)
     if otype == OPTION_ATTACK:
         if int(option.get("attackId", -1)) == MEGA_BRAVE_ATTACK:
             return 1.0 if phase in ("mid", "late") else 0.5
@@ -206,7 +274,7 @@ def _score_dragapult_option(
     opponent_archetype: str,
 ) -> float:
     otype = int(option.get("type", -1))
-    vs_lucario = opponent_archetype == ARCHETYPE_LUCARIO
+    vs_lucario = opponent_matches_family(opponent_archetype, ARCHETYPE_LUCARIO)
     if otype == OPTION_ATTACK:
         attack_id = int(option.get("attackId", -1))
         if attack_id == PHANTOM_DIVE_ATTACK:
@@ -254,6 +322,7 @@ def score_action(
     archetype: str,
     phase: str,
     context: str,
+    opponent_archetype: str = ARCHETYPE_UNKNOWN,
 ) -> float:
     options = _select_options(obs)
     if not options or archetype == ARCHETYPE_UNKNOWN:
@@ -266,9 +335,19 @@ def score_action(
             continue
         option = options[int(index)]
         if archetype == ARCHETYPE_LUCARIO:
-            total += _score_lucario_option(option, player, phase=phase)
+            total += _score_lucario_option(
+                option, player, phase=phase, opponent_archetype=opponent_archetype
+            )
         else:
-            total += _score_dragapult_option(option, obs, player, seat, phase=phase, context=context)
+            total += _score_dragapult_option(
+                option,
+                obs,
+                player,
+                seat,
+                phase=phase,
+                context=context,
+                opponent_archetype=opponent_archetype,
+            )
         counted += 1
     if counted == 0:
         return 0.0
@@ -294,10 +373,19 @@ class ArchetypeHeuristic:
 
     def make_action_scorer(self, obs: dict[str, Any], seat: int) -> Callable[[list[int]], float]:
         phase = game_phase(obs, seat)
+        opponent_archetype = predict_opponent_archetype(obs, seat)
         context = matchup_context(obs, seat, self.archetype)
 
         def scorer(action: list[int]) -> float:
-            return score_action(action, obs, seat, archetype=self.archetype, phase=phase, context=context)
+            return score_action(
+                action,
+                obs,
+                seat,
+                archetype=self.archetype,
+                phase=phase,
+                context=context,
+                opponent_archetype=opponent_archetype,
+            )
 
         return scorer
 

@@ -26,8 +26,12 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Callable
 
+from poke_agent.archetypes import HEURISTIC_ARCHETYPE_SLUG_PATTERNS, load_archetype_registry
+from poke_agent.deck_pool import deck_matches_archetype_patterns
 from poke_agent.rewards import seat_prize_counts
 
 # --- Archetype identities ---
@@ -48,12 +52,14 @@ DUSKNOIR_LINE = frozenset({DUSKULL, DUSCLOPS, DUSKNOIR})
 LUCARIO_SIGNATURE = frozenset({RIOLU, MEGA_LUCARIO_EX})
 LUCARIO_ENGINE = frozenset({SOLROCK, LUNATONE})
 
-# Opponent archetypes we can recognize from visible board card IDs. The gameplan
-# branches on the *predicted* opponent so we adapt before their deck is fully revealed.
+# Fallback when the deck registry is unavailable (e.g. trimmed submission env).
 OPPONENT_ARCHETYPE_SIGNATURES: dict[str, frozenset[int]] = {
     ARCHETYPE_DRAGAPULT: DRAGAPULT_SIGNATURE | DUSKNOIR_LINE,
     ARCHETYPE_LUCARIO: LUCARIO_SIGNATURE | LUCARIO_ENGINE | frozenset({MAKUHITA, HARIYAMA}),
 }
+
+_VISIBLE_MIN_SCORE = 0.15
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # --- Attack IDs ---
 PHANTOM_DIVE_ATTACK = 154
@@ -173,25 +179,75 @@ def game_phase(obs: dict[str, Any], seat: int) -> str:
     return "mid"
 
 
-def predict_opponent_archetype(obs: dict[str, Any], seat: int) -> str:
-    """Best-guess opponent archetype from their visible Pokémon (active + bench)."""
-    opp_ids = set(_cards_in_play(_player(obs, 1 - seat)))
-    if not opp_ids:
-        return ARCHETYPE_UNKNOWN
+def _visible_card_counter(player: dict[str, Any]) -> Counter[int]:
+    return Counter(_cards_in_play(player))
+
+
+@lru_cache(maxsize=1)
+def _opponent_prediction_registry():
+    return load_archetype_registry(_PROJECT_ROOT)
+
+
+def _predict_opponent_from_signatures(visible: Counter[int]) -> str:
     best = ARCHETYPE_UNKNOWN
     best_overlap = 0
     for candidate, signature in OPPONENT_ARCHETYPE_SIGNATURES.items():
-        overlap = len(opp_ids & signature)
+        overlap = sum(1 for card in visible if card in signature)
         if overlap > best_overlap:
             best = candidate
             best_overlap = overlap
-    return best
+    return best if best_overlap > 0 else ARCHETYPE_UNKNOWN
+
+
+@dataclass(frozen=True)
+class OpponentPrediction:
+    slug: str
+    confidence: float
+
+
+def opponent_matches_family(opponent_slug: str, family: str) -> bool:
+    """Whether a predicted meta slug belongs to a trained heuristic family."""
+    if opponent_slug == ARCHETYPE_UNKNOWN:
+        return False
+    patterns = HEURISTIC_ARCHETYPE_SLUG_PATTERNS.get(family)
+    if not patterns:
+        return False
+    return deck_matches_archetype_patterns(opponent_slug, patterns)
+
+
+def _our_family_patterns(our_archetype: str) -> list[str]:
+    return list(HEURISTIC_ARCHETYPE_SLUG_PATTERNS.get(our_archetype) or [])
+
+
+def predict_opponent(obs: dict[str, Any], seat: int) -> OpponentPrediction:
+    """Best-guess opponent meta archetype from visible Pokémon (active + bench)."""
+    visible = _visible_card_counter(_player(obs, 1 - seat))
+    if not visible:
+        return OpponentPrediction(slug=ARCHETYPE_UNKNOWN, confidence=0.0)
+    try:
+        registry = _opponent_prediction_registry()
+        slug, score = registry.classify_visible_archetype(visible, min_score=_VISIBLE_MIN_SCORE)
+        if slug != "unknown":
+            return OpponentPrediction(slug=slug, confidence=score)
+    except Exception:
+        pass
+    fallback = _predict_opponent_from_signatures(visible)
+    return OpponentPrediction(
+        slug=fallback,
+        confidence=0.2 if fallback != ARCHETYPE_UNKNOWN else 0.0,
+    )
+
+
+def predict_opponent_archetype(obs: dict[str, Any], seat: int) -> str:
+    """Competitive meta slug (e.g. ``dragapult-dusknoir``) or ``unknown``."""
+    return predict_opponent(obs, seat).slug
 
 
 def matchup_context(obs: dict[str, Any], seat: int, archetype: str) -> str:
-    """Opponent-shape context from predicted archetype and prize pace."""
-    opponent = predict_opponent_archetype(obs, seat)
-    if archetype != ARCHETYPE_UNKNOWN and opponent == archetype:
+    """Opponent-shape context from predicted meta slug and prize pace."""
+    opponent_slug = predict_opponent_archetype(obs, seat)
+    our_patterns = _our_family_patterns(archetype)
+    if our_patterns and deck_matches_archetype_patterns(opponent_slug, our_patterns):
         return "mirror"
     own_prizes, opp_prizes = seat_prize_counts(obs, seat=seat)
     turn = int(_current(obs).get("turn", 0) or 0)
@@ -214,7 +270,7 @@ def _score_lucario_option(
 ) -> float:
     """Linear Lucario plan: engine setup, Aura Jab accel, Mega Brave / Hariyama finish."""
     otype = int(option.get("type", -1))
-    vs_dragapult = opponent_archetype == ARCHETYPE_DRAGAPULT
+    vs_dragapult = opponent_matches_family(opponent_archetype, ARCHETYPE_DRAGAPULT)
     if otype == OPTION_ATTACK:
         if int(option.get("attackId", -1)) == MEGA_BRAVE_ATTACK:
             return 1.0 if phase in ("mid", "late") else 0.5
@@ -256,7 +312,7 @@ def _score_dragapult_option(
 ) -> float:
     """Soft, branching Dragapult plan: stall, spread, convert — context-conditioned."""
     otype = int(option.get("type", -1))
-    vs_lucario = opponent_archetype == ARCHETYPE_LUCARIO
+    vs_lucario = opponent_matches_family(opponent_archetype, ARCHETYPE_LUCARIO)
     if otype == OPTION_ATTACK:
         attack_id = int(option.get("attackId", -1))
         if attack_id == PHANTOM_DIVE_ATTACK:
