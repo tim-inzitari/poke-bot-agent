@@ -154,6 +154,8 @@ SELF_PLAY_OPPONENT_LATEST_PROB = 0.6  # PFSP-lite: fraction of games vs latest c
 # Official Kaggle sample agents (main.py + deck.csv each) — see baselines/README.md
 SELF_PLAY_BASELINE_DIR = "baselines/official"
 SELF_PLAY_BASELINE_WIN_RATE = 0.50  # aggregate vs all baselines → start transformer self-play
+SELF_PLAY_BASELINE_GAMES = 1000  # training games per baseline iteration (rotated across 4 agents)
+SELF_PLAY_BASELINE_EVAL_GAMES = 200  # eval total per iteration (÷4 baselines → 50 each)
 SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY = True  # our-side decks = high-performing baseline archetype lists
 SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE = 3  # best N lists per baseline agent (by event placement)
 # Restrict the our-side deck rotation to a single baseline archetype id (e.g. "dragapult-ex"
@@ -165,7 +167,7 @@ SELF_PLAY_PER_DECK_CHECKPOINT_DIR = None  # None = skip per-deck checkpoint copi
 SELF_PLAY_TRAIN_WINDOW_GAMES = 1000  # train on accumulated recent games, not just the latest
                                       # --games window (None = match --games; 150 overfits badly)
 SELF_PLAY_TRIM_ROLLOUT_FILE = True  # keep JSONL on disk trimmed to the train window
-SELF_PLAY_WARMUP_ITERATIONS = 10  # first N transformer self-play cycles use boosted LR (0 = off)
+SELF_PLAY_WARMUP_ITERATIONS = 10  # first N baseline + self-play cycles use boosted LR (0 = off)
 SELF_PLAY_WARMUP_LR_MULTIPLIER = 25.0  # LR multiplier during warmup (3e-4 → 7.5e-3 at default)
 
 # --- Training loop ---
@@ -284,6 +286,8 @@ OVERRIDE_KEYS = frozenset({
     "self_play_workers",
     "self_play_baseline_dir",
     "self_play_baseline_win_rate",
+    "self_play_baseline_games",
+    "self_play_baseline_eval_games",
     "self_play_baseline_archetype_decks_only",
     "self_play_baseline_top_decks_per_archetype",
     "self_play_our_archetype",
@@ -401,6 +405,8 @@ def default_user_config() -> dict[str, Any]:
         "self_play_workers": SELF_PLAY_WORKERS,
         "self_play_baseline_dir": SELF_PLAY_BASELINE_DIR,
         "self_play_baseline_win_rate": SELF_PLAY_BASELINE_WIN_RATE,
+        "self_play_baseline_games": SELF_PLAY_BASELINE_GAMES,
+        "self_play_baseline_eval_games": SELF_PLAY_BASELINE_EVAL_GAMES,
         "self_play_baseline_archetype_decks_only": SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY,
         "self_play_baseline_top_decks_per_archetype": SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE,
         "self_play_our_archetype": SELF_PLAY_OUR_ARCHETYPE,
@@ -516,6 +522,8 @@ _ENV_MAP = {
     "self_play_workers": "SELF_PLAY_WORKERS",
     "self_play_baseline_dir": "SELF_PLAY_BASELINE_DIR",
     "self_play_baseline_win_rate": "SELF_PLAY_BASELINE_WIN_RATE",
+    "self_play_baseline_games": "SELF_PLAY_BASELINE_GAMES",
+    "self_play_baseline_eval_games": "SELF_PLAY_BASELINE_EVAL_GAMES",
     "self_play_baseline_archetype_decks_only": "SELF_PLAY_BASELINE_ARCHETYPE_DECKS_ONLY",
     "self_play_baseline_top_decks_per_archetype": "SELF_PLAY_BASELINE_TOP_DECKS_PER_ARCHETYPE",
     "self_play_our_archetype": "SELF_PLAY_OUR_ARCHETYPE",
@@ -597,6 +605,8 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_iterations",
         "self_play_train_epochs",
         "self_play_eval_games",
+        "self_play_baseline_games",
+        "self_play_baseline_eval_games",
         "self_play_opponent_pool_size",
         "self_play_target_rank",
         "self_play_plateau_patience",
@@ -806,6 +816,8 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "workers": settings["self_play_workers"],
             "baseline_dir": settings["self_play_baseline_dir"],
             "baseline_win_rate": settings["self_play_baseline_win_rate"],
+            "baseline_games": settings["self_play_baseline_games"],
+            "baseline_eval_games": settings["self_play_baseline_eval_games"],
             "baseline_archetype_decks_only": settings["self_play_baseline_archetype_decks_only"],
             "baseline_top_decks_per_archetype": settings["self_play_baseline_top_decks_per_archetype"],
             "our_archetype": settings["self_play_our_archetype"],

@@ -22,6 +22,9 @@ export TRAIN_TENSOR_CACHE_DIR=outputs/cache/training_tensors/lucario_fresh
 export SELF_PLAY_OUTPUT_PATH=outputs/rollouts/lucario_self_play.jsonl
 export SELF_PLAY_CHECKPOINT_DIR=outputs/checkpoints/self_play/lucario
 export SELF_PLAY_WORKERS=6
+export SELF_PLAY_BASELINE_GAMES=1000
+export SELF_PLAY_BASELINE_EVAL_GAMES=200
+export SELF_PLAY_TRAIN_WINDOW_GAMES=1000
 
 echo "==> Lucario / 3080 Ti — fresh start (features changed)"
 rm -rf "${TRAIN_TENSOR_CACHE_DIR}" "${SELF_PLAY_CHECKPOINT_DIR}"

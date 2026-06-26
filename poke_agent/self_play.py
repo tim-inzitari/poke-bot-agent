@@ -104,6 +104,8 @@ class SelfPlaySettings:
     workers: int | None = None
     baseline_dir: str | None = None
     baseline_win_rate_threshold: float = 0.60
+    baseline_games_per_iteration: int | None = None
+    baseline_eval_games: int | None = None
     baseline_agents: list[BaselineAgent] = field(default_factory=list)
     agent_deck_pool: list[tuple[str, list[int]]] = field(default_factory=list)
     per_deck_checkpoint_dir: Path | None = None
@@ -1868,7 +1870,11 @@ def run_baseline_iteration(
     if not settings.agent_deck_pool:
         raise RuntimeError("agent deck pool is empty — set SELF_PLAY_AGENT_DECK_DIR")
 
-    workers = resolve_self_play_workers(settings, games=settings.games_per_iteration)
+    collect_games = int(settings.baseline_games_per_iteration or settings.games_per_iteration)
+    eval_games = int(settings.baseline_eval_games or settings.eval_games)
+    eval_each = max(1, eval_games // max(1, len(settings.baseline_agents)))
+
+    workers = resolve_self_play_workers(settings, games=collect_games)
     collection_device = resolve_collection_device(config, device)
     play_root = root or settings.checkpoint_dir.parent.parent
     worker_note = f"workers={workers}, inference={collection_device}"
@@ -1877,8 +1883,9 @@ def run_baseline_iteration(
         inference_device=collection_device,
     )
     print(
-        f"baseline iter {iteration}: collect {settings.games_per_iteration} games "
+        f"baseline iter {iteration}: collect {collect_games} games "
         f"({worker_note}, train={device}) vs {len(settings.baseline_agents)} official agents, "
+        f"eval {eval_games} total ({eval_each} each), "
         f"our deck pool={len(settings.agent_deck_pool)}, checkpoint={current_checkpoint.name}"
     )
     if vram_note:
@@ -1889,7 +1896,7 @@ def run_baseline_iteration(
         baselines=settings.baseline_agents,
         agent_deck_pool=settings.agent_deck_pool,
         current_runtime=current_runtime,
-        games=settings.games_per_iteration,
+        games=collect_games,
         start_episode=start_episode,
         use_beam=settings.use_beam,
         beam_config=settings.beam_config,
@@ -1921,8 +1928,8 @@ def run_baseline_iteration(
         agent_deck=eval_deck,
         agent_name=eval_deck_name,
         baselines=settings.baseline_agents,
-        games=settings.eval_games,
-        start_episode=start_episode + settings.games_per_iteration,
+        games=eval_games,
+        start_episode=start_episode + collect_games,
         settings=settings,
         root=play_root,
         agent_checkpoint=current_checkpoint,
@@ -1940,8 +1947,8 @@ def run_baseline_iteration(
             opponent_deck=probe_baseline.deck,
             opponent_name=probe_baseline.name,
             opponent_agent_id=probe_baseline.agent_id,
-            games=min(16, max(4, settings.eval_games // 2)),
-            start_episode=start_episode + settings.games_per_iteration + 10_000,
+            games=min(16, max(4, eval_each // 2)),
+            start_episode=start_episode + collect_games + 10_000,
             settings=settings,
             root=play_root,
             agent_checkpoint=current_checkpoint,
@@ -1975,6 +1982,7 @@ def run_baseline_iteration(
             data_path=settings.output_path,
             checkpoint_path=current_checkpoint,
             iteration=iteration,
+            apply_lr_warmup=True,
             periodic_checkpoint_path=iter_path,
         )
         training_report = save_checkpoint(
@@ -1999,6 +2007,8 @@ def run_baseline_iteration(
     return {
         "iteration": iteration,
         "phase": "baseline",
+        "collect_games": collect_games,
+        "eval_games": eval_games,
         "rows_collected": len(rows),
         "data_path": str(settings.output_path),
         "current_checkpoint": str(current_checkpoint),
@@ -2037,7 +2047,8 @@ def run_baseline_phase_loop(
     manifest["phase"] = "baseline"
     print(
         f"baseline training window: {settings.train_window_games} games "
-        f"(collect {settings.games_per_iteration} per iteration, "
+        f"(collect {settings.baseline_games_per_iteration or settings.games_per_iteration} per iteration, "
+        f"eval {settings.baseline_eval_games or settings.eval_games} total, "
         f"rollout buffer={'rolling overwrite' if rollout_buffer_overwrites(settings) else 'accumulate+trim'})"
     )
     current_checkpoint = Path(initial_checkpoint or config["output_path"])
@@ -2073,7 +2084,7 @@ def run_baseline_phase_loop(
             root=root,
         )
         reports.append(report)
-        start_episode += settings.games_per_iteration
+        start_episode += int(report.get("collect_games", settings.games_per_iteration))
         current_checkpoint = Path(report["saved_checkpoint"])
         manifest["next_episode"] = start_episode
         manifest["baseline_iteration"] = iteration
@@ -2397,6 +2408,8 @@ def self_play_settings_from_config(
         workers=sp.get("workers"),
         baseline_dir=str(sp.get("baseline_dir", "baselines/official")),
         baseline_win_rate_threshold=float(sp.get("baseline_win_rate", 0.60)),
+        baseline_games_per_iteration=sp.get("baseline_games"),
+        baseline_eval_games=sp.get("baseline_eval_games"),
         agent_deck_pool=agent_deck_pool,
         per_deck_checkpoint_dir=per_deck_checkpoint_dir,
         train_window_games=sp.get("train_window_games"),

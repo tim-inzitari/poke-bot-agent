@@ -23,6 +23,9 @@ export TRAIN_TENSOR_CACHE_DIR=outputs/cache/training_tensors/dragapult_blackwell
 export SELF_PLAY_OUTPUT_PATH=outputs/rollouts/dragapult_self_play.jsonl
 export SELF_PLAY_CHECKPOINT_DIR=outputs/checkpoints/self_play/dragapult
 export SELF_PLAY_WORKERS=12
+export SELF_PLAY_BASELINE_GAMES=1000
+export SELF_PLAY_BASELINE_EVAL_GAMES=200
+export SELF_PLAY_TRAIN_WINDOW_GAMES=1000
 
 echo "==> Dragapult / Blackwell — fresh start (features changed)"
 rm -rf "${TRAIN_TENSOR_CACHE_DIR}" "${SELF_PLAY_CHECKPOINT_DIR}"
