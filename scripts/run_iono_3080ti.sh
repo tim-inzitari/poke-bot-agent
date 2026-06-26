@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fresh Lucario training on 3080 Ti. Run in its own terminal.
+# Fresh Iono (Bellibolt) training on 3080 Ti. Run in its own terminal.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,23 +12,23 @@ export COLLECTION_INFERENCE_DEVICE=cuda
 export TRAIN_DATA_DEVICE=auto
 export BATCH_GAMES=12
 
-export AGENT_DECK_PATH="decks/competitive/high_performing/2026-05_regional-melbourne-2026_10th_mega-lucario.csv"
-export SELF_PLAY_OUR_ARCHETYPE=mega-lucario-ex
-export SELF_PLAY_FIELD_DECK_DIR=decks/lucario-only
+export AGENT_DECK_PATH="baselines/official/iono/deck.csv"
+export SELF_PLAY_OUR_ARCHETYPE=iono
+export SELF_PLAY_FIELD_DECK_DIR=decks/iono-only
 
-export PRIMARY_ROLLOUT_DATA=data/lucario_bootstrap.jsonl
-export MODEL_OUTPUT_PATH=outputs/checkpoints/lucario_fresh.pt
-export TRAIN_TENSOR_CACHE_DIR=outputs/cache/training_tensors/lucario_fresh
-export SELF_PLAY_OUTPUT_PATH=outputs/rollouts/lucario_self_play.jsonl
-export SELF_PLAY_CHECKPOINT_DIR=outputs/checkpoints/self_play/lucario
+export PRIMARY_ROLLOUT_DATA=data/iono_bootstrap.jsonl
+export MODEL_OUTPUT_PATH=outputs/checkpoints/iono_fresh.pt
+export TRAIN_TENSOR_CACHE_DIR=outputs/cache/training_tensors/iono_fresh
+export SELF_PLAY_OUTPUT_PATH=outputs/rollouts/iono_self_play.jsonl
+export SELF_PLAY_CHECKPOINT_DIR=outputs/checkpoints/self_play/iono
 export SELF_PLAY_WORKERS=6
 export SELF_PLAY_BASELINE_GAMES=1000
 export SELF_PLAY_BASELINE_EVAL_GAMES=200
 export SELF_PLAY_TRAIN_WINDOW_GAMES=1000
 
-echo "==> Lucario / 3080 Ti — fresh start (features changed)"
+echo "==> Iono / 3080 Ti — fresh start"
 rm -rf "${TRAIN_TENSOR_CACHE_DIR}" "${SELF_PLAY_CHECKPOINT_DIR}"
-rm -f "${SELF_PLAY_OUTPUT_PATH}" outputs/checkpoints/lucario_fresh.{pt,best.pt,latest.pt}
+rm -f "${SELF_PLAY_OUTPUT_PATH}" outputs/checkpoints/iono_fresh.{pt,best.pt,latest.pt}
 
 echo "==> Bootstrap train (rebuild tensors, no resume)"
 python3 scripts/train_agent.py --no-resume --rebuild-tensors

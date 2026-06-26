@@ -159,7 +159,7 @@ def load_baseline_agents(
 
 # High-performing competitive lists aligned with each official baseline archetype.
 BASELINE_OUR_DECK_ARCHETYPE_PATTERNS: dict[str, list[str]] = {
-    "iono": ["lopunny-dudunsparce"],
+    "iono": ["official-iono-bellibolt"],
     "dragapult-ex": ["dragapult"],
     "mega-abomasnow-ex": ["mega-abomasnow"],
     "mega-lucario-ex": ["mega-lucario", "lucario-hariyama"],

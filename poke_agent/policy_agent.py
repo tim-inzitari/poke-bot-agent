@@ -268,17 +268,25 @@ class PolicyRuntime:
         """Build an archetype action scorer for the no-beam fallback path (parity)."""
         if our_deck is None or beam_config is None:
             return None, 0.0
-        lucario_beta = float(getattr(beam_config, "heuristic_policy_beta_lucario", 0.0) or 0.0)
-        dragapult_beta = float(getattr(beam_config, "heuristic_policy_beta_dragapult", 0.0) or 0.0)
-        if lucario_beta <= 0.0 and dragapult_beta <= 0.0:
-            return None, 0.0
-        from poke_agent.archetype_heuristics import heuristic_for_deck
+        knobs = getattr(beam_config, "heuristic_knobs", None)
+        if knobs is None:
+            lucario_beta = float(getattr(beam_config, "heuristic_policy_beta_lucario", 0.0) or 0.0)
+            dragapult_beta = float(getattr(beam_config, "heuristic_policy_beta_dragapult", 0.0) or 0.0)
+            if lucario_beta <= 0.0 and dragapult_beta <= 0.0:
+                return None, 0.0
+            from poke_agent.archetype_heuristics import heuristic_for_deck
 
-        heuristic = heuristic_for_deck(
-            our_deck,
-            lucario_beta=lucario_beta,
-            dragapult_beta=dragapult_beta,
-        )
+            heuristic = heuristic_for_deck(
+                our_deck,
+                lucario_beta=lucario_beta,
+                dragapult_beta=dragapult_beta,
+            )
+        else:
+            if not knobs.any_policy_beta():
+                return None, 0.0
+            from poke_agent.archetype_heuristics import heuristic_for_deck
+
+            heuristic = heuristic_for_deck(our_deck, knobs=knobs)
         if not heuristic.active:
             return None, 0.0
         return heuristic.make_action_scorer(obs_dict, root_your_index), heuristic.beta

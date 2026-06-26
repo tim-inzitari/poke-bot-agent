@@ -28,16 +28,12 @@ class BeamSearchConfig:
     max_search_steps: int = 64
     rollout_policy_width: int = 8
     num_determinizations: int = 1
-    # Archetype game-plan policy prior strength (0 = disabled). Lucario is linear and
-    # tolerates a stronger prior; Dragapult is non-linear so its prior stays soft.
-    heuristic_policy_beta_lucario: float = 0.0
-    heuristic_policy_beta_dragapult: float = 0.0
-    # Blend of heuristic mass into the soft search-policy training target (0 = disabled).
-    heuristic_target_mix_lucario: float = 0.0
-    heuristic_target_mix_dragapult: float = 0.0
+    heuristic_knobs: Any = None  # HeuristicKnobs | None; Any avoids import cycle at class body
 
     @classmethod
     def from_self_play_config(cls, config: dict[str, Any]) -> BeamSearchConfig:
+        from poke_agent.archetype_heuristics import heuristic_knobs_from_config
+
         sp = dict(config.get("self_play", {}))
         return cls(
             width=int(sp.get("beam_width", 8)),
@@ -47,10 +43,7 @@ class BeamSearchConfig:
             max_search_steps=int(sp.get("beam_max_search_steps", 128)),
             rollout_policy_width=int(sp.get("beam_rollout_policy_width", 12)),
             num_determinizations=max(1, int(sp.get("search_determinizations", 1))),
-            heuristic_policy_beta_lucario=float(sp.get("heuristic_policy_beta_lucario", 0.0)),
-            heuristic_policy_beta_dragapult=float(sp.get("heuristic_policy_beta_dragapult", 0.0)),
-            heuristic_target_mix_lucario=float(sp.get("heuristic_target_mix_lucario", 0.0)),
-            heuristic_target_mix_dragapult=float(sp.get("heuristic_target_mix_dragapult", 0.0)),
+            heuristic_knobs=heuristic_knobs_from_config(config),
         )
 
 
@@ -395,32 +388,20 @@ def run_beam_search(
     heuristic_scorer = None
     heuristic_beta = 0.0
     heuristic_target_mix = 0.0
-    any_beta = config.heuristic_policy_beta_lucario > 0.0 or config.heuristic_policy_beta_dragapult > 0.0
-    any_mix = config.heuristic_target_mix_lucario > 0.0 or config.heuristic_target_mix_dragapult > 0.0
-    if any_beta or any_mix:
-        from poke_agent.archetype_heuristics import (
-            ARCHETYPE_DRAGAPULT,
-            ARCHETYPE_LUCARIO,
-            ARCHETYPE_UNKNOWN,
-            heuristic_for_deck,
-        )
+    knobs = config.heuristic_knobs
+    if knobs is not None and (knobs.any_policy_beta() or knobs.any_target_mix()):
+        from poke_agent.archetype_heuristics import ARCHETYPE_UNKNOWN, heuristic_for_deck, resolve_target_mix
 
-        heuristic = heuristic_for_deck(
-            our_deck,
-            lucario_beta=config.heuristic_policy_beta_lucario,
-            dragapult_beta=config.heuristic_policy_beta_dragapult,
-        )
+        heuristic = heuristic_for_deck(our_deck, knobs=knobs)
         if heuristic.archetype != ARCHETYPE_UNKNOWN:
             scorer = heuristic.make_action_scorer(obs_dict, root_your_index)
             if heuristic.beta > 0.0:
                 heuristic_beta = heuristic.beta
                 heuristic_scorer = scorer
-            if any_mix:
-                if heuristic.archetype == ARCHETYPE_LUCARIO:
-                    heuristic_target_mix = config.heuristic_target_mix_lucario
-                elif heuristic.archetype == ARCHETYPE_DRAGAPULT:
-                    heuristic_target_mix = config.heuristic_target_mix_dragapult
-                if heuristic_target_mix > 0.0 and heuristic_scorer is None:
+            mix = resolve_target_mix(heuristic.archetype, knobs=knobs)
+            if mix > 0.0:
+                heuristic_target_mix = mix
+                if heuristic_scorer is None:
                     heuristic_scorer = scorer
 
     ranked = rank_actions_by_policy(

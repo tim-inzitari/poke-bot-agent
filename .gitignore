@@ -86,6 +86,10 @@ decks/competitive/progress.json
 # Generated single-archetype deck pools (rebuild via scripts/filter_deck_dir.py)
 decks/dragapult-only/
 decks/lucario-only/
+decks/abomasnow-only/
+decks/iono-only/
+decks/starmie-only/
+decks/crustle-only/
 
 # Local Kaggle inputs
 kaggle/input/

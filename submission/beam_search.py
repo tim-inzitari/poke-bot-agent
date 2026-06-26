@@ -49,6 +49,10 @@ def _env_float(name: str, default: float) -> float:
 # inference biases root action ranking identically to collection-time search.
 HEURISTIC_POLICY_BETA_LUCARIO = _env_float("HEURISTIC_POLICY_BETA_LUCARIO", 0.35)
 HEURISTIC_POLICY_BETA_DRAGAPULT = _env_float("HEURISTIC_POLICY_BETA_DRAGAPULT", 0.15)
+HEURISTIC_POLICY_BETA_ABOMASNOW = _env_float("HEURISTIC_POLICY_BETA_ABOMASNOW", 0.28)
+HEURISTIC_POLICY_BETA_IONO = _env_float("HEURISTIC_POLICY_BETA_IONO", 0.30)
+HEURISTIC_POLICY_BETA_STARMIE = _env_float("HEURISTIC_POLICY_BETA_STARMIE", 0.15)
+HEURISTIC_POLICY_BETA_CRUSTLE = _env_float("HEURISTIC_POLICY_BETA_CRUSTLE", 0.22)
 
 OPPONENT_FILLER_CARD = 1072
 OPPONENT_ENERGY_CARD = 1
@@ -65,6 +69,10 @@ class BeamSearchConfig:
     num_determinizations: int = SEARCH_DETERMINIZATIONS
     heuristic_policy_beta_lucario: float = HEURISTIC_POLICY_BETA_LUCARIO
     heuristic_policy_beta_dragapult: float = HEURISTIC_POLICY_BETA_DRAGAPULT
+    heuristic_policy_beta_abomasnow: float = HEURISTIC_POLICY_BETA_ABOMASNOW
+    heuristic_policy_beta_iono: float = HEURISTIC_POLICY_BETA_IONO
+    heuristic_policy_beta_starmie: float = HEURISTIC_POLICY_BETA_STARMIE
+    heuristic_policy_beta_crustle: float = HEURISTIC_POLICY_BETA_CRUSTLE
 
 
 def remaining_overage_seconds(obs_dict: dict[str, Any]) -> float | None:
@@ -397,14 +405,22 @@ def run_beam_search(
 
     heuristic_scorer = None
     heuristic_beta = 0.0
-    if config.heuristic_policy_beta_lucario > 0.0 or config.heuristic_policy_beta_dragapult > 0.0:
-        from archetype_heuristics import heuristic_for_deck
+    from archetype_heuristics import HeuristicKnobs, heuristic_for_deck
 
-        heuristic = heuristic_for_deck(
-            our_deck,
-            lucario_beta=config.heuristic_policy_beta_lucario,
-            dragapult_beta=config.heuristic_policy_beta_dragapult,
-        )
+    knobs = HeuristicKnobs(
+        policy_beta={
+            "mega-lucario-ex": config.heuristic_policy_beta_lucario,
+            "dragapult-ex": config.heuristic_policy_beta_dragapult,
+            "mega-abomasnow-ex": config.heuristic_policy_beta_abomasnow,
+            "iono": config.heuristic_policy_beta_iono,
+            "starmie": config.heuristic_policy_beta_starmie,
+            "crustle": config.heuristic_policy_beta_crustle,
+        },
+        value_shaping={},
+        target_mix={},
+    )
+    if knobs.any_policy_beta():
+        heuristic = heuristic_for_deck(our_deck, knobs=knobs)
         if heuristic.active:
             heuristic_beta = heuristic.beta
             heuristic_scorer = heuristic.make_action_scorer(obs_dict, root_your_index)

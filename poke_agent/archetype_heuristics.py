@@ -37,7 +37,20 @@ from poke_agent.rewards import seat_prize_counts
 # --- Archetype identities ---
 ARCHETYPE_DRAGAPULT = "dragapult-ex"
 ARCHETYPE_LUCARIO = "mega-lucario-ex"
+ARCHETYPE_ABOMASNOW = "mega-abomasnow-ex"
+ARCHETYPE_IONO = "iono"
+ARCHETYPE_STARMIE = "starmie"
+ARCHETYPE_CRUSTLE = "crustle"
 ARCHETYPE_UNKNOWN = "unknown"
+
+ALL_HEURISTIC_ARCHETYPES = (
+    ARCHETYPE_LUCARIO,
+    ARCHETYPE_DRAGAPULT,
+    ARCHETYPE_ABOMASNOW,
+    ARCHETYPE_IONO,
+    ARCHETYPE_STARMIE,
+    ARCHETYPE_CRUSTLE,
+)
 
 # --- Signature card IDs (global, from cg.api all_card_data) ---
 DREEPY, DRAKLOAK, DRAGAPULT_EX = 119, 120, 121
@@ -52,6 +65,24 @@ DUSKNOIR_LINE = frozenset({DUSKULL, DUSCLOPS, DUSKNOIR})
 LUCARIO_SIGNATURE = frozenset({RIOLU, MEGA_LUCARIO_EX})
 LUCARIO_ENGINE = frozenset({SOLROCK, LUNATONE})
 
+KYOGRE, SNOVER, MEGA_ABOMASNOW_EX = 721, 722, 723
+BASIC_WATER_ENERGY = 3
+ABOMASNOW_SIGNATURE = frozenset({SNOVER, MEGA_ABOMASNOW_EX, KYOGRE})
+
+IONO_VOLTORB, IONO_TADBULB = 265, 268
+IONO_BELLIBOLT_EX, IONO_WATTREL, IONO_KILOWATTREL = 269, 270, 271
+IONO_SIGNATURE = frozenset(
+    {IONO_VOLTORB, IONO_TADBULB, IONO_BELLIBOLT_EX, IONO_WATTREL, IONO_KILOWATTREL}
+)
+
+STARYU, STARMIE, MEGA_STARMIE_EX = 860, 861, 104
+SNORUNT, FROSLASS, MEGA_FROSLASS_EX = 1030, 1031, 112
+STARMIE_SIGNATURE = frozenset({STARYU, STARMIE, MEGA_STARMIE_EX, SNORUNT, FROSLASS, MEGA_FROSLASS_EX})
+
+MEGA_KANGASKHAN_EX = 344
+CRUSTLE_CARD = 756
+CRUSTLE_SIGNATURE = frozenset({MEGA_KANGASKHAN_EX, CRUSTLE_CARD})
+
 # Fallback when the deck registry is unavailable (e.g. trimmed submission env).
 OPPONENT_ARCHETYPE_SIGNATURES: dict[str, frozenset[int]] = {
     ARCHETYPE_DRAGAPULT: DRAGAPULT_SIGNATURE | DUSKNOIR_LINE,
@@ -65,6 +96,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PHANTOM_DIVE_ATTACK = 154
 ITCHY_POLLEN_ATTACK = 323
 MEGA_BRAVE_ATTACK = 983
+HAMMER_LANCHE_ATTACK = 1046
 
 # --- OptionType enum values (cg.api.OptionType) ---
 OPTION_PLAY = 7
@@ -83,13 +115,40 @@ def classify_archetype(deck_cards: list[int] | tuple[int, ...] | None) -> str:
     if not deck_cards:
         return ARCHETYPE_UNKNOWN
     counts = Counter(int(card) for card in deck_cards)
+    scores: list[tuple[int, str]] = []
     dragapult = sum(counts[card] for card in DRAGAPULT_SIGNATURE)
     lucario = sum(counts[card] for card in LUCARIO_SIGNATURE)
-    if dragapult >= 3 and dragapult >= lucario:
-        return ARCHETYPE_DRAGAPULT
-    if lucario >= 2 and lucario > dragapult:
-        return ARCHETYPE_LUCARIO
-    return ARCHETYPE_UNKNOWN
+    abomasnow = sum(counts[card] for card in ABOMASNOW_SIGNATURE)
+    iono = sum(counts[card] for card in IONO_SIGNATURE)
+    starmie = sum(counts[card] for card in STARMIE_SIGNATURE)
+    if dragapult >= 3:
+        scores.append((dragapult, ARCHETYPE_DRAGAPULT))
+    if lucario >= 2:
+        scores.append((lucario, ARCHETYPE_LUCARIO))
+    if counts[MEGA_ABOMASNOW_EX] >= 2 or (counts[SNOVER] >= 2 and counts[BASIC_WATER_ENERGY] >= 20):
+        scores.append((max(abomasnow, counts[MEGA_ABOMASNOW_EX] * 2), ARCHETYPE_ABOMASNOW))
+    if counts[IONO_BELLIBOLT_EX] >= 2 or iono >= 6:
+        scores.append((max(iono, counts[IONO_BELLIBOLT_EX] * 2), ARCHETYPE_IONO))
+    if starmie >= 4:
+        scores.append((starmie, ARCHETYPE_STARMIE))
+    if counts[MEGA_KANGASKHAN_EX] >= 2:
+        scores.append((counts[MEGA_KANGASKHAN_EX] * 2 + counts[CRUSTLE_CARD], ARCHETYPE_CRUSTLE))
+    if not scores:
+        return ARCHETYPE_UNKNOWN
+    scores.sort(key=lambda item: item[0], reverse=True)
+    return scores[0][1]
+
+
+def starmie_variant(deck_cards: list[int] | tuple[int, ...] | None) -> str:
+    """Branch key for Starmie family lists."""
+    if not deck_cards:
+        return "unknown"
+    counts = Counter(int(card) for card in deck_cards)
+    if counts[MEGA_STARMIE_EX] >= 2 and counts[FROSLASS] < 2:
+        return "mega-starmie"
+    if counts[DUSKULL] >= 2 or counts[DUSCLOPS] >= 1:
+        return "starmie-dusknoir"
+    return "starmie-froslass"
 
 
 def _current(obs: dict[str, Any]) -> dict[str, Any]:
@@ -354,6 +413,138 @@ def _score_dragapult_option(
     return 0.35
 
 
+def _active_energy_count(player: dict[str, Any]) -> int:
+    total = 0
+    active = _active(player)
+    if active is not None:
+        total += len(active.get("energies") or [])
+    for card in _bench(player):
+        total += len(card.get("energies") or [])
+    return total
+
+
+def _score_abomasnow_option(
+    option: dict[str, Any],
+    player: dict[str, Any],
+    *,
+    phase: str,
+) -> float:
+    otype = int(option.get("type", -1))
+    if otype == OPTION_ATTACK:
+        attack_id = int(option.get("attackId", -1))
+        if attack_id == HAMMER_LANCHE_ATTACK:
+            return 0.95 if phase in ("mid", "late") else 0.7
+        return 0.65
+    if otype == OPTION_PLAY:
+        card_id = _hand_card_id(player, option.get("index"))
+        if card_id == BOSS_ORDERS:
+            return 0.85 if phase in ("mid", "late") else 0.5
+        return 0.45
+    if otype == OPTION_ATTACH:
+        return 0.7 if phase == "early" else 0.55
+    if otype == OPTION_EVOLVE:
+        card_id = _hand_card_id(player, option.get("index"))
+        if card_id in (MEGA_ABOMASNOW_EX, KYOGRE):
+            return 0.85
+        return 0.55
+    if otype == OPTION_END:
+        return 0.15 if phase == "early" else 0.25
+    return 0.35
+
+
+def _score_iono_option(
+    option: dict[str, Any],
+    player: dict[str, Any],
+    *,
+    phase: str,
+) -> float:
+    otype = int(option.get("type", -1))
+    energy = _active_energy_count(player)
+    if otype == OPTION_ABILITY:
+        return 0.85  # Kilowattrel Flashing Draw / Bellibolt streamer
+    if otype == OPTION_ATTACK:
+        card_id = _card_id(_active(player))
+        if card_id == IONO_VOLTORB:
+            return 0.8 if energy >= 4 else 0.45
+        if card_id == IONO_BELLIBOLT_EX:
+            return 0.75 if phase in ("mid", "late") else 0.5
+        return 0.55
+    if otype == OPTION_ATTACH:
+        return 0.75 if phase == "early" else 0.6
+    if otype == OPTION_EVOLVE:
+        card_id = _hand_card_id(player, option.get("index"))
+        if card_id in (IONO_BELLIBOLT_EX, IONO_KILOWATTREL):
+            return 0.8
+        return 0.55
+    if otype == OPTION_PLAY:
+        card_id = _hand_card_id(player, option.get("index"))
+        if card_id in (IONO_WATTREL, IONO_TADBULB, IONO_VOLTORB):
+            return 0.7 if phase == "early" else 0.45
+        return 0.45
+    if otype == OPTION_END:
+        return 0.2
+    return 0.35
+
+
+def _score_starmie_option(
+    option: dict[str, Any],
+    obs: dict[str, Any],
+    player: dict[str, Any],
+    seat: int,
+    *,
+    phase: str,
+    context: str,
+    variant: str,
+) -> float:
+    otype = int(option.get("type", -1))
+    if otype == OPTION_ATTACK:
+        base = 0.75 if _opp_bench_count(obs, seat) >= 1 else 0.6
+        if context == "mirror" and phase == "early":
+            base *= 0.45
+        if variant == "mega-starmie":
+            base += 0.05
+        return base
+    if otype == OPTION_ABILITY:
+        return 0.7 if variant in ("starmie-froslass", "starmie-dusknoir") else 0.55
+    if otype == OPTION_EVOLVE:
+        card_id = _hand_card_id(player, option.get("index"))
+        if card_id in (FROSLASS, MEGA_FROSLASS_EX, STARMIE, MEGA_STARMIE_EX):
+            return 0.65
+        return 0.5
+    if otype == OPTION_PLAY:
+        if phase == "early":
+            return 0.55
+        return 0.45
+    if otype == OPTION_ATTACH:
+        return 0.5
+    if otype == OPTION_END:
+        return 0.25
+    return 0.35
+
+
+def _score_crustle_option(
+    option: dict[str, Any],
+    player: dict[str, Any],
+    *,
+    phase: str,
+    opponent_archetype: str,
+) -> float:
+    vs_dragapult = opponent_matches_family(opponent_archetype, ARCHETYPE_DRAGAPULT)
+    otype = int(option.get("type", -1))
+    if otype == OPTION_ATTACK:
+        return 0.72 if phase in ("mid", "late") else 0.48
+    if otype == OPTION_PLAY:
+        card_id = _hand_card_id(player, option.get("index"))
+        if card_id == BOSS_ORDERS:
+            return 0.75 if phase in ("mid", "late") else 0.4
+        return 0.58 if not (phase == "early" and vs_dragapult) else 0.52
+    if otype == OPTION_ATTACH:
+        return 0.5
+    if otype == OPTION_END:
+        return 0.3 if phase == "early" else 0.25
+    return 0.4
+
+
 def score_action(
     action: list[int],
     obs: dict[str, Any],
@@ -363,6 +554,7 @@ def score_action(
     phase: str,
     context: str,
     opponent_archetype: str = ARCHETYPE_UNKNOWN,
+    starmie_variant_key: str = "",
 ) -> float:
     """Mean per-option game-plan score for one concrete action (list of option indices)."""
     options = _select_options(obs)
@@ -379,9 +571,21 @@ def score_action(
             total += _score_lucario_option(
                 option, player, phase=phase, opponent_archetype=opponent_archetype
             )
-        else:
+        elif archetype == ARCHETYPE_DRAGAPULT:
             total += _score_dragapult_option(
                 option, obs, player, seat, phase=phase, context=context, opponent_archetype=opponent_archetype
+            )
+        elif archetype == ARCHETYPE_ABOMASNOW:
+            total += _score_abomasnow_option(option, player, phase=phase)
+        elif archetype == ARCHETYPE_IONO:
+            total += _score_iono_option(option, player, phase=phase)
+        elif archetype == ARCHETYPE_STARMIE:
+            total += _score_starmie_option(
+                option, obs, player, seat, phase=phase, context=context, variant=starmie_variant_key
+            )
+        elif archetype == ARCHETYPE_CRUSTLE:
+            total += _score_crustle_option(
+                option, player, phase=phase, opponent_archetype=opponent_archetype
             )
         counted += 1
     if counted == 0:
@@ -414,7 +618,7 @@ def value_shaping_bonus(
         if _benched_ready_mega(_player(obs_after, seat)):
             bonus += 0.01
         bonus -= 0.015 * opp_taken
-    else:  # Dragapult
+    elif archetype == ARCHETYPE_DRAGAPULT:
         # Spread then convert: reward board spread and multi-KO turns, not early aggression.
         if phase == "mid" and _damaged_opp_bench_count(obs_after, seat) >= 2:
             bonus += 0.03
@@ -423,7 +627,84 @@ def value_shaping_bonus(
         elif own_taken == 1:
             bonus += 0.01
         bonus -= 0.015 * opp_taken
+    elif archetype == ARCHETYPE_ABOMASNOW:
+        bonus += 0.02 * own_taken
+        if phase in ("mid", "late") and own_taken >= 1:
+            bonus += 0.01
+        bonus -= 0.015 * opp_taken
+    elif archetype == ARCHETYPE_IONO:
+        bonus += 0.018 * own_taken
+        if _active_energy_count(_player(obs_after, seat)) >= 6:
+            bonus += 0.01
+        bonus -= 0.012 * opp_taken
+    elif archetype == ARCHETYPE_STARMIE:
+        if _opp_bench_count(obs_after, seat) >= 2:
+            bonus += 0.02
+        bonus += 0.015 * own_taken
+        bonus -= 0.012 * opp_taken
+    elif archetype == ARCHETYPE_CRUSTLE:
+        bonus += 0.018 * own_taken
+        if phase in ("mid", "late"):
+            bonus += 0.01
+        bonus -= 0.014 * opp_taken
     return float(max(-_VALUE_BONUS_CLAMP, min(_VALUE_BONUS_CLAMP, bonus)))
+
+
+@dataclass(frozen=True)
+class HeuristicKnobs:
+    """Per-archetype policy prior, value shaping, and search-target mix strengths."""
+
+    policy_beta: dict[str, float]
+    value_shaping: dict[str, float]
+    target_mix: dict[str, float]
+
+    def policy_beta_for(self, archetype: str) -> float:
+        return float(self.policy_beta.get(archetype, 0.0))
+
+    def value_shaping_for(self, archetype: str) -> float:
+        return float(self.value_shaping.get(archetype, 0.0))
+
+    def target_mix_for(self, archetype: str) -> float:
+        return float(self.target_mix.get(archetype, 0.0))
+
+    def any_policy_beta(self) -> bool:
+        return any(value > 0.0 for value in self.policy_beta.values())
+
+    def any_value_shaping(self) -> bool:
+        return any(value > 0.0 for value in self.value_shaping.values())
+
+    def any_target_mix(self) -> bool:
+        return any(value > 0.0 for value in self.target_mix.values())
+
+
+def heuristic_knobs_from_settings(settings: dict[str, float]) -> HeuristicKnobs:
+    """Build knobs from flat config settings (module defaults or env overrides)."""
+    return HeuristicKnobs(
+        policy_beta={
+            ARCHETYPE_LUCARIO: float(settings.get("heuristic_policy_beta_lucario", 0.0)),
+            ARCHETYPE_DRAGAPULT: float(settings.get("heuristic_policy_beta_dragapult", 0.0)),
+            ARCHETYPE_ABOMASNOW: float(settings.get("heuristic_policy_beta_abomasnow", 0.0)),
+            ARCHETYPE_IONO: float(settings.get("heuristic_policy_beta_iono", 0.0)),
+            ARCHETYPE_STARMIE: float(settings.get("heuristic_policy_beta_starmie", 0.0)),
+            ARCHETYPE_CRUSTLE: float(settings.get("heuristic_policy_beta_crustle", 0.0)),
+        },
+        value_shaping={
+            ARCHETYPE_LUCARIO: float(settings.get("value_archetype_shaping_weight_lucario", 0.0)),
+            ARCHETYPE_DRAGAPULT: float(settings.get("value_archetype_shaping_weight_dragapult", 0.0)),
+            ARCHETYPE_ABOMASNOW: float(settings.get("value_archetype_shaping_weight_abomasnow", 0.0)),
+            ARCHETYPE_IONO: float(settings.get("value_archetype_shaping_weight_iono", 0.0)),
+            ARCHETYPE_STARMIE: float(settings.get("value_archetype_shaping_weight_starmie", 0.0)),
+            ARCHETYPE_CRUSTLE: float(settings.get("value_archetype_shaping_weight_crustle", 0.0)),
+        },
+        target_mix={
+            ARCHETYPE_LUCARIO: float(settings.get("heuristic_target_mix_lucario", 0.0)),
+            ARCHETYPE_DRAGAPULT: float(settings.get("heuristic_target_mix_dragapult", 0.0)),
+            ARCHETYPE_ABOMASNOW: float(settings.get("heuristic_target_mix_abomasnow", 0.0)),
+            ARCHETYPE_IONO: float(settings.get("heuristic_target_mix_iono", 0.0)),
+            ARCHETYPE_STARMIE: float(settings.get("heuristic_target_mix_starmie", 0.0)),
+            ARCHETYPE_CRUSTLE: float(settings.get("heuristic_target_mix_crustle", 0.0)),
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -432,6 +713,7 @@ class ArchetypeHeuristic:
 
     archetype: str
     beta: float
+    deck_cards: tuple[int, ...] = ()
 
     @property
     def active(self) -> bool:
@@ -445,6 +727,9 @@ class ArchetypeHeuristic:
         phase = game_phase(obs, seat)
         opponent_archetype = predict_opponent_archetype(obs, seat)
         context = matchup_context(obs, seat, self.archetype)
+        starmie_variant_key = (
+            starmie_variant(self.deck_cards) if self.archetype == ARCHETYPE_STARMIE else ""
+        )
 
         def scorer(action: list[int]) -> float:
             return score_action(
@@ -455,6 +740,7 @@ class ArchetypeHeuristic:
                 phase=phase,
                 context=context,
                 opponent_archetype=opponent_archetype,
+                starmie_variant_key=starmie_variant_key,
             )
 
         return scorer
@@ -463,10 +749,13 @@ class ArchetypeHeuristic:
 def resolve_policy_beta(
     archetype: str,
     *,
-    lucario_beta: float,
-    dragapult_beta: float,
+    knobs: HeuristicKnobs | None = None,
+    lucario_beta: float = 0.0,
+    dragapult_beta: float = 0.0,
 ) -> float:
-    """Per-archetype policy-prior strength (Lucario tolerates a stronger prior)."""
+    """Per-archetype policy-prior strength."""
+    if knobs is not None:
+        return knobs.policy_beta_for(archetype)
     if archetype == ARCHETYPE_LUCARIO:
         return float(lucario_beta)
     if archetype == ARCHETYPE_DRAGAPULT:
@@ -477,28 +766,79 @@ def resolve_policy_beta(
 def heuristic_for_deck(
     deck_cards: list[int] | tuple[int, ...] | None,
     *,
-    lucario_beta: float,
-    dragapult_beta: float,
+    knobs: HeuristicKnobs | None = None,
+    lucario_beta: float = 0.0,
+    dragapult_beta: float = 0.0,
 ) -> ArchetypeHeuristic:
     """Factory: classify the deck and bind the matching policy-prior strength."""
     archetype = classify_archetype(deck_cards)
     beta = resolve_policy_beta(
         archetype,
+        knobs=knobs,
         lucario_beta=lucario_beta,
         dragapult_beta=dragapult_beta,
     )
-    return ArchetypeHeuristic(archetype=archetype, beta=beta)
+    cards = tuple(int(card) for card in deck_cards) if deck_cards else ()
+    return ArchetypeHeuristic(archetype=archetype, beta=beta, deck_cards=cards)
 
 
 def resolve_value_shaping_weight(
     archetype: str,
     *,
-    lucario_weight: float,
-    dragapult_weight: float,
+    knobs: HeuristicKnobs | None = None,
+    lucario_weight: float = 0.0,
+    dragapult_weight: float = 0.0,
 ) -> float:
     """Per-archetype value-shaping blend weight."""
+    if knobs is not None:
+        return knobs.value_shaping_for(archetype)
     if archetype == ARCHETYPE_LUCARIO:
         return float(lucario_weight)
     if archetype == ARCHETYPE_DRAGAPULT:
         return float(dragapult_weight)
     return 0.0
+
+
+def heuristic_knobs_from_config(config: dict[str, Any]) -> HeuristicKnobs:
+    """Merge objective + self_play heuristic settings from a built config dict."""
+    objective = config.get("objective") or {}
+    self_play = config.get("self_play") or {}
+
+    def pick(name: str) -> float:
+        if name in objective:
+            return float(objective[name])
+        if name in self_play:
+            return float(self_play[name])
+        return 0.0
+
+    return heuristic_knobs_from_settings({name: pick(name) for name in (
+        "heuristic_policy_beta_lucario",
+        "heuristic_policy_beta_dragapult",
+        "heuristic_policy_beta_abomasnow",
+        "heuristic_policy_beta_iono",
+        "heuristic_policy_beta_starmie",
+        "heuristic_policy_beta_crustle",
+        "value_archetype_shaping_weight_lucario",
+        "value_archetype_shaping_weight_dragapult",
+        "value_archetype_shaping_weight_abomasnow",
+        "value_archetype_shaping_weight_iono",
+        "value_archetype_shaping_weight_starmie",
+        "value_archetype_shaping_weight_crustle",
+        "heuristic_target_mix_lucario",
+        "heuristic_target_mix_dragapult",
+        "heuristic_target_mix_abomasnow",
+        "heuristic_target_mix_iono",
+        "heuristic_target_mix_starmie",
+        "heuristic_target_mix_crustle",
+    )})
+
+
+def resolve_target_mix(
+    archetype: str,
+    *,
+    knobs: HeuristicKnobs | None = None,
+) -> float:
+    """Per-archetype heuristic mass blend into soft search-policy target."""
+    if knobs is None:
+        return 0.0
+    return knobs.target_mix_for(archetype)

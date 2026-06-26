@@ -1,26 +1,43 @@
 from __future__ import annotations
 
 from poke_agent.archetype_heuristics import (
+    ARCHETYPE_ABOMASNOW,
+    ARCHETYPE_CRUSTLE,
     ARCHETYPE_DRAGAPULT,
+    ARCHETYPE_IONO,
     ARCHETYPE_LUCARIO,
+    ARCHETYPE_STARMIE,
     ARCHETYPE_UNKNOWN,
+    CRUSTLE_CARD,
     DRAGAPULT_EX,
     DRAKLOAK,
     DREEPY,
     HARIYAMA,
+    IONO_BELLIBOLT_EX,
+    IONO_TADBULB,
+    IONO_VOLTORB,
+    IONO_WATTREL,
+    KYOGRE,
     LUNATONE,
+    MEGA_ABOMASNOW_EX,
     MEGA_BRAVE_ATTACK,
+    MEGA_KANGASKHAN_EX,
     MEGA_LUCARIO_EX,
     PHANTOM_DIVE_ATTACK,
     RIOLU,
+    SNOVER,
     SOLROCK,
+    STARMIE,
+    STARYU,
     classify_archetype,
     game_phase,
     heuristic_for_deck,
+    heuristic_knobs_from_settings,
     matchup_context,
     resolve_policy_beta,
     resolve_value_shaping_weight,
     score_action,
+    starmie_variant,
     value_shaping_bonus,
 )
 from poke_agent.search_targets import blend_distributions, heuristic_distribution_over_actions
@@ -52,8 +69,34 @@ def _obs(*, turn: int, own_prizes: int, opp_prizes: int, opp_in_play=None, optio
 def test_classify_archetype_signature_lines():
     assert classify_archetype([DREEPY, DREEPY, DRAKLOAK, DRAGAPULT_EX, DRAGAPULT_EX]) == ARCHETYPE_DRAGAPULT
     assert classify_archetype([RIOLU, MEGA_LUCARIO_EX, MEGA_LUCARIO_EX, SOLROCK, LUNATONE]) == ARCHETYPE_LUCARIO
+    assert classify_archetype([SNOVER, SNOVER, MEGA_ABOMASNOW_EX, MEGA_ABOMASNOW_EX, KYOGRE]) == ARCHETYPE_ABOMASNOW
+    assert classify_archetype(
+        [IONO_VOLTORB, IONO_TADBULB, IONO_BELLIBOLT_EX, IONO_BELLIBOLT_EX, IONO_WATTREL, IONO_WATTREL]
+    ) == ARCHETYPE_IONO
+    assert classify_archetype([STARYU, STARYU, STARMIE, STARMIE, STARMIE, STARMIE]) == ARCHETYPE_STARMIE
+    assert classify_archetype([MEGA_KANGASKHAN_EX, MEGA_KANGASKHAN_EX, CRUSTLE_CARD]) == ARCHETYPE_CRUSTLE
     assert classify_archetype([1, 2, 3, 4, 5]) == ARCHETYPE_UNKNOWN
     assert classify_archetype(None) == ARCHETYPE_UNKNOWN
+
+
+def test_starmie_variant_branches():
+    froslass = [STARYU, STARMIE, STARMIE, 1030, 1031, 1031]
+    assert starmie_variant(froslass) == "starmie-froslass"
+    dusk = froslass + [131, 131]
+    assert starmie_variant(dusk) == "starmie-dusknoir"
+    mega = [STARYU, 104, 104, STARMIE, STARMIE]
+    assert starmie_variant(mega) == "mega-starmie"
+
+
+def test_heuristic_knobs_resolve_new_archetypes():
+    knobs = heuristic_knobs_from_settings({
+        "heuristic_policy_beta_abomasnow": 0.28,
+        "value_archetype_shaping_weight_iono": 0.10,
+        "heuristic_target_mix_starmie": 0.10,
+    })
+    assert resolve_policy_beta(ARCHETYPE_ABOMASNOW, knobs=knobs) == 0.28
+    assert resolve_value_shaping_weight(ARCHETYPE_IONO, knobs=knobs) == 0.10
+    assert knobs.target_mix_for(ARCHETYPE_STARMIE) == 0.10
 
 
 def test_resolve_betas_and_weights_are_archetype_asymmetric():

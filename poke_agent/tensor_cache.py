@@ -77,6 +77,18 @@ def build_tensor_cache_fingerprint(data_path: Path, config: dict[str, Any]) -> d
         "value_archetype_shaping_weight_dragapult": float(
             objective_cfg.get("value_archetype_shaping_weight_dragapult", 0.0)
         ),
+        "value_archetype_shaping_weight_abomasnow": float(
+            objective_cfg.get("value_archetype_shaping_weight_abomasnow", 0.0)
+        ),
+        "value_archetype_shaping_weight_iono": float(
+            objective_cfg.get("value_archetype_shaping_weight_iono", 0.0)
+        ),
+        "value_archetype_shaping_weight_starmie": float(
+            objective_cfg.get("value_archetype_shaping_weight_starmie", 0.0)
+        ),
+        "value_archetype_shaping_weight_crustle": float(
+            objective_cfg.get("value_archetype_shaping_weight_crustle", 0.0)
+        ),
     }
 
 

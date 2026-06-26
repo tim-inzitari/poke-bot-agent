@@ -678,6 +678,7 @@ def _build_seat_sequence(
     value_lambda: float = 0.9,
     value_mc_blend: float = 0.6,
     policy_soft_topk: int = 8,
+    value_archetype_shaping_weights: dict[str, float] | None = None,
     value_archetype_shaping_lucario: float = 0.0,
     value_archetype_shaping_dragapult: float = 0.0,
 ) -> tuple[
@@ -714,15 +715,24 @@ def _build_seat_sequence(
     # Resolve the seated archetype once; pick its value-shaping weight (0 disables).
     shaping_archetype = ""
     shaping_weight = 0.0
-    if _ARCHETYPE_HEURISTICS_AVAILABLE and (
-        value_archetype_shaping_lucario > 0.0 or value_archetype_shaping_dragapult > 0.0
-    ):
+    weights = value_archetype_shaping_weights
+    if weights is None and (value_archetype_shaping_lucario > 0.0 or value_archetype_shaping_dragapult > 0.0):
+        from poke_agent.archetype_heuristics import ARCHETYPE_DRAGAPULT, ARCHETYPE_LUCARIO
+
+        weights = {
+            ARCHETYPE_LUCARIO: value_archetype_shaping_lucario,
+            ARCHETYPE_DRAGAPULT: value_archetype_shaping_dragapult,
+        }
+    if _ARCHETYPE_HEURISTICS_AVAILABLE and weights and any(value > 0.0 for value in weights.values()):
         shaping_archetype = _classify_archetype(seat_deck_from_row(seat_rows[0]))
         shaping_weight = _resolve_value_shaping_weight(
             shaping_archetype,
-            lucario_weight=value_archetype_shaping_lucario,
-            dragapult_weight=value_archetype_shaping_dragapult,
+            knobs=None,
+            lucario_weight=float(weights.get("mega-lucario-ex", 0.0)),
+            dragapult_weight=float(weights.get("dragapult-ex", 0.0)),
         )
+        if shaping_weight <= 0.0:
+            shaping_weight = float(weights.get(shaping_archetype, 0.0))
     mc_returns = episode_outcome_returns(
         seat_rows,
         value_gamma,
@@ -905,6 +915,7 @@ def _seat_worker(args: tuple[Any, ...]):
         value_lambda,
         value_mc_blend,
         policy_soft_topk,
+        value_archetype_shaping_weights,
         value_archetype_shaping_lucario,
         value_archetype_shaping_dragapult,
     ) = args
@@ -922,6 +933,7 @@ def _seat_worker(args: tuple[Any, ...]):
         value_lambda=value_lambda,
         value_mc_blend=value_mc_blend,
         policy_soft_topk=policy_soft_topk,
+        value_archetype_shaping_weights=value_archetype_shaping_weights,
         value_archetype_shaping_lucario=value_archetype_shaping_lucario,
         value_archetype_shaping_dragapult=value_archetype_shaping_dragapult,
     )
@@ -943,6 +955,7 @@ def build_training_arrays(
     value_lambda: float = 0.9,
     value_mc_blend: float = 0.6,
     policy_soft_topk: int = 8,
+    value_archetype_shaping_weights: dict[str, float] | None = None,
     value_archetype_shaping_lucario: float = 0.0,
     value_archetype_shaping_dragapult: float = 0.0,
 ) -> tuple[
@@ -975,6 +988,7 @@ def build_training_arrays(
         value_lambda,
         value_mc_blend,
         policy_soft_topk,
+        value_archetype_shaping_weights,
         value_archetype_shaping_lucario,
         value_archetype_shaping_dragapult,
     )
@@ -994,6 +1008,7 @@ def build_training_arrays(
                 value_lambda=value_lambda,
                 value_mc_blend=value_mc_blend,
                 policy_soft_topk=policy_soft_topk,
+                value_archetype_shaping_weights=value_archetype_shaping_weights,
                 value_archetype_shaping_lucario=value_archetype_shaping_lucario,
                 value_archetype_shaping_dragapult=value_archetype_shaping_dragapult,
             )

@@ -16,6 +16,10 @@ DEFAULT_COMPETITIVE_DIRS = (
 HEURISTIC_ARCHETYPE_SLUG_PATTERNS: dict[str, list[str]] = {
     "dragapult-ex": ["dragapult"],
     "mega-lucario-ex": ["mega-lucario", "lucario-hariyama"],
+    "mega-abomasnow-ex": ["mega-abomasnow", "abomasnow"],
+    "iono": ["iono", "bellibolt"],
+    "starmie": ["starmie"],
+    "crustle": ["crustle"],
 }
 
 

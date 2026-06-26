@@ -114,10 +114,22 @@ TRAIN_HEAD_LR = 3e-4
 # non-linear at the top level → softer prior so multiple lines stay viable.
 HEURISTIC_POLICY_BETA_LUCARIO = 0.35    # logit bias strength on root action ranking
 HEURISTIC_POLICY_BETA_DRAGAPULT = 0.15
+HEURISTIC_POLICY_BETA_ABOMASNOW = 0.28
+HEURISTIC_POLICY_BETA_IONO = 0.30
+HEURISTIC_POLICY_BETA_STARMIE = 0.15
+HEURISTIC_POLICY_BETA_CRUSTLE = 0.22
 VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO = 0.12   # blend of bounded game-plan bonus into value target
 VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT = 0.08
+VALUE_ARCHETYPE_SHAPING_WEIGHT_ABOMASNOW = 0.10
+VALUE_ARCHETYPE_SHAPING_WEIGHT_IONO = 0.10
+VALUE_ARCHETYPE_SHAPING_WEIGHT_STARMIE = 0.08
+VALUE_ARCHETYPE_SHAPING_WEIGHT_CRUSTLE = 0.09
 HEURISTIC_TARGET_MIX_LUCARIO = 0.20     # blend of heuristic mass into soft search-policy target
 HEURISTIC_TARGET_MIX_DRAGAPULT = 0.10
+HEURISTIC_TARGET_MIX_ABOMASNOW = 0.18
+HEURISTIC_TARGET_MIX_IONO = 0.18
+HEURISTIC_TARGET_MIX_STARMIE = 0.10
+HEURISTIC_TARGET_MIX_CRUSTLE = 0.12
 
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 12
@@ -225,10 +237,22 @@ OVERRIDE_KEYS = frozenset({
     "objective_search_policy_kl_weight",
     "heuristic_policy_beta_lucario",
     "heuristic_policy_beta_dragapult",
+    "heuristic_policy_beta_abomasnow",
+    "heuristic_policy_beta_iono",
+    "heuristic_policy_beta_starmie",
+    "heuristic_policy_beta_crustle",
     "value_archetype_shaping_weight_lucario",
     "value_archetype_shaping_weight_dragapult",
+    "value_archetype_shaping_weight_abomasnow",
+    "value_archetype_shaping_weight_iono",
+    "value_archetype_shaping_weight_starmie",
+    "value_archetype_shaping_weight_crustle",
     "heuristic_target_mix_lucario",
     "heuristic_target_mix_dragapult",
+    "heuristic_target_mix_abomasnow",
+    "heuristic_target_mix_iono",
+    "heuristic_target_mix_starmie",
+    "heuristic_target_mix_crustle",
     "train_encoder_lr",
     "train_head_lr",
     "train_use_amp",
@@ -343,10 +367,22 @@ def default_user_config() -> dict[str, Any]:
         "objective_search_policy_kl_weight": OBJECTIVE_SEARCH_POLICY_KL_WEIGHT,
         "heuristic_policy_beta_lucario": HEURISTIC_POLICY_BETA_LUCARIO,
         "heuristic_policy_beta_dragapult": HEURISTIC_POLICY_BETA_DRAGAPULT,
+        "heuristic_policy_beta_abomasnow": HEURISTIC_POLICY_BETA_ABOMASNOW,
+        "heuristic_policy_beta_iono": HEURISTIC_POLICY_BETA_IONO,
+        "heuristic_policy_beta_starmie": HEURISTIC_POLICY_BETA_STARMIE,
+        "heuristic_policy_beta_crustle": HEURISTIC_POLICY_BETA_CRUSTLE,
         "value_archetype_shaping_weight_lucario": VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO,
         "value_archetype_shaping_weight_dragapult": VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT,
+        "value_archetype_shaping_weight_abomasnow": VALUE_ARCHETYPE_SHAPING_WEIGHT_ABOMASNOW,
+        "value_archetype_shaping_weight_iono": VALUE_ARCHETYPE_SHAPING_WEIGHT_IONO,
+        "value_archetype_shaping_weight_starmie": VALUE_ARCHETYPE_SHAPING_WEIGHT_STARMIE,
+        "value_archetype_shaping_weight_crustle": VALUE_ARCHETYPE_SHAPING_WEIGHT_CRUSTLE,
         "heuristic_target_mix_lucario": HEURISTIC_TARGET_MIX_LUCARIO,
         "heuristic_target_mix_dragapult": HEURISTIC_TARGET_MIX_DRAGAPULT,
+        "heuristic_target_mix_abomasnow": HEURISTIC_TARGET_MIX_ABOMASNOW,
+        "heuristic_target_mix_iono": HEURISTIC_TARGET_MIX_IONO,
+        "heuristic_target_mix_starmie": HEURISTIC_TARGET_MIX_STARMIE,
+        "heuristic_target_mix_crustle": HEURISTIC_TARGET_MIX_CRUSTLE,
         "train_encoder_lr": TRAIN_ENCODER_LR,
         "train_head_lr": TRAIN_HEAD_LR,
         "train_use_amp": TRAIN_USE_AMP,
@@ -457,10 +493,22 @@ _ENV_MAP = {
     "objective_search_policy_kl_weight": "OBJECTIVE_SEARCH_POLICY_KL_WEIGHT",
     "heuristic_policy_beta_lucario": "HEURISTIC_POLICY_BETA_LUCARIO",
     "heuristic_policy_beta_dragapult": "HEURISTIC_POLICY_BETA_DRAGAPULT",
+    "heuristic_policy_beta_abomasnow": "HEURISTIC_POLICY_BETA_ABOMASNOW",
+    "heuristic_policy_beta_iono": "HEURISTIC_POLICY_BETA_IONO",
+    "heuristic_policy_beta_starmie": "HEURISTIC_POLICY_BETA_STARMIE",
+    "heuristic_policy_beta_crustle": "HEURISTIC_POLICY_BETA_CRUSTLE",
     "value_archetype_shaping_weight_lucario": "VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO",
     "value_archetype_shaping_weight_dragapult": "VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT",
+    "value_archetype_shaping_weight_abomasnow": "VALUE_ARCHETYPE_SHAPING_WEIGHT_ABOMASNOW",
+    "value_archetype_shaping_weight_iono": "VALUE_ARCHETYPE_SHAPING_WEIGHT_IONO",
+    "value_archetype_shaping_weight_starmie": "VALUE_ARCHETYPE_SHAPING_WEIGHT_STARMIE",
+    "value_archetype_shaping_weight_crustle": "VALUE_ARCHETYPE_SHAPING_WEIGHT_CRUSTLE",
     "heuristic_target_mix_lucario": "HEURISTIC_TARGET_MIX_LUCARIO",
     "heuristic_target_mix_dragapult": "HEURISTIC_TARGET_MIX_DRAGAPULT",
+    "heuristic_target_mix_abomasnow": "HEURISTIC_TARGET_MIX_ABOMASNOW",
+    "heuristic_target_mix_iono": "HEURISTIC_TARGET_MIX_IONO",
+    "heuristic_target_mix_starmie": "HEURISTIC_TARGET_MIX_STARMIE",
+    "heuristic_target_mix_crustle": "HEURISTIC_TARGET_MIX_CRUSTLE",
     "train_encoder_lr": "TRAIN_ENCODER_LR",
     "train_head_lr": "TRAIN_HEAD_LR",
     "train_use_amp": "TRAIN_USE_AMP",
@@ -645,10 +693,22 @@ def _coerce_value(key: str, value: Any) -> Any:
         "min_top_of_ladder_fraction",
         "heuristic_policy_beta_lucario",
         "heuristic_policy_beta_dragapult",
+        "heuristic_policy_beta_abomasnow",
+        "heuristic_policy_beta_iono",
+        "heuristic_policy_beta_starmie",
+        "heuristic_policy_beta_crustle",
         "value_archetype_shaping_weight_lucario",
         "value_archetype_shaping_weight_dragapult",
+        "value_archetype_shaping_weight_abomasnow",
+        "value_archetype_shaping_weight_iono",
+        "value_archetype_shaping_weight_starmie",
+        "value_archetype_shaping_weight_crustle",
         "heuristic_target_mix_lucario",
         "heuristic_target_mix_dragapult",
+        "heuristic_target_mix_abomasnow",
+        "heuristic_target_mix_iono",
+        "heuristic_target_mix_starmie",
+        "heuristic_target_mix_crustle",
     }:
         return float(value)
     if key in {"fallback_rollout_data", "training_rollout_sources"}:
@@ -756,8 +816,16 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "search_policy_kl_weight": settings["objective_search_policy_kl_weight"],
             "value_archetype_shaping_weight_lucario": settings["value_archetype_shaping_weight_lucario"],
             "value_archetype_shaping_weight_dragapult": settings["value_archetype_shaping_weight_dragapult"],
+            "value_archetype_shaping_weight_abomasnow": settings["value_archetype_shaping_weight_abomasnow"],
+            "value_archetype_shaping_weight_iono": settings["value_archetype_shaping_weight_iono"],
+            "value_archetype_shaping_weight_starmie": settings["value_archetype_shaping_weight_starmie"],
+            "value_archetype_shaping_weight_crustle": settings["value_archetype_shaping_weight_crustle"],
             "heuristic_target_mix_lucario": settings["heuristic_target_mix_lucario"],
             "heuristic_target_mix_dragapult": settings["heuristic_target_mix_dragapult"],
+            "heuristic_target_mix_abomasnow": settings["heuristic_target_mix_abomasnow"],
+            "heuristic_target_mix_iono": settings["heuristic_target_mix_iono"],
+            "heuristic_target_mix_starmie": settings["heuristic_target_mix_starmie"],
+            "heuristic_target_mix_crustle": settings["heuristic_target_mix_crustle"],
         },
         "model": {
             "d_model": d_model,
@@ -836,8 +904,16 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "opponent_latest_prob": settings["self_play_opponent_latest_prob"],
             "heuristic_policy_beta_lucario": settings["heuristic_policy_beta_lucario"],
             "heuristic_policy_beta_dragapult": settings["heuristic_policy_beta_dragapult"],
+            "heuristic_policy_beta_abomasnow": settings["heuristic_policy_beta_abomasnow"],
+            "heuristic_policy_beta_iono": settings["heuristic_policy_beta_iono"],
+            "heuristic_policy_beta_starmie": settings["heuristic_policy_beta_starmie"],
+            "heuristic_policy_beta_crustle": settings["heuristic_policy_beta_crustle"],
             "heuristic_target_mix_lucario": settings["heuristic_target_mix_lucario"],
             "heuristic_target_mix_dragapult": settings["heuristic_target_mix_dragapult"],
+            "heuristic_target_mix_abomasnow": settings["heuristic_target_mix_abomasnow"],
+            "heuristic_target_mix_iono": settings["heuristic_target_mix_iono"],
+            "heuristic_target_mix_starmie": settings["heuristic_target_mix_starmie"],
+            "heuristic_target_mix_crustle": settings["heuristic_target_mix_crustle"],
         },
     }
 
