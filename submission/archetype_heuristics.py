@@ -53,6 +53,20 @@ def _deck_matches_archetype_patterns(slug: str, patterns: list[str]) -> bool:
     return False
 
 
+def opponent_matches_family(opponent_slug: str, family: str) -> bool:
+    """Whether a predicted meta slug belongs to a trained heuristic family."""
+    if opponent_slug == ARCHETYPE_UNKNOWN:
+        return False
+    patterns = HEURISTIC_ARCHETYPE_SLUG_PATTERNS.get(family)
+    if not patterns:
+        return False
+    return _deck_matches_archetype_patterns(opponent_slug, patterns)
+
+
+def _our_family_patterns(our_archetype: str) -> list[str]:
+    return list(HEURISTIC_ARCHETYPE_SLUG_PATTERNS.get(our_archetype) or [])
+
+
 def _seat_prize_counts(obs: dict[str, Any] | None, seat: int) -> tuple[int, int]:
     return prize_count(obs, seat), prize_count(obs, 1 - seat)
 

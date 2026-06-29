@@ -15,6 +15,10 @@ from poke_agent.outputs import describe_layout, ensure_output_layout, report_pat
 
 # --- Data paths ---
 # AGENT_DECK_PATH is the deck we submit to Kaggle (hard-played at runtime).
+# TRAINING_DATA_PATH, when set, is the single explicit training corpus and wins over
+# every other source (merged/primary/fallback). Archetype bootstrap runs set this to
+# their per-archetype JSONL instead of juggling PRIMARY/MERGED precedence.
+TRAINING_DATA_PATH = ""
 PRIMARY_ROLLOUT_DATA = "data/training_rollouts_merged.jsonl"
 SCRAPED_ROLLOUT_DATA = "data/scraped_rollouts.jsonl"
 MULTIDECK_ROLLOUT_DATA = "data/multideck_rollouts.jsonl"
@@ -110,26 +114,43 @@ TRAIN_ENCODER_LR = 1e-4
 TRAIN_HEAD_LR = 3e-4
 
 # --- Archetype game-plan heuristics (SME-guided) ---
-# Lucario is linear → tolerates a stronger policy prior + value shaping; Dragapult is
-# non-linear at the top level → softer prior so multiple lines stay viable.
-HEURISTIC_POLICY_BETA_LUCARIO = 0.35    # logit bias strength on root action ranking
-HEURISTIC_POLICY_BETA_DRAGAPULT = 0.15
-HEURISTIC_POLICY_BETA_ABOMASNOW = 0.28
-HEURISTIC_POLICY_BETA_IONO = 0.30
-HEURISTIC_POLICY_BETA_STARMIE = 0.15
-HEURISTIC_POLICY_BETA_CRUSTLE = 0.22
-VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO = 0.12   # blend of bounded game-plan bonus into value target
-VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT = 0.08
-VALUE_ARCHETYPE_SHAPING_WEIGHT_ABOMASNOW = 0.10
-VALUE_ARCHETYPE_SHAPING_WEIGHT_IONO = 0.10
-VALUE_ARCHETYPE_SHAPING_WEIGHT_STARMIE = 0.08
-VALUE_ARCHETYPE_SHAPING_WEIGHT_CRUSTLE = 0.09
-HEURISTIC_TARGET_MIX_LUCARIO = 0.20     # blend of heuristic mass into soft search-policy target
-HEURISTIC_TARGET_MIX_DRAGAPULT = 0.10
-HEURISTIC_TARGET_MIX_ABOMASNOW = 0.18
-HEURISTIC_TARGET_MIX_IONO = 0.18
-HEURISTIC_TARGET_MIX_STARMIE = 0.10
-HEURISTIC_TARGET_MIX_CRUSTLE = 0.12
+# Single source of truth: per-archetype (policy_beta, value_shaping, target_mix).
+# All 18 flat config keys / env vars / nested objective+self_play entries are derived
+# from this table — see ARCHETYPE_KNOB_DEFAULTS / archetype_knob_keys() below.
+# Lucario/Abomasnow/Iono are linear (stronger prior + shaping); Dragapult/Starmie are
+# non-linear at the top level (softer prior so multiple lines stay viable).
+ARCHETYPE_HEURISTIC_TUNING: dict[str, tuple[float, float, float]] = {
+    # short_key: (heuristic_policy_beta, value_archetype_shaping_weight, heuristic_target_mix)
+    "lucario": (0.35, 0.12, 0.20),
+    "dragapult": (0.15, 0.08, 0.10),
+    "abomasnow": (0.28, 0.10, 0.18),
+    "iono": (0.30, 0.10, 0.18),
+    "starmie": (0.15, 0.08, 0.10),
+    "crustle": (0.22, 0.09, 0.12),
+}
+
+HEURISTIC_KNOB_FAMILIES = (
+    "heuristic_policy_beta",
+    "value_archetype_shaping_weight",
+    "heuristic_target_mix",
+)
+
+
+def archetype_knob_defaults() -> dict[str, float]:
+    """Flat {family}_{archetype} -> default value for all 18 heuristic knobs."""
+    out: dict[str, float] = {}
+    for short, values in ARCHETYPE_HEURISTIC_TUNING.items():
+        for family, value in zip(HEURISTIC_KNOB_FAMILIES, values):
+            out[f"{family}_{short}"] = value
+    return out
+
+
+def archetype_knob_keys() -> tuple[str, ...]:
+    """Ordered tuple of the 18 flat heuristic knob config keys."""
+    return tuple(archetype_knob_defaults().keys())
+
+
+ARCHETYPE_KNOB_KEYS = archetype_knob_keys()
 
 # --- Beam search (Kaggle inference) ---
 BEAM_WIDTH = 12
@@ -211,6 +232,7 @@ TRAIN_TENSOR_CACHE_DIR = "outputs/cache/training_tensors"
 
 # Flat override keys accepted by build_config(..., overrides=...).
 OVERRIDE_KEYS = frozenset({
+    "training_data_path",
     "primary_rollout_data",
     "fallback_rollout_data",
     "agent_deck_path",
@@ -235,24 +257,8 @@ OVERRIDE_KEYS = frozenset({
     "policy_soft_topk",
     "objective_use_soft_search_policy",
     "objective_search_policy_kl_weight",
-    "heuristic_policy_beta_lucario",
-    "heuristic_policy_beta_dragapult",
-    "heuristic_policy_beta_abomasnow",
-    "heuristic_policy_beta_iono",
-    "heuristic_policy_beta_starmie",
-    "heuristic_policy_beta_crustle",
-    "value_archetype_shaping_weight_lucario",
-    "value_archetype_shaping_weight_dragapult",
-    "value_archetype_shaping_weight_abomasnow",
-    "value_archetype_shaping_weight_iono",
-    "value_archetype_shaping_weight_starmie",
-    "value_archetype_shaping_weight_crustle",
-    "heuristic_target_mix_lucario",
-    "heuristic_target_mix_dragapult",
-    "heuristic_target_mix_abomasnow",
-    "heuristic_target_mix_iono",
-    "heuristic_target_mix_starmie",
-    "heuristic_target_mix_crustle",
+    # 18 archetype heuristic knobs (heuristic_policy_beta_*, value_archetype_shaping_weight_*,
+    # heuristic_target_mix_*) are unioned in below from ARCHETYPE_KNOB_KEYS.
     "train_encoder_lr",
     "train_head_lr",
     "train_use_amp",
@@ -335,12 +341,13 @@ OVERRIDE_KEYS = frozenset({
     "require_top_of_ladder_data",
     "min_top_of_ladder_fraction",
     "value_timeout",
-})
+}) | frozenset(ARCHETYPE_KNOB_KEYS)
 
 
 def default_user_config() -> dict[str, Any]:
     """Return editable defaults as a flat dict for notebooks and scripts."""
     return {
+        "training_data_path": TRAINING_DATA_PATH,
         "primary_rollout_data": PRIMARY_ROLLOUT_DATA,
         "fallback_rollout_data": list(FALLBACK_ROLLOUT_DATA),
         "agent_deck_path": AGENT_DECK_PATH,
@@ -365,24 +372,7 @@ def default_user_config() -> dict[str, Any]:
         "policy_soft_topk": POLICY_SOFT_TOPK,
         "objective_use_soft_search_policy": OBJECTIVE_USE_SOFT_SEARCH_POLICY,
         "objective_search_policy_kl_weight": OBJECTIVE_SEARCH_POLICY_KL_WEIGHT,
-        "heuristic_policy_beta_lucario": HEURISTIC_POLICY_BETA_LUCARIO,
-        "heuristic_policy_beta_dragapult": HEURISTIC_POLICY_BETA_DRAGAPULT,
-        "heuristic_policy_beta_abomasnow": HEURISTIC_POLICY_BETA_ABOMASNOW,
-        "heuristic_policy_beta_iono": HEURISTIC_POLICY_BETA_IONO,
-        "heuristic_policy_beta_starmie": HEURISTIC_POLICY_BETA_STARMIE,
-        "heuristic_policy_beta_crustle": HEURISTIC_POLICY_BETA_CRUSTLE,
-        "value_archetype_shaping_weight_lucario": VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO,
-        "value_archetype_shaping_weight_dragapult": VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT,
-        "value_archetype_shaping_weight_abomasnow": VALUE_ARCHETYPE_SHAPING_WEIGHT_ABOMASNOW,
-        "value_archetype_shaping_weight_iono": VALUE_ARCHETYPE_SHAPING_WEIGHT_IONO,
-        "value_archetype_shaping_weight_starmie": VALUE_ARCHETYPE_SHAPING_WEIGHT_STARMIE,
-        "value_archetype_shaping_weight_crustle": VALUE_ARCHETYPE_SHAPING_WEIGHT_CRUSTLE,
-        "heuristic_target_mix_lucario": HEURISTIC_TARGET_MIX_LUCARIO,
-        "heuristic_target_mix_dragapult": HEURISTIC_TARGET_MIX_DRAGAPULT,
-        "heuristic_target_mix_abomasnow": HEURISTIC_TARGET_MIX_ABOMASNOW,
-        "heuristic_target_mix_iono": HEURISTIC_TARGET_MIX_IONO,
-        "heuristic_target_mix_starmie": HEURISTIC_TARGET_MIX_STARMIE,
-        "heuristic_target_mix_crustle": HEURISTIC_TARGET_MIX_CRUSTLE,
+        **archetype_knob_defaults(),
         "train_encoder_lr": TRAIN_ENCODER_LR,
         "train_head_lr": TRAIN_HEAD_LR,
         "train_use_amp": TRAIN_USE_AMP,
@@ -469,7 +459,9 @@ def default_user_config() -> dict[str, Any]:
 
 
 _ENV_MAP = {
+    "training_data_path": "TRAINING_DATA_PATH",
     "primary_rollout_data": "PRIMARY_ROLLOUT_DATA",
+    "merged_rollout_data": "MERGED_ROLLOUT_DATA",
     "agent_deck_path": "AGENT_DECK_PATH",
     "cabt_generated_path": "CABT_GENERATED_PATH",
     "competition_results_path": "COMPETITION_RESULTS_PATH",
@@ -491,24 +483,8 @@ _ENV_MAP = {
     "policy_soft_topk": "POLICY_SOFT_TOPK",
     "objective_use_soft_search_policy": "OBJECTIVE_USE_SOFT_SEARCH_POLICY",
     "objective_search_policy_kl_weight": "OBJECTIVE_SEARCH_POLICY_KL_WEIGHT",
-    "heuristic_policy_beta_lucario": "HEURISTIC_POLICY_BETA_LUCARIO",
-    "heuristic_policy_beta_dragapult": "HEURISTIC_POLICY_BETA_DRAGAPULT",
-    "heuristic_policy_beta_abomasnow": "HEURISTIC_POLICY_BETA_ABOMASNOW",
-    "heuristic_policy_beta_iono": "HEURISTIC_POLICY_BETA_IONO",
-    "heuristic_policy_beta_starmie": "HEURISTIC_POLICY_BETA_STARMIE",
-    "heuristic_policy_beta_crustle": "HEURISTIC_POLICY_BETA_CRUSTLE",
-    "value_archetype_shaping_weight_lucario": "VALUE_ARCHETYPE_SHAPING_WEIGHT_LUCARIO",
-    "value_archetype_shaping_weight_dragapult": "VALUE_ARCHETYPE_SHAPING_WEIGHT_DRAGAPULT",
-    "value_archetype_shaping_weight_abomasnow": "VALUE_ARCHETYPE_SHAPING_WEIGHT_ABOMASNOW",
-    "value_archetype_shaping_weight_iono": "VALUE_ARCHETYPE_SHAPING_WEIGHT_IONO",
-    "value_archetype_shaping_weight_starmie": "VALUE_ARCHETYPE_SHAPING_WEIGHT_STARMIE",
-    "value_archetype_shaping_weight_crustle": "VALUE_ARCHETYPE_SHAPING_WEIGHT_CRUSTLE",
-    "heuristic_target_mix_lucario": "HEURISTIC_TARGET_MIX_LUCARIO",
-    "heuristic_target_mix_dragapult": "HEURISTIC_TARGET_MIX_DRAGAPULT",
-    "heuristic_target_mix_abomasnow": "HEURISTIC_TARGET_MIX_ABOMASNOW",
-    "heuristic_target_mix_iono": "HEURISTIC_TARGET_MIX_IONO",
-    "heuristic_target_mix_starmie": "HEURISTIC_TARGET_MIX_STARMIE",
-    "heuristic_target_mix_crustle": "HEURISTIC_TARGET_MIX_CRUSTLE",
+    # 18 archetype heuristic knobs map to their UPPER_SNAKE env var name.
+    **{key: key.upper() for key in ARCHETYPE_KNOB_KEYS},
     "train_encoder_lr": "TRAIN_ENCODER_LR",
     "train_head_lr": "TRAIN_HEAD_LR",
     "train_use_amp": "TRAIN_USE_AMP",
@@ -691,25 +667,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "self_play_baseline_top_decks_per_archetype",
         "self_play_warmup_lr_multiplier",
         "min_top_of_ladder_fraction",
-        "heuristic_policy_beta_lucario",
-        "heuristic_policy_beta_dragapult",
-        "heuristic_policy_beta_abomasnow",
-        "heuristic_policy_beta_iono",
-        "heuristic_policy_beta_starmie",
-        "heuristic_policy_beta_crustle",
-        "value_archetype_shaping_weight_lucario",
-        "value_archetype_shaping_weight_dragapult",
-        "value_archetype_shaping_weight_abomasnow",
-        "value_archetype_shaping_weight_iono",
-        "value_archetype_shaping_weight_starmie",
-        "value_archetype_shaping_weight_crustle",
-        "heuristic_target_mix_lucario",
-        "heuristic_target_mix_dragapult",
-        "heuristic_target_mix_abomasnow",
-        "heuristic_target_mix_iono",
-        "heuristic_target_mix_starmie",
-        "heuristic_target_mix_crustle",
-    }:
+    } or key in ARCHETYPE_KNOB_KEYS:  # 18 archetype heuristic knobs are all floats
         return float(value)
     if key in {"fallback_rollout_data", "training_rollout_sources"}:
         return list(value)
@@ -756,17 +714,25 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         model_id=model_id,
         explicit=settings["model_output_path"],
     )
-    data_candidates = list(dict.fromkeys([
-        merged_path,
-        *[path for path in training_sources if path != merged_path],
-        root / settings["primary_rollout_data"],
-        *fallback_paths,
-    ]))
+    # Explicit single corpus (TRAINING_DATA_PATH) wins over the merged/primary/fallback
+    # precedence chain — the one knob archetype bootstrap runs need.
+    explicit_training = str(settings.get("training_data_path") or "").strip()
+    explicit_training_path = (root / explicit_training) if explicit_training else None
+    if explicit_training_path is not None:
+        data_candidates = [explicit_training_path]
+    else:
+        data_candidates = list(dict.fromkeys([
+            merged_path,
+            *[path for path in training_sources if path != merged_path],
+            root / settings["primary_rollout_data"],
+            *fallback_paths,
+        ]))
     train_window_games = resolve_self_play_train_window(settings)
 
     return {
         "root": root,
         "agent_deck_path": root / settings["agent_deck_path"],
+        "training_data_path": explicit_training_path,
         "data_candidates": data_candidates,
         "training_rollout_sources": training_sources,
         "merged_rollout_path": merged_path,
@@ -814,18 +780,12 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "policy_soft_topk": settings["policy_soft_topk"],
             "use_soft_search_policy": settings["objective_use_soft_search_policy"],
             "search_policy_kl_weight": settings["objective_search_policy_kl_weight"],
-            "value_archetype_shaping_weight_lucario": settings["value_archetype_shaping_weight_lucario"],
-            "value_archetype_shaping_weight_dragapult": settings["value_archetype_shaping_weight_dragapult"],
-            "value_archetype_shaping_weight_abomasnow": settings["value_archetype_shaping_weight_abomasnow"],
-            "value_archetype_shaping_weight_iono": settings["value_archetype_shaping_weight_iono"],
-            "value_archetype_shaping_weight_starmie": settings["value_archetype_shaping_weight_starmie"],
-            "value_archetype_shaping_weight_crustle": settings["value_archetype_shaping_weight_crustle"],
-            "heuristic_target_mix_lucario": settings["heuristic_target_mix_lucario"],
-            "heuristic_target_mix_dragapult": settings["heuristic_target_mix_dragapult"],
-            "heuristic_target_mix_abomasnow": settings["heuristic_target_mix_abomasnow"],
-            "heuristic_target_mix_iono": settings["heuristic_target_mix_iono"],
-            "heuristic_target_mix_starmie": settings["heuristic_target_mix_starmie"],
-            "heuristic_target_mix_crustle": settings["heuristic_target_mix_crustle"],
+            # value-shaping + target-mix knobs (12 of the 18) feed the training objective.
+            **{
+                key: settings[key]
+                for key in ARCHETYPE_KNOB_KEYS
+                if key.startswith(("value_archetype_shaping_weight_", "heuristic_target_mix_"))
+            },
         },
         "model": {
             "d_model": d_model,
@@ -902,18 +862,12 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "search_determinizations": settings["search_determinizations"],
             "collection_inference_device": settings["collection_inference_device"],
             "opponent_latest_prob": settings["self_play_opponent_latest_prob"],
-            "heuristic_policy_beta_lucario": settings["heuristic_policy_beta_lucario"],
-            "heuristic_policy_beta_dragapult": settings["heuristic_policy_beta_dragapult"],
-            "heuristic_policy_beta_abomasnow": settings["heuristic_policy_beta_abomasnow"],
-            "heuristic_policy_beta_iono": settings["heuristic_policy_beta_iono"],
-            "heuristic_policy_beta_starmie": settings["heuristic_policy_beta_starmie"],
-            "heuristic_policy_beta_crustle": settings["heuristic_policy_beta_crustle"],
-            "heuristic_target_mix_lucario": settings["heuristic_target_mix_lucario"],
-            "heuristic_target_mix_dragapult": settings["heuristic_target_mix_dragapult"],
-            "heuristic_target_mix_abomasnow": settings["heuristic_target_mix_abomasnow"],
-            "heuristic_target_mix_iono": settings["heuristic_target_mix_iono"],
-            "heuristic_target_mix_starmie": settings["heuristic_target_mix_starmie"],
-            "heuristic_target_mix_crustle": settings["heuristic_target_mix_crustle"],
+            # policy-prior + target-mix knobs (12 of the 18) drive search at collection time.
+            **{
+                key: settings[key]
+                for key in ARCHETYPE_KNOB_KEYS
+                if key.startswith(("heuristic_policy_beta_", "heuristic_target_mix_"))
+            },
         },
     }
 

@@ -6,6 +6,7 @@ from poke_agent.episodes_index import is_top_of_ladder_source
 from poke_agent.training_diversity import (
     TrainingDiversityError,
     assert_top_of_ladder_data,
+    is_cabt_self_play_corpus,
     top_of_ladder_stats,
 )
 
@@ -53,6 +54,19 @@ def test_assert_top_of_ladder_data_enforces_min_fraction():
         assert_top_of_ladder_data(rows, min_fraction=0.5)
     # ...but the default (>=1 ladder game) passes.
     assert assert_top_of_ladder_data(rows)["ladder_games"] == 1
+
+
+def test_is_cabt_self_play_corpus_detects_bootstrap():
+    # All-CABT corpus → bypass the ladder gate.
+    assert is_cabt_self_play_corpus(_rows(["multideck-cabt", "multideck-cabt"]))
+    assert is_cabt_self_play_corpus(_rows(["self_play", "multideck-cabt"]))
+    # Any ladder game → not a pure CABT corpus.
+    assert not is_cabt_self_play_corpus(
+        _rows(["multideck-cabt", "pokemon-tcg-ai-battle-episodes-2026-06-20"])
+    )
+    # Unknown/empty provenance → do not bypass.
+    assert not is_cabt_self_play_corpus(_rows(["", "multideck-cabt"]))
+    assert not is_cabt_self_play_corpus([])
 
 
 def test_top_of_ladder_stats_counts_sources():

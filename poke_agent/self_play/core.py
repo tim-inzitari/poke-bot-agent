@@ -43,6 +43,22 @@ from poke_agent.kaggle_submit import (
 )
 from poke_agent.training import build_model, train_model
 from poke_agent.worker_pool import emit_game_progress, imap_persistent, iter_with_live_progress
+from poke_agent.self_play.metrics import (
+    calibration_metrics_from_rows as _calibration_metrics_from_rows,
+    record_seat_outcome as _record_seat_outcome,
+    summarize_results,
+    terminal_result as _terminal_result,
+    value_calibration_metrics,
+)
+from poke_agent.self_play.rollout_io import (
+    count_rollout_games as _count_rollout_games,
+    load_manifest,
+    maybe_trim_rollout_file,
+    rollout_buffer_overwrites,
+    save_manifest,
+    write_jsonl,
+    write_rollout_buffer,
+)
 
 
 @dataclass
@@ -138,61 +154,6 @@ def _resolve_baseline_resume(
     if match:
         return int(match.group(1)) + 1, Path(initial_checkpoint)
     return 1, Path(initial_checkpoint)
-
-
-def value_calibration_metrics(rows: list[dict[str, Any]], *, seat: int) -> dict[str, float]:
-    """Brier score and ECE from search/root value predictions vs game outcome."""
-    by_episode: dict[int, list[dict[str, Any]]] = {}
-    for row in rows:
-        by_episode.setdefault(int(row["episode"]), []).append(row)
-
-    preds: list[float] = []
-    labels: list[float] = []
-    for episode_rows in by_episode.values():
-        episode_rows.sort(key=lambda row: int(row["step"]))
-        outcome = _terminal_result(episode_rows)
-        if outcome is None:
-            continue
-        label = 1.0 if int(outcome) == int(seat) else -1.0
-        for row in episode_rows:
-            if int(row.get("player", -1)) != int(seat):
-                continue
-            if "search_value" not in row:
-                continue
-            preds.append(float(row["search_value"]))
-            labels.append(label)
-
-    if not preds:
-        return {"brier": 0.0, "ece": 0.0, "samples": 0.0}
-
-    pred_t = torch.tensor(preds, dtype=torch.float32)
-    label_t = torch.tensor(labels, dtype=torch.float32)
-    brier = float(((pred_t - label_t) ** 2).mean().item())
-
-    # Expected calibration error with 10 equal-width bins on [-1, 1].
-    bins = torch.linspace(-1.0, 1.0, steps=11)
-    ece = 0.0
-    total = float(len(preds))
-    for start, end in zip(bins[:-1], bins[1:]):
-        mask = (pred_t >= start) & (pred_t < end)
-        if not bool(mask.any()):
-            continue
-        bin_pred = float(pred_t[mask].mean().item())
-        bin_label = float(label_t[mask].mean().item())
-        ece += float(mask.sum().item()) / total * abs(bin_pred - bin_label)
-
-    return {"brier": brier, "ece": ece, "samples": float(len(preds))}
-
-
-def _calibration_metrics_from_rows(rows: list[dict[str, Any]]) -> dict[str, float]:
-    seat0 = value_calibration_metrics(rows, seat=0)
-    seat1 = value_calibration_metrics(rows, seat=1)
-    samples = seat0["samples"] + seat1["samples"]
-    if samples <= 0:
-        return {"brier": 0.0, "ece": 0.0, "samples": 0.0}
-    brier = (seat0["brier"] * seat0["samples"] + seat1["brier"] * seat1["samples"]) / samples
-    ece = (seat0["ece"] * seat0["samples"] + seat1["ece"] * seat1["samples"]) / samples
-    return {"brier": brier, "ece": ece, "samples": samples}
 
 
 def _probe_value_calibration_sequential(
@@ -681,29 +642,6 @@ def _field_eval_task(
     return start_episode, report
 
 
-def _terminal_result(match_rows: list[dict[str, Any]]) -> int | None:
-    if not match_rows:
-        return None
-    return int(next(row for row in reversed(match_rows) if row.get("terminal")).get("result", -1))
-
-
-def _record_seat_outcome(
-    result: int,
-    our_seat: int,
-    *,
-    wins: int,
-    losses: int,
-    draws: int,
-) -> tuple[int, int, int]:
-    if result == 2:
-        return wins, losses, draws + 1
-    if result == our_seat:
-        return wins + 1, losses, draws
-    if result >= 0:
-        return wins, losses + 1, draws
-    return wins, losses, draws
-
-
 def _win_rate_postfix(wins: int, losses: int, *, draws: int = 0, **extra: Any) -> dict[str, Any]:
     decided = wins + losses
     postfix: dict[str, Any] = {
@@ -739,91 +677,6 @@ def _outcome_progress_hook(
         )
 
     return on_game
-
-
-def summarize_results(results: list[int], *, seat_index: int) -> dict[str, float]:
-    """Summarize game outcomes from one seat's perspective (0=player0 wins)."""
-    wins = sum(1 for result in results if result == seat_index)
-    losses = sum(1 for result in results if result >= 0 and result != 2 and result != seat_index)
-    draws = sum(1 for result in results if result == 2)
-    decided = wins + losses
-    win_rate = (wins / decided) if decided else 0.0
-    return {
-        "games": float(len(results)),
-        "wins": float(wins),
-        "losses": float(losses),
-        "draws": float(draws),
-        "win_rate": win_rate,
-    }
-
-
-def write_jsonl(path: Path, rows: list[dict[str, Any]], *, append: bool = False) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    mode = "a" if append else "w"
-    with path.open(mode, encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, separators=(",", ":")) + "\n")
-
-
-def maybe_trim_rollout_file(settings: SelfPlaySettings) -> None:
-    if not settings.trim_rollout_file:
-        return
-    from poke_agent.dataset import trim_rollout_jsonl
-
-    trim_rollout_jsonl(settings.output_path, settings.train_window_games)
-
-
-def rollout_buffer_overwrites(settings: SelfPlaySettings) -> bool:
-    """True when each iteration should replace the JSONL with only this batch."""
-    if not settings.trim_rollout_file:
-        return False
-    window = settings.train_window_games
-    if window is None or int(window) <= 0:
-        return False
-    return int(settings.games_per_iteration) == int(window)
-
-
-def write_rollout_buffer(
-    settings: SelfPlaySettings,
-    rows: list[dict[str, Any]],
-    *,
-    iteration: int,
-) -> tuple[bool, int]:
-    """Persist collected rows; returns (overwrote_file, games_on_disk)."""
-    if rollout_buffer_overwrites(settings):
-        write_jsonl(settings.output_path, rows, append=False)
-        kept_games = _count_rollout_games(settings.output_path)
-        return True, kept_games
-
-    append = settings.output_path.exists() and iteration > 1
-    write_jsonl(settings.output_path, rows, append=append)
-    maybe_trim_rollout_file(settings)
-    return append, _count_rollout_games(settings.output_path)
-
-
-def _count_rollout_games(path: Path) -> int:
-    if not path.exists():
-        return 0
-    episodes: set[int] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        episodes.add(int(json.loads(line)["episode"]))
-    return len(episodes)
-
-
-def load_manifest(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {"iterations": [], "champion": None}
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def save_manifest(path: Path, manifest: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2, sort_keys=True)
-        handle.write("\n")
 
 
 def resolve_matchup(

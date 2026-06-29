@@ -8,6 +8,11 @@ test -f submission/deck.csv
 test -f submission/policy_runtime.py
 test -d submission/cg
 
+# Guard: submission scoring must not have drifted from poke_agent (single source of
+# truth for archetype heuristics). Fails the build on any divergence or missing symbol.
+echo "==> verifying submission heuristics parity with poke_agent"
+python3 -m pytest tests/test_submission_heuristics_parity.py -q
+
 CG_LIB="kaggle/input/cg-lib/cg/libcg.so"
 if [ ! -f "$CG_LIB" ]; then
   echo "missing $CG_LIB; run scripts/download-kaggle-inputs.sh first" >&2

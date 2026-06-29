@@ -48,11 +48,14 @@ def test_resolve_baseline_archetype_deck_pool_uses_high_performing(tmp_path: Pat
     hp = tmp_path / "decks" / "competitive" / "high_performing"
     hp.mkdir(parents=True)
     (hp / "2026-05_regional_4th_dragapult.csv").write_text("\n".join(str(i) for i in range(60)), encoding="utf-8")
-    (hp / "2026-05_regional_2nd_lopunny-dudunsparce.csv").write_text("\n".join(str(i + 1) for i in range(60)), encoding="utf-8")
+    (hp / "2026-05_regional_2nd_starmie-froslass.csv").write_text("\n".join(str(i + 1) for i in range(60)), encoding="utf-8")
 
-    official = tmp_path / "baselines" / "official" / "mega-abomasnow-ex"
-    official.mkdir(parents=True)
-    (official / "deck.csv").write_text("\n".join(str(i + 2) for i in range(60)), encoding="utf-8")
+    # Iono maps to its official Bellibolt deck (no competitive Iono list in the corpus),
+    # and Abomasnow has no high-performing list here either — both come from official.
+    for agent_dir, offset in (("iono", 2), ("mega-abomasnow-ex", 3)):
+        official = tmp_path / "baselines" / "official" / agent_dir
+        official.mkdir(parents=True)
+        (official / "deck.csv").write_text("\n".join(str(i + offset) for i in range(60)), encoding="utf-8")
 
     manifest = tmp_path / "baselines" / "manifest.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
@@ -71,9 +74,13 @@ def test_resolve_baseline_archetype_deck_pool_uses_high_performing(tmp_path: Pat
 
     pool = resolve_baseline_archetype_deck_pool(tmp_path, top_decks_per_archetype=1)
     names = {name for name, _ in pool}
-    assert "2026-05_regional_2nd_lopunny-dudunsparce" in names
+    # Dragapult is matched from the high-performing corpus by archetype pattern...
     assert "2026-05_regional_4th_dragapult" in names
+    # ...while Iono (Bellibolt) and Abomasnow fall back to their official decks.
+    assert "official-iono" in names
     assert "official-mega-abomasnow-ex" in names
+    # The Starmie list maps to no baseline agent, so it is not pulled in.
+    assert "2026-05_regional_2nd_starmie-froslass" not in names
     assert len(pool) == 3
 
 
