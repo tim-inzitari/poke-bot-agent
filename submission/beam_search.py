@@ -12,6 +12,7 @@ import numpy as np
 import torch
 
 from cg.api import search_begin, search_end, search_step, to_observation_class
+from attack_plan import score_actions_with_attack_plan
 from features import encode_observation_step, stable_hash_index
 from game_tracker import GameEventTracker
 from policy_runtime import legal_actions
@@ -99,12 +100,17 @@ def rank_actions_by_policy(
     agent: TrainedPolicyAgent,
     logits: np.ndarray,
     actions: list[list[int]],
+    obs_dict: dict[str, Any] | None = None,
 ) -> list[tuple[float, list[int]]]:
     ranked: list[tuple[float, list[int]]] = []
-    for action in actions:
+    plan_scores = score_actions_with_attack_plan(obs_dict, actions) if obs_dict is not None else [0.0 for _ in actions]
+    max_abs_plan = max((abs(score) for score in plan_scores), default=0.0)
+    for index, action in enumerate(actions):
         action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
         action_class = stable_hash_index(action_key, agent._policy_dim)
-        ranked.append((float(logits[action_class]), action))
+        policy_score = float(logits[action_class])
+        plan_score = (plan_scores[index] / max_abs_plan) if max_abs_plan > 0 else 0.0
+        ranked.append((policy_score + 0.35 * plan_score, action))
     ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
 
@@ -229,7 +235,7 @@ def run_beam_search(
     config = config or BeamSearchConfig()
     deadline = time.perf_counter() + (config.time_budget_ms / 1000.0)
     logits = agent._model_logits()
-    ranked = rank_actions_by_policy(agent, logits, actions)[: max(1, config.width)]
+    ranked = rank_actions_by_policy(agent, logits, actions, obs_dict)[: max(1, config.width)]
 
     best_action = ranked[0][1]
     best_value = float("-inf")

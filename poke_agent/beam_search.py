@@ -11,6 +11,7 @@ import numpy as np
 import torch
 
 from poke_agent.actions import legal_actions
+from poke_agent.attack_plan import score_actions_with_attack_plan
 from poke_agent.features import encode_observation_step, stable_hash_index
 from poke_agent.game_tracker import GameEventTracker
 
@@ -101,12 +102,18 @@ def rank_actions_by_policy(
     runtime: PolicyRuntime,
     logits: np.ndarray,
     actions: list[list[int]],
+    obs_dict: dict[str, Any] | None = None,
 ) -> list[tuple[float, list[int]]]:
     ranked: list[tuple[float, list[int]]] = []
+    plan_scores = score_actions_with_attack_plan(obs_dict, actions) if obs_dict is not None else [0.0 for _ in actions]
+    max_abs_plan = max((abs(score) for score in plan_scores), default=0.0)
     for action in actions:
+        index = len(ranked)
         action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
         action_class = stable_hash_index(action_key, runtime._policy_dim)
-        ranked.append((float(logits[action_class]), action))
+        policy_score = float(logits[action_class])
+        plan_score = (plan_scores[index] / max_abs_plan) if max_abs_plan > 0 else 0.0
+        ranked.append((policy_score + 0.35 * plan_score, action))
     ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
 
@@ -237,7 +244,7 @@ def run_beam_search(
     config = config or BeamSearchConfig()
     deadline = time.perf_counter() + (config.time_budget_ms / 1000.0)
     logits = runtime._model_logits(session)
-    ranked = rank_actions_by_policy(runtime, logits, actions)[: max(1, config.width)]
+    ranked = rank_actions_by_policy(runtime, logits, actions, obs_dict)[: max(1, config.width)]
 
     best_action = ranked[0][1]
     best_value = float("-inf")

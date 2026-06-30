@@ -43,7 +43,7 @@ def validate_catalog() -> None:
                 raise ModelRegistryError(f"{model_id}: unknown heuristic strategy {strategy!r}")
 
         if kind == "neural":
-            if spec.get("architecture", "transformer_rl") != "transformer_rl":
+            if spec.get("architecture", "transformer_rl") not in {"transformer_rl", "temporal_kan_rl"}:
                 raise ModelRegistryError(f"{model_id}: unsupported architecture")
 
         if kind == "hybrid":

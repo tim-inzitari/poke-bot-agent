@@ -17,7 +17,7 @@ from poke_agent.cabt_validation import (
     resolve_training_data_path,
     uses_generated_training_data,
 )
-from poke_agent.features import build_training_arrays, default_tensor_build_workers
+from poke_agent.features import COARSE_FEATURE_DIM, build_training_arrays, default_tensor_build_workers
 
 
 def limit_dataset_games(rows: list[dict], max_games: int | None) -> tuple[list[dict], int, int]:
@@ -116,13 +116,15 @@ class TrainingTensors:
 
 def _synthetic_smoke_arrays(
     transition_classes: int,
+    state_hash_dim: int,
     window_size: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(7)
     games = 8
     steps_per_game = 16
     total = games * steps_per_game
-    x_np = rng.normal(size=(total, 10)).astype(np.float32)
+    feature_dim = COARSE_FEATURE_DIM + state_hash_dim
+    x_np = rng.normal(size=(total, feature_dim)).astype(np.float32)
     y_np = np.tanh(x_np[:, 0] * 0.1 + x_np[:, 2] * 0.03 - x_np[:, 5] * 0.03).astype(np.float32)
     transition_np = rng.integers(0, transition_classes, size=(total,), dtype=np.int64)
     next_x_np = (x_np + rng.normal(scale=0.1, size=x_np.shape)).astype(np.float32)
@@ -169,6 +171,7 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         print("No rollout data found. Using synthetic smoke data so Run All still completes.")
         x_np, y_np, transition_np, next_x_np, terminal_np, history_index_np, history_mask_np, game_lengths_np = _synthetic_smoke_arrays(
             transition_classes,
+            state_hash_dim,
             window_size,
         )
     else:

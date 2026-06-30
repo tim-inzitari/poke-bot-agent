@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from poke_agent.actions import legal_actions
+from poke_agent.attack_plan import score_actions_with_attack_plan
 from poke_agent.features import COARSE_FEATURE_DIM, encode_observation_step, stable_hash_index
 from poke_agent.game_tracker import GameEventTracker
 from poke_agent.models.temporal_transformer import TemporalTransformer
@@ -68,6 +69,8 @@ class PolicyRuntime:
             dim_feedforward=int(model_cfg["dim_feedforward"]),
             dropout=float(model_cfg["dropout"]),
             window_size=self._window_size,
+            kan_grid_size=int(model_cfg.get("kan_grid_size", 8)),
+            use_kan=bool(model_cfg.get("use_kan", False)),
         ).to(self.device)
         self._model.load_state_dict(checkpoint["model_state_dict"])
         self._model.eval()
@@ -107,13 +110,22 @@ class PolicyRuntime:
             logits = self._model(x, mask)["policy_logits"].squeeze(0).cpu().numpy()
         return logits
 
-    def _choose_from_policy_logits(self, logits: np.ndarray, actions: list[list[int]]) -> list[int]:
+    def _choose_from_policy_logits(
+        self,
+        logits: np.ndarray,
+        actions: list[list[int]],
+        obs_dict: dict[str, Any] | None = None,
+    ) -> list[int]:
         best_action = actions[0]
         best_score = float("-inf")
-        for action in actions:
+        plan_scores = score_actions_with_attack_plan(obs_dict, actions) if obs_dict is not None else [0.0 for _ in actions]
+        max_abs_plan = max((abs(score) for score in plan_scores), default=0.0)
+        for index, action in enumerate(actions):
             action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
             action_class = stable_hash_index(action_key, self._policy_dim)
             score = float(logits[action_class])
+            if max_abs_plan > 0:
+                score += 0.35 * (plan_scores[index] / max_abs_plan)
             if score > best_score:
                 best_score = score
                 best_action = action
@@ -162,7 +174,7 @@ class PolicyRuntime:
                 except Exception:
                     pass
 
-        return self._choose_from_policy_logits(logits, actions)
+        return self._choose_from_policy_logits(logits, actions, obs_dict)
 
 
 def make_policy_fn(

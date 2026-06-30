@@ -38,10 +38,7 @@ FALLBACK_ROLLOUT_DATA = [
     "data/container-mp-smoke.jsonl",
     "data/container-smoke.jsonl",
 ]
-AGENT_DECK_PATH = (
-    "decks/competitive/high_performing/"
-    "2026-05_regional-melbourne-2026_10th_mega-lucario.csv"
-)
+AGENT_DECK_PATH = "decks/submission.csv"
 CABT_GENERATED_PATH = "data/multideck_rollouts.jsonl"
 COMPETITION_RESULTS_PATH = "data/competition-results.jsonl"
 MODEL_ID = "temporal_current"
@@ -49,7 +46,7 @@ MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"
 REQUIRE_CABT_EVAL_DATA = True
 
 # --- Dataset size (games) ---
-DATASET_GAMES = 500  # None = train on all games in file, skip inline generation
+DATASET_GAMES = 1000  # None = train on all games in file, skip inline generation
                       # 5000 or 100000 = that many CABT games to generate and/or cap training
 
 # --- Features ---
@@ -59,11 +56,13 @@ WINDOW_SIZE = 256
 TENSOR_BUILD_WORKERS = None  # None = cpu_count - 2 (e.g. 30 on a 32-thread CPU)
 
 # --- Model ---
-MODEL_D_MODEL = 128
+MODEL_D_MODEL = 64
 MODEL_HEADS = 8
 MODEL_LAYERS = 8
 MODEL_FF = None  # None = MODEL_D_MODEL * 4
 MODEL_DROPOUT = 0.1
+MODEL_USE_KAN = True
+KAN_GRID_SIZE = 8
 LEARNING_RATE = 3e-4
 WEIGHT_DECAY = 1e-2
 
@@ -101,13 +100,15 @@ SELF_PLAY_MATCHUP_MODE = "sample"  # sample | round-robin
 SELF_PLAY_TARGET_RANK = 1000  # eval/bar: win vs opponent decks with placement <= this
 SELF_PLAY_TARGET_WIN_RATE = 0.55
 SELF_PLAY_PLATEAU_PATIENCE = 5
+SELF_PLAY_BASELINES = "public"  # public | comma-separated baseline names | empty to disable
+SELF_PLAY_TRAIN_VS_BASELINES = True
 
 # --- Training loop ---
-TRAIN_EPOCHS = 1000
-EARLY_STOP_PATIENCE = 25
-EARLY_STOP_MIN_DELTA = 1e-5
+TRAIN_EPOCHS = 100
+EARLY_STOP_PATIENCE = 5
+EARLY_STOP_MIN_DELTA = 1e-2
 TRAIN_PRINT_EVERY = 100
-BATCH_GAMES = 2  # games per training batch (each game is one temporal sequence)
+BATCH_GAMES = 4  # games per training batch (each game is one temporal sequence)
 
 # Flat override keys accepted by build_config(..., overrides=...).
 OVERRIDE_KEYS = frozenset({
@@ -128,6 +129,8 @@ OVERRIDE_KEYS = frozenset({
     "model_layers",
     "model_ff",
     "model_dropout",
+    "model_use_kan",
+    "kan_grid_size",
     "learning_rate",
     "weight_decay",
     "loss_value_weight",
@@ -160,6 +163,8 @@ OVERRIDE_KEYS = frozenset({
     "self_play_target_rank",
     "self_play_target_win_rate",
     "self_play_plateau_patience",
+    "self_play_baselines",
+    "self_play_train_vs_baselines",
     "scraped_rollout_data",
     "multideck_rollout_data",
     "merged_rollout_data",
@@ -195,6 +200,8 @@ def default_user_config() -> dict[str, Any]:
         "model_layers": MODEL_LAYERS,
         "model_ff": MODEL_FF,
         "model_dropout": MODEL_DROPOUT,
+        "model_use_kan": MODEL_USE_KAN,
+        "kan_grid_size": KAN_GRID_SIZE,
         "learning_rate": LEARNING_RATE,
         "weight_decay": WEIGHT_DECAY,
         "loss_value_weight": LOSS_VALUE_WEIGHT,
@@ -228,6 +235,8 @@ def default_user_config() -> dict[str, Any]:
         "self_play_target_rank": SELF_PLAY_TARGET_RANK,
         "self_play_target_win_rate": SELF_PLAY_TARGET_WIN_RATE,
         "self_play_plateau_patience": SELF_PLAY_PLATEAU_PATIENCE,
+        "self_play_baselines": SELF_PLAY_BASELINES,
+        "self_play_train_vs_baselines": SELF_PLAY_TRAIN_VS_BASELINES,
         "scraped_rollout_data": SCRAPED_ROLLOUT_DATA,
         "multideck_rollout_data": MULTIDECK_ROLLOUT_DATA,
         "merged_rollout_data": MERGED_ROLLOUT_DATA,
@@ -258,6 +267,8 @@ _ENV_MAP = {
     "model_layers": "MODEL_LAYERS",
     "model_ff": "MODEL_FF",
     "model_dropout": "MODEL_DROPOUT",
+    "model_use_kan": "MODEL_USE_KAN",
+    "kan_grid_size": "KAN_GRID_SIZE",
     "learning_rate": "LEARNING_RATE",
     "weight_decay": "WEIGHT_DECAY",
     "loss_value_weight": "LOSS_VALUE_WEIGHT",
@@ -272,6 +283,8 @@ _ENV_MAP = {
     "train_print_every": "TRAIN_PRINT_EVERY",
     "batch_games": "BATCH_GAMES",
     "tensor_build_workers": "TENSOR_BUILD_WORKERS",
+    "require_complete_games": "REQUIRE_COMPLETE_GAMES",
+    "require_training_matchup_diversity": "REQUIRE_TRAINING_MATCHUP_DIVERSITY",
     "value_win": "VALUE_WIN",
     "value_not_win": "VALUE_NOT_WIN",
     "value_timeout": "VALUE_TIMEOUT",
@@ -292,6 +305,8 @@ _ENV_MAP = {
     "self_play_target_rank": "SELF_PLAY_TARGET_RANK",
     "self_play_target_win_rate": "SELF_PLAY_TARGET_WIN_RATE",
     "self_play_plateau_patience": "SELF_PLAY_PLATEAU_PATIENCE",
+    "self_play_baselines": "SELF_PLAY_BASELINES",
+    "self_play_train_vs_baselines": "SELF_PLAY_TRAIN_VS_BASELINES",
 }
 
 
@@ -309,10 +324,12 @@ def _coerce_value(key: str, value: Any) -> Any:
         return None if parsed <= 0 else parsed
     if key in {
         "require_cabt_eval_data",
+        "model_use_kan",
         "self_play_use_beam",
         "self_play_train_after_collect",
         "require_complete_games",
         "require_training_matchup_diversity",
+        "self_play_train_vs_baselines",
     }:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
@@ -325,6 +342,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "model_heads",
         "model_layers",
         "model_ff",
+        "kan_grid_size",
         "train_epochs",
         "early_stop_patience",
         "train_print_every",
@@ -428,6 +446,12 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "output_path": checkpoint,
         "report_path": report_path(root, model_id),
         "model_id": model_id,
+        "architecture": "temporal_kan_rl" if settings["model_use_kan"] else "transformer_rl",
+        "model_type": (
+            "temporal_kan_rl_complex_loss"
+            if settings["model_use_kan"]
+            else "temporal_transformer_rl_complex_loss"
+        ),
         "output_layout": describe_layout(root),
         "coarse_feature_dim": COARSE_FEATURE_DIM,
         "require_cabt_eval_data": settings["require_cabt_eval_data"],
@@ -442,6 +466,8 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "layers": settings["model_layers"],
             "ff": model_ff,
             "dropout": settings["model_dropout"],
+            "use_kan": settings["model_use_kan"],
+            "kan_grid_size": settings["kan_grid_size"],
             "learning_rate": settings["learning_rate"],
             "weight_decay": settings["weight_decay"],
         },
@@ -485,6 +511,8 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "target_rank": settings["self_play_target_rank"],
             "target_win_rate": settings["self_play_target_win_rate"],
             "plateau_patience": settings["self_play_plateau_patience"],
+            "baseline_names": settings["self_play_baselines"],
+            "train_vs_baselines": settings["self_play_train_vs_baselines"],
         },
     }
 

@@ -6,6 +6,8 @@ cd "$(dirname "$0")/.."
 test -f submission/main.py
 test -f submission/deck.csv
 test -f submission/policy_runtime.py
+test -f submission/beam_search.py
+test -f submission/attack_plan.py
 test -d submission/cg
 
 CG_LIB="kaggle/input/cg-lib/cg/libcg.so"
@@ -27,7 +29,7 @@ mkdir -p dist
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
-cp submission/main.py submission/deck.csv submission/policy_runtime.py submission/beam_search.py "$STAGING/"
+cp submission/main.py submission/deck.csv submission/policy_runtime.py submission/beam_search.py submission/attack_plan.py "$STAGING/"
 cp poke_agent/models/temporal_transformer.py poke_agent/features.py poke_agent/game_tracker.py "$STAGING/"
 mv "$STAGING/temporal_transformer.py" "$STAGING/model.py"
 cp -r submission/cg "$STAGING/"
@@ -35,7 +37,7 @@ cp "$CG_LIB" "$STAGING/cg/libcg.so"
 cp "$MODEL_CHECKPOINT" "$STAGING/value_model.pt"
 
 tar -czf dist/submission.tar.gz -C "$STAGING" \
-  main.py deck.csv cg model.py features.py game_tracker.py policy_runtime.py beam_search.py value_model.pt
+  main.py deck.csv cg model.py features.py game_tracker.py policy_runtime.py beam_search.py attack_plan.py value_model.pt
 
 python3 scripts/validate_submission.py dist/submission.tar.gz
 echo "built dist/submission.tar.gz with trained model $(basename "$MODEL_CHECKPOINT")"

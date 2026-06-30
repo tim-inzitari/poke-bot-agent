@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import torch
+from tqdm.auto import tqdm
 
 from poke_agent.checkpoint import save_checkpoint
 from poke_agent.dataset import prepare_training_tensors
@@ -20,6 +21,7 @@ from poke_agent.deck_pool import (
 )
 from poke_agent.device import torch_device
 from poke_agent.policy_agent import PolicyRuntime, PolicySession, make_policy_fn
+from poke_agent.rule_baselines import BaselineOpponent, baseline_opponents_from_names
 from poke_agent.rollout import make_random_agent, play_match
 from poke_agent.simulator import SimulatorState
 from poke_agent.kaggle_submit import (
@@ -67,6 +69,9 @@ class SelfPlaySettings:
     target_win_rate: float = 0.55
     plateau_patience: int = 3
     target_eval_pool: list[tuple[str, list[int]]] = field(default_factory=list)
+    baseline_names: list[str] = field(default_factory=list)
+    baseline_opponents: list[BaselineOpponent] = field(default_factory=list)
+    train_vs_baselines: bool = False
 
 
 def summarize_results(results: list[int], *, seat_index: int) -> dict[str, float]:
@@ -148,6 +153,22 @@ def annotate_matchup_metadata(rows: list[dict[str, Any]], matchup: FieldMatchup)
         return
     for row in rows:
         row["opponent_placement"] = matchup.opponent_placement
+
+
+def _mark_retained_terminal(rows: list[dict[str, Any]]) -> None:
+    """Keep our-turn-only rows complete when opponent took the final action."""
+    if not rows:
+        return
+    for row in rows:
+        row["terminal"] = False
+    rows[-1]["terminal"] = True
+    rows[-1]["reward"] = rows[-1].get("value", rows[-1].get("reward", 0.0))
+
+
+def _baseline_for_episode(settings: SelfPlaySettings, episode: int) -> BaselineOpponent:
+    if not settings.baseline_opponents:
+        raise ValueError("baseline opponent pool is empty")
+    return settings.baseline_opponents[episode % len(settings.baseline_opponents)]
 
 
 def _seat_agent(
@@ -234,6 +255,87 @@ def evaluate_agent_vs_field(
     }
 
 
+def evaluate_checkpoint_vs_baselines(
+    simulator: SimulatorState,
+    checkpoint_path: Path,
+    *,
+    device: torch.device,
+    agent_name: str,
+    agent_deck: list[int],
+    games: int,
+    settings: SelfPlaySettings,
+    start_episode: int = 0,
+) -> dict[str, Any]:
+    if games <= 0:
+        return {
+            "agent_a": {"games": 0.0, "wins": 0.0, "losses": 0.0, "draws": 0.0, "win_rate": 0.0},
+            "by_baseline": {},
+            "results": [],
+        }
+
+    runtime = PolicyRuntime(checkpoint_path, device=device)
+    wins = losses = draws = 0
+    results: list[int] = []
+    by_baseline: dict[str, dict[str, int]] = {}
+    iterator = tqdm(range(games), desc="eval vs public baselines", unit="game")
+    for offset in iterator:
+        episode = start_episode + offset
+        baseline = _baseline_for_episode(settings, episode)
+        agent_seat = offset % 2
+        session = runtime.new_session()
+        neural_agent = make_policy_fn(runtime, session, agent_deck, use_beam=settings.use_beam)
+        baseline_agent = baseline.make_agent()
+        deck0 = agent_deck if agent_seat == 0 else baseline.deck
+        deck1 = baseline.deck if agent_seat == 0 else agent_deck
+        rows = play_match(
+            episode,
+            deck0,
+            deck1,
+            simulator,
+            neural_agent if agent_seat == 0 else baseline_agent,
+            baseline_agent if agent_seat == 0 else neural_agent,
+            deck0_name=agent_name if agent_seat == 0 else baseline.name,
+            deck1_name=baseline.name if agent_seat == 0 else agent_name,
+        )
+        if not rows:
+            continue
+        result = int(rows[-1].get("result", -1))
+        results.append(result)
+        stats = by_baseline.setdefault(baseline.name, {"games": 0, "wins": 0, "losses": 0, "draws": 0})
+        stats["games"] += 1
+        if result == 2:
+            draws += 1
+            stats["draws"] += 1
+        elif result == agent_seat:
+            wins += 1
+            stats["wins"] += 1
+        elif result >= 0:
+            losses += 1
+            stats["losses"] += 1
+        decided = wins + losses
+        iterator.set_postfix(win_rate=f"{(wins / decided) if decided else 0.0:.1%}", baseline=baseline.name)
+
+    decided = wins + losses
+    by_baseline_rates = {
+        name: {
+            **stats,
+            "win_rate": (stats["wins"] / max(1, stats["wins"] + stats["losses"])),
+        }
+        for name, stats in by_baseline.items()
+    }
+    return {
+        "agent_a": {
+            "games": float(len(results)),
+            "wins": float(wins),
+            "losses": float(losses),
+            "draws": float(draws),
+            "win_rate": (wins / decided) if decided else 0.0,
+        },
+        "by_baseline": by_baseline_rates,
+        "results": results,
+    }
+
+
 def collect_self_play_games(
     simulator: SimulatorState,
     agent_deck: list[int],
@@ -276,6 +378,55 @@ def collect_self_play_games(
         )
         annotate_matchup_metadata(match_rows, matchup)
         rows.extend(match_rows)
+    return rows
+
+
+def collect_baseline_games(
+    simulator: SimulatorState,
+    agent_deck: list[int],
+    *,
+    agent_name: str,
+    games: int,
+    start_episode: int,
+    current_runtime: PolicyRuntime,
+    settings: SelfPlaySettings,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    iterator = tqdm(range(games), desc="active CABT simulations vs baselines", unit="game")
+    for offset in iterator:
+        episode = start_episode + offset
+        baseline = _baseline_for_episode(settings, episode)
+        agent_seat = offset % 2
+        session = current_runtime.new_session()
+        neural_agent = make_policy_fn(current_runtime, session, agent_deck, use_beam=settings.use_beam)
+        baseline_agent = baseline.make_agent()
+
+        deck0 = agent_deck if agent_seat == 0 else baseline.deck
+        deck1 = baseline.deck if agent_seat == 0 else agent_deck
+        match_rows = play_match(
+            episode,
+            deck0,
+            deck1,
+            simulator,
+            neural_agent if agent_seat == 0 else baseline_agent,
+            baseline_agent if agent_seat == 0 else neural_agent,
+            deck0_name=agent_name if agent_seat == 0 else baseline.name,
+            deck1_name=baseline.name if agent_seat == 0 else agent_name,
+            rewards=settings.__dict__.get("rewards"),
+        )
+        neural_rows = [row for row in match_rows if int(row.get("player", -1)) == agent_seat]
+        if neural_rows:
+            _mark_retained_terminal(neural_rows)
+        for row in neural_rows:
+            row["opponent_baseline"] = baseline.name
+            row["opponent_family"] = baseline.family
+            row["opponent_source"] = baseline.source
+        rows.extend(neural_rows)
+
+        if match_rows:
+            result = int(match_rows[-1].get("result", -1))
+            won = result == agent_seat
+            iterator.set_postfix(baseline=baseline.name, result="W" if won else "L")
     return rows
 
 
@@ -331,28 +482,43 @@ def run_self_play_iteration(
 
     current_runtime = PolicyRuntime(current_checkpoint, device=device)
     opponent_path = pool.sample(exclude=current_checkpoint) or current_checkpoint
-    opponent_runtime = PolicyRuntime(opponent_path, device=device)
+    opponent_runtime = PolicyRuntime(opponent_path, device=device) if not settings.train_vs_baselines else None
 
-    field_note = (
-        f"field={len(settings.field_pool)} decks ({settings.matchup_mode})"
-        if settings.use_field
-        else "mirror deck"
-    )
+    if settings.train_vs_baselines:
+        field_note = f"public baselines={len(settings.baseline_opponents)}"
+    else:
+        field_note = (
+            f"field={len(settings.field_pool)} decks ({settings.matchup_mode})"
+            if settings.use_field
+            else "mirror deck"
+        )
     print(
         f"self-play iter {iteration}: collect {settings.games_per_iteration} games "
         f"(current={current_checkpoint.name}, opponent={opponent_path.name}, "
         f"beam={settings.use_beam}, {field_note})"
     )
-    rows = collect_self_play_games(
-        simulator,
-        agent_deck,
-        agent_name=agent_name,
-        games=settings.games_per_iteration,
-        start_episode=start_episode,
-        current_runtime=current_runtime,
-        opponent_runtime=opponent_runtime,
-        settings=settings,
-    )
+    if settings.train_vs_baselines:
+        rows = collect_baseline_games(
+            simulator,
+            agent_deck,
+            agent_name=agent_name,
+            games=settings.games_per_iteration,
+            start_episode=start_episode,
+            current_runtime=current_runtime,
+            settings=settings,
+        )
+    else:
+        assert opponent_runtime is not None
+        rows = collect_self_play_games(
+            simulator,
+            agent_deck,
+            agent_name=agent_name,
+            games=settings.games_per_iteration,
+            start_episode=start_episode,
+            current_runtime=current_runtime,
+            opponent_runtime=opponent_runtime,
+            settings=settings,
+        )
     unique_matchups = len({(row.get("deck0"), row.get("deck1")) for row in rows if int(row.get("step", -1)) == 0})
     append = settings.output_path.exists() and iteration > 1
     write_jsonl(settings.output_path, rows, append=append)
@@ -361,33 +527,55 @@ def run_self_play_iteration(
         f"{unique_matchups} unique deck pairings, append={append})"
     )
 
-    random_agent = make_random_agent(simulator.to_observation_class)
-    current_session = current_runtime.new_session()
-    current_fn = make_policy_fn(
-        current_runtime,
-        current_session,
-        agent_deck,
-        use_beam=settings.use_beam,
-    )
+    if settings.train_vs_baselines:
+        eval_report = evaluate_checkpoint_vs_baselines(
+            simulator,
+            current_checkpoint,
+            device=device,
+            agent_name=agent_name,
+            agent_deck=agent_deck,
+            games=settings.eval_games,
+            settings=settings,
+            start_episode=start_episode + settings.games_per_iteration,
+        )
+        print(
+            "eval vs public baselines: "
+            f"win_rate={eval_report['agent_a']['win_rate']:.1%} "
+            f"({int(eval_report['agent_a']['wins'])}/{int(eval_report['agent_a']['games'])})"
+        )
+        for name, stats in sorted(eval_report.get("by_baseline", {}).items()):
+            print(
+                f"  {name}: {stats['win_rate']:.1%} "
+                f"({stats['wins']}/{stats['games']}, draws={stats['draws']})"
+            )
+    else:
+        random_agent = make_random_agent(simulator.to_observation_class)
+        current_session = current_runtime.new_session()
+        current_fn = make_policy_fn(
+            current_runtime,
+            current_session,
+            agent_deck,
+            use_beam=settings.use_beam,
+        )
 
-    eval_vs_random = evaluate_agent_vs_field(
-        simulator,
-        current_fn,
-        agent_name=agent_name,
-        agent_deck=agent_deck,
-        opponent_fn=random_agent,
-        games=settings.eval_games,
-        settings=settings,
-        start_episode=start_episode + settings.games_per_iteration,
-        use_target_pool=True,
-    )
-    sample_matchups = eval_vs_random.get("matchups", [])[:5]
-    print(
-        f"eval vs random (placement<={settings.target_rank}): "
-        f"win_rate={eval_vs_random['agent_a']['win_rate']:.1%} "
-        f"({int(eval_vs_random['agent_a']['wins'])}/{int(eval_vs_random['agent_a']['games'])}) "
-        f"sample opponents={sample_matchups}"
-    )
+        eval_report = evaluate_agent_vs_field(
+            simulator,
+            current_fn,
+            agent_name=agent_name,
+            agent_deck=agent_deck,
+            opponent_fn=random_agent,
+            games=settings.eval_games,
+            settings=settings,
+            start_episode=start_episode + settings.games_per_iteration,
+            use_target_pool=True,
+        )
+        sample_matchups = eval_report.get("matchups", [])[:5]
+        print(
+            f"eval vs random (placement<={settings.target_rank}): "
+            f"win_rate={eval_report['agent_a']['win_rate']:.1%} "
+            f"({int(eval_report['agent_a']['wins'])}/{int(eval_report['agent_a']['games'])}) "
+            f"sample opponents={sample_matchups}"
+        )
 
     training_report: dict[str, Any] | None = None
     saved_checkpoint = current_checkpoint
@@ -419,8 +607,10 @@ def run_self_play_iteration(
         "current_checkpoint": str(current_checkpoint),
         "opponent_checkpoint": str(opponent_path),
         "saved_checkpoint": str(saved_checkpoint),
-        "eval_vs_random": eval_vs_random["agent_a"],
+        "eval_vs_random": eval_report["agent_a"],
+        "eval_vs_baselines": eval_report.get("by_baseline", {}),
         "field_decks": len(settings.field_pool),
+        "baseline_opponents": [baseline.name for baseline in settings.baseline_opponents],
         "training_report": training_report,
     }
 
@@ -566,6 +756,14 @@ def self_play_settings_from_config(
             f"target eval pool: {len(target_eval_pool)} decks with placement<={target_rank}"
         )
 
+    baseline_names_raw = sp.get("baseline_names", [])
+    baseline_opponents = baseline_opponents_from_names(baseline_names_raw, root=root) if baseline_names_raw else []
+    if baseline_opponents:
+        print(
+            "public baseline pool:",
+            ", ".join(f"{baseline.name}({baseline.source})" for baseline in baseline_opponents),
+        )
+
     return SelfPlaySettings(
         games_per_iteration=int(sp.get("games_per_iteration", 20)),
         eval_games=int(sp.get("eval_games", 10)),
@@ -583,4 +781,7 @@ def self_play_settings_from_config(
         target_win_rate=float(sp.get("target_win_rate", 0.55)),
         plateau_patience=int(sp.get("plateau_patience", 3)),
         target_eval_pool=target_eval_pool,
+        baseline_names=[baseline.name for baseline in baseline_opponents],
+        baseline_opponents=baseline_opponents,
+        train_vs_baselines=bool(sp.get("train_vs_baselines", False)) or bool(baseline_opponents),
     )

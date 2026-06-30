@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from tqdm.auto import tqdm
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -292,6 +294,7 @@ def main() -> None:
         help="parallel CABT workers (0 = auto from CPU count)",
     )
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--episode-offset", type=int, default=0)
     parser.add_argument("--deck-dir", default=None)
     parser.add_argument("--deck0-dir", default=None)
     parser.add_argument("--deck1-dir", default=None)
@@ -329,19 +332,28 @@ def main() -> None:
         if args.seed is not None:
             random.seed(args.seed)
         attempt = 0
+        progress = tqdm(total=args.episodes, desc="CABT games", unit="game")
         while complete_games < args.episodes and attempt < args.episodes * 5:
             deck0_name, deck0, deck1_name, deck1 = choose_matchup(
                 attempt, deck0_pool, deck1_pool, args.matchups,
                 weighted0=weighted0, weighted1=weighted1,
             )
             episode_rows = play_episode(
-                complete_games, args.max_steps, deck0_name, deck0, deck1_name, deck1,
+                args.episode_offset + complete_games,
+                args.max_steps,
+                deck0_name,
+                deck0,
+                deck1_name,
+                deck1,
                 rewards=reward_cfg,
             )
             if episode_rows:
                 rows.extend(episode_rows)
                 complete_games += 1
+                progress.update(1)
+                progress.set_postfix({"rows": len(rows), "attempts": attempt + 1})
             attempt += 1
+        progress.close()
     else:
         tasks = [
             (
@@ -356,10 +368,16 @@ def main() -> None:
                 weighted1,
                 reward_cfg,
             )
-            for start, stop in episode_chunks(args.episodes, workers)
+            for start in range(args.episodes)
+            for stop in [start + 1]
         ]
         with mp.get_context("spawn").Pool(processes=workers) as pool:
-            results = pool.map(run_episode_range, tasks)
+            results = list(tqdm(
+                pool.imap_unordered(run_episode_range, tasks),
+                total=len(tasks),
+                desc="CABT games",
+                unit="game",
+            ))
         rows = []
         for _, chunk_rows in sorted(results, key=lambda item: item[0]):
             rows.extend(chunk_rows)

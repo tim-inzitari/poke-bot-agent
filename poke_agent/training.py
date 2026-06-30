@@ -14,6 +14,7 @@ def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.
     model_cfg = config["model"]
     d_model = model_cfg["d_model"]
     heads = model_cfg["heads"]
+    use_kan = bool(model_cfg.get("use_kan", True))
     if d_model % heads != 0:
         raise ValueError("MODEL_D_MODEL must be divisible by MODEL_HEADS")
 
@@ -26,11 +27,15 @@ def build_model(config: dict[str, Any], tensors: TrainingTensors, device: torch.
         dim_feedforward=model_cfg["ff"],
         dropout=model_cfg["dropout"],
         window_size=tensors.window_size,
+        kan_grid_size=int(model_cfg.get("kan_grid_size", 8)),
+        use_kan=use_kan,
     ).to(device)
     print(
-        f"model: d_model={d_model} heads={heads} "
+        f"model: {'temporal_kan' if use_kan else 'temporal_transformer'} "
+        f"d_model={d_model} heads={heads} "
         f"layers={model_cfg['layers']} ff={model_cfg['ff']} "
-        f"dropout={model_cfg['dropout']} window={tensors.window_size}"
+        f"dropout={model_cfg['dropout']} window={tensors.window_size} "
+        f"kan_grid={model_cfg.get('kan_grid_size', 8)}"
     )
     print(f"parameters: {sum(p.numel() for p in model.parameters()):,}")
     return model

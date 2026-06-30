@@ -12,6 +12,7 @@ import torch
 from features import COARSE_FEATURE_DIM, base_features_from_observation, combine_features, encode_observation_step, stable_hash_index
 from game_tracker import GameEventTracker
 from model import TransformerRLModel
+from attack_plan import score_actions_with_attack_plan
 
 
 def legal_actions(option_count: int, min_count: int, max_count: int) -> list[list[int]]:
@@ -69,6 +70,8 @@ class TrainedPolicyAgent:
             dim_feedforward=int(model_cfg["dim_feedforward"]),
             dropout=float(model_cfg["dropout"]),
             window_size=self._window_size,
+            kan_grid_size=int(model_cfg.get("kan_grid_size", 8)),
+            use_kan=bool(model_cfg.get("use_kan", False)),
         ).to(self.device)
         self._model.load_state_dict(checkpoint["model_state_dict"])
         self._model.eval()
@@ -102,13 +105,22 @@ class TrainedPolicyAgent:
             ).reshape(-1)
         return ((features - self._feature_mean) / self._feature_std).astype(np.float32)
 
-    def _choose_from_policy_logits(self, logits: np.ndarray, actions: list[list[int]]) -> list[int]:
+    def _choose_from_policy_logits(
+        self,
+        logits: np.ndarray,
+        actions: list[list[int]],
+        obs_dict: dict[str, Any] | None = None,
+    ) -> list[int]:
         best_action = actions[0]
         best_score = float("-inf")
-        for action in actions:
+        plan_scores = score_actions_with_attack_plan(obs_dict, actions) if obs_dict is not None else [0.0 for _ in actions]
+        max_abs_plan = max((abs(score) for score in plan_scores), default=0.0)
+        for index, action in enumerate(actions):
             action_key = json.dumps(action, sort_keys=True, separators=(",", ":"))
             action_class = stable_hash_index(action_key, self._policy_dim)
             score = float(logits[action_class])
+            if max_abs_plan > 0:
+                score += 0.35 * (plan_scores[index] / max_abs_plan)
             if score > best_score:
                 best_score = score
                 best_action = action
@@ -164,7 +176,7 @@ class TrainedPolicyAgent:
                 except Exception:
                     pass
 
-        return self._choose_from_policy_logits(logits, actions)
+        return self._choose_from_policy_logits(logits, actions, obs_dict)
 
     def choose_action_with_beam(self, obs_dict: dict[str, Any], our_deck: list[int]) -> list[int]:
         return self.choose_action(obs_dict, our_deck=our_deck)

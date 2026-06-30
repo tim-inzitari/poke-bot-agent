@@ -56,6 +56,8 @@ def save_checkpoint(
             "dim_feedforward": model_cfg["ff"],
             "dropout": model_cfg["dropout"],
             "window_size": tensors.window_size,
+            "use_kan": bool(model_cfg.get("use_kan", True)),
+            "kan_grid_size": int(model_cfg.get("kan_grid_size", 8)),
         },
         "feature_mean": tensors.feature_mean.astype("float32").tolist(),
         "feature_std": tensors.feature_std.astype("float32").tolist(),

@@ -30,6 +30,12 @@ def main() -> None:
     parser.add_argument("--train-epochs", type=int, default=None, help="transformer epochs per self-play retrain")
     parser.add_argument("--no-beam", action="store_true", help="policy-only during collection")
     parser.add_argument("--no-train", action="store_true", help="collect/eval only, skip training step")
+    parser.add_argument(
+        "--baselines",
+        default=None,
+        help="comma-separated public baseline names, or 'public' for the full accessible suite",
+    )
+    parser.add_argument("--no-baselines", action="store_true", help="disable public-baseline opponents")
     parser.add_argument("--checkpoint", type=Path, default=None, help="initial checkpoint path")
     parser.add_argument(
         "--field-deck-dir",
@@ -59,6 +65,12 @@ def main() -> None:
         overrides["self_play_use_beam"] = False
     if args.matchup_mode is not None:
         overrides["self_play_matchup_mode"] = args.matchup_mode
+    if args.baselines is not None:
+        overrides["self_play_baselines"] = args.baselines
+        overrides["self_play_train_vs_baselines"] = True
+    if args.no_baselines:
+        overrides["self_play_baselines"] = ""
+        overrides["self_play_train_vs_baselines"] = False
 
     config = build_config(root, overrides=overrides or None)
 
@@ -94,7 +106,9 @@ def main() -> None:
         raise SystemExit("CABT simulator (cg-lib) is required for self-play")
 
     print("agent deck", deck_name, len(deck))
-    if settings.use_field:
+    if settings.train_vs_baselines:
+        print("baseline pool", len(settings.baseline_opponents), "agents")
+    elif settings.use_field:
         print("field pool", len(settings.field_pool), "decks", f"mode={settings.matchup_mode}")
     else:
         print("field pool unavailable; using mirror matchups")
