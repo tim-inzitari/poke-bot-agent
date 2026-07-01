@@ -22,6 +22,7 @@ from poke_agent.policy_agent import PolicyRuntime
 
 class PolicyServer:
     def __init__(self, checkpoint: Path, *, deck_path: Path | None = None, use_beam: bool = False):
+        self.checkpoint = checkpoint
         self.device = torch_device()
         self.runtime = PolicyRuntime(checkpoint, device=self.device)
         overrides: dict[str, object] = {"model_output_path": str(checkpoint)}
@@ -65,7 +66,15 @@ def make_handler(policy: PolicyServer):
 
         def do_GET(self) -> None:
             if self.path == "/health":
-                self._send(200, {"ok": True, "device": str(policy.device), "deck": str(policy.deck_path)})
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "device": str(policy.device),
+                        "deck": str(policy.deck_path),
+                        "checkpoint": str(policy.checkpoint),
+                    },
+                )
                 return
             self._send(404, {"error": "not found"})
 

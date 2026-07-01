@@ -634,24 +634,44 @@ def run_self_play_loop(
 
     manifest_path = settings.checkpoint_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
+    manifest_iterations = manifest.setdefault("iterations", [])
     pool = OpponentPool(max_size=settings.opponent_pool_size)
-    for entry in manifest.get("iterations", []):
+    last_manifest_checkpoint: Path | None = None
+    for entry in manifest_iterations:
         checkpoint = entry.get("saved_checkpoint")
         if checkpoint:
-            pool.add(Path(checkpoint))
+            checkpoint_path = Path(checkpoint)
+            if checkpoint_path.exists():
+                pool.add(checkpoint_path)
+                last_manifest_checkpoint = checkpoint_path
 
-    current_checkpoint = Path(initial_checkpoint or config["output_path"])
+    current_checkpoint = Path(initial_checkpoint) if initial_checkpoint is not None else (
+        last_manifest_checkpoint or Path(config["output_path"])
+    )
     if not current_checkpoint.exists():
         raise FileNotFoundError(f"initial checkpoint not found: {current_checkpoint}")
 
     pool.add(current_checkpoint)
     start_episode = int(manifest.get("next_episode", 0))
+    start_iteration = int(manifest.get("next_iteration", len(manifest_iterations) + 1))
     reports: list[dict[str, Any]] = []
     best_target_rate = float((manifest.get("champion") or {}).get("eval_vs_random", {}).get("win_rate", -1.0))
     plateau_count = int(manifest.get("plateau_count", 0))
     stop_reason: str | None = None
 
-    for iteration in range(1, settings.iterations + 1):
+    if start_iteration > settings.iterations:
+        print(
+            f"self-play manifest already complete through iteration {start_iteration - 1}; "
+            f"requested max iteration is {settings.iterations}"
+        )
+        return reports
+
+    print(
+        f"self-play resume: start_iteration={start_iteration} "
+        f"next_episode={start_episode} checkpoint={current_checkpoint}"
+    )
+
+    for iteration in range(start_iteration, settings.iterations + 1):
         report = run_self_play_iteration(
             iteration=iteration,
             config=config,
@@ -668,9 +688,10 @@ def run_self_play_loop(
         start_episode += settings.games_per_iteration
         current_checkpoint = Path(report["saved_checkpoint"])
         manifest["next_episode"] = start_episode
+        manifest["next_iteration"] = iteration + 1
 
         target_rate = float(report["eval_vs_random"]["win_rate"])
-        manifest.setdefault("iterations", []).append(report)
+        manifest_iterations.append(report)
         if target_rate >= best_target_rate + 1e-6:
             best_target_rate = target_rate
             plateau_count = 0

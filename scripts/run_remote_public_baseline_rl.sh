@@ -15,13 +15,15 @@ BASELINES="${BASELINES:-public}"
 ROLLOUTS="${ROLLOUTS:-outputs/rollouts/remote_public_baseline_rollouts.jsonl}"
 CHECKPOINT="${CHECKPOINT:-outputs/checkpoints/temporal_current.pt}"
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-outputs/checkpoints/remote_public_baseline}"
+REPORT_DIR="${REPORT_DIR:-outputs/reports}"
 DECK="${DECK:-decks/submission.csv}"
 POLICY_PORT="${POLICY_PORT:-18765}"
 POLICY_URL="${POLICY_URL:-http://host.docker.internal:${POLICY_PORT}}"
 POLICY_TIMEOUT="${POLICY_TIMEOUT:-180}"
 LOCAL_POLICY_URL="http://127.0.0.1:${POLICY_PORT}"
+RUN_UNTIL_EPOCH="${RUN_UNTIL_EPOCH:-0}"
 
-mkdir -p "$CHECKPOINT_DIR" "$(dirname "$ROLLOUTS")" outputs/reports
+mkdir -p "$CHECKPOINT_DIR" "$(dirname "$ROLLOUTS")" "$REPORT_DIR"
 
 echo "Remote public-baseline RL"
 echo "  iterations:      $ITERATIONS"
@@ -34,8 +36,12 @@ echo "  target winrate:  $TARGET_WIN_RATE"
 echo "  baselines:       $BASELINES"
 echo "  rollouts:        $ROLLOUTS"
 echo "  checkpoint:      $CHECKPOINT"
+echo "  report dir:      $REPORT_DIR"
 echo "  deck:            $DECK"
 echo "  policy timeout:  ${POLICY_TIMEOUT}s"
+if [[ "$RUN_UNTIL_EPOCH" != "0" ]]; then
+  echo "  run until epoch: $RUN_UNTIL_EPOCH"
+fi
 echo
 
 if [[ ! -f "$CHECKPOINT" ]]; then
@@ -44,46 +50,68 @@ if [[ ! -f "$CHECKPOINT" ]]; then
   exit 1
 fi
 
-.venv/bin/python scripts/inspect_model.py --checkpoint "$CHECKPOINT" --deck "$DECK"
-echo
+cleanup_policy_server() {
+  if [[ -n "${POLICY_PID:-}" ]]; then
+    kill "$POLICY_PID" >/dev/null 2>&1 || true
+    wait "$POLICY_PID" >/dev/null 2>&1 || true
+    POLICY_PID=""
+  fi
+}
 
-if ! /usr/bin/curl -fsS "${LOCAL_POLICY_URL}/health" 2>/dev/null | grep -q '"deck"'; then
-  echo "starting Mac neural policy server on ${LOCAL_POLICY_URL}"
+start_policy_server() {
+  cleanup_policy_server
+  echo "starting neural policy server on ${LOCAL_POLICY_URL}"
   .venv/bin/python scripts/policy_server.py \
-    --checkpoint "$CHECKPOINT" \
+    --checkpoint "$current_checkpoint" \
     --deck "$DECK" \
     --host 127.0.0.1 \
     --port "$POLICY_PORT" &
   POLICY_PID=$!
-  trap 'kill ${POLICY_PID:-0} >/dev/null 2>&1 || true' EXIT
+  local healthy=0
   for _ in $(seq 1 60); do
-    if /usr/bin/curl -fsS "${LOCAL_POLICY_URL}/health" 2>/dev/null | grep -q '"deck"'; then
+    if /usr/bin/curl -fsS "${LOCAL_POLICY_URL}/health" 2>/dev/null | grep -q '"checkpoint"'; then
+      /usr/bin/curl -fsS "${LOCAL_POLICY_URL}/health" || true
+      echo
+      healthy=1
       break
     fi
     sleep 1
   done
-else
-  echo "using existing policy server at ${LOCAL_POLICY_URL}"
-fi
+  if [[ "$healthy" != "1" ]]; then
+    echo "policy server failed to start on ${LOCAL_POLICY_URL}" >&2
+    exit 1
+  fi
+}
+
+trap cleanup_policy_server EXIT
 
 echo "building Linux CABT simulator image"
 docker build --platform linux/amd64 -t poke-agent-cabt-sim -f containers/cabt/Dockerfile .
 
 current_checkpoint="$CHECKPOINT"
-docker_tty=()
+.venv/bin/python scripts/inspect_model.py --checkpoint "$current_checkpoint" --deck "$DECK"
+echo
+
+docker_tty_arg=""
 if [[ -t 1 ]]; then
-  docker_tty=(-t)
+  docker_tty_arg="-t"
 fi
 for iteration in $(seq "$START_ITERATION" "$ITERATIONS"); do
+  if [[ "$RUN_UNTIL_EPOCH" != "0" && "$(date +%s)" -ge "$RUN_UNTIL_EPOCH" ]]; then
+    echo "time limit reached before iteration $iteration"
+    break
+  fi
+
   echo
   echo "========== iteration ${iteration}/${ITERATIONS}: active simulations =========="
-  summary_path="outputs/reports/remote_public_baseline_iter_${iteration}.json"
+  start_policy_server
+  summary_path="${REPORT_DIR}/remote_public_baseline_iter_${iteration}.json"
   append_flag=""
   if [[ "$iteration" != "1" ]]; then
     append_flag="--append"
   fi
 
-  docker run --rm "${docker_tty[@]}" --platform linux/amd64 \
+  docker run --rm ${docker_tty_arg:+$docker_tty_arg} --platform linux/amd64 \
     -e PYTHONPATH=/workspace:/workspace/kaggle/input/cg-lib \
     -v "$PWD":/workspace \
     -w /workspace \
@@ -98,6 +126,7 @@ for iteration in $(seq "$START_ITERATION" "$ITERATIONS"); do
       --baselines "$BASELINES" \
       --summary-out "$summary_path" \
       $append_flag
+  cleanup_policy_server
 
   win_rate="$(.venv/bin/python - <<PY
 import json

@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 from poke_agent.config import build_config
 from poke_agent.deck import read_deck
-from poke_agent.device import torch_device
+from poke_agent.device import print_device_summary, torch_device
 from poke_agent.paths import resolve_root
 from poke_agent.self_play import (
     run_self_play_loop,
@@ -28,6 +28,11 @@ def main() -> None:
     parser.add_argument("--games", type=int, default=None, help="CABT games per collect→train iteration")
     parser.add_argument("--eval-games", type=int, default=None, help="eval games vs random after each iteration")
     parser.add_argument("--train-epochs", type=int, default=None, help="transformer epochs per self-play retrain")
+    parser.add_argument("--batch-games", type=int, default=None, help="games per temporal training batch")
+    parser.add_argument("--early-stop-patience", type=int, default=None, help="epochs without improvement before stopping")
+    parser.add_argument("--early-stop-min-delta", type=float, default=None, help="minimum loss improvement for early stop")
+    parser.add_argument("--target-win-rate", type=float, default=None, help="stop once eval winrate reaches this")
+    parser.add_argument("--plateau-patience", type=int, default=None, help="stop after this many no-improvement iterations")
     parser.add_argument("--no-beam", action="store_true", help="policy-only during collection")
     parser.add_argument("--no-train", action="store_true", help="collect/eval only, skip training step")
     parser.add_argument(
@@ -61,6 +66,16 @@ def main() -> None:
         overrides["self_play_eval_games"] = args.eval_games
     if args.train_epochs is not None:
         overrides["self_play_train_epochs"] = args.train_epochs
+    if args.batch_games is not None:
+        overrides["batch_games"] = args.batch_games
+    if args.early_stop_patience is not None:
+        overrides["early_stop_patience"] = args.early_stop_patience
+    if args.early_stop_min_delta is not None:
+        overrides["early_stop_min_delta"] = args.early_stop_min_delta
+    if args.target_win_rate is not None:
+        overrides["self_play_target_win_rate"] = args.target_win_rate
+    if args.plateau_patience is not None:
+        overrides["self_play_plateau_patience"] = args.plateau_patience
     if args.no_beam:
         overrides["self_play_use_beam"] = False
     if args.matchup_mode is not None:
@@ -99,6 +114,7 @@ def main() -> None:
 
     device = torch_device()
     print("device", device)
+    print_device_summary()
 
     simulator = load_simulator(root)
     print_simulator_status(simulator)
@@ -113,7 +129,6 @@ def main() -> None:
     else:
         print("field pool unavailable; using mirror matchups")
 
-    initial_checkpoint = args.checkpoint or config["output_path"]
     reports = run_self_play_loop(
         config=config,
         simulator=simulator,
@@ -121,7 +136,7 @@ def main() -> None:
         agent_name=deck_name,
         settings=settings,
         device=device,
-        initial_checkpoint=initial_checkpoint,
+        initial_checkpoint=args.checkpoint,
     )
 
     print("\nSelf-play summary")

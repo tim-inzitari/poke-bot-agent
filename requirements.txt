@@ -1,6 +1,7 @@
 ipykernel
 jupyter
 kaggle-environments
+kaggle
 numpy
 torch
 tqdm
