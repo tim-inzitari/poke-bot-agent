@@ -1,0 +1,421 @@
+"""Atomic checkpoint save/load with resume helpers.
+
+Every training loop (bootstrap, round-robin RL, self-play) should checkpoint
+periodically and resume from the newest matching file. This module owns:
+
+  - atomic writes (temp path → ``os.replace``)
+  - ``latest.pt`` / ``best.pt`` / rolling last-K
+  - full train state: model, optim, scaler, RNG, step/epoch, config snapshot
+  - SIGINT/SIGTERM flush helper
+  - ``--resume auto`` path resolution
+"""
+
+from __future__ import annotations
+
+import os
+import random
+import re
+import signal
+import time
+from dataclasses import asdict, is_dataclass
+from pathlib import Path
+from typing import Any, Callable, Optional, Union
+
+import torch
+
+from . import config, paths
+
+PathLike = Union[str, Path]
+
+
+def _as_path(p: PathLike) -> Path:
+    return Path(p).expanduser().resolve()
+
+
+def _config_snapshot(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return asdict(obj)
+    if isinstance(obj, dict):
+        return dict(obj)
+    return obj
+
+
+def atomic_torch_save(obj: Any, path: PathLike) -> Path:
+    """Write ``obj`` via a temp file then atomically replace ``path``."""
+    path = _as_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
+    try:
+        torch.save(obj, tmp)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+    return path
+
+
+def capture_rng_state() -> dict[str, Any]:
+    """Snapshot python / numpy / torch / cuda RNG states."""
+    state: dict[str, Any] = {
+        "python": random.getstate(),
+        "torch": torch.get_rng_state(),
+    }
+    try:
+        import numpy as np
+
+        state["numpy"] = np.random.get_state()
+    except Exception:
+        state["numpy"] = None
+    if torch.cuda.is_available():
+        try:
+            state["cuda"] = torch.cuda.get_rng_state_all()
+        except Exception:
+            state["cuda"] = None
+    else:
+        state["cuda"] = None
+    return state
+
+
+def restore_rng_state(state: Optional[dict[str, Any]]) -> None:
+    if not state:
+        return
+    if state.get("python") is not None:
+        random.setstate(state["python"])
+    if state.get("torch") is not None:
+        tstate = state["torch"]
+        if not isinstance(tstate, torch.Tensor):
+            tstate = torch.tensor(tstate, dtype=torch.uint8)
+        else:
+            tstate = tstate.detach().cpu().to(dtype=torch.uint8)
+        torch.set_rng_state(tstate)
+    if state.get("numpy") is not None:
+        try:
+            import numpy as np
+
+            np.random.set_state(state["numpy"])
+        except Exception:
+            pass
+    if state.get("cuda") is not None and torch.cuda.is_available():
+        try:
+            cuda_states = state["cuda"]
+            fixed = []
+            for s in cuda_states:
+                if not isinstance(s, torch.Tensor):
+                    s = torch.tensor(s, dtype=torch.uint8)
+                else:
+                    s = s.detach().cpu().to(dtype=torch.uint8)
+                fixed.append(s)
+            torch.cuda.set_rng_state_all(fixed)
+        except Exception:
+            pass
+
+
+def checkpoint_dir(root: Optional[PathLike] = None) -> Path:
+    d = _as_path(root) if root else paths.CHECKPOINTS_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def latest_path(run_name: str, root: Optional[PathLike] = None) -> Path:
+    return checkpoint_dir(root) / f"{run_name}.latest.pt"
+
+
+def best_path(run_name: str, root: Optional[PathLike] = None) -> Path:
+    return checkpoint_dir(root) / f"{run_name}.best.pt"
+
+
+def step_path(run_name: str, step: int, root: Optional[PathLike] = None) -> Path:
+    return checkpoint_dir(root) / f"{run_name}.step{step:08d}.pt"
+
+
+_STEP_RE = re.compile(r"\.step(\d+)\.pt$")
+
+
+def list_rolling(run_name: str, root: Optional[PathLike] = None) -> list[Path]:
+    d = checkpoint_dir(root)
+    files = sorted(d.glob(f"{run_name}.step*.pt"))
+    return files
+
+
+def prune_rolling(run_name: str, keep_last_k: Optional[int] = None, root: Optional[PathLike] = None) -> None:
+    keep = keep_last_k if keep_last_k is not None else config.CHECKPOINT.keep_last_k
+    files = list_rolling(run_name, root)
+    if keep <= 0 or len(files) <= keep:
+        return
+    for old in files[:-keep]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+
+def build_checkpoint(
+    *,
+    model: torch.nn.Module,
+    optimizer: Optional[torch.optim.Optimizer] = None,
+    scaler: Any = None,
+    scheduler: Any = None,
+    step: int = 0,
+    epoch: int = 0,
+    rl_iteration: int = 0,
+    best_metric: Optional[float] = None,
+    early_stop_state: Optional[dict] = None,
+    model_config: Any = None,
+    extra: Optional[dict] = None,
+    archetype_id: Optional[str] = None,
+    model_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Assemble a full training-state checkpoint dict."""
+    ckpt: dict[str, Any] = {
+        "model_state_dict": model.state_dict(),
+        "step": int(step),
+        "epoch": int(epoch),
+        "rl_iteration": int(rl_iteration),
+        "best_metric": best_metric,
+        "early_stop_state": early_stop_state,
+        "model_config": _config_snapshot(model_config or config.MODEL),
+        "search_config": _config_snapshot(config.SEARCH),
+        "hardware_config": _config_snapshot(config.HARDWARE),
+        "archetype_id": archetype_id,
+        "model_id": model_id,
+        "rng_state": capture_rng_state(),
+        "saved_at": time.time(),
+        "torch_version": torch.__version__,
+    }
+    if optimizer is not None:
+        ckpt["optimizer_state_dict"] = optimizer.state_dict()
+    if scaler is not None:
+        ckpt["scaler_state_dict"] = scaler.state_dict()
+    if scheduler is not None:
+        ckpt["scheduler_state_dict"] = scheduler.state_dict()
+    if extra:
+        ckpt["extra"] = dict(extra)
+    return ckpt
+
+
+def save_checkpoint(
+    ckpt: dict[str, Any],
+    run_name: str,
+    *,
+    root: Optional[PathLike] = None,
+    is_best: bool = False,
+    write_step_copy: bool = True,
+    keep_last_k: Optional[int] = None,
+) -> dict[str, Path]:
+    """Atomically write latest (+ optional best + rolling step copy)."""
+    paths_out: dict[str, Path] = {}
+    latest = latest_path(run_name, root)
+    atomic_torch_save(ckpt, latest)
+    paths_out["latest"] = latest
+
+    if is_best:
+        best = best_path(run_name, root)
+        atomic_torch_save(ckpt, best)
+        paths_out["best"] = best
+
+    if write_step_copy:
+        step = int(ckpt.get("step", 0))
+        sp = step_path(run_name, step, root)
+        atomic_torch_save(ckpt, sp)
+        paths_out["step"] = sp
+        prune_rolling(run_name, keep_last_k=keep_last_k, root=root)
+
+    return paths_out
+
+
+def load_checkpoint(
+    path: PathLike,
+    *,
+    map_location: Union[str, torch.device] = "cpu",
+) -> dict[str, Any]:
+    path = _as_path(path)
+    return torch.load(path, map_location=map_location, weights_only=False)
+
+
+def apply_checkpoint(
+    ckpt: dict[str, Any],
+    *,
+    model: Optional[torch.nn.Module] = None,
+    optimizer: Optional[torch.optim.Optimizer] = None,
+    scaler: Any = None,
+    scheduler: Any = None,
+    restore_rng: bool = True,
+    strict: bool = True,
+) -> dict[str, Any]:
+    """Load weights / optim / scaler / RNG from ``ckpt`` into live objects."""
+    if model is not None and "model_state_dict" in ckpt:
+        model.load_state_dict(ckpt["model_state_dict"], strict=strict)
+    if optimizer is not None and "optimizer_state_dict" in ckpt:
+        optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+    if scaler is not None and "scaler_state_dict" in ckpt:
+        scaler.load_state_dict(ckpt["scaler_state_dict"])
+    if scheduler is not None and "scheduler_state_dict" in ckpt:
+        scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    if restore_rng:
+        restore_rng_state(ckpt.get("rng_state"))
+    return {
+        "step": int(ckpt.get("step", 0)),
+        "epoch": int(ckpt.get("epoch", 0)),
+        "rl_iteration": int(ckpt.get("rl_iteration", 0)),
+        "best_metric": ckpt.get("best_metric"),
+        "early_stop_state": ckpt.get("early_stop_state"),
+        "extra": ckpt.get("extra") or {},
+    }
+
+
+def resolve_resume_path(
+    run_name: str,
+    resume: Optional[Union[str, bool]] = None,
+    *,
+    root: Optional[PathLike] = None,
+) -> Optional[Path]:
+    """Resolve ``--resume`` into a checkpoint path.
+
+    - ``None`` / ``"auto"`` → latest if present, else None
+    - ``False`` / ``"0"`` / ``"none"`` → never resume
+    - ``True`` / ``"1"`` / ``"require"`` → latest, error if missing
+    - otherwise treat as an explicit filesystem path
+    """
+    if resume is None:
+        resume = config.CHECKPOINT.resume
+
+    if isinstance(resume, bool):
+        mode = "require" if resume else "0"
+    else:
+        mode = str(resume).strip()
+
+    lower = mode.lower()
+    latest = latest_path(run_name, root)
+
+    if lower in {"0", "false", "no", "off", "none"}:
+        return None
+    if lower in {"auto", ""}:
+        return latest if latest.is_file() else None
+    if lower in {"1", "true", "yes", "on", "require", "force", "latest"}:
+        if not latest.is_file():
+            raise FileNotFoundError(
+                f"resume={mode!r} requested but no checkpoint at {latest}"
+            )
+        return latest
+    if lower == "best":
+        best = best_path(run_name, root)
+        if not best.is_file():
+            raise FileNotFoundError(f"resume=best but missing {best}")
+        return best
+
+    path = _as_path(mode)
+    if not path.is_file():
+        raise FileNotFoundError(f"resume path not found: {path}")
+    return path
+
+
+class CheckpointManager:
+    """Convenience wrapper: cadence checks + SIGINT flush."""
+
+    def __init__(
+        self,
+        run_name: str,
+        *,
+        root: Optional[PathLike] = None,
+        every_steps: Optional[int] = None,
+        every_minutes: Optional[float] = None,
+        keep_last_k: Optional[int] = None,
+    ):
+        self.run_name = run_name
+        self.root = root
+        self.every_steps = (
+            every_steps if every_steps is not None else config.CHECKPOINT.every_steps
+        )
+        self.every_minutes = (
+            every_minutes
+            if every_minutes is not None
+            else config.CHECKPOINT.every_minutes
+        )
+        self.keep_last_k = (
+            keep_last_k if keep_last_k is not None else config.CHECKPOINT.keep_last_k
+        )
+        self._last_save_t = time.time()
+        self._last_save_step = 0
+        self._pending_builder: Optional[Callable[[], dict[str, Any]]] = None
+        self._installed_signals = False
+        self._prev_handlers: dict[int, Any] = {}
+
+    def should_save(self, step: int) -> bool:
+        if self.every_steps > 0 and (step - self._last_save_step) >= self.every_steps:
+            return True
+        if self.every_minutes > 0:
+            if (time.time() - self._last_save_t) >= self.every_minutes * 60.0:
+                return True
+        return False
+
+    def save(
+        self,
+        ckpt: dict[str, Any],
+        *,
+        is_best: bool = False,
+    ) -> dict[str, Path]:
+        out = save_checkpoint(
+            ckpt,
+            self.run_name,
+            root=self.root,
+            is_best=is_best,
+            write_step_copy=True,
+            keep_last_k=self.keep_last_k,
+        )
+        self._last_save_t = time.time()
+        self._last_save_step = int(ckpt.get("step", 0))
+        return out
+
+    def maybe_save(
+        self,
+        step: int,
+        builder: Callable[[], dict[str, Any]],
+        *,
+        is_best: bool = False,
+        force: bool = False,
+    ) -> Optional[dict[str, Path]]:
+        self._pending_builder = builder
+        if force or self.should_save(step):
+            return self.save(builder(), is_best=is_best)
+        return None
+
+    def install_signal_flush(self, builder: Callable[[], dict[str, Any]]) -> None:
+        """Best-effort checkpoint on SIGINT/SIGTERM then re-raise default."""
+        self._pending_builder = builder
+        if self._installed_signals:
+            return
+
+        def _handler(signum, frame):  # noqa: ARG001
+            try:
+                if self._pending_builder is not None:
+                    self.save(self._pending_builder())
+            except Exception as exc:  # noqa: BLE001
+                print(f"[checkpoint] signal flush failed: {exc}", flush=True)
+            # Restore and re-raise.
+            prev = self._prev_handlers.get(signum, signal.SIG_DFL)
+            signal.signal(signum, prev)
+            if callable(prev):
+                prev(signum, frame)
+            elif prev == signal.SIG_DFL:
+                signal.raise_signal(signum)
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                self._prev_handlers[sig] = signal.signal(sig, _handler)
+            except Exception:
+                pass
+        self._installed_signals = True
+
+    def uninstall_signal_flush(self) -> None:
+        for sig, prev in self._prev_handlers.items():
+            try:
+                signal.signal(sig, prev)
+            except Exception:
+                pass
+        self._prev_handlers.clear()
+        self._installed_signals = False

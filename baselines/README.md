@@ -1,38 +1,60 @@
-# Official baseline agents
+# Baseline agents
 
-These are **full Kaggle sample models** (each folder has `main.py` + `deck.csv`), not deck lists alone.
-They are the rule-based opponents from the competition discussion until we consistently beat them.
+Rule-based opponents for local evaluation. Each runnable agent folder has
+`main.py` + `deck.csv` (Kaggle submission shape). The engine `cg/` package is
+**not** duplicated here — use competition `sample_submission/cg` / `kaggle/input`.
+
+**Payloads are gitignored.** Only this README and `manifest.json` are tracked.
+Restore agents with:
+
+```bash
+bash scripts/download_baselines.sh
+# or: python scripts/download_baselines.py
+```
+
+Flags: `--force` re-download; `--group official|community|roster`; `--only <id>…`.
+
+## Layout
+
+| Path | Tracked? | Contents |
+|------|----------|----------|
+| `baselines/manifest.json` | yes | Catalog of agents to download (source kernel refs) |
+| `baselines/README.md` | yes | This file |
+| `baselines/official/<id>/` | no | Official Kiyota samples |
+| `baselines/community/<id>/` | no | Early community samples |
+| `baselines/roster/<id>/` | no | Public-28 roster samples ([makimakiai roster notebook](https://www.kaggle.com/code/makimakiai/ptcg-public-28-plus-sample-4-roster-update)) |
+| `baselines/decks/<id>/` | no | Deck CSV copies |
+| `baselines/kernels/<id>/` | no | Pulled notebooks / metadata when available |
+
+## Field size
+
+`manifest.json` lists **29** agents (4 official + 5 community + 20 roster).
+Eight additional roster refs from the Public-28 notebook are currently
+inaccessible via the Kaggle API (403) and are recorded under
+`field_notes.inaccessible_403` — retry later with `--force` if they open up.
+
+## Official (Kiyota samples)
 
 Source: [Kaggle discussion #708584](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/708584)
 
-## Install
+| Directory | Agent | Kernel |
+|-----------|--------|--------|
+| `baselines/official/iono/` | Iono's Deck | `kiyotah/a-sample-rule-based-agent-iono-s-deck` |
+| `baselines/official/dragapult-ex/` | Dragapult ex Deck | `kiyotah/a-sample-rule-based-agent-dragapult-ex-deck` |
+| `baselines/official/mega-abomasnow-ex/` | Mega Abomasnow ex Deck | `kiyotah/a-sample-rule-based-agent-mega-abomasnow-ex-deck` |
+| `baselines/official/mega-lucario-ex/` | Mega Lucario ex Deck | `kiyotah/a-sample-rule-based-agent-mega-lucario-ex-deck` |
 
-```bash
-bash scripts/setup_baseline_agents.sh
-```
+## Community samples
 
-This pulls the four official Kaggle notebooks by Kiyota + deck datasets and writes:
+| Directory | Agent | Kernel |
+|-----------|--------|--------|
+| `baselines/community/cynthia-garchomp-ex/` | Cynthia's Garchomp ex | `masamikobayashi/a-sample-cynthia-garchomp-ex-deck` |
+| `baselines/community/archaludon-ex/` | Archaludon ex / Cinderace | `masamikobayashi/a-sample-archaludon-75-wr-vs-my-1300-starmie` |
+| `baselines/community/raging-bolt-ex/` | Raging Bolt ex | `yakitori55/a-sample-agent-raging-bolt-ex-deck` |
+| `baselines/community/generic-heuristic/` | Deck-agnostic heuristic | `maximim/ptcg-generic-heuristic-baseline-agent` |
+| `baselines/community/heuristic-baseline/` | Heuristic baseline | `serariagomes/heurestic-baseline-agent` |
 
-| Directory | Agent |
-|-----------|--------|
-| `baselines/official/iono/` | Iono's Deck |
-| `baselines/official/dragapult-ex/` | Dragapult ex Deck |
-| `baselines/official/mega-abomasnow-ex/` | Mega Abomasnow ex Deck |
-| `baselines/official/mega-lucario-ex/` | Mega Lucario ex Deck |
+## Roster samples
 
-Each directory contains `main.py` + `deck.csv` extracted from:
-
-- `kiyotah/a-sample-rule-based-agent-iono-s-deck` + `kiyotah/iono-deck`
-- `kiyotah/a-sample-rule-based-agent-dragapult-ex-deck` + `kiyotah/dragapult-ex-deck`
-- `kiyotah/a-sample-rule-based-agent-mega-abomasnow-ex-deck` + `kiyotah/mega-abomasnow-ex-deck`
-- `kiyotah/a-sample-rule-based-agent-mega-lucario-ex-deck` + `kiyotah/mega-lucario-ex-deck`
-
-The engine `cg/` package is **not** duplicated here — local play uses `kaggle/input/cg-lib` via `scripts/download-kaggle-inputs.sh`.
-
-## Curriculum
-
-1. **Baseline phase** — fine-tune our transformer vs these agents; rotate **our** decks from `decks/archetype-samples/` and save `outputs/checkpoints/by_deck/<slug>.pt`.
-2. **Gate** — when aggregate win rate vs all loaded baselines ≥ `SELF_PLAY_BASELINE_WIN_RATE` (default 60%), switch to…
-3. **Transformer self-play** — pure checkpoint-vs-checkpoint training (`run_self_play_loop`).
-
-Run: `python scripts/run_self_play.py --baseline-only --checkpoint outputs/checkpoints/pre_self_train.pt`
+Twenty downloadable agents from the Public 28 + Sample 4 roster notebook live
+under `baselines/roster/` (see `manifest.json` entries with `"group": "roster"`).

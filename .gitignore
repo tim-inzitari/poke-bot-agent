@@ -91,6 +91,16 @@ decks/iono-only/
 decks/starmie-only/
 decks/crustle-only/
 
+# Downloaded baseline agent payloads (restore via scripts/download_baselines.sh).
+# Keep tracked: baselines/README.md, baselines/manifest.json.
+baselines/community/
+baselines/official/
+baselines/roster/
+baselines/decks/
+baselines/kernels/
+baselines/roster_extract_report.json
+baselines/*.tmp/
+
 # Local Kaggle inputs
 kaggle/input/
 
