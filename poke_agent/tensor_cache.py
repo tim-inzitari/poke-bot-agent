@@ -14,11 +14,12 @@ import torch
 from poke_agent.dataset import TrainingTensors, _to_device_tensor, resolve_data_device
 from poke_agent.features import FEATURE_SCHEMA_VERSION
 
-TENSOR_CACHE_FORMAT_VERSION = 2
+TENSOR_CACHE_FORMAT_VERSION = 3
 
 _ARRAY_FILES = (
     "x_seq",
     "y",
+    "search_value",
     "returns",
     "transition_target",
     "next_x",
@@ -271,6 +272,7 @@ def load_tensor_cache(
         seq_lengths=_to_device_tensor(arrays["seq_lengths"], data_device),
         seq_mask=_to_device_tensor(arrays["seq_mask"], data_device),
         y=_to_device_tensor(arrays["y"], data_device),
+        search_value=_to_device_tensor(arrays["search_value"], data_device),
         returns=_to_device_tensor(arrays["returns"], data_device),
         transition_target=_to_device_tensor(arrays["transition_target"], data_device),
         next_x=_to_device_tensor(arrays["next_x"], data_device),

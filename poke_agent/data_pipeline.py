@@ -181,13 +181,15 @@ def ensure_episodes_index_data(
     *,
     index_path: Path,
     top_percent_days: float = 100.0,
-    download: bool = True,
 ) -> list[str]:
-    """Ensure manifest + daily episode JSON bundles from episodes-index are on disk.
+    """Resolve which local episodes-index daily bundle(s) to train on.
 
-    Uses the official Kaggle dataset
-    https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-index
-    (not live leaderboard scraping).
+    Downloads are performed manually (official Kaggle dataset
+    https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-index); this
+    only validates and selects data already on disk. At ``top_percent_days=100`` the
+    single latest daily bundle present locally is used — the most recent ladder data is
+    the strongest. Raises with manual-download instructions if the manifest or every
+    daily bundle is missing.
     """
     from poke_agent.episodes_index import (
         daily_slugs_for_top_games,
@@ -196,56 +198,43 @@ def ensure_episodes_index_data(
         local_daily_episodes_dir,
     )
 
-    if download and not index_path.is_file():
-        print(f"downloading episodes index -> {index_path.parent}")
-        subprocess.run(
-            ["bash", "scripts/download-episodes-index.sh"],
-            cwd=root,
-            check=True,
-        )
-
     if not index_path.is_file():
         raise FileNotFoundError(
             f"episodes index manifest missing: {index_path}\n"
-            "Run: bash scripts/download-episodes-index.sh"
+            "Download it manually: bash scripts/download-episodes-index.sh"
         )
 
     manifest = load_daily_manifest(index_path)
-    slugs = daily_slugs_for_top_games(manifest, top_percent=top_percent_days)
-    if not slugs:
-        raise ValueError(f"no daily slugs in episodes index manifest: {index_path}")
+    if not manifest:
+        raise ValueError(f"no daily entries in episodes index manifest: {index_path}")
 
-    for slug in slugs:
-        directory = local_daily_episodes_dir(root, slug)
-        if list_local_episode_files(directory):
-            print(f"episodes index: {slug} already local ({len(list_local_episode_files(directory))} files)")
-            continue
-        if not download:
-            print(f"WARN: missing daily bundle {directory} (pass --download-index to fetch)")
-            continue
-        directory.parent.mkdir(parents=True, exist_ok=True)
-        print(f"downloading daily episodes bundle: kaggle/{slug}")
-        subprocess.run(
-            [
-                "kaggle",
-                "datasets",
-                "download",
-                f"kaggle/{slug}",
-                "-p",
-                str(directory),
-                "--unzip",
-            ],
-            cwd=root,
-            check=True,
+    if top_percent_days >= 100.0:
+        # Latest day first — the most recent ladder data is the best training corpus.
+        candidates = [
+            entry.slug
+            for entry in sorted(manifest, key=lambda item: item.date, reverse=True)
+            if entry.slug
+        ]
+    else:
+        candidates = daily_slugs_for_top_games(manifest, top_percent=top_percent_days)
+
+    present: list[str] = []
+    for slug in candidates:
+        files = list_local_episode_files(local_daily_episodes_dir(root, slug))
+        if files:
+            print(f"episodes index: {slug} ({len(files)} replay files)")
+            present.append(slug)
+
+    if not present:
+        raise FileNotFoundError(
+            f"no episodes-index daily replay bundles found on disk for {candidates}.\n"
+            "Downloads are manual — fetch one, e.g.:\n"
+            "  kaggle datasets download kaggle/<daily-slug> -p kaggle/input/<daily-slug> --unzip"
         )
-        count = len(list_local_episode_files(directory))
-        print(f"episodes index: {slug} -> {count} replay files")
-        if count == 0:
-            raise FileNotFoundError(
-                f"downloaded {slug} but found no .json replays under {directory}"
-            )
 
-    return slugs
+    if top_percent_days >= 100.0:
+        present = present[:1]  # latest present day only
+    return present
 
 
 def scrape_ladder_replays(
@@ -359,7 +348,7 @@ def validate_bootstrap_training_data(
     if not merged_path.is_file():
         raise FileNotFoundError(f"merged training file missing: {merged_path}")
 
-    # Merged corpus can be multi-GB; parse it in parallel (load_jsonl auto-scales).
+    # Merged corpus can be multi-GB; load entire JSONL once, then tensor build splits work.
     rows = load_jsonl(merged_path, workers=config.get("tensor_build_workers"))
     if not rows:
         raise ValueError(f"merged training file is empty: {merged_path}")
@@ -400,7 +389,6 @@ def prepare_bootstrap_training_data(
     scrape: bool = False,
     scrape_teams: int = 10,
     scrape_episodes_per_sub: int = 20,
-    download_index: bool = True,
     generate_multideck: bool = True,
     episodes: int | None = None,
     workers: int | None = None,
@@ -429,7 +417,6 @@ def prepare_bootstrap_training_data(
     daily_slugs = ensure_episodes_index_data(
         root,
         index_path=index_path,
-        download=download_index,
     )
 
     convert_episodes_index_to_rollouts(

@@ -49,6 +49,25 @@ def _parse_jsonl_chunk(lines: list[str]) -> list[dict]:
     return [json.loads(line) for line in lines]
 
 
+def load_jsonl(path: Path, *, workers: int | None = None) -> list[dict]:
+    """Load full JSONL into memory (read file, parallel json parse)."""
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    worker_count = default_tensor_build_workers() if workers is None else max(1, int(workers))
+    if worker_count <= 1 or len(lines) < 5000:
+        rows = _parse_jsonl_chunk(lines)
+    else:
+        chunk_size = max(1000, len(lines) // (worker_count * 4))
+        chunks = [lines[index : index + chunk_size] for index in range(0, len(lines), chunk_size)]
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            rows = [
+                row
+                for chunk_rows in executor.map(_parse_jsonl_chunk, chunks)
+                for row in chunk_rows
+            ]
+    print(f"jsonl load: {len(rows):,} rows from {path.name} ({worker_count} workers)")
+    return rows
+
+
 def trim_rollout_jsonl(path: Path, max_games: int | None) -> tuple[int, int]:
     """Rewrite JSONL to only the most recent max_games episodes."""
     if max_games is None or max_games <= 0 or not path.exists():
@@ -69,20 +88,6 @@ def trim_rollout_jsonl(path: Path, max_games: int | None) -> tuple[int, int]:
         f"({len(limited):,} rows) at {path}"
     )
     return before, after
-
-
-def load_jsonl(path: Path, *, workers: int | None = None) -> list[dict]:
-    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    worker_count = default_tensor_build_workers() if workers is None else max(1, int(workers))
-    if worker_count <= 1 or len(lines) < 5000:
-        return _parse_jsonl_chunk(lines)
-
-    chunk_size = max(1000, len(lines) // (worker_count * 4))
-    chunks = [lines[index:index + chunk_size] for index in range(0, len(lines), chunk_size)]
-    with ProcessPoolExecutor(max_workers=worker_count) as executor:
-        rows = [row for chunk_rows in executor.map(_parse_jsonl_chunk, chunks) for row in chunk_rows]
-    print(f"jsonl load: {len(rows)} rows using {worker_count} workers")
-    return rows
 
 
 def _to_device_tensor(array: np.ndarray, device: torch.device) -> torch.Tensor:
@@ -124,6 +129,7 @@ class TrainingTensors:
     seq_lengths: torch.Tensor
     seq_mask: torch.Tensor
     y: torch.Tensor
+    search_value: torch.Tensor
     returns: torch.Tensor
     transition_target: torch.Tensor
     next_x: torch.Tensor
@@ -169,6 +175,7 @@ def _synthetic_smoke_arrays(
     np.ndarray,
     np.ndarray,
     np.ndarray,
+    np.ndarray,
 ]:
     rng = np.random.default_rng(7)
     seqs = 8
@@ -176,6 +183,7 @@ def _synthetic_smoke_arrays(
     topk = 8
     x_seq = rng.normal(size=(seqs, window_size, feat_dim)).astype(np.float32)
     y_seq = np.tanh(x_seq[:, :, 0] * 0.1).astype(np.float32)
+    search_value_seq = y_seq.copy()
     returns_seq = y_seq.copy()
     transition_seq = rng.integers(0, transition_classes, size=(seqs, window_size), dtype=np.int64)
     next_x_seq = (x_seq + rng.normal(scale=0.1, size=x_seq.shape)).astype(np.float32)
@@ -195,6 +203,7 @@ def _synthetic_smoke_arrays(
         x_seq,
         y_seq,
         returns_seq,
+        search_value_seq,
         transition_seq,
         next_x_seq,
         terminal_seq,
@@ -228,6 +237,7 @@ def _finalize_training_tensors(
     data_path: Path | None,
     x_seq_np: np.ndarray,
     y_seq_np: np.ndarray,
+    search_value_seq_np: np.ndarray,
     returns_seq_np: np.ndarray,
     transition_seq_np: np.ndarray,
     next_x_seq_np: np.ndarray,
@@ -254,6 +264,7 @@ def _finalize_training_tensors(
 
     x_seq = _to_device_tensor(x_seq_np, data_device)
     y = _to_device_tensor(y_seq_np, data_device)
+    search_value = _to_device_tensor(search_value_seq_np, data_device)
     returns = _to_device_tensor(returns_seq_np, data_device)
     transition_target = _to_device_tensor(transition_seq_np, data_device)
     next_x = _to_device_tensor(next_x_seq_np, data_device)
@@ -283,6 +294,7 @@ def _finalize_training_tensors(
         seq_lengths=seq_lengths,
         seq_mask=seq_mask,
         y=y,
+        search_value=search_value,
         returns=returns,
         transition_target=transition_target,
         next_x=next_x,
@@ -377,11 +389,9 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
                 f"({len(rows):,} / {source_rows:,} rows, window={train_games} {which})"
             )
         from poke_agent.training_diversity import assert_bootstrap_training_data
-
-        assert_bootstrap_training_data(config, rows, data_path=data_path)
-
         from poke_agent.archetype_heuristics import heuristic_knobs_from_config
 
+        assert_bootstrap_training_data(config, rows, data_path=data_path)
         knobs = heuristic_knobs_from_config(config)
         arrays = build_training_arrays(
             rows,
@@ -403,12 +413,16 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         del rows
         gc.collect()
         elapsed = time.perf_counter() - started
-        print(f"built training tensors from {data_path} in {elapsed:.1f}s ({workers} workers)")
+        print(
+            f"built training tensors from {data_path} in {elapsed:.1f}s "
+            f"({len(arrays[0]):,} seat-sequences, {workers} workers)"
+        )
 
     (
         x_seq_np,
         y_seq_np,
         returns_seq_np,
+        search_value_seq_np,
         transition_seq_np,
         next_x_seq_np,
         terminal_seq_np,
@@ -433,6 +447,7 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
             arrays={
                 "x_seq": x_seq_np,
                 "y": y_seq_np,
+                "search_value": search_value_seq_np,
                 "returns": returns_seq_np,
                 "transition_target": transition_seq_np,
                 "next_x": next_x_seq_np,
@@ -454,6 +469,7 @@ def prepare_training_tensors(config: dict[str, Any], device: torch.device) -> Tr
         data_path=data_path,
         x_seq_np=x_seq_np,
         y_seq_np=y_seq_np,
+        search_value_seq_np=search_value_seq_np,
         returns_seq_np=returns_seq_np,
         transition_seq_np=transition_seq_np,
         next_x_seq_np=next_x_seq_np,

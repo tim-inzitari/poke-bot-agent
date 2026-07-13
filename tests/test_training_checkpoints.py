@@ -31,6 +31,7 @@ def _tiny_tensors() -> TrainingTensors:
         seq_lengths=torch.full((SEQS,), STEPS, dtype=torch.long),
         seq_mask=seq_mask,
         y=y,
+        search_value=y.clone(),
         returns=y.clone(),
         transition_target=torch.zeros(SEQS, WINDOW, dtype=torch.long),
         next_x=torch.randn(SEQS, WINDOW, INPUT_DIM),

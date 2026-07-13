@@ -27,6 +27,7 @@ def _tiny_arrays() -> dict[str, np.ndarray]:
     return {
         "x_seq": x,
         "y": np.random.randn(4, 8).astype(np.float32),
+        "search_value": np.random.randn(4, 8).astype(np.float32),
         "returns": np.random.randn(4, 8).astype(np.float32),
         "transition_target": np.zeros((4, 8), dtype=np.int64),
         "next_x": next_x,

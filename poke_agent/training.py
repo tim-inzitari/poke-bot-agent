@@ -178,6 +178,9 @@ def train_model(
     awr_weight_max = float(objective_cfg.get("policy_awr_weight_max", 20.0))
     use_soft_search = bool(objective_cfg.get("use_soft_search_policy", True))
     search_kl_weight = float(objective_cfg.get("search_policy_kl_weight", 1.0))
+    # Search-improved value blend: value_target = (1-b)*MC + b*search_value. Rows without
+    # a real search_value stored it as the MC target, so the blend is a no-op for them.
+    search_value_blend = float(objective_cfg.get("search_value_blend", 0.0))
 
     assert_generic_model_inputs(model, tensors, config)
 
@@ -294,6 +297,7 @@ def train_model(
             mask_b = tensors.seq_mask[seq_ids].to(device, non_blocking=stream)
             card_b = tensors.card_ids[seq_ids].to(device, non_blocking=stream)
             yb = tensors.y[seq_ids].to(device, non_blocking=stream)
+            search_value_b = tensors.search_value[seq_ids].to(device, non_blocking=stream)
             returns_b = tensors.returns[seq_ids].to(device, non_blocking=stream)
             transition_b = tensors.transition_target[seq_ids].to(device, non_blocking=stream)
             soft_idx_b = tensors.transition_soft_idx[seq_ids].to(device, non_blocking=stream)
@@ -308,7 +312,12 @@ def train_model(
                 valid = mask_b > 0
                 valid_count = valid.sum().clamp(min=1.0)
 
-                value_loss = (value_loss_fn(out["value"], yb) * valid).sum() / valid_count
+                if search_value_blend > 0.0:
+                    value_target_b = (1.0 - search_value_blend) * yb + search_value_blend * search_value_b
+                else:
+                    value_target_b = yb
+
+                value_loss = (value_loss_fn(out["value"], value_target_b) * valid).sum() / valid_count
                 policy_raw = _policy_loss_batch(
                     out["policy_logits"],
                     transition_b,
@@ -335,7 +344,7 @@ def train_model(
                 entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(dim=-1)
                 entropy = (entropy * valid).sum() / valid_count
                 uncertainty_loss = (
-                    (torch.exp(-out["log_variance"]) * (out["value"] - yb).pow(2) + out["log_variance"]) * valid
+                    (torch.exp(-out["log_variance"]) * (out["value"] - value_target_b).pow(2) + out["log_variance"]) * valid
                 ).sum() / valid_count
 
                 loss = (

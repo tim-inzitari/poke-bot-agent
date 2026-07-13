@@ -2106,12 +2106,15 @@ def run_self_play_loop(
     manifest_path = settings.checkpoint_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
     pool = OpponentPool(max_size=settings.opponent_pool_size)
-    for entry in manifest.get("iterations", []):
+    existing_iters = manifest.get("iterations") or []
+    for entry in existing_iters:
         checkpoint = entry.get("saved_checkpoint")
         if checkpoint:
             pool.add(Path(checkpoint))
 
     current_checkpoint = Path(initial_checkpoint or config["output_path"])
+    if existing_iters:
+        current_checkpoint = champion_checkpoint_from_manifest(manifest, current_checkpoint)
     if not current_checkpoint.exists():
         raise FileNotFoundError(f"initial checkpoint not found: {current_checkpoint}")
 
@@ -2123,8 +2126,21 @@ def run_self_play_loop(
     stop_reason: str | None = None
     play_root = root or settings.checkpoint_dir.parent.parent.parent
 
-    for iteration in range(1, settings.iterations + 1):
-        print(f"self-play iteration {iteration}/{settings.iterations}")
+    if existing_iters and manifest.get("stop_reason"):
+        print(f"resuming self-play after: {manifest['stop_reason']}")
+        manifest.pop("stop_reason", None)
+        plateau_count = 0
+        manifest["plateau_count"] = 0
+        save_manifest(manifest_path, manifest)
+
+    first_iteration = len(existing_iters) + 1
+    last_iteration = first_iteration + settings.iterations - 1
+
+    for iteration in range(first_iteration, last_iteration + 1):
+        print(
+            f"self-play iteration {iteration} "
+            f"(segment budget {settings.iterations}, completed {len(existing_iters)})"
+        )
         report = run_self_play_iteration(
             iteration=iteration,
             config=config,

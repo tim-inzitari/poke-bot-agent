@@ -61,7 +61,7 @@ MODEL_OUTPUT_PATH = "outputs/checkpoints/temporal_current.pt"
 REQUIRE_CABT_EVAL_DATA = True
 
 # --- Dataset size (games) ---
-DATASET_GAMES = 2000  # None = train on all games in file, skip inline generation
+DATASET_GAMES = 0  # 0 / unset = train on all games in file; set N to cap episodes
                       # 5000 or 100000 = that many CABT games to generate and/or cap training
 
 # --- Features ---
@@ -110,6 +110,9 @@ POLICY_AWR_WEIGHT_MAX = 20.0
 POLICY_SOFT_TOPK = 8
 OBJECTIVE_USE_SOFT_SEARCH_POLICY = True
 OBJECTIVE_SEARCH_POLICY_KL_WEIGHT = 1.0
+# Blend of search-improved value into the value target: (1-b)*MC_target + b*search_value.
+# 0 disables (pure MC/shaping target); rows without a search_value fall back to MC.
+OBJECTIVE_SEARCH_VALUE_BLEND = 0.5
 TRAIN_ENCODER_LR = 1e-4
 TRAIN_HEAD_LR = 3e-4
 
@@ -257,6 +260,7 @@ OVERRIDE_KEYS = frozenset({
     "policy_soft_topk",
     "objective_use_soft_search_policy",
     "objective_search_policy_kl_weight",
+    "objective_search_value_blend",
     # 18 archetype heuristic knobs (heuristic_policy_beta_*, value_archetype_shaping_weight_*,
     # heuristic_target_mix_*) are unioned in below from ARCHETYPE_KNOB_KEYS.
     "train_encoder_lr",
@@ -372,6 +376,7 @@ def default_user_config() -> dict[str, Any]:
         "policy_soft_topk": POLICY_SOFT_TOPK,
         "objective_use_soft_search_policy": OBJECTIVE_USE_SOFT_SEARCH_POLICY,
         "objective_search_policy_kl_weight": OBJECTIVE_SEARCH_POLICY_KL_WEIGHT,
+        "objective_search_value_blend": OBJECTIVE_SEARCH_VALUE_BLEND,
         **archetype_knob_defaults(),
         "train_encoder_lr": TRAIN_ENCODER_LR,
         "train_head_lr": TRAIN_HEAD_LR,
@@ -483,6 +488,7 @@ _ENV_MAP = {
     "policy_soft_topk": "POLICY_SOFT_TOPK",
     "objective_use_soft_search_policy": "OBJECTIVE_USE_SOFT_SEARCH_POLICY",
     "objective_search_policy_kl_weight": "OBJECTIVE_SEARCH_POLICY_KL_WEIGHT",
+    "objective_search_value_blend": "OBJECTIVE_SEARCH_VALUE_BLEND",
     # 18 archetype heuristic knobs map to their UPPER_SNAKE env var name.
     **{key: key.upper() for key in ARCHETYPE_KNOB_KEYS},
     "train_encoder_lr": "TRAIN_ENCODER_LR",
@@ -662,6 +668,7 @@ def _coerce_value(key: str, value: Any) -> Any:
         "value_shaping_alpha",
         "policy_awr_beta",
         "policy_awr_weight_max",
+        "objective_search_value_blend",
         "self_play_target_win_rate",
         "self_play_baseline_win_rate",
         "self_play_baseline_top_decks_per_archetype",
@@ -780,6 +787,7 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
             "policy_soft_topk": settings["policy_soft_topk"],
             "use_soft_search_policy": settings["objective_use_soft_search_policy"],
             "search_policy_kl_weight": settings["objective_search_policy_kl_weight"],
+            "search_value_blend": settings["objective_search_value_blend"],
             # value-shaping + target-mix knobs (12 of the 18) feed the training objective.
             **{
                 key: settings[key]

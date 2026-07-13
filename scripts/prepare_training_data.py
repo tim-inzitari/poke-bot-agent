@@ -31,14 +31,6 @@ from poke_agent.simulator import load_simulator, print_simulator_status
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "--download",
-        dest="download_index",
-        action="store_true",
-        default=True,
-        help="download episodes-index manifest + latest daily bundle if missing (default: on)",
-    )
-    parser.add_argument("--no-download", dest="download_index", action="store_false")
-    parser.add_argument(
         "--generate",
         dest="generate",
         action="store_true",
@@ -88,8 +80,7 @@ def main() -> int:
     print("prepare bootstrap training data (episodes-index + multideck)")
     print(f"  merged -> {config['merged_rollout_path']}")
     print(
-        f"  download_index={'on' if args.download_index else 'off'}  "
-        f"generate={'on' if args.generate else 'off'}  "
+        f"  generate={'on' if args.generate else 'off'}  "
         f"scrape={'on' if args.scrape else 'off'}"
     )
 
@@ -98,7 +89,6 @@ def main() -> int:
         root,
         simulator_available=simulator.available,
         scrape=args.scrape,
-        download_index=args.download_index,
         generate_multideck=args.generate,
         episodes=args.episodes,
         workers=args.workers,

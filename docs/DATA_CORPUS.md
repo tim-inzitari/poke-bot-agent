@@ -37,6 +37,11 @@ merged/primary/fallback precedence chain. `run_archetype.sh` sets it to the
 archetype bootstrap, so there is no "merged corpus silently wins" trap. When it is
 unset, the general regime applies.
 
+**Dragapult exception:** profile sets `ARCH_MERGE_LADDER=1`, which builds
+`data/dragapult_training.jsonl` from `data/dragapult_bootstrap.jsonl` (CABT games
+in the dragapult field) plus `data/scraped_rollouts.jsonl` (episodes-index ladder
+replays). Bootstrap training uses that merged file as `TRAINING_DATA_PATH`.
+
 ```mermaid
 flowchart TD
   T{TRAINING_DATA_PATH set?}

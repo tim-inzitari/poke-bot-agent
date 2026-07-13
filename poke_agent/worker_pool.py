@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import sys
 import threading
 from queue import Empty
 from typing import Any, Callable, Iterable, Iterator, TypeVar
@@ -8,6 +9,13 @@ from typing import Any, Callable, Iterable, Iterator, TypeVar
 R = TypeVar("R")
 
 _PROGRESS_QUEUE: mp.Queue | None = None
+
+
+def prefer_fork_context() -> mp.context.BaseContext | None:
+    """Linux fork pool for read-mostly parent data via copy-on-write (tensor/jsonl build)."""
+    if sys.platform == "linux":
+        return mp.get_context("fork")
+    return None
 
 
 def bind_progress_queue(queue: mp.Queue | None) -> None:
@@ -25,6 +33,15 @@ def emit_game_progress(*, result: int | None = None, our_seat: int | None = None
         queue.put(1)
     else:
         queue.put({"result": int(result), "our_seat": int(our_seat)})
+
+
+def emit_unit_progress(count: int = 1) -> None:
+    """Notify the parent that ``count`` work units finished (tensor/jsonl build)."""
+    queue = _PROGRESS_QUEUE
+    if queue is None or count <= 0:
+        return
+    for _ in range(int(count)):
+        queue.put(1)
 
 
 def _pool_worker_init(
@@ -101,3 +118,22 @@ def iter_with_live_progress(
             progress.update(1)
             if on_game is not None:
                 on_game(message)
+
+
+def run_fork_pool_imap(
+    worker_fn: Callable[..., R],
+    tasks: Iterable[Any],
+    *,
+    workers: int,
+    progress_queue: mp.Queue | None = None,
+    chunksize: int = 1,
+    maxtasksperchild: int = 1,
+) -> Iterator[R]:
+    """Fork pool for index-only tasks; parent data is shared read-only via COW on Linux."""
+    ctx = prefer_fork_context()
+    if ctx is None:
+        raise RuntimeError("fork pool is only available on Linux")
+    if progress_queue is not None:
+        bind_progress_queue(progress_queue)
+    with ctx.Pool(processes=workers, maxtasksperchild=maxtasksperchild) as pool:
+        yield from pool.imap(worker_fn, tasks, chunksize=chunksize)

@@ -31,6 +31,7 @@ def _tiny_tensors(*, seqs: int = 2, steps: int = 4, input_dim: int = 16, window:
         seq_lengths=seq_lengths,
         seq_mask=seq_mask,
         y=y,
+        search_value=y.clone(),
         returns=returns,
         transition_target=transition,
         next_x=next_x,

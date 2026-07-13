@@ -691,20 +691,28 @@ def _build_seat_sequence(
     np.ndarray,
     np.ndarray,
     np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
     int,
 ]:
     if not seat_rows:
-        empty = np.zeros((0, total_feature_dim(state_hash_dim=state_hash_dim)), dtype=np.float32)
+        feat_dim = total_feature_dim(state_hash_dim=state_hash_dim)
         return (
-            empty,
-            np.zeros((0,), dtype=np.float32),
-            np.zeros((0,), dtype=np.float32),
-            np.zeros((0,), dtype=np.int64),
-            empty,
-            np.zeros((0,), dtype=np.float32),
-            np.zeros((0, window_size), dtype=np.float32),
-            np.zeros((0, window_size), dtype=np.int64),
-            np.zeros((0, window_size, CARD_ID_SLOT_COUNT), dtype=np.int64),
+            np.zeros((window_size, feat_dim), dtype=np.float32),
+            np.zeros((window_size,), dtype=np.float32),
+            np.zeros((window_size,), dtype=np.float32),
+            np.zeros((window_size,), dtype=np.float32),
+            np.zeros((window_size,), dtype=np.int64),
+            np.zeros((window_size, feat_dim), dtype=np.float32),
+            np.zeros((window_size,), dtype=np.float32),
+            np.zeros((window_size,), dtype=np.float32),
+            np.zeros((window_size, CARD_ID_SLOT_COUNT), dtype=np.int64),
+            np.ones((window_size,), dtype=np.float32),
+            np.full((window_size, policy_soft_topk), -1, dtype=np.int64),
+            np.zeros((window_size, policy_soft_topk), dtype=np.float32),
+            np.array([0], dtype=np.int64),
             0,
         )
 
@@ -788,6 +796,7 @@ def _build_seat_sequence(
     xs = np.stack([encoded[index][0] for index in range(start, seq_len)]).astype(np.float32)
     card_ids = np.stack([encoded[index][1] for index in range(start, seq_len)]).astype(np.int64)
     values = np.zeros((keep_len,), dtype=np.float32)
+    search_values = np.zeros((keep_len,), dtype=np.float32)
     returns = np.zeros((keep_len,), dtype=np.float32)
     transition_targets = np.zeros((keep_len,), dtype=np.int64)
     policy_step_weights = np.ones((keep_len,), dtype=np.float32)
@@ -834,6 +843,13 @@ def _build_seat_sequence(
             )
             value_target = float(max(-1.0, min(1.0, value_target + shaping_weight * bonus)))
         values[local_index] = value_target
+        # Search-improved value target when the row carries one (beam/self-play rows);
+        # otherwise fall back to the MC/shaping target so the train-time blend is a no-op.
+        search_value_raw = row.get("search_value")
+        if search_value_raw is None:
+            search_values[local_index] = value_target
+        else:
+            search_values[local_index] = float(max(-1.0, min(1.0, float(search_value_raw))))
         returns[local_index] = float(mc_returns[row_index])
 
         if row_index + 1 < seq_len:
@@ -867,6 +883,7 @@ def _build_seat_sequence(
         terminal_mask[local_index] = is_terminal
 
     y_padded = np.zeros((window_size,), dtype=np.float32)
+    search_value_padded = np.zeros((window_size,), dtype=np.float32)
     returns_padded = np.zeros((window_size,), dtype=np.float32)
     transition_padded = np.zeros((window_size,), dtype=np.int64)
     policy_weight_padded = np.ones((window_size,), dtype=np.float32)
@@ -875,6 +892,7 @@ def _build_seat_sequence(
     next_x_padded = np.zeros((window_size, xs.shape[1]), dtype=np.float32)
     terminal_padded = np.zeros((window_size,), dtype=np.float32)
     y_padded[pad_count:] = values
+    search_value_padded[pad_count:] = search_values
     returns_padded[pad_count:] = returns
     transition_padded[pad_count:] = transition_targets
     policy_weight_padded[pad_count:] = policy_step_weights
@@ -887,6 +905,7 @@ def _build_seat_sequence(
         padded_x,
         y_padded,
         returns_padded,
+        search_value_padded,
         transition_padded,
         next_x_padded,
         terminal_padded,
@@ -972,6 +991,7 @@ def build_training_arrays(
     np.ndarray,
     np.ndarray,
     np.ndarray,
+    np.ndarray,
 ]:
     sequences = _group_rows_by_seat(rows)
     worker_count = default_tensor_build_workers() if workers is None else max(1, int(workers))
@@ -1020,12 +1040,13 @@ def build_training_arrays(
         with ProcessPoolExecutor(max_workers=worker_count) as executor:
             seat_arrays = list(executor.map(_seat_worker, tasks, chunksize=chunksize))
         print(
-            f"tensor build: {len(rows)} rows across {len(sequences)} seat-sequences "
+            f"tensor build: {len(rows):,} rows across {len(sequences):,} seat-sequences "
             f"using {worker_count} workers"
         )
 
     x_parts: list[np.ndarray] = []
     y_parts: list[np.ndarray] = []
+    search_value_parts: list[np.ndarray] = []
     returns_parts: list[np.ndarray] = []
     transition_parts: list[np.ndarray] = []
     next_x_parts: list[np.ndarray] = []
@@ -1041,6 +1062,7 @@ def build_training_arrays(
         x_seq,
         y_seq,
         returns_seq,
+        search_value_seq,
         transition_seq,
         next_x_seq,
         terminal_seq,
@@ -1056,6 +1078,7 @@ def build_training_arrays(
             continue
         x_parts.append(x_seq)
         y_parts.append(y_seq)
+        search_value_parts.append(search_value_seq)
         returns_parts.append(returns_seq)
         transition_parts.append(transition_seq)
         next_x_parts.append(next_x_seq)
@@ -1073,6 +1096,7 @@ def build_training_arrays(
             np.zeros((0, window_size, feat_dim), dtype=np.float32),
             np.zeros((0, window_size), dtype=np.float32),
             np.zeros((0, window_size), dtype=np.float32),
+            np.zeros((0, window_size), dtype=np.float32),
             np.zeros((0, window_size), dtype=np.int64),
             np.zeros((0, window_size, feat_dim), dtype=np.float32),
             np.zeros((0, window_size), dtype=np.float32),
@@ -1085,72 +1109,19 @@ def build_training_arrays(
             np.zeros((0,), dtype=np.int64),
         )
 
-    count = len(x_parts)
-    feat_dim = int(x_parts[0].shape[-1])
-    x_out = np.empty((count, window_size, feat_dim), dtype=np.float32)
-    y_out = np.empty((count, window_size), dtype=np.float32)
-    returns_out = np.empty((count, window_size), dtype=np.float32)
-    transition_out = np.empty((count, window_size), dtype=np.int64)
-    next_x_out = np.empty((count, window_size, feat_dim), dtype=np.float32)
-    terminal_out = np.empty((count, window_size), dtype=np.float32)
-    mask_out = np.empty((count, window_size), dtype=np.float32)
-    card_out = np.empty((count, window_size, CARD_ID_SLOT_COUNT), dtype=np.int64)
-    policy_weight_out = np.empty((count, window_size), dtype=np.float32)
-    soft_idx_out = np.empty((count, window_size, policy_soft_topk), dtype=np.int64)
-    soft_prob_out = np.empty((count, window_size, policy_soft_topk), dtype=np.float32)
-    for index, (x_seq, y_seq, returns_seq, transition_seq, next_x_seq, terminal_seq, seq_mask, card_seq, policy_weight_seq, soft_idx_seq, soft_prob_seq) in enumerate(
-        zip(
-            x_parts,
-            y_parts,
-            returns_parts,
-            transition_parts,
-            next_x_parts,
-            terminal_parts,
-            mask_parts,
-            card_parts,
-            policy_weight_parts,
-            soft_idx_parts,
-            soft_prob_parts,
-        )
-    ):
-        x_out[index] = x_seq
-        y_out[index] = y_seq
-        returns_out[index] = returns_seq
-        transition_out[index] = transition_seq
-        next_x_out[index] = next_x_seq
-        terminal_out[index] = terminal_seq
-        mask_out[index] = seq_mask
-        card_out[index] = card_seq
-        policy_weight_out[index] = policy_weight_seq
-        soft_idx_out[index] = soft_idx_seq
-        soft_prob_out[index] = soft_prob_seq
-    del (
-        seat_arrays,
-        x_parts,
-        y_parts,
-        returns_parts,
-        transition_parts,
-        next_x_parts,
-        terminal_parts,
-        mask_parts,
-        card_parts,
-        policy_weight_parts,
-        soft_idx_parts,
-        soft_prob_parts,
-    )
-
     return (
-        x_out,
-        y_out,
-        returns_out,
-        transition_out,
-        next_x_out,
-        terminal_out,
-        mask_out,
-        card_out,
-        policy_weight_out,
-        soft_idx_out,
-        soft_prob_out,
-        np.asarray(lengths, dtype=np.int64),
-        np.arange(count, dtype=np.int64),
+        np.stack(x_parts).astype(np.float32),
+        np.stack(y_parts).astype(np.float32),
+        np.stack(returns_parts).astype(np.float32),
+        np.stack(search_value_parts).astype(np.float32),
+        np.stack(transition_parts).astype(np.int64),
+        np.stack(next_x_parts).astype(np.float32),
+        np.stack(terminal_parts).astype(np.float32),
+        np.stack(mask_parts).astype(np.float32),
+        np.stack(card_parts).astype(np.int64),
+        np.stack(policy_weight_parts).astype(np.float32),
+        np.stack(soft_idx_parts).astype(np.int64),
+        np.stack(soft_prob_parts).astype(np.float32),
+        np.array(lengths, dtype=np.int64),
+        np.arange(len(lengths), dtype=np.int64),
     )
