@@ -272,6 +272,247 @@ def fmt_pct(x: float) -> str:
     return f"{100.0 * x:.1f}%"
 
 
+def _iter_day_entries(episode_dir: Optional[Path], day_label: Optional[str]) -> tuple[list[tuple[str, Any]], str, dict[Path, zipfile.ZipFile]]:
+    """Build a streaming entry list for a single day.
+
+    Prefers an extracted directory; otherwise falls back to the daily zip. Returns
+    ``(entries, source_desc, zip_handles)`` where each entry is ``("file", path)``
+    or ``("zip", (zip_path, member))``.
+    """
+    zip_handles: dict[Path, zipfile.ZipFile] = {}
+    # 1) explicit dir, 2) shared extracted day dir, 3) daily zip on disk.
+    if episode_dir is None:
+        cand = Path("/tmp/replay-len/day1")
+        episode_dir = cand if cand.is_dir() else None
+
+    if episode_dir is not None and episode_dir.is_dir():
+        files = collect_episode_paths([episode_dir])
+        if files:
+            return [("file", fp) for fp in files], str(episode_dir), zip_handles
+
+    if day_label:
+        zp = ROOT / "data" / "episodes" / "raw" / f"pokemon-tcg-ai-battle-episodes-{day_label}.zip"
+        if zp.is_file():
+            zip_handles[zp] = zipfile.ZipFile(zp)
+            return [("zip", (zp, m)) for m in iter_zip_members(zp)], str(zp), zip_handles
+
+    return [], "", zip_handles
+
+
+def day_report_main(args: argparse.Namespace) -> int:
+    """Scoped, streaming archetype-prevalence report for a single ladder day."""
+    id2name, id2hp, is_ace = load_card_db()
+
+    entries, src_desc, zip_handles = _iter_day_entries(args.episode_dir, args.day_label)
+    if not entries:
+        print("No episode sources found for day-mode.", file=sys.stderr)
+        return 1
+
+    day_label = args.day_label or "unknown-day"
+    n_available = len(entries)
+    entries = sorted(entries, key=lambda e: str(e[1]))
+    # Optional bound (default DEFAULT_MAX_GAMES is 5000; raise via --max-games for a full day).
+    sampled = False
+    if args.max_games and args.max_games > 0 and len(entries) > args.max_games:
+        rng = random.Random(args.seed)
+        entries = sorted(rng.sample(entries, args.max_games), key=lambda e: str(e[1]))
+        sampled = True
+
+    print(f"# day={day_label} source={src_desc}")
+    print(f"# available={n_available} processing={len(entries)} sampled={sampled}")
+
+    n_games = 0
+    dropped = 0
+    seat_appearances: Counter[str] = Counter()   # both-seat appearances
+    games_present: Counter[str] = Counter()       # distinct games featuring archetype
+    wins: Counter[str] = Counter()                # seat-level wins
+    method_counts: Counter[str] = Counter()
+    has_deck_seats = 0
+    total_seats = 0
+    matchup_pairs: Counter[tuple[str, str]] = Counter()  # unordered pair frequency
+
+    for k, (kind, ref) in enumerate(entries, 1):
+        try:
+            if kind == "file":
+                payload = json.loads(Path(ref).read_text(encoding="utf-8"))
+            else:
+                zp, member = ref
+                payload = load_payload_from_zip(zip_handles[zp], member)
+        except (OSError, json.JSONDecodeError, KeyError, zipfile.BadZipFile):
+            dropped += 1
+            continue
+        parsed = parse_episode(payload, id2name, id2hp, is_ace)
+        del payload  # keep RAM bounded — do not retain episodes
+        if parsed is None:
+            dropped += 1
+            continue
+        n_games += 1
+        a0, a1 = parsed["arch"]
+        w = parsed["winner"]
+        for i, arch in enumerate((a0, a1)):
+            seat_appearances[arch] += 1
+            total_seats += 1
+            if w == i:
+                wins[arch] += 1
+            if parsed["has_deck"][i]:
+                has_deck_seats += 1
+        for arch in {a0, a1}:
+            games_present[arch] += 1
+        for m in parsed["method"]:
+            method_counts[m] += 1
+        matchup_pairs[tuple(sorted((a0, a1)))] += 1
+        if k % 500 == 0:
+            print(f"  parsed {k}/{len(entries)} decisive={n_games} dropped={dropped}", flush=True)
+
+    for zf in zip_handles.values():
+        zf.close()
+
+    if n_games == 0:
+        print("No decisive games parsed.", file=sys.stderr)
+        return 1
+
+    UNK = archetypes.UNKNOWN
+    rows: list[dict[str, Any]] = []
+    for arch, seats in seat_appearances.most_common():
+        w = wins.get(arch, 0)
+        p, lo, hi = wilson_interval(w, seats)
+        rows.append({
+            "archetype": arch,
+            "seats": seats,
+            "share": seats / total_seats,
+            "games": games_present.get(arch, 0),
+            "game_share": games_present.get(arch, 0) / n_games,
+            "wins": w,
+            "wr": p,
+            "wr_lo": lo,
+            "wr_hi": hi,
+        })
+
+    unknown_seats = seat_appearances.get(UNK, 0)
+    unknown_games = games_present.get(UNK, 0)
+    # Registered/recognised labels = Dragapult family + hammer + META_SIGNATURES ids.
+    recognised = set(archetypes.archetype_ids()) | {sig[0] for sig in META_SIGNATURES}
+    longtail_seats = sum(
+        s for a, s in seat_appearances.items() if a != UNK and a not in recognised
+    )
+    longtail_labels = sum(
+        1 for a in seat_appearances if a != UNK and a not in recognised
+    )
+
+    # --- write CSV ---
+    report_csv = args.report_csv_out or (ROOT / "outputs" / "reports" / f"archetype_meta_{day_label}.csv")
+    report_csv.parent.mkdir(parents=True, exist_ok=True)
+    with report_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["rank", "archetype", "seats", "share", "games", "game_share", "wins", "wr", "wr_lo", "wr_hi"],
+        )
+        writer.writeheader()
+        for i, r in enumerate(rows, 1):
+            writer.writerow({
+                "rank": i,
+                "archetype": r["archetype"],
+                "seats": r["seats"],
+                "share": f"{r['share']:.6f}",
+                "games": r["games"],
+                "game_share": f"{r['game_share']:.6f}",
+                "wins": r["wins"],
+                "wr": f"{r['wr']:.6f}",
+                "wr_lo": f"{r['wr_lo']:.6f}",
+                "wr_hi": f"{r['wr_hi']:.6f}",
+            })
+
+    # --- markdown ---
+    report_md = args.report_md or (ROOT / "outputs" / "reports" / f"archetype_meta_{day_label}.md")
+    lines: list[str] = []
+    lines.append(f"# Archetype prevalence report — {day_label}")
+    lines.append("")
+    lines.append(
+        f"Full archetype-prevalence breakdown for the most recent ladder day available on disk "
+        f"(`{day_label}`). One row per archetype; prevalence is share of **both-seat appearances** "
+        f"across all decisive games."
+    )
+    lines.append("")
+    lines.append("## Scope")
+    lines.append("")
+    lines.append("| Item | Value |")
+    lines.append("|---|---|")
+    lines.append(f"| Ladder day (window) | **{day_label}** (single UTC calendar day) |")
+    lines.append(f"| Dataset | `kaggle/pokemon-tcg-ai-battle-episodes-{day_label}` |")
+    lines.append(f"| Source | `{src_desc}` |")
+    lines.append(f"| Episodes available | {n_available} |")
+    lines.append(f"| Episodes processed | {len(entries)}{' (sampled)' if sampled else ' (full day)'} |")
+    lines.append(f"| Decisive games | **{n_games}** (dropped tie/crash/malformed: {dropped}) |")
+    lines.append(f"| Both-seat appearances (total) | **{total_seats}** (= 2 × decisive games) |")
+    lines.append(f"| Seats with reconstructed 60-card deck | {has_deck_seats} ({fmt_pct(has_deck_seats/total_seats)}) |")
+    lines.append(
+        "| Labeling | `archetypes.classify_deck` → deck signatures → highest-HP ex played "
+        "(support ex demoted) |"
+    )
+    lines.append(
+        "| Label methods | " + ", ".join(f"`{m}`={c}" for m, c in method_counts.most_common()) + " |"
+    )
+    lines.append("")
+    lines.append(
+        "Dragapult variants are kept **separate** (`dragapult`, `dragapult-dudunsparce`, "
+        "`dragapult-dusknoir`, `dragapult-blaziken`, `hammer-pult`)."
+    )
+    lines.append("")
+    lines.append("## Archetype prevalence (all archetypes, by both-seat appearances)")
+    lines.append("")
+    lines.append("| Rank | Archetype | Seat appearances | Prevalence (share) | Games featuring | Game share | Win rate | Wilson 95% |")
+    lines.append("|---:|---|---:|---:|---:|---:|---:|---|")
+    for i, r in enumerate(rows, 1):
+        lines.append(
+            f"| {i} | `{r['archetype']}` | {r['seats']} | {fmt_pct(r['share'])} | "
+            f"{r['games']} | {fmt_pct(r['game_share'])} | {fmt_pct(r['wr'])} | "
+            f"{fmt_pct(r['wr_lo'])}–{fmt_pct(r['wr_hi'])} |"
+        )
+    lines.append("")
+    lines.append("## Unclassified / other")
+    lines.append("")
+    lines.append(
+        f"- **Unclassified (`unknown`)**: {unknown_seats} seat appearances "
+        f"({fmt_pct(unknown_seats/total_seats)} of seats), in {unknown_games} games "
+        f"({fmt_pct(unknown_games/n_games)} of games). These are seats with no reconstructable "
+        f"deck and no ex ace to fall back on."
+    )
+    lines.append(
+        f"- **Long-tail / \"other\" named aces** (labeled by highest-HP ex but not a registered "
+        f"Dragapult-family or deck-signature archetype): {longtail_seats} seat appearances "
+        f"({fmt_pct(longtail_seats/total_seats)}) spread across {longtail_labels} distinct ace labels."
+    )
+    lines.append(
+        f"- **Recognised archetypes** (Dragapult family + tracked meta signatures): "
+        f"{fmt_pct((total_seats - unknown_seats - longtail_seats)/total_seats)} of seats."
+    )
+    lines.append("")
+    lines.append("## Matchup frequency (most common pairings)")
+    lines.append("")
+    lines.append("| Rank | Matchup | Games | % of games |")
+    lines.append("|---:|---|---:|---:|")
+    for i, (pair, c) in enumerate(matchup_pairs.most_common(15), 1):
+        a, b = pair
+        label = f"`{a}` mirror" if a == b else f"`{a}` vs `{b}`"
+        lines.append(f"| {i} | {label} | {c} | {fmt_pct(c/n_games)} |")
+    lines.append("")
+    lines.append(f"Full ranked table: [`{report_csv.name}`]({report_csv.name})")
+    lines.append("")
+
+    report_md.parent.mkdir(parents=True, exist_ok=True)
+    report_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {report_md}")
+    print(f"wrote {report_csv}")
+
+    print(f"\n=== ARCHETYPE PREVALENCE — {day_label} (n_games={n_games}, seats={total_seats}) ===")
+    for i, r in enumerate(rows, 1):
+        print(
+            f"{i:2d}. {r['archetype']:26s} seats={r['seats']:5d} "
+            f"share={fmt_pct(r['share']):>6s} games={r['games']:5d} WR={fmt_pct(r['wr']):>6s}"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -284,7 +525,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-games", type=int, default=DEFAULT_MAX_GAMES)
     p.add_argument("--seed", type=int, default=SEED)
     p.add_argument("--skip-download", action="store_true", default=True)
+    # --- scoped single-day report mode (does NOT touch the fixed ladder_meta.* /
+    #     phase6_priority.md outputs). Streams one episode at a time. ---
+    p.add_argument("--day-mode", action="store_true", help="Emit a scoped archetype-prevalence report for one day.")
+    p.add_argument("--day-label", type=str, default=None, help="Calendar day label, e.g. 2026-07-12.")
+    p.add_argument("--episode-dir", type=Path, default=None, help="Directory of extracted episode JSON for the day.")
+    p.add_argument("--report-md", type=Path, default=None, help="Output markdown path (day-mode).")
+    p.add_argument("--report-csv-out", type=Path, default=None, help="Output CSV path (day-mode).")
     args = p.parse_args(argv)
+
+    if args.day_mode:
+        return day_report_main(args)
 
     id2name, id2hp, is_ace = load_card_db()
 

@@ -105,13 +105,50 @@ def dragapult_deck() -> list[int]:
 
 
 def hammer_pult_deck() -> list[int]:
-    """Load the Hammer-Pult list (Phase 6+; not the v1 primary)."""
+    """Load the Hammer-Pult list (Campinas 2026 4th; hammer signature)."""
     return read_deck(paths.HAMMER_PULT_DECK)
 
 
+#: Strong dunsparce-line list (SE Lima 2026 2nd; classifies dragapult-dudunsparce).
+DUDUNSPARCE_DECK: Path = (
+    paths.DECKS_DIR
+    / "competitive"
+    / "high_performing"
+    / "2026-05_se-lima-2026_2nd_dragapult.csv"
+)
+
+#: Deck used per primary archetype (data-driven selection writes the env var).
+PRIMARY_DECK_BY_ARCHETYPE: dict[str, Path] = {
+    "dragapult": paths.DRAGAPULT_DECK,
+    "hammer-pult": paths.HAMMER_PULT_DECK,
+    "dragapult-dudunsparce": DUDUNSPARCE_DECK,
+}
+
+
+def primary_archetype() -> str:
+    """Selected primary archetype (``POKEBOT_PRIMARY_ARCHETYPE``, default dragapult)."""
+    import os
+
+    return os.environ.get("POKEBOT_PRIMARY_ARCHETYPE", "dragapult")
+
+
 def primary_deck() -> list[int]:
-    """v1 primary submission deck = pure Dragapult."""
-    return dragapult_deck()
+    """Primary submission deck for the selected primary archetype.
+
+    Prefers ``submission/deck.csv`` when it matches the selected archetype
+    (the collector/pipeline copies the right list there); otherwise falls back
+    to the registered per-archetype deck path.
+    """
+    arch = primary_archetype()
+    if paths.SUBMISSION_DECK.is_file():
+        try:
+            deck = read_deck(paths.SUBMISSION_DECK)
+            if archetypes.classify_deck(deck) == arch:
+                return deck
+        except ValueError:
+            pass
+    path = PRIMARY_DECK_BY_ARCHETYPE.get(arch, paths.DRAGAPULT_DECK)
+    return read_deck(path)
 
 
 def default_pool() -> DeckPool:

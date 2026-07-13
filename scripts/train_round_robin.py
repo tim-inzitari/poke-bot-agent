@@ -47,8 +47,6 @@ from poke_bot.features import build_board_tokens, build_option_tokens, enumerate
 from poke_bot.train import TrainConfig, load_model_from_checkpoint, sequence_losses, train_bootstrap
 from poke_bot.worker_pool import WorkerPool
 
-RUN_NAME = "dragapult_round_robin"
-
 # Module-level cache for spawn workers (reloaded after recycle).
 _WORKER_STATE: dict[str, Any] = {}
 
@@ -56,10 +54,15 @@ _WORKER_STATE: dict[str, Any] = {}
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument(
+        "--archetype",
+        default=deck_pool.primary_archetype(),
+        help="Primary archetype (drives run names, deck, bootstrap JSONL).",
+    )
+    p.add_argument(
         "--bootstrap-ckpt",
         type=Path,
         default=None,
-        help="Starting weights (default: dragapult_bootstrap.best.pt or latest)",
+        help="Starting weights (default: <archetype>_bootstrap.best.pt or latest)",
     )
     p.add_argument("--resume", default="auto")
     p.add_argument("--iterations", type=int, default=20)
@@ -78,11 +81,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def _resolve_bootstrap_ckpt(explicit: Path | None) -> Path:
+def _resolve_bootstrap_ckpt(explicit: Path | None, archetype: str) -> Path:
     if explicit is not None:
         return explicit
-    best = checkpoint.best_path("dragapult_bootstrap")
-    latest = checkpoint.latest_path("dragapult_bootstrap")
+    best = checkpoint.best_path(f"{archetype}_bootstrap")
+    latest = checkpoint.latest_path(f"{archetype}_bootstrap")
     if best.is_file():
         return best
     if latest.is_file():
@@ -199,6 +202,11 @@ def main(argv: list[str] | None = None) -> int:
         print("ERROR: --games-per-opp must be even and >= 2", file=sys.stderr)
         return 2
 
+    import os
+
+    os.environ["POKEBOT_PRIMARY_ARCHETYPE"] = args.archetype
+    run_name = f"{args.archetype}_round_robin"
+
     specs = ensure_baselines_installed(load_manifest())
     if args.only:
         wanted = set(args.only)
@@ -222,8 +230,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
     }
 
-    resume_path = checkpoint.resolve_resume_path(RUN_NAME, args.resume)
-    model_ckpt = _resolve_bootstrap_ckpt(args.bootstrap_ckpt)
+    resume_path = checkpoint.resolve_resume_path(run_name, args.resume)
+    model_ckpt = _resolve_bootstrap_ckpt(args.bootstrap_ckpt, args.archetype)
 
     if resume_path is not None:
         print(f"[rr] resume loop from {resume_path}", flush=True)
@@ -240,8 +248,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"   leaf_device={leaf_dev} train_device={train_dev}", flush=True)
     print(f"   gate wilson_lo>={args.gate} mcts_sims={args.mcts_sims}", flush=True)
 
-    mgr = checkpoint.CheckpointManager(RUN_NAME)
-    rollout_path = paths.DATA_DIR / "rollouts" / "dragapult_rr.jsonl"
+    mgr = checkpoint.CheckpointManager(run_name)
+    rollout_path = paths.DATA_DIR / "rollouts" / f"{args.archetype}_rr.jsonl"
 
     start_iter = int(loop_state.get("iteration", 0))
     for it in tqdm(range(start_iter, args.iterations), desc="rr iterations", unit="iter"):
@@ -325,12 +333,12 @@ def main(argv: list[str] | None = None) -> int:
 
         # Light continued supervised train from bootstrap JSONL (keeps weights warm).
         # Full AZ from visit targets needs obs reanalyse (follow-up); still checkpoint loop.
-        bootstrap_jsonl = paths.DATA_DIR / "bootstrap" / "dragapult.jsonl"
+        bootstrap_jsonl = paths.DATA_DIR / "bootstrap" / f"{args.archetype}.jsonl"
         if bootstrap_jsonl.is_file() and args.train_epochs > 0:
             tqdm.write(f"[rr] warm-train {args.train_epochs} epoch(s) on {bootstrap_jsonl}")
             ds = load_bootstrap_dataset(bootstrap_jsonl, max_games=0, use_cache=True)
             # Resume from champion into bootstrap run name for this fine-tune.
-            warm_name = f"{RUN_NAME}_warm"
+            warm_name = f"{run_name}_warm"
             # Copy champion into warm latest so train resumes weights.
             import shutil
 
@@ -340,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
             result = train_bootstrap(
                 ds,
                 run_name=warm_name,
-                archetype_id="dragapult",
+                archetype_id=args.archetype,
                 train_cfg=TrainConfig(epochs=args.train_epochs, early_stop_patience=2),
                 resume="auto",
                 device=train_dev,
@@ -359,8 +367,8 @@ def main(argv: list[str] | None = None) -> int:
             epoch=it,
             rl_iteration=it,
             best_metric=summary.get("n_passing_wilson"),
-            archetype_id="dragapult",
-            model_id=RUN_NAME,
+            archetype_id=args.archetype,
+            model_id=run_name,
             extra={"loop_state": loop_state, "last_eval": summary},
         )
         saved = mgr.save(ckpt, is_best=bool(summary.get("all_pass")))

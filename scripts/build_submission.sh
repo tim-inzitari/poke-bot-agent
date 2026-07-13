@@ -10,12 +10,13 @@ CKPT="${1:-}"
 OUT_DIR="${2:-$ROOT/outputs/submission}"
 STAGE="$OUT_DIR/stage"
 TARBALL="$OUT_DIR/submission.tar.gz"
+ARCH="${POKEBOT_PRIMARY_ARCHETYPE:-dragapult}"
 
 if [[ -z "$CKPT" ]]; then
   for cand in \
-    "$ROOT/outputs/checkpoints/dragapult_round_robin.best.pt" \
-    "$ROOT/outputs/checkpoints/dragapult_bootstrap.best.pt" \
-    "$ROOT/outputs/checkpoints/dragapult_bootstrap.latest.pt"; do
+    "$ROOT/outputs/checkpoints/${ARCH}_round_robin.best.pt" \
+    "$ROOT/outputs/checkpoints/${ARCH}_bootstrap.best.pt" \
+    "$ROOT/outputs/checkpoints/${ARCH}_bootstrap.latest.pt"; do
     if [[ -f "$cand" ]]; then
       CKPT="$cand"
       break
