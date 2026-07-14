@@ -8,10 +8,11 @@ Each iteration:
      uncertainty and promote only when the configured gate passes.
   4. Checkpoint the evaluated incumbent and full loop state.
 
-Curriculum (defaults): ``--games-per-opp 24`` until ``--curriculum-switch-iter 25``,
-then ``--games-per-opp-late 100``. Leaf eval defaults to one GPU server
-(``--leaf-eval gpu-server --leaf-gpu auto`` → same device as the train step,
-usually Blackwell) while sim workers stay CPU-only. Formal submit gate prefers
+Defaults: ``--agent-mode policy``, ``--games-per-opp 16`` (curriculum switch
+default 0 / late also 16), belief-MCTS collection band ``12–24`` games/opp with
+``--target-search-decisions 3664``. Leaf eval defaults to GPU server replicas
+(``--leaf-eval gpu-server --leaf-gpu auto --leaf-servers 2`` → train device,
+usually Blackwell) while sim workers stay CPU-only. Formal submit/eval prefers
 ≥100 games/opp (``eval_vs_baselines.py``).
 
 Progress: outer tqdm over iterations, inner over games; running WR postfix.
@@ -177,8 +178,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=0,
         help="0-indexed iteration at which games/opp bumps from --games-per-opp "
-        "to --games-per-opp-late (default 25 → iters 1-25 use 24, iter 26+ use "
-        "100).",
+        "to --games-per-opp-late (default 0 → always use --games-per-opp).",
     )
     p.add_argument("--min-games-per-opp", type=int, default=12)
     p.add_argument("--max-games-per-opp", type=int, default=24)
