@@ -143,7 +143,7 @@ $PY scripts/train_bootstrap.py --archetype hammer-pult --resume auto
 #          --val-frac --patience --max-games --no-amp --no-cache --seed
 
 # --- Phase 5: round-robin RL vs the full baseline field ---
-# Sim workers stay CPU-only; OUR leaf eval defaults to one GPU server on the
+# Sim workers stay CPU-only; OUR leaf eval defaults to GPU server(s) on the
 # same device as the train step (--leaf-gpu auto → Blackwell), leaving the
 # 3080 Ti free for core-kernel / Phase 6. Trusted play is policy-first;
 # candidates are immutable and promoted only after direct draw-aware evaluation.
@@ -151,18 +151,21 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID \
 POKEBOT_PRIMARY_ARCHETYPE=hammer-pult \
 $PY scripts/launch_blackwell.py -- \
     --archetype hammer-pult --resume auto \
-    --games-per-opp 24 --games-per-opp-late 100 \
-    --curriculum-switch-iter 25 --mcts-sims 128 \
     --agent-mode policy --leaf-eval gpu-server --leaf-gpu auto
 #   launch_blackwell.py generates a unique run name for checkpoints/replays,
 #   truncates outputs/logs/blackwell.log, and starts one fail-safe/trim monitor.
-#   defaults: --iterations 10000 (draw-aware field gate is the real stop),
-#     --workers 0 (auto → RL_GAMES_IN_FLIGHT=40 with leaf server, RAM-capped),
-#     --leaf-servers 6, --train-epochs 1, --train-lr 5e-5,
-#     --bootstrap-mix 0.25, --history-mix 0.5, --promotion-games 40,
-#     --promotion-min-pairs 20, --promotion-threshold 0.5, --gate 0.55
+#   train_round_robin defaults (verify with -h): --iterations 10000,
+#     --games-per-opp 16 / --games-per-opp-late 16 / --curriculum-switch-iter 0,
+#     --min-games-per-opp 12 / --max-games-per-opp 24 (belief-MCTS budget band),
+#     --workers 0 (auto → RL_GAMES_IN_FLIGHT=40, RAM-capped), --leaf-servers 2,
+#     --train-epochs 1, --train-lr 5e-5, --bootstrap-mix 0.25,
+#     --history-mix 1.0, --replay-fraction 0.50, --promotion-games 80,
+#     --promotion-max-games 160, --promotion-min-pairs 40,
+#     --promotion-threshold 0.5, --gate 0.55, --mcts-sims 128
 #   NOTE: there is NO --gpu-profile on this script (that flag is train_core_kernel).
 #   Experience: current + immutable prior-iteration replay + bootstrap anchor.
+#   --agent-mode belief-mcts is the trusted search-target path; oracle-mcts is
+#   diagnostic-only (cannot train/promote/deploy).
 
 # --- Strict formal eval (independent balanced seats; draw-aware uncertainty) ---
 $PY scripts/eval_vs_baselines.py \
@@ -257,6 +260,7 @@ Kaggle API credentials live at `~/.kaggle/kaggle.json` (outside the repo).
 | `outputs/notes/archetype_pivot.md` | Plan contracts (primary, field, info-set, context) |
 | `outputs/notes/primary_archetype_lock.md` | Why `hammer-pult` |
 | `outputs/notes/rl_loop_and_runtime.md` | Phase 5 RL loop + hardware + failure policy |
+| `outputs/notes/belief_aux_heads.md` | Belief aux heads (root-only priors) |
 | `outputs/notes/core_kernel.md` | Deck-agnostic trunk + warm-start |
 | `outputs/notes/gpu_batched_selfplay.md` | Batched leaf eval |
 | `outputs/notes/phase6_priority.md` | Specialist order (after Phase 5) |
