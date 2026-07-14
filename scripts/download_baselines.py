@@ -339,6 +339,16 @@ def main(argv: list[str] | None = None) -> int:
 
     data = json.loads(args.manifest.read_text())
     agents = data.get("agents", [])
+    # Never re-download agents that a prior cleanup pass flagged as broken.
+    excluded = set(data.get("excluded_broken", []))
+    if excluded:
+        before = len(agents)
+        agents = [a for a in agents if a["id"] not in excluded]
+        if len(agents) < before:
+            print(
+                f"excluded_broken: skipping {before - len(agents)} agent(s): "
+                f"{', '.join(sorted(excluded))}"
+            )
     if args.group:
         agents = [a for a in agents if a.get("group") == args.group]
     if args.only:

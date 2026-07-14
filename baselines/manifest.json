@@ -47,14 +47,6 @@
       "source": "masamikobayashi/a-sample-archaludon-75-wr-vs-my-1300-starmie"
     },
     {
-      "id": "raging-bolt-ex",
-      "name": "Raging Bolt ex Deck",
-      "dir": "raging-bolt-ex",
-      "group": "community",
-      "source": "yakitori55/a-sample-agent-raging-bolt-ex-deck",
-      "deck_dataset": "yakitori55/deck-raging-bolt-v0-csv"
-    },
-    {
       "id": "generic-heuristic",
       "name": "Generic Heuristic Baseline",
       "dir": "generic-heuristic",
@@ -118,13 +110,6 @@
       "source": "makthanithin/pokemon-tcg-ai-battle-1084-5-baseline"
     },
     {
-      "id": "makthanithin-mega-lucario-v62",
-      "name": "Makthanithin Mega Lucario ex v62",
-      "dir": "makthanithin-mega-lucario-v62",
-      "group": "roster",
-      "source": "makthanithin/ptcg-mega-lucario-ex-v62"
-    },
-    {
       "id": "penguin-public-scores-915",
       "name": "Penguin Public Scores 915",
       "dir": "penguin-public-scores-915",
@@ -144,13 +129,6 @@
       "dir": "pilkwang-meta-20260708",
       "group": "roster",
       "source": "pilkwang/pok-mon-tcg-ai-battle-meta-snapshot-08-july"
-    },
-    {
-      "id": "pixiux-mega-lucario-v63",
-      "name": "Pixiux Mega Lucario ex v63",
-      "dir": "pixiux-mega-lucario-v63",
-      "group": "roster",
-      "source": "pixiux/ptcg-mega-lucario-ex-v63"
     },
     {
       "id": "plamen06-pokemon-steel",
@@ -224,5 +202,10 @@
       "seokjeongeum/mega-pokemon-reinforcement-ai-battle",
       "llccqq624/ptcg-meta-a-crustle-attackfix-v1"
     ]
-  }
+  },
+  "excluded_broken": [
+    "makthanithin-mega-lucario-v62",
+    "pixiux-mega-lucario-v63",
+    "raging-bolt-ex"
+  ]
 }

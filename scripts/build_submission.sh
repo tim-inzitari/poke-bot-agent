@@ -28,6 +28,21 @@ if [[ -z "$CKPT" || ! -f "$CKPT" ]]; then
   exit 1
 fi
 
+# Deployment is policy-first/history-only. Privileged single-world search must
+# never be packaged accidentally, even if enabled in the caller's environment.
+if [[ "${POKEBOT_SEARCH_MODE:-policy}" != "policy" || \
+      "${POKEBOT_ALLOW_ORACLE_DECK:-0}" == "1" ]]; then
+  echo "ERROR: refusing to package oracle/privileged search configuration" >&2
+  exit 1
+fi
+PYTHON="${POKEBOT_PYTHON:-/home/inzi/miniconda3/envs/poke-bot-agent/bin/python}"
+"$PYTHON" - "$CKPT" <<'PY'
+import sys
+from poke_bot.checkpoint import assert_trusted_policy_checkpoint
+assert_trusted_policy_checkpoint(sys.argv[1])
+print("OK: trusted history-policy checkpoint")
+PY
+
 CG_SRC=""
 for cand in \
   "$ROOT/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg" \
@@ -63,7 +78,6 @@ rsync -a --delete \
   "$ROOT/poke_bot/" "$STAGE/poke_bot/"
 
 # Isolated-smoke helper: prove no __file__ at import by compiling main.
-PYTHON="${POKEBOT_PYTHON:-/home/inzi/miniconda3/envs/poke-bot-agent/bin/python}"
 "$PYTHON" - <<'PY' "$STAGE"
 import ast, pathlib, sys
 stage = pathlib.Path(sys.argv[1])

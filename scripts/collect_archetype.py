@@ -35,7 +35,7 @@ if str(ROOT) not in sys.path:
 
 from tqdm.auto import tqdm
 
-from poke_bot import archetypes, paths
+from poke_bot import archetypes, config, paths
 from poke_bot.episodes_index import (
     EPISODES_RAW_DIR,
     download_daily_dataset,
@@ -85,8 +85,13 @@ def _parse_args(argv=None):
                    help="Counts >= close_frac * leader are 'close' for the tiebreak.")
     p.add_argument("--target", type=int, default=2000,
                    help="Bootstrap game target for the selected primary.")
+    p.add_argument("--force-primary", default=None,
+                   help="Hard-lock the primary archetype (skip the share decision).")
+    p.add_argument("--also", nargs="*", default=[],
+                   help="Extra archetypes to also convert/persist (insurance).")
     p.add_argument("--days", type=int, default=40, help="Latest N calendar days to pull (capped at what exists).")
-    p.add_argument("--workers", type=int, default=28)
+    p.add_argument("--workers", type=int, default=config.HARDWARE.feature_workers,
+                   help="Parallel classify/convert workers (default: all CPU threads).")
     p.add_argument("--skip-download", action="store_true")
     p.add_argument("--out-dir", type=Path, default=paths.DATA_DIR / "bootstrap")
     return p.parse_args(argv)
@@ -148,33 +153,41 @@ def main(argv=None) -> int:
     print(f"  dragapult (pure)       = {pult:6}  ({pult/total_seats:.2%})", flush=True)
     print(f"  dragapult-dudunsparce  = {dunsparce:6}  ({dunsparce/total_seats:.2%})", flush=True)
 
-    hammer_eligible = hammer >= args.hammer_floor
-    candidates = {
-        "hammer-pult": hammer if hammer_eligible else -1,
-        "dragapult": pult,
-        "dragapult-dudunsparce": dunsparce,
-    }
-    leader_count = max(candidates.values())
-    close = {a for a, c in candidates.items() if c >= 0 and c >= args.close_frac * leader_count}
-    # Preference order among "close" candidates.
-    for pref in ("hammer-pult", "dragapult", "dragapult-dudunsparce"):
-        if pref in close:
-            chosen = pref
-            break
-    reason = (
-        f"counts: hammer={hammer} (eligible={hammer_eligible}, floor {args.hammer_floor}), "
-        f"pure={pult}, dunsparce={dunsparce}; leader_count={leader_count}; "
-        f"close set (>= {args.close_frac:.0%} of leader) = {sorted(close)}; "
-        f"tiebreak hammer>pure>dunsparce → {chosen}"
-    )
+    if args.force_primary:
+        chosen = args.force_primary
+        reason = (f"HARD-LOCKED primary = {chosen} (share decision skipped by "
+                  f"--force-primary). Observed seats: hammer={hammer}, pure={pult}, "
+                  f"dunsparce={dunsparce}.")
+    else:
+        hammer_eligible = hammer >= args.hammer_floor
+        candidates = {
+            "hammer-pult": hammer if hammer_eligible else -1,
+            "dragapult": pult,
+            "dragapult-dudunsparce": dunsparce,
+        }
+        leader_count = max(candidates.values())
+        close = {a for a, c in candidates.items() if c >= 0 and c >= args.close_frac * leader_count}
+        for pref in ("hammer-pult", "dragapult", "dragapult-dudunsparce"):
+            if pref in close:
+                chosen = pref
+                break
+        reason = (
+            f"counts: hammer={hammer} (eligible={hammer_eligible}, floor {args.hammer_floor}), "
+            f"pure={pult}, dunsparce={dunsparce}; leader_count={leader_count}; "
+            f"close set (>= {args.close_frac:.0%} of leader) = {sorted(close)}; "
+            f"tiebreak hammer>pure>dunsparce → {chosen}"
+        )
     print(f"\n>> DECISION: chosen primary archetype = {chosen}\n   {reason}", flush=True)
     if len(match_refs.get(chosen, [])) < args.target:
         print(f"   NOTE: chosen archetype episodes={len(match_refs.get(chosen, []))} "
               f"< target {args.target} even after {len(days)} days (all readily "
               f"available days pulled)", flush=True)
 
-    # --- phase 2: convert the chosen primary ---
+    # --- phase 2: convert the chosen primary (+ any --also insurance sets) ---
     to_collect = {chosen}
+    for extra in args.also:
+        if extra in match_refs:
+            to_collect.add(extra)
 
     written: dict[str, dict] = {}
     for arch in to_collect:

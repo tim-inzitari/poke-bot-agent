@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from poke_bot import archetypes
+from poke_bot import archetypes, config
 from poke_bot.episodes_index import EPISODES_RAW_DIR
 from poke_bot.replay_import import classify_episode_seats, _final_winner
 
@@ -59,7 +59,8 @@ def _classify_member(job: tuple[str, str]) -> tuple[str, str, str, int]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--days", nargs="*", default=None, help="Specific YYYY-MM-DD days (default: all downloaded).")
-    p.add_argument("--workers", type=int, default=28)
+    p.add_argument("--workers", type=int, default=config.HARDWARE.feature_workers,
+                   help="Parallel classify workers (default: all CPU threads).")
     p.add_argument("--complete-only", action="store_true", help="Count only decisive games (winner>=0).")
     args = p.parse_args(argv)
 

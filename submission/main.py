@@ -1,4 +1,4 @@
-"""Competition submission agent: timed MCTS, fail-closed legal actions.
+"""Competition submission agent: history-conditioned policy, fail-closed actions.
 
 Hard constraints:
   - No ``__file__`` at import time (isolated tarball / Kaggle).
@@ -50,11 +50,12 @@ def _read_deck() -> list[int]:
 _DECK: list[int] | None = None
 _MODEL = None
 _CLOCK = None
+_POLICY = None
 _RNG = random.Random(0)
 
 
 def _ensure_runtime():
-    global _DECK, _MODEL, _CLOCK
+    global _DECK, _MODEL, _CLOCK, _POLICY
     if _DECK is None:
         _DECK = _read_deck()
     if _MODEL is None:
@@ -63,20 +64,21 @@ def _ensure_runtime():
         if agent_dir not in sys.path:
             sys.path.insert(0, agent_dir)
         import torch
-        from poke_bot.checkpoint import load_checkpoint, apply_checkpoint
-        from poke_bot.model import build_model
-        from poke_bot.mcts import GameClock
+        from poke_bot.agent import PolicyAgent
+        from poke_bot.checkpoint import assert_trusted_policy_checkpoint
+        from poke_bot.train import load_model_from_checkpoint
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = build_model(device=device)
         ckpt_path = _agent_dir() / "model.pt"
-        if ckpt_path.is_file():
-            ckpt = load_checkpoint(ckpt_path, map_location=device)
-            apply_checkpoint(ckpt, model=model, restore_rng=False)
+        if not ckpt_path.is_file():
+            raise FileNotFoundError("model.pt is required")
+        assert_trusted_policy_checkpoint(ckpt_path)
+        model = load_model_from_checkpoint(ckpt_path, device=device)
         model.eval()
         _MODEL = model
-        _CLOCK = GameClock()
-    return _DECK, _MODEL, _CLOCK
+        _POLICY = PolicyAgent(model=model, deck=_DECK, use_mcts=False)
+        _CLOCK = None
+    return _DECK, _MODEL, _POLICY
 
 
 def _fail_closed(obs_dict: dict, preferred: list[int]) -> list[int]:
@@ -109,25 +111,15 @@ def agent(obs_dict: dict) -> list[int]:
     """Kaggle entry point."""
     from cg.api import to_observation_class
 
-    deck, model, clock = _ensure_runtime()
+    deck, _model, policy = _ensure_runtime()
     obs = to_observation_class(obs_dict)
     if obs.select is None:
+        if policy is not None:
+            policy.reset_game()
         return list(deck)
 
     try:
-        from poke_bot.mcts import MCTS
-
-        # Remaining budget tight → greedy.
-        use_mcts = clock is not None and clock.remaining_s > 1.0
-        if use_mcts:
-            result = MCTS(model, deck).search(obs_dict, clock=clock)
-            action = list(result.select)
-        else:
-            from poke_bot.agent import PolicyAgent
-
-            action = PolicyAgent(model=model, deck=deck, use_mcts=False).greedy_select(
-                obs_dict
-            )
+        action = policy.greedy_select(obs_dict)
     except Exception:
         action = []
     return _fail_closed(obs_dict, action)

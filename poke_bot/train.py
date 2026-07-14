@@ -1,7 +1,7 @@
-"""Supervised bootstrap / AlphaZero training loops with AMP + checkpoints.
+"""Supervised bootstrap / policy-value training with realized histories.
 
-Uses whole-game causal temporal context (``return_all``) and reports live
-tqdm progress over batches with loss / policy-acc / value metrics.
+Every decision is trained causally on the same acting-seat observation history
+that trusted serving consumes incrementally.
 """
 
 from __future__ import annotations
@@ -11,15 +11,29 @@ import random
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 import torch
 import torch.nn.functional as F
 from tqdm.auto import tqdm
 
 from . import archetypes, checkpoint, config, device as device_mod
-from .dataset import BootstrapDataset, GameSequence
+from .blackwell_heads import (
+    BLACKWELL_STRATEGY_HEAD_PREFIXES,
+    lethal_target_from_aux,
+    masked_bce_logit,
+    masked_smooth_l1,
+    prize_race_target_from_aux,
+)
+from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .model import TemporalCabtTransformer, build_model
+
+# Distinct named belief + Blackwell strategy heads — warm-start may omit only
+# these key prefixes (Scope A particle priors + Scope B Hammer heads).
+BELIEF_AUX_HEAD_KEY_PREFIXES: tuple[str, ...] = (
+    "opp_hand_head.",
+    "opp_remainder_head.",
+) + BLACKWELL_STRATEGY_HEAD_PREFIXES
 
 
 @dataclass
@@ -35,6 +49,11 @@ class TrainConfig:
     early_stop_patience: int = 5
     value_loss_weight: float = 1.0
     aux_loss_weight: float = 0.1
+    opp_hand_loss_weight: float = 0.2
+    opp_remainder_loss_weight: float = 0.15
+    #: Scope B (Blackwell Hammer) only — keep 0.0 for core / generic bootstrap.
+    lethal_threat_loss_weight: float = 0.0
+    prize_race_loss_weight: float = 0.0
     grad_clip: float = 1.0
     amp: bool = True
     seed: int = 0
@@ -46,8 +65,15 @@ class BatchMetrics:
     policy_loss: float = 0.0
     value_loss: float = 0.0
     aux_loss: float = 0.0
+    opp_hand_loss: float = 0.0
+    opp_remainder_loss: float = 0.0
+    lethal_threat_loss: float = 0.0
+    prize_race_loss: float = 0.0
     total_loss: float = 0.0
     policy_acc: float = 0.0
+    policy_kl: float = 0.0
+    target_value_mean: float = 0.0
+    value_pred_mean: float = 0.0
     n_decisions: int = 0
     n_games: int = 0
 
@@ -61,12 +87,93 @@ class TrainState:
     history: list[dict[str, Any]] = field(default_factory=list)
 
 
-def _archetype_label(name: str) -> int:
-    ids = list(archetypes.archetype_ids()) + ["unknown"]
-    try:
-        return ids.index(name if name in ids else "unknown")
-    except ValueError:
-        return len(ids) - 1
+def _archetype_label(name: str) -> Optional[int]:
+    """Return a valid auxiliary class, or ``None`` for unknown baseline ids."""
+    ids = list(archetypes.archetype_ids())
+    return ids.index(name) if name in ids else None
+
+
+def is_allowed_missing_belief_head_key(key: str) -> bool:
+    """True iff ``key`` is an expected new belief-aux head parameter."""
+    return any(key.startswith(prefix) for prefix in BELIEF_AUX_HEAD_KEY_PREFIXES)
+
+
+def belief_head_names_from_state_keys(keys: Sequence[str]) -> tuple[str, ...]:
+    """Map state-dict keys → distinct head module names (sorted unique)."""
+    names: set[str] = set()
+    for key in keys:
+        if is_allowed_missing_belief_head_key(key):
+            names.add(key.split(".", 1)[0])
+    return tuple(sorted(names))
+
+
+def masked_belief_card_bce(
+    logits: torch.Tensor,
+    multilabel: Optional[torch.Tensor],
+) -> torch.Tensor:
+    """BCE with logits; returns a zero scalar when labels are absent (masked)."""
+    if multilabel is None:
+        return logits.sum() * 0.0
+    if multilabel.shape != logits.shape:
+        raise ValueError(
+            "belief card multilabel shape mismatch: "
+            f"logits={tuple(logits.shape)} labels={tuple(multilabel.shape)}"
+        )
+    return F.binary_cross_entropy_with_logits(logits, multilabel)
+
+
+def _card_ids_from_aux_field(value: Any) -> Optional[list[int]]:
+    if value is None:
+        return None
+    ids: list[int] = []
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict) and item.get("id") is not None:
+                ids.append(int(item["id"]))
+            elif isinstance(item, int):
+                ids.append(int(item))
+            elif isinstance(item, list):
+                nested = _card_ids_from_aux_field(item)
+                if nested:
+                    ids.extend(nested)
+    elif isinstance(value, dict) and value.get("id") is not None:
+        ids.append(int(value["id"]))
+    return ids
+
+
+def belief_multihots_from_aux_labels(
+    aux_labels: dict[str, Any],
+    card_vocab: int,
+    *,
+    device: torch.device,
+) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    """Build hand / remainder multi-hots from privileged remask aux labels.
+
+    Remainder = hand ∪ deck-order ∪ privileged prize dump when present.
+    Either tensor may be ``None`` so the corresponding BCE term masks cleanly.
+    """
+    hand_ids = _card_ids_from_aux_field(aux_labels.get("opp_hand"))
+    deck_ids = _card_ids_from_aux_field(aux_labels.get("opp_deck_order"))
+    prize_ids = _card_ids_from_aux_field(aux_labels.get("opp_prizes"))
+    hand_mh: Optional[torch.Tensor] = None
+    if hand_ids is not None:
+        hand_mh = torch.zeros(card_vocab, device=device)
+        for card_id in hand_ids:
+            if 0 <= int(card_id) < card_vocab:
+                hand_mh[int(card_id)] = 1.0
+    rem_ids: Optional[list[int]] = None
+    if hand_ids is not None or deck_ids is not None or prize_ids is not None:
+        rem_ids = []
+        for src in (hand_ids, deck_ids, prize_ids):
+            if src:
+                rem_ids.extend(src)
+    rem_mh: Optional[torch.Tensor] = None
+    if rem_ids is not None:
+        rem_mh = torch.zeros(card_vocab, device=device)
+        for card_id in rem_ids:
+            if 0 <= int(card_id) < card_vocab:
+                rem_mh[int(card_id)] = 1.0
+    return hand_mh, rem_mh
 
 
 def sequence_losses(
@@ -75,96 +182,326 @@ def sequence_losses(
     *,
     value_weight: float = 1.0,
     aux_weight: float = 0.1,
+    opp_hand_weight: float = 0.2,
+    opp_remainder_weight: float = 0.15,
+    lethal_threat_weight: float = 0.0,
+    prize_race_weight: float = 0.0,
 ) -> tuple[torch.Tensor, BatchMetrics]:
-    """Whole-game forward + CE/Huber losses for one :class:`GameSequence`."""
-    decisions = seq.decisions
-    if not decisions:
-        zero = torch.zeros((), device=next(model.parameters()).device)
-        return zero, BatchMetrics()
-
-    boards = [d.board for d in decisions]
-    spatial = model.encode_board(boards)  # [T, 24, D]
-    cls = model.pool_cls(spatial).unsqueeze(0)  # [1, T, D]
-    states, _ = model.temporal_encode(cls, None, append=False, return_all=True)
-    # states: [1, T, D]
-    target_value = torch.tensor(
-        float(seq.value), device=states.device, dtype=states.dtype
+    """Causal history-conditioned losses for one :class:`GameSequence`."""
+    return batch_losses(
+        model,
+        [seq],
+        value_weight=value_weight,
+        aux_weight=aux_weight,
+        opp_hand_weight=opp_hand_weight,
+        opp_remainder_weight=opp_remainder_weight,
+        lethal_threat_weight=lethal_threat_weight,
+        prize_race_weight=prize_race_weight,
     )
 
-    policy_losses: list[torch.Tensor] = []
-    value_losses: list[torch.Tensor] = []
-    correct = 0
-    n_valid = 0
 
-    for t, d in enumerate(decisions):
-        state_t = states[0, t]
-        spatial_t = spatial[t : t + 1]
-        n_opt = d.options.num_words
-        if n_opt <= 0:
-            continue
-        logits = model.decode_options(
-            d.options, spatial_t, state_t, n_options=[n_opt]
-        )[
-            0, :n_opt
-        ]
+def batch_losses(
+    model: TemporalCabtTransformer,
+    seqs: Sequence[GameSequence],
+    *,
+    value_weight: float = 1.0,
+    aux_weight: float = 0.1,
+    opp_hand_weight: float = 0.2,
+    opp_remainder_weight: float = 0.15,
+    lethal_threat_weight: float = 0.0,
+    prize_race_weight: float = 0.0,
+    opp_hand_multihot: Optional[torch.Tensor] = None,
+    opp_remainder_multihot: Optional[torch.Tensor] = None,
+) -> tuple[torch.Tensor, BatchMetrics]:
+    """Causal history forward over all valid decisions.
 
-        # Policy target: one-hot BC action, or soft MCTS visit distribution.
-        if (
-            seq.policy_targets is not None
-            and t < len(seq.policy_targets)
-            and seq.policy_targets[t] is not None
-        ):
-            target = torch.tensor(
-                seq.policy_targets[t][:n_opt],
-                device=logits.device,
-                dtype=logits.dtype,
+    Spatial boards are batched, then each game's temporal states are computed
+    with a causal mask. The state used for decision ``t`` can see only
+    observations ``<= t`` and is parity-tested against incremental KV serving.
+
+    Belief card multilabel losses are attached with zero/masked defaults so
+    late head add does not break the training loop when labels are absent.
+
+    Scope B (``lethal_threat`` / ``prize_race``) losses are masked when labels
+    are absent and default-weight 0 so core / generic trains ignore them.
+    """
+    device = next(model.parameters()).device
+    games = [s for s in seqs if s.decisions]
+    if not games:
+        return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
+
+    all_boards = [d.board for g in games for d in g.decisions]
+    spatial_all = model.encode_board(all_boards)
+    valid_spatial: list[torch.Tensor] = []
+    valid_states: list[torch.Tensor] = []
+    valid_options = []
+    valid_n: list[int] = []
+    soft_targets: list[Optional[list[float]]] = []
+    hard_idx: list[int] = []
+    value_targets: list[float] = []
+    aux_rows: list[int] = []
+    aux_labels: list[int] = []
+    decision_aux: list[dict[str, Any]] = []
+    spatial_offset = 0
+    for g in games:
+        val = float(g.value)
+        pt = g.policy_targets
+        factorized_pt = g.factorized_policy_targets
+        length = len(g.decisions)
+        game_spatial = spatial_all[spatial_offset : spatial_offset + length]
+        spatial_offset += length
+        if model.decision_context == "history":
+            previous_actions = [None] + [
+                decision.action_token for decision in g.decisions[:-1]
+            ]
+            cls = model.history_tokens(
+                game_spatial, previous_actions
+            ).unsqueeze(0)
+            game_states, _ = model.temporal_encode(
+                cls, append=False, return_all=True
             )
-            if target.numel() != n_opt:
-                continue
-            target = target / target.sum().clamp_min(1e-8)
-            log_p = F.log_softmax(logits, dim=-1)
-            policy_losses.append(-(target * log_p).sum())
-            pred = int(logits.argmax().item())
-            correct += int(pred == int(target.argmax().item()))
+            game_states = game_states.squeeze(0)
         else:
-            idx = int(d.action_combo_index)
-            if idx < 0 or idx >= n_opt:
-                continue
-            policy_losses.append(F.cross_entropy(logits.unsqueeze(0), torch.tensor([idx], device=logits.device)))
-            pred = int(logits.argmax().item())
-            correct += int(pred == idx)
+            cls = model.pool_cls(game_spatial).unsqueeze(1)
+            game_states, _ = model.temporal_encode(
+                cls, append=False, return_all=True
+            )
+            game_states = game_states.squeeze(1)
+        last_valid_row: Optional[int] = None
+        for t, d in enumerate(g.decisions):
+            stages = d.policy_stages or [
+                PolicyStage(
+                    options=d.options,
+                    action_combos=d.action_combos,
+                    target_index=d.action_combo_index,
+                )
+            ]
+            target_stages = (
+                factorized_pt[t]
+                if factorized_pt is not None
+                and t < len(factorized_pt)
+                and factorized_pt[t] is not None
+                else None
+            )
+            for stage_i, stage in enumerate(stages):
+                n_opt = stage.options.num_words
+                if n_opt <= 0:
+                    continue
+                soft = None
+                if target_stages is not None and stage_i < len(target_stages):
+                    row = dict(target_stages[stage_i] or {})
+                    recorded_combos = [
+                        list(combo) for combo in (row.get("action_combos") or [])
+                    ]
+                    if recorded_combos and recorded_combos != stage.action_combos:
+                        raise ValueError(
+                            "factorized target/action candidate ordering mismatch"
+                        )
+                    cand = list(row.get("policy") or [])
+                    if len(cand) != n_opt or sum(cand) <= 0:
+                        raise ValueError("invalid factorized soft policy target")
+                    soft = [float(x) for x in cand]
+                    idx = int(row.get("selected_index", stage.target_index))
+                elif (
+                    not d.policy_stages
+                    and pt is not None
+                    and t < len(pt)
+                    and pt[t] is not None
+                ):
+                    cand = list(pt[t][:n_opt])
+                    if len(cand) != n_opt or sum(cand) <= 0:
+                        continue
+                    soft = cand
+                    idx = int(max(range(n_opt), key=lambda j: cand[j]))
+                else:
+                    idx = int(stage.target_index)
+                if idx < 0 or idx >= n_opt:
+                    continue
+                valid_spatial.append(game_spatial[t])
+                valid_states.append(game_states[t])
+                valid_options.append(stage.options)
+                valid_n.append(n_opt)
+                soft_targets.append(soft)
+                hard_idx.append(idx)
+                value_targets.append(val)
+                decision_aux.append(dict(d.aux_labels or {}))
+                last_valid_row = len(valid_options) - 1
+        label = _archetype_label(g.opp_archetype)
+        if last_valid_row is not None and label is not None:
+            aux_rows.append(last_valid_row)
+            aux_labels.append(label)
 
-        value_pred = torch.tanh(model.value_head(state_t)).squeeze()
-        value_losses.append(F.smooth_l1_loss(value_pred, target_value))
-        n_valid += 1
+    if not valid_options:
+        return (
+            torch.zeros((), device=device, requires_grad=True),
+            BatchMetrics(n_games=len(games)),
+        )
 
-    if n_valid == 0:
-        zero = torch.zeros((), device=states.device, requires_grad=True)
-        return zero, BatchMetrics(n_games=1)
+    state_all = torch.stack(valid_states, dim=0)
+    current_spatial = torch.stack(valid_spatial, dim=0)
+    logits_all = model.decode_options(
+        valid_options,
+        current_spatial,
+        state_all,
+        n_options=valid_n,
+    )
+    value_pred = torch.tanh(model.value_head(state_all)).squeeze(-1)
+    belief = model.belief_aux_logits(state_all)
+    aux_logits_all = belief["aux_logits"]
+    opp_hand_logits_all = belief["opp_hand_logits"]
+    opp_remainder_logits_all = belief["opp_remainder_logits"]
+    lethal_logits_all = belief["lethal_threat_logits"]
+    prize_race_pred_all = belief["prize_race_pred"]
+    k = logits_all.size(0)
+    max_n = logits_all.size(1)
 
-    p_loss = torch.stack(policy_losses).mean()
-    v_loss = torch.stack(value_losses).mean()
-    aux_loss = torch.zeros((), device=states.device)
-    if aux_weight > 0:
-        # Aux on final state: predict opp archetype id.
-        aux_logits = model.aux_head(states[0, -1])
-        label = torch.tensor(
-            [_archetype_label(seq.opp_archetype)],
-            device=aux_logits.device,
+    target_idx = torch.tensor(hard_idx, device=device, dtype=torch.long)
+    target_mat = torch.zeros(k, max_n, device=device, dtype=logits_all.dtype)
+    target_mat[torch.arange(k, device=device), target_idx] = 1.0
+    for r, soft in enumerate(soft_targets):
+        if soft is None:
+            continue
+        row = torch.tensor(soft, device=device, dtype=logits_all.dtype)
+        target_mat[r].zero_()
+        target_mat[r, : row.numel()] = row / row.sum().clamp_min(1e-8)
+
+    log_p = torch.nan_to_num(F.log_softmax(logits_all, dim=-1), neginf=0.0)
+    p_loss = -(target_mat * log_p).sum(dim=1).mean()
+    target_log = torch.where(
+        target_mat > 0,
+        target_mat.clamp_min(1e-12).log(),
+        torch.zeros_like(target_mat),
+    )
+    target_entropy = -(target_mat * target_log).sum(dim=1).mean()
+    policy_kl = (p_loss - target_entropy).clamp_min(0.0)
+
+    v_target = torch.tensor(value_targets, device=device, dtype=value_pred.dtype)
+    v_loss = F.smooth_l1_loss(value_pred, v_target)
+
+    aux_loss = torch.zeros((), device=device)
+    if aux_weight > 0 and aux_rows:
+        row_idx = torch.tensor(aux_rows, device=device, dtype=torch.long)
+        aux_logits = aux_logits_all.index_select(0, row_idx)
+        labels = torch.tensor(
+            aux_labels,
+            device=device,
             dtype=torch.long,
         )
-        if label.item() < aux_logits.size(-1):
-            aux_loss = F.cross_entropy(aux_logits.unsqueeze(0), label)
+        if int(labels.max().item()) >= aux_logits.size(-1):
+            raise ValueError(
+                "checkpoint auxiliary head is incompatible with registered "
+                f"archetype labels ({aux_logits.size(-1)} classes)"
+            )
+        aux_loss = F.cross_entropy(aux_logits, labels)
 
-    total = p_loss + value_weight * v_loss + aux_weight * aux_loss
+    # Masked card-head BCE from privileged aux labels (or explicit override).
+    card_vocab = int(getattr(model, "belief_card_vocab", opp_hand_logits_all.size(-1)))
+    if opp_hand_multihot is None and opp_remainder_multihot is None:
+        hand_rows: list[torch.Tensor] = []
+        rem_rows: list[torch.Tensor] = []
+        hand_idx: list[int] = []
+        rem_idx: list[int] = []
+        for i, aux in enumerate(decision_aux):
+            hand_mh, rem_mh = belief_multihots_from_aux_labels(
+                aux, card_vocab, device=device
+            )
+            if hand_mh is not None:
+                hand_rows.append(hand_mh)
+                hand_idx.append(i)
+            if rem_mh is not None:
+                rem_rows.append(rem_mh)
+                rem_idx.append(i)
+        if hand_rows:
+            opp_hand_loss = F.binary_cross_entropy_with_logits(
+                opp_hand_logits_all.index_select(
+                    0, torch.tensor(hand_idx, device=device, dtype=torch.long)
+                ),
+                torch.stack(hand_rows, dim=0),
+            )
+        else:
+            opp_hand_loss = masked_belief_card_bce(opp_hand_logits_all, None)
+        if rem_rows:
+            opp_remainder_loss = F.binary_cross_entropy_with_logits(
+                opp_remainder_logits_all.index_select(
+                    0, torch.tensor(rem_idx, device=device, dtype=torch.long)
+                ),
+                torch.stack(rem_rows, dim=0),
+            )
+        else:
+            opp_remainder_loss = masked_belief_card_bce(
+                opp_remainder_logits_all, None
+            )
+    else:
+        hand_labels = opp_hand_multihot
+        rem_labels = opp_remainder_multihot
+        if hand_labels is not None and hand_labels.dim() == 1:
+            hand_labels = hand_labels.unsqueeze(0).expand(k, -1)
+        if rem_labels is not None and rem_labels.dim() == 1:
+            rem_labels = rem_labels.unsqueeze(0).expand(k, -1)
+        opp_hand_loss = masked_belief_card_bce(opp_hand_logits_all, hand_labels)
+        opp_remainder_loss = masked_belief_card_bce(
+            opp_remainder_logits_all, rem_labels
+        )
+
+    # Scope B — masked when labels absent; weights default 0 on core/generic.
+    lethal_rows: list[float] = []
+    lethal_idx: list[int] = []
+    race_rows: list[torch.Tensor] = []
+    race_idx: list[int] = []
+    for i, aux in enumerate(decision_aux):
+        lethal = lethal_target_from_aux(aux)
+        if lethal is not None:
+            lethal_rows.append(float(lethal))
+            lethal_idx.append(i)
+        race = prize_race_target_from_aux(aux, device=device)
+        if race is not None:
+            race_rows.append(race)
+            race_idx.append(i)
+    if lethal_rows:
+        lethal_threat_loss = F.binary_cross_entropy_with_logits(
+            lethal_logits_all.index_select(
+                0, torch.tensor(lethal_idx, device=device, dtype=torch.long)
+            ),
+            torch.tensor(lethal_rows, device=device, dtype=lethal_logits_all.dtype),
+        )
+    else:
+        lethal_threat_loss = masked_bce_logit(lethal_logits_all, None)
+    if race_rows:
+        prize_race_loss = F.smooth_l1_loss(
+            prize_race_pred_all.index_select(
+                0, torch.tensor(race_idx, device=device, dtype=torch.long)
+            ),
+            torch.stack(race_rows, dim=0).to(dtype=prize_race_pred_all.dtype),
+        )
+    else:
+        prize_race_loss = masked_smooth_l1(prize_race_pred_all, None)
+
+    total = (
+        p_loss
+        + value_weight * v_loss
+        + aux_weight * aux_loss
+        + float(opp_hand_weight) * opp_hand_loss
+        + float(opp_remainder_weight) * opp_remainder_loss
+        + float(lethal_threat_weight) * lethal_threat_loss
+        + float(prize_race_weight) * prize_race_loss
+    )
+    preds = logits_all.argmax(dim=1)
+    correct = int((preds == target_idx).sum().item())
     metrics = BatchMetrics(
         policy_loss=float(p_loss.detach().item()),
         value_loss=float(v_loss.detach().item()),
         aux_loss=float(aux_loss.detach().item()),
+        opp_hand_loss=float(opp_hand_loss.detach().item()),
+        opp_remainder_loss=float(opp_remainder_loss.detach().item()),
+        lethal_threat_loss=float(lethal_threat_loss.detach().item()),
+        prize_race_loss=float(prize_race_loss.detach().item()),
         total_loss=float(total.detach().item()),
-        policy_acc=correct / max(n_valid, 1),
-        n_decisions=n_valid,
-        n_games=1,
+        policy_acc=correct / max(k, 1),
+        policy_kl=float(policy_kl.detach().item()),
+        target_value_mean=float(v_target.detach().float().mean().item()),
+        value_pred_mean=float(value_pred.detach().float().mean().item()),
+        n_decisions=k,
+        n_games=len(games),
     )
     return total, metrics
 
@@ -184,8 +521,15 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         policy_loss=wavg("policy_loss"),
         value_loss=wavg("value_loss"),
         aux_loss=wavg("aux_loss"),
+        opp_hand_loss=wavg("opp_hand_loss"),
+        opp_remainder_loss=wavg("opp_remainder_loss"),
+        lethal_threat_loss=wavg("lethal_threat_loss"),
+        prize_race_loss=wavg("prize_race_loss"),
         total_loss=wavg("total_loss"),
         policy_acc=wavg("policy_acc"),
+        policy_kl=wavg("policy_kl"),
+        target_value_mean=wavg("target_value_mean"),
+        value_pred_mean=wavg("value_pred_mean"),
         n_decisions=nd,
         n_games=ng,
     )
@@ -197,6 +541,8 @@ def split_dataset(
     seqs = list(ds.sequences)
     rng = random.Random(seed)
     rng.shuffle(seqs)
+    if val_frac <= 0 or len(seqs) <= 1:
+        return seqs, []
     n_val = max(1, int(len(seqs) * val_frac)) if len(seqs) > 1 else 0
     if n_val == 0:
         return seqs, []
@@ -243,13 +589,28 @@ def evaluate(
 ) -> BatchMetrics:
     model.eval()
     parts: list[BatchMetrics] = []
-    for seq in tqdm(sequences, desc=desc, leave=False, unit="game"):
-        _, m = sequence_losses(
-            model,
-            seq,
-            value_weight=cfg.value_loss_weight,
-            aux_weight=cfg.aux_loss_weight,
-        )
+    batches = _iter_game_batches(
+        list(sequences),
+        cfg.games_per_batch,
+        cfg.max_decisions_per_batch,
+        shuffle=False,
+        seed=cfg.seed,
+        epoch=0,
+    )
+    use_amp = device_mod.cuda_available()
+    amp_dtype = torch.bfloat16 if (use_amp and torch.cuda.is_bf16_supported()) else torch.float16
+    for batch in tqdm(batches, desc=desc, leave=False, unit="batch"):
+        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            _, m = batch_losses(
+                model,
+                batch,
+                value_weight=cfg.value_loss_weight,
+                aux_weight=cfg.aux_loss_weight,
+                opp_hand_weight=cfg.opp_hand_loss_weight,
+                opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                prize_race_weight=cfg.prize_race_loss_weight,
+            )
         parts.append(m)
     return _merge_metrics(parts)
 
@@ -278,12 +639,30 @@ def train_bootstrap(
         flush=True,
     )
 
-    model = build_model(device=device)
+    resume_path = checkpoint.resolve_resume_path(run_name, resume)
+    model = (
+        load_model_from_checkpoint(resume_path, device=device)
+        if resume_path is not None
+        else build_model(device=device)
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
     )
+    # Blackwell throughput: allow TF32 matmuls and prefer bf16 autocast.
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
     use_amp = bool(cfg.amp and device.type == "cuda")
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    # bf16 carries fp32 dynamic range → no GradScaler needed; only fp16 needs it.
+    scaler = torch.amp.GradScaler(
+        "cuda", enabled=(use_amp and amp_dtype == torch.float16)
+    )
+    if use_amp:
+        print(f"[train] AMP dtype={amp_dtype} scaler={scaler.is_enabled()}", flush=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=max(cfg.epochs, 1)
     )
@@ -291,7 +670,6 @@ def train_bootstrap(
     state = TrainState(patience_left=cfg.early_stop_patience)
     mgr = checkpoint.CheckpointManager(run_name)
 
-    resume_path = checkpoint.resolve_resume_path(run_name, resume)
     if resume_path is not None:
         print(f"[train] resuming from {resume_path}", flush=True)
         ckpt = checkpoint.load_checkpoint(resume_path, map_location=device)
@@ -322,6 +700,7 @@ def train_bootstrap(
             },
             archetype_id=archetype_id,
             model_id=run_name,
+            model_config=model.cfg,
             extra={"history": state.history, "train_cfg": cfg.__dict__},
         )
 
@@ -350,21 +729,19 @@ def train_bootstrap(
             batch_bar = tqdm(batches, desc=f"train ep{epoch}", leave=False, unit="batch")
             for batch in batch_bar:
                 optimizer.zero_grad(set_to_none=True)
-                losses: list[torch.Tensor] = []
-                metrics_parts: list[BatchMetrics] = []
-                with torch.amp.autocast("cuda", enabled=use_amp):
-                    for seq in batch:
-                        loss, m = sequence_losses(
-                            model,
-                            seq,
-                            value_weight=cfg.value_loss_weight,
-                            aux_weight=cfg.aux_loss_weight,
-                        )
-                        losses.append(loss)
-                        metrics_parts.append(m)
-                    if not losses:
-                        continue
-                    total = torch.stack(losses).mean()
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+                    total, bm = batch_losses(
+                        model,
+                        batch,
+                        value_weight=cfg.value_loss_weight,
+                        aux_weight=cfg.aux_loss_weight,
+                        opp_hand_weight=cfg.opp_hand_loss_weight,
+                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                        prize_race_weight=cfg.prize_race_loss_weight,
+                    )
+                if bm.n_decisions == 0:
+                    continue
 
                 scaler.scale(total).backward()
                 if cfg.grad_clip > 0:
@@ -374,12 +751,14 @@ def train_bootstrap(
                 scaler.update()
 
                 state.step += 1
-                bm = _merge_metrics(metrics_parts)
                 epoch_parts.append(bm)
                 batch_bar.set_postfix(
                     loss=f"{bm.total_loss:.3f}",
                     p=f"{bm.policy_loss:.3f}",
                     v=f"{bm.value_loss:.3f}",
+                    aux=f"{bm.aux_loss:.3f}",
+                    hand=f"{bm.opp_hand_loss:.3f}",
+                    rem=f"{bm.opp_remainder_loss:.3f}",
                     acc=f"{bm.policy_acc:.2%}",
                     step=state.step,
                 )
@@ -462,14 +841,370 @@ def train_bootstrap(
     }
 
 
+def process_with_oom_splitting(
+    items: Sequence[Any],
+    process: Callable[[list[Any]], Any],
+    *,
+    is_oom: Callable[[BaseException], bool] = config.is_cuda_oom,
+    on_split: Optional[Callable[[], None]] = None,
+) -> list[Any]:
+    """Process every item, recursively splitting an OOMing batch.
+
+    Both halves are queued in original order. A single-item OOM is re-raised,
+    because silently dropping it would corrupt the effective training set.
+    """
+    pending: list[list[Any]] = [list(items)]
+    completed: list[Any] = []
+    while pending:
+        work = pending.pop(0)
+        if not work:
+            continue
+        try:
+            completed.append(process(work))
+        except BaseException as exc:  # noqa: BLE001 - preserve CUDA exception type
+            if not is_oom(exc) or len(work) <= 1:
+                raise
+            if on_split is not None:
+                on_split()
+            mid = len(work) // 2
+            pending[0:0] = [work[:mid], work[mid:]]
+    return completed
+
+
+def rl_train_step(
+    dataset: BootstrapDataset,
+    *,
+    base_ckpt: Union[str, Path],
+    out_run_name: str,
+    archetype_id: str,
+    epochs: int,
+    device: Optional[torch.device] = None,
+    cfg: Optional[TrainConfig] = None,
+    seed: int = 0,
+    output_path: Optional[Union[str, Path]] = None,
+    parent_digest: Optional[str] = None,
+    training_provenance: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """One immutable history-policy candidate fit for the RL loop.
+
+    Unlike :func:`train_bootstrap` (persistent run with an epoch ceiling +
+    early-stop on BC val-loss — which silently no-ops once the ceiling is hit on
+    resume), this does a CLEAN fit each call: load ``base_ckpt`` weights, train
+    up to ``epochs`` full passes over the replay ``dataset`` with the AlphaZero
+    loss (policy CE toward the trusted behavior target in ``seq.policy_targets`` +
+    value regression toward the game outcome ``seq.value`` — both already
+    implemented in :func:`batch_losses`), with the same patience-based early
+    stop on val loss (falling back to train loss when no val split) as
+    bootstrap, then save the best net.
+
+    Returns ``{"latest_path", "metrics"}``. Deterministic-ish via ``seed``.
+    """
+    cfg = cfg or TrainConfig()
+    device = device or device_mod.training_device(
+        prefer_name=config.HARDWARE.train_gpu_name, allow_cpu=False
+    )
+    torch.manual_seed(seed)
+    random.seed(seed)
+
+    model = load_model_from_checkpoint(base_ckpt, device=device)
+    if model.decision_context != "history":
+        raise ValueError("trusted RL training requires a history checkpoint")
+    initial_state = {
+        k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+    }
+    model.train()
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+    )
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    use_amp = bool(cfg.amp and device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    scaler = torch.amp.GradScaler("cuda", enabled=(use_amp and amp_dtype == torch.float16))
+
+    # Keep only decision-bearing games, then reuse bootstrap's val split / ES.
+    usable = BootstrapDataset(
+        sequences=[s for s in dataset.sequences if s.decisions]
+    )
+    train_seqs, val_seqs = split_dataset(usable, cfg.val_frac, seed)
+    if not train_seqs:
+        train_seqs, val_seqs = list(usable.sequences), []
+    if not train_seqs:
+        raise ValueError("RL training dataset has no usable decision sequences")
+    patience = max(0, int(cfg.early_stop_patience))
+    patience_left = patience
+    best_metric = float("inf")
+    best_state: Optional[dict[str, Any]] = None
+    best_train_m = BatchMetrics()
+    best_val_m = BatchMetrics()
+    best_validation_source = "heldout" if val_seqs else "current_data"
+    last: BatchMetrics = BatchMetrics()
+    stepped_epochs = 0
+    step = 0
+    epoch_bar = tqdm(range(max(1, epochs)), desc="rl-train", leave=False, unit="ep")
+    for epoch in epoch_bar:
+        model.train()
+        batches = _iter_game_batches(
+            train_seqs,
+            cfg.games_per_batch,
+            cfg.max_decisions_per_batch,
+            shuffle=True,
+            seed=seed,
+            epoch=epoch,
+        )
+        parts: list[BatchMetrics] = []
+        for batch in batches:
+            def _train_chunk(work: list[GameSequence]) -> BatchMetrics:
+                nonlocal step
+                optimizer.zero_grad(set_to_none=True)
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+                    total, bm = batch_losses(
+                        model,
+                        work,
+                        value_weight=cfg.value_loss_weight,
+                        aux_weight=cfg.aux_loss_weight,
+                        opp_hand_weight=cfg.opp_hand_loss_weight,
+                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                        prize_race_weight=cfg.prize_race_loss_weight,
+                    )
+                if bm.n_decisions == 0:
+                    return bm
+                if not torch.isfinite(total):
+                    raise FloatingPointError(f"non-finite training loss: {total}")
+                scaler.scale(total).backward()
+                if cfg.grad_clip > 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                scaler.step(optimizer)
+                scaler.update()
+                step += 1
+                return bm
+
+            def _clear_oom() -> None:
+                optimizer.zero_grad(set_to_none=True)
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+
+            for bm in process_with_oom_splitting(
+                batch,
+                _train_chunk,
+                on_split=_clear_oom,
+            ):
+                if bm.n_decisions > 0:
+                    parts.append(bm)
+        last = _merge_metrics(parts)
+        if val_seqs:
+            val_m = evaluate(model, val_seqs, cfg=cfg, desc=f"rl-val ep{epoch}")
+            metric = val_m.total_loss
+        else:
+            val_m = last
+            metric = last.total_loss
+        stepped_epochs = epoch + 1
+
+        is_best = metric < best_metric - 1e-5
+        if is_best:
+            best_metric = metric
+            best_train_m = last
+            best_val_m = val_m
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            if patience > 0:
+                patience_left = patience
+            tqdm.write(
+                f"[rl-train] NEW BEST epoch={epoch} "
+                f"{'val' if val_seqs else 'train'}_loss={metric:.4f} "
+                f"acc={val_m.policy_acc:.2%}"
+            )
+        elif patience > 0:
+            patience_left -= 1
+            tqdm.write(
+                f"[rl-train] epoch={epoch} train_loss={last.total_loss:.4f} "
+                f"{'val' if val_seqs else 'train'}_loss={metric:.4f} "
+                f"acc={val_m.policy_acc:.2%} patience={patience_left}"
+            )
+
+        epoch_bar.set_postfix(
+            loss=f"{last.total_loss:.3f}",
+            p=f"{last.policy_loss:.3f}",
+            v=f"{last.value_loss:.3f}",
+            aux=f"{last.aux_loss:.3f}",
+            hand=f"{last.opp_hand_loss:.3f}",
+            rem=f"{last.opp_remainder_loss:.3f}",
+            acc=f"{last.policy_acc:.2%}",
+            best=f"{best_metric:.3f}",
+            pat=patience_left if patience > 0 else "-",
+        )
+
+        if patience > 0 and patience_left <= 0:
+            tqdm.write(
+                f"[rl-early-stop] patience exhausted at epoch={epoch} "
+                f"best_loss={best_metric:.4f}"
+            )
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+        last = best_train_m
+        validation_metrics = best_val_m
+    else:
+        validation_metrics = last
+
+    delta_sq = 0.0
+    base_sq = 0.0
+    for name, value in model.state_dict().items():
+        current = value.detach().cpu().float()
+        base = initial_state[name].float()
+        delta_sq += float(torch.sum((current - base) ** 2).item())
+        base_sq += float(torch.sum(base ** 2).item())
+        if not torch.isfinite(current).all():
+            raise FloatingPointError(f"non-finite candidate parameter: {name}")
+    update_norm = math.sqrt(delta_sq)
+    relative_update_norm = update_norm / max(math.sqrt(base_sq), 1e-12)
+
+    ckpt = checkpoint.build_checkpoint(
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler if use_amp else None,
+        step=step,
+        epoch=int(stepped_epochs),
+        best_metric=best_metric if best_state is not None else last.total_loss,
+        early_stop_state={
+            "patience_left": patience_left,
+            "best_metric": best_metric if best_state is not None else last.total_loss,
+        },
+        archetype_id=archetype_id,
+        model_id=out_run_name,
+        model_config=model.cfg,
+        extra={
+            "rl_metrics": last.__dict__,
+            "validation_metrics": validation_metrics.__dict__,
+            "validation_source": best_validation_source,
+            "rl_epochs_ran": stepped_epochs,
+            "rl_epochs_cap": int(epochs),
+            "training_contract": "causal_realized_history",
+            "parent_digest": parent_digest,
+            "training_provenance": dict(training_provenance or {}),
+            "update_norm_l2": update_norm,
+            "relative_update_norm_l2": relative_update_norm,
+        },
+    )
+    if output_path is not None:
+        saved_path = checkpoint.immutable_torch_save(ckpt, output_path)
+    else:
+        mgr = checkpoint.CheckpointManager(out_run_name)
+        saved = mgr.save(ckpt, is_best=False)
+        saved_path = saved.get("latest", checkpoint.latest_path(out_run_name))
+    digest = checkpoint.checkpoint_digest(saved_path)
+    return {
+        "latest_path": str(saved_path),
+        "candidate_path": str(saved_path),
+        "candidate_digest": digest,
+        "parent_digest": parent_digest,
+        "metrics": last.__dict__,
+        "validation_metrics": validation_metrics.__dict__,
+        "validation_source": best_validation_source,
+        "step": step,
+        "epochs_ran": stepped_epochs,
+        "best_metric": best_metric if best_state is not None else last.total_loss,
+        "update_norm_l2": update_norm,
+        "relative_update_norm_l2": relative_update_norm,
+    }
+
+
 def load_model_from_checkpoint(
     path: Union[str, Path],
     *,
     device: Optional[torch.device] = None,
 ) -> TemporalCabtTransformer:
+    """Reconstruct architecture and load weights with belief-head warm-start.
+
+    Trunk + existing heads load strictly. Only expected new belief/strategy
+    head keys (``opp_hand_head.*``, ``opp_remainder_head.*``,
+    ``lethal_threat_head.*``, ``prize_race_head.*``) may be missing; those
+    heads stay randomly initialized and are recorded on
+    ``model.warm_started_belief_heads`` (Scope A card heads trigger uniform
+    particle fallback; Scope B strategy heads are root-gated separately).
+    """
     device = device or device_mod.inference_device(allow_cpu=True)
     ckpt = checkpoint.load_checkpoint(path, map_location=device)
-    model = build_model(device=device)
-    checkpoint.apply_checkpoint(ckpt, model=model, restore_rng=False)
+    snap = ckpt.get("model_config")
+    if snap is None:
+        cfg = config.MODEL
+    elif not isinstance(snap, dict):
+        raise ValueError(
+            f"checkpoint {path} has invalid model_config type {type(snap).__name__}"
+        )
+    else:
+        known = set(config.ModelConfig.__dataclass_fields__)  # type: ignore[attr-defined]
+        unknown = sorted(set(snap) - known)
+        if unknown:
+            raise ValueError(
+                f"checkpoint {path} has unsupported model_config fields: {unknown}"
+            )
+        try:
+            cfg = config.ModelConfig(**snap)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"checkpoint {path} has incompatible model_config: {exc}"
+            ) from exc
+
+    state = ckpt.get("model_state_dict")
+    if not isinstance(state, dict):
+        raise ValueError(f"checkpoint {path} is missing model_state_dict")
+    try:
+        encoder_vocab = int(state["board_bag.weight"].shape[0])
+        decoder_vocab = int(state["option_bag.weight"].shape[0])
+        aux_classes = int(state["aux_head.3.weight"].shape[0])
+    except (KeyError, AttributeError, IndexError, TypeError) as exc:
+        raise ValueError(
+            f"checkpoint {path} lacks architecture-defining tensor shapes"
+        ) from exc
+
+    belief_card_vocab: Optional[int] = None
+    hand_w = state.get("opp_hand_head.weight")
+    rem_w = state.get("opp_remainder_head.weight")
+    if hand_w is not None and hasattr(hand_w, "shape"):
+        belief_card_vocab = int(hand_w.shape[0])
+    elif rem_w is not None and hasattr(rem_w, "shape"):
+        belief_card_vocab = int(rem_w.shape[0])
+
+    model = build_model(
+        cfg,
+        device=device,
+        aux_archetype_classes=aux_classes,
+        encoder_vocab=encoder_vocab,
+        decoder_vocab=decoder_vocab,
+        belief_card_vocab=belief_card_vocab,
+    )
+    incompatible = model.load_state_dict(state, strict=False)
+    missing = list(getattr(incompatible, "missing_keys", []) or [])
+    unexpected = list(getattr(incompatible, "unexpected_keys", []) or [])
+    if unexpected:
+        raise RuntimeError(
+            f"checkpoint architecture/state incompatibility for {path}: "
+            f"unexpected keys {unexpected}"
+        )
+    disallowed_missing = [
+        key for key in missing if not is_allowed_missing_belief_head_key(key)
+    ]
+    if disallowed_missing:
+        raise RuntimeError(
+            f"checkpoint architecture/state incompatibility for {path}: "
+            f"missing non-belief-head keys {disallowed_missing}"
+        )
+    warm = belief_head_names_from_state_keys(missing)
+    model.warm_started_belief_heads = warm
+    if warm:
+        extra = dict(ckpt.get("extra") or {})
+        extra["warm_start"] = True
+        extra["warm_started_belief_heads"] = list(warm)
+        extra["aux_heads_present"] = list(model.aux_heads_present)
+        ckpt["extra"] = extra
     model.eval()
     return model

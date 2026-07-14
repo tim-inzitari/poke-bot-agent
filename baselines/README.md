@@ -28,10 +28,33 @@ Flags: `--force` re-download; `--group official|community|roster`; `--only <id>�
 
 ## Field size
 
-`manifest.json` lists **29** agents (4 official + 5 community + 20 roster).
-Eight additional roster refs from the Public-28 notebook are currently
-inaccessible via the Kaggle API (403) and are recorded under
-`field_notes.inaccessible_403` — retry later with `--force` if they open up.
+`manifest.json` currently lists **26** runnable agents:
+
+| Group | Count |
+|-------|------:|
+| official | 4 |
+| community | 4 |
+| roster | 18 |
+| **total** | **26** |
+
+Originally catalogued as **29** (4 + 5 + 20). Three confirmed hard-crashers were
+removed by `scripts/prune_broken_baselines.py` and recorded under
+`excluded_broken`:
+
+| ID | Reason |
+|----|--------|
+| `makthanithin-mega-lucario-v62` | hardcoded `/kaggle_simulations/agent/*.csv` path |
+| `pixiux-mega-lucario-v63` | hardcoded `/kaggle_simulations/agent/*.csv` path |
+| `raging-bolt-ex` | in-game `IndexError` |
+
+Eight additional roster refs from the Public-28 notebook remain inaccessible via
+the Kaggle API (403) and are listed under `field_notes.inaccessible_403` — retry
+later with `--force` if they open up.
+
+Phase 5 round-robin / eval schedules **every agent in the current manifest**
+(26 after prune), not a smaller subset. Formal results are fail-closed: a
+missing, unavailable, or crashing expected opponent invalidates the run, and
+baseline failures are never counted as wins for our model.
 
 ## Official (Kiyota samples)
 
@@ -50,11 +73,13 @@ Source: [Kaggle discussion #708584](https://www.kaggle.com/competitions/pokemon-
 |-----------|--------|--------|
 | `baselines/community/cynthia-garchomp-ex/` | Cynthia's Garchomp ex | `masamikobayashi/a-sample-cynthia-garchomp-ex-deck` |
 | `baselines/community/archaludon-ex/` | Archaludon ex / Cinderace | `masamikobayashi/a-sample-archaludon-75-wr-vs-my-1300-starmie` |
-| `baselines/community/raging-bolt-ex/` | Raging Bolt ex | `yakitori55/a-sample-agent-raging-bolt-ex-deck` |
 | `baselines/community/generic-heuristic/` | Deck-agnostic heuristic | `maximim/ptcg-generic-heuristic-baseline-agent` |
 | `baselines/community/heuristic-baseline/` | Heuristic baseline | `serariagomes/heurestic-baseline-agent` |
 
+(`raging-bolt-ex` was in this group; pruned — see `excluded_broken`.)
+
 ## Roster samples
 
-Twenty downloadable agents from the Public 28 + Sample 4 roster notebook live
+Eighteen downloadable agents from the Public 28 + Sample 4 roster notebook live
 under `baselines/roster/` (see `manifest.json` entries with `"group": "roster"`).
+Two Lucario roster agents were pruned (see `excluded_broken` above).

@@ -13,6 +13,7 @@ periodically and resume from the newest matching file. This module owns:
 from __future__ import annotations
 
 import os
+import hashlib
 import random
 import re
 import signal
@@ -57,6 +58,43 @@ def atomic_torch_save(obj: Any, path: PathLike) -> Path:
             except OSError:
                 pass
     return path
+
+
+def immutable_torch_save(obj: Any, path: PathLike) -> Path:
+    """Create ``path`` atomically and refuse to replace an existing artifact."""
+    path = _as_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FileExistsError(f"immutable checkpoint already exists: {path}")
+    tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
+    try:
+        torch.save(obj, tmp)
+        # Hard-link publication is atomic and fails if another writer won.
+        os.link(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+    return path
+
+
+def checkpoint_digest(path: PathLike, algorithm: str = "sha256") -> str:
+    """Return a content digest used to bind evaluation to exact weights."""
+    h = hashlib.new(algorithm)
+    with _as_path(path).open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return f"{algorithm}:{h.hexdigest()}"
+
+
+def candidate_path(
+    run_name: str,
+    iteration: int,
+    root: Optional[PathLike] = None,
+) -> Path:
+    """Immutable iteration-specific candidate path."""
+    return checkpoint_dir(root) / f"{run_name}.candidate.iter{int(iteration):06d}.pt"
 
 
 def capture_rng_state() -> dict[str, Any]:
@@ -171,6 +209,10 @@ def build_checkpoint(
     model_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Assemble a full training-state checkpoint dict."""
+    from . import features
+
+    model_snapshot = _config_snapshot(model_config or config.MODEL)
+    search_snapshot = _config_snapshot(config.SEARCH)
     ckpt: dict[str, Any] = {
         "model_state_dict": model.state_dict(),
         "step": int(step),
@@ -178,14 +220,31 @@ def build_checkpoint(
         "rl_iteration": int(rl_iteration),
         "best_metric": best_metric,
         "early_stop_state": early_stop_state,
-        "model_config": _config_snapshot(model_config or config.MODEL),
-        "search_config": _config_snapshot(config.SEARCH),
+        "model_config": model_snapshot,
+        "search_config": search_snapshot,
         "hardware_config": _config_snapshot(config.HARDWARE),
         "archetype_id": archetype_id,
         "model_id": model_id,
         "rng_state": capture_rng_state(),
         "saved_at": time.time(),
         "torch_version": torch.__version__,
+        "provenance": {
+            "schema": 1,
+            "feature_schema": features.FEATURE_SCHEMA_VERSION,
+            "decision_context": model_snapshot.get("decision_context"),
+            "search_mode": search_snapshot.get("mode"),
+            "trusted_policy_path": (
+                model_snapshot.get("decision_context") == "history"
+                and search_snapshot.get("mode") == "policy"
+            ),
+            "simulator": "competition_cg",
+            "aux_heads_present": list(
+                getattr(model, "aux_heads_present", ("aux_head",))
+            ),
+            "warm_started_belief_heads": list(
+                getattr(model, "warm_started_belief_heads", ())
+            ),
+        },
     }
     if optimizer is not None:
         ckpt["optimizer_state_dict"] = optimizer.state_dict()
@@ -235,6 +294,36 @@ def load_checkpoint(
 ) -> dict[str, Any]:
     path = _as_path(path)
     return torch.load(path, map_location=map_location, weights_only=False)
+
+
+def assert_trusted_policy_checkpoint(path: PathLike) -> dict[str, Any]:
+    """Fail closed unless ``path`` can serve the non-privileged history policy.
+
+    Pre-provenance checkpoints are accepted only when their model snapshot is
+    history/KV compatible. Checkpoints explicitly marked stateless, oracle, or
+    untrusted are rejected.
+    """
+    ckpt = load_checkpoint(path, map_location="cpu")
+    model_cfg = dict(ckpt.get("model_config") or {})
+    provenance = dict(ckpt.get("provenance") or {})
+    decision_context = str(
+        model_cfg.get("decision_context", provenance.get("decision_context", "history"))
+    ).lower()
+    if decision_context != "history":
+        raise ValueError(
+            f"checkpoint decision_context={decision_context!r}; trusted deployment "
+            "requires history"
+        )
+    if provenance and provenance.get("trusted_policy_path") is False:
+        raise ValueError("checkpoint provenance explicitly marks path untrusted")
+    search_cfg = dict(ckpt.get("search_config") or {})
+    if str(search_cfg.get("mode", "policy")).lower() == "oracle_mcts":
+        raise ValueError("oracle-MCTS checkpoint provenance cannot be deployed")
+    return {
+        "decision_context": decision_context,
+        "provenance": provenance,
+        "model_config": model_cfg,
+    }
 
 
 def apply_checkpoint(

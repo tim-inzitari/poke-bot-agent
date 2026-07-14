@@ -139,8 +139,12 @@ def _strip_opp_private(
 ) -> tuple[dict[str, Any], dict[str, Any], InfoSetReport]:
     """Return (masked_obs, aux_labels, report) for one seat observation.
 
-    Privileged opponent fields (hand card list, revealed face-down prizes) are
-    moved into ``aux_labels`` and cleared from the observation copy.
+    Privileged opponent fields (hand card list, revealed face-down prizes,
+    deck order) are moved into ``aux_labels`` and cleared from the observation
+    copy. Prefer self-play / sim dumps that retain both seats' private zones so
+    remask can fill ``opp_hand`` / ``opp_deck_order`` / ``opp_prizes`` for
+    belief-head multilabel training; ladder seat obs are often already
+    info-set clean and yield absent labels (losses mask).
     """
     report = InfoSetReport()
     aux: dict[str, Any] = {
@@ -316,6 +320,14 @@ def convert_episode_to_records(
                     "aux_labels": aux_clean,
                 }
             )
+
+    # Scope B labels (lethal / prize-race): public prize counts + post-hoc
+    # prize-take from the seat trajectory. Harmless for Scope A; masked in
+    # loss when absent. core_kernel keeps strategy loss weights at 0.
+    from .blackwell_heads import attach_blackwell_strategy_labels
+
+    for seat in (0, 1):
+        attach_blackwell_strategy_labels(seat_steps[seat])
 
     records: list[dict[str, Any]] = []
     for seat in (0, 1):

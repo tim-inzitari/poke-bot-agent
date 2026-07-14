@@ -22,6 +22,8 @@ card vocab = max(cardId)+1 (currently 1268), attack vocab = max(attackId)+1.
 
 from __future__ import annotations
 
+import itertools
+import math
 from typing import Optional, Union
 
 from . import cg_env
@@ -41,8 +43,110 @@ DECODER_MAIN_FEATURE: int = 8
 #: none / END / YES / NO / 5x SpecialCondition / 5x Number bucket).
 DECODER_ATTACK_OFFSET: int = 14
 
-#: Max number of multi-select action combinations enumerated per decision.
-MAX_ACTION_COMBOS: int = 64
+#: Hard materialization ceiling. Trusted callers fail if the complete ordered
+#: action space exceeds this bound; they never train/evaluate on a truncated set.
+MAX_ACTION_COMBOS: int = 4096
+
+#: Bump whenever feature indices or action enumeration semantics change. It is
+#: included in dataset cache keys so incompatible pickles are never reused.
+FEATURE_SCHEMA_VERSION: int = 4
+
+
+class ActionSpaceTooLarge(RuntimeError):
+    """Complete ordered legal action space exceeds the safe decoder ceiling."""
+
+
+def _selection_bounds(obs) -> tuple[object, int, int, int]:
+    if isinstance(obs, dict):
+        sel = obs.get("select") or {}
+        n_opt = len(sel.get("option") or [])
+        lo = max(0, min(int(sel.get("minCount", 0)), n_opt))
+        hi = max(lo, min(int(sel.get("maxCount", 0)), n_opt))
+        return obs, n_opt, lo, hi
+    sel = obs.select
+    n_opt = len(sel.option)
+    lo = max(0, min(int(sel.minCount), n_opt))
+    hi = max(lo, min(int(sel.maxCount), n_opt))
+    return obs, n_opt, lo, hi
+
+
+def factorized_action_candidates(obs, prefix: list[int]) -> list[list[int]]:
+    """Return one autoregressive stage with complete legal support.
+
+    Candidates append any remaining option in order. Once ``minCount`` is met,
+    the unchanged prefix is an explicit STOP candidate. Repeated application
+    assigns support to every legal ordered selection without materializing all
+    permutations.
+    """
+    _obs, n_opt, lo, hi = _selection_bounds(obs)
+    prefix = [int(i) for i in prefix]
+    if len(prefix) != len(set(prefix)) or any(i < 0 or i >= n_opt for i in prefix):
+        raise ValueError("invalid factorized action prefix")
+    if len(prefix) > hi:
+        raise ValueError("factorized action prefix exceeds maxCount")
+    if len(prefix) >= hi:
+        return [prefix]
+    candidates = [prefix + [i] for i in range(n_opt) if i not in prefix]
+    if len(prefix) >= lo:
+        candidates.append(prefix)  # explicit STOP
+    if not candidates:
+        return [prefix]
+    return candidates
+
+
+def ordered_action_count(obs) -> int:
+    """Count complete ordered legal actions without materializing permutations."""
+    _obs, n_opt, lo, hi = _selection_bounds(obs)
+    return sum(math.perm(n_opt, k) for k in range(lo, hi + 1))
+
+
+def factorized_teacher_forcing_stages(
+    obs, action: list[int]
+) -> list[tuple[list[list[int]], int]]:
+    """Canonical autoregressive candidate/target stages for a legal action."""
+    _obs, n_opt, lo, hi = _selection_bounds(obs)
+    target = [int(i) for i in action]
+    if (
+        len(target) < lo
+        or len(target) > hi
+        or len(target) != len(set(target))
+        or any(i < 0 or i >= n_opt for i in target)
+    ):
+        raise ValueError(
+            f"illegal ordered action length/content: action={target}, "
+            f"n_options={n_opt}, bounds=[{lo}, {hi}]"
+        )
+    stages: list[tuple[list[list[int]], int]] = []
+    prefix: list[int] = []
+    for next_option in target:
+        candidates = factorized_action_candidates(obs, prefix)
+        chosen = prefix + [next_option]
+        stages.append((candidates, candidates.index(chosen)))
+        prefix = chosen
+    if len(prefix) < hi:
+        candidates = factorized_action_candidates(obs, prefix)
+        stages.append((candidates, candidates.index(prefix)))
+    if not stages:
+        stages.append(([[]], 0))
+    return stages
+
+
+class ActionCombos(list):
+    """List-compatible legal actions with explicit truncation diagnostics."""
+
+    def __init__(
+        self,
+        values=(),
+        *,
+        total_count: int,
+        min_count: int,
+        max_count: int,
+    ) -> None:
+        super().__init__(values)
+        self.total_count = int(total_count)
+        self.min_count = int(min_count)
+        self.max_count = int(max_count)
+        self.truncated = len(self) < self.total_count
 
 # ---------------------------------------------------------------------------
 # Vocabulary (cached from the live cg library)
@@ -104,7 +208,7 @@ def encoder_vocab_size(headroom: int = 512) -> int:
     span += cc               # hand bag
     span += cc               # deck bag
     span += cc               # stadium bag
-    span += 3                # global (bias, turn, first-player flag)
+    span += 5                # global (bias, turn, first-player flag, seat one-hot)
     return span + headroom
 
 
@@ -275,6 +379,8 @@ def build_board_tokens(obs, your_deck: list[int]) -> SparseVector:
     sv.add_single(1)
     sv.add_single(state.turn / 10)
     sv.add_single(state.firstPlayer == your_index)
+    sv.add(your_index, 1)
+    sv.add_pos(2)
     return sv
 
 
@@ -309,18 +415,27 @@ def _decoder_card_offset() -> int:
     return DECODER_ATTACK_OFFSET + attack_vocab_size()
 
 
-def _decoder_main(sv: SparseVector, feature_index: int, card, cc: int) -> None:
+def _decoder_main(
+    sv: SparseVector, feature_index: int, card, cc: int, weight: float = 1.0
+) -> None:
     if card is not None:
-        sv.add(_decoder_card_offset() + feature_index * cc + card.id, 1)
+        sv.add(_decoder_card_offset() + feature_index * cc + card.id, weight)
 
 
-def _decoder_card_id(sv: SparseVector, context, card_id: int, cc: int) -> None:
-    sv.add(_decoder_card_offset() + (DECODER_MAIN_FEATURE + int(context)) * cc + card_id, 1)
+def _decoder_card_id(
+    sv: SparseVector, context, card_id: int, cc: int, weight: float = 1.0
+) -> None:
+    sv.add(
+        _decoder_card_offset() + (DECODER_MAIN_FEATURE + int(context)) * cc + card_id,
+        weight,
+    )
 
 
-def _decoder_card(sv: SparseVector, context, card, cc: int) -> None:
+def _decoder_card(
+    sv: SparseVector, context, card, cc: int, weight: float = 1.0
+) -> None:
     if card is not None:
-        _decoder_card_id(sv, context, card.id, cc)
+        _decoder_card_id(sv, context, card.id, cc, weight)
 
 
 def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
@@ -344,77 +459,79 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
         if len(action) == 0:
             sv.add(0, 1)
             continue
-        for i in action:
+        for rank, i in enumerate(action):
             o = obs.select.option[i]
             t = o.type
+            # A weighted positional code keeps ordered selections distinct
+            # without changing checkpoint embedding-table dimensions.
+            weight = float(rank + 1)
             if t == OptionType.END:
-                sv.add(1, 1)
+                sv.add(1, weight)
             elif t == OptionType.YES:
-                sv.add(2, 1)
+                sv.add(2, weight)
             elif t == OptionType.NO:
-                sv.add(3, 1)
+                sv.add(3, weight)
             elif t == OptionType.SPECIAL_CONDITION:
-                sv.add(4 + int(o.specialConditionType), 1)
+                sv.add(4 + int(o.specialConditionType), weight)
             elif t == OptionType.NUMBER:
-                sv.add(9 + min(o.number, 4), 1)
+                sv.add(9 + min(o.number, 4), weight)
             elif t == OptionType.ATTACK:
-                sv.add(DECODER_ATTACK_OFFSET + o.attackId, 1)
+                sv.add(DECODER_ATTACK_OFFSET + o.attackId, weight)
             elif t == OptionType.PLAY:
-                _decoder_main(sv, 0, ps.hand[o.index], cc)
+                _decoder_main(sv, 0, ps.hand[o.index], cc, weight)
             elif t == OptionType.ATTACH:
-                _decoder_main(sv, 1, get_card(obs, o.area, o.index, your_index), cc)
-                _decoder_main(sv, 2, get_card(obs, o.inPlayArea, o.inPlayIndex, your_index), cc)
+                _decoder_main(sv, 1, get_card(obs, o.area, o.index, your_index), cc, weight)
+                _decoder_main(sv, 2, get_card(obs, o.inPlayArea, o.inPlayIndex, your_index), cc, weight)
             elif t == OptionType.EVOLVE:
-                _decoder_main(sv, 3, get_card(obs, o.area, o.index, your_index), cc)
-                _decoder_main(sv, 4, get_card(obs, o.inPlayArea, o.inPlayIndex, your_index), cc)
+                _decoder_main(sv, 3, get_card(obs, o.area, o.index, your_index), cc, weight)
+                _decoder_main(sv, 4, get_card(obs, o.inPlayArea, o.inPlayIndex, your_index), cc, weight)
             elif t == OptionType.ABILITY:
-                _decoder_main(sv, 5, get_card(obs, o.area, o.index, your_index), cc)
+                _decoder_main(sv, 5, get_card(obs, o.area, o.index, your_index), cc, weight)
             elif t == OptionType.DISCARD:
-                _decoder_main(sv, 6, get_card(obs, o.area, o.index, your_index), cc)
+                _decoder_main(sv, 6, get_card(obs, o.area, o.index, your_index), cc, weight)
             elif t == OptionType.RETREAT:
-                _decoder_main(sv, 7, ps.active[0], cc)
+                _decoder_main(sv, 7, ps.active[0], cc, weight)
             elif t == OptionType.CARD:
-                _decoder_card(sv, context, get_card(obs, o.area, o.index, o.playerIndex), cc)
+                _decoder_card(sv, context, get_card(obs, o.area, o.index, o.playerIndex), cc, weight)
             elif t == OptionType.TOOL_CARD:
                 card = get_card(obs, o.area, o.index, o.playerIndex)
-                _decoder_card(sv, context, card.tools[o.toolIndex], cc)
+                _decoder_card(sv, context, card.tools[o.toolIndex], cc, weight)
             elif t in (OptionType.ENERGY_CARD, OptionType.ENERGY):
                 card = get_card(obs, o.area, o.index, o.playerIndex)
-                _decoder_card(sv, context, card.energyCards[o.energyIndex], cc)
+                _decoder_card(sv, context, card.energyCards[o.energyIndex], cc, weight)
             elif t == OptionType.SKILL:
-                _decoder_card_id(sv, context, o.cardId, cc)
+                _decoder_card_id(sv, context, o.cardId, cc, weight)
     return sv
 
 
-def enumerate_action_combos(obs, max_combos: int = MAX_ACTION_COMBOS) -> list[list[int]]:
-    """Enumerate up to ``max_combos`` legal multi-select option-index combos.
+def enumerate_action_combos(obs, max_combos: int = MAX_ACTION_COMBOS) -> ActionCombos:
+    """Enumerate the complete ordered legal action set or fail.
 
-    Reproduces the sample's combinatorial expansion: choose ``maxCount`` distinct
-    option indices in increasing order. For single-select decisions this yields
-    the individual options ``[[0],[1],...]``.
+    The engine consumes a sequence of option indices, so permutations are
+    distinct legal actions. If materializing all sizes in ``[minCount,
+    maxCount]`` exceeds ``max_combos``, :class:`ActionSpaceTooLarge` is raised.
+    Trusted play/training therefore cannot silently omit strategic actions.
     """
-    if isinstance(obs, dict):
-        obs = cg_env.to_observation(obs)
-    sel = obs.select
-    n_opt = len(sel.option)
-    k = sel.maxCount
-    combos: list[list[int]] = []
-    if k <= 0:
-        return [[]]
-    indices = list(range(k))
-    for _ in range(max_combos):
-        combos.append(indices.copy())
-        # advance to next combination in colex-like order
-        for i in range(len(indices)):
-            idx = len(indices) - i - 1
-            if indices[idx] < n_opt - i - 1:
-                indices[idx] += 1
-                for j in range(idx + 1, len(indices)):
-                    indices[j] = indices[j - 1] + 1
-                break
-        else:
-            break
-    return combos
+    obs, n_opt, lo, hi = _selection_bounds(obs)
+    counts = list(range(lo, hi + 1))
+    total = ordered_action_count(obs)
+    cap = max(0, int(max_combos))
+    if total > cap:
+        raise ActionSpaceTooLarge(
+            f"complete ordered action space has {total} actions "
+            f"(n_options={n_opt}, counts={counts}), cap={cap}"
+        )
+    combos = [
+        list(action)
+        for k in counts
+        for action in itertools.permutations(range(n_opt), k)
+    ]
+    return ActionCombos(
+        combos,
+        total_count=total,
+        min_count=lo,
+        max_count=hi,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Temporal CABT transformer: spatial board + whole-game causal temporal + option decoder.
+"""CABT transformer with a history-consistent train/deploy contract.
 
 Design choice (board tokens)
 ----------------------------
@@ -10,12 +10,13 @@ spatial Transformer over the resulting 24 board tokens. Dense projected card
 embeddings are *not* used for the board path so we stay 1:1 with the foundation
 feature builders; card-id density is already inside the bag features.
 
-Architecture (v1)
------------------
+Architecture
+------------
 1. Spatial EmbeddingBag → 24 tokens → pre-norm TransformerEncoder.
 2. Mean-pool spatial memory → per-timestep ``[CLS]`` for the temporal tower.
-3. Causal temporal tower over the full game (``MAX_CONTEXT=320``), RoPE, optional
-   incremental KV cache (append one CLS per realized decision).
+3. Causal temporal tower over each acting seat's deployment-visible realized
+   observation history. Offline whole-sequence and incremental KV-cache paths
+   implement the same computation.
 4. Option EmbeddingBag → cross-attention decoder over spatial memory + state
    → per-option policy logits (variable legal set).
 5. Value head → tanh scalar (info-set only).
@@ -307,7 +308,7 @@ class OptionCrossDecoderLayer(nn.Module):
 # ---------------------------------------------------------------------------
 
 class TemporalCabtTransformer(nn.Module):
-    """Spatial + whole-game temporal CABT policy/value network.
+    """Spatial + realized-history temporal CABT policy/value network.
 
     Forward contract::
 
@@ -326,20 +327,36 @@ class TemporalCabtTransformer(nn.Module):
         decoder_vocab: Optional[int] = None,
         num_board_tokens: int = features.NUM_BOARD_TOKENS,
         aux_archetype_classes: int = 16,
+        belief_card_vocab: Optional[int] = None,
     ):
         super().__init__()
         cfg = cfg or config.MODEL
+        decision_context = str(cfg.decision_context).lower()
+        if decision_context not in {"history", "stateless"}:
+            raise ValueError(
+                "decision_context must be 'history' or legacy 'stateless', got "
+                f"{cfg.decision_context!r}"
+            )
         self.cfg = cfg
         self.d_model = cfg.d_model
         self.num_board_tokens = num_board_tokens
         self.max_context = cfg.max_context
         self.use_rope = cfg.temporal_pos.lower() == "rope"
-        self.kv_cache_enabled = bool(cfg.kv_cache)
+        self.decision_context = decision_context
+        self.kv_cache_enabled = bool(cfg.kv_cache and decision_context == "history")
 
         enc_vocab = encoder_vocab if encoder_vocab is not None else features.encoder_vocab_size()
         dec_vocab = decoder_vocab if decoder_vocab is not None else features.decoder_vocab_size()
         self.encoder_vocab = enc_vocab
         self.decoder_vocab = dec_vocab
+        card_vocab = (
+            int(belief_card_vocab)
+            if belief_card_vocab is not None
+            else int(features.card_vocab_size())
+        )
+        if card_vocab <= 0:
+            raise ValueError(f"belief_card_vocab must be positive, got {card_vocab}")
+        self.belief_card_vocab = card_vocab
 
         # Spatial EmbeddingBag → board tokens
         # PackedSparse always includes a trailing nnz sentinel → include_last_offset.
@@ -399,13 +416,49 @@ class TemporalCabtTransformer(nn.Module):
             nn.Linear(cfg.d_model, 1),
         )
 
-        # Aux stub: info-set → opponent-hand/archetype prediction (labels separate).
+        # Aux: distinct named heads (never grow aux_head into a kitchen sink).
+        # Scope A (core): aux_head archetype CE; opp_* multilabel belief priors.
+        # Scope B (Blackwell Hammer): lethal_threat + prize_race strategy heads.
+        # Strategy heads are architecture-present for warm-start, but training
+        # weights stay 0 on core_kernel (see poke_bot.blackwell_heads).
         self.aux_head = nn.Sequential(
             nn.Linear(cfg.d_model, cfg.d_model),
             nn.GELU(),
             nn.Dropout(cfg.dropout),
             nn.Linear(cfg.d_model, aux_archetype_classes),
         )
+        self.opp_hand_head = nn.Linear(cfg.d_model, self.belief_card_vocab)
+        self.opp_remainder_head = nn.Linear(cfg.d_model, self.belief_card_vocab)
+        # Scope B: P(take prize soon) + [own/6, opp/6] prize-race scaffold.
+        self.lethal_threat_head = nn.Linear(cfg.d_model, 1)
+        self.prize_race_head = nn.Linear(cfg.d_model, 2)
+        self.aux_heads_present: tuple[str, ...] = (
+            "aux_head",
+            "opp_hand_head",
+            "opp_remainder_head",
+            "lethal_threat_head",
+            "prize_race_head",
+        )
+        # Populated by warm-start load when new head keys were missing in ckpt.
+        self.warm_started_belief_heads: tuple[str, ...] = ()
+
+    def belief_aux_logits(self, state_vec: Tensor) -> dict[str, Tensor]:
+        """Info-set belief / strategy logits from ``state_vec`` (root-only).
+
+        Scope A belief priors always returned. Scope B strategy logits are also
+        returned from the modules; callers must gate *usage* via
+        ``blackwell_heads.blackwell_strategy_heads_enabled`` (core must not
+        depend on them). Never write any of these into board bags.
+        """
+        if state_vec.dim() == 1:
+            state_vec = state_vec.unsqueeze(0)
+        return {
+            "aux_logits": self.aux_head(state_vec),
+            "opp_hand_logits": self.opp_hand_head(state_vec),
+            "opp_remainder_logits": self.opp_remainder_head(state_vec),
+            "lethal_threat_logits": self.lethal_threat_head(state_vec).squeeze(-1),
+            "prize_race_pred": self.prize_race_head(state_vec),
+        }
 
     # ----- encode primitives -----
 
@@ -425,6 +478,40 @@ class TemporalCabtTransformer(nn.Module):
     def pool_cls(self, spatial_memory: Tensor) -> Tensor:
         """Pool spatial memory to a per-timestep CLS ``[B, D]``."""
         return self.cls_proj(spatial_memory.mean(dim=1))
+
+    def encode_previous_actions(
+        self,
+        actions: Sequence[Optional[SparseVector]],
+    ) -> Tensor:
+        """Encode shifted, already-taken actions for temporal history tokens."""
+        device = next(self.parameters()).device
+        out = torch.zeros(len(actions), self.d_model, device=device)
+        present = [(i, action) for i, action in enumerate(actions) if action is not None]
+        if not present:
+            return out
+        packed = pack_sparse_batch([action for _, action in present], 1, device)
+        encoded = self.option_bag(
+            packed.index.clamp(0, self.decoder_vocab - 1),
+            packed.offset,
+            packed.value,
+        )
+        rows = torch.tensor([i for i, _ in present], dtype=torch.long, device=device)
+        return out.index_copy(0, rows, encoded)
+
+    def history_tokens(
+        self,
+        spatial_memory: Tensor,
+        previous_actions: Optional[Sequence[Optional[SparseVector]]] = None,
+    ) -> Tensor:
+        """Fuse current observable board with the previous realized own action."""
+        cls = self.pool_cls(spatial_memory)
+        if previous_actions is None:
+            return cls
+        if len(previous_actions) != cls.size(0):
+            raise ValueError("previous-action history length mismatch")
+        return cls + float(self.cfg.history_action_scale) * self.encode_previous_actions(
+            previous_actions
+        )
 
     def temporal_encode(
         self,
@@ -475,6 +562,104 @@ class TemporalCabtTransformer(nn.Module):
             new_cache = TemporalKVCache(layers=new_layers, length=new_len)
         return state_vec, new_cache
 
+    def encode_history(
+        self,
+        board_history: Sequence[SparseVector],
+        *,
+        return_all: bool = False,
+        previous_actions: Optional[Sequence[Optional[SparseVector]]] = None,
+    ) -> tuple[Tensor, Tensor]:
+        """Encode one acting-seat history with no hidden/opponent-private input.
+
+        Returns ``(state, spatial)``. ``state`` is ``[1, D]`` for the latest
+        decision or ``[T, D]`` when ``return_all``; ``spatial`` is
+        ``[T, board_tokens, D]``.
+        """
+        boards = list(board_history)
+        if not boards:
+            raise ValueError("history must contain at least one observation")
+        if len(boards) > self.max_context:
+            boards = boards[-self.max_context :]
+            if previous_actions is not None:
+                previous_actions = list(previous_actions)[-self.max_context :]
+        spatial = self.encode_board(boards)
+        cls = self.history_tokens(spatial, previous_actions).unsqueeze(0)
+        temporal, _ = self.temporal_encode(
+            cls,
+            kv_cache=None,
+            append=False,
+            return_all=return_all,
+        )
+        if return_all:
+            return temporal.squeeze(0), spatial
+        return temporal, spatial
+
+    def forward_history_batch(
+        self,
+        board_histories: Sequence[Sequence[SparseVector]],
+        options: Union[SparseVector, Sequence[SparseVector]],
+        *,
+        n_options: Optional[Sequence[int]] = None,
+        previous_action_histories: Optional[
+            Sequence[Sequence[Optional[SparseVector]]]
+        ] = None,
+    ) -> dict[str, Union[Tensor, Optional[TemporalKVCache]]]:
+        """Evaluate variable-length realized histories.
+
+        Spatial encoding and option decoding are batched across games. Temporal
+        encoding is grouped logically per game so padding can never become
+        observable history.
+        """
+        histories = [list(h)[-self.max_context :] for h in board_histories]
+        if not histories or any(not h for h in histories):
+            raise ValueError("every history must contain at least one observation")
+        if isinstance(options, SparseVector):
+            options = [options]
+        options = list(options)
+        if len(options) != len(histories):
+            raise ValueError("history/options batch size mismatch")
+        if n_options is None:
+            n_options = [sv.num_words for sv in options]
+
+        lengths = [len(h) for h in histories]
+        if previous_action_histories is None:
+            action_histories: list[list[Optional[SparseVector]]] = [
+                [None] * length for length in lengths
+            ]
+        else:
+            action_histories = [
+                list(actions)[-self.max_context :]
+                for actions in previous_action_histories
+            ]
+            if [len(actions) for actions in action_histories] != lengths:
+                raise ValueError("board/action history lengths do not match")
+        flat_boards = [board for history in histories for board in history]
+        flat_spatial = self.encode_board(flat_boards)
+        states: list[Tensor] = []
+        current_spatial: list[Tensor] = []
+        start = 0
+        for length, previous_actions in zip(lengths, action_histories):
+            spatial = flat_spatial[start : start + length]
+            cls = self.history_tokens(spatial, previous_actions).unsqueeze(0)
+            state, _ = self.temporal_encode(cls, append=False)
+            states.append(state.squeeze(0))
+            current_spatial.append(spatial[-1])
+            start += length
+        state_vec = torch.stack(states, dim=0)
+        spatial_memory = torch.stack(current_spatial, dim=0)
+        logits = self.decode_options(
+            options, spatial_memory, state_vec, n_options=n_options
+        )
+        out = {
+            "policy_logits": logits,
+            "value": torch.tanh(self.value_head(state_vec)).squeeze(-1),
+            "state_vec": state_vec,
+            "spatial_memory": spatial_memory,
+            "kv_cache": None,
+        }
+        out.update(self.belief_aux_logits(state_vec))
+        return out
+
     def decode_options(
         self,
         option_svs: Union[SparseVector, Sequence[SparseVector]],
@@ -521,8 +706,30 @@ class TemporalCabtTransformer(nn.Module):
             )
 
         # Memory = spatial tokens + state as an extra key.
-        state_tok = state_vec.unsqueeze(1)
-        memory = torch.cat([spatial_memory, state_tok], dim=1)
+        # Normalize shapes so both the batched inference route (state_vec is
+        # [B, d_model], spatial_memory is [B, T, d_model]) and the per-decision
+        # training route (state_vec is [d_model], spatial_memory is [1, T,
+        # d_model]) yield a 3-D state token [B, 1, d_model] that concatenates
+        # with spatial memory along the token axis.
+        if state_vec.dim() == 1:
+            state_vec = state_vec.unsqueeze(0)  # [d_model] -> [1, d_model]
+        if spatial_memory.dim() == 2:
+            spatial_memory = spatial_memory.unsqueeze(0)  # [T, D] -> [1, T, D]
+        state_tok = state_vec.unsqueeze(1)  # [B, d_model] -> [B, 1, d_model]
+        assert spatial_memory.dim() == 3, (
+            "decode_options: spatial_memory must be [B, T, d_model], got "
+            f"{tuple(spatial_memory.shape)}"
+        )
+        assert state_tok.dim() == 3 and state_tok.size(-1) == spatial_memory.size(-1), (
+            "decode_options: state token {} incompatible with spatial memory {} "
+            "for cat(dim=1)".format(tuple(state_tok.shape), tuple(spatial_memory.shape))
+        )
+        assert state_tok.size(0) == spatial_memory.size(0) == opt_tokens.size(0), (
+            "decode_options: batch mismatch — options={}, spatial={}, state={}".format(
+                opt_tokens.size(0), spatial_memory.size(0), state_tok.size(0)
+            )
+        )
+        memory = torch.cat([spatial_memory, state_tok], dim=1)  # [B, T+1, d_model]
 
         h = opt_tokens
         for layer in self.option_decoder:
@@ -543,23 +750,38 @@ class TemporalCabtTransformer(nn.Module):
         options: Union[SparseVector, Sequence[SparseVector]],
         kv_cache: Optional[TemporalKVCache] = None,
         *,
-        append_cache: bool = True,
+        append_cache: bool = False,
         n_options: Optional[Sequence[int]] = None,
+        previous_action: Optional[SparseVector] = None,
     ) -> dict[str, Union[Tensor, Optional[TemporalKVCache]]]:
-        """Full forward: board + options (+ optional temporal cache).
+        """Evaluate one decision per batch row, optionally appending KV history.
 
         Returns dict with ``policy_logits``, ``value``, ``aux_logits``,
-        ``state_vec``, ``spatial_memory``, ``kv_cache``.
+        ``opp_hand_logits``, ``opp_remainder_logits``,
+        ``lethal_threat_logits``, ``prize_race_pred``, ``state_vec``,
+        ``spatial_memory``, ``kv_cache``.
         """
+        if self.decision_context == "stateless" and (kv_cache is not None or append_cache):
+            raise ValueError(
+                "legacy stateless decision contract forbids KV cache input/append; "
+                "pass kv_cache=None and append_cache=False"
+            )
         if isinstance(board, SparseVector):
             board = [board]
         if isinstance(options, SparseVector):
             options = [options]
+        if kv_cache is not None and len(board) != 1:
+            raise ValueError("incremental KV inference supports batch size one")
         if n_options is None:
             n_options = [sv.num_words for sv in options]
 
         spatial = self.encode_board(board)
-        cls = self.pool_cls(spatial).unsqueeze(1)  # [B, 1, D]
+        if previous_action is not None and len(board) != 1:
+            raise ValueError("previous_action incremental input requires batch size one")
+        cls = self.history_tokens(
+            spatial,
+            [previous_action] if previous_action is not None else None,
+        ).unsqueeze(1)
         state_vec, new_cache = self.temporal_encode(
             cls, kv_cache, append=append_cache
         )
@@ -567,15 +789,15 @@ class TemporalCabtTransformer(nn.Module):
             options, spatial, state_vec, n_options=n_options
         )
         value = torch.tanh(self.value_head(state_vec)).squeeze(-1)
-        aux = self.aux_head(state_vec)
-        return {
+        out: dict[str, Union[Tensor, Optional[TemporalKVCache]]] = {
             "policy_logits": logits,
             "value": value,
-            "aux_logits": aux,
             "state_vec": state_vec,
             "spatial_memory": spatial,
             "kv_cache": new_cache,
         }
+        out.update(self.belief_aux_logits(state_vec))
+        return out
 
     def forward_from_obs(
         self,
@@ -583,16 +805,23 @@ class TemporalCabtTransformer(nn.Module):
         your_deck: list[int],
         kv_cache: Optional[TemporalKVCache] = None,
         *,
-        append_cache: bool = True,
+        append_cache: bool = False,
         assert_info: bool = True,
+        previous_action: Optional[SparseVector] = None,
     ) -> dict[str, Union[Tensor, Optional[TemporalKVCache], list]]:
-        """Featurize an observation and run forward (info-set only)."""
+        """Featurize one observation and run incremental inference (info-set only)."""
         if assert_info:
             features.assert_info_set(obs)
         board = features.build_board_tokens(obs, your_deck)
         combos = features.enumerate_action_combos(obs)
         opt = features.build_option_tokens(obs, combos)
-        out = self.forward(board, opt, kv_cache, append_cache=append_cache)
+        out = self.forward(
+            board,
+            opt,
+            kv_cache,
+            append_cache=append_cache,
+            previous_action=previous_action,
+        )
         out["action_combos"] = combos
         return out
 
@@ -605,11 +834,29 @@ class TemporalCabtTransformer(nn.Module):
         return TemporalKVCache(layers=[], length=0)
 
 
+def card_prior_logits_or_uniform(
+    logits: Optional[Tensor],
+    card_vocab: int,
+    *,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
+) -> Tensor:
+    """Particle-prior logits; zeros ⇒ uniform softmax when head logits unavailable."""
+    if logits is not None:
+        return logits
+    if card_vocab <= 0:
+        raise ValueError(f"card_vocab must be positive, got {card_vocab}")
+    return torch.zeros(int(card_vocab), device=device, dtype=dtype or torch.float32)
+
+
 def build_model(
     cfg: Optional[config.ModelConfig] = None,
     *,
     device: Optional[torch.device] = None,
     aux_archetype_classes: Optional[int] = None,
+    encoder_vocab: Optional[int] = None,
+    decoder_vocab: Optional[int] = None,
+    belief_card_vocab: Optional[int] = None,
 ) -> TemporalCabtTransformer:
     """Construct a :class:`TemporalCabtTransformer` on ``device`` (default CPU)."""
     from . import archetypes
@@ -618,7 +865,11 @@ def build_model(
         # registered archetypes + unknown
         aux_archetype_classes = len(archetypes.archetype_ids()) + 1
     model = TemporalCabtTransformer(
-        cfg, aux_archetype_classes=aux_archetype_classes
+        cfg,
+        aux_archetype_classes=aux_archetype_classes,
+        encoder_vocab=encoder_vocab,
+        decoder_vocab=decoder_vocab,
+        belief_card_vocab=belief_card_vocab,
     )
     if device is not None:
         model = model.to(device)

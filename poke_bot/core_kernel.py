@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import random
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,14 +76,13 @@ def archetype_index(name: Optional[str]) -> int:
         return 0
 
 
-def _aux_archetype_label(name: str, num_classes: int) -> int:
-    """Aux head target index (matches the ``archetype_ids()+["unknown"]`` order).
-
-    Kept local so we do not import the actively-edited ``poke_bot.train``.
-    """
-    ids = list(archetypes.archetype_ids()) + [archetypes.UNKNOWN]
-    idx = ids.index(name) if name in ids else len(ids) - 1
-    return idx if idx < num_classes else num_classes - 1
+def _aux_archetype_label(name: str, num_classes: int) -> Optional[int]:
+    """Return a real registered class; unknown baseline ids are masked."""
+    ids = list(archetypes.archetype_ids())
+    if name not in ids:
+        return None
+    idx = ids.index(name)
+    return idx if idx < num_classes else None
 
 
 # ---------------------------------------------------------------------------
@@ -92,8 +92,8 @@ def _aux_archetype_label(name: str, num_classes: int) -> int:
 def core_kernel_config_3080ti() -> "config.ModelConfig":
     """Model sizing for the RTX 3080 Ti (~12 GB) core-kernel/specialist track.
 
-    Lean generalist trunk that (a) trains comfortably on 12 GB with whole-game
-    ``max_context=320`` sequences — a real probe measured peak ≈ 2 GB reserved,
+    Lean generalist trunk that (a) trains comfortably on 12 GB with stateless
+    per-decision batches — a real probe measured peak ≈ 2 GB reserved,
     so VRAM is not the bottleneck — and (b) matches the ``d_model`` the Phase-6
     3080 Ti specialists use, so ``warm_start_specialist`` transfers the trunk 1:1.
 
@@ -106,6 +106,25 @@ def core_kernel_config_3080ti() -> "config.ModelConfig":
         option_decoder_layers=2,
         n_heads=6,
         ff_dim=768,
+        max_context=320,
+    )
+
+
+def core_kernel_config_small_3080ti() -> "config.ModelConfig":
+    """Small search-oriented kernel for the dedicated RTX 3080 Ti pipeline.
+
+    The architecture keeps the complete history/action contract and the full
+    320-decision context, while reducing width and depth enough for many
+    cross-game leaf evaluations. Hammer specialists warm-start with this exact
+    shape, so transfer is complete rather than a partial shape-mismatch copy.
+    """
+    return config.ModelConfig(
+        d_model=96,
+        spatial_layers=2,
+        temporal_layers=2,
+        option_decoder_layers=1,
+        n_heads=4,
+        ff_dim=384,
         max_context=320,
     )
 
@@ -185,10 +204,12 @@ class CoreKernel(nn.Module):
         kv_cache=None,
         *,
         archetype_id: Union[str, int] = 0,
-        append_cache: bool = True,
+        append_cache: bool = False,
         n_options: Optional[Sequence[int]] = None,
     ) -> dict[str, Any]:
-        """Full forward with archetype conditioning (default ``unknown``)."""
+        """Stateless forward with archetype conditioning (default ``unknown``)."""
+        if kv_cache is not None or append_cache:
+            raise ValueError("core-kernel runtime uses stateless decisions without KV cache")
         arch_idx = (
             archetype_index(archetype_id)
             if isinstance(archetype_id, str)
@@ -306,7 +327,16 @@ class CoreKernel(nn.Module):
         self,
         archetype_id: str,
         *,
-        reinit_heads: Union[bool, Sequence[str]] = ("policy_head", "aux_head"),
+        reinit_heads: Union[bool, Sequence[str]] = (
+            "policy_head",
+            "aux_head",
+            "opp_hand_head",
+            "opp_remainder_head",
+            # Scope B modules stay on the specialist for warm-start; reinit so
+            # a core trunk does not carry random strategy heads as "trained".
+            "lethal_threat_head",
+            "prize_race_head",
+        ),
         fold_archetype: bool = True,
         device: Optional[torch.device] = None,
     ) -> TemporalCabtTransformer:
@@ -378,7 +408,14 @@ def warm_start_specialist_from_checkpoint(
     *,
     run_name: Optional[str] = None,
     root: Optional[PathLike] = None,
-    reinit_heads: Union[bool, Sequence[str]] = ("policy_head", "aux_head"),
+    reinit_heads: Union[bool, Sequence[str]] = (
+        "policy_head",
+        "aux_head",
+        "opp_hand_head",
+        "opp_remainder_head",
+        "lethal_threat_head",
+        "prize_race_head",
+    ),
     fold_archetype: bool = True,
     device: Optional[torch.device] = None,
     write_checkpoint: bool = True,
@@ -448,6 +485,8 @@ class CorpusConfig:
     seed: int = 0
     #: Cap sequences yielded per epoch (0 = all). Handy for smoke / debugging.
     max_sequences: int = 0
+    #: Game-first weighting guard: one chronological window per sampled game.
+    max_decisions_per_game: int = 0
 
 
 class StreamingArchetypeCorpus:
@@ -465,6 +504,7 @@ class StreamingArchetypeCorpus:
     def __init__(self, cfg: CorpusConfig) -> None:
         self.cfg = cfg
         self.jsonl_paths = [Path(p) for p in cfg.jsonl_paths]
+        self.last_scan_stats: dict[str, dict[str, Any]] = {}
         missing = [p for p in self.jsonl_paths if not p.is_file()]
         if missing:
             raise FileNotFoundError(f"corpus JSONL not found: {missing}")
@@ -533,22 +573,42 @@ class StreamingArchetypeCorpus:
     # ----- streaming -----
 
     def _raw_sequences(self, split: str) -> Iterator[GameSequence]:
-        for path in self.jsonl_paths:
-            for record in dataset_mod.iter_jsonl(path):
-                ep = str(record.get("episode_id", ""))
-                seat = int(record.get("seat", 0))
-                if split in ("train", "val") and self._split_of(ep, seat) != split:
-                    continue
-                seq = dataset_mod.record_to_sequence(
-                    record,
-                    max_context=self.max_ctx,
-                    verify_info_set=self.cfg.verify_info_set,
-                )
-                if seq is None:
-                    continue
-                if not seq.source:
-                    seq.source = path.name
-                yield seq
+        stats: dict[str, Any] = {
+            "records_scanned": 0,
+            "split_records": 0,
+            "records_kept": 0,
+            "records_dropped": 0,
+            "drop_reasons": {},
+        }
+        try:
+            for path in self.jsonl_paths:
+                for record in dataset_mod.iter_jsonl(path):
+                    stats["records_scanned"] += 1
+                    ep = str(record.get("episode_id", ""))
+                    seat = int(record.get("seat", 0))
+                    if (
+                        split in ("train", "val")
+                        and self._split_of(ep, seat) != split
+                    ):
+                        continue
+                    stats["split_records"] += 1
+                    seq, reason, _details = dataset_mod.convert_record(
+                        record,
+                        max_context=self.max_ctx,
+                        verify_info_set=self.cfg.verify_info_set,
+                    )
+                    if seq is None:
+                        stats["records_dropped"] += 1
+                        key = reason or "unknown"
+                        reasons = stats["drop_reasons"]
+                        reasons[key] = reasons.get(key, 0) + 1
+                        continue
+                    stats["records_kept"] += 1
+                    if not seq.source:
+                        seq.source = path.name
+                    yield seq
+        finally:
+            self.last_scan_stats[split] = stats
 
     def iter_sequences(
         self,
@@ -570,6 +630,14 @@ class StreamingArchetypeCorpus:
             nonlocal n_yielded
             if cap and n_yielded >= cap:
                 return None
+            if self.cfg.max_decisions_per_game > 0:
+                from .iteration_contract import cap_game_decisions
+
+                seq = cap_game_decisions(
+                    seq,
+                    max_decisions=self.cfg.max_decisions_per_game,
+                    rng=rng,
+                )
             n_yielded += 1
             return seq
 
@@ -623,17 +691,25 @@ class CoreTrainConfig:
     lr: float = 3e-4
     weight_decay: float = 1e-4
     epochs: int = 20
-    games_per_batch: int = 4
-    max_decisions_per_batch: int = 256
+    #: Bold defaults from the 3080 Ti batch profile (core kernel's home card).
+    #: The train_core_kernel.py --gpu-profile presets still override per card.
+    games_per_batch: int = config.batch_profile("3080ti").games_per_batch
+    max_decisions_per_batch: int = config.batch_profile("3080ti").max_decisions_per_batch
     early_stop_patience: int = 5
     #: Prefer ≥1.0 so the shared value head is MCTS-ready for specialists.
     value_loss_weight: float = 1.5
     aux_loss_weight: float = 0.1
+    opp_hand_loss_weight: float = 0.2
+    opp_remainder_loss_weight: float = 0.15
+    #: Scope B (Blackwell Hammer lethal/prize-race) — **always 0 on core**.
+    #: core_kernel must not require strategy-head labels or non-zero weights.
+    lethal_threat_loss_weight: float = 0.0
+    prize_race_loss_weight: float = 0.0
     grad_clip: float = 1.0
     amp: bool = True
     #: AMP compute dtype: ``bf16`` (Ampere+; no loss scaler needed, fp32 range)
-    #: or ``fp16`` (uses GradScaler) or ``fp32`` (amp off).
-    amp_dtype: str = "bf16"
+    #: or ``fp16`` (uses GradScaler) or ``fp32`` (amp off). Default from profile.
+    amp_dtype: str = config.HARDWARE.amp_dtype
     #: Optimizer step every N streamed micro-batches (effective batch = N × batch).
     grad_accum_steps: int = 1
     seed: int = 0
@@ -661,8 +737,13 @@ class BatchMetrics:
     policy_loss: float = 0.0
     value_loss: float = 0.0
     aux_loss: float = 0.0
+    opp_hand_loss: float = 0.0
+    opp_remainder_loss: float = 0.0
     total_loss: float = 0.0
     policy_acc: float = 0.0
+    policy_kl: float = 0.0
+    target_value_mean: float = 0.0
+    value_pred_mean: float = 0.0
     n_decisions: int = 0
     n_games: int = 0
 
@@ -673,95 +754,275 @@ def core_sequence_losses(
     *,
     value_weight: float = 1.0,
     aux_weight: float = 0.1,
+    opp_hand_weight: float = 0.2,
+    opp_remainder_weight: float = 0.15,
     condition: bool = True,
 ) -> tuple[Tensor, BatchMetrics]:
-    """Whole-game forward + BC/value/aux losses for one sequence (conditioned).
+    """Causal history-conditioned loss for one core sequence."""
+    return core_batch_losses(
+        kernel,
+        [seq],
+        value_weight=value_weight,
+        aux_weight=aux_weight,
+        opp_hand_weight=opp_hand_weight,
+        opp_remainder_weight=opp_remainder_weight,
+        condition=condition,
+    )
 
-    Mirrors ``poke_bot.train.sequence_losses`` but routes the CLS through the
-    archetype-conditioned pooling so the trunk learns a shared representation
-    plus per-archetype offsets.
+
+def core_batch_losses(
+    kernel: CoreKernel,
+    seqs: Sequence[GameSequence],
+    *,
+    value_weight: float = 1.0,
+    aux_weight: float = 0.1,
+    opp_hand_weight: float = 0.2,
+    opp_remainder_weight: float = 0.15,
+    condition: bool = True,
+) -> tuple[Tensor, BatchMetrics]:
+    """Vectorized causal loss over complete game histories.
+
+    Spatial encoding and option decoding are batched across games. Each game's
+    temporal path remains causal, includes the previous realized action, and
+    supervises every ordered factorized policy stage. This matches deployment
+    and replaces the old one-forward-per-game bottleneck.
     """
     net = kernel.net
-    decisions = seq.decisions
     device = next(kernel.parameters()).device
-    if not decisions:
-        return torch.zeros((), device=device), BatchMetrics()
+    games = [game for game in seqs if game.decisions]
+    if not games:
+        return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
 
-    boards = [d.board for d in decisions]
-    spatial = net.encode_board(boards)  # [T, 24, D]
-    arch_idx = archetype_index(seq.archetype) if condition else 0
-    cls = kernel.pool_cls_conditioned(spatial, arch_idx).unsqueeze(0)  # [1, T, D]
-    states, _ = net.temporal_encode(cls, None, append=False, return_all=True)
-    target_value = torch.tensor(float(seq.value), device=states.device, dtype=states.dtype)
-
-    policy_losses: list[Tensor] = []
-    value_losses: list[Tensor] = []
-    correct = 0
-    n_valid = 0
-
-    for t, d in enumerate(decisions):
-        state_t = states[0, t]  # [D]
-        spatial_t = spatial[t : t + 1]  # [1, 24, D]
-        n_opt = d.options.num_words
-        if n_opt <= 0:
-            continue
-        logits = net.decode_options(
-            d.options, spatial_t, state_t.unsqueeze(0), n_options=[n_opt]
-        )[0, :n_opt]
-
-        if (
-            seq.policy_targets is not None
-            and t < len(seq.policy_targets)
-            and seq.policy_targets[t] is not None
-        ):
-            target = torch.tensor(
-                seq.policy_targets[t][:n_opt], device=logits.device, dtype=logits.dtype
-            )
-            if target.numel() != n_opt:
-                continue
-            target = target / target.sum().clamp_min(1e-8)
-            log_p = F.log_softmax(logits, dim=-1)
-            policy_losses.append(-(target * log_p).sum())
-            correct += int(int(logits.argmax().item()) == int(target.argmax().item()))
-        else:
-            idx = int(d.action_combo_index)
-            if idx < 0 or idx >= n_opt:
-                continue
-            policy_losses.append(
-                F.cross_entropy(logits.unsqueeze(0), torch.tensor([idx], device=logits.device))
-            )
-            correct += int(int(logits.argmax().item()) == idx)
-
-        value_pred = torch.tanh(net.value_head(state_t)).squeeze()
-        value_losses.append(F.smooth_l1_loss(value_pred, target_value))
-        n_valid += 1
-
-    if n_valid == 0:
-        return torch.zeros((), device=states.device, requires_grad=True), BatchMetrics(n_games=1)
-
-    p_loss = torch.stack(policy_losses).mean()
-    v_loss = torch.stack(value_losses).mean()
-    aux_loss = torch.zeros((), device=states.device)
-    if aux_weight > 0:
-        aux_logits = net.aux_head(states[0, -1])
-        label = torch.tensor(
-            [_aux_archetype_label(seq.opp_archetype, kernel.aux_archetype_classes)],
-            device=aux_logits.device,
-            dtype=torch.long,
-        )
-        aux_loss = F.cross_entropy(aux_logits.unsqueeze(0), label)
-
-    total = p_loss + value_weight * v_loss + aux_weight * aux_loss
-    metrics = BatchMetrics(
-        policy_loss=float(p_loss.detach().item()),
-        value_loss=float(v_loss.detach().item()),
-        aux_loss=float(aux_loss.detach().item()),
-        total_loss=float(total.detach().item()),
-        policy_acc=correct / max(n_valid, 1),
-        n_decisions=n_valid,
-        n_games=1,
+    spatial_all = net.encode_board(
+        [decision.board for game in games for decision in game.decisions]
     )
-    return total, metrics
+    valid_spatial: list[Tensor] = []
+    valid_states: list[Tensor] = []
+    valid_options = []
+    valid_n: list[int] = []
+    soft_targets: list[Optional[list[float]]] = []
+    hard_indices: list[int] = []
+    value_targets: list[float] = []
+    aux_rows: list[int] = []
+    aux_labels: list[int] = []
+    decision_aux: list[dict] = []
+    spatial_offset = 0
+
+    for game in games:
+        length = len(game.decisions)
+        game_spatial = spatial_all[spatial_offset : spatial_offset + length]
+        spatial_offset += length
+        offset = None
+        if condition:
+            offset = (
+                kernel.condition_scale
+                * kernel.archetype_embed.weight[archetype_index(game.archetype)]
+            )
+        if net.decision_context == "history":
+            previous_actions = [None] + [
+                decision.action_token for decision in game.decisions[:-1]
+            ]
+            tokens = net.history_tokens(game_spatial, previous_actions)
+            if offset is not None:
+                tokens = tokens + offset
+            game_states, _ = net.temporal_encode(
+                tokens.unsqueeze(0), append=False, return_all=True
+            )
+            game_states = game_states.squeeze(0)
+        else:
+            tokens = net.pool_cls(game_spatial)
+            if offset is not None:
+                tokens = tokens + offset
+            game_states, _ = net.temporal_encode(
+                tokens.unsqueeze(1), append=False, return_all=True
+            )
+            game_states = game_states.squeeze(1)
+
+        last_row: Optional[int] = None
+        for timestep, decision in enumerate(game.decisions):
+            stages = decision.policy_stages or [decision]
+            target_stages = (
+                game.factorized_policy_targets[timestep]
+                if game.factorized_policy_targets is not None
+                and timestep < len(game.factorized_policy_targets)
+                and game.factorized_policy_targets[timestep] is not None
+                else None
+            )
+            for stage_i, stage in enumerate(stages):
+                options = stage.options
+                combos = getattr(stage, "action_combos", decision.action_combos)
+                target_index = int(
+                    getattr(stage, "target_index", decision.action_combo_index)
+                )
+                n_options = options.num_words
+                if n_options <= 0:
+                    continue
+                soft: Optional[list[float]] = None
+                if target_stages is not None and stage_i < len(target_stages):
+                    row = dict(target_stages[stage_i] or {})
+                    recorded = [
+                        list(combo) for combo in (row.get("action_combos") or [])
+                    ]
+                    if recorded and recorded != combos:
+                        raise ValueError(
+                            "factorized target/action candidate ordering mismatch"
+                        )
+                    candidate = [float(x) for x in (row.get("policy") or [])]
+                    if len(candidate) != n_options or sum(candidate) <= 0:
+                        raise ValueError("invalid factorized soft policy target")
+                    soft = candidate
+                    target_index = int(
+                        row.get("selected_index", target_index)
+                    )
+                elif (
+                    not decision.policy_stages
+                    and game.policy_targets is not None
+                    and timestep < len(game.policy_targets)
+                    and game.policy_targets[timestep] is not None
+                ):
+                    candidate = [
+                        float(x)
+                        for x in game.policy_targets[timestep][:n_options]
+                    ]
+                    if len(candidate) != n_options or sum(candidate) <= 0:
+                        continue
+                    soft = candidate
+                    target_index = max(
+                        range(n_options), key=lambda idx: candidate[idx]
+                    )
+                if target_index < 0 or target_index >= n_options:
+                    continue
+                valid_spatial.append(game_spatial[timestep])
+                valid_states.append(game_states[timestep])
+                valid_options.append(options)
+                valid_n.append(n_options)
+                soft_targets.append(soft)
+                hard_indices.append(target_index)
+                value_targets.append(float(game.value))
+                decision_aux.append(dict(decision.aux_labels or {}))
+                last_row = len(valid_options) - 1
+
+        label = _aux_archetype_label(
+            game.opp_archetype, kernel.aux_archetype_classes
+        )
+        if last_row is not None and label is not None:
+            aux_rows.append(last_row)
+            aux_labels.append(label)
+
+    if not valid_options:
+        return (
+            torch.zeros((), device=device, requires_grad=True),
+            BatchMetrics(n_games=len(games)),
+        )
+
+    state_all = torch.stack(valid_states)
+    spatial_current = torch.stack(valid_spatial)
+    logits = net.decode_options(
+        valid_options, spatial_current, state_all, n_options=valid_n
+    )
+    value_pred = torch.tanh(net.value_head(state_all)).squeeze(-1)
+    target_index_t = torch.tensor(
+        hard_indices, device=device, dtype=torch.long
+    )
+    target = torch.zeros_like(logits)
+    target[torch.arange(logits.size(0), device=device), target_index_t] = 1.0
+    for row_i, soft in enumerate(soft_targets):
+        if soft is None:
+            continue
+        row = torch.tensor(soft, device=device, dtype=logits.dtype)
+        target[row_i].zero_()
+        target[row_i, : row.numel()] = row / row.sum().clamp_min(1e-8)
+
+    log_policy = torch.nan_to_num(
+        F.log_softmax(logits, dim=-1), neginf=0.0
+    )
+    policy_loss = -(target * log_policy).sum(dim=1).mean()
+    target_log = torch.where(
+        target > 0,
+        target.clamp_min(1e-12).log(),
+        torch.zeros_like(target),
+    )
+    policy_kl = (
+        policy_loss - (-(target * target_log).sum(dim=1).mean())
+    ).clamp_min(0.0)
+    value_target = torch.tensor(
+        value_targets, device=device, dtype=value_pred.dtype
+    )
+    value_loss = F.smooth_l1_loss(value_pred, value_target)
+    belief = net.belief_aux_logits(state_all)
+    aux_loss = torch.zeros((), device=device)
+    if aux_weight > 0 and aux_rows:
+        aux_logits = belief["aux_logits"].index_select(
+            0, torch.tensor(aux_rows, device=device, dtype=torch.long)
+        )
+        aux_loss = F.cross_entropy(
+            aux_logits,
+            torch.tensor(aux_labels, device=device, dtype=torch.long),
+        )
+    from .train import (
+        belief_multihots_from_aux_labels,
+        masked_belief_card_bce,
+    )
+
+    card_vocab = int(
+        getattr(net, "belief_card_vocab", belief["opp_hand_logits"].size(-1))
+    )
+    hand_rows: list[Tensor] = []
+    rem_rows: list[Tensor] = []
+    hand_idx: list[int] = []
+    rem_idx: list[int] = []
+    for i, aux in enumerate(decision_aux):
+        hand_mh, rem_mh = belief_multihots_from_aux_labels(
+            aux, card_vocab, device=device
+        )
+        if hand_mh is not None:
+            hand_rows.append(hand_mh)
+            hand_idx.append(i)
+        if rem_mh is not None:
+            rem_rows.append(rem_mh)
+            rem_idx.append(i)
+    if hand_rows:
+        opp_hand_loss = F.binary_cross_entropy_with_logits(
+            belief["opp_hand_logits"].index_select(
+                0, torch.tensor(hand_idx, device=device, dtype=torch.long)
+            ),
+            torch.stack(hand_rows, dim=0),
+        )
+    else:
+        opp_hand_loss = masked_belief_card_bce(belief["opp_hand_logits"], None)
+    if rem_rows:
+        opp_remainder_loss = F.binary_cross_entropy_with_logits(
+            belief["opp_remainder_logits"].index_select(
+                0, torch.tensor(rem_idx, device=device, dtype=torch.long)
+            ),
+            torch.stack(rem_rows, dim=0),
+        )
+    else:
+        opp_remainder_loss = masked_belief_card_bce(
+            belief["opp_remainder_logits"], None
+        )
+    total = (
+        policy_loss
+        + value_weight * value_loss
+        + aux_weight * aux_loss
+        + float(opp_hand_weight) * opp_hand_loss
+        + float(opp_remainder_weight) * opp_remainder_loss
+    )
+    correct = int((logits.argmax(dim=1) == target_index_t).sum().item())
+    return total, BatchMetrics(
+        policy_loss=float(policy_loss.detach()),
+        value_loss=float(value_loss.detach()),
+        aux_loss=float(aux_loss.detach()),
+        opp_hand_loss=float(opp_hand_loss.detach()),
+        opp_remainder_loss=float(opp_remainder_loss.detach()),
+        total_loss=float(total.detach()),
+        policy_acc=correct / max(logits.size(0), 1),
+        policy_kl=float(policy_kl.detach()),
+        target_value_mean=float(value_target.detach().float().mean()),
+        value_pred_mean=float(value_pred.detach().float().mean()),
+        n_decisions=logits.size(0),
+        n_games=len(games),
+    )
 
 
 def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
@@ -779,8 +1040,13 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         policy_loss=wavg("policy_loss"),
         value_loss=wavg("value_loss"),
         aux_loss=wavg("aux_loss"),
+        opp_hand_loss=wavg("opp_hand_loss"),
+        opp_remainder_loss=wavg("opp_remainder_loss"),
         total_loss=wavg("total_loss"),
         policy_acc=wavg("policy_acc"),
+        policy_kl=wavg("policy_kl"),
+        target_value_mean=wavg("target_value_mean"),
+        value_pred_mean=wavg("value_pred_mean"),
         n_decisions=nd,
         n_games=ng,
     )
@@ -821,16 +1087,17 @@ def evaluate_core(
     val_iter = corpus.iter_sequences("val", epoch=epoch, shuffle=False)
     batches = _stream_batches(val_iter, cfg.games_per_batch, cfg.max_decisions_per_batch)
     n_batches = 0
-    for batch in tqdm(batches, desc=desc, leave=False, unit="batch"):
-        for seq in batch:
-            _, m = core_sequence_losses(
-                kernel,
-                seq,
-                value_weight=cfg.value_loss_weight,
-                aux_weight=cfg.aux_loss_weight,
-                condition=cfg.condition_archetype,
-            )
-            parts.append(m)
+    for batch in tqdm(batches, desc=desc, leave=False, unit="batch", file=sys.stderr, mininterval=0.5, ascii=True, dynamic_ncols=False):
+        _, metrics = core_batch_losses(
+            kernel,
+            batch,
+            value_weight=cfg.value_loss_weight,
+            aux_weight=cfg.aux_loss_weight,
+            opp_hand_weight=cfg.opp_hand_loss_weight,
+            opp_remainder_weight=cfg.opp_remainder_loss_weight,
+            condition=cfg.condition_archetype,
+        )
+        parts.append(metrics)
         n_batches += 1
         if cfg.max_val_batches and n_batches >= cfg.max_val_batches:
             break
@@ -857,13 +1124,26 @@ def train_core_kernel(
     device = device or device_mod.training_device(
         prefer_name=config.HARDWARE.train_gpu_name, allow_cpu=False
     )
+    config.apply_runtime_perf()  # TF32 / cuDNN benchmark / thread pins (idempotent).
+    # Unattended crash-safety: catch CUDA OOM, free cache, shrink batch, continue.
+    oom_guard = config.OomGuard()
     torch.manual_seed(tcfg.seed)
     random.seed(tcfg.seed)
 
     kernel = CoreKernel(cfg=cfg or config.MODEL, device=device)
-    optimizer = torch.optim.AdamW(
-        kernel.parameters(), lr=tcfg.lr, weight_decay=tcfg.weight_decay
-    )
+    optimizer_kwargs: dict[str, Any] = {
+        "lr": tcfg.lr,
+        "weight_decay": tcfg.weight_decay,
+    }
+    if device.type == "cuda":
+        optimizer_kwargs["fused"] = True
+    try:
+        optimizer = torch.optim.AdamW(kernel.parameters(), **optimizer_kwargs)
+        optimizer_fused = bool(optimizer_kwargs.get("fused"))
+    except (TypeError, RuntimeError):
+        optimizer_kwargs.pop("fused", None)
+        optimizer = torch.optim.AdamW(kernel.parameters(), **optimizer_kwargs)
+        optimizer_fused = False
     amp_dtype = resolve_amp_dtype(tcfg.amp_dtype)
     use_amp = bool(tcfg.amp and device.type == "cuda" and amp_dtype is not None)
     # GradScaler only needed for fp16; bf16 has fp32 dynamic range.
@@ -879,6 +1159,7 @@ def train_core_kernel(
     best_metric = float("inf")
     patience_left = tcfg.early_stop_patience
     history: list[dict[str, Any]] = []
+    epoch_complete = False
 
     mgr = checkpoint.CheckpointManager(run_name)
     resume_path = checkpoint.resolve_resume_path(run_name, resume)
@@ -897,12 +1178,20 @@ def train_core_kernel(
             scheduler.load_state_dict(ckpt["scheduler_state_dict"])
         checkpoint.restore_rng_state(ckpt.get("rng_state"))
         step = int(ckpt.get("step", 0))
-        start_epoch = int(ckpt.get("epoch", 0))
+        saved_epoch = int(ckpt.get("epoch", 0))
         if ckpt.get("best_metric") is not None:
             best_metric = float(ckpt["best_metric"])
         es = ckpt.get("early_stop_state") or {}
         patience_left = int(es.get("patience_left", patience_left))
-        history = list((ckpt.get("extra") or {}).get("history") or [])
+        extra = ckpt.get("extra") or {}
+        history = list(extra.get("history") or [])
+        completed = bool(
+            extra.get(
+                "epoch_complete",
+                history and int(history[-1].get("epoch", -1)) == saved_epoch,
+            )
+        )
+        start_epoch = saved_epoch + 1 if completed else saved_epoch
 
     def build_ckpt() -> dict[str, Any]:
         base = checkpoint.build_checkpoint(
@@ -917,7 +1206,12 @@ def train_core_kernel(
             model_config=kernel.cfg,
             archetype_id=archetypes.UNKNOWN,
             model_id=run_name,
-            extra={"history": history, "train_cfg": tcfg.__dict__},
+            extra={
+                "history": history,
+                "train_cfg": tcfg.__dict__,
+                "epoch_complete": epoch_complete,
+                "optimizer_fused": optimizer_fused,
+            },
         )
         base["is_core_kernel"] = True
         base["core_kernel_state_dict"] = kernel.state_dict()
@@ -935,16 +1229,24 @@ def train_core_kernel(
             initial=start_epoch,
             total=tcfg.epochs,
             unit="ep",
+            file=sys.stderr,
+            mininterval=0.5,
+            ascii=True,
+            dynamic_ncols=False,
         )
         for epoch in epoch_bar:
             cur_epoch = epoch
+            epoch_complete = False
+            epoch_t0 = time.perf_counter()
+            if device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(device)
             kernel.train()
             train_iter = corpus.iter_sequences("train", epoch=epoch, shuffle=True)
             batches = _stream_batches(
                 train_iter, tcfg.games_per_batch, tcfg.max_decisions_per_batch
             )
             epoch_parts: list[BatchMetrics] = []
-            batch_bar = tqdm(batches, desc=f"train ep{epoch}", leave=False, unit="batch")
+            batch_bar = tqdm(batches, desc=f"train ep{epoch}", leave=False, unit="batch", file=sys.stderr, mininterval=0.5, ascii=True, dynamic_ncols=False)
             micro = 0  # micro-batches since last optimizer step (grad accumulation)
             optimizer.zero_grad(set_to_none=True)
 
@@ -959,40 +1261,64 @@ def train_core_kernel(
                 step += 1
 
             for batch in batch_bar:
-                losses: list[Tensor] = []
-                metrics_parts: list[BatchMetrics] = []
-                with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                    for seq in batch:
-                        loss, m = core_sequence_losses(
-                            kernel,
-                            seq,
-                            value_weight=tcfg.value_loss_weight,
-                            aux_weight=tcfg.aux_loss_weight,
-                            condition=tcfg.condition_archetype,
-                        )
-                        losses.append(loss)
-                        metrics_parts.append(m)
-                    if not losses:
-                        continue
-                    total = torch.stack(losses).mean() / accum
-
-                scaler.scale(total).backward()
-                micro += 1
-                if micro % accum == 0:
-                    _optim_step()
-                    saved = mgr.maybe_save(step, build_ckpt)
-                    if saved:
+                # OOM-safe forward/backward: recursively queue BOTH halves. A
+                # previous implementation retried only the left prefix and
+                # silently discarded the right half of every OOMing batch.
+                pending: list[list[GameSequence]] = [list(batch)]
+                batch_metrics: list[BatchMetrics] = []
+                while pending:
+                    sub = pending.pop(0)
+                    try:
+                        with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
+                            loss, metrics = core_batch_losses(
+                                kernel,
+                                sub,
+                                value_weight=tcfg.value_loss_weight,
+                                aux_weight=tcfg.aux_loss_weight,
+                                opp_hand_weight=tcfg.opp_hand_loss_weight,
+                                opp_remainder_weight=tcfg.opp_remainder_loss_weight,
+                                condition=tcfg.condition_archetype,
+                            )
+                            if metrics.n_decisions <= 0:
+                                continue
+                            loss = loss / accum
+                        scaler.scale(loss).backward()
+                    except Exception as exc:  # noqa: BLE001
+                        if not oom_guard.handle_oom(exc):
+                            raise
+                        optimizer.zero_grad(set_to_none=True)
+                        if len(sub) <= 1:
+                            raise
+                        mid = len(sub) // 2
+                        pending[0:0] = [sub[:mid], sub[mid:]]
                         tqdm.write(
-                            f"[checkpoint] step={step} saved → "
-                            + ", ".join(f"{k}={v.name}" for k, v in saved.items())
+                            f"[oom-guard] CUDA OOM: emptied cache, retrying batch "
+                            f"{len(sub)}→{mid}+{len(sub)-mid} seqs "
+                            f"(scale={oom_guard.scale:.3f}, "
+                            f"events={oom_guard.oom_events})"
                         )
-
-                bm = _merge_metrics(metrics_parts)
+                        continue
+                    batch_metrics.append(metrics)
+                    micro += 1
+                    if micro % accum == 0:
+                        _optim_step()
+                        saved = mgr.maybe_save(step, build_ckpt)
+                        if saved:
+                            tqdm.write(
+                                f"[checkpoint] step={step} saved → "
+                                + ", ".join(f"{k}={v.name}" for k, v in saved.items())
+                            )
+                if not batch_metrics:
+                    continue
+                bm = _merge_metrics(batch_metrics)
                 epoch_parts.append(bm)
                 batch_bar.set_postfix(
                     loss=f"{bm.total_loss:.3f}",
                     p=f"{bm.policy_loss:.3f}",
                     v=f"{bm.value_loss:.3f}",
+                    aux=f"{bm.aux_loss:.3f}",
+                    hand=f"{bm.opp_hand_loss:.3f}",
+                    rem=f"{bm.opp_remainder_loss:.3f}",
                     acc=f"{bm.policy_acc:.2%}",
                     step=step,
                 )
@@ -1002,19 +1328,71 @@ def train_core_kernel(
                 _optim_step()
 
             train_m = _merge_metrics(epoch_parts)
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            train_seconds = time.perf_counter() - epoch_t0
+            val_t0 = time.perf_counter()
             val_m = evaluate_core(kernel, corpus, cfg=tcfg, epoch=epoch, desc=f"val ep{epoch}")
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            val_seconds = time.perf_counter() - val_t0
+            epoch_seconds = time.perf_counter() - epoch_t0
+            peak_alloc_gb = 0.0
+            peak_reserved_gb = 0.0
+            if device.type == "cuda":
+                peak_alloc_gb = torch.cuda.max_memory_allocated(device) / 1e9
+                peak_reserved_gb = torch.cuda.max_memory_reserved(device) / 1e9
             metric = val_m.total_loss if val_m.n_decisions else train_m.total_loss
 
             scheduler.step()
+            epoch_complete = True
+            timing = {
+                "train_seconds": train_seconds,
+                "validation_seconds": val_seconds,
+                "epoch_seconds": epoch_seconds,
+                "train_batches": len(epoch_parts),
+                "train_games_per_s": train_m.n_games / max(train_seconds, 1e-9),
+                "train_decisions_per_s": (
+                    train_m.n_decisions / max(train_seconds, 1e-9)
+                ),
+                "peak_allocated_gb": peak_alloc_gb,
+                "peak_reserved_gb": peak_reserved_gb,
+            }
             history.append(
                 {
                     "epoch": epoch,
                     "step": step,
                     "train": train_m.__dict__,
                     "val": val_m.__dict__,
+                    "timing": timing,
                     "lr": optimizer.param_groups[0]["lr"],
                     "t": time.time(),
                 }
+            )
+            train_scan = corpus.last_scan_stats.get("train", {})
+            val_scan = corpus.last_scan_stats.get("val", {})
+            tqdm.write(
+                "[core-kernel][train-epoch] "
+                f"epoch={epoch} games={train_m.n_games} "
+                f"examples={train_m.n_decisions} batches={len(epoch_parts)} "
+                f"train_seconds={train_seconds:.3f} "
+                f"games_per_s={timing['train_games_per_s']:.2f} "
+                f"examples_per_s={timing['train_decisions_per_s']:.1f} "
+                f"train_loss={train_m.total_loss:.4f} "
+                f"validation_games={val_m.n_games} "
+                f"validation_examples={val_m.n_decisions} "
+                f"validation_seconds={val_seconds:.3f} "
+                f"validation_loss={metric:.4f} "
+                f"epoch_total_seconds={epoch_seconds:.3f} "
+                f"gpu_peak_allocated_gb={peak_alloc_gb:.2f} "
+                f"gpu_peak_reserved_gb={peak_reserved_gb:.2f} "
+                f"amp={tcfg.amp_dtype if use_amp else 'fp32'} "
+                f"optimizer_fused={optimizer_fused} "
+                f"source_train_records={train_scan.get('split_records', 0)} "
+                f"source_train_dropped={train_scan.get('records_dropped', 0)} "
+                f"source_val_records={val_scan.get('split_records', 0)} "
+                f"source_val_dropped={val_scan.get('records_dropped', 0)} "
+                f"drop_reasons={train_scan.get('drop_reasons', {})}"
             )
 
             is_best = metric < best_metric - 1e-5

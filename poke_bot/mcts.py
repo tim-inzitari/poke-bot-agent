@@ -24,7 +24,7 @@ import torch
 
 from . import cg_env, config, features
 from .batched_infer import BatchedLeafServer, LeafPacket, forward_leaf_batch
-from .model import TemporalCabtTransformer, TemporalKVCache
+from .model import TemporalCabtTransformer
 from .search_targets import SearchTarget, build_search_target, select_by_visits
 
 
@@ -47,6 +47,12 @@ class Node:
     value: float = 0.0  # leaf/network value from root seat perspective
     is_terminal: bool = False
     evaluated: bool = False
+    network_evaluated: bool = False
+    depth: int = 0
+
+    def __post_init__(self) -> None:
+        if self.parent is not None:
+            self.depth = self.parent.depth + 1
 
     def q(self) -> float:
         # Treat pending virtual loss as visits with value 0 so siblings diversify.
@@ -75,53 +81,88 @@ class GameClock:
     """Shared per-game think budget (~600s)."""
 
     total_s: float = field(default_factory=lambda: config.SEARCH.game_time_budget_s)
+    reserve_s: float = 30.0
+    expected_search_decisions: int = 64
     remaining_s: float = field(init=False)
+    decisions_used: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         self.remaining_s = float(self.total_s)
 
     def consume(self, used: float) -> None:
         self.remaining_s = max(0.0, self.remaining_s - used)
+        self.decisions_used += 1
+
+    def next_move_budget(self, configured_s: float) -> float:
+        """Allocate time without allowing repeated moves to exhaust watchdog."""
+        available = max(0.0, self.remaining_s - max(0.0, self.reserve_s))
+        remaining_moves = max(
+            8, int(self.expected_search_decisions) - self.decisions_used
+        )
+        fair_share = available / remaining_moves
+        return max(0.05, min(float(configured_s), fair_share))
 
 
 class LeafEvaluator:
-    """Info-set leaf evaluation; batches when several leaves share no KV dependency."""
+    """Info-set leaf evaluation with simulated-actor deck routing."""
 
     def __init__(
         self,
-        model: TemporalCabtTransformer,
-        your_deck: list[int],
+        model: Optional[TemporalCabtTransformer],
+        root_deck: list[int],
+        opponent_deck: list[int],
         root_seat: int,
         device: Optional[torch.device] = None,
         batch_size: Optional[int] = None,
+        leaf_backend=None,
     ):
         self.model = model
-        self.your_deck = your_deck
+        self.root_deck = list(root_deck)
+        self.opponent_deck = list(opponent_deck)
         self.root_seat = root_seat
-        self.device = device or next(model.parameters()).device
-        self.batch_size = batch_size or config.SEARCH.leaf_batch_size
-        self.model.eval()
-        self._server = BatchedLeafServer(
-            model, batch_size=self.batch_size
-        )
+        self.leaf_backend = leaf_backend
+        if device is not None:
+            self.device = device
+        elif model is not None:
+            self.device = next(model.parameters()).device
+        else:
+            self.device = torch.device("cpu")
+        # GPU-sized leaf batch (512 Blackwell / 256 3080 Ti) unless caller pins one.
+        self.batch_size = batch_size or config.leaf_batch_for_device(self.device)
+        # ``model`` may be None in remote-server mode (the CPU worker holds no net
+        # — leaf forwards run on the persistent GPU server). Then this evaluator
+        # is used only as a deck/root-seat holder for packet building.
+        if model is not None:
+            self.model.eval()
+            self._server = BatchedLeafServer(model, batch_size=self.batch_size)
+        else:
+            self._server = None
 
     @torch.no_grad()
     def evaluate_one(
         self,
         obs,
-        kv_cache: Optional[TemporalKVCache] = None,
-        *,
-        append_cache: bool = False,
-    ) -> tuple[float, list[float], list[list[int]], Optional[TemporalKVCache]]:
-        """Return ``(value_root_seat, priors, combos, new_cache)``.
+    ) -> tuple[float, list[float], list[list[int]]]:
+        """Return ``(value_root_seat, priors, combos)`` for one leaf."""
+        packet = self.packet(obs)
+        if self.leaf_backend is not None:
+            out = self.leaf_backend([packet])[0]
+        else:
+            out = forward_leaf_batch(self.model, [packet])[0]
+        return out.value, out.priors, out.combos
 
-        ``kv_cache`` is accepted for API compatibility; batched leaf path does
-        not update KV (search leaves are independent of the live-game cache).
-        """
-        del kv_cache, append_cache
-        packet = LeafPacket(obs=obs, your_deck=self.your_deck, root_seat=self.root_seat)
-        out = forward_leaf_batch(self.model, [packet])[0]
-        return out.value, out.priors, out.combos, None
+    def deck_for(self, obs) -> list[int]:
+        obs_obj = cg_env.to_observation(obs) if isinstance(obs, dict) else obs
+        current = getattr(obs_obj, "current", None)
+        actor = current.yourIndex if current is not None else self.root_seat
+        return self.root_deck if actor == self.root_seat else self.opponent_deck
+
+    def packet(self, obs) -> LeafPacket:
+        return LeafPacket(
+            obs=obs,
+            your_deck=self.deck_for(obs),
+            root_seat=self.root_seat,
+        )
 
     @torch.no_grad()
     def evaluate_batch(
@@ -131,11 +172,13 @@ class LeafEvaluator:
         """Batched forward when several leaves share no KV dependency."""
         if not obs_list:
             return []
-        packets = [
-            LeafPacket(obs=o, your_deck=self.your_deck, root_seat=self.root_seat)
-            for o in obs_list
-        ]
-        outs = self._server.evaluate_now(packets)
+        packets = [self.packet(o) for o in obs_list]
+        if self.leaf_backend is not None:
+            outs = self.leaf_backend(packets)
+        else:
+            if self._server is None:
+                raise RuntimeError("leaf evaluation requires a model or remote backend")
+            outs = self._server.evaluate_now(packets)
         return [(o.value, o.priors, o.combos) for o in outs]
 
 
@@ -171,28 +214,71 @@ class _PendingLeaf:
 
 
 class MCTS:
-    """Time-budgeted AlphaZero MCTS over one decision (GPU-batched leaves)."""
+    """Experimental single-world search; never trusted promotion evidence."""
 
     def __init__(
         self,
-        model: TemporalCabtTransformer,
+        model: Optional[TemporalCabtTransformer],
         your_deck: list[int],
         *,
+        opponent_deck_guess: Optional[list[int]] = None,
         device: Optional[torch.device] = None,
         puct_c: Optional[float] = None,
-        opponent_deck_guess: Optional[list[int]] = None,
         leaf_batch_size: Optional[int] = None,
+        leaf_backend=None,
+        oracle_mode: bool = False,
     ):
+        if not oracle_mode:
+            raise ValueError(
+                "single-world MCTS is unsound for trusted imperfect-information "
+                "play; pass oracle_mode=True only for labeled diagnostics"
+            )
         self.model = model
-        self.your_deck = your_deck
-        self.opponent_deck_guess = opponent_deck_guess or your_deck
-        self.device = device or next(model.parameters()).device
+        self.your_deck = list(your_deck)
+        self.opponent_deck = list(
+            opponent_deck_guess if opponent_deck_guess is not None else your_deck
+        )
+        if device is not None:
+            self.device = device
+        elif model is not None:
+            self.device = next(model.parameters()).device
+        else:
+            self.device = torch.device("cpu")
         self.puct_c = puct_c if puct_c is not None else config.SEARCH.puct_c
+        # GPU-sized leaf batch from the hardware profile (device-aware) so search
+        # saturates whichever card it runs on; caller override still wins.
         self.leaf_batch_size = (
             leaf_batch_size
             if leaf_batch_size is not None
-            else config.SEARCH.leaf_batch_size
+            else config.leaf_batch_for_device(self.device)
         )
+        # Leaf network eval backend: default = local forward on ``model``; when a
+        # remote backend is supplied (persistent GPU server), the CPU worker
+        # ships featurized leaves to it instead of running the net locally.
+        if leaf_backend is not None:
+            self.leaf_eval = leaf_backend
+        else:
+            self.leaf_eval = lambda pkts: forward_leaf_batch(self.model, pkts)
+        self.leaf_backend = leaf_backend
+
+    def _telemetry_mark(self):
+        marker = getattr(self.leaf_eval, "telemetry_mark", None)
+        return marker() if callable(marker) else None
+
+    def _telemetry_since(self, marker) -> dict:
+        summary = getattr(self.leaf_eval, "telemetry_since", None)
+        if marker is None or not callable(summary):
+            return {
+                "remote_requests": 0,
+                "remote_leaves": 0,
+                "queue_wait_ms_mean": 0.0,
+                "queue_wait_ms_p95": 0.0,
+                "inference_batch_size_mean": 1.0,
+                "inference_batch_size_p95": 1.0,
+                "server_inference_ms_mean": 0.0,
+                "client_roundtrip_ms_mean": 0.0,
+            }
+        return dict(summary(marker))
 
     def _terminal_value(self, obs, root_seat: int) -> Optional[float]:
         state = obs.current if hasattr(obs, "current") else None
@@ -215,6 +301,7 @@ class MCTS:
     ) -> None:
         node.value = value
         node.evaluated = True
+        node.network_evaluated = True
         node.backprop(value)
         for combo, prior in zip(combos, priors):
             node.children.append(Child(select=list(combo), prior=float(prior)))
@@ -259,12 +346,26 @@ class MCTS:
             edge.virtual_loss = max(0, edge.virtual_loss - 1)
         return node
 
-    def _select_child(self, node: Node) -> Child:
+    @staticmethod
+    def _actor_seat(node: Node) -> Optional[int]:
+        obs = getattr(node.state, "observation", None)
+        current = getattr(obs, "current", None)
+        if current is None and isinstance(obs, dict):
+            current = obs.get("current")
+        if isinstance(current, dict):
+            return int(current.get("yourIndex", -1))
+        if current is not None:
+            return int(current.yourIndex)
+        return None
+
+    def _select_child(self, node: Node, root_seat: int) -> Child:
         best: Optional[Child] = None
         best_score = -1e18
         # Effective visit includes virtual losses on edges.
         parent_visit = node.visit + sum(c.virtual_loss for c in node.children)
         c_puct = self.puct_c * math.sqrt(max(parent_visit, 1))
+        actor = self._actor_seat(node)
+        utility_sign = 1.0 if actor is None or actor == root_seat else -1.0
         for child in node.children:
             if child.node is None:
                 q = 0.0
@@ -273,7 +374,7 @@ class MCTS:
                 q = child.node.q()
                 visit = child.node.visit + child.virtual_loss
             u = c_puct * child.prior / (1 + visit)
-            score = q + u
+            score = utility_sign * q + u
             if score > best_score:
                 best_score = score
                 best = child
@@ -290,7 +391,7 @@ class MCTS:
             if current.is_terminal or not current.children:
                 current.backprop(current.value)
                 return current, None
-            path_child = self._select_child(current)
+            path_child = self._select_child(current, root_seat)
             if path_child.node is None:
                 path_child.virtual_loss += 1
                 path_edges.append(path_child)
@@ -325,15 +426,8 @@ class MCTS:
         """Evaluate pending leaves in one GPU batch; return materialized nodes."""
         if not pending_list:
             return []
-        packets = [
-            LeafPacket(
-                obs=p.search_state.observation,
-                your_deck=evaluator.your_deck,
-                root_seat=evaluator.root_seat,
-            )
-            for p in pending_list
-        ]
-        outs = forward_leaf_batch(self.model, packets)
+        packets = [evaluator.packet(p.search_state.observation) for p in pending_list]
+        outs = self.leaf_eval(packets)
         nodes: list[Node] = []
         for pend, pkt in zip(pending_list, outs):
             nodes.append(self._materialize_pending(pend, pkt))
@@ -365,18 +459,26 @@ class MCTS:
         evaluator = LeafEvaluator(
             self.model,
             self.your_deck,
+            self.opponent_deck,
             root_seat,
             device=self.device,
             batch_size=self.leaf_batch_size,
+            leaf_backend=self.leaf_backend,
         )
 
+        if config.SEARCH.leaf_batch_mcts:
+            raise RuntimeError(
+                "within-tree blind leaf batching is disabled; use the remote "
+                "leaf server to batch forwards across concurrent games"
+            )
+        use_batch = False
         search_inputs = cg_env.build_search_inputs(
-            obs_dict, self.your_deck, opponent_deck_guess=self.opponent_deck_guess
+            obs_dict, self.your_deck, opponent_deck_guess=self.opponent_deck
         )
         root_state = cg_env.search_begin(obs_dict, search_inputs)
-        use_batch = config.SEARCH.leaf_batch_mcts and self.leaf_batch_size > 1
 
         try:
+            telemetry_marker = self._telemetry_mark()
             t0 = time.perf_counter()
             sims_run = 0
 
@@ -425,8 +527,8 @@ class MCTS:
                     root.value = term
                     root.backprop(term)
                 else:
-                    value, priors, combos, _ = evaluator.evaluate_one(
-                        root_state.observation, append_cache=False
+                    value, priors, combos = evaluator.evaluate_one(
+                        root_state.observation
                     )
                     self._apply_eval(root, value, priors, combos)
 
@@ -440,7 +542,7 @@ class MCTS:
                         if current.is_terminal or not current.children:
                             current.backprop(current.value)
                             break
-                        path_child = self._select_child(current)
+                        path_child = self._select_child(current, root_seat)
                         if path_child.node is None:
                             child_state = cg_env.search_step(
                                 current.state.searchId, path_child.select
@@ -455,8 +557,8 @@ class MCTS:
                                 child.value = term
                                 child.backprop(term)
                             else:
-                                value, priors, combos, _ = evaluator.evaluate_one(
-                                    child_state.observation, append_cache=False
+                                value, priors, combos = evaluator.evaluate_one(
+                                    child_state.observation
                                 )
                                 self._apply_eval(child, value, priors, combos)
                             path_child.node = child
@@ -470,6 +572,23 @@ class MCTS:
             elapsed = time.perf_counter() - t0
             if clock is not None:
                 clock.consume(elapsed)
+            if root.children and sims_plan > 0:
+                required = min(
+                    sims_plan,
+                    max(
+                        1,
+                        int(
+                            math.ceil(
+                                sims_plan * config.SEARCH.min_sim_completion_ratio
+                            )
+                        ),
+                    ),
+                )
+                if sims_run < required:
+                    raise RuntimeError(
+                        f"insufficient MCTS simulations: completed {sims_run}/"
+                        f"{sims_plan}, required {required}"
+                    )
 
             visits = [
                 (c.node.visit if c.node is not None else 0) for c in root.children
@@ -477,6 +596,8 @@ class MCTS:
             priors = [c.prior for c in root.children]
             combos = [c.select for c in root.children]
             root_value = root.q() if root.visit > 0 else root.value
+            tree_stats = self._tree_stats(root)
+            inference_stats = self._telemetry_since(telemetry_marker)
             target = build_search_target(
                 combos,
                 visits,
@@ -492,6 +613,21 @@ class MCTS:
                     "n_options": len(combos),
                     "leaf_batch_size": self.leaf_batch_size,
                     "leaf_batch_mcts": use_batch,
+                    "sims_per_s": sims_run / max(elapsed, 1e-9),
+                    **tree_stats,
+                    **inference_stats,
+                    "trusted": False,
+                    "search_semantics": "experimental_single_world_oracle",
+                    "belief_mode": "single_determinization",
+                    "chance_mode": (
+                        "simulator_rng_determinization_without_explicit_chance_nodes"
+                    ),
+                    "legal_combos_total": int(
+                        getattr(root_combos, "total_count", len(root_combos))
+                    ),
+                    "legal_combos_truncated": bool(
+                        getattr(root_combos, "truncated", False)
+                    ),
                 },
             )
             action = select_by_visits(combos, visits) if combos else []
@@ -507,6 +643,42 @@ class MCTS:
             select=action, target=target, sims_run=sims_run, elapsed_s=elapsed
         )
 
+    @staticmethod
+    def _tree_stats(root: Node) -> dict[str, float | int]:
+        seen: set[int] = set()
+        stack = [root]
+        max_depth = 0
+        depth_total = 0
+        expanded_nodes = 0
+        edge_total = 0
+        network_leaf_evaluations = 0
+        terminal_nodes = 0
+        while stack:
+            node = stack.pop()
+            ident = id(node)
+            if ident in seen:
+                continue
+            seen.add(ident)
+            max_depth = max(max_depth, node.depth)
+            depth_total += node.depth
+            if node.children:
+                expanded_nodes += 1
+                edge_total += len(node.children)
+            if node.network_evaluated:
+                network_leaf_evaluations += 1
+            if node.is_terminal:
+                terminal_nodes += 1
+            stack.extend(c.node for c in node.children if c.node is not None)
+        return {
+            "unique_nodes": len(seen),
+            "unique_expanded_nodes": expanded_nodes,
+            "max_depth": max_depth,
+            "mean_depth": depth_total / max(len(seen), 1),
+            "mean_branching": edge_total / max(expanded_nodes, 1),
+            "leaf_evaluations": network_leaf_evaluations,
+            "terminal_nodes": terminal_nodes,
+        }
+
 
 class MultiTreeMCTS:
     """Interleave PUCT across N independent roots; share one GPU leaf batch.
@@ -518,19 +690,25 @@ class MultiTreeMCTS:
 
     def __init__(
         self,
-        model: TemporalCabtTransformer,
+        model: Optional[TemporalCabtTransformer],
         your_deck: list[int],
         *,
+        opponent_deck_guess: Optional[list[int]] = None,
         device: Optional[torch.device] = None,
         leaf_batch_size: Optional[int] = None,
         puct_c: Optional[float] = None,
+        leaf_backend=None,
+        oracle_mode: bool = False,
     ):
         self.engine = MCTS(
             model,
             your_deck,
+            opponent_deck_guess=opponent_deck_guess,
             device=device,
             puct_c=puct_c,
             leaf_batch_size=leaf_batch_size,
+            leaf_backend=leaf_backend,
+            oracle_mode=oracle_mode,
         )
 
     def search_many(
@@ -563,6 +741,7 @@ class MultiTreeMCTS:
         move_budgets: list[float] = []
         sims_run = [0] * n
         t0 = time.perf_counter()
+        telemetry_marker = self.engine._telemetry_mark()
 
         # Begin all searches in one libcg session (multi searchId OK).
         for obs_dict in obs_dicts:
@@ -583,9 +762,11 @@ class MultiTreeMCTS:
         evaluator = LeafEvaluator(
             self.engine.model,
             self.engine.your_deck,
+            self.engine.opponent_deck,
             root_seats[0],  # per-tree seat applied when packing packets
             device=self.engine.device,
             batch_size=self.engine.leaf_batch_size,
+            leaf_backend=self.engine.leaf_backend,
         )
 
         try:
@@ -594,7 +775,7 @@ class MultiTreeMCTS:
                 si = cg_env.build_search_inputs(
                     obs_dict,
                     self.engine.your_deck,
-                    opponent_deck_guess=self.engine.opponent_deck_guess,
+                    opponent_deck_guess=self.engine.opponent_deck,
                 )
                 rs = cg_env.search_begin(obs_dict, si)
                 resolved, pending = self.engine._expand_terminal_or_pending(
@@ -608,18 +789,15 @@ class MultiTreeMCTS:
 
             # Batch-eval all non-terminal roots (fix root_seat per packet).
             if pending_roots:
-                packets = [
-                    LeafPacket(
-                        obs=p.search_state.observation,
-                        your_deck=self.engine.your_deck,
-                        root_seat=root_seats[j],
-                    )
-                    for j, p in enumerate(pending_roots)
-                ]
                 # Map pending_roots index → root slot (only unresolved).
                 unresolved_idx = [i for i, r in enumerate(roots) if r is None]
                 assert len(unresolved_idx) == len(pending_roots)
-                outs = forward_leaf_batch(self.engine.model, packets)
+                packets = []
+                for j, p in enumerate(pending_roots):
+                    slot = unresolved_idx[j]
+                    evaluator.root_seat = root_seats[slot]
+                    packets.append(evaluator.packet(p.search_state.observation))
+                outs = self.engine.leaf_eval(packets)
                 for j, pend in enumerate(pending_roots):
                     node = self.engine._materialize_pending(pend, outs[j])
                     roots[unresolved_idx[j]] = node
@@ -690,8 +868,17 @@ class MultiTreeMCTS:
                         "sims_run": sims_run[i],
                         "sims_planned": sims_plan[i],
                         "elapsed_s": elapsed,
+                        "sims_per_s": sims_run[i] / max(elapsed, 1e-9),
                         "multi_tree": True,
                         "n_trees": n,
+                        **self.engine._tree_stats(root),
+                        **self.engine._telemetry_since(telemetry_marker),
+                        "trusted": False,
+                        "search_semantics": "experimental_single_world_oracle",
+                        "belief_mode": "single_determinization",
+                        "chance_mode": (
+                            "simulator_rng_determinization_without_explicit_chance_nodes"
+                        ),
                     },
                 )
                 action = select_by_visits(combos, visits) if combos else []
@@ -720,15 +907,11 @@ class MultiTreeMCTS:
         root_seats: list[int],
         sims_run: list[int],
     ) -> None:
-        packets = [
-            LeafPacket(
-                obs=p.search_state.observation,
-                your_deck=self.engine.your_deck,
-                root_seat=root_seats[i],
-            )
-            for i, p in pending_buf
-        ]
-        outs = forward_leaf_batch(self.engine.model, packets)
+        packets = []
+        for i, p in pending_buf:
+            evaluator.root_seat = root_seats[i]
+            packets.append(evaluator.packet(p.search_state.observation))
+        outs = self.engine.leaf_eval(packets)
         for (i, pend), pkt in zip(pending_buf, outs):
             self.engine._materialize_pending(pend, pkt)
             sims_run[i] += 1
@@ -744,5 +927,5 @@ def run_mcts(
     clock: Optional[GameClock] = None,
 ) -> MCTSResult:
     """Convenience wrapper for a short search (smoke / greedy-budget calls)."""
-    engine = MCTS(model, your_deck, device=device)
+    engine = MCTS(model, your_deck, device=device, oracle_mode=True)
     return engine.search(obs_dict, max_sims=max_sims, clock=clock)

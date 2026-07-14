@@ -9,13 +9,18 @@ This is *additive* — it does not touch the per-archetype bootstrap flow.
 
 Device / dual-GPU
 -----------------
-Per the dual-GPU plan the RTX 3080 Ti handles specialist / side training while
-the Blackwell runs the primary Dragapult job. Pin with either::
+Per the dual-GPU plan the RTX 3080 Ti handles kernel / specialist training while
+the Blackwell runs the primary Dragapult job. This script forces
+``CUDA_DEVICE_ORDER=PCI_BUS_ID`` so torch indices match ``nvidia-smi`` (index 0 =
+3080 Ti), and ``--device auto`` pins to the 3080 Ti *by name*. Pin explicitly::
 
-    # by name (default auto → Blackwell), or explicit torch index:
-    python scripts/train_core_kernel.py --device cuda:0
-    # or isolate a GPU entirely (recommended when both GPUs are busy):
-    CUDA_VISIBLE_DEVICES=0 python scripts/train_core_kernel.py --device cuda
+    # default: auto-pins to the 3080 Ti by name
+    python scripts/train_core_kernel.py --gpu-profile 3080ti --device auto
+    # or isolate the 3080 Ti entirely (PCI order → index 0 = 3080 Ti):
+    CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \\
+        python scripts/train_core_kernel.py --device cuda
+    # NOTE: a bare CUDA_VISIBLE_DEVICES=0 (default torch order) selects the
+    # BLACKWELL, not the 3080 Ti — always set CUDA_DEVICE_ORDER=PCI_BUS_ID.
 
 Examples
 --------
@@ -23,12 +28,18 @@ Smoke test (build model, forward, save ckpt, warm-start a specialist)::
 
     /home/inzi/miniconda3/envs/poke-bot-agent/bin/python scripts/train_core_kernel.py --smoke
 
+Throughput / VRAM probe on the 3080 Ti (a handful of real steps)::
+
+    CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \\
+        /home/inzi/miniconda3/envs/poke-bot-agent/bin/python \\
+        scripts/train_core_kernel.py --probe --gpu-profile 3080ti --device cuda
+
 Full run (documented; do NOT launch while Phase 3-5 owns the GPUs)::
 
-    CUDA_VISIBLE_DEVICES=0 /home/inzi/miniconda3/envs/poke-bot-agent/bin/python \\
-        scripts/train_core_kernel.py --device cuda --run-name core_kernel \\
-        --epochs 20 --games-per-batch 4 --max-decisions-per-batch 256 \\
-        --resume auto
+    CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \\
+        /home/inzi/miniconda3/envs/poke-bot-agent/bin/python \\
+        scripts/train_core_kernel.py --device cuda --gpu-profile 3080ti \\
+        --run-name core_kernel --epochs 20 --resume auto
 """
 
 from __future__ import annotations
@@ -59,6 +70,8 @@ from poke_bot.core_kernel import (
     CorpusConfig,
     StreamingArchetypeCorpus,
     core_kernel_config_3080ti,
+    core_kernel_config_small_3080ti,
+    core_batch_losses,
     core_sequence_losses,
     resolve_amp_dtype,
     train_core_kernel,
@@ -78,30 +91,55 @@ def _profile_3080ti() -> tuple[config.ModelConfig, dict, str]:
     ``d_model`` the Phase-6 3080 specialists want (warm-start shares this arch).
     """
     cfg = core_kernel_config_3080ti()  # d_model=192, 3/4/2, heads=6, ff=768, ctx=320
-    # Probe on the 3080 Ti showed peak reserved ≈ 2 GB even at gpb=14/maxdec=1200,
-    # so VRAM is not the limit (CPU featurization is). Batch is sized for a solid
-    # effective batch (~1024 decisions/step via accum) with ~10 GB headroom.
+    # Batch sizes come from the centralized 3080 Ti profile (config.batch_profile)
+    # so this stays the single source of truth. Probe on the 3080 Ti showed peak
+    # reserved ≈ 2 GB (the lean d_model=192 kernel is CPU-featurization-bound), so
+    # the bold profile sits comfortably under the ~10 GB (~85%) VRAM target; the
+    # OOM guard in the train loop is the crash-safety net if a spike exceeds it.
+    bp = config.batch_profile("3080ti")
     train = dict(
-        games_per_batch=8,
-        max_decisions_per_batch=512,
-        shuffle_buffer=512,
-        amp_dtype="bf16",
-        grad_accum_steps=2,
+        games_per_batch=bp.games_per_batch,
+        max_decisions_per_batch=bp.max_decisions_per_batch,
+        shuffle_buffer=bp.shuffle_buffer,
+        amp_dtype=bp.amp_dtype,
+        grad_accum_steps=bp.grad_accum_steps,
         value_loss_weight=1.5,
         aux_loss_weight=0.1,
     )
     return cfg, train, config.HARDWARE.leaf_gpu_name  # "3080"
 
 
-def _profile_blackwell() -> tuple[config.ModelConfig, dict, str]:
-    """RTX PRO 5000 Blackwell (~48 GB) preset: full-width trunk (side use only)."""
-    cfg = config.ModelConfig()  # defaults (d_model=256, 4/4/2, heads=8, ff=1024)
+def _profile_small_3080ti() -> tuple[config.ModelConfig, dict, str]:
+    """Small search-oriented kernel that stays shape-compatible with its specialist."""
+    cfg = core_kernel_config_small_3080ti()
+    bp = config.batch_profile("3080ti")
     train = dict(
-        games_per_batch=8,
-        max_decisions_per_batch=512,
-        shuffle_buffer=1024,
-        amp_dtype="bf16",
+        games_per_batch=min(bp.games_per_batch, 16),
+        max_decisions_per_batch=min(bp.max_decisions_per_batch, 1024),
+        shuffle_buffer=min(bp.shuffle_buffer, 1024),
+        amp_dtype=bp.amp_dtype,
         grad_accum_steps=1,
+        value_loss_weight=1.5,
+        aux_loss_weight=0.1,
+    )
+    return cfg, train, config.HARDWARE.leaf_gpu_name
+
+
+def _profile_blackwell() -> tuple[config.ModelConfig, dict, str]:
+    """RTX PRO 5000 Blackwell (~48 GB) preset: full-width trunk (side use only).
+
+    Batch sizes come from the centralized Blackwell profile (config.batch_profile),
+    sized toward the ~40 GB (~85%) VRAM target; the train-loop OOM guard backstops
+    any spike beyond it.
+    """
+    cfg = config.ModelConfig()  # defaults (d_model=256, 4/4/2, heads=8, ff=1024)
+    bp = config.batch_profile("blackwell")
+    train = dict(
+        games_per_batch=bp.games_per_batch,
+        max_decisions_per_batch=bp.max_decisions_per_batch,
+        shuffle_buffer=bp.shuffle_buffer,
+        amp_dtype=bp.amp_dtype,
+        grad_accum_steps=bp.grad_accum_steps,
         value_loss_weight=1.5,
         aux_loss_weight=0.1,
     )
@@ -110,6 +148,8 @@ def _profile_blackwell() -> tuple[config.ModelConfig, dict, str]:
 
 def gpu_profile(name: str) -> tuple[config.ModelConfig | None, dict, str | None]:
     n = (name or "3080ti").strip().lower()
+    if n in ("small-3080ti", "small", "search-small"):
+        return _profile_small_3080ti()
     if n in ("3080ti", "3080", "ampere"):
         return _profile_3080ti()
     if n in ("blackwell", "5000", "pro5000"):
@@ -177,7 +217,7 @@ def _parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--resume", default="auto", help="auto | 0 | path | best")
     p.add_argument("--device", default="auto", help="auto | cpu | cuda | cuda:N")
     p.add_argument("--gpu-profile", default="3080ti",
-                   help="Sizing preset: 3080ti (default) | blackwell | none")
+                   help="Sizing preset: small-3080ti | 3080ti (default) | blackwell | none")
     p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--games-per-batch", type=int, default=None,
@@ -222,6 +262,33 @@ def _parse_args(argv=None) -> argparse.Namespace:
                    help="Value loss weight (profile default 1.5; ladder/MCTS needs accurate value).")
     p.add_argument("--aux-loss-weight", type=float, default=None,
                    help="Aux (opponent-archetype) loss weight (profile default 0.1).")
+    p.add_argument(
+        "--opp-hand-loss-weight",
+        type=float,
+        default=None,
+        help="opp_hand_head multilabel BCE weight (default 0.2; masked if labels absent).",
+    )
+    p.add_argument(
+        "--opp-remainder-loss-weight",
+        type=float,
+        default=None,
+        help="opp_remainder_head multilabel BCE weight (default 0.15; masked if absent).",
+    )
+    p.add_argument(
+        "--lethal-threat-loss-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Scope B only — keep 0 on core_kernel (Blackwell Hammer strategy "
+            "heads are not trained here)."
+        ),
+    )
+    p.add_argument(
+        "--prize-race-loss-weight",
+        type=float,
+        default=0.0,
+        help="Scope B only — keep 0 on core_kernel.",
+    )
     return p.parse_args(argv)
 
 
@@ -238,6 +305,17 @@ def _parse_reinit_heads(spec: str):
         "value_head": "value_head",
         "aux": "aux_head",
         "aux_head": "aux_head",
+        "opp_hand": "opp_hand_head",
+        "opp_hand_head": "opp_hand_head",
+        "opp_remainder": "opp_remainder_head",
+        "opp_remainder_head": "opp_remainder_head",
+        # Scope B heads exist on the architecture for warm-start but core
+        # training does not reinit/require them by default.
+        "lethal": "lethal_threat_head",
+        "lethal_threat": "lethal_threat_head",
+        "lethal_threat_head": "lethal_threat_head",
+        "prize_race": "prize_race_head",
+        "prize_race_head": "prize_race_head",
     }
     names = []
     for part in s.split(","):
@@ -389,6 +467,19 @@ def _build_train_setup(args):
         aux_loss_weight=(args.aux_loss_weight
                          if args.aux_loss_weight is not None
                          else prof_train.get("aux_loss_weight", 0.1)),
+        opp_hand_loss_weight=(
+            args.opp_hand_loss_weight
+            if args.opp_hand_loss_weight is not None
+            else 0.2
+        ),
+        opp_remainder_loss_weight=(
+            args.opp_remainder_loss_weight
+            if args.opp_remainder_loss_weight is not None
+            else 0.15
+        ),
+        # Scope B strategy heads: never required on core_kernel (weights stay 0).
+        lethal_threat_loss_weight=float(args.lethal_threat_loss_weight),
+        prize_race_loss_weight=float(args.prize_race_loss_weight),
         amp=not args.no_amp,
         amp_dtype=(args.amp_dtype or prof_train.get("amp_dtype", "bf16")),
         seed=args.seed,
@@ -409,6 +500,11 @@ def _run_probe(args) -> int:
     print(f">> profile={args.gpu_profile} d_model={cfg.d_model} "
           f"layers(s/t/o)={cfg.spatial_layers}/{cfg.temporal_layers}/{cfg.option_decoder_layers} "
           f"heads={cfg.n_heads} ff={cfg.ff_dim} max_context={cfg.max_context}", flush=True)
+    _bp = config.batch_profile(device)
+    print(f">> gpu_kind={config.gpu_kind(device)} "
+          f"vram_target={_bp.vram_target_gb:g}/{_bp.vram_total_gb:g}GB "
+          f"leaf_batch={config.leaf_batch_for_device(device)} "
+          f"ram_cap={config.HARDWARE.ram_cache_gb:g}GB", flush=True)
     print(f">> train: gpb={tcfg.games_per_batch} maxdec={tcfg.max_decisions_per_batch} "
           f"accum={tcfg.grad_accum_steps} amp={tcfg.amp_dtype} "
           f"shuffle_buffer={shuffle_buffer}", flush=True)
@@ -431,7 +527,14 @@ def _run_probe(args) -> int:
 
     kernel = CoreKernel(cfg=cfg, device=device)
     n_params = sum(p.numel() for p in kernel.parameters())
-    optimizer = torch.optim.AdamW(kernel.parameters(), lr=tcfg.lr, weight_decay=tcfg.weight_decay)
+    optimizer_kwargs = dict(lr=tcfg.lr, weight_decay=tcfg.weight_decay)
+    if device.type == "cuda":
+        optimizer_kwargs["fused"] = True
+    try:
+        optimizer = torch.optim.AdamW(kernel.parameters(), **optimizer_kwargs)
+    except (TypeError, RuntimeError):
+        optimizer_kwargs.pop("fused", None)
+        optimizer = torch.optim.AdamW(kernel.parameters(), **optimizer_kwargs)
     amp_dtype = resolve_amp_dtype(tcfg.amp_dtype)
     use_amp = bool(tcfg.amp and device.type == "cuda" and amp_dtype is not None)
     use_scaler = bool(use_amp and amp_dtype == torch.float16)
@@ -462,19 +565,19 @@ def _run_probe(args) -> int:
         for batch in batches:
             any_batch = True
             with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                losses = []
-                for seq in batch:
-                    loss, m = core_sequence_losses(
-                        kernel, seq,
-                        value_weight=tcfg.value_loss_weight,
-                        aux_weight=tcfg.aux_loss_weight,
-                        condition=tcfg.condition_archetype,
-                    )
-                    losses.append(loss)
-                    dec_total += m.n_decisions
-                if not losses:
+                total, metrics = core_batch_losses(
+                    kernel,
+                    batch,
+                    value_weight=tcfg.value_loss_weight,
+                    aux_weight=tcfg.aux_loss_weight,
+                    opp_hand_weight=tcfg.opp_hand_loss_weight,
+                    opp_remainder_weight=tcfg.opp_remainder_loss_weight,
+                    condition=tcfg.condition_archetype,
+                )
+                dec_total += metrics.n_decisions
+                if metrics.n_decisions <= 0:
                     continue
-                total = torch.stack(losses).mean() / accum
+                total = total / accum
             scaler.scale(total).backward()
             micro += 1
             if micro % accum == 0:
@@ -523,6 +626,7 @@ def _run_probe(args) -> int:
 def main(argv=None) -> int:
     args = _parse_args(argv)
     paths.ensure_runtime_dirs()
+    config.apply_runtime_perf()  # TF32 / cuDNN benchmark / thread pins.
 
     if args.smoke:
         return _run_smoke(args)
@@ -563,10 +667,15 @@ def main(argv=None) -> int:
         return 2
 
     cfg = prof_cfg or config.MODEL
+    _bp = config.batch_profile(device)
     print(f"== train_core_kernel  device={device}  ({device_mod.describe()})", flush=True)
-    print(f">> gpu_profile={args.gpu_profile} d_model={cfg.d_model} "
-          f"amp={tcfg.amp_dtype} gpb={tcfg.games_per_batch} "
-          f"maxdec={tcfg.max_decisions_per_batch} accum={tcfg.grad_accum_steps}", flush=True)
+    print(f">> gpu_profile={args.gpu_profile} gpu_kind={config.gpu_kind(device)} "
+          f"vram_target={_bp.vram_target_gb:g}/{_bp.vram_total_gb:g}GB "
+          f"ram_cap={config.HARDWARE.ram_cache_gb:g}GB "
+          f"torch_threads={config.HARDWARE.torch_threads}", flush=True)
+    print(f">> d_model={cfg.d_model} amp={tcfg.amp_dtype} gpb={tcfg.games_per_batch} "
+          f"maxdec={tcfg.max_decisions_per_batch} accum={tcfg.grad_accum_steps} "
+          f"shuffle_buffer={shuffle_buffer}", flush=True)
     print(f">> buckets ({len(jsonls)}): {[p.name for p in jsonls]}", flush=True)
     print(f">> run_name={args.run_name} resume={args.resume} "
           f"condition_archetype={not args.no_condition}", flush=True)

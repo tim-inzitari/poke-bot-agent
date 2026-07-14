@@ -43,6 +43,39 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--val-frac", type=float, default=0.1)
     p.add_argument("--patience", type=int, default=5)
     p.add_argument("--max-games", type=int, default=0, help="Cap games loaded (0=all)")
+    p.add_argument(
+        "--aux-loss-weight",
+        type=float,
+        default=0.1,
+        help="Archetype aux_head CE weight (default 0.1).",
+    )
+    p.add_argument(
+        "--opp-hand-loss-weight",
+        type=float,
+        default=0.2,
+        help="opp_hand_head multilabel BCE weight (default 0.2; masked if labels absent).",
+    )
+    p.add_argument(
+        "--opp-remainder-loss-weight",
+        type=float,
+        default=0.15,
+        help="opp_remainder_head multilabel BCE weight (default 0.15; masked if absent).",
+    )
+    p.add_argument(
+        "--lethal-threat-loss-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Scope B lethal_threat_head weight (default 0 — core/bootstrap off; "
+            "enable on Blackwell Hammer specialist trains)."
+        ),
+    )
+    p.add_argument(
+        "--prize-race-loss-weight",
+        type=float,
+        default=0.0,
+        help="Scope B prize_race_head weight (default 0 — core/bootstrap off).",
+    )
     p.add_argument("--no-amp", action="store_true")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--seed", type=int, default=0)
@@ -84,6 +117,11 @@ def main(argv: list[str] | None = None) -> int:
         max_decisions_per_batch=args.max_decisions_per_batch,
         val_frac=args.val_frac,
         early_stop_patience=args.patience,
+        aux_loss_weight=float(args.aux_loss_weight),
+        opp_hand_loss_weight=float(args.opp_hand_loss_weight),
+        opp_remainder_loss_weight=float(args.opp_remainder_loss_weight),
+        lethal_threat_loss_weight=float(args.lethal_threat_loss_weight),
+        prize_race_loss_weight=float(args.prize_race_loss_weight),
         amp=not args.no_amp,
         seed=args.seed,
     )
