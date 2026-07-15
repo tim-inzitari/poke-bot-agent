@@ -181,6 +181,28 @@ $PY scripts/train_core_kernel.py --device cuda --gpu-profile 3080ti --resume aut
 
 ## Ops
 
+### Live pool adjust (iteration-boundary resize)
+
+A running `train_round_robin` can grow/shrink `--workers`, `--leaf-servers`, and
+`--promotion-workers` **between iterations** by polling
+`outputs/state/live_pool_plan.json` (schema/helpers in `poke_bot/live_pool.py`).
+Changes never interrupt mid-wave collection; leaf topology is fully rebuilt when
+counts change. Opt in from the watcher with
+`python scripts/resource_watcher.py --emit-live-pool` (default **off** — existing
+watchers stay advisory/`resource_plan.json` only). Disable RR consumption with
+`POKEBOT_LIVE_POOL=0`.
+
+### Opening / book-like search budget
+
+Trusted belief-MCTS keeps a hard floor of **128** sims, but early turns and
+sharp priors spend less optional think time (PTCG openings are often
+engine-scripted; mid/late prize races are not). Knobs live on `SearchConfig`
+(`POKEBOT_OPENING_BUDGET`, `OPENING_TURN_MAX`, `CLARITY_PRIOR_MARGIN`,
+`CLARITY_VISIT_STOP`). Archetype soft priors (`poke_bot/heuristics_registry.py`)
+bias the network prior as an *active* book; SME PDF conversion contract is in
+[`docs/HEURISTIC_CONVERSION.md`](docs/HEURISTIC_CONVERSION.md). Heuristic modules
+remain `ENABLED=False` until reviewed.
+
 ### Fail-safe unattended monitor
 
 `scripts/launch_blackwell.py` launches the uniquely named round-robin run and

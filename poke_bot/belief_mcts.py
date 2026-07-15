@@ -34,8 +34,18 @@ from .blackwell_heads import (
     blackwell_strategy_heads_enabled,
     root_value_bias_from_lethal,
 )
+from .heuristics_registry import (
+    apply_prior_logit_bias,
+    resolve_heuristics,
+)
 from .mcts import GameClock, MCTSResult
 from .model import TemporalCabtTransformer, card_prior_logits_or_uniform
+from .opening_budget import (
+    clarity_caps_to_floor,
+    observation_turn,
+    scale_opening_budgets,
+    visit_stop_triggered,
+)
 from .replay_import import assert_info_set as assert_public_info_set
 from .search_targets import build_search_target, select_by_visits
 
@@ -425,9 +435,16 @@ class BeliefMCTS:
             raise RuntimeError("leaf backend changed complete legal action ordering")
         if len(evaluated.priors) != len(combos):
             raise RuntimeError("leaf prior/action count mismatch")
+        priors = [float(prior) for prior in evaluated.priors]
+        heuristics = resolve_heuristics(deck_card_ids=self.own_deck)
+        bias = heuristics.prior_logit_bias(
+            raw, [list(combo) for combo in combos]
+        )
+        if any(abs(float(b)) > 0.0 for b in bias):
+            priors = apply_prior_logit_bias(priors, bias)
         node.edges = [
             BeliefEdge(action=list(combo), prior=float(prior))
-            for combo, prior in zip(combos, evaluated.priors)
+            for combo, prior in zip(combos, priors)
         ]
         node.network_evaluated = True
         return float(evaluated.value)
@@ -528,12 +545,24 @@ class BeliefMCTS:
                 configured_budget,
                 clock.next_move_budget(configured_budget),
             )
+        turn = observation_turn(obs_dict)
+        opening_sims, opening_move, opening_applied = scale_opening_budgets(
+            turn=turn,
+            requested_sims=requested_sims,
+            move_time_s=move_budget,
+            min_trusted_sims=self.min_trusted_sims,
+        )
+        if opening_applied:
+            move_budget = opening_move
         # Keep 128 as a hard trust floor, but shed optional ramped simulations
         # when the per-game clock grants less than the configured move slice.
-        ratio = min(1.0, move_budget / configured_budget)
+        ratio = min(1.0, move_budget / configured_budget) if configured_budget > 0 else 1.0
         adaptive_sims = max(
             self.min_trusted_sims,
-            min(requested_sims, int(math.ceil(requested_sims * ratio))),
+            min(
+                opening_sims,
+                int(math.ceil(opening_sims * ratio)),
+            ),
         )
         set_deadline = getattr(self.leaf_eval, "set_deadline", None)
         if callable(set_deadline):
@@ -549,6 +578,7 @@ class BeliefMCTS:
                 requested_max_sims=requested_sims,
                 move_time_s=move_budget,
                 temperature=temperature,
+                opening_budget_applied=opening_applied,
             )
         finally:
             if callable(set_deadline):
@@ -568,6 +598,7 @@ class BeliefMCTS:
         requested_max_sims: Optional[int] = None,
         move_time_s: float = 8.0,
         temperature: float = 1.0,
+        opening_budget_applied: bool = False,
     ) -> MCTSResult:
         assert_deployment_observation(obs_dict)
         features.assert_info_set(obs_dict)
@@ -613,6 +644,18 @@ class BeliefMCTS:
             branch=root_branch,
         )
         leaf_evaluations = 1
+        clarity_prior_stop = False
+        visit_stop = False
+        root_priors = [edge.prior for edge in root.edges]
+        sims_plan, clarity_prior_stop = clarity_caps_to_floor(
+            root_priors,
+            min_trusted_sims=self.min_trusted_sims,
+            current_plan=sims_plan,
+        )
+        heuristics_mod = resolve_heuristics(deck_card_ids=self.own_deck)
+        heuristic_arch = str(
+            getattr(heuristics_mod, "describe", lambda: "unknown")()
+        )
         chance_samples = 0
         sims_run = 0
         particle_decks: set[str] = set()
@@ -640,7 +683,19 @@ class BeliefMCTS:
         particle_support_repairs = sum(
             int(particle.support_repairs) for particle in particle_bank
         )
+        stop_reason = "simulation_target"
         while sims_run < sims_plan and time.perf_counter() - started < move_budget:
+            if visit_stop_triggered(
+                [edge.visit for edge in root.edges],
+                sims_run=sims_run,
+                sims_plan=sims_plan,
+                min_trusted_sims=self.min_trusted_sims,
+                elapsed_s=time.perf_counter() - started,
+                move_budget_s=move_budget,
+            ):
+                visit_stop = True
+                stop_reason = "visit_stop"
+                break
             particle = particle_bank[particle_attempts % len(particle_bank)]
             particle_attempts += 1
             particle_decks.add(particle.opponent_deck_digest)
@@ -772,6 +827,10 @@ class BeliefMCTS:
                 f"insufficient trusted belief simulations: completed "
                 f"{sims_run}/{sims_plan} within {move_budget:.3f}s"
             )
+        if not visit_stop and sims_run < sims_plan:
+            stop_reason = "valid_move_time_budget"
+        elif not visit_stop:
+            stop_reason = "simulation_target"
         visits = [edge.visit for edge in root.edges]
         priors = [edge.prior for edge in root.edges]
         combos = [edge.action for edge in root.edges]
@@ -861,11 +920,11 @@ class BeliefMCTS:
                 else sims_plan
             ),
             "adaptive_sim_cap": sims_plan,
-            "stop_reason": (
-                "simulation_target"
-                if sims_run >= sims_plan
-                else "valid_move_time_budget"
-            ),
+            "stop_reason": stop_reason,
+            "opening_budget": bool(opening_budget_applied),
+            "clarity_prior_stop": bool(clarity_prior_stop),
+            "visit_stop": bool(visit_stop),
+            "heuristic_arch": heuristic_arch,
             "elapsed_s": elapsed,
             "move_budget_s": move_budget,
             "sims_per_s": sims_run / max(elapsed, 1e-9),

@@ -61,6 +61,15 @@ from poke_bot.train import (
 )
 from poke_bot.worker_pool import WorkerPool, WorkerPoolStopped
 from poke_bot.remote_jobs import RemoteWorkerFarm, iter_additive_results
+from poke_bot.live_pool import (
+    LIVE_POOL_PLAN_PATH,
+    LeafTopology,
+    live_pool_enabled,
+    read_live_pool_plan,
+    rebuild_leaf_topology,
+    should_apply_plan,
+    spawn_leaf_topology,
+)
 from poke_bot.promotion import (
     CheckpointIdentity,
     PromotionGateConfig,
@@ -2118,6 +2127,8 @@ def main(argv: list[str] | None = None) -> int:
     # across ALL concurrent CPU games (fills the GPU during the game phase).
     # CPU workers stay CUDA_VISIBLE_DEVICES="" (no per-worker CUDA context → no
     # OOM); they featurize leaves and offload the forward to this server.
+    # Topology can be fully rebuilt at iteration boundaries via live_pool_plan.json.
+    leaf_topo: LeafTopology | None = None
     leaf_servers: list = []
     leaf_req_qs: list = []
     leaf_ctrl_qs: list = []
@@ -2129,93 +2140,36 @@ def main(argv: list[str] | None = None) -> int:
     leaf_version = 0
     leaf_digest = incumbent_identity.digest
     n_servers = 1
+    leaf_gpu = str(train_dev) if args.leaf_gpu == "auto" else args.leaf_gpu
+    live_pool_last_seq = 0
     use_leaf_server = args.leaf_eval == "gpu-server" and sim_device == "cpu"
     if use_leaf_server:
-        import multiprocessing as _mp
-
-        from poke_bot.batched_infer import run_leaf_server
-
-        # Pin the leaf servers to the SAME Blackwell device the trainer uses (the
-        # whole primary pipeline lives on GPU1). 'auto' → mirror train_dev.
-        leaf_gpu = str(train_dev) if args.leaf_gpu == "auto" else args.leaf_gpu
-        # Up to N concurrent replica servers on the one card; can't exceed the
-        # worker count (each replica needs ≥1 worker feeding it).
         n_servers = max(1, min(int(args.leaf_servers), int(args.workers)))
-        mpctx = _mp.get_context("spawn")
-        leaf_resp_qs = [mpctx.Queue(maxsize=2) for _ in range(args.workers)]
-        leaf_slot_counter = mpctx.Value("i", 0)
-        readies = []
-        for j in range(n_servers):
-            rq = mpctx.Queue(maxsize=int(args.leaf_queue_depth))
-            cq = mpctx.Queue(maxsize=8)
-            sq = mpctx.Queue(maxsize=16)
-            ev = mpctx.Event()
-            alive = mpctx.Event()
-            proc = mpctx.Process(
-                target=run_leaf_server,
-                args=(str(model_ckpt), leaf_gpu, rq, leaf_resp_qs),
-                kwargs=dict(
-                    ready_evt=ev,
-                    alive_evt=alive,
-                    ctrl_q=cq,
-                    status_q=sq,
-                    expected_digest=leaf_digest,
-                    initial_version=leaf_version,
-                    bf16=True,
-                    max_batch=int(args.leaf_max_batch),
-                    coalesce_ms=float(args.leaf_coalesce_ms),
-                ),
-                daemon=True,
+        try:
+            leaf_topo = spawn_leaf_topology(
+                checkpoint_path=str(model_ckpt),
+                leaf_gpu=leaf_gpu,
+                n_workers=int(args.workers),
+                n_servers=n_servers,
+                digest=leaf_digest,
+                version=leaf_version,
+                queue_depth=int(args.leaf_queue_depth),
+                max_batch=int(args.leaf_max_batch),
+                coalesce_ms=float(args.leaf_coalesce_ms),
+                timeout_s=float(config.SEARCH.remote_request_timeout_s),
             )
-            proc.start()
-            leaf_req_qs.append(rq)
-            leaf_ctrl_qs.append(cq)
-            leaf_status_qs.append(sq)
-            leaf_alive_evts.append(alive)
-            leaf_servers.append(proc)
-            readies.append(ev)
-        startup_ok = True
-        for j, ev in enumerate(readies):
-            if not ev.wait(timeout=240):
-                print("[rr] ERROR: leaf server did not signal ready in 240s", file=sys.stderr)
-                startup_ok = False
-                continue
-            try:
-                status = leaf_status_qs[j].get(timeout=5)
-            except Exception as exc:
-                print(f"[rr] ERROR: missing leaf ready status: {exc}", file=sys.stderr)
-                startup_ok = False
-                continue
-            if (
-                not status.get("ok")
-                or status.get("checkpoint_digest") != leaf_digest
-                or int(status.get("version", -1)) != leaf_version
-                or not leaf_servers[j].is_alive()
-                or not leaf_alive_evts[j].is_set()
-            ):
-                print(f"[rr] ERROR: invalid leaf ready ack: {status}", file=sys.stderr)
-                startup_ok = False
-        if not startup_ok:
-            for j, proc in enumerate(leaf_servers):
-                try:
-                    leaf_ctrl_qs[j].put({"cmd": "stop"})
-                    proc.join(timeout=5)
-                except Exception:
-                    pass
+        except Exception as exc:
+            print(f"[rr] ERROR: leaf topology spawn failed: {exc}", file=sys.stderr)
             return 3
-        # Workers are sharded across replicas by slot % n_servers (see
-        # worker_pool._worker_init).
-        remote_channel = {
-            "req_qs": leaf_req_qs,
-            "resp_qs": leaf_resp_qs,
-            "slot_counter": leaf_slot_counter,
-            "ctrl_qs": leaf_ctrl_qs,
-            "generation": 0,
-            "alive_evts": leaf_alive_evts,
-            "expected_digest": leaf_digest,
-            "expected_version": leaf_version,
-            "timeout_s": config.SEARCH.remote_request_timeout_s,
-        }
+        leaf_servers = leaf_topo.servers
+        leaf_req_qs = leaf_topo.req_qs
+        leaf_ctrl_qs = leaf_topo.ctrl_qs
+        leaf_status_qs = leaf_topo.status_qs
+        leaf_alive_evts = leaf_topo.alive_evts
+        leaf_resp_qs = leaf_topo.resp_qs
+        leaf_slot_counter = leaf_topo.slot_counter
+        n_servers = leaf_topo.n_servers
+        remote_channel = leaf_topo.remote_channel(generation=0)
         pids = [p.pid for p in leaf_servers]
         print(
             f"   leaf-eval=gpu-server x{n_servers} replicas on {leaf_gpu} "
@@ -2224,6 +2178,12 @@ def main(argv: list[str] | None = None) -> int:
             f"pids={pids}",
             flush=True,
         )
+        if live_pool_enabled():
+            print(
+                f"   live_pool=on plan={LIVE_POOL_PLAN_PATH} "
+                "(apply at iteration boundaries only; does not interrupt in-flight iter)",
+                flush=True,
+            )
     else:
         print("   leaf-eval=cpu (net runs locally in each CPU worker; GPU idle)", flush=True)
 
@@ -2461,6 +2421,115 @@ def main(argv: list[str] | None = None) -> int:
         n_our_failures = 0
         n_results_received = 0
         play_t0 = time.perf_counter()
+        # ---- Live pool plan (iteration boundary only; never mid-wave) ------
+        if live_pool_enabled():
+            plan = read_live_pool_plan()
+            if plan is not None and should_apply_plan(plan, live_pool_last_seq):
+                plan = plan.clamped(max_workers=128, max_leaf_servers=16)
+                want_w = (
+                    int(plan.workers)
+                    if plan.workers is not None
+                    else int(args.workers)
+                )
+                want_l = (
+                    int(plan.leaf_servers)
+                    if plan.leaf_servers is not None
+                    else int(args.leaf_servers)
+                )
+                want_p = (
+                    int(plan.promotion_workers)
+                    if plan.promotion_workers is not None
+                    else int(args.promotion_workers)
+                )
+                # Re-apply RAM cap when growing workers.
+                try:
+                    avail_gb = float(
+                        config.memory_pressure().get("available_gb", 0.0)
+                    )
+                    budget_gb = min(
+                        config.HARDWARE.ram_cache_gb,
+                        max(0.0, avail_gb - config.HARDWARE.free_ram_floor_gb),
+                    )
+                    per = max(0.1, float(config.HARDWARE.per_worker_rss_gb))
+                    ram_cap = (
+                        max(4, int(budget_gb / per)) if budget_gb > 0 else want_w
+                    )
+                except Exception:
+                    ram_cap = want_w
+                want_w = max(1, min(want_w, ram_cap))
+                want_l = max(1, min(want_l, want_w))
+                topology_changed = (
+                    use_leaf_server
+                    and (
+                        want_w != int(args.workers)
+                        or want_l != int(n_servers)
+                    )
+                )
+                knobs_changed = (
+                    want_w != int(args.workers)
+                    or want_l != int(args.leaf_servers)
+                    or want_p != int(args.promotion_workers)
+                )
+                if knobs_changed or topology_changed:
+                    tqdm.write(
+                        f"[rr] live_pool_plan seq={plan.seq} apply "
+                        f"workers={args.workers}->{want_w} "
+                        f"leaf_servers={args.leaf_servers}->{want_l} "
+                        f"promotion_workers={args.promotion_workers}->{want_p}"
+                        + (f" reason={plan.reason}" if plan.reason else "")
+                    )
+                args.workers = want_w
+                args.leaf_servers = want_l
+                args.promotion_workers = want_p
+                if topology_changed and use_leaf_server:
+                    try:
+                        leaf_digest = (
+                            loop_state.get("incumbent") or {}
+                        ).get("digest") or leaf_digest
+                        leaf_topo = rebuild_leaf_topology(
+                            leaf_topo,
+                            checkpoint_path=str(champion),
+                            leaf_gpu=leaf_gpu,
+                            n_workers=want_w,
+                            n_servers=want_l,
+                            digest=str(leaf_digest),
+                            version=int(leaf_version),
+                            queue_depth=int(args.leaf_queue_depth),
+                            max_batch=int(args.leaf_max_batch),
+                            coalesce_ms=float(args.leaf_coalesce_ms),
+                            timeout_s=float(
+                                config.SEARCH.remote_request_timeout_s
+                            ),
+                        )
+                        leaf_servers = leaf_topo.servers
+                        leaf_req_qs = leaf_topo.req_qs
+                        leaf_ctrl_qs = leaf_topo.ctrl_qs
+                        leaf_status_qs = leaf_topo.status_qs
+                        leaf_alive_evts = leaf_topo.alive_evts
+                        leaf_resp_qs = leaf_topo.resp_qs
+                        leaf_slot_counter = leaf_topo.slot_counter
+                        n_servers = leaf_topo.n_servers
+                        remote_channel = leaf_topo.remote_channel(
+                            generation=0
+                        )
+                        tqdm.write(
+                            f"[rr] live_pool rebuilt leaf topology "
+                            f"x{n_servers} workers={want_w} "
+                            f"pids={[p.pid for p in leaf_servers]}"
+                        )
+                    except Exception as exc:
+                        replay_writer.abort("live_pool topology rebuild failed")
+                        replay_writer.quarantine(f".invalid.{int(time.time())}")
+                        fatal_health_error = (
+                            f"live_pool topology rebuild failed: {exc}"
+                        )
+                        tqdm.write(
+                            f"[rr] ABORT: {fatal_health_error}",
+                            file=sys.stderr,
+                        )
+                        break
+                live_pool_last_seq = int(plan.seq)
+
         # Fresh pool each iteration (bounds libcg leak). Reset slot counter so
         # workers re-claim leaf-server slots 0..N-1 deterministically.
         if leaf_slot_counter is not None:
@@ -3734,40 +3803,49 @@ def main(argv: list[str] | None = None) -> int:
                 "increase --games-per-opp (≥100) before Kaggle submit"
             )
 
-    # Shut all leaf server replicas down cleanly.
+    # Shut remote farm + all leaf server replicas down cleanly.
     if remote_farm is not None:
         remote_farm.close()
-    for j, proc in enumerate(leaf_servers):
-        try:
-            leaf_ctrl_qs[j].put_nowait({"cmd": "stop"})
-        except Exception:
-            pass
-        try:
-            leaf_req_qs[j].put_nowait(None)
-        except Exception:
-            pass
-    for proc in leaf_servers:
-        try:
-            proc.join(timeout=10)
-            if proc.is_alive():
-                proc.terminate()
-                proc.join(timeout=5)
-        except Exception:
-            pass
-    for queue_obj in (
-        *leaf_req_qs,
-        *leaf_ctrl_qs,
-        *leaf_status_qs,
-        *leaf_resp_qs,
-    ):
-        try:
-            queue_obj.cancel_join_thread()
-        except Exception:
-            pass
-        try:
-            queue_obj.close()
-        except Exception:
-            pass
+    if leaf_topo is not None:
+        leaf_topo.shutdown()
+        leaf_servers = []
+        leaf_req_qs = []
+        leaf_ctrl_qs = []
+        leaf_status_qs = []
+        leaf_alive_evts = []
+        leaf_resp_qs = []
+    else:
+        for j, proc in enumerate(leaf_servers):
+            try:
+                leaf_ctrl_qs[j].put_nowait({"cmd": "stop"})
+            except Exception:
+                pass
+            try:
+                leaf_req_qs[j].put_nowait(None)
+            except Exception:
+                pass
+        for proc in leaf_servers:
+            try:
+                proc.join(timeout=10)
+                if proc.is_alive():
+                    proc.terminate()
+                    proc.join(timeout=5)
+            except Exception:
+                pass
+        for queue_obj in (
+            *leaf_req_qs,
+            *leaf_ctrl_qs,
+            *leaf_status_qs,
+            *leaf_resp_qs,
+        ):
+            try:
+                queue_obj.cancel_join_thread()
+            except Exception:
+                pass
+            try:
+                queue_obj.close()
+            except Exception:
+                pass
 
     if stop_requested["signal"] is not None:
         print(
