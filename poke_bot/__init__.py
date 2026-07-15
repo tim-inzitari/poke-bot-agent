@@ -10,6 +10,9 @@ Phase 1 foundation modules:
   - :mod:`poke_bot.archetypes` archetype registry + deck classification
   - :mod:`poke_bot.deck_pool`  deck reader + per-archetype pool
   - :mod:`poke_bot.hammer_heuristics` Hammer-Pult soft-prior stubs
+  - :mod:`poke_bot.heuristics_registry` archetype heuristic dispatcher (SME PDF target)
+  - :mod:`poke_bot.opening_budget` opening/clarity search-budget helpers
+  - :mod:`poke_bot.live_pool` iteration-boundary live pool plan + leaf topology
 
 Phase 2A (policy / search):
   - :mod:`poke_bot.model`         TemporalCabtTransformer (RoPE + KV cache)
@@ -38,6 +41,9 @@ __all__ = [
     "archetypes",
     "deck_pool",
     "hammer_heuristics",
+    "heuristics_registry",
+    "opening_budget",
+    "live_pool",
     "model",
     "matchup_id",
     "mcts",

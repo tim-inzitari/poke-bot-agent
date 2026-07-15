@@ -313,6 +313,20 @@ class SearchConfig:
     complex_option_threshold: int = _env_int("COMPLEX_OPTION_THRESHOLD", 8)
     complex_sims_mult: float = _env_float("COMPLEX_SIMS_MULT", 1.5)
 
+    #: Opening / book-like search budget (belief-MCTS). Never lowers the
+    #: trusted sim floor; only trims optional ramped sims / wall-clock and
+    #: enables clarity early-stop after the floor. See BeliefMCTS.
+    opening_budget: bool = _env_bool("OPENING_BUDGET", True)
+    opening_turn_max: int = _env_int("OPENING_TURN_MAX", 2)
+    opening_move_time_mult: float = _env_float("OPENING_MOVE_TIME_MULT", 0.5)
+    opening_sims_mult: float = _env_float("OPENING_SIMS_MULT", 0.5)
+    #: Top−2nd root prior margin that caps sims at the trust floor.
+    clarity_prior_margin: float = _env_float("CLARITY_PRIOR_MARGIN", 0.35)
+    clarity_visit_stop: bool = _env_bool("CLARITY_VISIT_STOP", True)
+    #: Fraction of remaining sims assumed to sample the 2nd-best root edge
+    #: when deciding visit-gap STOP (Baier/Winands early-stop rule).
+    clarity_visit_stop_p: float = _env_float("CLARITY_VISIT_STOP_P", 0.5)
+
 
 @dataclass
 class CheckpointConfig:
