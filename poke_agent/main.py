@@ -6,7 +6,7 @@ from poke_agent.checkpoint import print_training_report, resolve_resume_path, sa
 from poke_agent.config import build_config, resolve_generate_games
 from poke_agent.dataset import prepare_training_tensors
 from poke_agent.deck import read_deck
-from poke_agent.device import torch_device
+from poke_agent.device import resolve_infer_device, resolve_train_device
 from poke_agent.paths import print_runtime_info, resolve_root
 from poke_agent.simulator import load_simulator, print_simulator_status
 from poke_agent.training import build_model, train_model
@@ -22,8 +22,12 @@ def main(*, tensors_only: bool = False) -> None:
     print("output layout:")
     for name, path in config["output_layout"].items():
         print(f"  {name}: {path}")
-    device = torch_device()
-    print("device", device)
+    device = resolve_train_device(config.get("train_device"))
+    infer_device = resolve_infer_device(config.get("infer_device"), train_device=device)
+    print("train_device", device)
+    print("infer_device", infer_device)
+    if config.get("ollama_base_url"):
+        print("ollama_base_url", config["ollama_base_url"])
 
     from poke_agent.tensor_cache import describe_training_tensor_cache
 

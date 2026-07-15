@@ -7,6 +7,20 @@ deployment topologies, data flow, model architecture, rollout schema, configurat
 reference, and competition submission path. Module-level API detail lives in
 [docs/poke-agent-modules.md](docs/poke-agent-modules.md).
 
+New-system dual-GPU + LAN Ollama layout (Topology E):
+
+```bash
+export TRAIN_DEVICE=cuda:0   # 3080 Ti
+export INFER_DEVICE=cuda:1   # 3060
+export OLLAMA_BASE_URL=http://blackwell-host:11434  # optional assist only
+python scripts/train_agent.py
+python scripts/run_self_play.py --collect-only   # infer GPU
+python scripts/run_self_play.py --train-only     # train GPU
+```
+
+See [docs/NEW_SYSTEM_REFACTOR_PLAN.md](docs/NEW_SYSTEM_REFACTOR_PLAN.md) and
+[`.cursor/plans/poke-agent-new-system.plan.md`](.cursor/plans/poke-agent-new-system.plan.md).
+
 Train outside the notebook (settings in `poke_agent/config.py`):
 
 ```bash

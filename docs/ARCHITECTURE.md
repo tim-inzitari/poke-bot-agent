@@ -148,6 +148,38 @@ When `cg-lib` is available in the current process (Kaggle notebook, Linux venv),
 `poke_agent` can generate a small number of episodes inline via `CABT_EPISODES`
 before training. On Mac without cg-lib, this step is skipped automatically.
 
+### Topology E — Dual NVIDIA train host + LAN Ollama (new system)
+
+Preferred layout when you have a dual-GPU Linux train box and a separate
+Blackwell workstation for local LLMs:
+
+| Machine | GPUs | Role |
+|---|---|---|
+| **Train host** | RTX 3080 Ti (`cuda:0`) + RTX 3060 (`cuda:1`) | CABT sim, self-play collect, transformer train/eval |
+| **Infer host (LAN)** | RTX PRO 5000 Blackwell 48GB | Ollama / Qwen assist only |
+
+```bash
+# train host
+export TRAIN_DEVICE=cuda:0
+export INFER_DEVICE=cuda:1
+export OLLAMA_BASE_URL=http://blackwell-host:11434
+
+python scripts/train_agent.py
+# staged self-play (optional):
+python scripts/run_self_play.py --collect-only
+python scripts/run_self_play.py --train-only
+python scripts/run_self_play.py --eval-only --checkpoint outputs/checkpoints/self_play/iter_001.pt
+```
+
+Notes:
+
+- `TRAIN_DEVICE` / `INFER_DEVICE` default to auto (`torch_device()`) when unset.
+- When `INFER_DEVICE` is explicit, multiprocess collect keeps that GPU instead of
+  silently forcing CPU.
+- `OLLAMA_BASE_URL` is optional tooling (`poke_agent.assist.ollama_client`). It is
+  **not** used for CABT policy scoring and never enters the Kaggle submission.
+- JSONL rollouts remain the cross-machine data contract; cg-lib stays on the train host.
+
 ---
 
 ## Repository layout

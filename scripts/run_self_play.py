@@ -13,12 +13,15 @@ if str(ROOT) not in sys.path:
 
 from poke_agent.config import build_config
 from poke_agent.deck import read_deck
-from poke_agent.device import torch_device
+from poke_agent.device import device_spec_is_explicit, resolve_infer_device, resolve_train_device
 from poke_agent.paths import resolve_root
 from poke_agent.self_play import (
     run_baseline_phase_loop,
+    run_collect_only_stage,
     run_curriculum_self_play,
+    run_eval_only_stage,
     run_self_play_loop,
+    run_train_only_stage,
     self_play_settings_from_config,
 )
 from poke_agent.simulator import load_simulator, print_simulator_status
@@ -71,6 +74,22 @@ def main() -> None:
         action="store_true",
         help="submit the champion to Kaggle when the baseline gate is beaten (curriculum only)",
     )
+    stage = parser.add_mutually_exclusive_group()
+    stage.add_argument(
+        "--collect-only",
+        action="store_true",
+        help="run one collect stage into the rollout JSONL (no train)",
+    )
+    stage.add_argument(
+        "--train-only",
+        action="store_true",
+        help="retrain on the existing self-play JSONL buffer",
+    )
+    stage.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="evaluate a checkpoint vs field/random (no collect/train)",
+    )
     args = parser.parse_args()
 
     root = resolve_root()
@@ -101,7 +120,7 @@ def main() -> None:
         agent_name=deck_name,
         agent_deck=deck,
     )
-    if args.no_train:
+    if args.no_train or args.collect_only:
         settings.train_after_collect = False
 
     if args.field_deck_dir is not None:
@@ -115,8 +134,28 @@ def main() -> None:
             agent_deck=deck,
         )
 
-    device = torch_device()
-    print("device", device)
+    train_device = resolve_train_device(config.get("train_device"))
+    infer_device = resolve_infer_device(config.get("infer_device"), train_device=train_device)
+    infer_explicit = device_spec_is_explicit(config.get("infer_device"))
+    print("train_device", train_device)
+    print("infer_device", infer_device)
+    if config.get("ollama_base_url"):
+        print("ollama_base_url", config["ollama_base_url"])
+
+    initial_checkpoint = Path(args.checkpoint or config["output_path"])
+
+    if args.train_only:
+        report = run_train_only_stage(
+            config=config,
+            settings=settings,
+            device=train_device,
+            initial_checkpoint=initial_checkpoint,
+        )
+        print(
+            f"train-only: checkpoint={Path(report['saved_checkpoint']).name} "
+            f"data={report['data_path']}"
+        )
+        return
 
     simulator = load_simulator(root)
     print_simulator_status(simulator)
@@ -129,7 +168,45 @@ def main() -> None:
     else:
         print("field pool unavailable; using mirror matchups")
 
-    initial_checkpoint = args.checkpoint or config["output_path"]
+    if args.eval_only:
+        report = run_eval_only_stage(
+            config=config,
+            simulator=simulator,
+            agent_deck=deck,
+            agent_name=deck_name,
+            settings=settings,
+            infer_device=infer_device,
+            checkpoint=initial_checkpoint,
+            root=root,
+        )
+        stats = report["eval_vs_random"]
+        print(
+            f"eval-only: win_rate={stats['win_rate']:.1%} "
+            f"({int(stats['wins'])}/{int(stats['games'])}) "
+            f"checkpoint={Path(report['checkpoint']).name}"
+        )
+        return
+
+    if args.collect_only:
+        report = run_collect_only_stage(
+            config=config,
+            simulator=simulator,
+            agent_deck=deck,
+            agent_name=deck_name,
+            settings=settings,
+            device=train_device,
+            infer_device=infer_device,
+            infer_device_explicit=infer_explicit,
+            initial_checkpoint=initial_checkpoint,
+            root=root,
+        )
+        print(
+            f"collect-only: rows={report['rows_collected']} "
+            f"data={report['data_path']} "
+            f"checkpoint={Path(report['current_checkpoint']).name}"
+        )
+        return
+
     if args.baseline_only:
         from poke_agent.baseline_agents import load_baseline_agents
 
@@ -145,7 +222,9 @@ def main() -> None:
             agent_deck=deck,
             agent_name=deck_name,
             settings=settings,
-            device=device,
+            device=train_device,
+            infer_device=infer_device,
+            infer_device_explicit=infer_explicit,
             initial_checkpoint=initial_checkpoint,
             root=root,
         )
@@ -157,7 +236,9 @@ def main() -> None:
             agent_deck=deck,
             agent_name=deck_name,
             settings=settings,
-            device=device,
+            device=train_device,
+            infer_device=infer_device,
+            infer_device_explicit=infer_explicit,
             initial_checkpoint=initial_checkpoint,
             submit_on_stop=args.submit_on_stop,
             submit_after_baseline=args.submit_after_baseline,
@@ -170,7 +251,9 @@ def main() -> None:
             agent_deck=deck,
             agent_name=deck_name,
             settings=settings,
-            device=device,
+            device=train_device,
+            infer_device=infer_device,
+            infer_device_explicit=infer_explicit,
             initial_checkpoint=initial_checkpoint,
             submit_on_stop=args.submit_on_stop,
             root=root,

@@ -4,22 +4,22 @@ overview: Isolate poke_agent for the dual-machine layout — 3080 Ti + 3060 trai
 todos:
   - id: device-roles
     content: Add TRAIN_DEVICE / INFER_DEVICE resolution in device.py + config.py with backward-compatible defaults and unit tests
-    status: pending
+    status: completed
   - id: wire-train-infer
     content: Wire train path to TRAIN_DEVICE and self-play/policy path to INFER_DEVICE (stop silent CPU force when INFER_DEVICE is set)
-    status: pending
+    status: completed
   - id: inference-backend
     content: Extract LocalTorchBackend behind a small InferenceBackend interface; PolicyRuntime/beam_search use it; score-parity smoke
-    status: pending
+    status: completed
   - id: self-play-stages
     content: Add collect-only / train-only / eval-only CLI stages to run_self_play.py for dual-GPU role split
-    status: pending
+    status: completed
   - id: ollama-assist
     content: Add optional OLLAMA_BASE_URL client utility for LAN Qwen assist (tooling only — not CABT policy, not submission)
-    status: pending
+    status: completed
   - id: topology-docs
     content: Document Topology E (dual NVIDIA + LAN Ollama) in ARCHITECTURE.md/README with env examples
-    status: pending
+    status: completed
 isProject: true
 ---
 

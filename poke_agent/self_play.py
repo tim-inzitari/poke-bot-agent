@@ -27,7 +27,13 @@ from poke_agent.deck_pool import (
     mirror_matchup,
     resolve_field_pool,
 )
-from poke_agent.device import torch_device
+from poke_agent.device import (
+    device_spec_is_explicit,
+    resolve_infer_device,
+    resolve_self_play_inference_device,
+    resolve_train_device,
+)
+from poke_agent.inference import create_inference_backend
 from poke_agent.policy_agent import PolicyRuntime, PolicySession, make_policy_fn
 from poke_agent.rollout import make_random_agent, play_match
 from poke_agent.simulator import SimulatorState, load_simulator
@@ -87,6 +93,8 @@ class SelfPlaySettings:
     warmup_iterations: int = 10
     warmup_lr_multiplier: float = 25.0
     beam_config: BeamSearchConfig | None = None
+    # Device string passed into multiprocess collect/eval workers (default cpu).
+    parallel_infer_device: str | None = None
 
 
 def resolve_self_play_workers(settings: SelfPlaySettings, *, games: int) -> int:
@@ -856,13 +864,17 @@ def _eval_agent_vs_field_range(task: tuple[Any, ...]) -> tuple[int, dict[str, An
         agent_checkpoint,
         use_target_pool,
         settings,
+        inference_device,
     ) = task
     simulator = load_simulator(Path(root_str))
     if not simulator.available or simulator.to_observation_class is None:
         raise RuntimeError("CABT simulator is not available in eval worker")
 
     matchup_settings = _matchup_settings(settings)
-    agent_runtime = PolicyRuntime(Path(agent_checkpoint), device=torch.device("cpu"))
+    agent_runtime = create_inference_backend(
+        Path(agent_checkpoint),
+        device=torch.device(inference_device),
+    )
     agent_session = agent_runtime.new_session()
     agent_fn = make_policy_fn(
         agent_runtime,
@@ -950,6 +962,7 @@ def evaluate_agent_vs_field(
         )
 
     matchup_settings = _matchup_settings(settings)
+    inference_device = str(settings.parallel_infer_device or "cpu")
     tasks = [
         (
             str(root),
@@ -960,6 +973,7 @@ def evaluate_agent_vs_field(
             str(agent_checkpoint),
             use_target_pool,
             matchup_settings,
+            inference_device,
         )
         for offset, stop in episode_chunks(games, workers)
     ]
@@ -1061,15 +1075,16 @@ def _collect_self_play_range(task: tuple[Any, ...]) -> tuple[int, list[dict[str,
         current_checkpoint,
         opponent_checkpoint,
         settings,
+        inference_device,
     ) = task
     simulator = load_simulator(Path(root_str))
     if not simulator.available:
         raise RuntimeError("CABT simulator is not available in self-play worker")
 
     matchup_settings = _matchup_settings(settings)
-    device = torch.device("cpu")
-    current_runtime = PolicyRuntime(Path(current_checkpoint), device=device)
-    opponent_runtime = PolicyRuntime(Path(opponent_checkpoint), device=device)
+    device = torch.device(inference_device)
+    current_runtime = create_inference_backend(Path(current_checkpoint), device=device)
+    opponent_runtime = create_inference_backend(Path(opponent_checkpoint), device=device)
     rows = _collect_self_play_games_sequential(
         simulator,
         agent_deck,
@@ -1119,6 +1134,7 @@ def collect_self_play_games(
         raise ValueError("parallel self-play requires root and checkpoint paths")
 
     matchup_settings = _matchup_settings(settings)
+    inference_device = str(settings.parallel_infer_device or "cpu")
     chunks = episode_chunks(games, workers, max_chunk_size=PARALLEL_PROGRESS_CHUNK_GAMES)
     tasks = [
         (
@@ -1131,6 +1147,7 @@ def collect_self_play_games(
             str(current_checkpoint),
             str(opponent_checkpoint),
             matchup_settings,
+            inference_device,
         )
         for offset, stop in chunks
     ]
@@ -1138,7 +1155,8 @@ def collect_self_play_games(
     if progress_desc is not None:
         tqdm.write(
             f"{progress_desc}: {workers} workers, {len(tasks)} tasks "
-            f"(up to {max(stop - start for start, stop in chunks)} games per progress tick)"
+            f"(up to {max(stop - start for start, stop in chunks)} games per progress tick, "
+            f"infer={inference_device})"
         )
     with mp.get_context("spawn").Pool(processes=workers) as pool:
         iterator = pool.imap_unordered(_collect_self_play_range, tasks)
@@ -1265,22 +1283,30 @@ def run_self_play_iteration(
     pool: OpponentPool,
     start_episode: int,
     root: Path,
+    infer_device: torch.device | None = None,
+    infer_device_explicit: bool = False,
 ) -> dict[str, Any]:
     if not simulator.available:
         raise RuntimeError("CABT simulator is required for self-play")
 
     workers = resolve_self_play_workers(settings, games=settings.games_per_iteration)
     opponent_path = pool.sample(exclude=current_checkpoint) or current_checkpoint
-    inference_device = device if workers <= 1 else torch.device("cpu")
-    current_runtime = PolicyRuntime(current_checkpoint, device=inference_device)
-    opponent_runtime = PolicyRuntime(opponent_path, device=inference_device)
+    inference_device = resolve_self_play_inference_device(
+        workers=workers,
+        train_device=device,
+        infer_device=infer_device,
+        infer_device_explicit=infer_device_explicit,
+    )
+    settings.parallel_infer_device = str(inference_device)
+    current_runtime = create_inference_backend(current_checkpoint, device=inference_device)
+    opponent_runtime = create_inference_backend(opponent_path, device=inference_device)
 
     field_note = (
         f"field={len(settings.field_pool)} decks ({settings.matchup_mode})"
         if settings.use_field
         else "mirror deck"
     )
-    worker_note = f"workers={workers}" + (" (inference on cpu)" if workers > 1 else "")
+    worker_note = f"workers={workers}, infer_device={inference_device}"
     print(
         f"self-play iter {iteration}: collect {settings.games_per_iteration} games "
         f"({worker_note}, train_device={device}, current={current_checkpoint.name}, "
@@ -1424,6 +1450,8 @@ def run_baseline_iteration(
     current_checkpoint: Path,
     start_episode: int,
     root: Path | None = None,
+    infer_device: torch.device | None = None,
+    infer_device_explicit: bool = False,
 ) -> dict[str, Any]:
     if not simulator.available:
         raise RuntimeError("CABT simulator is required for baseline training")
@@ -1432,12 +1460,17 @@ def run_baseline_iteration(
     if not settings.agent_deck_pool:
         raise RuntimeError("agent deck pool is empty — set SELF_PLAY_AGENT_DECK_DIR")
 
-    current_runtime = PolicyRuntime(current_checkpoint, device=device)
     workers = resolve_self_play_workers(settings, games=settings.games_per_iteration)
+    inference_device = resolve_self_play_inference_device(
+        workers=workers,
+        train_device=device,
+        infer_device=infer_device,
+        infer_device_explicit=infer_device_explicit,
+    )
+    settings.parallel_infer_device = str(inference_device)
+    current_runtime = create_inference_backend(current_checkpoint, device=inference_device)
     play_root = root or settings.checkpoint_dir.parent.parent
-    worker_note = f"workers={workers}"
-    if workers > 1:
-        worker_note += f", inference={device}"
+    worker_note = f"workers={workers}, infer_device={inference_device}"
     print(
         f"baseline iter {iteration}: collect {settings.games_per_iteration} games "
         f"({worker_note}) vs {len(settings.baseline_agents)} official agents, "
@@ -1455,7 +1488,7 @@ def run_baseline_iteration(
         settings=settings,
         root=play_root,
         current_checkpoint=current_checkpoint,
-        device=device,
+        device=inference_device,
     )
     overwrite, kept_games = write_rollout_buffer(settings, rows, iteration=iteration)
     print(
@@ -1557,10 +1590,16 @@ def run_baseline_phase_loop(
     agent_name: str,
     settings: SelfPlaySettings,
     device: torch.device | None = None,
+    infer_device: torch.device | None = None,
+    infer_device_explicit: bool = False,
     initial_checkpoint: Path | None = None,
     root: Path | None = None,
 ) -> list[dict[str, Any]]:
-    device = device or torch_device()
+    device = device or resolve_train_device(config.get("train_device") if config else None)
+    infer_device = infer_device or resolve_infer_device(
+        config.get("infer_device") if config else None,
+        train_device=device,
+    )
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
     settings.checkpoint_dir.mkdir(parents=True, exist_ok=True)
     if settings.per_deck_checkpoint_dir is not None:
@@ -1569,6 +1608,7 @@ def run_baseline_phase_loop(
     manifest_path = settings.checkpoint_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
     manifest["phase"] = "baseline"
+    print(f"baseline train_device={device} infer_device={infer_device}")
     print(
         f"baseline training window: {settings.train_window_games} games "
         f"(collect {settings.games_per_iteration} per iteration, "
@@ -1595,6 +1635,8 @@ def run_baseline_phase_loop(
             current_checkpoint=current_checkpoint,
             start_episode=start_episode,
             root=root,
+            infer_device=infer_device,
+            infer_device_explicit=infer_device_explicit,
         )
         reports.append(report)
         start_episode += settings.games_per_iteration
@@ -1635,6 +1677,8 @@ def run_curriculum_self_play(
     agent_name: str,
     settings: SelfPlaySettings,
     device: torch.device | None = None,
+    infer_device: torch.device | None = None,
+    infer_device_explicit: bool = False,
     initial_checkpoint: Path | None = None,
     submit_on_stop: bool = False,
     submit_after_baseline: bool = False,
@@ -1642,7 +1686,11 @@ def run_curriculum_self_play(
     root: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Baseline phase vs official Kaggle agents, then transformer self-play at 60% gate."""
-    device = device or torch_device()
+    device = device or resolve_train_device(config.get("train_device") if config else None)
+    infer_device = infer_device or resolve_infer_device(
+        config.get("infer_device") if config else None,
+        train_device=device,
+    )
     play_root = root or Path(config["output_path"]).resolve().parents[2]
     manifest_path = settings.checkpoint_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
@@ -1657,6 +1705,8 @@ def run_curriculum_self_play(
             agent_name=agent_name,
             settings=settings,
             device=device,
+            infer_device=infer_device,
+            infer_device_explicit=infer_device_explicit,
             initial_checkpoint=initial_checkpoint,
             submit_on_stop=submit_on_stop,
             submission_message=submission_message,
@@ -1682,6 +1732,8 @@ def run_curriculum_self_play(
         agent_name=agent_name,
         settings=settings,
         device=device,
+        infer_device=infer_device,
+        infer_device_explicit=infer_device_explicit,
         initial_checkpoint=initial_checkpoint,
         root=play_root,
     )
@@ -1729,6 +1781,8 @@ def run_curriculum_self_play(
         agent_name=agent_name,
         settings=settings,
         device=device,
+        infer_device=infer_device,
+        infer_device_explicit=infer_device_explicit,
         initial_checkpoint=champion_ckpt,
         submit_on_stop=submit_on_stop,
         submission_message=submission_message,
@@ -1745,13 +1799,19 @@ def run_self_play_loop(
     agent_name: str,
     settings: SelfPlaySettings,
     device: torch.device | None = None,
+    infer_device: torch.device | None = None,
+    infer_device_explicit: bool = False,
     initial_checkpoint: Path | None = None,
     submit_on_stop: bool = False,
     submission_message: str = DEFAULT_SUBMISSION_MESSAGE,
     root: Path | None = None,
 ) -> list[dict[str, Any]]:
-    device = device or torch_device()
-    print(f"self-play device: {device}")
+    device = device or resolve_train_device(config.get("train_device") if config else None)
+    infer_device = infer_device or resolve_infer_device(
+        config.get("infer_device") if config else None,
+        train_device=device,
+    )
+    print(f"self-play train_device={device} infer_device={infer_device}")
     window = settings.train_window_games
     window_note = f"last {window} games" if window else "all collected games"
     print(
@@ -1796,6 +1856,8 @@ def run_self_play_loop(
             pool=pool,
             start_episode=start_episode,
             root=play_root,
+            infer_device=infer_device,
+            infer_device_explicit=infer_device_explicit,
         )
         reports.append(report)
         start_episode += settings.games_per_iteration
@@ -1970,3 +2032,126 @@ def _resolve_agent_deck_pool(
     except (FileNotFoundError, ValueError) as exc:
         print(f"agent deck pool unavailable ({exc}); using submission deck only")
     return [(agent_name, agent_deck)]
+
+
+def run_collect_only_stage(
+    *,
+    config: dict[str, Any],
+    simulator: SimulatorState,
+    agent_deck: list[int],
+    agent_name: str,
+    settings: SelfPlaySettings,
+    device: torch.device,
+    infer_device: torch.device,
+    infer_device_explicit: bool,
+    initial_checkpoint: Path,
+    root: Path,
+) -> dict[str, Any]:
+    """Collect one self-play batch into the rollout JSONL; skip training."""
+    settings.train_after_collect = False
+    settings.output_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    pool = OpponentPool(max_size=settings.opponent_pool_size)
+    pool.add(initial_checkpoint)
+    report = run_self_play_iteration(
+        iteration=1,
+        config=config,
+        simulator=simulator,
+        agent_deck=agent_deck,
+        agent_name=agent_name,
+        settings=settings,
+        device=device,
+        current_checkpoint=initial_checkpoint,
+        pool=pool,
+        start_episode=0,
+        root=root,
+        infer_device=infer_device,
+        infer_device_explicit=infer_device_explicit,
+    )
+    report["stage"] = "collect"
+    return report
+
+
+def run_train_only_stage(
+    *,
+    config: dict[str, Any],
+    settings: SelfPlaySettings,
+    device: torch.device,
+    initial_checkpoint: Path,
+    iteration: int = 1,
+) -> dict[str, Any]:
+    """Retrain on the existing self-play JSONL buffer."""
+    if not settings.output_path.exists():
+        raise FileNotFoundError(f"rollout buffer not found: {settings.output_path}")
+    settings.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    iter_path = settings.checkpoint_dir / f"iter_{iteration:03d}.pt"
+    model, tensors, training_report = train_on_rollouts(
+        config,
+        device,
+        data_path=settings.output_path,
+        checkpoint_path=initial_checkpoint if initial_checkpoint.exists() else None,
+        iteration=iteration,
+        apply_lr_warmup=True,
+        periodic_checkpoint_path=iter_path,
+    )
+    training_report = save_checkpoint(
+        model=model,
+        tensors=tensors,
+        config=config,
+        training_report=training_report,
+        output_path=iter_path,
+    )
+    return {
+        "stage": "train",
+        "iteration": iteration,
+        "data_path": str(settings.output_path),
+        "saved_checkpoint": str(iter_path),
+        "training_report": training_report,
+    }
+
+
+def run_eval_only_stage(
+    *,
+    config: dict[str, Any],
+    simulator: SimulatorState,
+    agent_deck: list[int],
+    agent_name: str,
+    settings: SelfPlaySettings,
+    infer_device: torch.device,
+    checkpoint: Path,
+    root: Path,
+) -> dict[str, Any]:
+    """Evaluate a checkpoint vs random field opponents."""
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"checkpoint not found: {checkpoint}")
+    runtime = create_inference_backend(checkpoint, device=infer_device)
+    session = runtime.new_session()
+    agent_fn = make_policy_fn(
+        runtime,
+        session,
+        agent_deck,
+        use_beam=settings.use_beam,
+        beam_config=settings.beam_config,
+    )
+    settings.parallel_infer_device = str(infer_device)
+    random_agent = make_random_agent(simulator.to_observation_class)
+    eval_vs_random = evaluate_agent_vs_field(
+        simulator,
+        agent_fn,
+        agent_name=agent_name,
+        agent_deck=agent_deck,
+        opponent_fn=random_agent,
+        games=settings.eval_games,
+        settings=settings,
+        start_episode=0,
+        use_target_pool=True,
+        root=root,
+        agent_checkpoint=checkpoint,
+        progress_desc="eval-only",
+    )
+    return {
+        "stage": "eval",
+        "checkpoint": str(checkpoint),
+        "eval_vs_random": eval_vs_random["agent_a"],
+        "matchups": eval_vs_random.get("matchups", [])[:5],
+    }

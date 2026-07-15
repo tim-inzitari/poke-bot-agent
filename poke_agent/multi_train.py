@@ -7,7 +7,7 @@ import torch
 
 from poke_agent.checkpoint import print_training_report, save_checkpoint
 from poke_agent.dataset import TrainingTensors
-from poke_agent.device import torch_device
+from poke_agent.device import resolve_infer_device, resolve_train_device
 from poke_agent.memory import print_vram_estimate
 from poke_agent.model_catalog import TRAIN_MODELS
 from poke_agent.model_registry import build_model_config, describe_catalog, get_model_spec, validate_catalog
@@ -84,8 +84,10 @@ def main() -> None:
     print("output layout:")
     for name, path in base_config["output_layout"].items():
         print(f"  {name}: {path}")
-    device = torch_device()
-    print("device", device)
+    device = resolve_train_device(base_config.get("train_device"))
+    infer_device = resolve_infer_device(base_config.get("infer_device"), train_device=device)
+    print("train_device", device)
+    print("infer_device", infer_device)
 
     tensors = prepare_training_tensors(base_config, device)
     train_catalog_models(root=root, tensors=tensors, device=device, base_config=base_config)

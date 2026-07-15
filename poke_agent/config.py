@@ -147,6 +147,12 @@ TRAIN_GRAD_CHECKPOINT = False
 # by RAM instead). "cuda"/"device" keeps the whole dataset resident on the GPU
 # (fastest, but caps dataset size to VRAM). "auto" = cpu when training on CUDA.
 TRAIN_DATA_DEVICE = "auto"
+# Compute device roles for dual-GPU hosts (empty / "auto" = torch_device()).
+# Example new-system layout: TRAIN_DEVICE=cuda:0 INFER_DEVICE=cuda:1
+TRAIN_DEVICE = ""
+INFER_DEVICE = ""
+# Optional LAN Ollama assist host (tooling only — not CABT policy / not Kaggle).
+OLLAMA_BASE_URL = ""
 # Crash/OOM resilience: write a resumable checkpoint every N epochs (0 = off) plus
 # a best-so-far copy. Files sit beside the final checkpoint as <name>.latest.pt /
 # <name>.best.pt. TRAIN_RESUME: "auto" resumes <name>.latest.pt if present,
@@ -184,6 +190,9 @@ OVERRIDE_KEYS = frozenset({
     "train_checkpoint_every",
     "train_resume",
     "train_data_device",
+    "train_device",
+    "infer_device",
+    "ollama_base_url",
     "train_tensor_cache",
     "train_tensor_cache_dir",
     "d_model",
@@ -283,6 +292,9 @@ def default_user_config() -> dict[str, Any]:
         "train_checkpoint_every": TRAIN_CHECKPOINT_EVERY,
         "train_resume": TRAIN_RESUME,
         "train_data_device": TRAIN_DATA_DEVICE,
+        "train_device": TRAIN_DEVICE,
+        "infer_device": INFER_DEVICE,
+        "ollama_base_url": OLLAMA_BASE_URL,
         "train_tensor_cache": TRAIN_TENSOR_CACHE,
         "train_tensor_cache_dir": TRAIN_TENSOR_CACHE_DIR,
         "d_model": MODEL_D_MODEL,
@@ -378,6 +390,9 @@ _ENV_MAP = {
     "train_checkpoint_every": "TRAIN_CHECKPOINT_EVERY",
     "train_resume": "TRAIN_RESUME",
     "train_data_device": "TRAIN_DATA_DEVICE",
+    "train_device": "TRAIN_DEVICE",
+    "infer_device": "INFER_DEVICE",
+    "ollama_base_url": "OLLAMA_BASE_URL",
     "train_tensor_cache": "TRAIN_TENSOR_CACHE",
     "train_tensor_cache_dir": "TRAIN_TENSOR_CACHE_DIR",
     "top_episode_percent": "TOP_EPISODE_PERCENT",
@@ -452,7 +467,15 @@ def _coerce_value(key: str, value: Any) -> Any:
         if isinstance(value, str):
             return value not in {"0", "false", "False", "no", "No"}
         return bool(value)
-    if key in {"policy_weighting", "train_resume", "train_data_device", "train_tensor_cache"}:
+    if key in {
+        "policy_weighting",
+        "train_resume",
+        "train_data_device",
+        "train_tensor_cache",
+        "train_device",
+        "infer_device",
+        "ollama_base_url",
+    }:
         return str(value)
     if key == "train_tensor_cache_dir":
         return str(value)
@@ -633,6 +656,9 @@ def build_config(root: Path, overrides: dict[str, Any] | None = None) -> dict[st
         "train_use_amp": settings["train_use_amp"],
         "train_grad_checkpoint": settings["train_grad_checkpoint"],
         "train_data_device": settings["train_data_device"],
+        "train_device": settings["train_device"],
+        "infer_device": settings["infer_device"],
+        "ollama_base_url": settings["ollama_base_url"],
         "train_tensor_cache": settings["train_tensor_cache"],
         "train_tensor_cache_dir": settings["train_tensor_cache_dir"],
         "objective": {
