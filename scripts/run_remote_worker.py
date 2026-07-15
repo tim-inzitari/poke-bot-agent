@@ -28,6 +28,24 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+def _default_leaf_gpu() -> str:
+    """Prefer env, else CUDA, else native MPS (bert), else cuda:0 for NVIDIA hosts."""
+    env = os.environ.get("LEAF_GPU")
+    if env:
+        return env
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda:0"
+        mps = getattr(torch.backends, "mps", None)
+        if mps is not None and mps.is_available():
+            return "mps"
+    except Exception:
+        pass
+    return "cuda:0"
+
+
 def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--host", default="0.0.0.0")
@@ -46,7 +64,8 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--leaf-gpu",
-        default=os.environ.get("LEAF_GPU", "cuda:0"),
+        default=_default_leaf_gpu(),
+        help="Leaf device: cuda:N on NVIDIA (elmo), mps on Mac bert (auto if unset)",
     )
     p.add_argument(
         "--leaf-max-batch",

@@ -16,18 +16,105 @@ explicitly set.
 from __future__ import annotations
 
 import json
+import os
 import queue
+import shutil
 import socket
 import struct
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
 PROTO_VERSION = 1
 DEFAULT_PORT = 8765
 _HDR = struct.Struct("!I")
 _MAX_FRAME = 256 * 1024 * 1024  # 256 MiB — self-play records can be large
+
+# TrueNAS docker worker only mounts ``./checkpoint`` → ``/workspace/checkpoint``.
+# Bert native checkout mirrors under ``/Users/tsinzitari/workspace/poke-bot-agent``.
+_TRAIN_ROOT = Path("/home/inzi/poke-bot-agent")
+_BERT_ROOT = Path("/Users/tsinzitari/workspace/poke-bot-agent")
+_ELMO_HOSTS = frozenset({"192.168.1.143", "truenas.local", "truenas"})
+_BERT_HOSTS = frozenset({"192.168.1.157", "bert.local", "bert"})
+
+
+def expand_endpoint_specs(specs: list[str]) -> list[str]:
+    """Accept space-separated nargs or a single comma-separated token."""
+    out: list[str] = []
+    for spec in specs:
+        for part in str(spec).split(","):
+            part = part.strip()
+            if part:
+                out.append(part)
+    return out
+
+
+def _smb_checkpoint_dir() -> Path | None:
+    explicit = os.environ.get("POKEBOT_TRUENAS_CHECKPOINT_SMB")
+    if explicit:
+        path = Path(explicit)
+        return path if path.is_dir() else None
+    uid = os.getuid()
+    # Host Docker compose mounts containers/truenas-worker/checkpoint →
+    # /workspace/checkpoint (NOT the top-level poke-bot-agent/checkpoint/).
+    candidates = [
+        Path(
+            f"/run/user/{uid}/gvfs/smb-share:server=truenas.local,"
+            "share=main/poke-bot-agent/containers/truenas-worker/checkpoint"
+        ),
+        Path(
+            f"/run/user/{uid}/gvfs/smb-share:server=truenas.local,"
+            "share=main/poke-bot-agent/checkpoint"
+        ),
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
+    """Map a trainer-local .pt path to a path the remote process can open.
+
+    Elmo (TrueNAS host Docker): stage bytes onto the SMB ``checkpoint/``
+    bind-mount and reload ``/workspace/checkpoint/<basename>``.
+    Bert: remap the training-box repo root onto bert's native checkout.
+    """
+    raw = str(local_path)
+    if raw.startswith("/workspace/checkpoint/"):
+        return raw
+    src = Path(raw).expanduser().resolve()
+    host_l = host.strip().lower()
+    if host_l in _ELMO_HOSTS:
+        smb = _smb_checkpoint_dir()
+        if smb is None:
+            raise RemoteJobsError(
+                "TrueNAS SMB checkpoint dir not mounted "
+                "(open smb://truenas.local/main then retry)"
+            )
+        if not src.is_file():
+            raise RemoteJobsError(f"local checkpoint missing for stage: {src}")
+        dest = smb / src.name
+        if (
+            not dest.is_file()
+            or dest.stat().st_size != src.stat().st_size
+            or int(dest.stat().st_mtime) < int(src.stat().st_mtime)
+        ):
+            tmp = dest.with_suffix(dest.suffix + f".staging.{os.getpid()}")
+            shutil.copy2(src, tmp)
+            os.replace(tmp, dest)
+        return f"/workspace/checkpoint/{src.name}"
+    if host_l in _BERT_HOSTS:
+        try:
+            rel = src.relative_to(_TRAIN_ROOT)
+        except ValueError as exc:
+            raise RemoteJobsError(
+                f"bert path remap requires path under {_TRAIN_ROOT}, got {src}"
+            ) from exc
+        return str(_BERT_ROOT / rel)
+    return str(src)
 
 
 class RemoteJobsError(RuntimeError):
@@ -209,7 +296,8 @@ class RemoteJobClient:
         version: Optional[int] = None,
     ) -> dict[str, Any]:
         sock = self._require_sock()
-        msg: dict[str, Any] = {"type": "reload", "path": path}
+        remote_path = resolve_remote_checkpoint_path(self.host, path)
+        msg: dict[str, Any] = {"type": "reload", "path": remote_path}
         if digest is not None:
             msg["digest"] = digest
         if version is not None:
@@ -217,7 +305,9 @@ class RemoteJobClient:
         send_frame(sock, msg)
         reply = read_frame(sock)
         if reply.get("type") != "reload_ok" or not reply.get("ok", False):
-            raise RemoteJobsError(f"reload failed: {reply!r}")
+            raise RemoteJobsError(
+                f"reload failed host={self.host} remote_path={remote_path}: {reply!r}"
+            )
         return reply
 
     def pin_checkpoint(
@@ -228,13 +318,16 @@ class RemoteJobClient:
     ) -> dict[str, Any]:
         """Pin a second digest on remote leaf servers (belief-MCTS promotion)."""
         sock = self._require_sock()
-        msg: dict[str, Any] = {"type": "pin", "path": path}
+        remote_path = resolve_remote_checkpoint_path(self.host, path)
+        msg: dict[str, Any] = {"type": "pin", "path": remote_path}
         if digest is not None:
             msg["digest"] = digest
         send_frame(sock, msg)
         reply = read_frame(sock)
         if reply.get("type") != "pin_ok" or not reply.get("ok", False):
-            raise RemoteJobsError(f"pin failed: {reply!r}")
+            raise RemoteJobsError(
+                f"pin failed host={self.host} remote_path={remote_path}: {reply!r}"
+            )
         return reply
 
     def unpin_checkpoint(self, digest: str) -> dict[str, Any]:
@@ -378,6 +471,9 @@ class RemoteWorkerFarm:
     connect_timeout_s: float = 10.0
     clients: list[RemoteJobClient] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.endpoints = expand_endpoint_specs(list(self.endpoints))
+
     @property
     def total_workers(self) -> int:
         return sum(
@@ -418,10 +514,34 @@ class RemoteWorkerFarm:
         digest: Optional[str] = None,
         version: Optional[int] = None,
     ) -> list[dict[str, Any]]:
-        return [
-            client.reload_checkpoint(path, digest=digest, version=version)
-            for client in self.clients
-        ]
+        replies: list[dict[str, Any]] = []
+        survivors: list[RemoteJobClient] = []
+        errors: list[str] = []
+        for client in self.clients:
+            try:
+                replies.append(
+                    client.reload_checkpoint(path, digest=digest, version=version)
+                )
+                survivors.append(client)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{client.endpoint}: {exc}")
+                try:
+                    client.close()
+                except Exception:
+                    pass
+        self.clients = survivors
+        if not self.clients:
+            raise RemoteJobsError(
+                "remote worker reload failed on all endpoints: "
+                + "; ".join(errors)
+            )
+        if errors:
+            print(
+                "[remote-farm] WARN dropped endpoint(s) after reload failure: "
+                + "; ".join(errors),
+                flush=True,
+            )
+        return replies
 
     def pin_all(
         self,
@@ -429,9 +549,31 @@ class RemoteWorkerFarm:
         *,
         digest: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        return [
-            client.pin_checkpoint(path, digest=digest) for client in self.clients
-        ]
+        replies: list[dict[str, Any]] = []
+        survivors: list[RemoteJobClient] = []
+        errors: list[str] = []
+        for client in self.clients:
+            try:
+                replies.append(client.pin_checkpoint(path, digest=digest))
+                survivors.append(client)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{client.endpoint}: {exc}")
+                try:
+                    client.close()
+                except Exception:
+                    pass
+        self.clients = survivors
+        if not self.clients:
+            raise RemoteJobsError(
+                "remote worker pin failed on all endpoints: " + "; ".join(errors)
+            )
+        if errors:
+            print(
+                "[remote-farm] WARN dropped endpoint(s) after pin failure: "
+                + "; ".join(errors),
+                flush=True,
+            )
+        return replies
 
     def unpin_all(self, digest: str) -> list[dict[str, Any]]:
         return [client.unpin_checkpoint(digest) for client in self.clients]

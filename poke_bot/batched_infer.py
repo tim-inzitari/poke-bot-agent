@@ -740,9 +740,11 @@ def run_leaf_server(
         if status_q is not None:
             status_q.put(payload)
 
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
     device = torch.device(device_str)
+    # TF32 knobs are CUDA-only; bert co-located leaf uses MPS (no CUDA context).
+    if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
     version = int(initial_version)
     current_digest = ""
     models: dict[str, object] = {}

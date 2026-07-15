@@ -41,6 +41,16 @@ def cuda_available() -> bool:
         return False
 
 
+def mps_available() -> bool:
+    """True if Apple Metal Performance Shaders (MPS) is usable."""
+    try:
+        torch = _torch()
+        mps = getattr(torch.backends, "mps", None)
+        return bool(mps is not None and mps.is_available())
+    except Exception:
+        return False
+
+
 def list_gpus() -> list[GpuInfo]:
     """Return info for every visible CUDA device (empty if none/torch missing)."""
     if not cuda_available():
@@ -75,9 +85,13 @@ def training_device(prefer_name: str = "Blackwell", *, allow_cpu: bool = False):
         if idx is None:
             idx = 0  # any CUDA device beats CPU for training
         return _device(idx)
+    # Mac (bert): native MPS when CUDA is absent — never silently train on CPU
+    # if Metal is available.
+    if mps_available():
+        return _torch().device("mps")
     if not allow_cpu:
         raise RuntimeError(
-            "CUDA is not available but training was requested. Pass allow_cpu=True "
+            "CUDA/MPS is not available but training was requested. Pass allow_cpu=True "
             "to override (strongly discouraged for training)."
         )
     return _torch().device("cpu")
@@ -87,8 +101,8 @@ def leaf_eval_device(prefer_name: str = "3080", *, allow_cpu: bool = True):
     """Device for batched MCTS leaf evaluation.
 
     Prefers the 3080 Ti when present so it can run in parallel with training on
-    the Blackwell; falls back to any CUDA device, then CPU (leaf eval on Kaggle
-    may legitimately be CPU-only).
+    the Blackwell; falls back to any CUDA device, then Apple MPS (bert), then CPU
+    (leaf eval on Kaggle may legitimately be CPU-only).
     """
     if cuda_available():
         idx = find_gpu_by_name(prefer_name)
@@ -96,29 +110,36 @@ def leaf_eval_device(prefer_name: str = "3080", *, allow_cpu: bool = True):
             # If only one GPU, share it with training rather than crash.
             idx = 0
         return _device(idx)
+    if mps_available():
+        return _torch().device("mps")
     if not allow_cpu:
-        raise RuntimeError("CUDA unavailable for leaf eval and allow_cpu=False.")
+        raise RuntimeError("CUDA/MPS unavailable for leaf eval and allow_cpu=False.")
     return _torch().device("cpu")
 
 
 def inference_device(*, allow_cpu: bool = True):
-    """Device for submission/inference. Prefers Blackwell, then any CUDA, then CPU.
+    """Device for submission/inference. Prefers Blackwell, then any CUDA, then MPS, then CPU.
 
-    Kaggle may provide no GPU, so CPU is allowed by default here.
+    Kaggle may provide no GPU, so CPU is allowed by default here. On Mac bert,
+    prefer native MPS over CPU when CUDA is absent.
     """
     if cuda_available():
         idx = find_gpu_by_name("Blackwell")
         if idx is None:
             idx = 0
         return _device(idx)
+    if mps_available():
+        return _torch().device("mps")
     if not allow_cpu:
-        raise RuntimeError("CUDA unavailable for inference and allow_cpu=False.")
+        raise RuntimeError("CUDA/MPS unavailable for inference and allow_cpu=False.")
     return _torch().device("cpu")
 
 
 def describe() -> str:
-    """Human-readable summary of the CUDA situation (for logging)."""
-    if not cuda_available():
-        return "CUDA unavailable (CPU only)"
-    gpus = list_gpus()
-    return "CUDA available: " + ", ".join(f"[{g.index}] {g.name}" for g in gpus)
+    """Human-readable summary of the CUDA/MPS situation (for logging)."""
+    if cuda_available():
+        gpus = list_gpus()
+        return "CUDA available: " + ", ".join(f"[{g.index}] {g.name}" for g in gpus)
+    if mps_available():
+        return "CUDA unavailable; Apple MPS available"
+    return "CUDA/MPS unavailable (CPU only)"
