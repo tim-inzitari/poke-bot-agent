@@ -572,6 +572,8 @@ class RemoteLeafClient:
             "enqueued_ns": time.monotonic_ns(),
             "client_queue_depth": request_queue_depth,
         }
+        if self.expected_digest is not None:
+            request["checkpoint_digest"] = self.expected_digest
         request_t0 = time.perf_counter()
         request_timeout = self._remaining_timeout()
         if request_timeout <= 0:
@@ -670,19 +672,38 @@ class RemoteLeafClient:
         ]
 
 
-def remote_leaf_backend_from_worker():
+def remote_leaf_backend_from_worker(
+    *,
+    expected_digest: Optional[str] = None,
+    expected_version: Optional[int] = None,
+):
     """Build a :class:`RemoteLeafClient` from this worker's registered channel,
-    or ``None`` if no server is attached (fall back to local eval)."""
+    or ``None`` if no server is attached (fall back to local eval).
+
+    ``expected_digest`` / ``expected_version`` override the pool-level defaults
+    so promotion can pin both candidate and parent on the GPU servers and pick
+    the matching weights per agent.
+    """
     if not has_remote_leaf_channel():
         return None
+    digest = (
+        expected_digest
+        if expected_digest is not None
+        else _REMOTE.get("expected_digest")
+    )
+    version = (
+        expected_version
+        if expected_version is not None
+        else _REMOTE.get("expected_version")
+    )
     return RemoteLeafClient(
         _REMOTE["slot"],
         _REMOTE["req_q"],
         _REMOTE["resp_q"],
         generation=_REMOTE.get("generation", 0),
         alive_evt=_REMOTE.get("alive_evt"),
-        expected_digest=_REMOTE.get("expected_digest"),
-        expected_version=_REMOTE.get("expected_version"),
+        expected_digest=digest,
+        expected_version=version,
         timeout_s=_REMOTE.get("timeout_s"),
         stop_event=_REMOTE.get("stop_event"),
     )
@@ -724,6 +745,7 @@ def run_leaf_server(
     device = torch.device(device_str)
     version = int(initial_version)
     current_digest = ""
+    models: dict[str, object] = {}
     try:
         current_digest = checkpoint_digest(ckpt_path)
         if expected_digest is not None and current_digest != expected_digest:
@@ -733,6 +755,7 @@ def run_leaf_server(
             )
         model = load_model_from_checkpoint(ckpt_path, device=device)
         model.eval()
+        models[current_digest] = model
     except BaseException as exc:  # noqa: BLE001 - report startup failure to parent
         _status(
             {
@@ -764,6 +787,7 @@ def run_leaf_server(
             "ok": True,
             "version": version,
             "checkpoint_digest": current_digest,
+            "pinned_digests": sorted(models),
         }
     )
     if ready_evt is not None:
@@ -802,12 +826,16 @@ def run_leaf_server(
                                 model = new_model
                                 current_digest = actual
                                 version = requested_version
+                                # Promotion pins are iteration-scoped; a primary
+                                # reload replaces the whole resident set.
+                                models = {current_digest: model}
                                 _status(
                                     {
                                         "type": "reload",
                                         "ok": True,
                                         "version": version,
                                         "checkpoint_digest": current_digest,
+                                        "pinned_digests": sorted(models),
                                     }
                                 )
                             except BaseException as exc:  # noqa: BLE001
@@ -816,6 +844,75 @@ def run_leaf_server(
                                         "type": "reload",
                                         "ok": False,
                                         "version": requested_version,
+                                        "checkpoint_digest": current_digest,
+                                        "error": f"{type(exc).__name__}: {exc}",
+                                    }
+                                )
+                        elif cmd == "pin":
+                            # Keep the primary champion and add a second digest
+                            # (candidate during belief-MCTS promotion).
+                            requested_digest = arg.get("digest")
+                            try:
+                                path = str(arg["path"])
+                                actual = checkpoint_digest(path)
+                                if (
+                                    requested_digest is not None
+                                    and actual != requested_digest
+                                ):
+                                    raise ValueError(
+                                        f"pin digest mismatch: expected "
+                                        f"{requested_digest}, got {actual}"
+                                    )
+                                if actual not in models:
+                                    pinned = load_model_from_checkpoint(
+                                        path, device=device
+                                    )
+                                    pinned.eval()
+                                    models[actual] = pinned
+                                _status(
+                                    {
+                                        "type": "pin",
+                                        "ok": True,
+                                        "version": version,
+                                        "checkpoint_digest": actual,
+                                        "pinned_digests": sorted(models),
+                                    }
+                                )
+                            except BaseException as exc:  # noqa: BLE001
+                                _status(
+                                    {
+                                        "type": "pin",
+                                        "ok": False,
+                                        "version": version,
+                                        "checkpoint_digest": current_digest,
+                                        "error": f"{type(exc).__name__}: {exc}",
+                                    }
+                                )
+                        elif cmd == "unpin":
+                            target = arg.get("digest")
+                            try:
+                                if target is None:
+                                    raise ValueError("unpin requires digest")
+                                if target == current_digest:
+                                    raise ValueError(
+                                        "refusing to unpin the primary digest"
+                                    )
+                                models.pop(str(target), None)
+                                _status(
+                                    {
+                                        "type": "unpin",
+                                        "ok": True,
+                                        "version": version,
+                                        "checkpoint_digest": current_digest,
+                                        "pinned_digests": sorted(models),
+                                    }
+                                )
+                            except BaseException as exc:  # noqa: BLE001
+                                _status(
+                                    {
+                                        "type": "unpin",
+                                        "ok": False,
+                                        "version": version,
                                         "checkpoint_digest": current_digest,
                                         "error": f"{type(exc).__name__}: {exc}",
                                     }
@@ -846,9 +943,15 @@ def run_leaf_server(
             reqs = [first]
             first_fl = first.get("leaves")
             n_leaves = len(first_fl.boards) if first_fl is not None else 0
-            if coalesce_s > 0 and n_leaves < max_batch:
+            batch_digest = (
+                first.get("checkpoint_digest") or current_digest
+            )
+            # Multi-digest resident set (promotion pin): do not coalesce across
+            # digests; single-request leaf batches still fill the GPU forward.
+            allow_coalesce = len(models) <= 1
+            if allow_coalesce and coalesce_s > 0 and n_leaves < max_batch:
                 time.sleep(coalesce_s)
-            while n_leaves < max_batch:
+            while allow_coalesce and n_leaves < max_batch:
                 try:
                     nxt = req_q.get_nowait()
                 except _queue.Empty:
@@ -860,6 +963,14 @@ def run_leaf_server(
                     continue
                 if int(nxt.get("generation", -1)) in cancelled_generations:
                     continue
+                nxt_digest = nxt.get("checkpoint_digest") or current_digest
+                if nxt_digest != batch_digest:
+                    # Same-queue dual-digest requests stay isolated.
+                    try:
+                        req_q.put_nowait(nxt)
+                    except _queue.Full:
+                        pass
+                    break
                 reqs.append(nxt)
                 fl = nxt.get("leaves")
                 n_leaves += len(fl.boards) if fl is not None else 0
@@ -902,9 +1013,15 @@ def run_leaf_server(
             except (AttributeError, NotImplementedError, OSError):
                 server_queue_depth = 0
             inference_t0 = time.perf_counter()
+            active_model = models.get(str(batch_digest))
             try:
+                if active_model is None:
+                    raise RemoteLeafError(
+                        f"leaf server has no resident digest {batch_digest}; "
+                        f"pinned={sorted(models)}"
+                    )
                 vp = forward_featurized(
-                    model,
+                    active_model,
                     boards,
                     opts,
                     n_opts,
@@ -935,7 +1052,7 @@ def run_leaf_server(
                     "values": vp[off : off + k] if error is None else None,
                     "error": error,
                     "version": version,
-                    "checkpoint_digest": current_digest,
+                    "checkpoint_digest": str(batch_digest),
                     "queue_wait_ms": max(
                         0.0,
                         (

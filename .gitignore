@@ -251,3 +251,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local TrueNAS worker build/export artifacts
+.truenas_worker_build/
+.truenas_worker_stage/
+
+# Never commit secrets / local auth material
+.env.*
+!.env.example
+*credentials*
+*_secrets*
+*.pem
+id_rsa
+id_ed25519
+.cursor/

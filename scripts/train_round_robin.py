@@ -60,6 +60,7 @@ from poke_bot.train import (
     train_bootstrap,
 )
 from poke_bot.worker_pool import WorkerPool, WorkerPoolStopped
+from poke_bot.remote_jobs import RemoteWorkerFarm, iter_additive_results
 from poke_bot.promotion import (
     CheckpointIdentity,
     PromotionGateConfig,
@@ -440,6 +441,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "(default: suppressed so the log shows only the tqdm WR bar; also "
         "settable via POKEBOT_AGENT_VERBOSE=1).",
     )
+    p.add_argument(
+        "--remote-worker-endpoints",
+        nargs="+",
+        default=None,
+        metavar="HOST:PORT",
+        help="Optional additive LAN whole-game workers (e.g. elmo:8765). "
+        "Local IPC leaf servers remain primary; use only on canary runs with "
+        "a separate --run-name, not overnight PIDs.",
+    )
     return p.parse_args(argv)
 
 
@@ -813,6 +823,7 @@ def _worker_promotion(job: dict) -> dict:
     """Play one strict candidate-vs-parent game; any runtime fault invalidates it."""
     import signal
 
+    from poke_bot import batched_infer
     from poke_bot import config as _config
     from poke_bot.agent import PolicyAgent, install_quiet_stdout, play_game
     from poke_bot.belief import EmpiricalDeckPosterior
@@ -843,20 +854,42 @@ def _worker_promotion(job: dict) -> dict:
         random.seed(seed)
         torch.manual_seed(seed)
         device = torch.device(job.get("device", "cpu"))
-        key = (
-            f"promotion|{job['candidate_checkpoint']}|"
-            f"{job['parent_checkpoint']}|{device}"
-        )
-        if _WORKER_STATE.get("promotion_key") != key:
-            _WORKER_STATE["candidate_model"] = load_model_from_checkpoint(
-                job["candidate_checkpoint"], device=device
-            )
-            _WORKER_STATE["parent_model"] = load_model_from_checkpoint(
-                job["parent_checkpoint"], device=device
-            )
-            _WORKER_STATE["promotion_key"] = key
-        deck = list(job["deck"])
         belief_mode = job.get("agent_mode") == "belief-mcts"
+        candidate_digest = job.get("candidate_digest")
+        parent_digest = job.get("parent_digest")
+        # Prefer remote GPU leaf servers (CPU-only workers). Promotion pins both
+        # digests on the servers; each agent selects its own digest.
+        candidate_leaf = None
+        parent_leaf = None
+        if belief_mode and batched_infer.has_remote_leaf_channel():
+            candidate_leaf = batched_infer.remote_leaf_backend_from_worker(
+                expected_digest=candidate_digest,
+                expected_version=None,
+            )
+            parent_leaf = batched_infer.remote_leaf_backend_from_worker(
+                expected_digest=parent_digest,
+                expected_version=None,
+            )
+        use_remote = candidate_leaf is not None and parent_leaf is not None
+        if use_remote:
+            candidate_model = None
+            parent_model = None
+        else:
+            key = (
+                f"promotion|{job['candidate_checkpoint']}|"
+                f"{job['parent_checkpoint']}|{device}"
+            )
+            if _WORKER_STATE.get("promotion_key") != key:
+                _WORKER_STATE["candidate_model"] = load_model_from_checkpoint(
+                    job["candidate_checkpoint"], device=device
+                )
+                _WORKER_STATE["parent_model"] = load_model_from_checkpoint(
+                    job["parent_checkpoint"], device=device
+                )
+                _WORKER_STATE["promotion_key"] = key
+            candidate_model = _WORKER_STATE["candidate_model"]
+            parent_model = _WORKER_STATE["parent_model"]
+        deck = list(job["deck"])
         posterior = (
             EmpiricalDeckPosterior.from_manifest(extra_deck_lists=[deck])
             if belief_mode
@@ -866,15 +899,13 @@ def _worker_promotion(job: dict) -> dict:
         watchdog_reserve = min(
             60.0, max(10.0, 0.1 * float(promotion_timeout_s))
         )
-        candidate = PolicyAgent(
-            model=_WORKER_STATE["candidate_model"],
+        agent_kwargs = dict(
             deck=deck,
             use_mcts=belief_mode,
             belief_mcts=belief_mode,
             belief_posterior=posterior,
             max_sims=int(job.get("mcts_sims", 0)),
             move_time_s=float(job.get("mcts_move_time", 0.0)),
-            checkpoint_digest=job.get("candidate_digest"),
             model_generation=int(job.get("model_generation", 0)),
             max_context_override=int(job.get("model_max_context", 64)),
             game_time_budget_s=float(promotion_timeout_s),
@@ -883,28 +914,23 @@ def _worker_promotion(job: dict) -> dict:
                 job.get("expected_search_decisions", 64)
             ),
             collect_targets=belief_mode,
-            rng=random.Random(seed ^ 0xC0FFEE),
             strict_runtime=True,
         )
+        candidate = PolicyAgent(
+            model=candidate_model,
+            checkpoint_digest=candidate_digest,
+            rng=random.Random(seed ^ 0xC0FFEE),
+            device=torch.device("cpu") if use_remote else None,
+            leaf_backend=candidate_leaf,
+            **agent_kwargs,
+        )
         parent = PolicyAgent(
-            model=_WORKER_STATE["parent_model"],
-            deck=deck,
-            use_mcts=belief_mode,
-            belief_mcts=belief_mode,
-            belief_posterior=posterior,
-            max_sims=int(job.get("mcts_sims", 0)),
-            move_time_s=float(job.get("mcts_move_time", 0.0)),
-            checkpoint_digest=job.get("parent_digest"),
-            model_generation=int(job.get("model_generation", 0)),
-            max_context_override=int(job.get("model_max_context", 64)),
-            game_time_budget_s=float(promotion_timeout_s),
-            game_watchdog_reserve_s=watchdog_reserve,
-            expected_search_decisions=int(
-                job.get("expected_search_decisions", 64)
-            ),
-            collect_targets=belief_mode,
+            model=parent_model,
+            checkpoint_digest=parent_digest,
             rng=random.Random(seed ^ 0xFACE),
-            strict_runtime=True,
+            device=torch.device("cpu") if use_remote else None,
+            leaf_backend=parent_leaf,
+            **agent_kwargs,
         )
         candidate.reset_game()
         parent.reset_game()
@@ -951,9 +977,83 @@ def _worker_promotion(job: dict) -> dict:
             "mcts_sims": int(job.get("mcts_sims", 0)),
             "mcts_move_time": float(job.get("mcts_move_time", 0.0)),
             "agent_mode": job.get("agent_mode", "policy"),
+            "leaf_remote": use_remote,
         }
     except BaseException as exc:  # noqa: BLE001
         return {**base, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def promotion_worker_count(promotion_workers: int, n_jobs: int) -> int:
+    """Clamp ``--promotion-workers`` to a positive pool size for ``n_jobs``."""
+    return max(1, min(int(promotion_workers), max(1, int(n_jobs))))
+
+
+def _map_game_batch(
+    pool: WorkerPool,
+    worker_fn,
+    batch: list[dict[str, Any]],
+    *,
+    remote_farm: RemoteWorkerFarm | None,
+    kind: str,
+    local_workers: int,
+):
+    """Local WorkerPool plus optional additive remote TCP capacity."""
+    if remote_farm is None or remote_farm.total_workers <= 0:
+        return pool.imap_unordered(worker_fn, batch)
+    return iter_additive_results(
+        local_pool=pool,
+        local_fn=worker_fn,
+        jobs=batch,
+        remote_clients=remote_farm.clients,
+        kind=kind,
+        local_workers=local_workers,
+        remote_workers=remote_farm.total_workers,
+    )
+
+
+def _leaf_broadcast_cmd(
+    leaf_ctrl_qs: list,
+    leaf_status_qs: list,
+    leaf_servers: list,
+    *,
+    cmd: str,
+    path: str | None = None,
+    digest: str | None = None,
+    version: int | None = None,
+    timeout_s: float = 240.0,
+) -> tuple[bool, list[dict]]:
+    """Send one control command to every leaf replica and collect status acks."""
+    payload: dict[str, object] = {"cmd": cmd}
+    if path is not None:
+        payload["path"] = path
+    if digest is not None:
+        payload["digest"] = digest
+    if version is not None:
+        payload["version"] = int(version)
+    for cq in leaf_ctrl_qs:
+        cq.put(payload)
+    statuses: list[dict] = []
+    ok = True
+    for j, sq in enumerate(leaf_status_qs):
+        try:
+            status = sq.get(timeout=timeout_s)
+        except Exception as exc:  # noqa: BLE001
+            status = {"ok": False, "error": str(exc), "type": cmd}
+        statuses.append(status if isinstance(status, dict) else {"ok": False})
+        alive = True
+        if j < len(leaf_servers):
+            alive = bool(leaf_servers[j].is_alive())
+        if (
+            status.get("type") != cmd
+            or not status.get("ok")
+            or not alive
+        ):
+            ok = False
+        if digest is not None and cmd == "pin":
+            pinned = status.get("pinned_digests") or []
+            if digest not in pinned and status.get("checkpoint_digest") != digest:
+                ok = False
+    return ok, statuses
 
 
 def _build_selfplay_record(
@@ -1373,6 +1473,12 @@ def main(argv: list[str] | None = None) -> int:
                 "iteration without training/promotion/checkpoint",
                 flush=True,
             )
+            # Event.set is acceptable in a signal handler; Pool.terminate is not.
+            if pool is not None and getattr(pool, "_stop_event", None) is not None:
+                try:
+                    pool._stop_event.set()
+                except Exception:
+                    pass
             if pool is not None:
                 # multiprocessing.Pool.terminate() takes locks and joins
                 # helper threads, so it is not async-signal-safe.  Raising
@@ -1380,6 +1486,24 @@ def main(argv: list[str] | None = None) -> int:
                 # performs the one termination from normal control flow.
                 raise CollectionInterrupted(f"signal {int(signum)}")
 
+    def _stop_watchdog() -> None:
+        # When killpg SIGTERM hits workers before CollectionInterrupted can
+        # unwind, Poolrespawned replacements starve on leased slots. Terminate
+        # from a normal thread as soon as a boundary stop is requested.
+        while stop_requested["signal"] is None:
+            time.sleep(0.25)
+        pool = active_pool["pool"]
+        if pool is not None:
+            try:
+                pool.request_stop(
+                    f"signal {stop_requested['signal']} watchdog"
+                )
+            except Exception:
+                pass
+
+    import threading as _threading
+
+    _threading.Thread(target=_stop_watchdog, daemon=True).start()
     signal.signal(signal.SIGINT, _request_boundary_stop)
     signal.signal(signal.SIGTERM, _request_boundary_stop)
     # Full-hardware perf toggles (TF32 / cuDNN benchmark / thread pins).
@@ -2103,6 +2227,38 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print("   leaf-eval=cpu (net runs locally in each CPU worker; GPU idle)", flush=True)
 
+    remote_farm: RemoteWorkerFarm | None = None
+    if args.remote_worker_endpoints:
+        remote_job_timeout = max(
+            float(config.SEARCH.remote_request_timeout_s),
+            float(args.game_timeout_s) + 120.0,
+        )
+        remote_farm = RemoteWorkerFarm(
+            list(args.remote_worker_endpoints),
+            timeout_s=remote_job_timeout,
+        )
+        try:
+            remote_infos = remote_farm.connect()
+        except Exception as exc:
+            print(
+                f"[rr] ERROR: remote worker connect failed: {exc}",
+                file=sys.stderr,
+            )
+            return 3
+        for info in remote_infos:
+            print(
+                f"   remote-worker={info.endpoint} hostname={info.hostname} "
+                f"gpu={info.gpu_name!r} workers={info.workers} "
+                f"leaf_servers={info.leaf_servers} "
+                f"digest={(info.checkpoint_digest or '')[:12]}",
+                flush=True,
+            )
+        print(
+            f"   remote additive capacity={remote_farm.total_workers} sim workers "
+            f"across {len(remote_infos)} endpoint(s); local IPC unchanged",
+            flush=True,
+        )
+
     mgr = checkpoint.CheckpointManager(run_name)
     rl_replay_dir = paths.DATA_DIR / "rl" / replay_lineage
 
@@ -2327,6 +2483,19 @@ def main(argv: list[str] | None = None) -> int:
                 loop_state.get("incumbent") or {}
             ).get("digest")
             remote_channel["expected_version"] = leaf_version
+        if remote_farm is not None:
+            try:
+                remote_farm.reload_all(
+                    str(champion),
+                    digest=target_parent.digest,
+                    version=it + 1,
+                )
+            except Exception as exc:
+                replay_writer.abort(f"remote worker reload failed: {exc}")
+                replay_writer.quarantine(f".invalid.{int(time.time())}")
+                fatal_health_error = f"remote worker reload failed: {exc}"
+                tqdm.write(f"[rr] ABORT: {fatal_health_error}", file=sys.stderr)
+                break
         def _consume_result(res: dict, game_bar) -> None:
             nonlocal n_results_received, n_resource_errors, n_baseline_failures
             nonlocal n_game_timeouts, n_trust_failures, n_cancelled
@@ -2526,7 +2695,14 @@ def main(argv: list[str] | None = None) -> int:
             active_pool["pool"] = pool
             try:
                 with pool:
-                    for res in pool.imap_unordered(_worker_play, wave_jobs):
+                    for res in _map_game_batch(
+                        pool,
+                        _worker_play,
+                        wave_jobs,
+                        remote_farm=remote_farm,
+                        kind="play",
+                        local_workers=wave_workers,
+                    ):
                         _consume_result(res, game_bar)
                         if stop_requested["signal"] is not None:
                             pool.request_stop(
@@ -2806,7 +2982,7 @@ def main(argv: list[str] | None = None) -> int:
             "max_games_not_scheduled": len(jobs) - n_scheduled_jobs,
         }
         if not summary["valid"]:
-            fatal_health_error = (
+            soft_invalid = (
                 f"iter {it} invalid: " + "; ".join(
                     summary.get("invalid_reasons")
                     or [
@@ -2815,9 +2991,13 @@ def main(argv: list[str] | None = None) -> int:
                     ]
                 )
             )
+            # Soft trust/timeout/coverage misses quarantine the iteration and
+            # continue overnight training. Hard ABORT paths (leaf dead, digest
+            # mismatch) set ``fatal_health_error`` elsewhere and still stop.
             tqdm.write(
-                f"[rr] FATAL HEALTH GATE: {fatal_health_error}; rejecting "
-                "the replay/eval and stopping before training or checkpointing.",
+                f"[rr] SOFT HEALTH GATE: {soft_invalid}; quarantining "
+                "replay/eval and continuing to the next iteration (no train/"
+                "promotion/checkpoint for this iter).",
                 file=sys.stderr,
             )
             quarantined = replay_writer.quarantine(
@@ -2830,14 +3010,16 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "iteration": it,
                         "valid": False,
+                        "soft_continue": True,
                         "summary": summary,
                         "checkpoint": (loop_state.get("incumbent") or {}),
+                        "quarantined": str(quarantined),
                     },
                     indent=2,
                 )
                 + "\n"
             )
-            break
+            continue
 
         replay_writer.finalize(iter_replay_path)
 
@@ -3058,11 +3240,10 @@ def main(argv: list[str] | None = None) -> int:
                         "cluster_id": game_i // 2,
                         "seed": promotion_seed + game_i,
                         "deck": our_deck,
-                        "device": (
-                            str(train_dev)
-                            if args.agent_mode == "belief-mcts"
-                            else "cpu"
-                        ),
+                        # CPU-only sim workers; belief leaf evals go through the
+                        # remote GPU leaf channel (candidate pinned alongside
+                        # parent). Never open CUDA contexts in the pool.
+                        "device": "cpu",
                         "agent_mode": args.agent_mode,
                         "mcts_sims": int(args.promotion_mcts_sims),
                         "mcts_move_time": float(args.promotion_move_time),
@@ -3072,14 +3253,18 @@ def main(argv: list[str] | None = None) -> int:
                         "candidate_digest": candidate_identity.digest,
                         "parent_digest": played_identity.digest,
                         "model_generation": it + 1,
-                        "preserve_stdout": (
-                            args.agent_mode == "belief-mcts"
-                        ),
-                        "timeout_s": int(args.game_timeout_s),
+                        "preserve_stdout": False,
+                        # Belief-MCTS promotion under leaf contention regularly
+                        # exceeds the collection game budget; give it headroom
+                        # so one slow game does not cascade into monitor kills.
+                        "timeout_s": max(int(args.game_timeout_s), 1200),
                     }
                 )
             promotion_results: list[dict[str, Any]] = []
             promotion_stop_reason = "max_games"
+            pinned_candidate = False
+            remote_pinned_candidate = False
+
             def _run_promotion_batches(map_batch) -> None:
                 nonlocal promotion_stop_reason
                 promotion_bar = tqdm(
@@ -3093,6 +3278,9 @@ def main(argv: list[str] | None = None) -> int:
                     len(promotion_jobs),
                     int(args.promotion_batch_games),
                 ):
+                    if stop_requested["signal"] is not None:
+                        promotion_stop_reason = "signal_interrupt"
+                        break
                     batch_end = min(
                         len(promotion_jobs),
                         batch_start + int(args.promotion_batch_games),
@@ -3100,8 +3288,13 @@ def main(argv: list[str] | None = None) -> int:
                     for result_row in map_batch(
                         promotion_jobs[batch_start:batch_end]
                     ):
+                        if stop_requested["signal"] is not None:
+                            promotion_stop_reason = "signal_interrupt"
+                            break
                         promotion_results.append(result_row)
                         promotion_bar.update(1)
+                    if promotion_stop_reason == "signal_interrupt":
+                        break
                     if len(promotion_results) < promotion_cfg.min_games:
                         continue
                     interim = evaluate_candidate_gate(
@@ -3117,89 +3310,257 @@ def main(argv: list[str] | None = None) -> int:
                         promotion_stop_reason = "sequential_reject"
                         break
                 promotion_bar.close()
-            if args.agent_mode == "belief-mcts":
-                # Run in the CUDA-capable parent. Simulation workers are
-                # intentionally GPU-masked; spawning a CUDA promotion pool
-                # would violate that isolation and duplicate model contexts.
-                _run_promotion_batches(
-                    lambda batch: (_worker_promotion(job) for job in batch)
+
+            # Belief-MCTS: pin candidate weights on every leaf replica so
+            # CPU workers can offload both sides without local CUDA contexts.
+            if (
+                args.agent_mode == "belief-mcts"
+                and leaf_ctrl_qs
+                and remote_channel is not None
+            ):
+                pin_ok, pin_statuses = _leaf_broadcast_cmd(
+                    leaf_ctrl_qs,
+                    leaf_status_qs,
+                    leaf_servers,
+                    cmd="pin",
+                    path=str(candidate_identity.path),
+                    digest=candidate_identity.digest,
                 )
-            else:
-                with WorkerPool(
-                    num_workers=max(
-                        1,
-                        min(int(args.promotion_workers), len(promotion_jobs)),
+                if not pin_ok:
+                    tqdm.write(
+                        "[rr] ERROR: failed to pin candidate on leaf servers "
+                        f"for parallel belief promotion: {pin_statuses}",
+                        file=sys.stderr,
                     )
-                ) as promotion_pool:
-                    _run_promotion_batches(
-                        lambda batch: promotion_pool.imap_unordered(
-                            _worker_promotion, batch
+                    promotion_report = {
+                        "passed": False,
+                        "valid": False,
+                        "skipped": False,
+                        "error": "leaf candidate pin failed",
+                        "pin_acknowledgements": pin_statuses,
+                        "agent_mode": args.agent_mode,
+                        "candidate": candidate_identity.as_dict(),
+                        "parent": played_identity.as_dict(),
+                    }
+                    incumbent_after = played_identity
+                else:
+                    pinned_candidate = True
+                    tqdm.write(
+                        f"[rr] leaf pinned candidate digest="
+                        f"{candidate_identity.digest[:23]} "
+                        f"x{len(leaf_servers)} (parent retained)",
+                    )
+            else:
+                pin_ok = True
+
+            if pin_ok and remote_farm is not None and args.agent_mode == "belief-mcts":
+                try:
+                    remote_farm.pin_all(
+                        str(candidate_identity.path),
+                        digest=candidate_identity.digest,
+                    )
+                    remote_pinned_candidate = True
+                    tqdm.write(
+                        "[rr] remote leaf pinned candidate digest="
+                        f"{candidate_identity.digest[:23]} "
+                        f"x{len(remote_farm.clients)}",
+                    )
+                except Exception as exc:
+                    pin_ok = False
+                    tqdm.write(
+                        "[rr] ERROR: failed to pin candidate on remote workers "
+                        f"for belief promotion: {exc}",
+                        file=sys.stderr,
+                    )
+                    promotion_report = {
+                        "passed": False,
+                        "valid": False,
+                        "skipped": False,
+                        "error": "remote leaf candidate pin failed",
+                        "agent_mode": args.agent_mode,
+                        "candidate": candidate_identity.as_dict(),
+                        "parent": played_identity.as_dict(),
+                    }
+                    incumbent_after = played_identity
+
+            if pin_ok:
+                n_promo_workers = promotion_worker_count(
+                    int(args.promotion_workers), len(promotion_jobs)
+                )
+                if leaf_slot_counter is not None:
+                    with leaf_slot_counter.get_lock():
+                        leaf_slot_counter.value = 0
+                # Cap pool by available remote response slots when leaf servers
+                # are active (queues are sized to collection --workers).
+                if remote_channel is not None:
+                    n_promo_workers = min(
+                        n_promo_workers,
+                        len(remote_channel.get("resp_qs") or [])
+                        or n_promo_workers,
+                    )
+                tqdm.write(
+                    f"[rr] promotion WorkerPool workers={n_promo_workers} "
+                    f"agent_mode={args.agent_mode} "
+                    f"remote_leaf={remote_channel is not None} "
+                    f"remote_farm={remote_farm is not None}",
+                )
+                promotion_pool = WorkerPool(
+                    num_workers=n_promo_workers,
+                    remote_channel=remote_channel,
+                )
+                active_pool["pool"] = promotion_pool
+                try:
+                    with promotion_pool:
+                        _run_promotion_batches(
+                            lambda batch: _map_game_batch(
+                                promotion_pool,
+                                _worker_promotion,
+                                batch,
+                                remote_farm=remote_farm,
+                                kind="promotion",
+                                local_workers=n_promo_workers,
+                            )
                         )
+                except (
+                    WorkerPoolStopped,
+                    CollectionInterrupted,
+                    ValueError,
+                ):
+                    if stop_requested["signal"] is None:
+                        raise
+                    promotion_pool.request_stop(
+                        f"signal {stop_requested['signal']}"
                     )
-            promotion_report = evaluate_candidate_gate(
-                promotion_results, sequential_promotion_cfg
-            )
-            promotion_report["sequential_stop_reason"] = promotion_stop_reason
-            promotion_report["max_games"] = int(args.promotion_max_games)
-            promotion_report["batch_games"] = int(args.promotion_batch_games)
-            promotion_report["sequential_looks"] = sequential_looks
-            promotion_report["overall_confidence"] = promotion_cfg.confidence
-            promotion_report["per_look_confidence"] = (
-                sequential_promotion_cfg.confidence
-            )
-            promotion_report["confidence_spending"] = "bonferroni"
-            promotion_report["collection_games_included"] = 0
-            promotion_report["candidate_incumbent_budgets_identical"] = True
-            promotion_report["agent_mode"] = args.agent_mode
-            promotion_report["mcts_sims_each"] = int(args.promotion_mcts_sims)
-            promotion_report["move_time_each"] = float(args.promotion_move_time)
-            promotion_report["candidate"] = candidate_identity.as_dict()
-            promotion_report["parent"] = played_identity.as_dict()
-            promotion_report["skipped"] = False
-            if promotion_report["passed"]:
-                incumbent_after = candidate_identity
-                tqdm.write(
-                    f"[rr] PROMOTED candidate score={promotion_report['wr']:.1%} "
-                    f"draw_aware_lo={promotion_report['interval_lower']:.1%} "
-                    f"per_seat={promotion_report['games_per_seat']}"
+                finally:
+                    active_pool["pool"] = None
+                if stop_requested["signal"] is not None:
+                    interrupted_candidate = Path(candidate_identity.path)
+                    if interrupted_candidate.exists():
+                        os.replace(
+                            interrupted_candidate,
+                            interrupted_candidate.with_name(
+                                interrupted_candidate.name
+                                + f".invalid.promotion-interrupted."
+                                f"{int(time.time())}"
+                            ),
+                        )
+                    tqdm.write(
+                        f"[rr] promotion interrupted by signal "
+                        f"{stop_requested['signal']}; no checkpoint",
+                        file=sys.stderr,
+                    )
+                    break
+                promotion_report = evaluate_candidate_gate(
+                    promotion_results, sequential_promotion_cfg
                 )
-            else:
-                tqdm.write(
-                    f"[rr] REJECTED candidate valid={promotion_report['valid']} "
-                    f"wr={promotion_report.get('wr')} "
-                    f"draw_aware_lo={promotion_report.get('interval_lower')} — "
-                    f"incumbent remains {Path(played_identity.path).name}"
+                promotion_report["sequential_stop_reason"] = promotion_stop_reason
+                promotion_report["max_games"] = int(args.promotion_max_games)
+                promotion_report["batch_games"] = int(args.promotion_batch_games)
+                promotion_report["sequential_looks"] = sequential_looks
+                promotion_report["overall_confidence"] = promotion_cfg.confidence
+                promotion_report["per_look_confidence"] = (
+                    sequential_promotion_cfg.confidence
                 )
+                promotion_report["confidence_spending"] = "bonferroni"
+                promotion_report["collection_games_included"] = 0
+                promotion_report["candidate_incumbent_budgets_identical"] = True
+                promotion_report["agent_mode"] = args.agent_mode
+                promotion_report["mcts_sims_each"] = int(args.promotion_mcts_sims)
+                promotion_report["move_time_each"] = float(args.promotion_move_time)
+                promotion_report["promotion_workers"] = n_promo_workers
+                promotion_report["candidate"] = candidate_identity.as_dict()
+                promotion_report["parent"] = played_identity.as_dict()
+                promotion_report["skipped"] = False
+                if promotion_report["passed"]:
+                    incumbent_after = candidate_identity
+                    tqdm.write(
+                        f"[rr] PROMOTED candidate score={promotion_report['wr']:.1%} "
+                        f"draw_aware_lo={promotion_report['interval_lower']:.1%} "
+                        f"per_seat={promotion_report['games_per_seat']}"
+                    )
+                else:
+                    tqdm.write(
+                        f"[rr] REJECTED candidate valid={promotion_report['valid']} "
+                        f"wr={promotion_report.get('wr')} "
+                        f"draw_aware_lo={promotion_report.get('interval_lower')} — "
+                        f"incumbent remains {Path(played_identity.path).name}"
+                    )
+
+            # Drop the pinned candidate unless it becomes the new primary via
+            # reload below (reload clears the entire resident set).
+            if pinned_candidate and not promotion_report.get("passed"):
+                unpin_ok, unpin_statuses = _leaf_broadcast_cmd(
+                    leaf_ctrl_qs,
+                    leaf_status_qs,
+                    leaf_servers,
+                    cmd="unpin",
+                    digest=candidate_identity.digest,
+                )
+                promotion_report["unpin_acknowledgements"] = unpin_statuses
+                if not unpin_ok:
+                    tqdm.write(
+                        "[rr] WARN: leaf unpin after rejected promotion failed; "
+                        "forcing primary reload to parent",
+                        file=sys.stderr,
+                    )
+                    _leaf_broadcast_cmd(
+                        leaf_ctrl_qs,
+                        leaf_status_qs,
+                        leaf_servers,
+                        cmd="reload",
+                        path=str(played_identity.path),
+                        digest=played_identity.digest,
+                        version=leaf_version + 1,
+                    )
+                    leaf_version = leaf_version + 1
+                    leaf_digest = played_identity.digest
+                    if remote_channel is not None:
+                        remote_channel["expected_digest"] = leaf_digest
+                        remote_channel["expected_version"] = leaf_version
+            if remote_pinned_candidate and not promotion_report.get("passed"):
+                try:
+                    remote_farm.unpin_all(candidate_identity.digest)
+                except Exception as exc:
+                    tqdm.write(
+                        "[rr] WARN: remote unpin after rejected promotion "
+                        f"failed: {exc}; forcing parent reload",
+                        file=sys.stderr,
+                    )
+                    try:
+                        remote_farm.reload_all(
+                            str(played_identity.path),
+                            digest=played_identity.digest,
+                            version=leaf_version,
+                        )
+                    except Exception as reload_exc:
+                        tqdm.write(
+                            "[rr] WARN: remote parent reload after unpin "
+                            f"failure also failed: {reload_exc}",
+                            file=sys.stderr,
+                        )
 
             # Reload only the evaluated/promoted candidate, with digest/version
             # acknowledgement from every replica.
-            if promotion_report["passed"] and leaf_ctrl_qs:
+            if promotion_report.get("passed") and leaf_ctrl_qs:
                 requested_version = leaf_version + 1
-                for cq in leaf_ctrl_qs:
-                    cq.put(
-                        {
-                            "cmd": "reload",
-                            "path": candidate_identity.path,
-                            "digest": candidate_identity.digest,
-                            "version": requested_version,
-                        }
-                    )
-                reload_ok = True
-                reload_statuses = []
-                for j, sq in enumerate(leaf_status_qs):
-                    try:
-                        status = sq.get(timeout=240)
-                    except Exception as exc:
-                        status = {"ok": False, "error": str(exc)}
-                    reload_statuses.append(status)
-                    if (
-                        status.get("type") != "reload"
-                        or not status.get("ok")
-                        or status.get("checkpoint_digest") != candidate_identity.digest
-                        or int(status.get("version", -1)) != requested_version
-                        or not leaf_servers[j].is_alive()
-                    ):
-                        reload_ok = False
+                reload_ok, reload_statuses = _leaf_broadcast_cmd(
+                    leaf_ctrl_qs,
+                    leaf_status_qs,
+                    leaf_servers,
+                    cmd="reload",
+                    path=str(candidate_identity.path),
+                    digest=candidate_identity.digest,
+                    version=requested_version,
+                )
+                if reload_ok:
+                    for status in reload_statuses:
+                        if (
+                            status.get("checkpoint_digest")
+                            != candidate_identity.digest
+                            or int(status.get("version", -1)) != requested_version
+                        ):
+                            reload_ok = False
+                            break
                 promotion_report["reload_acknowledgements"] = reload_statuses
                 if reload_ok:
                     leaf_version = requested_version
@@ -3211,6 +3572,21 @@ def main(argv: list[str] | None = None) -> int:
                         f"[rr] leaf reload acknowledged x{len(leaf_servers)} "
                         f"version={leaf_version} digest={leaf_digest[:23]}"
                     )
+                    if remote_farm is not None:
+                        try:
+                            remote_farm.reload_all(
+                                str(candidate_identity.path),
+                                digest=candidate_identity.digest,
+                                version=leaf_version,
+                            )
+                        except Exception as exc:
+                            incumbent_after = played_identity
+                            promotion_report["passed"] = False
+                            promotion_report["deployment_failed"] = True
+                            stop_after_checkpoint = True
+                            fatal_health_error = (
+                                f"remote leaf reload acknowledgement failed: {exc}"
+                            )
                 else:
                     # Keep the parent as the deployable incumbent. Some replicas
                     # may have reloaded, so stop after checkpoint and restart the
@@ -3359,6 +3735,8 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     # Shut all leaf server replicas down cleanly.
+    if remote_farm is not None:
+        remote_farm.close()
     for j, proc in enumerate(leaf_servers):
         try:
             leaf_ctrl_qs[j].put_nowait({"cmd": "stop"})

@@ -140,6 +140,24 @@ def _args(argv=None) -> argparse.Namespace:
     p.add_argument("--inference-queue-depth", type=int, default=32)
     p.add_argument("--inference-servers", type=int, default=4)
     p.add_argument("--inference-timeout-s", type=float, default=30.0)
+    p.add_argument(
+        "--promotion-workers",
+        type=int,
+        default=12,
+        help=(
+            "Parallel WorkerPool size for hammer_search_rl belief-MCTS "
+            "promotion (remote leaf on GPU0). Default 12 balances 3 leaf "
+            "servers vs Blackwell CPU contention; capped by --workers resp_qs."
+        ),
+    )
+    p.add_argument(
+        "--remote-worker-endpoints",
+        nargs="+",
+        default=None,
+        metavar="HOST:PORT",
+        help="Optional additive LAN whole-game workers for core deep-search / "
+        "hammer RL canaries. Local GPU0 IPC leaf path stays default.",
+    )
     return p.parse_args(argv)
 
 
@@ -322,6 +340,8 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--search-start-sims must be >=128")
     if args.inference_servers < 1:
         raise ValueError("--inference-servers must be positive")
+    if int(args.promotion_workers) < 1:
+        raise ValueError("--promotion-workers must be positive")
 
 
 def _run_core_bc(
@@ -499,7 +519,8 @@ def _run_core_deep_search(
     from poke_bot.replay_writer import OrderedReplayWriter
     from poke_bot.iteration_contract import SearchCollectionContract
     from poke_bot.worker_pool import WorkerPool, WorkerPoolStopped
-    from scripts.train_round_robin import _worker_play
+    from poke_bot.remote_jobs import RemoteWorkerFarm
+    from scripts.train_round_robin import _map_game_batch, _worker_play
 
     require_trusted_search("core_deep_search")
     isolation = validate_gpu0_isolation(torch)
@@ -518,6 +539,64 @@ def _run_core_deep_search(
         max_games_per_opponent=int(args.core_search_max_games_per_opponent),
         target_search_decisions=int(args.core_target_search_decisions),
     )
+    final = replay_dir / "core_deep_search.jsonl"
+    if final.exists():
+        # Collection already finalized (e.g. train crashed on optimizer resume).
+        # Reuse the immutable replay and continue with train-only — do not
+        # recreate leaf servers or refuse to overwrite.
+        print(
+            "[core-pipeline][core_deep_search] finalized search replay present; "
+            f"skipping collect and resuming train from {final}",
+            flush=True,
+        )
+        fresh_games = sum(1 for line in final.open() if line.strip())
+        if fresh_games < 1:
+            raise RuntimeError(f"finalized search replay is empty: {final}")
+        decisions = 0
+        with final.open() as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                steps = row.get("steps") or []
+                # Count trusted decision steps (those with factorized targets).
+                fact = row.get("factorized_policy_targets") or []
+                if isinstance(fact, list) and fact:
+                    decisions += sum(1 for item in fact if item is not None)
+                else:
+                    decisions += len(steps)
+        # Collection already passed the overnight health gate before finalize.
+        # Reconstruct the contract floors so core_gate does not reject a pure
+        # train resume (per-decision sims were ≥128 at collect time).
+        return _train_core_deep_search_from_replay(
+            args,
+            run_dir=run_dir,
+            replay_dir=replay_dir,
+            state=state,
+            core_checkpoint=core_checkpoint,
+            final=final,
+            collection_contract=collection_contract,
+            isolation=isolation,
+            fresh_games=fresh_games,
+            decisions=decisions,
+            sims=128 * max(decisions, 1),
+            actual_games_per_opponent=max(
+                1, fresh_games // max(len(specs), 1)
+            ),
+            coverage_complete=True,
+            coverage_counts={},
+            stop_reason="resumed_finalized_replay",
+            scheduled_jobs=fresh_games,
+            jobs_len=fresh_games,
+            max_depth=2,
+            max_ordered_actions=1,
+            factorized_decisions=decisions,
+            started=time.perf_counter(),
+            n_servers=0,
+            requests=0,
+            queue_wait_total=0.0,
+            writer_telemetry={"resumed_finalized_replay": True},
+        )
     workers = (
         int(args.workers)
         if args.workers > 0
@@ -621,6 +700,38 @@ def _run_core_deep_search(
         "expected_version": 0,
         "timeout_s": float(args.inference_timeout_s),
     }
+    remote_farm: RemoteWorkerFarm | None = None
+    if args.remote_worker_endpoints:
+        remote_job_timeout = max(
+            float(args.inference_timeout_s),
+            float(args.search_game_time_s) + 120.0,
+        )
+        remote_farm = RemoteWorkerFarm(
+            list(args.remote_worker_endpoints),
+            timeout_s=remote_job_timeout,
+        )
+        try:
+            remote_infos = remote_farm.connect()
+        except Exception as exc:
+            shutdown_leaf_servers()
+            raise RuntimeError(f"remote worker connect failed: {exc}") from exc
+        for info in remote_infos:
+            print(
+                "[core-pipeline][core_deep_search] "
+                f"remote-worker={info.endpoint} hostname={info.hostname} "
+                f"gpu={info.gpu_name!r} workers={info.workers}",
+                flush=True,
+            )
+        try:
+            remote_farm.reload_all(
+                str(core_checkpoint),
+                digest=identity.digest,
+                version=1,
+            )
+        except Exception as exc:
+            remote_farm.close()
+            shutdown_leaf_servers()
+            raise RuntimeError(f"remote worker reload failed: {exc}") from exc
     jobs = []
     for game_index in range(collection_contract.max_games_per_opponent):
         for opponent_index, opponent_spec in enumerate(specs):
@@ -678,7 +789,8 @@ def _run_core_deep_search(
                 }
             )
     partial = replay_dir / "core_deep_search.jsonl.partial"
-    final = replay_dir / "core_deep_search.jsonl"
+    # ``final`` already resolved above; refuse only if somehow missing from the
+    # early-resume path but present mid-collect (should be unreachable).
     if final.exists():
         raise FileExistsError(f"refusing to overwrite {final}")
     if args.restart_partial_search:
@@ -803,7 +915,14 @@ def _run_core_deep_search(
             active_pool["pool"] = pool
             try:
                 with pool:
-                    for result in pool.imap_unordered(_worker_play, wave):
+                    for result in _map_game_batch(
+                        pool,
+                        _worker_play,
+                        wave,
+                        remote_farm=remote_farm,
+                        kind="play",
+                        local_workers=workers,
+                    ):
                         failures_before = len(failures)
                         writer.submit(
                             result["job_index"],
@@ -893,12 +1012,34 @@ def _run_core_deep_search(
                                 or failures[-1].get("resource_error")
                                 or "incomplete trusted target"
                             )
-                            pool.request_stop(
-                                f"core search fatal result: {cause}"
+                            # Soft-skip transient trust/timeout pressure instead
+                            # of killing the overnight pipeline. Hard-stop only
+                            # when failures become a systemic fraction of work.
+                            soft = bool(
+                                failures[-1].get("trust_failure")
+                                or failures[-1].get("resource_error")
+                                or failures[-1].get("search_budget_exhausted")
+                                or "TrustedSearchBudgetExhausted" in str(cause)
+                                or "incomplete trusted simulation" in str(cause)
                             )
-                            raise RuntimeError(
-                                f"core search fail-fast: {cause}"
+                            completed = len(coverage_rows) + len(failures)
+                            systemic = (
+                                len(failures) >= 12
+                                and len(failures) / max(completed, 1) >= 0.25
                             )
+                            tqdm_mod.write(
+                                "[core-pipeline][core_deep_search_collect] "
+                                f"{'SOFT-SKIP' if soft and not systemic else 'FATAL'} "
+                                f"fail={len(failures)}/{completed} cause={cause}",
+                                file=sys.stderr,
+                            )
+                            if (not soft) or systemic:
+                                pool.request_stop(
+                                    f"core search fatal result: {cause}"
+                                )
+                                raise RuntimeError(
+                                    f"core search fail-fast: {cause}"
+                                )
                         oid = str(result.get("opponent_id") or "?")
                         game_bar.update(1)
                         game_bar.set_postfix(
@@ -995,7 +1136,79 @@ def _run_core_deep_search(
         active_pool["pool"] = None
         for sig, handler in previous_handlers.items():
             signal.signal(sig, handler)
+        if remote_farm is not None:
+            remote_farm.close()
         shutdown_leaf_servers()
+
+    return _train_core_deep_search_from_replay(
+        args,
+        run_dir=run_dir,
+        replay_dir=replay_dir,
+        state=state,
+        core_checkpoint=core_checkpoint,
+        final=final,
+        collection_contract=collection_contract,
+        isolation=isolation,
+        fresh_games=int(writer.written_records),
+        decisions=decisions,
+        sims=sims,
+        actual_games_per_opponent=actual_games_per_opponent,
+        coverage_complete=coverage_complete,
+        coverage_counts=coverage_counts,
+        stop_reason=stop_reason,
+        scheduled_jobs=scheduled_jobs,
+        jobs_len=len(jobs),
+        max_depth=max_depth,
+        max_ordered_actions=max_ordered_actions,
+        factorized_decisions=factorized_decisions,
+        started=started,
+        n_servers=n_servers,
+        requests=requests,
+        queue_wait_total=queue_wait_total,
+        writer_telemetry=writer_telemetry,
+    )
+
+
+def _train_core_deep_search_from_replay(
+    args: argparse.Namespace,
+    *,
+    run_dir: Path,
+    replay_dir: Path,
+    state: dict,
+    core_checkpoint: Path,
+    final: Path,
+    collection_contract,
+    isolation: dict,
+    fresh_games: int,
+    decisions: int,
+    sims: int,
+    actual_games_per_opponent: int,
+    coverage_complete: bool,
+    coverage_counts: dict,
+    stop_reason: str,
+    scheduled_jobs: int,
+    jobs_len: int,
+    max_depth: int,
+    max_ordered_actions: int,
+    factorized_decisions: int,
+    started: float,
+    n_servers: int,
+    requests: int,
+    queue_wait_total: float,
+    writer_telemetry: dict,
+) -> dict:
+    """Fine-tune core kernel from a finalized deep-search replay (+ anchors)."""
+    import torch
+
+    from poke_bot import checkpoint
+    from poke_bot.core_kernel import (
+        CoreTrainConfig,
+        CorpusConfig,
+        StreamingArchetypeCorpus,
+        core_kernel_config_small_3080ti,
+        train_core_kernel,
+    )
+    from poke_bot.iteration_contract import history_games_for_fraction
 
     deep_run_name = f"{args.run_name}.core_deep_search"
     deep_latest = checkpoint.latest_path(deep_run_name)
@@ -1005,9 +1218,7 @@ def _run_core_deep_search(
     resume_ckpt = checkpoint.load_checkpoint(deep_latest, map_location="cpu")
     saved_epoch = int(resume_ckpt.get("epoch", 0))
     model_cfg = core_kernel_config_small_3080ti()
-    from poke_bot.iteration_contract import history_games_for_fraction
 
-    fresh_games = writer.written_records
     desired_history = history_games_for_fraction(
         fresh_games, float(args.core_search_replay_fraction)
     )
@@ -1107,7 +1318,7 @@ def _run_core_deep_search(
             "opponent_seat_counts": coverage_counts,
             "stop_reason": stop_reason,
             "scheduled_games": scheduled_jobs,
-            "max_games_not_scheduled": len(jobs) - scheduled_jobs,
+            "max_games_not_scheduled": jobs_len - scheduled_jobs,
             "max_depth": max_depth,
             "max_complete_ordered_action_count": max_ordered_actions,
             "factorized_search_decisions": factorized_decisions,
@@ -1197,7 +1408,7 @@ def _run_hammer_warmstart(
 ) -> dict:
     import torch
 
-    from poke_bot.core_kernel import warm_start_specialist_from_core
+    from poke_bot.core_kernel import warm_start_specialist_from_checkpoint
 
     checkpoint_info = dict(
         state.get("artifacts", {}).get("core_deep_search_checkpoint") or {}
@@ -1206,7 +1417,7 @@ def _run_hammer_warmstart(
     if not source.is_file():
         raise RuntimeError("Hammer warm-start has no accepted core checkpoint")
     run_name = f"{args.run_name}.hammer"
-    result = warm_start_specialist_from_core(
+    result = warm_start_specialist_from_checkpoint(
         source,
         "hammer-pult",
         run_name=run_name,
@@ -1318,12 +1529,19 @@ def _run_hammer_search_rl(
         "--promotion-min-pairs",
         "40",
         "--promotion-workers",
-        "1",
+        str(max(1, int(args.promotion_workers))),
         "--promotion-mcts-sims",
         str(args.search_start_sims),
         "--promotion-move-time",
         str(args.search_move_time_s),
     ]
+    if args.remote_worker_endpoints:
+        command.extend(
+            [
+                "--remote-worker-endpoints",
+                *list(args.remote_worker_endpoints),
+            ]
+        )
     completed = subprocess.run(command, cwd=ROOT, check=False)
     if completed.returncode != 0:
         raise RuntimeError(

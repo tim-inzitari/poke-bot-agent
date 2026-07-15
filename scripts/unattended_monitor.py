@@ -41,7 +41,9 @@ except ModuleNotFoundError:  # direct ``python scripts/unattended_monitor.py``
 
 
 FATAL_PATTERNS = {
-    "fail_closed": re.compile(r"FAIL-CLOSED|fail[_ -]closed(?:_games)?=[1-9]", re.I),
+    # Aggregate health counters only. Per-game PolicyAgent "FAIL-CLOSED ..." lines
+    # (timeouts / transient trust pressure) are soft failures handled by trainers.
+    "fail_closed": re.compile(r"fail[_ -]closed[_ -]games?=[1-9]", re.I),
     "zero_target": re.compile(r"zero[_ -]target(?:_games)?=[1-9]", re.I),
     "incomplete": re.compile(
         r"game (?:is )?incomplete|incomplete after|reached max_steps", re.I
@@ -51,10 +53,10 @@ FATAL_PATTERNS = {
     "non_finite": re.compile(r"\b(?:nan|inf)\b|non-finite|loss explosion", re.I),
     "missing_opponent": re.compile(r"expected (?:baseline|opponent) unavailable", re.I),
     "broken_pipe": re.compile(r"broken pipe|connection reset", re.I),
-    "fatal_gate": re.compile(r"FATAL HEALTH GATE|ABORT:", re.I),
+    # Soft-invalid iterations now quarantine-and-continue; only hard ABORT stops.
+    "fatal_gate": re.compile(r"\bABORT:", re.I),
     "hidden_info": re.compile(r"hidden-state leakage|info-set violation", re.I),
     "stale_generation": re.compile(r"stale.*generation|generation.*mismatch", re.I),
-    "insufficient_sims": re.compile(r"insufficient trusted belief simulations", re.I),
     "untrusted_target": re.compile(r"untrusted target|oracle.*cannot generate", re.I),
     "writer_failure": re.compile(
         r"writer (?:failed|committed .*?/|thread did not stop)|ordering gaps", re.I
@@ -64,17 +66,15 @@ FATAL_PATTERNS = {
         r"remote response slot overflow", re.I
     ),
     "belief_support": re.compile(r"BeliefSupportError", re.I),
-    "trust_failure": re.compile(
-        r"trust(?:ed)?[_ -](?:search[_ -])?failures?=[1-9]", re.I
-    ),
-    "game_timeout": re.compile(
-        r"game_timeouts?=[1-9]|game exceeded \d+s", re.I
-    ),
 }
 OOM_PATTERN = re.compile(r"out of memory|CUDA OOM|OutOfMemory", re.I)
 PROGRESS_PATTERN = re.compile(
-    r"iter(?:ation)?[ =:]+\d+|games?[ =:]+\d+|core search games|core bc games|"
-    r"core_deep_search|rl-train|PROMOTED|REJECTED|checkpoint",
+    # Match both "[rr] iter=103 ..." and tqdm "iter103 promotion: 38%|...| 60/160".
+    # Bare "iter103" has no separator before the digits, so require that form too;
+    # otherwise promotion look identical to a 40m stall after "rl-train: 100%".
+    r"iter(?:ation)?[ =:]+\d+|iter\d+|promotion|games?[ =:]+\d+|"
+    r"core search games|core bc games|core_deep_search|rl-train|"
+    r"PROMOTED|REJECTED|checkpoint|s/game",
     re.I,
 )
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")

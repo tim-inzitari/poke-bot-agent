@@ -1170,12 +1170,37 @@ def train_core_kernel(
             kernel.load_state_dict(ckpt["core_kernel_state_dict"], strict=False)
         elif "model_state_dict" in ckpt:
             kernel.net.load_state_dict(ckpt["model_state_dict"], strict=True)
+        # Soft-skip incompatible optimizer/scaler/scheduler state when the live
+        # model gained/lost trainable params (e.g. new belief aux heads) versus
+        # an older checkpoint. Weights still load; training continues with a
+        # fresh optimizer rather than dying mid-pipeline.
         if "optimizer_state_dict" in ckpt:
-            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            try:
+                optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            except (ValueError, RuntimeError) as exc:
+                print(
+                    f"[core-kernel] optimizer_state incompatible ({exc}); "
+                    "continuing with a fresh optimizer",
+                    flush=True,
+                )
         if use_scaler and "scaler_state_dict" in ckpt:
-            scaler.load_state_dict(ckpt["scaler_state_dict"])
+            try:
+                scaler.load_state_dict(ckpt["scaler_state_dict"])
+            except (ValueError, RuntimeError) as exc:
+                print(
+                    f"[core-kernel] scaler_state incompatible ({exc}); "
+                    "continuing with a fresh scaler",
+                    flush=True,
+                )
         if "scheduler_state_dict" in ckpt:
-            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            try:
+                scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            except (ValueError, RuntimeError) as exc:
+                print(
+                    f"[core-kernel] scheduler_state incompatible ({exc}); "
+                    "continuing with a fresh scheduler",
+                    flush=True,
+                )
         checkpoint.restore_rng_state(ckpt.get("rng_state"))
         step = int(ckpt.get("step", 0))
         saved_epoch = int(ckpt.get("epoch", 0))

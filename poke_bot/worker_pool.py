@@ -12,10 +12,13 @@ runtime on ``sys.path`` in every worker.
 
 from __future__ import annotations
 
+import atexit
 import itertools
 import multiprocessing as mp
 import os
 import queue
+import threading
+import time
 from typing import Callable, Iterable, Iterator, Optional, TypeVar
 
 from . import config
@@ -44,6 +47,16 @@ def _cap_worker_native_threads() -> None:
         "VECLIB_MAXIMUM_THREADS",
     ):
         os.environ[var] = "1"
+
+
+def _release_slot(slot_queue, slot: int) -> None:
+    """Best-effort lease return so a recycled/dead worker cannot starve the pool."""
+    if slot_queue is None:
+        return
+    try:
+        slot_queue.put_nowait(int(slot))
+    except Exception:
+        pass
 
 
 def _worker_init(cg_lib_path: Optional[str], remote_channel=None) -> None:
@@ -110,14 +123,29 @@ def _worker_init(cg_lib_path: Optional[str], remote_channel=None) -> None:
             timeout_s = None
             stop_event = None
         if stop_event is not None and stop_event.is_set():
-            raise WorkerPoolStopped("pool stopped before worker initialization")
+            # Exit quietly during teardown so Pool.terminate() does not get a
+            # traceback flood / replacement death spiral.
+            os._exit(0)
         if slot_queue is not None:
-            try:
-                slot = int(slot_queue.get(timeout=30.0))
-            except queue.Empty as exc:
-                raise WorkerPoolStopped(
-                    "no response slot available for this pool generation"
-                ) from exc
+            deadline = time.monotonic() + 30.0
+            slot = None
+            while slot is None:
+                if stop_event is not None and stop_event.is_set():
+                    os._exit(0)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    # Parent likely terminated workers without reclaiming leases.
+                    # Exit quietly; request_stop/terminate must stop replacements.
+                    if stop_event is not None and stop_event.is_set():
+                        os._exit(0)
+                    raise WorkerPoolStopped(
+                        "no response slot available for this pool generation"
+                    )
+                try:
+                    slot = int(slot_queue.get(timeout=min(1.0, remaining)))
+                except queue.Empty:
+                    continue
+            atexit.register(_release_slot, slot_queue, slot)
         else:
             with slot_counter.get_lock():
                 slot = int(slot_counter.value)
@@ -236,7 +264,17 @@ class WorkerPool:
             self.request_stop(f"{exc[0].__name__}: context exit")
         if not self._terminated:
             self._pool.close()
-        self._pool.join()
+        # Overnight SIGTERM previously hung join() for hours while replacement
+        # workers spun on an empty slot_queue. Bound teardown and force-kill.
+        join_thread = threading.Thread(target=self._pool.join, daemon=True)
+        join_thread.start()
+        join_thread.join(timeout=45.0)
+        if join_thread.is_alive():
+            try:
+                self._pool.terminate()
+            except Exception:
+                pass
+            join_thread.join(timeout=10.0)
         self._pool = None
         if self._slot_queue is not None:
             try:

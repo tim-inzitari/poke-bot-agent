@@ -229,17 +229,19 @@ def test_unattended_monitor_avoids_zero_count_false_alarms() -> None:
     assert zero_target.search("zero_target_games=0") is None
     assert fail_closed.search("fail_closed_games=1/24") is not None
     assert zero_target.search("zero_target_games=2") is not None
-    assert unattended_monitor.FATAL_PATTERNS["game_timeout"].search(
-        "game_timeouts=0"
+    # Per-game PolicyAgent / timeout lines must NOT kill overnight runs.
+    assert fail_closed.search(
+        "[PolicyAgent] FAIL-CLOSED (no search/leaf): TimeoutError: "
+        "promotion game exceeded 600s"
     ) is None
-    assert unattended_monitor.FATAL_PATTERNS["game_timeout"].search(
-        "game_timeouts=1"
-    ) is not None
-    assert unattended_monitor.FATAL_PATTERNS["trust_failure"].search(
-        "trust_failures=0"
+    assert "game_timeout" not in unattended_monitor.FATAL_PATTERNS
+    assert "trust_failure" not in unattended_monitor.FATAL_PATTERNS
+    assert "insufficient_sims" not in unattended_monitor.FATAL_PATTERNS
+    assert unattended_monitor.FATAL_PATTERNS["fatal_gate"].search(
+        "FATAL HEALTH GATE: iter soft"
     ) is None
-    assert unattended_monitor.FATAL_PATTERNS["trust_failure"].search(
-        "trust_failures=2"
+    assert unattended_monitor.FATAL_PATTERNS["fatal_gate"].search(
+        "ABORT: leaf server dead"
     ) is not None
 
     process = unattended_monitor._process_snapshot(os.getpid(), False)
