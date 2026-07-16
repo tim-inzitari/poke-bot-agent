@@ -57,9 +57,11 @@ class BatchObs:
 class MultiEnv(Protocol):
     """N independent battles in one address space (fork target API).
 
-    Official ``cg.game`` only supports ``num_envs == 1`` per process. A rebuild
-    should implement this protocol natively; adapters may emulate it with a
-    process pool until then.
+    Official ``cg.game`` Python helpers only keep one ``Battle.battle_ptr``.
+    Native ``libcg`` already supports many ``ApiData*`` handles — see
+    :class:`~poke_bot.engine_rebuild.libcg_multi_env.LibcgMultiEnv`. A C++
+    fork still adds value for in-process ``step_batch`` without ctypes and
+    optional SoA/GPU kernels.
     """
 
     @property

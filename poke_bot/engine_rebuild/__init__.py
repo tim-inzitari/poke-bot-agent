@@ -1,13 +1,11 @@
-"""Engine rebuild spike: multi-env / batch-step interfaces for a ptcg_engine fork.
+"""Engine rebuild spike: multi-env / batch-step interfaces for CABT throughput.
 
-Official ``libcg`` exposes a process-global Game API (no battle handle). This
-package defines the Python contracts a forked engine should satisfy so pure-RL
-collect can run many battles in one process and call ``step_batch``.
+M0 finding: official ``libcg`` C ABI is already multi-handle (``ApiData*``).
+The singleton is Python ``cg.game.Battle.battle_ptr``. Use
+:class:`LibcgMultiEnv` for many battles per process without a C++ fork; keep
+fork work for SoA / ``step_batch`` in C++ / GPU kernels.
 
-No competition C++ source or ``libcg.so`` is vendored here. ``FakeMultiEnv`` is
-a deterministic toy for unit tests; ``LibcgProcessAdapter`` documents how a
-future binding would wrap one official battle per OS process until the fork
-lands.
+Competition source and binaries stay out of git (``kaggle/input/`` ignored).
 """
 
 from .interfaces import (
@@ -18,6 +16,7 @@ from .interfaces import (
     ResetSpec,
 )
 from .fake_env import FakeMultiEnv
+from .libcg_multi_env import LibcgMultiEnv
 from .parity import (
     TransitionRecord,
     assert_parity,
@@ -31,6 +30,7 @@ __all__ = [
     "BatchObs",
     "EnvObs",
     "FakeMultiEnv",
+    "LibcgMultiEnv",
     "MultiEnv",
     "ResetSpec",
     "TransitionRecord",

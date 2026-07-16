@@ -9,48 +9,51 @@ Leaves + worker farms still matter for SPS *today*. This doc is the parallel pat
 
 ---
 
-## 0. Source inventory (this workspace)
+## 0. Source inventory (this workspace) — **DOWNLOADED**
 
-| Artifact | Expected path | Present here? |
+| Artifact | Path | Present? |
 |---|---|---|
-| `ptcg_engine.zip` / C++ tree | `kaggle/input/pokemon-tcg-ai-battle/ptcg_engine/ptcgProgram 22/` (`paths.PTCG_ENGINE_DIR`) | **No** — competition bundle not downloaded |
-| Python `cg/` bindings | `…/sample_submission/sample_submission/cg/{api,game,sim,utils}.py` + `libcg.so` | **No** (no Kaggle creds in this cloud env) |
-| Public API docs | [matsuoinstitute.github.io/cabt](https://matsuoinstitute.github.io/cabt/) | **Yes** — used below |
-| In-repo wrappers | `poke_bot/cg_env.py`, `worker_pool.py`, `mcts.py` | **Yes** |
+| C++ engine headers / `Export.cpp` | `kaggle/input/pokemon-tcg-ai-battle/ptcg_engine/ptcgProgram 22/` | **Yes** (45 files; gitignored) |
+| Python `cg/` + `libcg.so` | `…/sample_submission/sample_submission/cg/` | **Yes** |
+| Public API docs | [matsuoinstitute.github.io/cabt](https://matsuoinstitute.github.io/cabt/) | Yes |
+| In-repo wrappers | `poke_bot/cg_env.py`, `worker_pool.py` | Yes |
 
-Obtain source on a machine with Kaggle auth:
+Credentials used only via `~/.kaggle/kaggle.json` (chmod 600, not in git). Re-download:
 
 ```bash
-bash scripts/setup_competition_data.sh   # SKIP_EPISODES=1 OK
-# then: unzip / inspect ptcg_engine; keep LICENSE + README with any fork
+# with ~/.kaggle/kaggle.json present
+bash scripts/setup_competition_data.sh   # or the focused download used in this spike
 ```
-
-Until the zip is local, design below is grounded in **published Game/Search/Sim APIs**, our wrappers, and discussion 717141. Assumptions are marked **`[ASSUME]`**.
 
 ---
 
-## 1. Why one-battle-per-process exists (code-level)
+## 1. M0 finding: singleton is **Python**, not native
 
-### Hard evidence from the public / shipped API surface
+### Hard evidence from the downloaded source + live `libcg.so`
 
-1. **Game API is a singleton session** — `cg.game.battle_start` / `battle_select` / `battle_finish` / `visualize_data` take **no battle handle**. Docs: “finish and clean up the **current** battle.” That is a process-global current-battle, not `Battle* env_id`.
-2. **ctypes core is module-global** — `cg.sim` documents a process-wide `lib` plus unbound instance APIs: `GameInitialize`, `BattleStart`, `AgentStart`, `BattleFinish`, `GetBattleData`, `Select`, `VisualizeData`, `SearchBegin`/`SearchStep`/`SearchEnd`/`SearchRelease`, `AllCard`, `AllAttack`. No `env_id` in those names.
-3. **Search is multi-tree, still session-scoped** — `search_begin` → `SearchState.searchId`; `search_step(search_id, …)`. Multiple trees OK *inside one search session*; `search_end()` tears the session down. `MultiTreeMCTS` already batches **leaves**, not battle steps.
-4. **Our pool treats libcg as non-shareable** — `WorkerPool` spawn + recycle (`worker_recycle_games`) because “libcg is sequential CPU and holds per-process state that grows slowly.” That is operational confirmation of leaks / sticky native heaps, not just API style.
-5. **Hardware knobs encode the constraint** — `HardwareConfig.sim_workers` = one battle per process; `parallel_games` only sizes multi-tree / reanalyse *around* that singleton.
+1. **C ABI is handle-based** — `Export.cpp` / `Api.h`:
+   - `BattleStart(int* cards) -> StartData { ApiData* battlePtr; … }`
+   - `Select(ApiData* data, …)`, `GetBattleData(ApiData*)`, `BattleFinish(ApiData*)`
+   - `ApiData` owns `Game game`, `State state`, `Search search`, buffers (`ApiData.h`).
+2. **Python wrapper is the singleton** — `cg/game.py` stores `Battle.battle_ptr` on a class and `battle_select` always uses that one pointer. Docs that say “current battle” describe this helper, not the DLL.
+3. **Live proof (this cloud host):** started **32 concurrent** `BattleStart` handles, stepped each with `Select`, finished all — `MULTI_HANDLE_OK` / `32_HANDLE_OK`.
+4. **Shared process globals that remain** (OK for multi-battle if treated read-mostly after init):
+   - `inline std::unordered_map<…> CardTable / SkillTable / AttackTable / NameTable` (`Card.h`)
+   - `InitializeAll()` asserts empty then fills once (`All.h` / `GameInitialize`)
+   - `static JsonBuilder AllCardJson / AllAttackJson` in `Export.cpp` (AllCard/AllAttack only)
+5. **Per-env mutable state is already on the heap object** — `Game` has its own `std::mt19937 rng`; `BattleData` has `Game` + `State` (`Game.h`, `BattleData.h`).
+6. **Our WorkerPool still uses one battle per process** because collect talks through `cg.game` + historical leak/recycle caution — that is now a **software choice**, not a native hard limit.
 
-### Likely C++ causes (`[ASSUME]` until zip audited)
+### What rebuild still buys (honest)
 
-| Suspect | Why it matches the API | Rebuild action |
-|---|---|---|
-| Static / file-scope `Battle` or `g_battle` | Explains no handle in Game API | `Battle` as value/arena object; API takes `Battle*` / `env_id` |
-| Process-global RNG / coin stream | Coin flips + shuffle must be deterministic per seed | Per-env `Rng` (PCG/xoshiro); optional `manual_coin` already exists for search |
-| Card / effect tables as writable globals | Card metadata load once; procs mutate shared caches | Read-only shared card DB; mutable state only on env |
-| Non-reentrant effect / select stacks | Nested selects, looking zones | Stacks on `Battle`; no static scratch |
-| Sticky allocators / unreclaimed search nodes | Explains recycle-after-N-games | Arena + explicit reset; pool recycle becomes optional |
-| Bugs already reported in 717141 | `ToolCountProc` shadow; `Export.cpp` off-by-one | Fix in fork; parity suite catches regressions |
+| Keep / do now | Still worth a fork |
+|---|---|
+| **`LibcgMultiEnv`** — many `ApiData*` in one process via ctypes (shipped) | C++ `step_batch` to avoid N× ctypes/JSON per ply |
+| Wire pure-RL collect to MultiEnv + GPU leaves | SoA / SIMD on hot `State` fields after profiles |
+| | Optional GPU kernels (RNG/damage/featurize) |
+| | Fix 717141 bugs (`ToolCountProc`, `Export` off-by-one) in fork |
 
-**Conclusion:** one-battle-per-process is not a training-policy choice — it is the **natural consequence of a non-reentrant C API**. Throughput scale-out today = **many OS processes**. The rebuild removes that bottleneck so **N envs share one process** (CPU first), then optionally GPU-accelerates *narrow* kernels.
+**Revised conclusion:** one-battle-per-process was largely a **Python API / ops** constraint. Near-term throughput: multi-handle `libcg` in-process. Medium-term rebuild: batch step + layout + selective GPU — not “invent battle handles from scratch.”
 
 ---
 
@@ -99,44 +102,36 @@ A full “PTCG on CUDA/JAX” rewrite is **not** the near-term plan: parity risk
 
 ---
 
-## 3. Concrete code-level change list (once zip is present)
+## 3. Concrete code-level change list (post-M0)
 
-### 3.1 Inventory pass (day 0–1)
+### 3.1 Inventory — **done**
 
-1. List every `static` / anonymous-namespace global in `ptcgProgram 22`.
-2. Map `BattleStart` / `Select` / `SearchBegin` to owning objects.
-3. Find RNG + shuffle entry points; note seed control.
-4. Confirm leak sites (search node pools, serialize buffers).
-5. Record official bugs from 717141 and fix in fork.
+1. Statics/globals listed: `CardTable*` family, `AllCardJson`/`AllAttackJson`, no process-global `Battle`.
+2. `BattleStart`/`Select`/`SearchBegin` own state via `ApiData*`.
+3. RNG is `Game.rng` (`std::mt19937`) per `ApiData`; public `BattleStart` still reseeds from `random_device` (seed control gap for parity — fork or new API entry).
+4. Recycle/leak story still operationally relevant for long workers; measure with MultiEnv soak.
+5. 717141 bugs remain fork/fix candidates.
 
-### 3.2 Multi-instance / arena / SoA (CPU)
+### 3.2 Near-term (no fork): Python MultiEnv on official handles
 
-1. Introduce `struct BattleEnv { Battle battle; Rng rng; … }`.
-2. Replace Game API with:
-   - `env_create` / `env_reset(deck0, deck1, seed)`
-   - `env_step(env_id, select_list) -> Obs`
-   - `env_destroy` / `env_reset_inplace`
-3. Keep legacy singleton wrappers calling `env_id=0` for drop-in `cg.game` compatibility during migration.
-4. Arena: bump allocator per env or shared pool with generation tags; `search_release` returns nodes to freelist.
-5. SoA optional phase: `Hp[N]`, `EnergyMask[N][…]` for the hottest loops identified by `perf`.
+1. **`LibcgMultiEnv`** (`poke_bot/engine_rebuild/libcg_multi_env.py`) — done spike.
+2. Wire pure-RL / WorkerPool path behind a flag to use N handles per process (or fewer fatter processes).
+3. Soak test for native leaks vs process recycle.
 
-### 3.3 Batched `step` across N envs
+### 3.3 Fork: batched `step` + seed control + SoA
 
 ```text
 step_batch(actions: list[list[int] | None]) -> BatchObs
-  for i in active:
-      if actions[i] is None: continue  # waiting on policy
-      obs[i] = env_step(i, actions[i])
-      if done[i]: auto_reset(i) optional
+  // C++ loops Select+serialize once; one ctypes call
 ```
 
-Python spike: `poke_bot.engine_rebuild.interfaces.MultiEnv` (this PR).  
-C++ later: single entry that loops in C without N× ctypes round-trips (critical — ctypes per step will dominate).
+Also expose `BattleStartSeeded(cards, seed)` for golden parity.  
+SoA optional after `perf` on MultiEnv collect.
 
 ### 3.4 Optional GPU port
 
-1. Profile pure-RL collect after MultiEnv CPU: if **policy/IPC** still dominates, stop (leaves already GPU).
-2. If **sim_step** dominates, extract 1–2 kernels (RNG, damage) behind a CPU fallback.
+1. Profile after in-process MultiEnv + GPU leaves.
+2. If **sim_step** dominates, extract 1–2 kernels (RNG, damage) with CPU fallback.
 3. Never block Stage A overnight on GPU rules.
 
 ---
@@ -145,13 +140,13 @@ C++ later: single entry that loops in C without N× ctypes round-trips (critical
 
 | # | Milestone | Effort | Risk | Gain | Verdict |
 |---|---|---|---|---|---|
-| **M0** | Download zip; static/global inventory; golden capture harness vs `libcg` | S | Low | Unlocks everything | **Do first on training box** |
-| **M1** | Instance `Battle*` + per-env RNG; legacy singleton shim | M | Med (subtle globals) | Many battles / process; cut process count | **Primary rebuild goal** |
-| **M2** | Arena + leak-free search; drop aggressive recycle | M | Med | Stable long workers; better leaf occupancy | With M1 |
-| **M3** | `step_batch` in C++ (no per-step ctypes) + Python `MultiEnv` | M | Med | Pure-RL SPS when sim-bound | **Next coding milestone after M0 inventory** |
-| **M4** | SoA / SIMD on hottest fields | M–L | Med | Extra CPU throughput | After profiler says yes |
-| **M5** | GPU kernels for RNG/damage/featurize only | L | High (parity) | Large only if sim-bound | Conditional |
-| **M6** | Full vectorized rules on GPU/JAX | XL | Very high | Speculative TCGJax-class | Research only |
+| **M0** | Download source; prove multi-handle; inventory globals | S | Low | Reframes the whole project | **Done** |
+| **M1** | Ship/validate `LibcgMultiEnv` in pure-RL canary (fewer processes) | S–M | Low–Med (leaks) | Cut process tax immediately | **Do next** |
+| **M2** | Soak + recycle policy for multi-handle workers | S | Med | Stable overnight | With M1 |
+| **M3** | C++ `step_batch` + seeded start in engine fork | M | Med | Kill ctypes/JSON overhead | Primary rebuild goal |
+| **M4** | SoA / SIMD on hottest fields | M–L | Med | Extra CPU throughput | After profiler |
+| **M5** | GPU kernels for RNG/damage/featurize only | L | High | Conditional | After sim-bound proof |
+| **M6** | Full vectorized rules on GPU/JAX | XL | Very high | Speculative | Research only |
 
 **Parity strategy (non-negotiable)**
 
@@ -179,15 +174,13 @@ Rebuild does **not** replace leaves. It removes the “32–40 processes × one 
 
 ## 6. Recommended sequence (serious, not fluff)
 
-1. **On box with data:** M0 inventory + golden harness against `libcg`.
-2. **M1+M3 spike in C++:** multi-env CPU with `step_batch`; keep `cg.game` shim.
-3. **Wire pure-RL collect** to `MultiEnv` behind a flag; A/B SPS vs process pool.
-4. **Only then** consider M4/M5 from profiles.
-5. Keep leaf coalesce tuning (`LEAF_SERVER_COALESCE_MS`) independent.
+1. ~~Download source + inventory~~ **Done** — multi-handle proven.
+2. **M1 canary:** pure-RL collect via `LibcgMultiEnv` (or hybrid: few processes × many handles) + GPU leaves; A/B SPS vs today’s WorkerPool.
+3. **M2 soak** for leaks; adjust recycle.
+4. **M3 fork:** C++ `step_batch` + seeded `BattleStart`; golden transition hashes.
+5. **M4/M5** only if sim_step still dominates profiles.
 
-**Next concrete coding milestone (after source present):** implement M1 handle API + Python `MultiEnv` binding that passes the golden transition-hash suite for ≥10 fixed seeds.
-
-Until then, this repo ships the **Python interface + FakeMultiEnv + parity harness** under `poke_bot/engine_rebuild/` so wiring and tests can proceed without `libcg`.
+**Next coding milestone:** wire `LibcgMultiEnv` into pure-RL self-play behind a flag and bench games/hour vs process pool on the training box.
 
 ---
 
