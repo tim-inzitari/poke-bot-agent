@@ -22,6 +22,22 @@ Independent pure-RL line on branch `cursor/pure-rl-full-rebuild-2d48`
   must be a matching small arch and must **not** be the official starter
   policy as the main prior (`bootstrap_mix=0` always).
 
+## Spinning Up alignment
+
+Guide: [OpenAI Spinning Up](https://spinningup.openai.com/en/latest/spinningup/spinningup.html)
+(Abhyuday’s cited RL primer). We keep **AWR** (advantage-weighted regression on
+played actions) rather than ripping in a half-baked PPO — same actor-critic /
+advantage spirit, simpler for high-SPS imperfect-info collect.
+
+| Spinning Up idea | Pure-RL knob / code |
+|---|---|
+| Actor–critic: π from advantages, V ≈ E[return\|s] | AWR on `selected_index`; value head → terminal W/L/D; **no** CE to behavior π |
+| Advantage = return − baseline | `A = R − V(s)` with **stale/detached** V (optional whitening); `PURE_RL_NORMALIZE_ADVANTAGES` |
+| On-policy / fresh data | `PURE_RL_REPLAY_WINDOW_SHARDS` (default 2); `bootstrap_mix=0` enforced; high games:train |
+| Exploration vs exploitation | Collect: temperature sample (`--collect-temperature`, anneal); eval/submit: **greedy** |
+| Prefer simple algorithms | Search OFF in collect; not AlphaZero MCTS visit targets |
+| Discount γ | **γ = 1** (undiscounted Monte Carlo): every decision uses the **terminal** game return (+1/−1/0). No TD bootstrap into AWR weights. |
+
 ## Small model (mandatory)
 
 Pure-RL uses `poke_bot.pure_rl.model_profile.pure_rl_model_config()` — lean

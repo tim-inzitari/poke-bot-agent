@@ -709,9 +709,18 @@ def _build_collect_jobs(
 
 
 def _dataset_from_replay_window(run_dir: Path, it: int) -> Any:
-    """Fresh-data bias: current shard + last K-1 (bootstrap_mix forced 0)."""
+    """Fresh-data bias (Spinning Up on-policy theme): short window only.
+
+    ``bootstrap_mix`` must stay 0 — refuse soft CE / starter replay contamination.
+    """
     from poke_bot.dataset import BootstrapDataset
 
+    mix = float(getattr(config.PURE_RL, "bootstrap_mix", 0.0))
+    if mix > 0.0:
+        raise SystemExit(
+            f"PURE_RL fail-closed: bootstrap_mix={mix} > 0 "
+            "(Spinning Up / Abhyuday: no starter CE clone; fresh AWR data only)"
+        )
     window = max(1, int(getattr(config.PURE_RL, "replay_window_shards", 2)))
     seqs = []
     for j in range(max(0, it - window + 1), it + 1):
@@ -919,6 +928,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 "model_profile": model_config_dict(),
                 "param_fail_max": int(config.PURE_RL.param_fail_max),
                 "sota": {
+                    "spinning_up": "https://spinningup.openai.com/en/latest/spinningup/spinningup.html",
+                    "algorithm": "AWR_actor_critic",
+                    "not_alphazero": True,
+                    "gamma": 1.0,
+                    "return_type": "terminal_monte_carlo",
                     "awr_stale_value_baseline": True,
                     "normalize_advantages": bool(config.PURE_RL.normalize_advantages),
                     "entropy_bonus": float(config.PURE_RL.entropy_bonus),
