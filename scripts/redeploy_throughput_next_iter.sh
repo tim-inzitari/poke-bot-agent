@@ -65,12 +65,14 @@ export POKEBOT_MULTI_ENV_PER_WORKER="${POKEBOT_MULTI_ENV_PER_WORKER:-4}"
 export PURE_RL_MULTI_ENV="${PURE_RL_MULTI_ENV:-1}"
 export PURE_RL_MULTI_ENV_PER_WORKER="${PURE_RL_MULTI_ENV_PER_WORKER:-4}"
 export PURE_RL_LEAF_COALESCE_MS="${PURE_RL_LEAF_COALESCE_MS:-0}"
+export POKEBOT_LIVE_POOL="${POKEBOT_LIVE_POOL:-1}"
 export PURE_RL_REMOTE_WORKER_ENDPOINTS="${PURE_RL_REMOTE_WORKER_ENDPOINTS:-$ELMO_EP,$BERT_EP}"
 
 echo "== knobs =="
 echo "POKEBOT_MULTI_ENV=$POKEBOT_MULTI_ENV"
 echo "POKEBOT_MULTI_ENV_PER_WORKER=$POKEBOT_MULTI_ENV_PER_WORKER"
 echo "PURE_RL_LEAF_COALESCE_MS=$PURE_RL_LEAF_COALESCE_MS"
+echo "POKEBOT_LIVE_POOL=$POKEBOT_LIVE_POOL (resource_watcher --emit-live-pool)"
 echo "REMOTE=$PURE_RL_REMOTE_WORKER_ENDPOINTS"
 
 if [[ "$SKIP_CANARY" -eq 0 ]]; then
@@ -147,6 +149,7 @@ if [[ "$RESTART_NOW" -eq 1 ]]; then
   pkill -f 'scripts/train_pure_rl.py' 2>/dev/null || true
   pkill -f 'scripts/launch_pure_rl.py' 2>/dev/null || true
   pkill -f 'unattended_monitor.py.*pure_rl' 2>/dev/null || true
+  pkill -f 'scripts/resource_watcher.py' 2>/dev/null || true
   sleep 2
   if [[ -z "$RUN_NAME" ]]; then
     RUN_NAME="pure_rl_core_thruput_$(date -u +%Y%m%dT%H%M%SZ)"

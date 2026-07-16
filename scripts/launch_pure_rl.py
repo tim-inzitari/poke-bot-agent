@@ -72,6 +72,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable Elmo/bert whole-game farms",
     )
     p.add_argument(
+        "--no-resource-watcher",
+        action="store_true",
+        help="Do not spawn resource_watcher --emit-live-pool (auto-rebalance).",
+    )
+    p.add_argument(
         "train_args",
         nargs=argparse.REMAINDER,
         help="Args after '--' forwarded to train_pure_rl.py",
@@ -150,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         env.setdefault("POKEBOT_MULTI_ENV_PER_WORKER", "4")
         env.setdefault("PURE_RL_MULTI_ENV", "1")
         env.setdefault("PURE_RL_MULTI_ENV_PER_WORKER", "4")
+    # Live pool auto-rebalance ON unless explicitly disabled.
+    env.setdefault("POKEBOT_LIVE_POOL", "1")
     if hw.allow_single_gpu:
         env["PURE_RL_ALLOW_SINGLE_GPU"] = "1"
 
@@ -266,6 +273,35 @@ def main(argv: list[str] | None = None) -> int:
         start_new_session=True,
     )
 
+    watcher = None
+    watcher_script = ROOT / "scripts/resource_watcher.py"
+    if (
+        watcher_script.is_file()
+        and not args.smoke
+        and not args.no_resource_watcher
+        and str(env.get("POKEBOT_LIVE_POOL", "1")).strip().lower()
+        not in ("0", "false", "no", "off")
+    ):
+        watcher_log = ROOT / "outputs/logs/resource_watcher.log"
+        watcher_log.parent.mkdir(parents=True, exist_ok=True)
+        (ROOT / "outputs/state").mkdir(parents=True, exist_ok=True)
+        watcher = subprocess.Popen(
+            [
+                args.python,
+                "-u",
+                str(watcher_script),
+                "--interval",
+                "30",
+                "--emit-live-pool",
+                "--log",
+                str(watcher_log),
+            ],
+            cwd=ROOT,
+            env=env,
+            start_new_session=True,
+        )
+        print(f"PURE_RL_WATCHER pid={watcher.pid} emit_live_pool=1", flush=True)
+
     monitor = None
     monitor_script = ROOT / "scripts/unattended_monitor.py"
     if monitor_script.is_file() and not args.smoke:
@@ -306,18 +342,21 @@ def main(argv: list[str] | None = None) -> int:
             pass
         if monitor and monitor.poll() is None:
             monitor.terminate()
+        if watcher and watcher.poll() is None:
+            watcher.terminate()
 
     prev = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
         return training.wait()
     finally:
         log_stream.close()
-        if monitor and monitor.poll() is None:
-            monitor.terminate()
-            try:
-                monitor.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                monitor.kill()
+        for proc in (monitor, watcher):
+            if proc and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         for sig, handler in prev.items():
             signal.signal(sig, handler)
 

@@ -200,6 +200,20 @@ def main(argv=None) -> int:
                     default=ROOT / "outputs" / "logs" / "resource_watcher.log")
     ap.add_argument("--plan", type=Path,
                     default=ROOT / "outputs" / "state" / "resource_plan.json")
+    ap.add_argument(
+        "--live-pool-plan",
+        type=Path,
+        default=ROOT / "outputs" / "state" / "live_pool_plan.json",
+        help="Iteration-boundary plan for running trainers "
+             "(workers / leaf_servers). Pure-RL + RR consume at next iter.",
+    )
+    ap.add_argument(
+        "--emit-live-pool",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Write --live-pool-plan on bumps/backoff (default ON for max "
+             "throughput). Disable with --no-emit-live-pool.",
+    )
     ap.add_argument("--hysteresis", type=int, default=4,
                     help="Consecutive headroom samples required before a bump.")
     ap.add_argument("--min-bump-interval", type=float, default=180.0,
@@ -216,12 +230,19 @@ def main(argv=None) -> int:
     ap.add_argument("--manage-core-kernel", action="store_true",
                     help="OPT-IN: restart the core-kernel with the new plan on a bump "
                          "(resumes from checkpoint). Off by default = advisory only.")
+    ap.add_argument(
+        "--promotion-workers",
+        type=int,
+        default=8,
+        help="Promotion worker count stamped into live_pool_plan (RR).",
+    )
     args = ap.parse_args(argv)
 
     args.log.parent.mkdir(parents=True, exist_ok=True)
     args.plan.parent.mkdir(parents=True, exist_ok=True)
     cores = _cpu_count()
     knobs = default_knobs(cores)
+    live_seq = 0
 
     def log(msg: str) -> None:
         line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {msg}"
@@ -230,6 +251,7 @@ def main(argv=None) -> int:
         print(line, flush=True)
 
     def write_plan(reason: str) -> None:
+        nonlocal live_seq
         plan = {
             "updated": datetime.now().isoformat(timespec="seconds"),
             "reason": reason,
@@ -239,11 +261,30 @@ def main(argv=None) -> int:
         tmp = args.plan.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(plan, indent=2) + "\n")
         tmp.replace(args.plan)
+        if args.emit_live_pool:
+            live_seq += 1
+            try:
+                from poke_bot.live_pool import write_live_pool_plan
+
+                # Prefer in-flight games for workers; fall back to sim_workers.
+                workers = int(knobs["rl_games_in_flight"].value)
+                leaf_servers = int(knobs["leaf_server_replicas"].value)
+                write_live_pool_plan(
+                    seq=live_seq,
+                    workers=workers,
+                    leaf_servers=leaf_servers,
+                    promotion_workers=int(args.promotion_workers),
+                    reason=reason,
+                    path=args.live_pool_plan,
+                    apply="next_iter",
+                )
+            except Exception as exc:
+                log(f"[watcher] live_pool_plan write failed: {exc!r}")
 
     log(f"[watcher] start pid={os.getpid()} cores={cores} interval={args.interval}s "
         f"hysteresis={args.hysteresis} min_bump={args.min_bump_interval}s "
         f"ceilings: vram<={args.vram_max_pct}% ram<={args.ram_max_gb}GB "
-        f"cpu<={args.cpu_max_pct}%")
+        f"cpu<={args.cpu_max_pct}% emit_live_pool={args.emit_live_pool}")
     write_plan("init")
 
     ok_streak = 0

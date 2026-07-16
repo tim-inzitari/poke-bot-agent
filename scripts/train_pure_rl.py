@@ -1188,6 +1188,12 @@ def run_full_loop(args: argparse.Namespace) -> int:
     else:
         coalesce_ms = pure_rl_leaf_coalesce_ms(default=0.0)
 
+    from poke_bot.live_pool import LIVE_POOL_PLAN_PATH, live_pool_enabled
+    from poke_bot.pure_rl.live_pool_apply import apply_live_pool_plan
+
+    live_pool_last_seq = 0
+    live_pool_on = live_pool_enabled()
+
     # Persist throughput knobs into the run manifest (rewrite after resolve).
     try:
         manifest_path = run_dir / "manifest.json"
@@ -1195,6 +1201,8 @@ def run_full_loop(args: argparse.Namespace) -> int:
         manifest["multi_env_per_worker"] = multi_env_n
         manifest["proc_workers_self_play"] = proc_workers
         manifest["leaf_coalesce_ms"] = coalesce_ms
+        manifest["live_pool"] = live_pool_on
+        manifest["live_pool_plan"] = str(LIVE_POOL_PLAN_PATH)
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     except Exception:
         pass
@@ -1204,7 +1212,8 @@ def run_full_loop(args: argparse.Namespace) -> int:
         f"self_play_procs={proc_workers} multi_env={multi_env_n} "
         f"leaf_coalesce_ms={coalesce_ms} "
         f"leaves_gpu0={hw.leaf_gpu0_replicas} leaves_gpu1={hw.leaf_gpu1_replicas} "
-        f"train_cuda={hw.train_cuda_device} remotes={endpoints or 'none'}",
+        f"train_cuda={hw.train_cuda_device} remotes={endpoints or 'none'} "
+        f"live_pool={'on' if live_pool_on else 'off'}",
         flush=True,
     )
 
@@ -1284,6 +1293,54 @@ def run_full_loop(args: argparse.Namespace) -> int:
 
         opponent_pool: list[str] = [str(ckpt)]
 
+        def _rebuild_leaves_if_needed(champion: Path, dig: str) -> None:
+            """Restart leaf farm after live-pool topology change (iter boundary)."""
+            if args.leaf_eval != "gpu-server" or visible < 1:
+                return
+            leaf_devices = hw.leaf_cuda_devices()
+            if visible < 2:
+                leaf_devices = [0] * max(1, hw.leaf_gpu0_replicas or hw.leaf_replicas_total)
+            leaf_slots = max(proc_workers, hw.sim_workers)
+            print(
+                f"[pure_rl] live_pool rebuild leaves "
+                f"gpu0={hw.leaf_gpu0_replicas} gpu1={hw.leaf_gpu1_replicas} "
+                f"slots={leaf_slots}",
+                flush=True,
+            )
+            leaf.stop()
+            leaf.start(
+                ckpt=champion,
+                digest=dig,
+                leaf_devices=leaf_devices,
+                n_workers=leaf_slots,
+                max_batch=int(config.HARDWARE.leaf_server_max_batch),
+                coalesce_ms=coalesce_ms,
+            )
+
+        def _maybe_apply_live_pool(champion: Path, dig: str) -> None:
+            nonlocal hw, proc_workers, live_pool_last_seq
+            new_hw, new_proc, new_seq, plan, leaf_changed = apply_live_pool_plan(
+                hw=hw,
+                last_seq=live_pool_last_seq,
+                multi_env_per_worker=multi_env_n,
+                visible_gpu_count=visible,
+            )
+            if plan is None:
+                return
+            print(
+                f"[pure_rl] live_pool_plan seq={plan.seq} apply "
+                f"workers={hw.sim_workers}->{new_hw.sim_workers} "
+                f"leaves={hw.leaf_replicas_total}->{new_hw.leaf_replicas_total} "
+                f"procs={proc_workers}->{new_proc}"
+                + (f" reason={plan.reason}" if plan.reason else ""),
+                flush=True,
+            )
+            hw = new_hw
+            proc_workers = new_proc
+            live_pool_last_seq = new_seq
+            if leaf_changed and leaf.remote_channel is not None:
+                _rebuild_leaves_if_needed(champion, dig)
+
         def _kick_collect(it: int, champion: Path, dig: str) -> dict[str, Any]:
             temp = _collect_temperature(args, it)
             pool_n = max(1, int(getattr(config.PURE_RL, "opponent_pool_size", 4)))
@@ -1344,7 +1401,8 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 "digest": dig,
             }
 
-        # Prefetch iter-0 collect.
+        # Prefetch iter-0 collect (apply any existing plan first).
+        _maybe_apply_live_pool(ckpt, identity.digest)
         pending_collect = _kick_collect(0, ckpt, identity.digest)
 
         for it in range(args.iterations):
@@ -1355,10 +1413,12 @@ def run_full_loop(args: argparse.Namespace) -> int:
             writer: CompactShardWriter = collect_bundle["writer"]
 
             # Overlap: start next collect while training current shard.
+            # Apply live_pool here — prior collect finished; safe to resize.
             next_it = it + 1
             next_future = None
             executor = ThreadPoolExecutor(max_workers=1)
             if next_it < args.iterations:
+                _maybe_apply_live_pool(ckpt, identity.digest)
                 # Train first uses current champion; next collect uses post-train ckpt.
                 # Prefetch next collect AFTER train (need new weights). For true
                 # overlap of collect∥train we start next collect on *current*
