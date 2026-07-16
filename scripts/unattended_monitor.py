@@ -47,11 +47,11 @@ FATAL_PATTERNS = {
         r"game (?:is )?incomplete|incomplete after|reached max_steps", re.I
     ),
     "dead_server": re.compile(r"leaf server.*(?:dead|died)|server is not alive", re.I),
-    # Host reload/identity mismatches only — not remote-farm pin JSON dumps
-    # that embed ``checkpoint_digest`` keys next to unrelated pin errors.
+    # Host-side identity mismatches only. Do NOT match remote-farm soft-drop
+    # lines that embed ``pin digest mismatch`` / reload JSON (Elmo/bert can
+    # soft-drop + reconnect without killing the overnight trainer).
     "digest_mismatch": re.compile(
-        r"(?:reload|leaf).*(?:digest mismatch|expected_digest)|"
-        r"\bdigest mismatch: expected\b|"
+        r"(?:initial checkpoint|reload|leaf response checkpoint) digest mismatch|"
         r"FAIL-CLOSED.*digest",
         re.I,
     ),

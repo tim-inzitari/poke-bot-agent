@@ -245,3 +245,27 @@ def test_unattended_monitor_avoids_zero_count_false_alarms() -> None:
     process = unattended_monitor._process_snapshot(os.getpid(), False)
     assert process["process_count"] == 1
     assert process["rss_mb"] > 0
+
+
+def test_unattended_monitor_ignores_remote_pin_digest_soft_drops() -> None:
+    digest = unattended_monitor.FATAL_PATTERNS["digest_mismatch"]
+    remote_soft_drop = (
+        "[remote-farm] WARN dropped endpoint(s) after reload failure: "
+        "192.168.1.143:8765: reload failed host=192.168.1.143 "
+        "remote_path=/workspace/checkpoint/iter_00001.pt: "
+        "{'type': 'reload_ok', 'ok': False, 'error': "
+        "\"leaf[1] reload failed: {'type': 'pin', 'ok': False, 'version': 1, "
+        "'checkpoint_digest': 'sha256:abc', 'error': "
+        "'ValueError: pin digest mismatch: expected sha256:old, got sha256:new'}\"}"
+    )
+    assert digest.search(remote_soft_drop) is None
+    assert digest.search(
+        "reload digest mismatch: expected sha256:a, got sha256:b"
+    ) is not None
+    assert digest.search(
+        "initial checkpoint digest mismatch: expected sha256:a, got sha256:b"
+    ) is not None
+    assert digest.search(
+        "leaf response checkpoint digest mismatch: expected sha256:a, got sha256:b"
+    ) is not None
+    assert digest.search("FAIL-CLOSED digest mismatch on leaf") is not None
