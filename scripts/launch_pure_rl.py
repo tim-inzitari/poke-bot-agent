@@ -139,6 +139,17 @@ def main(argv: list[str] | None = None) -> int:
     # Tiny ~1.6M pure-RL policy: coalesce≈0 beats the RR Hope-large default (4ms).
     # Do not set LEAF_SERVER_COALESCE_MS globally here if already exported (ops override).
     env.setdefault("PURE_RL_LEAF_COALESCE_MS", "0")
+    # Throughput defaults for next-iter restarts (override with POKEBOT_MULTI_ENV=0).
+    if str(env.get("POKEBOT_MULTI_ENV", "")).strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    ):
+        env.setdefault("POKEBOT_MULTI_ENV", "1")
+        env.setdefault("POKEBOT_MULTI_ENV_PER_WORKER", "4")
+        env.setdefault("PURE_RL_MULTI_ENV", "1")
+        env.setdefault("PURE_RL_MULTI_ENV_PER_WORKER", "4")
     if hw.allow_single_gpu:
         env["PURE_RL_ALLOW_SINGLE_GPU"] = "1"
 
@@ -176,16 +187,42 @@ def main(argv: list[str] | None = None) -> int:
         train_cmd.append("--smoke")
     if args.allow_single_gpu and "--allow-single-gpu" not in train_cmd:
         train_cmd.append("--allow-single-gpu")
-    if args.multi_env_per_worker is not None and not any(
+    # Resolve multi-env for the train argv so logs show the knobs even when
+    # only env defaults were set (next-iter redeploy path).
+    from poke_bot.pure_rl.multi_env_self_play import (
+        pure_rl_leaf_coalesce_ms,
+        resolve_multi_env_per_worker,
+    )
+
+    # Make launch setdefaults visible to resolve_* helpers.
+    for k in (
+        "POKEBOT_MULTI_ENV",
+        "POKEBOT_MULTI_ENV_PER_WORKER",
+        "PURE_RL_MULTI_ENV",
+        "PURE_RL_MULTI_ENV_PER_WORKER",
+        "PURE_RL_LEAF_COALESCE_MS",
+    ):
+        if k in env:
+            os.environ[k] = env[k]
+    multi_n = resolve_multi_env_per_worker(
+        args.multi_env_per_worker,
+        default_when_enabled=4,
+    )
+    if not any(
         a == "--multi-env-per-worker" or a.startswith("--multi-env-per-worker=")
         for a in train_cmd
     ):
-        train_cmd.extend(["--multi-env-per-worker", str(args.multi_env_per_worker)])
-    if args.leaf_coalesce_ms is not None and not any(
+        train_cmd.extend(["--multi-env-per-worker", str(multi_n)])
+    coalesce_ms = (
+        float(args.leaf_coalesce_ms)
+        if args.leaf_coalesce_ms is not None
+        else pure_rl_leaf_coalesce_ms(default=0.0)
+    )
+    if not any(
         a == "--leaf-coalesce-ms" or a.startswith("--leaf-coalesce-ms=")
         for a in train_cmd
     ):
-        train_cmd.extend(["--leaf-coalesce-ms", str(args.leaf_coalesce_ms)])
+        train_cmd.extend(["--leaf-coalesce-ms", str(coalesce_ms)])
     # Production: remotes ON by default (canary/smoke skips).
     has_remote_flag = any(
         a == "--remote-worker-endpoints" or a.startswith("--remote-worker-endpoints=")
@@ -215,7 +252,9 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"PURE_RL_RUN name={args.run_name} mode={args.mode} "
         f"workers={hw.sim_workers} leaves0={hw.leaf_gpu0_replicas} "
-        f"leaves1={hw.leaf_gpu1_replicas} log={log_path}",
+        f"leaves1={hw.leaf_gpu1_replicas} "
+        f"multi_env={multi_n} leaf_coalesce_ms={coalesce_ms} "
+        f"log={log_path}",
         flush=True,
     )
     training = subprocess.Popen(
