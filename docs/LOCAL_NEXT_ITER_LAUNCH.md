@@ -32,6 +32,7 @@ At the **next pure-RL iteration boundary** (after current collect finishes; pref
 - Do not attach experimental flags to unrelated overnight Hope/RR PIDs.
 - If accuracy canary fails, **stop** (do not skip unless operator sets `POKEBOT_SKIP_GAME_ACCURACY=1`).
 - Bert sync is attempted by the redeploy script; Elmo host Docker image is unchanged (TCP farm still used).
+- For Elmo image rebuild + bert/host boundary cutover (MultiEnv / optional libcg fork), see `docs/REMOTE_WORKER_CUTOVER.md` and `scripts/redeploy_remote_boundary.sh`.
 
 ## Defaults that will be on
 

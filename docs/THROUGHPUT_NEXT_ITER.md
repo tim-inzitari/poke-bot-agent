@@ -50,4 +50,7 @@ Also: `tail -f outputs/logs/resource_watcher.log` and `cat outputs/state/live_po
 ## Remotes
 
 - **bert:** script SSH-syncs + restarts worker (needs key/agent auth).
-- **Elmo:** host Docker image not rebuilt by this script; TCP farm still works. Rebuild compose only if you need new worker code on Elmo.
+- **Elmo:** host Docker image not rebuilt by this script; TCP farm still works.
+  For MultiEnv / optional libcg-fork image rebuild + **promotion/iter-boundary**
+  cutover (no mid-collect kill), use:
+  `scripts/redeploy_remote_boundary.sh` and [REMOTE_WORKER_CUTOVER.md](REMOTE_WORKER_CUTOVER.md).

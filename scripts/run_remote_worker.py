@@ -385,6 +385,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                 pins.pop(pin_digest, None)
         return restored
 
+    def _simulator_version() -> Optional[str]:
+        """Report competition/fork libcg digest for version-storm canaries."""
+        try:
+            from poke_bot.belief import simulator_version
+
+            return simulator_version()
+        except Exception as exc:  # noqa: BLE001
+            return f"unavailable:{type(exc).__name__}"
+
+    sim_version = _simulator_version()
+    print(f"[remote-worker] simulator_version={sim_version}", flush=True)
+
     def hello() -> dict[str, Any]:
         return {
             "hostname": socket.gethostname(),
@@ -395,6 +407,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             "checkpoint_digest": state["digest"],
             "checkpoint_version": state["version"],
             "pinned_digests": sorted({state["digest"], *pins}),
+            "simulator_version": sim_version,
+            "cg_lib_path": args.cg_lib_path
+            or os.environ.get("CG_LIB_PATH", ""),
+            "multi_env": os.environ.get("POKEBOT_MULTI_ENV", ""),
+            "multi_env_per_worker": os.environ.get(
+                "POKEBOT_MULTI_ENV_PER_WORKER", ""
+            ),
             "free_ram_gb": _free_ram_gb(),
             "jobs_completed": state["jobs_completed"],
             "jobs_failed": state["jobs_failed"],

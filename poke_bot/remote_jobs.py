@@ -359,6 +359,8 @@ class RemoteWorkerInfo:
     checkpoint_digest: Optional[str]
     hostname: str
     free_ram_gb: Optional[float] = None
+    simulator_version: Optional[str] = None
+    cg_lib_path: Optional[str] = None
 
 
 def _env_float(name: str, default: float) -> float:
@@ -432,6 +434,16 @@ class RemoteJobClient:
             free_ram_gb=(
                 float(reply["free_ram_gb"])
                 if reply.get("free_ram_gb") is not None
+                else None
+            ),
+            simulator_version=(
+                str(reply["simulator_version"])
+                if reply.get("simulator_version") is not None
+                else None
+            ),
+            cg_lib_path=(
+                str(reply["cg_lib_path"])
+                if reply.get("cg_lib_path") is not None
                 else None
             ),
         )

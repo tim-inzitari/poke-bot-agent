@@ -255,3 +255,14 @@ __marimo__/
 # Kaggle credentials
 .kaggle/
 **/kaggle.json
+
+# Local TrueNAS worker build/export artifacts (never commit image tars)
+.truenas_worker_build/
+.truenas_worker_stage/
+
+# Optional local libcg fork staging for compose bind-mount
+containers/truenas-worker/libcg_fork/
+containers/truenas-worker/checkpoint/
+containers/truenas-worker/runtime-logs/
+containers/truenas-worker/*.tar
+containers/truenas-worker/*.tar.gz

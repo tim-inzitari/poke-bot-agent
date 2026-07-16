@@ -135,8 +135,10 @@ fi
 
 echo "== elmo note =="
 echo "Elmo/host Docker worker is unchanged by this script."
-echo "If you need the new code inside the TrueNAS image, rebuild/load compose"
-echo "(see containers/truenas-worker/OPS.md). Whole-game TCP to $ELMO_EP still helps."
+echo "For MultiEnv / libcg image rebuild + boundary cutover (no mid-collect kill):"
+echo "  bash scripts/redeploy_remote_boundary.sh --pull --stage-elmo --build-elmo --export-elmo"
+echo "  bash scripts/redeploy_remote_boundary.sh --wait-boundary --cutover-all"
+echo "See containers/truenas-worker/OPS.md and docs/REMOTE_WORKER_CUTOVER.md."
 
 LAUNCH_CMD=(
   "$PY" -u scripts/launch_pure_rl.py
