@@ -114,6 +114,23 @@ def _needs_stage(src: Path, dest: Path) -> bool:
         return True
 
 
+def digest_addressed_basename(src: Path, digest: Optional[str] = None) -> str:
+    """Stable remote filename that cannot collide across distinct checkpoint bytes.
+
+    Elmo only bind-mounts a flat ``checkpoint/`` dir. Staging as bare
+    ``iter_00001.pt`` overwrote prior digests and broke pin/reload on the
+    long-lived worker (expected old sha, file had new sha).
+    """
+    from .checkpoint import checkpoint_digest
+
+    resolved = Path(src).expanduser()
+    dig = digest or checkpoint_digest(resolved)
+    short = str(dig).split(":", 1)[-1][:16]
+    if not short:
+        raise RemoteJobsError(f"empty checkpoint digest for {resolved}")
+    return f"{resolved.stem}.{short}{resolved.suffix}"
+
+
 def _gvfs_safe_copy(src: Path, dest: Path) -> None:
     """Copy bytes onto gvfs SMB/SFTP (os.replace often fails with Errno 95)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -232,10 +249,12 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
             )
         if not src.is_file():
             raise RemoteJobsError(f"local checkpoint missing for stage: {src}")
-        dest = smb / src.name
+        # Digest-addressed basename: pins/reloads stay valid across iters/runs.
+        dest_name = digest_addressed_basename(src)
+        dest = smb / dest_name
         if _needs_stage(src, dest):
             _gvfs_safe_copy(src, dest)
-        return f"/workspace/checkpoint/{src.name}"
+        return f"/workspace/checkpoint/{dest_name}"
     if host_l in _BERT_HOSTS:
         return _stage_bert_checkpoint(src)
     return str(src)

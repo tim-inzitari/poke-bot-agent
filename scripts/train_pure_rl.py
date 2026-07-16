@@ -267,6 +267,93 @@ def _write_metrics(run_dir: Path, it: int, metrics: IterationMetrics) -> None:
     latest.write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
 
 
+def _progress_every_games() -> int:
+    raw = os.environ.get("PURE_RL_PROGRESS_EVERY_GAMES", "16")
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 16
+
+
+def _progress_every_sec() -> float:
+    raw = os.environ.get("PURE_RL_PROGRESS_EVERY_SEC", "10")
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return 10.0
+
+
+def _disable_tqdm_for_file_logs() -> None:
+    """tqdm \\r bars are invisible under launch redirect (`stderr→log`)."""
+    if os.environ.get("TQDM_DISABLE") is not None:
+        return
+    if not sys.stdout.isatty() and not sys.stderr.isatty():
+        os.environ["TQDM_DISABLE"] = "1"
+
+
+class _FileProgress:
+    """Append-only progress lines for `tail -F` (no carriage returns)."""
+
+    def __init__(
+        self,
+        *,
+        stage: str,
+        iteration: int,
+        total: int,
+        remotes: int = 0,
+        every_games: Optional[int] = None,
+        every_sec: Optional[float] = None,
+    ) -> None:
+        self.stage = stage
+        self.iteration = iteration
+        self.total = max(0, int(total))
+        self.remotes = int(remotes)
+        self.every_games = (
+            _progress_every_games() if every_games is None else max(1, int(every_games))
+        )
+        self.every_sec = (
+            _progress_every_sec() if every_sec is None else max(1.0, float(every_sec))
+        )
+        self._t0 = time.time()
+        self._last_print = 0.0
+        self._last_done = 0
+        self._done = 0
+        self._decisions = 0
+
+    def tick(self, done: int, *, decisions: int = 0, force: bool = False) -> None:
+        self._done = int(done)
+        self._decisions = int(decisions)
+        now = time.time()
+        games_delta = self._done - self._last_done
+        due = force or games_delta >= self.every_games or (
+            now - self._last_print
+        ) >= self.every_sec
+        if not due:
+            return
+        self._emit(now)
+        self._last_print = now
+        self._last_done = self._done
+
+    def close(self) -> None:
+        if self._done <= 0 and self.total <= 0:
+            return
+        if self._done != self._last_done:
+            self._emit(time.time(), final=True)
+
+    def _emit(self, now: float, *, final: bool = False) -> None:
+        elapsed = max(now - self._t0, 1e-6)
+        gps = self._done / elapsed
+        sps = self._decisions / elapsed
+        suffix = " done" if final else ""
+        print(
+            f"[pure_rl] progress stage={self.stage} iter={self.iteration} "
+            f"games={self._done}/{self.total} "
+            f"gps={gps:.2f} sps={sps:.1f} "
+            f"remotes={self.remotes}{suffix}",
+            flush=True,
+        )
+
+
 def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
     """Strip soft behavior π; keep selected_index + observation for AWR."""
     steps = list(record.get("steps") or [])
@@ -1252,16 +1339,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 if leaf.remote_channel is not None:
                     leaf.reload(ckpt, identity.digest)
                     leaf.remote_channel["generation"] = it + 1
-                if remote_farm is not None and remote_farm.clients:
-                    try:
-                        remote_farm.reload_all(
-                            str(ckpt),
-                            digest=identity.digest,
-                            version=it + 1,
-                        )
-                        remote_farm.pin_all(str(ckpt), digest=identity.digest)
-                    except Exception as exc:
-                        print(f"[pure_rl] WARN remote reload: {exc}", flush=True)
+                # Defer remote reload/pin until overlapping collect finishes.
+                # Prefetch collect still uses the prior digest on Elmo/bert; a
+                # mid-flight reload races leaf ctrl/status queues and can surface
+                # as pin digest mismatch → soft-drop.
             else:
                 print(
                     f"[pure_rl] WARN iter={it} empty shard — skipping train",
@@ -1276,6 +1357,21 @@ def run_full_loop(args: argparse.Namespace) -> int:
             else:
                 pending_collect = None
             executor.shutdown(wait=False)
+
+            if (
+                dataset.sequences
+                and remote_farm is not None
+                and remote_farm.clients
+            ):
+                try:
+                    remote_farm.reload_all(
+                        str(ckpt),
+                        digest=identity.digest,
+                        version=it + 1,
+                    )
+                    remote_farm.pin_all(str(ckpt), digest=identity.digest)
+                except Exception as exc:
+                    print(f"[pure_rl] WARN remote reload: {exc}", flush=True)
 
             # Greedy held-out vs official four — local only so host RR patch
             # (job sample_actions=False) applies; remotes may run older workers.

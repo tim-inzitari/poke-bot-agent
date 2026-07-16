@@ -282,6 +282,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     pool.__enter__()
     stop_event = threading.Event()
+    # Serialize reload/pin/unpin across concurrent TCP handler threads so leaf
+    # ctrl/status queues cannot interleave (pin ack observed as reload failure).
+    ctrl_lock = threading.RLock()
     # Secondary digests kept resident across primary reloads (multi-trainer /
     # belief-MCTS promotion). Map digest → absolute path on this host.
     pins: dict[str, str] = {}
@@ -302,6 +305,44 @@ def main(argv: Optional[list[str]] = None) -> int:
         leaf_expect["version"] = int(version)
         leaf_expect["pinned"] = sorted(pins)
 
+    def _drain_status_queues() -> None:
+        """Drop any stale leaf status frames (best-effort, non-blocking)."""
+        for sq in leaf_status_qs:
+            while True:
+                try:
+                    sq.get_nowait()
+                except Exception:
+                    break
+
+    def _await_leaf_statuses(
+        expected_type: str, *, timeout_s: float = 120.0
+    ) -> tuple[bool, Optional[str], Optional[dict[str, Any]]]:
+        """Wait for one ack per leaf; drain remaining queues on failure."""
+        last_status: Optional[dict[str, Any]] = None
+        for j, sq in enumerate(leaf_status_qs):
+            try:
+                status = sq.get(timeout=timeout_s)
+            except Exception as exc:
+                _drain_status_queues()
+                return False, f"leaf[{j}] {expected_type} status timeout: {exc}", None
+            last_status = status if isinstance(status, dict) else None
+            if not isinstance(status, dict) or not status.get("ok"):
+                _drain_status_queues()
+                return (
+                    False,
+                    f"leaf[{j}] {expected_type} failed: {status}",
+                    last_status,
+                )
+            got_type = str(status.get("type") or "")
+            if got_type and got_type != expected_type:
+                _drain_status_queues()
+                return (
+                    False,
+                    f"leaf[{j}] expected type={expected_type!r}, got {status}",
+                    last_status,
+                )
+        return True, None, last_status
+
     def _repin_secondaries() -> list[str]:
         """Re-apply pins after a primary reload wiped the leaf resident set."""
         restored: list[str] = []
@@ -312,22 +353,35 @@ def main(argv: Optional[list[str]] = None) -> int:
             if not Path(pin_path).is_file():
                 pins.pop(pin_digest, None)
                 continue
+            try:
+                file_digest = checkpoint_digest(pin_path)
+            except Exception as exc:
+                print(
+                    f"[remote-worker] WARN drop pin {pin_digest[:19]}… "
+                    f"(digest read failed: {exc})",
+                    flush=True,
+                )
+                pins.pop(pin_digest, None)
+                continue
+            if file_digest != pin_digest:
+                # Basename overwrite / stale pin map — do not poison leaf queues.
+                print(
+                    f"[remote-worker] WARN drop stale pin {pin_digest[:19]}… "
+                    f"(file now {file_digest[:19]}… at {pin_path})",
+                    flush=True,
+                )
+                pins.pop(pin_digest, None)
+                continue
             for cq in leaf_ctrl_qs:
                 cq.put({"cmd": "pin", "path": pin_path, "digest": pin_digest})
-            ok = True
-            for j, sq in enumerate(leaf_status_qs):
-                status = sq.get(timeout=120)
-                if not status.get("ok"):
-                    ok = False
-                    print(
-                        f"[remote-worker] WARN re-pin {pin_digest[:19]}… "
-                        f"leaf[{j}] failed: {status}",
-                        flush=True,
-                    )
-                    break
+            ok, err, _ = _await_leaf_statuses("pin")
             if ok:
                 restored.append(pin_digest)
             else:
+                print(
+                    f"[remote-worker] WARN re-pin {pin_digest[:19]}… failed: {err}",
+                    flush=True,
+                )
                 pins.pop(pin_digest, None)
         return restored
 
@@ -358,105 +412,131 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "leaf_alive": alive,
             }
         if mtype == "reload":
-            path = str(msg["path"])
-            requested_digest = msg.get("digest")
-            new_version = int(msg.get("version", state["version"] + 1))
-            actual = checkpoint_digest(path)
-            if requested_digest is not None and actual != requested_digest:
-                return {
-                    "type": "reload_ok",
-                    "ok": False,
-                    "error": f"digest mismatch: expected {requested_digest}, got {actual}",
-                }
-            for cq in leaf_ctrl_qs:
-                cq.put(
-                    {
-                        "cmd": "reload",
-                        "path": path,
-                        "digest": actual,
-                        "version": new_version,
-                    }
-                )
-            # Wait for each replica ack.
-            for j, sq in enumerate(leaf_status_qs):
-                status = sq.get(timeout=120)
-                if not status.get("ok"):
+            with ctrl_lock:
+                path = str(msg["path"])
+                requested_digest = msg.get("digest")
+                new_version = int(msg.get("version", state["version"] + 1))
+                actual = checkpoint_digest(path)
+                if requested_digest is not None and actual != requested_digest:
                     return {
                         "type": "reload_ok",
                         "ok": False,
-                        "error": f"leaf[{j}] reload failed: {status}",
+                        "error": (
+                            f"digest mismatch: expected {requested_digest}, "
+                            f"got {actual}"
+                        ),
                     }
-            # Former primary can stay available if a peer trainer still needs it.
-            prev_digest = str(state["digest"] or "")
-            prev_path = str(state["checkpoint"] or "")
-            if (
-                prev_digest
-                and prev_digest != actual
-                and prev_path
-                and Path(prev_path).is_file()
-            ):
-                pins[prev_digest] = prev_path
-            pins.pop(actual, None)
-            state["digest"] = actual
-            state["version"] = new_version
-            state["checkpoint"] = path
-            restored = _repin_secondaries()
-            # Publish to long-lived workers BEFORE returning so the next job
-            # cannot observe server version N while still expecting N-1.
-            _publish_expect(primary=actual, version=new_version)
-            return {
-                "type": "reload_ok",
-                "ok": True,
-                "checkpoint_digest": actual,
-                "version": new_version,
-                "pinned_digests": sorted({actual, *pins}),
-                "restored_pins": restored,
-            }
-        if mtype == "pin":
-            path = str(msg["path"])
-            requested_digest = msg.get("digest")
-            actual = checkpoint_digest(path)
-            if requested_digest is not None and actual != requested_digest:
+                _drain_status_queues()
+                for cq in leaf_ctrl_qs:
+                    cq.put(
+                        {
+                            "cmd": "reload",
+                            "path": path,
+                            "digest": actual,
+                            "version": new_version,
+                        }
+                    )
+                ok, err, _ = _await_leaf_statuses("reload")
+                if not ok:
+                    return {
+                        "type": "reload_ok",
+                        "ok": False,
+                        "error": err,
+                    }
+                # Former primary can stay available if a peer trainer still needs it.
+                prev_digest = str(state["digest"] or "")
+                prev_path = str(state["checkpoint"] or "")
+                if (
+                    prev_digest
+                    and prev_digest != actual
+                    and prev_path
+                    and Path(prev_path).is_file()
+                ):
+                    try:
+                        if checkpoint_digest(prev_path) == prev_digest:
+                            pins[prev_digest] = prev_path
+                        else:
+                            print(
+                                "[remote-worker] WARN skip pin of former primary "
+                                f"{prev_digest[:19]}… (path bytes changed)",
+                                flush=True,
+                            )
+                    except Exception as exc:
+                        print(
+                            "[remote-worker] WARN skip pin of former primary "
+                            f"({exc})",
+                            flush=True,
+                        )
+                pins.pop(actual, None)
+                state["digest"] = actual
+                state["version"] = new_version
+                state["checkpoint"] = path
+                restored = _repin_secondaries()
+                # Publish to long-lived workers BEFORE returning so the next job
+                # cannot observe server version N while still expecting N-1.
+                _publish_expect(primary=actual, version=new_version)
                 return {
-                    "type": "pin_ok",
-                    "ok": False,
-                    "error": f"digest mismatch: expected {requested_digest}, got {actual}",
+                    "type": "reload_ok",
+                    "ok": True,
+                    "checkpoint_digest": actual,
+                    "version": new_version,
+                    "pinned_digests": sorted({actual, *pins}),
+                    "restored_pins": restored,
                 }
-            for cq in leaf_ctrl_qs:
-                cq.put({"cmd": "pin", "path": path, "digest": actual})
-            for j, sq in enumerate(leaf_status_qs):
-                status = sq.get(timeout=120)
-                if not status.get("ok"):
+        if mtype == "pin":
+            with ctrl_lock:
+                path = str(msg["path"])
+                requested_digest = msg.get("digest")
+                actual = checkpoint_digest(path)
+                if requested_digest is not None and actual != requested_digest:
                     return {
                         "type": "pin_ok",
                         "ok": False,
-                        "error": f"leaf[{j}] pin failed: {status}",
+                        "error": (
+                            f"digest mismatch: expected {requested_digest}, "
+                            f"got {actual}"
+                        ),
                     }
-            if actual != state["digest"]:
-                pins[actual] = path
-            _publish_expect(primary=str(state["digest"]), version=int(state["version"]))
-            return {
-                "type": "pin_ok",
-                "ok": True,
-                "checkpoint_digest": actual,
-                "pinned_digests": status.get("pinned_digests")
-                or sorted({state["digest"], *pins}),
-            }
+                _drain_status_queues()
+                for cq in leaf_ctrl_qs:
+                    cq.put({"cmd": "pin", "path": path, "digest": actual})
+                ok, err, status = _await_leaf_statuses("pin")
+                if not ok:
+                    return {
+                        "type": "pin_ok",
+                        "ok": False,
+                        "error": err,
+                    }
+                if actual != state["digest"]:
+                    pins[actual] = path
+                _publish_expect(
+                    primary=str(state["digest"]), version=int(state["version"])
+                )
+                return {
+                    "type": "pin_ok",
+                    "ok": True,
+                    "checkpoint_digest": actual,
+                    "pinned_digests": (status or {}).get("pinned_digests")
+                    or sorted({state["digest"], *pins}),
+                }
         if mtype == "unpin":
-            digest = str(msg["digest"])
-            for cq in leaf_ctrl_qs:
-                cq.put({"cmd": "unpin", "digest": digest})
-            for j, sq in enumerate(leaf_status_qs):
-                status = sq.get(timeout=120)
-                if not status.get("ok"):
+            with ctrl_lock:
+                digest = str(msg["digest"])
+                _drain_status_queues()
+                for cq in leaf_ctrl_qs:
+                    cq.put({"cmd": "unpin", "digest": digest})
+                ok, err, _ = _await_leaf_statuses("unpin")
+                if not ok:
                     return {
                         "type": "unpin_ok",
                         "ok": False,
-                        "error": f"leaf[{j}] unpin failed: {status}",
+                        "error": err,
                     }
-            pins.pop(digest, None)
-            _publish_expect(primary=str(state["digest"]), version=int(state["version"]))
-            return {"type": "unpin_ok", "ok": True, "digest": digest}
+                pins.pop(digest, None)
+                _publish_expect(
+                    primary=str(state["digest"]), version=int(state["version"])
+                )
+                return {"type": "unpin_ok", "ok": True, "digest": digest}
         if mtype == "job":
             kind = str(msg.get("kind") or "play")
             job = msg.get("job")
@@ -474,40 +554,45 @@ def main(argv: Optional[list[str]] = None) -> int:
                         req_digest_s != str(state["digest"])
                         and req_digest_s not in pins
                     ):
-                        actual = checkpoint_digest(str(req_path))
-                        if actual != req_digest_s:
-                            return {
-                                "type": "result",
-                                "ok": False,
-                                "error": (
-                                    f"play digest mismatch: expected "
-                                    f"{req_digest_s}, got {actual}"
-                                ),
-                            }
-                        for cq in leaf_ctrl_qs:
-                            cq.put(
-                                {
-                                    "cmd": "pin",
-                                    "path": str(req_path),
-                                    "digest": actual,
-                                }
-                            )
-                        for j, sq in enumerate(leaf_status_qs):
-                            status = sq.get(timeout=120)
-                            if not status.get("ok"):
-                                return {
-                                    "type": "result",
-                                    "ok": False,
-                                    "error": (
-                                        f"leaf[{j}] pin for play digest "
-                                        f"failed: {status}"
-                                    ),
-                                }
-                        pins[actual] = str(req_path)
-                        _publish_expect(
-                            primary=str(state["digest"]),
-                            version=int(state["version"]),
-                        )
+                        with ctrl_lock:
+                            # Re-check under lock; another thread may have pinned.
+                            if (
+                                req_digest_s != str(state["digest"])
+                                and req_digest_s not in pins
+                            ):
+                                actual = checkpoint_digest(str(req_path))
+                                if actual != req_digest_s:
+                                    return {
+                                        "type": "result",
+                                        "ok": False,
+                                        "error": (
+                                            f"play digest mismatch: expected "
+                                            f"{req_digest_s}, got {actual}"
+                                        ),
+                                    }
+                                _drain_status_queues()
+                                for cq in leaf_ctrl_qs:
+                                    cq.put(
+                                        {
+                                            "cmd": "pin",
+                                            "path": str(req_path),
+                                            "digest": actual,
+                                        }
+                                    )
+                                ok, err, _ = _await_leaf_statuses("pin")
+                                if not ok:
+                                    return {
+                                        "type": "result",
+                                        "ok": False,
+                                        "error": (
+                                            f"pin for play digest failed: {err}"
+                                        ),
+                                    }
+                                pins[actual] = str(req_path)
+                                _publish_expect(
+                                    primary=str(state["digest"]),
+                                    version=int(state["version"]),
+                                )
                     job = {**job, "device": "cpu"}
                 else:
                     job = {
