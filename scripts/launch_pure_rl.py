@@ -44,6 +44,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--allow-single-gpu", action="store_true")
     p.add_argument("--smoke", action="store_true")
     p.add_argument(
+        "--multi-env-per-worker",
+        type=int,
+        default=None,
+        help=(
+            "Forward to train_pure_rl: LibcgMultiEnv battles per OS worker. "
+            "Also honour POKEBOT_MULTI_ENV=1 in the child env."
+        ),
+    )
+    p.add_argument(
+        "--leaf-coalesce-ms",
+        type=float,
+        default=None,
+        help="Forward to train_pure_rl (default via PURE_RL_LEAF_COALESCE_MS=0).",
+    )
+    p.add_argument(
         "--remote-worker-endpoints",
         default=None,
         help=(
@@ -55,6 +70,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-remote-workers",
         action="store_true",
         help="Disable Elmo/bert whole-game farms",
+    )
+    p.add_argument(
+        "--no-resource-watcher",
+        action="store_true",
+        help="Do not spawn resource_watcher --emit-live-pool (auto-rebalance).",
     )
     p.add_argument(
         "train_args",
@@ -121,6 +141,22 @@ def main(argv: list[str] | None = None) -> int:
     env["PURE_RL_LEAF_GPU0_REPLICAS"] = str(hw.leaf_gpu0_replicas)
     env["PURE_RL_LEAF_GPU1_REPLICAS"] = str(hw.leaf_gpu1_replicas)
     env["PURE_RL_TORCH_THREADS"] = str(hw.torch_threads)
+    # Tiny ~1.6M pure-RL policy: coalesce≈0 beats the RR Hope-large default (4ms).
+    # Do not set LEAF_SERVER_COALESCE_MS globally here if already exported (ops override).
+    env.setdefault("PURE_RL_LEAF_COALESCE_MS", "0")
+    # Throughput defaults for next-iter restarts (override with POKEBOT_MULTI_ENV=0).
+    if str(env.get("POKEBOT_MULTI_ENV", "")).strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    ):
+        env.setdefault("POKEBOT_MULTI_ENV", "1")
+        env.setdefault("POKEBOT_MULTI_ENV_PER_WORKER", "4")
+        env.setdefault("PURE_RL_MULTI_ENV", "1")
+        env.setdefault("PURE_RL_MULTI_ENV_PER_WORKER", "4")
+    # Live pool auto-rebalance ON unless explicitly disabled.
+    env.setdefault("POKEBOT_LIVE_POOL", "1")
     if hw.allow_single_gpu:
         env["PURE_RL_ALLOW_SINGLE_GPU"] = "1"
 
@@ -144,6 +180,36 @@ def main(argv: list[str] | None = None) -> int:
             )
             return preflight.returncode
 
+    # Live multi-env game accuracy (fail-closed) before saturating the box.
+    accuracy_script = ROOT / "scripts/canary_game_accuracy.py"
+    skip_acc = str(env.get("POKEBOT_SKIP_GAME_ACCURACY", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if accuracy_script.is_file() and not args.smoke and not skip_acc:
+        acc = subprocess.run(
+            [
+                args.python,
+                str(accuracy_script),
+                "--num-envs",
+                env.get("POKEBOT_MULTI_ENV_PER_WORKER", "4"),
+                "--json-out",
+                str(ROOT / "outputs/state/game_accuracy_canary.json"),
+            ],
+            cwd=ROOT,
+            env=env,
+            check=False,
+        )
+        if acc.returncode != 0:
+            print(
+                "error: game accuracy canary failed "
+                "(set POKEBOT_SKIP_GAME_ACCURACY=1 to override)",
+                file=sys.stderr,
+            )
+            return acc.returncode or 2
+
     train_cmd = [
         args.python,
         "-u",
@@ -158,6 +224,42 @@ def main(argv: list[str] | None = None) -> int:
         train_cmd.append("--smoke")
     if args.allow_single_gpu and "--allow-single-gpu" not in train_cmd:
         train_cmd.append("--allow-single-gpu")
+    # Resolve multi-env for the train argv so logs show the knobs even when
+    # only env defaults were set (next-iter redeploy path).
+    from poke_bot.pure_rl.multi_env_self_play import (
+        pure_rl_leaf_coalesce_ms,
+        resolve_multi_env_per_worker,
+    )
+
+    # Make launch setdefaults visible to resolve_* helpers.
+    for k in (
+        "POKEBOT_MULTI_ENV",
+        "POKEBOT_MULTI_ENV_PER_WORKER",
+        "PURE_RL_MULTI_ENV",
+        "PURE_RL_MULTI_ENV_PER_WORKER",
+        "PURE_RL_LEAF_COALESCE_MS",
+    ):
+        if k in env:
+            os.environ[k] = env[k]
+    multi_n = resolve_multi_env_per_worker(
+        args.multi_env_per_worker,
+        default_when_enabled=4,
+    )
+    if not any(
+        a == "--multi-env-per-worker" or a.startswith("--multi-env-per-worker=")
+        for a in train_cmd
+    ):
+        train_cmd.extend(["--multi-env-per-worker", str(multi_n)])
+    coalesce_ms = (
+        float(args.leaf_coalesce_ms)
+        if args.leaf_coalesce_ms is not None
+        else pure_rl_leaf_coalesce_ms(default=0.0)
+    )
+    if not any(
+        a == "--leaf-coalesce-ms" or a.startswith("--leaf-coalesce-ms=")
+        for a in train_cmd
+    ):
+        train_cmd.extend(["--leaf-coalesce-ms", str(coalesce_ms)])
     # Production: remotes ON by default (canary/smoke skips).
     has_remote_flag = any(
         a == "--remote-worker-endpoints" or a.startswith("--remote-worker-endpoints=")
@@ -187,7 +289,9 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"PURE_RL_RUN name={args.run_name} mode={args.mode} "
         f"workers={hw.sim_workers} leaves0={hw.leaf_gpu0_replicas} "
-        f"leaves1={hw.leaf_gpu1_replicas} log={log_path}",
+        f"leaves1={hw.leaf_gpu1_replicas} "
+        f"multi_env={multi_n} leaf_coalesce_ms={coalesce_ms} "
+        f"log={log_path}",
         flush=True,
     )
     training = subprocess.Popen(
@@ -198,6 +302,35 @@ def main(argv: list[str] | None = None) -> int:
         stderr=subprocess.STDOUT,
         start_new_session=True,
     )
+
+    watcher = None
+    watcher_script = ROOT / "scripts/resource_watcher.py"
+    if (
+        watcher_script.is_file()
+        and not args.smoke
+        and not args.no_resource_watcher
+        and str(env.get("POKEBOT_LIVE_POOL", "1")).strip().lower()
+        not in ("0", "false", "no", "off")
+    ):
+        watcher_log = ROOT / "outputs/logs/resource_watcher.log"
+        watcher_log.parent.mkdir(parents=True, exist_ok=True)
+        (ROOT / "outputs/state").mkdir(parents=True, exist_ok=True)
+        watcher = subprocess.Popen(
+            [
+                args.python,
+                "-u",
+                str(watcher_script),
+                "--interval",
+                "30",
+                "--emit-live-pool",
+                "--log",
+                str(watcher_log),
+            ],
+            cwd=ROOT,
+            env=env,
+            start_new_session=True,
+        )
+        print(f"PURE_RL_WATCHER pid={watcher.pid} emit_live_pool=1", flush=True)
 
     monitor = None
     monitor_script = ROOT / "scripts/unattended_monitor.py"
@@ -239,18 +372,21 @@ def main(argv: list[str] | None = None) -> int:
             pass
         if monitor and monitor.poll() is None:
             monitor.terminate()
+        if watcher and watcher.poll() is None:
+            watcher.terminate()
 
     prev = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
         return training.wait()
     finally:
         log_stream.close()
-        if monitor and monitor.poll() is None:
-            monitor.terminate()
-            try:
-                monitor.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                monitor.kill()
+        for proc in (monitor, watcher):
+            if proc and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         for sig, handler in prev.items():
             signal.signal(sig, handler)
 
