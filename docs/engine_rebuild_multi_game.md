@@ -191,7 +191,7 @@ POKEBOT_MULTI_ENV=1            # → 4 envs/process
 PURE_RL_LEAF_COALESCE_MS=0     # launch_pure_rl sets this by default
 ```
 
-**Next coding milestone:** soak MultiEnv overnight canary; then C++ `step_batch` fork.
+**M3 status:** additive C++ `StepBatch` shim shipped (`docs/engine_step_batch.md`) — builds without full `ptcg_engine` via `dlopen` of stock `libcg.so`. End-to-end speedup vs Python Select+Get is ~1.0–1.1× (JSON-bound). In-tree `Export.cpp` fork + `BattleStartSeeded` still needs Kaggle source download.
 
 ---
 

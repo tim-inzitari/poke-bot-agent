@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import os
 from typing import Any, Optional, Sequence
 
 from poke_bot.engine_rebuild.interfaces import (
@@ -35,9 +36,21 @@ def _load_sim_lib() -> Any:
 
 
 class LibcgMultiEnv:
-    """N concurrent battles via official ``libcg`` handles (no C++ fork)."""
+    """N concurrent battles via official ``libcg`` handles (no C++ fork).
 
-    def __init__(self, num_envs: int, *, lib: Any | None = None) -> None:
+    When ``libcg_step_batch.so`` is present, ``step_batch`` uses the native
+    C++ ``StepBatch`` export (one ctypes call for N Select+GetBattleData).
+    Set ``prefer_native_step_batch=False`` or ``POKEBOT_STEP_BATCH=0`` to force
+    the Python loop (stock path).
+    """
+
+    def __init__(
+        self,
+        num_envs: int,
+        *,
+        lib: Any | None = None,
+        prefer_native_step_batch: bool | None = None,
+    ) -> None:
         if num_envs < 1:
             raise ValueError("num_envs must be >= 1")
         self._num_envs = int(num_envs)
@@ -45,10 +58,22 @@ class LibcgMultiEnv:
         self._ptrs: list[Optional[int]] = [None] * self._num_envs
         self._obs: list[Optional[dict]] = [None] * self._num_envs
         self._done: list[bool] = [True] * self._num_envs
+        if prefer_native_step_batch is None:
+            flag = os.environ.get("POKEBOT_STEP_BATCH", "1").strip().lower()
+            prefer_native_step_batch = flag not in ("0", "false", "no", "off")
+        self._step_batch_lib: Any | None = None
+        if prefer_native_step_batch:
+            from poke_bot.engine_rebuild.libcg_step_batch import load_step_batch_lib
+
+            self._step_batch_lib = load_step_batch_lib()
 
     @property
     def num_envs(self) -> int:
         return self._num_envs
+
+    @property
+    def uses_native_step_batch(self) -> bool:
+        return self._step_batch_lib is not None
 
     def reset(self, specs: Sequence[ResetSpec]) -> BatchObs:
         if len(specs) > self._num_envs:
@@ -90,6 +115,11 @@ class LibcgMultiEnv:
     def step_batch(self, actions: Sequence[Optional[Action]]) -> BatchObs:
         if len(actions) != self._num_envs:
             raise ValueError(f"actions length {len(actions)} != num_envs {self._num_envs}")
+        if self._step_batch_lib is not None:
+            return self._step_batch_native(actions)
+        return self._step_batch_python(actions)
+
+    def _step_batch_python(self, actions: Sequence[Optional[Action]]) -> BatchObs:
         out: list[EnvObs] = []
         for i, action in enumerate(actions):
             ptr = self._ptrs[i]
@@ -108,6 +138,44 @@ class LibcgMultiEnv:
             if err != 0:
                 raise RuntimeError(f"Select failed env={i} err={err}")
             obs = self._get_obs(ptr)
+            done = self._is_done(obs)
+            self._obs[i] = obs
+            self._done[i] = done
+            out.append(EnvObs(env_id=i, obs=obs, done=done, winner=self._winner(obs)))
+        return BatchObs(envs=out)
+
+    def _step_batch_native(self, actions: Sequence[Optional[Action]]) -> BatchObs:
+        from poke_bot.engine_rebuild.libcg_step_batch import step_batch_native
+
+        step_actions: list[Optional[Action]] = []
+        for i, action in enumerate(actions):
+            if self._ptrs[i] is None or action is None or self._done[i]:
+                step_actions.append(None)
+            else:
+                step_actions.append(action)
+        errors, jsons, _sp = step_batch_native(
+            self._step_batch_lib, self._ptrs, step_actions, fetch_obs_on_skip=False
+        )
+        out: list[EnvObs] = []
+        for i, action in enumerate(actions):
+            ptr = self._ptrs[i]
+            if ptr is None or action is None or self._done[i]:
+                out.append(
+                    EnvObs(
+                        env_id=i,
+                        obs=self._obs[i] or {},
+                        done=self._done[i] if ptr is not None else True,
+                        winner=self._winner(self._obs[i]),
+                    )
+                )
+                continue
+            err = errors[i]
+            if err != 0:
+                raise RuntimeError(f"Select failed env={i} err={err}")
+            raw = jsons[i]
+            if raw is None:
+                raise RuntimeError(f"StepBatch returned empty JSON env={i}")
+            obs = json.loads(raw)
             done = self._is_done(obs)
             self._obs[i] = obs
             self._done[i] = done
