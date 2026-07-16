@@ -14,7 +14,6 @@ trainee on the host — remotes are collect capacity, not a second trainer.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 import sys
@@ -187,13 +186,22 @@ def _smoke_dataset(n: int, seed: int):
 
 
 def _ensure_pure_rl_checkpoint(path: Path, seed: int, *, smoke: bool = False) -> Path:
-    """Build or validate a small Pure-RL seed (fail closed on Hope-sized nets)."""
+    """Build or validate a fresh small Pure-RL seed (not AZ / not starter prior)."""
     import torch
     from poke_bot.checkpoint import atomic_torch_save, build_checkpoint
     from poke_bot.train import load_model_from_checkpoint
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Abhyuday: "The starter is terrible." — never CE-clone competition starter.
+    banned = ("starter", "sample_submission", "rl_starter", "kaggle_starter")
+    name_l = path.name.lower()
+    path_l = str(path).lower()
+    if any(tok in name_l or tok in path_l for tok in banned):
+        raise SystemExit(
+            f"PURE_RL refuse competition starter prior at {path}; "
+            "use a fresh small pure_rl seed (Abhyuday: starter is terrible)"
+        )
     if path.is_file():
         model = load_model_from_checkpoint(path, device=torch.device("cpu"))
         n = count_params(model)
