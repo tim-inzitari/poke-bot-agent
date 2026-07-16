@@ -904,7 +904,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
 
     ensure_baselines_installed()
     manifest_baselines = load_manifest()
-    loadable = filter_loadable_baselines(manifest_baselines)
+    loadable, _failed_baselines = filter_loadable_baselines(manifest_baselines)
     by_id = {s.id: s for s in loadable}
     official_specs = [by_id[i] for i in OFFICIAL_BASELINE_IDS if i in by_id]
     if len(official_specs) < len(OFFICIAL_BASELINE_IDS):
