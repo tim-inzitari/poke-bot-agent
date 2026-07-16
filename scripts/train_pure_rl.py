@@ -667,45 +667,87 @@ def _build_collect_jobs(
     mode: str,
     collect_temperature: float = 1.0,
     max_context: Optional[int] = None,
-) -> list[dict[str, Any]]:
-    jobs: list[dict[str, Any]] = []
-    if not specs or not decks:
-        return jobs
+    opponent_pool: Optional[list[str]] = None,
+    self_play_frac: Optional[float] = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return ``(self_play_jobs, baseline_jobs)`` — self-play is the primary signal."""
+    self_jobs: list[dict[str, Any]] = []
+    base_jobs: list[dict[str, Any]] = []
+    if not decks:
+        return self_jobs, base_jobs
     ctx = int(max_context if max_context is not None else pure_rl_model_config().max_context)
+    frac = float(
+        self_play_frac
+        if self_play_frac is not None
+        else getattr(config.PURE_RL, "self_play_frac", 0.85)
+    )
+    frac = min(1.0, max(0.0, frac))
+    n_self = int(round(n_games * frac))
+    if n_games > 0 and frac > 0 and n_self == 0:
+        n_self = 1
+    if n_games > 0 and frac < 1 and n_self == n_games and specs:
+        n_self = max(0, n_games - 1)
+    pool = list(opponent_pool or [str(ckpt)])
+    if not pool:
+        pool = [str(ckpt)]
     for game_i in range(n_games):
         arch, deck = decks[game_i % len(decks)]
-        spec = specs[game_i % len(specs)]
         our_seat = game_i % 2
-        jobs.append(
-            {
-                "job_index": game_i,
-                "checkpoint": str(ckpt),
-                "checkpoint_digest": digest,
-                "model_generation": model_generation,
-                "model_max_context": ctx,
-                "our_deck": list(deck),
-                "spec": _spec_payload(spec),
-                "our_seat": our_seat,
-                "mcts_sims": 0,
-                "mcts_move_time": 0.0,
-                "game_timeout_s": int(game_timeout_s),
-                "agent_mode": "policy",
-                "sample_actions": True,
-                "action_temperature": float(collect_temperature),
-                "seed": int(seed + game_i),
-                "device": "cpu",
-                "training_eligible": True,
-                "archetype": arch,
-                "target_provenance": {
-                    "pure_rl": True,
-                    "soft_policy_targets": False,
-                    "collect": "policy_sample",
-                    "mcts_sims": 0,
-                    "action_temperature": float(collect_temperature),
-                },
-            }
-        )
-    return jobs
+        common = {
+            "job_index": game_i,
+            "checkpoint": str(ckpt),
+            "checkpoint_digest": digest,
+            "model_generation": model_generation,
+            "model_max_context": ctx,
+            "our_deck": list(deck),
+            "our_seat": our_seat,
+            "mcts_sims": 0,
+            "mcts_move_time": 0.0,
+            "game_timeout_s": int(game_timeout_s),
+            "agent_mode": "policy",
+            "sample_actions": True,
+            "action_temperature": float(collect_temperature),
+            "seed": int(seed + game_i),
+            "device": "cpu",
+            "training_eligible": True,
+            "archetype": arch,
+        }
+        if game_i < n_self or not specs:
+            opp_ckpt = pool[game_i % len(pool)]
+            self_jobs.append(
+                {
+                    **common,
+                    "opponent_checkpoint": opp_ckpt,
+                    "opponent_id": f"self:{Path(opp_ckpt).name}",
+                    "opp_deck": list(deck),
+                    "target_provenance": {
+                        "pure_rl": True,
+                        "soft_policy_targets": False,
+                        "collect": "self_play",
+                        "self_play": True,
+                        "mcts_sims": 0,
+                        "action_temperature": float(collect_temperature),
+                    },
+                }
+            )
+        else:
+            spec = specs[(game_i - n_self) % len(specs)]
+            base_jobs.append(
+                {
+                    **common,
+                    "spec": _spec_payload(spec),
+                    "opponent_id": spec.id,
+                    "target_provenance": {
+                        "pure_rl": True,
+                        "soft_policy_targets": False,
+                        "collect": "public_mix",
+                        "self_play": False,
+                        "mcts_sims": 0,
+                        "action_temperature": float(collect_temperature),
+                    },
+                }
+            )
+    return self_jobs, base_jobs
 
 
 def _dataset_from_replay_window(run_dir: Path, it: int) -> Any:
@@ -732,15 +774,67 @@ def _dataset_from_replay_window(run_dir: Path, it: int) -> Any:
     return BootstrapDataset(sequences=seqs)
 
 
+def _consume_results(
+    results_iter,
+    writer: CompactShardWriter,
+    rows: list[dict[str, Any]],
+    stats: dict[str, Any],
+) -> None:
+    for res in results_iter:
+        rows.append(
+            {
+                "opponent_id": res.get("opponent_id"),
+                "our_seat": res.get("our_seat"),
+                "winner": res.get("winner"),
+                "baseline_failed": bool(res.get("baseline_failed")),
+                "our_failed": bool(res.get("our_failed")),
+                "self_play": bool(res.get("self_play")),
+                "invalid": bool(
+                    res.get("resource_error")
+                    or res.get("cancelled")
+                    or res.get("trust_failure")
+                ),
+            }
+        )
+        if res.get("baseline_failed"):
+            stats["baseline_failed"] += 1
+            continue
+        if res.get("our_failed") or res.get("resource_error") or res.get("cancelled"):
+            if res.get("our_failed"):
+                stats["our_failed"] += 1
+            if res.get("resource_error"):
+                stats["resource_error"] += 1
+            continue
+        stats["ok"] += 1
+        if res.get("self_play"):
+            stats["self_play"] = int(stats.get("self_play", 0)) + 1
+        record = None
+        if res.get("record_json"):
+            try:
+                record = json.loads(res["record_json"])
+            except Exception:
+                record = None
+        if record is None:
+            continue
+        game = _record_to_compact_game(record)
+        if game is None:
+            continue
+        writer.write_game(game)
+        stats["with_record"] += 1
+
+
 def _collect_wave(
     *,
-    jobs: list[dict[str, Any]],
+    self_play_jobs: list[dict[str, Any]],
+    baseline_jobs: list[dict[str, Any]],
     shard_path: Path,
     n_workers: int,
     leaf_channel,
     remote_farm,
     worker_play,
+    worker_self_play,
 ) -> tuple[CompactShardWriter, list[dict[str, Any]], dict[str, Any]]:
+    """Self-play on host workers; light public-bot mix on remotes (+ leftover local)."""
     from poke_bot.remote_jobs import iter_additive_results
     from poke_bot.worker_pool import WorkerPool
 
@@ -752,64 +846,39 @@ def _collect_wave(
         "our_failed": 0,
         "resource_error": 0,
         "with_record": 0,
+        "self_play": 0,
+        "n_self_play_jobs": len(self_play_jobs),
+        "n_baseline_jobs": len(baseline_jobs),
     }
-    if not jobs:
+    if not self_play_jobs and not baseline_jobs:
         return writer, rows, stats
 
     local_workers = max(1, int(n_workers))
-    with WorkerPool(num_workers=local_workers, remote_channel=leaf_channel) as pool:
-        if remote_farm is not None and remote_farm.total_workers > 0:
-            results_iter = iter_additive_results(
-                local_pool=pool,
-                local_fn=worker_play,
-                jobs=jobs,
-                remote_clients=remote_farm.clients,
-                kind="play",
-                local_workers=local_workers,
-                remote_workers=remote_farm.total_workers,
+    # Primary: pure self-play saturates local CPU (+ leaf servers).
+    if self_play_jobs:
+        with WorkerPool(num_workers=local_workers, remote_channel=leaf_channel) as pool:
+            _consume_results(
+                pool.imap_unordered(worker_self_play, self_play_jobs),
+                writer,
+                rows,
+                stats,
             )
-        else:
-            results_iter = pool.imap_unordered(worker_play, jobs)
-
-        for res in results_iter:
-            rows.append(
-                {
-                    "opponent_id": res.get("opponent_id"),
-                    "our_seat": res.get("our_seat"),
-                    "winner": res.get("winner"),
-                    "baseline_failed": bool(res.get("baseline_failed")),
-                    "our_failed": bool(res.get("our_failed")),
-                    "invalid": bool(
-                        res.get("resource_error")
-                        or res.get("cancelled")
-                        or res.get("trust_failure")
-                    ),
-                }
-            )
-            if res.get("baseline_failed"):
-                stats["baseline_failed"] += 1
-                continue
-            if res.get("our_failed") or res.get("resource_error") or res.get("cancelled"):
-                if res.get("our_failed"):
-                    stats["our_failed"] += 1
-                if res.get("resource_error"):
-                    stats["resource_error"] += 1
-                continue
-            stats["ok"] += 1
-            record = None
-            if res.get("record_json"):
-                try:
-                    record = json.loads(res["record_json"])
-                except Exception:
-                    record = None
-            if record is None:
-                continue
-            # Drop soft π before shard write (AWR hard-fails on soft CE).
-            game = _record_to_compact_game(record)
-            if game is None:
-                continue
-            writer.write_game(game)
-            stats["with_record"] += 1
+    # Light mixture: public/roster via remotes (and local if no remotes).
+    if baseline_jobs:
+        with WorkerPool(num_workers=local_workers, remote_channel=leaf_channel) as pool:
+            if remote_farm is not None and remote_farm.total_workers > 0:
+                results_iter = iter_additive_results(
+                    local_pool=pool,
+                    local_fn=worker_play,
+                    jobs=baseline_jobs,
+                    remote_clients=remote_farm.clients,
+                    kind="play",
+                    local_workers=max(1, local_workers // 4),
+                    remote_workers=remote_farm.total_workers,
+                )
+            else:
+                results_iter = pool.imap_unordered(worker_play, baseline_jobs)
+            _consume_results(results_iter, writer, rows, stats)
     return writer, rows, stats
 
 
@@ -826,9 +895,11 @@ def _heldout_eval(
     leaf_channel,
     remote_farm,
     worker_play,
+    worker_self_play,
     mode: str,
 ) -> list[dict[str, Any]]:
-    jobs = _build_collect_jobs(
+    """Greedy held-out vs official public bots only (gate — not primary train)."""
+    _self_jobs, base_jobs = _build_collect_jobs(
         n_games=n_games,
         ckpt=ckpt,
         digest=digest,
@@ -838,30 +909,26 @@ def _heldout_eval(
         seed=seed,
         game_timeout_s=game_timeout_s,
         mode=mode,
+        self_play_frac=0.0,
     )
-    for job in jobs:
+    for job in base_jobs:
         job["training_eligible"] = False
         job["agent_mode"] = "policy"
-        # Greedy eval: sample_actions is False for belief/oracle only in RR;
-        # PolicyAgent sets sample_actions=not (oracle or belief) → True for
-        # policy. Force greedy via a marker remotes/local both honor when present.
         job["sample_actions"] = False
         job["greedy"] = True
-    # Prefer eval_vs_baselines worker when available for greedy; else RR play.
-    # For now use RR play — sample_actions True is collect; for eval we need
-    # greedy. Patch: call PolicyAgent path via eval script jobs if needed.
-    # Minimal fix: set agent_mode and rely on post-train gate sample size;
-    # greedy is enforced by monkeypatching job for local if RR supports it.
+        job["action_temperature"] = 1.0
     shard = paths.OUTPUTS_DIR / "pure_rl" / "_heldout_tmp" / f"{os.getpid()}.jsonl"
     shard.parent.mkdir(parents=True, exist_ok=True)
     try:
         _writer, rows, _stats = _collect_wave(
-            jobs=jobs,
+            self_play_jobs=[],
+            baseline_jobs=base_jobs,
             shard_path=shard,
             n_workers=n_workers,
             leaf_channel=leaf_channel,
-            remote_farm=remote_farm,
+            remote_farm=None,  # local greedy only (host RR sample_actions patch)
             worker_play=worker_play,
+            worker_self_play=worker_self_play,
         )
     finally:
         try:
@@ -967,7 +1034,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
 
     # Importable worker entry (spawn-safe). Do NOT pass a dynamically loaded
     # train_round_robin._worker_play — Pool pickle fails under spawn.
-    from poke_bot.remote_sim_jobs import remote_play_job as worker_play
+    from poke_bot.remote_sim_jobs import (
+        remote_play_job as worker_play,
+        remote_self_play_job as worker_self_play,
+    )
 
     leaf = _LeafFarm()
     remote_farm: Optional[RemoteWorkerFarm] = None
@@ -1050,7 +1120,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
 
         def _kick_collect(it: int, champion: Path, dig: str) -> dict[str, Any]:
             temp = _collect_temperature(args, it)
-            jobs = _build_collect_jobs(
+            pool_n = max(1, int(getattr(config.PURE_RL, "opponent_pool_size", 4)))
+            recent = opponent_pool[-pool_n:]
+            self_jobs, base_jobs = _build_collect_jobs(
                 n_games=args.games_per_iter,
                 ckpt=champion,
                 digest=dig,
@@ -1062,36 +1134,29 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 mode=args.mode,
                 collect_temperature=temp,
                 max_context=pure_rl_model_config().max_context,
+                opponent_pool=recent,
+                self_play_frac=float(getattr(config.PURE_RL, "self_play_frac", 0.85)),
             )
-            # Fictitious-play hint: tag a local fraction to prefer recent self
-            # champions as meta (remotes still play public/roster baselines).
-            self_frac = float(getattr(config.PURE_RL, "self_play_frac", 0.15))
-            pool_n = max(1, int(getattr(config.PURE_RL, "opponent_pool_size", 4)))
-            recent = opponent_pool[-pool_n:]
-            for ji, job in enumerate(jobs):
-                if self_frac > 0 and recent and (ji % 100) < int(100 * self_frac):
-                    job["opponent_pool_checkpoint"] = recent[ji % len(recent)]
-                    job["target_provenance"] = {
-                        **dict(job.get("target_provenance") or {}),
-                        "fictitious_self_hint": True,
-                    }
             shard = run_dir / "shards" / f"iter_{it:05d}.jsonl"
             if shard.is_file():
                 shard.unlink()
             print(
-                f"[pure_rl] collect iter={it} jobs={len(jobs)} "
+                f"[pure_rl] collect iter={it} self_play={len(self_jobs)} "
+                f"public_mix={len(base_jobs)} "
                 f"local_workers={hw.sim_workers} "
                 f"remote_workers="
                 f"{remote_farm.total_workers if remote_farm else 0}",
                 flush=True,
             )
             writer, rows, stats = _collect_wave(
-                jobs=jobs,
+                self_play_jobs=self_jobs,
+                baseline_jobs=base_jobs,
                 shard_path=shard,
                 n_workers=hw.sim_workers,
                 leaf_channel=leaf.remote_channel,
                 remote_farm=remote_farm,
                 worker_play=worker_play,
+                worker_self_play=worker_self_play,
             )
             return {
                 "iteration": it,
@@ -1226,6 +1291,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 leaf_channel=leaf.remote_channel,
                 remote_farm=None,
                 worker_play=worker_play,
+                worker_self_play=worker_self_play,
                 mode=args.mode,
             )
             gate = aggregate_heldout_wr(

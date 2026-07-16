@@ -351,8 +351,9 @@ class PureRLConfig:
     entropy_bonus: float = _env_float("PURE_RL_ENTROPY_BONUS", 0.01)
     #: Keep only the last K shards for train (fresh-data bias); 1 = current only.
     replay_window_shards: int = _env_int("PURE_RL_REPLAY_WINDOW_SHARDS", 2)
-    #: Local-only fraction of collect jobs vs recent self checkpoints.
-    self_play_frac: float = _env_float("PURE_RL_SELF_PLAY_FRAC", 0.15)
+    #: Fraction of collect that is pure self-play (vs recent-self pool).
+    #: Abhyuday: primary signal = self-play; public bots are light mix + gate.
+    self_play_frac: float = _env_float("PURE_RL_SELF_PLAY_FRAC", 0.85)
     #: Max recent champions kept for fictitious opponent pool.
     opponent_pool_size: int = _env_int("PURE_RL_OPPONENT_POOL_SIZE", 4)
     param_fail_max: int = _env_int("PURE_RL_PARAM_FAIL_MAX", 3_500_000)

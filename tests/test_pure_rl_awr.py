@@ -87,7 +87,8 @@ def test_pure_rl_model_under_param_budget() -> None:
     n = count_params(model)
     assert n <= PURE_RL_PARAM_FAIL_MAX
     assert n <= PURE_RL_PARAM_TARGET_MAX
-    assert n >= 1_000_000  # embedding bag keeps us in the ~1–3M band
+    assert n <= 2_000_000  # Abhyuday-class prefer <2M
+    assert n >= 1_000_000
 
 
 def test_awr_runs_without_soft_targets() -> None:

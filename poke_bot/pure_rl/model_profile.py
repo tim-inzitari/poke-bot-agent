@@ -30,19 +30,20 @@ def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
         raw = os.environ.get(f"PURE_RL_{name}")
         return float(raw) if raw is not None else default
 
+    # Prefer ~1.6M (Abhyuday <2M / high-SPS class); override via PURE_RL_D_MODEL.
     cfg = config.ModelConfig(
-        d_model=_i("D_MODEL", 24),
+        d_model=_i("D_MODEL", 16),
         spatial_layers=_i("SPATIAL_LAYERS", 1),
         temporal_layers=_i("TEMPORAL_LAYERS", 1),
         option_decoder_layers=_i("OPTION_DECODER_LAYERS", 1),
         n_heads=_i("N_HEADS", 4),
-        ff_dim=_i("FF_DIM", 48),
+        ff_dim=_i("FF_DIM", 32),
         max_context=_i("MAX_CONTEXT", 32),
         temporal_pos=os.environ.get("PURE_RL_TEMPORAL_POS", "rope"),
         decision_context="history",
         kv_cache=True,
         history_action_scale=_f("HISTORY_ACTION_SCALE", 0.1),
-        card_embed_dim=_i("CARD_EMBED_DIM", 24),
+        card_embed_dim=_i("CARD_EMBED_DIM", 16),
         attack_embed_dim=_i("ATTACK_EMBED_DIM", 16),
         dropout=_f("DROPOUT", 0.05),
     )
