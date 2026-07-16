@@ -75,7 +75,7 @@ def test_successive_worker_pools_different_sizes_without_remote() -> None:
     """Wave-boundary resize: new pools with different sizes are valid."""
 
     with WorkerPool(num_workers=2) as pool:
-        assert list(pool.imap_unordered(_double, [1, 2, 3])) == [2, 4, 6]
+        assert sorted(pool.imap_unordered(_double, [1, 2, 3])) == [2, 4, 6]
     with WorkerPool(num_workers=4) as pool:
         assert sorted(pool.imap_unordered(_double, [1, 2, 3, 4])) == [2, 4, 6, 8]
 
