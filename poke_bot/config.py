@@ -327,9 +327,24 @@ class CheckpointConfig:
     resume: str = os.environ.get("POKEBOT_RESUME", "auto")
 
 
+@dataclass
+class PureRLConfig:
+    """Single-trainee pure-RL knobs (core first, full-box hardware)."""
+
+    enabled: bool = _env_bool("PURE_RL", False)
+    awr_beta: float = _env_float("PURE_RL_AWR_BETA", 0.5)
+    awr_weight_max: float = _env_float("PURE_RL_AWR_WEIGHT_MAX", 20.0)
+    bootstrap_mix: float = _env_float("PURE_RL_BOOTSTRAP_MIX", 0.0)
+    gate_wr: float = _env_float("PURE_RL_GATE_WR", 0.70)
+    min_heldout_games: int = _env_int("PURE_RL_MIN_HELDOUT_GAMES", 200)
+    collect_temperature: float = _env_float("PURE_RL_COLLECT_TEMPERATURE", 1.0)
+    allow_single_gpu: bool = _env_bool("PURE_RL_ALLOW_SINGLE_GPU", False)
+
+
 HARDWARE = HardwareConfig()
 MODEL = ModelConfig()
 SEARCH = SearchConfig()
+PURE_RL = PureRLConfig()
 CHECKPOINT = CheckpointConfig()
 
 

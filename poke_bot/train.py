@@ -58,6 +58,29 @@ class TrainConfig:
     amp: bool = True
     seed: int = 0
     log_every: int = 1
+    #: When True, use AWR on selected actions (never CE to soft behavior π).
+    pure_rl: bool = False
+    awr_beta: float = 0.5
+    awr_weight_max: float = 20.0
+
+    @classmethod
+    def pure_rl_defaults(cls, **overrides: Any) -> "TrainConfig":
+        """Single-model pure-RL knobs: AWR on, all aux/strategy weights off."""
+        cfg = cls(
+            pure_rl=True,
+            aux_loss_weight=0.0,
+            opp_hand_loss_weight=0.0,
+            opp_remainder_loss_weight=0.0,
+            lethal_threat_loss_weight=0.0,
+            prize_race_loss_weight=0.0,
+            early_stop_patience=3,
+            epochs=1,
+        )
+        for key, value in overrides.items():
+            if not hasattr(cfg, key):
+                raise TypeError(f"unknown TrainConfig field: {key}")
+            setattr(cfg, key, value)
+        return cfg
 
 
 @dataclass
@@ -76,6 +99,12 @@ class BatchMetrics:
     value_pred_mean: float = 0.0
     n_decisions: int = 0
     n_games: int = 0
+    mean_advantage: float = 0.0
+    awr_weight_mean: float = 0.0
+    awr_weight_p50: float = 0.0
+    awr_weight_p95: float = 0.0
+    awr_weight_clip_frac: float = 0.0
+    policy_selected_nll: float = 0.0
 
 
 @dataclass
@@ -186,6 +215,9 @@ def sequence_losses(
     opp_remainder_weight: float = 0.15,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
+    pure_rl: bool = False,
+    awr_beta: float = 0.5,
+    awr_weight_max: float = 20.0,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Causal history-conditioned losses for one :class:`GameSequence`."""
     return batch_losses(
@@ -197,6 +229,9 @@ def sequence_losses(
         opp_remainder_weight=opp_remainder_weight,
         lethal_threat_weight=lethal_threat_weight,
         prize_race_weight=prize_race_weight,
+        pure_rl=pure_rl,
+        awr_beta=awr_beta,
+        awr_weight_max=awr_weight_max,
     )
 
 
@@ -212,6 +247,9 @@ def batch_losses(
     prize_race_weight: float = 0.0,
     opp_hand_multihot: Optional[torch.Tensor] = None,
     opp_remainder_multihot: Optional[torch.Tensor] = None,
+    pure_rl: bool = False,
+    awr_beta: float = 0.5,
+    awr_weight_max: float = 20.0,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Causal history forward over all valid decisions.
 
@@ -224,6 +262,10 @@ def batch_losses(
 
     Scope B (``lethal_threat`` / ``prize_race``) losses are masked when labels
     are absent and default-weight 0 so core / generic trains ignore them.
+
+    When ``pure_rl=True``, soft behavior policy targets are rejected and the
+    policy term is advantage-weighted regression (AWR) on the selected action
+    index only — never CE toward cloned ``history_policy`` soft targets.
     """
     device = next(model.parameters()).device
     games = [s for s in seqs if s.decisions]
@@ -356,26 +398,57 @@ def batch_losses(
     max_n = logits_all.size(1)
 
     target_idx = torch.tensor(hard_idx, device=device, dtype=torch.long)
-    target_mat = torch.zeros(k, max_n, device=device, dtype=logits_all.dtype)
-    target_mat[torch.arange(k, device=device), target_idx] = 1.0
-    for r, soft in enumerate(soft_targets):
-        if soft is None:
-            continue
-        row = torch.tensor(soft, device=device, dtype=logits_all.dtype)
-        target_mat[r].zero_()
-        target_mat[r, : row.numel()] = row / row.sum().clamp_min(1e-8)
-
-    log_p = torch.nan_to_num(F.log_softmax(logits_all, dim=-1), neginf=0.0)
-    p_loss = -(target_mat * log_p).sum(dim=1).mean()
-    target_log = torch.where(
-        target_mat > 0,
-        target_mat.clamp_min(1e-12).log(),
-        torch.zeros_like(target_mat),
-    )
-    target_entropy = -(target_mat * target_log).sum(dim=1).mean()
-    policy_kl = (p_loss - target_entropy).clamp_min(0.0)
-
     v_target = torch.tensor(value_targets, device=device, dtype=value_pred.dtype)
+    log_p = torch.nan_to_num(F.log_softmax(logits_all, dim=-1), neginf=0.0)
+    selected_log_p = log_p[torch.arange(k, device=device), target_idx]
+    policy_selected_nll = float((-selected_log_p.detach()).mean().item())
+
+    awr_mean_adv = 0.0
+    awr_w_mean = 0.0
+    awr_w_p50 = 0.0
+    awr_w_p95 = 0.0
+    awr_clip_frac = 0.0
+
+    if pure_rl:
+        if any(soft is not None for soft in soft_targets):
+            raise ValueError(
+                "PURE_RL=1 forbids soft factorized_policy_targets as CE/"
+                "behavior-clone training targets; store selected_index only"
+            )
+        # Advantage vs a stale baseline: detach current value head (no V bootstrapping
+        # into the policy weight graph). First canary may use R alone if V is noise.
+        advantages = v_target - value_pred.detach()
+        beta = max(float(awr_beta), 1e-6)
+        wmax = max(float(awr_weight_max), 1e-6)
+        raw_w = torch.exp(advantages / beta)
+        weights = torch.clamp(raw_w, max=wmax)
+        p_loss = -(weights.detach() * selected_log_p).mean()
+        policy_kl = torch.zeros((), device=device)
+        awr_mean_adv = float(advantages.detach().float().mean().item())
+        awr_w_mean = float(weights.detach().float().mean().item())
+        sorted_w, _ = torch.sort(weights.detach().float())
+        awr_w_p50 = float(sorted_w[int(0.50 * (k - 1))].item())
+        awr_w_p95 = float(sorted_w[int(0.95 * (k - 1))].item())
+        awr_clip_frac = float((raw_w >= wmax).float().mean().item())
+    else:
+        target_mat = torch.zeros(k, max_n, device=device, dtype=logits_all.dtype)
+        target_mat[torch.arange(k, device=device), target_idx] = 1.0
+        for r, soft in enumerate(soft_targets):
+            if soft is None:
+                continue
+            row = torch.tensor(soft, device=device, dtype=logits_all.dtype)
+            target_mat[r].zero_()
+            target_mat[r, : row.numel()] = row / row.sum().clamp_min(1e-8)
+
+        p_loss = -(target_mat * log_p).sum(dim=1).mean()
+        target_log = torch.where(
+            target_mat > 0,
+            target_mat.clamp_min(1e-12).log(),
+            torch.zeros_like(target_mat),
+        )
+        target_entropy = -(target_mat * target_log).sum(dim=1).mean()
+        policy_kl = (p_loss - target_entropy).clamp_min(0.0)
+
     v_loss = F.smooth_l1_loss(value_pred, v_target)
 
     aux_loss = torch.zeros((), device=device)
@@ -497,11 +570,17 @@ def batch_losses(
         prize_race_loss=float(prize_race_loss.detach().item()),
         total_loss=float(total.detach().item()),
         policy_acc=correct / max(k, 1),
-        policy_kl=float(policy_kl.detach().item()),
+        policy_kl=float(policy_kl.detach().item()) if torch.is_tensor(policy_kl) else float(policy_kl),
         target_value_mean=float(v_target.detach().float().mean().item()),
         value_pred_mean=float(value_pred.detach().float().mean().item()),
         n_decisions=k,
         n_games=len(games),
+        mean_advantage=awr_mean_adv,
+        awr_weight_mean=awr_w_mean,
+        awr_weight_p50=awr_w_p50,
+        awr_weight_p95=awr_w_p95,
+        awr_weight_clip_frac=awr_clip_frac,
+        policy_selected_nll=policy_selected_nll,
     )
     return total, metrics
 
@@ -532,6 +611,12 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         value_pred_mean=wavg("value_pred_mean"),
         n_decisions=nd,
         n_games=ng,
+        mean_advantage=wavg("mean_advantage"),
+        awr_weight_mean=wavg("awr_weight_mean"),
+        awr_weight_p50=wavg("awr_weight_p50"),
+        awr_weight_p95=wavg("awr_weight_p95"),
+        awr_weight_clip_frac=wavg("awr_weight_clip_frac"),
+        policy_selected_nll=wavg("policy_selected_nll"),
     )
 
 
@@ -610,6 +695,9 @@ def evaluate(
                 opp_remainder_weight=cfg.opp_remainder_loss_weight,
                 lethal_threat_weight=cfg.lethal_threat_loss_weight,
                 prize_race_weight=cfg.prize_race_loss_weight,
+                pure_rl=bool(cfg.pure_rl),
+                awr_beta=float(cfg.awr_beta),
+                awr_weight_max=float(cfg.awr_weight_max),
             )
         parts.append(m)
     return _merge_metrics(parts)
@@ -971,6 +1059,9 @@ def rl_train_step(
                         opp_remainder_weight=cfg.opp_remainder_loss_weight,
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
+                        pure_rl=bool(cfg.pure_rl),
+                        awr_beta=float(cfg.awr_beta),
+                        awr_weight_max=float(cfg.awr_weight_max),
                     )
                 if bm.n_decisions == 0:
                     return bm
