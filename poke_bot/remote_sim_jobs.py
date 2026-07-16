@@ -105,21 +105,51 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
         device = torch.device(job.get("device", "cpu"))
         us = str(job["checkpoint"])
         them = str(job.get("opponent_checkpoint") or us)
-        cache_key = f"self|{us}|{them}|{device}"
+
+        # Prefer coalesced GPU leaf servers when WorkerPool registered a channel
+        # (same pattern as round-robin ``_worker_play``). Official libcg still
+        # steps on CPU; only network eval moves to the leaf farm.
+        from poke_bot import batched_infer
+        from poke_bot.pure_rl.leaf_self_play import plan_self_play_leaf_wiring
+
+        leaf_backend = batched_infer.remote_leaf_backend_from_worker()
+        plan = plan_self_play_leaf_wiring(
+            us_checkpoint=us,
+            them_checkpoint=them,
+            leaf_channel_active=leaf_backend is not None,
+        )
+
         state = load_round_robin_module()._WORKER_STATE
-        if state.get("self_play_key") != cache_key:
-            state["self_play_us"] = load_model_from_checkpoint(us, device=device)
-            state["self_play_them"] = (
-                state["self_play_us"]
-                if them == us
-                else load_model_from_checkpoint(them, device=device)
-            )
-            state["self_play_key"] = cache_key
+        us_model = None
+        them_model = None
+        if plan.load_us_local or plan.load_them_local:
+            cache_key = f"self|{us}|{them}|{device}|{plan.mode}"
+            if state.get("self_play_key") != cache_key:
+                if plan.load_us_local:
+                    state["self_play_us"] = load_model_from_checkpoint(
+                        us, device=device
+                    )
+                else:
+                    state["self_play_us"] = None
+                if plan.load_them_local:
+                    state["self_play_them"] = (
+                        state["self_play_us"]
+                        if them == us and plan.load_us_local
+                        else load_model_from_checkpoint(them, device=device)
+                    )
+                else:
+                    state["self_play_them"] = None
+                state["self_play_key"] = cache_key
+            us_model = state.get("self_play_us") if plan.load_us_local else None
+            them_model = state.get("self_play_them") if plan.load_them_local else None
+
+        us_leaf = leaf_backend if plan.use_leaf_for_us else None
+        them_leaf = leaf_backend if plan.use_leaf_for_them else None
         temp = float(job.get("action_temperature", 1.0))
         sample = bool(job.get("sample_actions", True))
         ctx = int(job.get("model_max_context") or _config.MODEL.max_context)
         us_agent = PolicyAgent(
-            model=state["self_play_us"],
+            model=us_model,
             deck=deck,
             use_mcts=False,
             max_sims=0,
@@ -128,13 +158,14 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             action_temperature=temp,
             rng=random.Random(seed ^ 0xA11CE),
             device=device,
+            leaf_backend=us_leaf,
             max_context_override=ctx,
             game_time_budget_s=float(timeout_s),
             game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
             strict_runtime=True,
         )
         them_agent = PolicyAgent(
-            model=state["self_play_them"],
+            model=them_model,
             deck=list(job.get("opp_deck") or deck),
             use_mcts=False,
             max_sims=0,
@@ -143,6 +174,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             action_temperature=temp,
             rng=random.Random(seed ^ 0xBEEF),
             device=device,
+            leaf_backend=them_leaf,
             max_context_override=ctx,
             game_time_budget_s=float(timeout_s),
             game_watchdog_reserve_s=min(60.0, max(10.0, 0.1 * float(timeout_s))),
@@ -226,6 +258,8 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             "cancelled": False,
             "training_eligible": True,
             "self_play": True,
+            "leaf_remote": bool(plan.use_leaf_for_us or plan.use_leaf_for_them),
+            "leaf_self_play_mode": plan.mode,
             "record_json": (
                 json.dumps(record, separators=(",", ":")) if record else None
             ),

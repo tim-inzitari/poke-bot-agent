@@ -25,7 +25,7 @@ Source: [Kaggle discussion 717697 — “Sharing my Reinforcement Learning journ
 2. **Not AlphaZero-style** — no MCTS visit-target overnight path; `mcts_sims=0` in collect.
 3. **Competition starter is terrible** — refuse starter paths; fresh small seed; `bootstrap_mix=0`.
 4. **Efficient board representation + small policy** — `pure_rl_model_config()` ~**1.6M** params (`d_model=16`); fail-closed if `>3.5M`; prefer **&lt;2M**.
-5. **High throughput** — aspirational ~7k SPS via volume: host CPU + GPU0/1 leaves + Elmo + bert whole-game farms.
+5. **High throughput** — aspirational ~7k SPS via volume: host CPU + GPU0/1 leaves + Elmo + bert whole-game farms. See also [sim GPU / multi-game throughput exploration](sim_gpu_multi_game_throughput.md) (batched leaves vs GPU game steps; discussion 717141).
 6. **Refined curriculum** — self-play first; core multi-archetype decks then widen; official public bots for **gate** + light mix only.
 7. **Representation richness** — audit obs for decisions (ongoing); do not starve the info set.
 8. **Spinning Up mindset** — actor–critic AWR, `A = R − V` (stale V), fresh short replay window.
