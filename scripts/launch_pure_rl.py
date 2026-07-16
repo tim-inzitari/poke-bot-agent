@@ -180,6 +180,36 @@ def main(argv: list[str] | None = None) -> int:
             )
             return preflight.returncode
 
+    # Live multi-env game accuracy (fail-closed) before saturating the box.
+    accuracy_script = ROOT / "scripts/canary_game_accuracy.py"
+    skip_acc = str(env.get("POKEBOT_SKIP_GAME_ACCURACY", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if accuracy_script.is_file() and not args.smoke and not skip_acc:
+        acc = subprocess.run(
+            [
+                args.python,
+                str(accuracy_script),
+                "--num-envs",
+                env.get("POKEBOT_MULTI_ENV_PER_WORKER", "4"),
+                "--json-out",
+                str(ROOT / "outputs/state/game_accuracy_canary.json"),
+            ],
+            cwd=ROOT,
+            env=env,
+            check=False,
+        )
+        if acc.returncode != 0:
+            print(
+                "error: game accuracy canary failed "
+                "(set POKEBOT_SKIP_GAME_ACCURACY=1 to override)",
+                file=sys.stderr,
+            )
+            return acc.returncode or 2
+
     train_cmd = [
         args.python,
         "-u",

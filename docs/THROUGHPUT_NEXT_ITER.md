@@ -27,12 +27,18 @@ bash scripts/redeploy_throughput_next_iter.sh
 bash scripts/redeploy_throughput_next_iter.sh --restart-now
 ```
 
-That script: pulls the branch, canaries Elmo+bert, syncs/restarts bert `:8766`, prints (or runs) `launch_pure_rl` with the knobs.
+That script: pulls the branch, canaries Elmo+bert, runs **fail-closed game accuracy**
+(`scripts/canary_game_accuracy.py` — multi-env isolation + fresh obs + full
+playthrough), syncs/restarts bert `:8766`, prints (or runs) `launch_pure_rl`.
+
+`launch_pure_rl` also runs the accuracy canary before saturating GPUs
+(override: `POKEBOT_SKIP_GAME_ACCURACY=1`).
 
 ## After restart — confirm in logs
 
 Look for:
 
+- `GAME_ACCURACY_OK` (preflight) / `outputs/state/game_accuracy_canary.json`
 - `multi_env=4 leaf_coalesce_ms=0 live_pool=on`
 - `PURE_RL_WATCHER pid=… emit_live_pool=1`
 - `leaf_modes` / `leaf_self_play_mode=gpu-leaf-*`

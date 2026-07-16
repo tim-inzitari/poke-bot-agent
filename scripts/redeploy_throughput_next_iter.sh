@@ -83,6 +83,18 @@ if [[ "$SKIP_CANARY" -eq 0 ]]; then
   else
     echo "WARN: scripts/canary_remote_worker.py missing"
   fi
+  echo "== canary game accuracy (multi-env live rules) =="
+  if [[ -f scripts/canary_game_accuracy.py ]]; then
+    # Prefer competition sample_submission on this box; CG_LIB_PATH overrides.
+    if ! "$PY" scripts/canary_game_accuracy.py \
+        --num-envs "${POKEBOT_MULTI_ENV_PER_WORKER:-4}" \
+        --json-out outputs/state/game_accuracy_canary.json; then
+      echo "ERROR: game accuracy canary failed — refuse redeploy" >&2
+      exit 2
+    fi
+  else
+    echo "WARN: scripts/canary_game_accuracy.py missing"
+  fi
 fi
 
 if [[ "$SKIP_BERT" -eq 0 ]]; then
