@@ -2,7 +2,14 @@
 
 Branch: `cursor/sim-gpu-multi-game-693f` (additive spike on pure-RL tip).  
 Reference: [Kaggle discussion 717141](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/717141)  
-Status: explore + spike only — **does not** change overnight launch scripts.
+**Rebuild design (first-class):** [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md)
+
+Status: explore + spike — **does not** change overnight launch scripts. Two parallel tracks:
+
+1. **Near-term:** wire / tune coalesced GPU leaves on many CPU `libcg` workers.
+2. **Structural:** fork/rebuild `ptcg_engine` for multi-env CPU (then honest GPU kernels) — see rebuild doc.
+
+---
 
 ## 1. Discussion 717141 (reconstructed)
 
@@ -67,8 +74,8 @@ It does **not** prescribe VectorVisor, WASM-on-GPU, CUDA graphs, or a batched mu
 
 | Piece | Notes |
 |---|---|
-| `libcg.so` / `cg.game` | **Sequential, one battle per process.** Documented in `worker_pool.py` + `config.HardwareConfig`. No GPU path in the shipped binary. |
-| `search_begin` / `search_step` | Per-tree CPU (MCTS path). Pure-RL overnight uses `mcts_sims=0` → skipped. |
+| `libcg.so` / `cg.game` | **Sequential, one battle per process.** Documented in `worker_pool.py` + `config.HardwareConfig`. No GPU path in the shipped binary. Game API has no battle handle (singleton “current battle”). |
+| `search_begin` / `search_step` | Per-tree CPU (MCTS path). Multiple `searchId` OK in one session; pure-RL overnight uses `mcts_sims=0` → skipped. |
 | Worker recycle | Bounds libcg leak (`worker_recycle_games`); disabled while leaf channel held (pool rebuilt per iteration). |
 | Featurization | CPU SparseVectors before IPC. |
 
@@ -102,17 +109,25 @@ Ranked for **expected collect throughput** on the dedicated dual-GPU box, honest
 
 | Rank | Option | Expected gain | Invasiveness | Verdict |
 |---|---|---|---|---|
-| **1** | **Wire pure-RL self-play → existing coalesced leaf servers** (this spike) | **High for policy SPS** (model was on CPU×N workers). Leaves already batched. | **Low** — reuse RR path; no overnight script edits. | **Do now** |
+| **1** | **Wire pure-RL self-play → existing coalesced leaf servers** (this spike) | **High for policy SPS** (model was on CPU×N workers). Leaves already batched. | **Low** — reuse RR path; no overnight script edits. | **Ship / validate now** |
 | **2** | Status quo+: more workers / leaf replicas / coalesce tuning + remote farms | Medium — already mostly dialed (`full_hardware_profile`, resource_watcher). | Low | Ongoing ops |
-| **3** | In-process multi-game async + larger coalesce occupancy | Low–medium if leaf util still low after (1). | Low–medium | Measure first |
-| **4** | CUDA graphs / compiled leaf forward | Small–medium once batches stable & large. | Medium (leaf server only) | After telemetry |
-| **5** | Fork `ptcg_engine` → multi-env CPU (SoA / arena allocator, many states per process) | Medium–high on sim-step bound workloads; helps MCTS search trees more than pure-RL policy rollouts. | **High** (maintain fork, parity tests) | Post-core |
-| **6** | Vectorized / GPU game steps (JAX/CUDA rewrite of rules) | Potentially huge SPS (TCGJax-class claims elsewhere) but **parity + legality risk**; pure-RL still needs legal CABT semantics. | **Very high** | Research only |
-| **7** | WASM + VectorVisor-style many VMs on GPU | Throughput-oriented for compute-bound interpreters; high latency; engine is native C++ not WASM today. | Very high | Unlikely fit |
+| **3** | **Fork `ptcg_engine` → multi-env CPU** (instance `Battle*`, arena, `step_batch`) | **High when sim- or process-tax bound**; unlocks fewer processes × fuller leaf batches; required before any honest GPU sim work. | **High** (fork + parity) | **First-class track** — see [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md); spike interfaces in `poke_bot/engine_rebuild/` |
+| **4** | In-process multi-game async + larger coalesce occupancy (still one libcg battle / proc) | Low–medium if leaf util still low after (1). | Low–medium | Measure after (1) |
+| **5** | CUDA graphs / compiled leaf forward | Small–medium once batches stable & large. | Medium (leaf server only) | After telemetry |
+| **6** | GPU kernels inside the fork (RNG / damage / featurize only) | Medium–high **only if** profiler shows sim_step dominates after multi-env CPU. | High (parity) | After M1–M3 multi-env green |
+| **7** | Full vectorized / GPU game steps (JAX rewrite of rules) | Potentially huge SPS but **parity + legality risk**. | **Very high** | Research only |
+| **8** | WASM + VectorVisor-style many VMs on GPU | High latency; engine is native C++ not WASM today. | Very high | Unlikely fit |
 
 ### Honest answer: can official `libcg` run on GPU?
 
-**No.** The competition binary is a native CPU library with process-global battle state. GPU is for **neural net leaves + training** only, unless we compile a **custom** engine from `ptcg_engine.zip` (allowed for local train / possibly submission per 717141) that deliberately targets multi-instance or GPU — that is a new product, not a flag on `libcg.so`.
+**No.** The competition binary is a native CPU library with process-global battle state. GPU is for **neural net leaves + training** only. A **custom** engine from `ptcg_engine.zip` (allowed for local train / possibly submission per 717141) that targets multi-instance or GPU is a new product — not a flag on `libcg.so`. That rebuild is the point of [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md).
+
+### Why rebuild is not “later research”
+
+- The Game API is a **singleton** (`battle_*` has no handle); `cg.sim` binds process-global ctypes entry points. Process pools are a workaround, not a ceiling we must accept.
+- 717141 explicitly licenses derived/compiled engines for training (and submissions).
+- Multi-env CPU is the prerequisite that makes GPU game-step experiments *honest*; without it, “GPU sim” talk is theater.
+- Leaves still matter: rebuild and leaf wiring are **complementary**, not alternatives.
 
 ---
 
@@ -120,11 +135,14 @@ Ranked for **expected collect throughput** on the dedicated dual-GPU box, honest
 
 | Path | Role |
 |---|---|
-| `docs/sim_gpu_multi_game_throughput.md` | This design note |
+| `docs/sim_gpu_multi_game_throughput.md` | This design note (leaves + ranked options) |
+| `docs/engine_rebuild_multi_game.md` | **Rebuild / fork plan**, milestones, parity, GPU honesty |
+| `poke_bot/engine_rebuild/` | `MultiEnv` / batch-step interfaces + fake env + parity harness |
 | `poke_bot/pure_rl/leaf_self_play.py` | Leaf wiring plan (pure logic) |
 | `poke_bot/remote_sim_jobs.py` | Self-play uses leaf backend when channel active |
 | `scripts/bench_sim_throughput_model.py` | Synthetic coalesce vs CPU-local microbench (no CUDA/libcg) |
-| `tests/test_leaf_self_play_wiring.py` | Plan unit tests |
+| `tests/test_leaf_self_play_wiring.py` | Leaf plan unit tests |
+| `tests/test_engine_rebuild_multienv.py` | MultiEnv spike unit tests |
 
 ### Microbench (wave-based synthetic model)
 
@@ -151,10 +169,11 @@ tuned for larger nets. Confirm with real leaf telemetry (`inference_ms`,
 
 ## 5. Recommended redesign (practical)
 
-1. **Ship / validate spike (1)** on a short pure-RL canary: confirm `leaf_self_play_mode=gpu-leaf-both` in job results and rising leaf `batch_occupancy`.
-2. **Keep** many CPU `libcg` workers + coalesced dual-GPU leaves as the production backbone.
-3. **Do not** block Stage A overnight on a GPU rules engine; revisit `ptcg_engine` multi-env only if after (1)+(2) the profiler shows **sim_step** (not policy) as the dominant bound.
-4. Prefer additive remote whole-game farms for more wall-clock games/hour without forking the engine.
+1. **Ship / validate leaf spike (option 1)** on a short pure-RL canary: confirm `leaf_self_play_mode=gpu-leaf-both` and rising leaf `batch_occupancy`.
+2. **Keep** many CPU `libcg` workers + coalesced dual-GPU leaves as the production backbone **until** the fork passes parity.
+3. **Start the rebuild track in parallel** (option 3): obtain `ptcg_engine.zip` → static/global inventory → instance `Battle*` → `step_batch` → golden transition hashes vs `libcg`. Interfaces already stubbed in `poke_bot/engine_rebuild/`.
+4. Prefer additive remote whole-game farms for more wall-clock games/hour while the fork matures.
+5. **Do not** block Stage A overnight on a GPU rules engine; GPU kernels inside the fork only after multi-env CPU is green and profiler shows **sim_step** bound.
 
 ---
 
