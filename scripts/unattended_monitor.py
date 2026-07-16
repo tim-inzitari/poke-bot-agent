@@ -47,7 +47,14 @@ FATAL_PATTERNS = {
         r"game (?:is )?incomplete|incomplete after|reached max_steps", re.I
     ),
     "dead_server": re.compile(r"leaf server.*(?:dead|died)|server is not alive", re.I),
-    "digest_mismatch": re.compile(r"(?:checkpoint|reload).*digest mismatch", re.I),
+    # Host reload/identity mismatches only — not remote-farm pin JSON dumps
+    # that embed ``checkpoint_digest`` keys next to unrelated pin errors.
+    "digest_mismatch": re.compile(
+        r"(?:reload|leaf).*(?:digest mismatch|expected_digest)|"
+        r"\bdigest mismatch: expected\b|"
+        r"FAIL-CLOSED.*digest",
+        re.I,
+    ),
     "non_finite": re.compile(r"\b(?:nan|inf)\b|non-finite|loss explosion", re.I),
     "missing_opponent": re.compile(r"expected (?:baseline|opponent) unavailable", re.I),
     "broken_pipe": re.compile(r"broken pipe|connection reset", re.I),

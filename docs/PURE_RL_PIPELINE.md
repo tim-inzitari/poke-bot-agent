@@ -128,3 +128,13 @@ outputs/pure_rl/<run-name>/
   manifest.json
   CORE_GATE_PASSED | SPECIALIST_GATE_PASSED
 ```
+
+## Post-core / specialist (future)
+
+**Do not change Stage A core self-play overnight for these.** Sequence: finish
+`CORE_GATE_PASSED` → then revisit for hammer-pult / specialist warm-start.
+
+| Notebook | Notes (skim / deferred) |
+|---|---|
+| [beicicc — ptcg-public-experiment-snapshot-jul15](https://www.kaggle.com/code/beicicc/ptcg-public-experiment-snapshot-jul15) | Public experiment snapshot (Jul 15). Revisit after core for specialist deck ideas, representation tricks, and training recipes — **not** Stage A collect. |
+| [makimakiai — ptcg-public-28-plus-sample-4-roster-update](https://www.kaggle.com/code/makimakiai/ptcg-public-28-plus-sample-4-roster-update) | Public 28+ + sample-4 roster update. Candidate later for specialist/meta roster mix and gate opponent sampling — **park only** until core gate. |
