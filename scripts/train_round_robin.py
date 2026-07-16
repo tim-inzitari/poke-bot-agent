@@ -655,7 +655,13 @@ def _worker_play(job: dict) -> dict:
             max_sims=mcts_sims,
             move_time_s=float(job.get("mcts_move_time", 30.0)),
             collect_targets=bool(job.get("training_eligible", True)),
-            sample_actions=not (oracle or belief),
+            # Pure-RL held-out may force greedy via job["sample_actions"]=False.
+            sample_actions=(
+                bool(job["sample_actions"])
+                if "sample_actions" in job
+                else (not (oracle or belief))
+            ),
+            action_temperature=float(job.get("action_temperature", 1.0)),
             rng=rng,
             device=torch.device("cpu") if leaf_backend is not None else None,
             leaf_backend=leaf_backend,

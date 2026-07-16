@@ -327,9 +327,41 @@ class CheckpointConfig:
     resume: str = os.environ.get("POKEBOT_RESUME", "auto")
 
 
+@dataclass
+class PureRLConfig:
+    """Single-trainee pure-RL knobs (core first, full-box hardware)."""
+
+    enabled: bool = _env_bool("PURE_RL", False)
+    awr_beta: float = _env_float("PURE_RL_AWR_BETA", 0.5)
+    awr_weight_max: float = _env_float("PURE_RL_AWR_WEIGHT_MAX", 20.0)
+    #: Soft CE bootstrap mix — must stay 0 on the pure-RL track.
+    bootstrap_mix: float = _env_float("PURE_RL_BOOTSTRAP_MIX", 0.0)
+    gate_wr: float = _env_float("PURE_RL_GATE_WR", 0.70)
+    min_heldout_games: int = _env_int("PURE_RL_MIN_HELDOUT_GAMES", 200)
+    collect_temperature: float = _env_float("PURE_RL_COLLECT_TEMPERATURE", 1.0)
+    #: Anneal collect temperature toward this floor after early iters.
+    collect_temperature_final: float = _env_float(
+        "PURE_RL_COLLECT_TEMPERATURE_FINAL", 0.7
+    )
+    temperature_anneal_iters: int = _env_int("PURE_RL_TEMPERATURE_ANNEAL_ITERS", 50)
+    allow_single_gpu: bool = _env_bool("PURE_RL_ALLOW_SINGLE_GPU", False)
+    #: Whitening A = (A - mean) / (std + eps) before AWR weights.
+    normalize_advantages: bool = _env_bool("PURE_RL_NORMALIZE_ADVANTAGES", True)
+    #: Small entropy bonus on policy logits (0 disables).
+    entropy_bonus: float = _env_float("PURE_RL_ENTROPY_BONUS", 0.01)
+    #: Keep only the last K shards for train (fresh-data bias); 1 = current only.
+    replay_window_shards: int = _env_int("PURE_RL_REPLAY_WINDOW_SHARDS", 2)
+    #: Local-only fraction of collect jobs vs recent self checkpoints.
+    self_play_frac: float = _env_float("PURE_RL_SELF_PLAY_FRAC", 0.15)
+    #: Max recent champions kept for fictitious opponent pool.
+    opponent_pool_size: int = _env_int("PURE_RL_OPPONENT_POOL_SIZE", 4)
+    param_fail_max: int = _env_int("PURE_RL_PARAM_FAIL_MAX", 3_500_000)
+
+
 HARDWARE = HardwareConfig()
 MODEL = ModelConfig()
 SEARCH = SearchConfig()
+PURE_RL = PureRLConfig()
 CHECKPOINT = CheckpointConfig()
 
 

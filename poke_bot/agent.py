@@ -104,6 +104,8 @@ class PolicyAgent:
     last_result: Optional[MCTSResult] = None
     collect_targets: bool = False
     sample_actions: bool = False
+    #: Softmax temperature for ``sample_actions`` (>1 explores, <1 sharpens).
+    action_temperature: float = 1.0
     targets: list[dict[str, Any]] = field(default_factory=list)
     #: Optional remote leaf backend (persistent GPU inference server). When set,
     #: MCTS leaf forwards run on the server and ``model`` may be None on this
@@ -278,8 +280,20 @@ class PolicyAgent:
                 break
             policy = score(candidates)
             if self.sample_actions:
+                temp = float(self.action_temperature)
+                if temp > 0.0 and abs(temp - 1.0) > 1e-6:
+                    # Re-temperature from stored probs via log-space.
+                    import math
+
+                    logits = [math.log(max(p, 1e-12)) / temp for p in policy]
+                    m = max(logits)
+                    exps = [math.exp(x - m) for x in logits]
+                    z = sum(exps) or 1.0
+                    weights = [e / z for e in exps]
+                else:
+                    weights = policy
                 idx = self.rng.choices(
-                    range(len(candidates)), weights=policy, k=1
+                    range(len(candidates)), weights=weights, k=1
                 )[0]
             else:
                 idx = max(range(len(candidates)), key=lambda i: policy[i])
