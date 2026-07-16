@@ -324,6 +324,19 @@ class WorkerPool:
             # its worker-maintenance thread cannot respawn replacements.
             self._pool.terminate()
 
+    def apply(self, fn: Callable[[T], R], job: T) -> R:
+        """Run one job on the pool (safe to call from multiple threads).
+
+        Prefer this over concurrent ``imap_unordered`` callers: stdlib
+        ``multiprocessing.Pool.imap_unordered`` is not thread-safe when
+        multiple threads drive the same pool (remote ``serve_forever``
+        handlers). ``Pool.apply`` / ``apply_async`` are.
+        """
+        assert self._pool is not None, "Use WorkerPool as a context manager."
+        if self._terminated:
+            raise WorkerPoolStopped(self._stop_reason or "pool is stopped")
+        return self._pool.apply(fn, (job,))
+
     def imap_unordered(
         self, fn: Callable[[T], R], jobs: Iterable[T], chunksize: int = 1
     ) -> Iterator[R]:

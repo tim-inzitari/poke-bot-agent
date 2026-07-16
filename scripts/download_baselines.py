@@ -231,12 +231,16 @@ def _try_notebook(kaggle: str, agent: dict, work: Path) -> tuple[str | None, lis
         return None, None, None, None
     nb = json.loads(nbs[0].read_text())
     cells = [_cell_src(c) for c in nb.get("cells", [])]
-    main = _extract_main(cells)
-    deck = _extract_deck_list(cells)
-    if (not main or not deck) and any("AGENT_PAYLOADS" in c for c in cells):
-        pm, pd = _extract_payload(cells)
-        main = main or pm
-        deck = deck or pd
+    # Meta-snapshot notebooks embed the real submission in AGENT_PAYLOADS.
+    # Prefer that over the wrapper cell: _extract_main often matches the
+    # loader (which mentions "def agent" in strings) and installs a module
+    # with no top-level agent().
+    main, deck = None, None
+    if any("AGENT_PAYLOADS" in c for c in cells):
+        main, deck = _extract_payload(cells)
+    if not main or not deck:
+        main = main or _extract_main(cells)
+        deck = deck or _extract_deck_list(cells)
     meta = dest / "kernel-metadata.json"
     return main, deck, nbs[0], meta if meta.is_file() else None
 

@@ -392,6 +392,106 @@ class RemoteLeafCancelled(RemoteLeafError):
     """The owning simulator pool cancelled this request generation."""
 
 
+def _read_expected_digest(raw) -> Optional[str]:
+    """Resolve a static digest or a shared proxy (Manager dict / Namespace)."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        return raw
+    # Shared Manager dict updated on reload without respawning workers.
+    if hasattr(raw, "get"):
+        try:
+            value = raw.get("digest")
+        except Exception:
+            value = None
+        return str(value) if value is not None else None
+    digest = getattr(raw, "digest", None)
+    return str(digest) if digest is not None else None
+
+
+def _read_pinned_digests(raw) -> set[str]:
+    """Optional secondary digests published beside the primary expected digest."""
+    if raw is None or isinstance(raw, (str, int, bool)):
+        return set()
+    pinned = None
+    if hasattr(raw, "get"):
+        try:
+            pinned = raw.get("pinned")
+        except Exception:
+            pinned = None
+    if pinned is None:
+        pinned = getattr(raw, "pinned", None)
+    if not pinned:
+        return set()
+    try:
+        return {str(item) for item in pinned}
+    except TypeError:
+        return set()
+
+
+def _digest_is_acceptable(
+    expected_digest: Optional[str],
+    response_digest: Optional[str],
+    *,
+    pinned: Optional[set[str]] = None,
+) -> bool:
+    """True when response matches primary expected digest or a published pin."""
+    if expected_digest is None:
+        return True
+    if response_digest == expected_digest:
+        return True
+    if response_digest is not None and pinned and response_digest in pinned:
+        return True
+    return False
+
+
+def _read_expected_version(raw) -> Optional[int]:
+    """Resolve a static version, mp.Value, or shared Manager proxy."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return int(raw)
+    if isinstance(raw, int):
+        return int(raw)
+    # multiprocessing.Value / synchronized ctypes
+    if hasattr(raw, "value") and not hasattr(raw, "get"):
+        try:
+            return int(raw.value)
+        except Exception:
+            return None
+    if hasattr(raw, "get"):
+        try:
+            value = raw.get("version")
+        except Exception:
+            value = None
+        return int(value) if value is not None else None
+    version = getattr(raw, "version", None)
+    return int(version) if version is not None else None
+
+
+def _write_expected_version(raw, version: int) -> None:
+    """Best-effort publish of an adopted leaf version into shared state."""
+    if raw is None:
+        return
+    if hasattr(raw, "value") and not hasattr(raw, "get"):
+        try:
+            raw.value = int(version)
+            return
+        except Exception:
+            return
+    if hasattr(raw, "get") and hasattr(raw, "__setitem__"):
+        try:
+            raw["version"] = int(version)
+            return
+        except Exception:
+            return
+    if hasattr(raw, "version"):
+        try:
+            raw.version = int(version)
+        except Exception:
+            return
+
+
 def set_remote_leaf_channel(
     slot: int,
     req_q,
@@ -404,7 +504,13 @@ def set_remote_leaf_channel(
     timeout_s: Optional[float] = None,
     stop_event=None,
 ) -> None:
-    """Register this worker's slot + queues (called once in the pool init)."""
+    """Register this worker's slot + queues (called once in the pool init).
+
+    ``expected_digest`` / ``expected_version`` may be plain values or a shared
+    proxy (Manager dict with ``digest``/``version`` keys, or ``mp.Value`` for
+    version). Shared proxies let a long-lived remote worker pool track reloads
+    without respawning.
+    """
     _REMOTE.clear()
     _REMOTE["slot"] = int(slot)
     _REMOTE["req_q"] = req_q
@@ -452,6 +558,7 @@ class RemoteLeafClient:
         self.resp_q = resp_q
         self.generation = int(generation)
         self.alive_evt = alive_evt
+        # May be a plain str/int or a shared proxy updated on reload.
         self.expected_digest = expected_digest
         self.expected_version = expected_version
         self.stop_event = stop_event
@@ -463,6 +570,12 @@ class RemoteLeafClient:
         )
         self._rid = 0
         self._telemetry_events: list[dict[str, float]] = []
+
+    def _current_expected_digest(self) -> Optional[str]:
+        return _read_expected_digest(self.expected_digest)
+
+    def _current_expected_version(self) -> Optional[int]:
+        return _read_expected_version(self.expected_version)
 
     def set_deadline(self, deadline_monotonic: Optional[float]) -> None:
         """Bound subsequent RPC waits by the active search move deadline."""
@@ -572,8 +685,10 @@ class RemoteLeafClient:
             "enqueued_ns": time.monotonic_ns(),
             "client_queue_depth": request_queue_depth,
         }
-        if self.expected_digest is not None:
-            request["checkpoint_digest"] = self.expected_digest
+        expected_digest = self._current_expected_digest()
+        expected_version = self._current_expected_version()
+        if expected_digest is not None:
+            request["checkpoint_digest"] = expected_digest
         request_t0 = time.perf_counter()
         request_timeout = self._remaining_timeout()
         if request_timeout <= 0:
@@ -610,22 +725,39 @@ class RemoteLeafClient:
                 continue
             if not response.get("ok", False):
                 raise RemoteLeafError(str(response.get("error") or "leaf server error"))
-            if (
-                self.expected_digest is not None
-                and response.get("checkpoint_digest") != self.expected_digest
+            # Re-read after the wait: a reload may have landed while we blocked.
+            expected_digest = self._current_expected_digest()
+            expected_version = self._current_expected_version()
+            pinned = _read_pinned_digests(self.expected_digest)
+            response_digest = response.get("checkpoint_digest")
+            response_version = int(response.get("version", -1))
+            if not _digest_is_acceptable(
+                expected_digest, response_digest, pinned=pinned
             ):
                 raise RemoteLeafError(
                     "leaf response checkpoint digest mismatch: expected "
-                    f"{self.expected_digest}, got {response.get('checkpoint_digest')}"
+                    f"{expected_digest}, got {response_digest}"
                 )
             if (
-                self.expected_version is not None
-                and int(response.get("version", -1)) != self.expected_version
+                expected_version is not None
+                and response_version != expected_version
             ):
-                raise RemoteLeafError(
-                    "leaf response checkpoint version mismatch: expected "
-                    f"{self.expected_version}, got {response.get('version')}"
-                )
+                # Digest is authoritative. After reload_all bumps the server
+                # version, long-lived workers (and iter-start remote bumps that
+                # previously used version=it+1) must adopt the new version in
+                # lockstep instead of fail-closing every game.
+                if _digest_is_acceptable(
+                    expected_digest, response_digest, pinned=pinned
+                ):
+                    _write_expected_version(self.expected_version, response_version)
+                    if isinstance(self.expected_version, int) or self.expected_version is None:
+                        self.expected_version = response_version
+                    expected_version = response_version
+                else:
+                    raise RemoteLeafError(
+                        "leaf response checkpoint version mismatch: expected "
+                        f"{expected_version}, got {response_version}"
+                    )
             vp = response.get("values")
             if not isinstance(vp, list) or len(vp) != len(packets):
                 raise RemoteLeafError(
@@ -686,6 +818,7 @@ def remote_leaf_backend_from_worker(
     """
     if not has_remote_leaf_channel():
         return None
+    # Keep proxy objects (Manager dict / mp.Value) so reload updates are visible.
     digest = (
         expected_digest
         if expected_digest is not None
@@ -828,9 +961,10 @@ def run_leaf_server(
                                 model = new_model
                                 current_digest = actual
                                 version = requested_version
-                                # Promotion pins are iteration-scoped; a primary
-                                # reload replaces the whole resident set.
-                                models = {current_digest: model}
+                                # Upsert primary. Keep other resident digests so
+                                # shared remotes (multi-trainer mesh) do not
+                                # wipe a peer's weights on reload_all.
+                                models[current_digest] = model
                                 _status(
                                     {
                                         "type": "reload",

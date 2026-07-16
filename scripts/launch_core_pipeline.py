@@ -69,6 +69,19 @@ def main(argv: list[str] | None = None) -> int:
             "PYTHONUNBUFFERED": "1",
         }
     )
+    # Opening time cut (0.5x) + min_trusted=128 caused Core RemoteLeafTimeout storms
+    # (deadline leftovers <50ms). Keep full move budget unless operator overrides.
+    # Config reads POKEBOT_<NAME> via _env_float — unprefixed OPENING_MOVE_TIME_MULT is ignored.
+    env.setdefault("POKEBOT_OPENING_MOVE_TIME_MULT", "1.0")
+    # Core = driver only; Elmo+Bert run nearly all sims. Never dump onto local CPU.
+    env.setdefault("REMOTE_REQUEST_TIMEOUT_S", "120")
+    env.setdefault("POKEBOT_REMOTE_CONNECT_TIMEOUT_S", "60")
+    env.setdefault("POKEBOT_REMOTE_CONTROL_TIMEOUT_S", "300")
+    env.setdefault("POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S", "600")
+    env.setdefault("POKEBOT_REMOTE_PRIMARY", "1")
+    env.setdefault("POKEBOT_REMOTE_ONLY", "1")
+    env.setdefault("POKEBOT_REMOTE_NO_LOCAL_FALLBACK", "1")
+    env.setdefault("POKEBOT_REMOTE_JOB_RETRIES", "8")
     if args.preflight_profile != "none":
         completed = subprocess.run(
             [

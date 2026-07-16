@@ -617,7 +617,13 @@ def _worker_play(job: dict) -> dict:
         # Remote GPU leaf-eval server active? Then OUR net forwards run on the
         # server (this worker stays CPU-only and holds NO local model — it only
         # featurizes + searches on CPU). Otherwise fall back to a local model.
-        leaf_backend = batched_infer.remote_leaf_backend_from_worker()
+        # Honor the job digest (multi-tenant remotes may host several weights);
+        # version is soft — digest is authoritative across peer reloads.
+        job_digest = job.get("checkpoint_digest")
+        leaf_backend = batched_infer.remote_leaf_backend_from_worker(
+            expected_digest=job_digest if job_digest else None,
+            expected_version=None,
+        )
         if leaf_backend is not None:
             model = None
         else:
@@ -682,26 +688,18 @@ def _worker_play(job: dict) -> dict:
         )
         agent.reset_game()
 
-        # Best-effort per-game timeout (spawn worker → SIGALRM on main thread).
-        def _on_timeout(signum, frame):
-            raise TimeoutError(f"game exceeded {game_timeout_s}s")
-
-        had_alarm = hasattr(signal, "SIGALRM")
-        if had_alarm:
-            signal.signal(signal.SIGALRM, _on_timeout)
-            signal.alarm(game_timeout_s)
+        # Soft timeout via PolicyAgent game_time_budget_s / move deadlines.
+        # Never install SIGALRM here: WorkerPool children are fine, but remote
+        # additive fallback and serve_forever handlers run on worker threads
+        # where signal.signal raises ValueError.
         t0 = time.perf_counter()
-        try:
-            # Worker stdout is already redirected to devnull (see
-            # install_quiet_stdout) unless --agent-verbose, so baseline prints
-            # never reach the log.
-            if our_seat == 0:
-                result = play_game(agent, opp_fn, our_deck, opp_deck)
-            else:
-                result = play_game(opp_fn, agent, opp_deck, our_deck)
-        finally:
-            if had_alarm:
-                signal.alarm(0)
+        # Worker stdout is already redirected to devnull (see
+        # install_quiet_stdout) unless --agent-verbose, so baseline prints
+        # never reach the log.
+        if our_seat == 0:
+            result = play_game(agent, opp_fn, our_deck, opp_deck)
+        else:
+            result = play_game(opp_fn, agent, opp_deck, our_deck)
         wall_s = time.perf_counter() - t0
 
         failed_seat = result.get("failed_seat")
@@ -830,8 +828,6 @@ def _worker_play(job: dict) -> dict:
 
 def _worker_promotion(job: dict) -> dict:
     """Play one strict candidate-vs-parent game; any runtime fault invalidates it."""
-    import signal
-
     from poke_bot import batched_infer
     from poke_bot import config as _config
     from poke_bot.agent import PolicyAgent, install_quiet_stdout, play_game
@@ -944,23 +940,11 @@ def _worker_promotion(job: dict) -> dict:
         candidate.reset_game()
         parent.reset_game()
 
-        def _on_timeout(_signum, _frame):
-            raise TimeoutError(
-                f"promotion game exceeded {promotion_timeout_s}s"
-            )
-
-        had_alarm = hasattr(signal, "SIGALRM")
-        if had_alarm:
-            signal.signal(signal.SIGALRM, _on_timeout)
-            signal.alarm(promotion_timeout_s)
-        try:
-            if candidate_seat == 0:
-                result = play_game(candidate, parent, deck, deck)
-            else:
-                result = play_game(parent, candidate, deck, deck)
-        finally:
-            if had_alarm:
-                signal.alarm(0)
+        # Soft budgets only — never SIGALRM (thread-unsafe on remote fallback).
+        if candidate_seat == 0:
+            result = play_game(candidate, parent, deck, deck)
+        else:
+            result = play_game(parent, candidate, deck, deck)
         if result.get("failed_seat") is not None:
             return {
                 **base,
@@ -1601,10 +1585,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     if args.agent_mode == "belief-mcts" and (
-        args.promotion_mcts_sims < 128 or args.promotion_move_time <= 0
+        args.promotion_mcts_sims < 64 or args.promotion_move_time <= 0
     ):
         print(
-            "ERROR: trusted belief-MCTS promotion requires >=128 sims and "
+            "ERROR: trusted belief-MCTS promotion requires >=64 sims and "
             "a positive identical move deadline for both agents",
             file=sys.stderr,
         )
@@ -2189,9 +2173,14 @@ def main(argv: list[str] | None = None) -> int:
 
     remote_farm: RemoteWorkerFarm | None = None
     if args.remote_worker_endpoints:
+        # Socket wait for in-flight remote games: game_timeout + large buffer.
+        # +120s was false-firing on slow-but-alive Elmo (~22m stalls → local fallback).
+        remote_job_buffer_s = float(
+            os.environ.get("POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S", "600") or "600"
+        )
         remote_job_timeout = max(
             float(config.SEARCH.remote_request_timeout_s),
-            float(args.game_timeout_s) + 120.0,
+            float(args.game_timeout_s) + remote_job_buffer_s,
         )
         remote_farm = RemoteWorkerFarm(
             list(args.remote_worker_endpoints),
@@ -2215,7 +2204,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         print(
             f"   remote additive capacity={remote_farm.total_workers} sim workers "
-            f"across {len(remote_infos)} endpoint(s); local IPC unchanged",
+            f"across {len(remote_infos)} endpoint(s) "
+            f"(+{remote_farm.total_workers} concurrent in-flight beyond "
+            f"local --workers); local IPC unchanged",
             flush=True,
         )
 
@@ -2280,7 +2271,7 @@ def main(argv: list[str] | None = None) -> int:
         jobs: list[dict] = []
         seed = int(loop_state.get("seed", args.seed)) + it * 100_000
         target_parent = CheckpointIdentity.from_path(champion)
-        # Wave-major ordering means each completed two-game wave adds one game
+        # Wave-major ordering means each completed belief wave (stride games) adds coverage
         # in each seat for every opponent and leaves a contiguous writer prefix.
         for game_i in range(job_gpo):
             for spec in specs:
@@ -2554,11 +2545,17 @@ def main(argv: list[str] | None = None) -> int:
             remote_channel["expected_version"] = leaf_version
         if remote_farm is not None:
             try:
+                # Keep remote leaf version in lockstep with local leaf_version.
+                # Using version=it+1 previously desynced remotes (got 1) from
+                # workers still expecting leaf_version=0 → mass fail-closed.
                 remote_farm.reload_all(
                     str(champion),
                     digest=target_parent.digest,
-                    version=it + 1,
+                    version=int(leaf_version),
                 )
+                if remote_channel is not None:
+                    remote_channel["expected_digest"] = target_parent.digest
+                    remote_channel["expected_version"] = leaf_version
             except Exception as exc:
                 replay_writer.abort(f"remote worker reload failed: {exc}")
                 replay_writer.quarantine(f".invalid.{int(time.time())}")
@@ -2739,17 +2736,26 @@ def main(argv: list[str] | None = None) -> int:
                 int(args.workers),
                 max(2, int(n_servers) * 3),
             )
-        wave_ends = (
-            range(2, job_gpo + 1, 2)
-            if args.agent_mode == "belief-mcts"
-            else [job_gpo]
-        )
+        # Larger even stride keeps remote farms busy between waves (2→8:
+        # ~52 → ~208 jobs/wave at 26 opps). Remainder appended so job_gpo
+        # not divisible by stride still drains fully.
+        belief_wave_stride = 8
+        if args.agent_mode == "belief-mcts":
+            wave_ends = list(
+                range(belief_wave_stride, job_gpo + 1, belief_wave_stride)
+            )
+            if not wave_ends or wave_ends[-1] != job_gpo:
+                wave_ends.append(job_gpo)
+        else:
+            wave_ends = [job_gpo]
         collection_interrupted = False
+        prev_wave_end = 0
         for wave_end in wave_ends:
             if stop_requested["signal"] is not None:
                 collection_interrupted = True
                 break
-            wave_start = wave_end - (2 if args.agent_mode == "belief-mcts" else job_gpo)
+            wave_start = prev_wave_end
+            prev_wave_end = wave_end
             wave_jobs = jobs[
                 wave_start * len(specs) : wave_end * len(specs)
             ]

@@ -342,24 +342,14 @@ def _worker_core_bc_game(job: dict[str, Any]) -> dict[str, Any]:
 
             return call
 
-        def on_timeout(_signum, _frame):
-            raise TimeoutError("core BC game exceeded 180s")
-
-        had_alarm = hasattr(signal, "SIGALRM")
-        if had_alarm:
-            signal.signal(signal.SIGALRM, on_timeout)
-            signal.alarm(180)
+        # No SIGALRM: workers / remote handler threads cannot install signals.
         t0 = time.perf_counter()
-        try:
-            outcome = play_game(
-                recorder(0, fn0),
-                recorder(1, fn1),
-                deck0,
-                deck1,
-            )
-        finally:
-            if had_alarm:
-                signal.alarm(0)
+        outcome = play_game(
+            recorder(0, fn0),
+            recorder(1, fn1),
+            deck0,
+            deck1,
+        )
         wall_s = time.perf_counter() - t0
         if outcome.get("failed_seat") is not None or outcome.get("incomplete"):
             return {

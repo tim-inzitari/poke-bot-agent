@@ -135,6 +135,139 @@ def test_remote_response_generation_prevents_stale_slot_routing(monkeypatch) -> 
     assert telemetry["inference_batch_size_mean"] == 12
 
 
+def test_leaf_version_mismatch_adopts_when_digest_matches(monkeypatch) -> None:
+    """Reload bumps server version; client must adopt instead of fail-closing."""
+    monkeypatch.setattr(batched_infer, "featurize_packets", _fake_features)
+    alive = threading.Event()
+    alive.set()
+    req = queue.Queue()
+    resp = queue.Queue()
+    shared = {"digest": "sha256:same", "version": 0}
+    resp.put(
+        {
+            "generation": 1,
+            "rid": 1,
+            "ok": True,
+            "values": [(0.5, [1.0])],
+            "version": 1,
+            "checkpoint_digest": "sha256:same",
+        }
+    )
+    client = RemoteLeafClient(
+        0,
+        req,
+        resp,
+        generation=1,
+        alive_evt=alive,
+        expected_digest=shared,
+        expected_version=shared,
+        timeout_s=0.1,
+    )
+    out = client([LeafPacket(obs=object(), your_deck=[1] * 60, root_seat=0)])
+    assert out[0].value == 0.5
+    assert shared["version"] == 1
+
+
+def test_leaf_version_bump_n_to_n_plus_1_adopts(monkeypatch) -> None:
+    """expected 0→1 then 1→2 without expected-N-got-N+1 fail-closed."""
+    monkeypatch.setattr(batched_infer, "featurize_packets", _fake_features)
+    alive = threading.Event()
+    alive.set()
+    req = queue.Queue()
+    resp = queue.Queue()
+    shared = {"digest": "sha256:same", "version": 0, "pinned": []}
+    for ver in (1, 2):
+        resp.put(
+            {
+                "generation": 1,
+                "rid": ver,
+                "ok": True,
+                "values": [(0.1 * ver, [1.0])],
+                "version": ver,
+                "checkpoint_digest": "sha256:same",
+            }
+        )
+    client = RemoteLeafClient(
+        0,
+        req,
+        resp,
+        generation=1,
+        alive_evt=alive,
+        expected_digest=shared,
+        expected_version=shared,
+        timeout_s=0.1,
+    )
+    assert client([LeafPacket(obs=object(), your_deck=[1] * 60, root_seat=0)])[0].value == 0.1
+    assert shared["version"] == 1
+    assert client([LeafPacket(obs=object(), your_deck=[1] * 60, root_seat=0)])[0].value == 0.2
+    assert shared["version"] == 2
+
+
+def test_leaf_accepts_pinned_secondary_digest(monkeypatch) -> None:
+    monkeypatch.setattr(batched_infer, "featurize_packets", _fake_features)
+    alive = threading.Event()
+    alive.set()
+    req = queue.Queue()
+    resp = queue.Queue()
+    shared = {
+        "digest": "sha256:primary",
+        "version": 3,
+        "pinned": ["sha256:secondary"],
+    }
+    resp.put(
+        {
+            "generation": 1,
+            "rid": 1,
+            "ok": True,
+            "values": [(0.7, [1.0])],
+            "version": 3,
+            "checkpoint_digest": "sha256:secondary",
+        }
+    )
+    client = RemoteLeafClient(
+        0,
+        req,
+        resp,
+        generation=1,
+        alive_evt=alive,
+        expected_digest=shared,
+        expected_version=shared,
+        timeout_s=0.1,
+    )
+    out = client([LeafPacket(obs=object(), your_deck=[1] * 60, root_seat=0)])
+    assert out[0].value == 0.7
+
+
+def test_leaf_version_mismatch_hard_fails_when_digest_differs(monkeypatch) -> None:
+    monkeypatch.setattr(batched_infer, "featurize_packets", _fake_features)
+    alive = threading.Event()
+    alive.set()
+    req = queue.Queue()
+    resp = queue.Queue()
+    resp.put(
+        {
+            "generation": 1,
+            "rid": 1,
+            "ok": True,
+            "values": [(0.5, [1.0])],
+            "version": 1,
+            "checkpoint_digest": "sha256:other",
+        }
+    )
+    client = RemoteLeafClient(
+        0,
+        req,
+        resp,
+        generation=1,
+        alive_evt=alive,
+        expected_digest="sha256:mine",
+        expected_version=0,
+        timeout_s=0.1,
+    )
+    with pytest.raises(batched_infer.RemoteLeafError, match="digest mismatch"):
+        client([LeafPacket(obs=object(), your_deck=[1] * 60, root_seat=0)])
+
+
 def test_expected_field_completeness_and_greedy_isolation() -> None:
     report = FieldReport(
         gate_threshold=0.0,

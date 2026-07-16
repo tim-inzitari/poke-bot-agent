@@ -81,6 +81,12 @@ def _args(argv=None) -> argparse.Namespace:
         action="store_true",
         help="Quarantine an interrupted deep-search writer and recollect it.",
     )
+    p.add_argument(
+        "--restart-partial-iteration",
+        action="store_true",
+        help="Forward to hammer RR: quarantine current-iter partials and "
+        "recollect from job zero (e.g. restart iter6 from the beginning).",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument(
         "--stop-after-phase",
@@ -139,7 +145,7 @@ def _args(argv=None) -> argparse.Namespace:
     p.add_argument("--inference-batch", type=int, default=128)
     p.add_argument("--inference-queue-depth", type=int, default=32)
     p.add_argument("--inference-servers", type=int, default=4)
-    p.add_argument("--inference-timeout-s", type=float, default=30.0)
+    p.add_argument("--inference-timeout-s", type=float, default=120.0)
     p.add_argument(
         "--promotion-workers",
         type=int,
@@ -702,9 +708,12 @@ def _run_core_deep_search(
     }
     remote_farm: RemoteWorkerFarm | None = None
     if args.remote_worker_endpoints:
+        remote_job_buffer_s = float(
+            os.environ.get("POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S", "600") or "600"
+        )
         remote_job_timeout = max(
             float(args.inference_timeout_s),
-            float(args.search_game_time_s) + 120.0,
+            float(args.search_game_time_s) + remote_job_buffer_s,
         )
         remote_farm = RemoteWorkerFarm(
             list(args.remote_worker_endpoints),
@@ -723,10 +732,11 @@ def _run_core_deep_search(
                 flush=True,
             )
         try:
+            # Match local leaf initial_version=0; do not invent version=1 here.
             remote_farm.reload_all(
                 str(core_checkpoint),
                 digest=identity.digest,
-                version=1,
+                version=0,
             )
         except Exception as exc:
             remote_farm.close()
@@ -1486,6 +1496,7 @@ def _run_hammer_search_rl(
         "0",
         "--workers",
         str(max(2, int(args.workers) if args.workers > 0 else 8)),
+        "--no-worker-autotune",
         "--agent-mode",
         "belief-mcts",
         "--mcts-sims",
@@ -1525,7 +1536,7 @@ def _run_hammer_search_rl(
         "--promotion-max-games",
         "160",
         "--promotion-batch-games",
-        "20",
+        "40",
         "--promotion-min-pairs",
         "40",
         "--promotion-workers",
@@ -1542,6 +1553,8 @@ def _run_hammer_search_rl(
                 *list(args.remote_worker_endpoints),
             ]
         )
+    if getattr(args, "restart_partial_iteration", False):
+        command.append("--restart-partial-iteration")
     completed = subprocess.run(command, cwd=ROOT, check=False)
     if completed.returncode != 0:
         raise RuntimeError(

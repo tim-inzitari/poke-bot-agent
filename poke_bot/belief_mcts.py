@@ -684,7 +684,13 @@ class BeliefMCTS:
             int(particle.support_repairs) for particle in particle_bank
         )
         stop_reason = "simulation_target"
-        while sims_run < sims_plan and time.perf_counter() - started < move_budget:
+        # Leave a tiny reserve so we do not enqueue a leaf RPC that is already
+        # doomed to ``RemoteLeafTimeout: ... after 0.0Xs`` under the move deadline.
+        leaf_reserve_s = 0.05
+        while (
+            sims_run < sims_plan
+            and time.perf_counter() - started < move_budget - leaf_reserve_s
+        ):
             if visit_stop_triggered(
                 [edge.visit for edge in root.edges],
                 sims_run=sims_run,
@@ -728,7 +734,7 @@ class BeliefMCTS:
             value: Optional[float] = None
             try:
                 for depth in range(1, self.max_depth + 1):
-                    if time.perf_counter() - started >= move_budget:
+                    if time.perf_counter() - started >= move_budget - leaf_reserve_s:
                         break
                     edge = self._select_edge(current, root_seat)
                     edges.append(edge)
@@ -754,14 +760,20 @@ class BeliefMCTS:
                         nodes.append(child)
                         current = child
                         if not child.network_evaluated:
-                            value = self._evaluate_node(
-                                child,
-                                search_state.observation,
-                                root_seat=root_seat,
-                                particle=particle,
-                                branch=branch,
-                                action_prefix=edge.action,
-                            )
+                            try:
+                                value = self._evaluate_node(
+                                    child,
+                                    search_state.observation,
+                                    root_seat=root_seat,
+                                    particle=particle,
+                                    branch=branch,
+                                    action_prefix=edge.action,
+                                )
+                            except TimeoutError:
+                                # Move-deadline-bounded leaf RPC — treat as a
+                                # time interruption, not a hard resource fault.
+                                value = None
+                                break
                             leaf_evaluations += 1
                             break
                         continue
@@ -801,13 +813,17 @@ class BeliefMCTS:
                     nodes.append(child)
                     current = child
                     if not child.network_evaluated:
-                        value = self._evaluate_node(
-                            child,
-                            search_state.observation,
-                            root_seat=root_seat,
-                            particle=particle,
-                            branch=branch,
-                        )
+                        try:
+                            value = self._evaluate_node(
+                                child,
+                                search_state.observation,
+                                root_seat=root_seat,
+                                particle=particle,
+                                branch=branch,
+                            )
+                        except TimeoutError:
+                            value = None
+                            break
                         leaf_evaluations += 1
                         break
                 if value is None:

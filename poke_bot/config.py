@@ -304,8 +304,9 @@ class SearchConfig:
     #: still happens across concurrent games in the persistent leaf server.
     leaf_batch_mcts: bool = _env_bool("LEAF_BATCH_MCTS", False)
     #: A remote leaf request that receives no response fails closed after this
-    #: bound instead of hanging a worker forever.
-    remote_request_timeout_s: float = _env_float("REMOTE_REQUEST_TIMEOUT_S", 30.0)
+    #: bound instead of hanging a worker forever. Raised from 30→120 so a
+    #: backlogged remote leaf (Elmo) is not false-killed while still alive.
+    remote_request_timeout_s: float = _env_float("REMOTE_REQUEST_TIMEOUT_S", 120.0)
     #: Search is invalid when materially fewer than the planned simulations
     #: complete. The absolute requirement remains at least one simulation.
     min_sim_completion_ratio: float = _env_float("MIN_SIM_COMPLETION_RATIO", 0.9)
@@ -318,7 +319,7 @@ class SearchConfig:
     #: enables clarity early-stop after the floor. See BeliefMCTS.
     opening_budget: bool = _env_bool("OPENING_BUDGET", True)
     opening_turn_max: int = _env_int("OPENING_TURN_MAX", 2)
-    opening_move_time_mult: float = _env_float("OPENING_MOVE_TIME_MULT", 0.5)
+    opening_move_time_mult: float = _env_float("OPENING_MOVE_TIME_MULT", 1.0)
     opening_sims_mult: float = _env_float("OPENING_SIMS_MULT", 0.5)
     #: Top−2nd root prior margin that caps sims at the trust floor.
     clarity_prior_margin: float = _env_float("CLARITY_PRIOR_MARGIN", 0.35)
@@ -693,3 +694,6 @@ def hardware_profile(device: Any = None) -> dict[str, Any]:
             "cuda_device_order": os.environ.get("CUDA_DEVICE_ORDER"),
         },
     }
+
+# Alias for older remote worker images.
+apply_runtime_knobs = apply_runtime_perf

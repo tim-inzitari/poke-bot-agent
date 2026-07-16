@@ -13,7 +13,6 @@ box / container.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import multiprocessing as mp
 import os
 import socket
@@ -26,6 +25,12 @@ from typing import Any, Optional
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from poke_bot.remote_sim_jobs import (  # noqa: E402
+    load_round_robin_module,
+    remote_play_job,
+    remote_promotion_job,
+)
 
 
 def _default_leaf_gpu() -> str:
@@ -107,16 +112,8 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 
 def _load_rr_module():
-    """Import train_round_robin worker callables without executing main."""
-    path = REPO_ROOT / "scripts" / "train_round_robin.py"
-    spec = importlib.util.spec_from_file_location("train_round_robin_remote", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load {path}")
-    mod = importlib.util.module_from_spec(spec)
-    # Avoid running ``if __name__ == '__main__'``.
-    sys.modules[spec.name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+    """Import train_round_robin (side-effect warm); job dispatch uses package wrappers."""
+    return load_round_robin_module()
 
 
 def _gpu_name(device_str: str) -> str:
@@ -258,12 +255,21 @@ def main(argv: Optional[list[str]] = None) -> int:
                 pass
         return 3
 
+    # Manager dict is a true cross-process proxy: reload publishes digest/version
+    # here and long-lived WorkerPool children re-read on every leaf RPC.
+    leaf_expect = mpctx.Manager().dict()
+    leaf_expect["digest"] = digest
+    leaf_expect["version"] = int(leaf_version)
+    leaf_expect["pinned"] = []
+
     remote_channel = {
         "req_qs": leaf_req_qs,
         "resp_qs": leaf_resp_qs,
         "alive_evts": leaf_alive_evts,
-        "expected_digest": digest,
-        "expected_version": leaf_version,
+        # Shared proxy so reload updates are visible to long-lived pool workers
+        # without respawning (plain ints were snapshotted at worker init).
+        "expected_digest": leaf_expect,
+        "expected_version": leaf_expect,
         "timeout_s": float(config.SEARCH.remote_request_timeout_s),
         "generation": 0,
     }
@@ -276,6 +282,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     pool.__enter__()
     stop_event = threading.Event()
+    # Secondary digests kept resident across primary reloads (multi-trainer /
+    # belief-MCTS promotion). Map digest → absolute path on this host.
+    pins: dict[str, str] = {}
     state: dict[str, Any] = {
         "digest": digest,
         "version": leaf_version,
@@ -283,7 +292,44 @@ def main(argv: Optional[list[str]] = None) -> int:
         "jobs_completed": 0,
         "jobs_failed": 0,
         "started_at": time.time(),
+        "leaf_expect": leaf_expect,
+        "pins": pins,
     }
+
+    def _publish_expect(*, primary: str, version: int) -> None:
+        """Publish primary + pin set so workers accept multi-digest leaf replies."""
+        leaf_expect["digest"] = primary
+        leaf_expect["version"] = int(version)
+        leaf_expect["pinned"] = sorted(pins)
+
+    def _repin_secondaries() -> list[str]:
+        """Re-apply pins after a primary reload wiped the leaf resident set."""
+        restored: list[str] = []
+        for pin_digest, pin_path in list(pins.items()):
+            if pin_digest == state["digest"]:
+                pins.pop(pin_digest, None)
+                continue
+            if not Path(pin_path).is_file():
+                pins.pop(pin_digest, None)
+                continue
+            for cq in leaf_ctrl_qs:
+                cq.put({"cmd": "pin", "path": pin_path, "digest": pin_digest})
+            ok = True
+            for j, sq in enumerate(leaf_status_qs):
+                status = sq.get(timeout=120)
+                if not status.get("ok"):
+                    ok = False
+                    print(
+                        f"[remote-worker] WARN re-pin {pin_digest[:19]}… "
+                        f"leaf[{j}] failed: {status}",
+                        flush=True,
+                    )
+                    break
+            if ok:
+                restored.append(pin_digest)
+            else:
+                pins.pop(pin_digest, None)
+        return restored
 
     def hello() -> dict[str, Any]:
         return {
@@ -294,6 +340,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             "device": leaf_gpu,
             "checkpoint_digest": state["digest"],
             "checkpoint_version": state["version"],
+            "pinned_digests": sorted({state["digest"], *pins}),
             "free_ram_gb": _free_ram_gb(),
             "jobs_completed": state["jobs_completed"],
             "jobs_failed": state["jobs_failed"],
@@ -339,16 +386,31 @@ def main(argv: Optional[list[str]] = None) -> int:
                         "ok": False,
                         "error": f"leaf[{j}] reload failed: {status}",
                     }
+            # Former primary can stay available if a peer trainer still needs it.
+            prev_digest = str(state["digest"] or "")
+            prev_path = str(state["checkpoint"] or "")
+            if (
+                prev_digest
+                and prev_digest != actual
+                and prev_path
+                and Path(prev_path).is_file()
+            ):
+                pins[prev_digest] = prev_path
+            pins.pop(actual, None)
             state["digest"] = actual
             state["version"] = new_version
             state["checkpoint"] = path
-            remote_channel["expected_digest"] = actual
-            remote_channel["expected_version"] = new_version
+            restored = _repin_secondaries()
+            # Publish to long-lived workers BEFORE returning so the next job
+            # cannot observe server version N while still expecting N-1.
+            _publish_expect(primary=actual, version=new_version)
             return {
                 "type": "reload_ok",
                 "ok": True,
                 "checkpoint_digest": actual,
                 "version": new_version,
+                "pinned_digests": sorted({actual, *pins}),
+                "restored_pins": restored,
             }
         if mtype == "pin":
             path = str(msg["path"])
@@ -370,11 +432,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                         "ok": False,
                         "error": f"leaf[{j}] pin failed: {status}",
                     }
+            if actual != state["digest"]:
+                pins[actual] = path
+            _publish_expect(primary=str(state["digest"]), version=int(state["version"]))
             return {
                 "type": "pin_ok",
                 "ok": True,
                 "checkpoint_digest": actual,
-                "pinned_digests": status.get("pinned_digests"),
+                "pinned_digests": status.get("pinned_digests")
+                or sorted({state["digest"], *pins}),
             }
         if mtype == "unpin":
             digest = str(msg["digest"])
@@ -388,6 +454,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                         "ok": False,
                         "error": f"leaf[{j}] unpin failed: {status}",
                     }
+            pins.pop(digest, None)
+            _publish_expect(primary=str(state["digest"]), version=int(state["version"]))
             return {"type": "unpin_ok", "ok": True, "digest": digest}
         if mtype == "job":
             kind = str(msg.get("kind") or "play")
@@ -395,19 +463,68 @@ def main(argv: Optional[list[str]] = None) -> int:
             if not isinstance(job, dict):
                 return {"type": "result", "ok": False, "error": "job must be object"}
             if kind == "play":
-                # Collection jobs inherit the worker's pinned incumbent digest.
-                job = {
-                    **job,
-                    "checkpoint": state["checkpoint"],
-                    "checkpoint_digest": state["digest"],
-                    "device": "cpu",
-                }
+                # Honor trainer-requested digest so shared remotes can host
+                # multiple incumbents (Core + Blackwell). Auto-pin peer digests
+                # when needed; fall back to primary only if the job omitted id.
+                req_digest = job.get("checkpoint_digest")
+                req_path = job.get("checkpoint")
+                if req_digest and req_path:
+                    req_digest_s = str(req_digest)
+                    if (
+                        req_digest_s != str(state["digest"])
+                        and req_digest_s not in pins
+                    ):
+                        actual = checkpoint_digest(str(req_path))
+                        if actual != req_digest_s:
+                            return {
+                                "type": "result",
+                                "ok": False,
+                                "error": (
+                                    f"play digest mismatch: expected "
+                                    f"{req_digest_s}, got {actual}"
+                                ),
+                            }
+                        for cq in leaf_ctrl_qs:
+                            cq.put(
+                                {
+                                    "cmd": "pin",
+                                    "path": str(req_path),
+                                    "digest": actual,
+                                }
+                            )
+                        for j, sq in enumerate(leaf_status_qs):
+                            status = sq.get(timeout=120)
+                            if not status.get("ok"):
+                                return {
+                                    "type": "result",
+                                    "ok": False,
+                                    "error": (
+                                        f"leaf[{j}] pin for play digest "
+                                        f"failed: {status}"
+                                    ),
+                                }
+                        pins[actual] = str(req_path)
+                        _publish_expect(
+                            primary=str(state["digest"]),
+                            version=int(state["version"]),
+                        )
+                    job = {**job, "device": "cpu"}
+                else:
+                    job = {
+                        **job,
+                        "checkpoint": state["checkpoint"],
+                        "checkpoint_digest": state["digest"],
+                        "device": "cpu",
+                    }
             else:
                 job = {**job, "device": "cpu"}
-            worker_fn = rr._worker_play if kind == "play" else rr._worker_promotion
-            # One job per request; pool may have many concurrent sockets.
+            # Must use package-level callables (not rr._worker_*), or spawn
+            # Pool workers fail to unpickle ``train_round_robin_remote``.
+            worker_fn = remote_play_job if kind == "play" else remote_promotion_job
+            # One job per socket request. Many sockets call this concurrently;
+            # use Pool.apply (thread-safe), never concurrent imap_unordered.
             try:
-                result = next(pool.imap_unordered(worker_fn, [job]))
+                result = pool.apply(worker_fn, job)
                 state["jobs_completed"] += 1
                 return {"type": "result", "ok": True, "result": result}
             except BaseException as exc:  # noqa: BLE001

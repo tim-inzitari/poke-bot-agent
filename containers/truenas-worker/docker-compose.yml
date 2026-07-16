@@ -35,6 +35,8 @@ services:
       LEAF_QUEUE_DEPTH: "96"
       LEAF_COALESCE_MS: "2"
       REMOTE_JOB_PORT: "8765"
+      # Full opening move budget (0.5x caused TrustedSearchBudgetExhausted @ 6s vs 128 sims)
+      POKEBOT_OPENING_MOVE_TIME_MULT: "1.0"
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:

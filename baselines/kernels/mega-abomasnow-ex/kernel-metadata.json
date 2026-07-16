@@ -18,7 +18,5 @@
   "competition_sources": [
     "pokemon-tcg-ai-battle"
   ],
-  "model_sources": [],
-  "docker_image": "gcr.io/kaggle-images/python@sha256:221c8b519c4f2efa4e712ac0f2e85878a403ea4d523a2cedf8ebf60cf1136c45",
-  "machine_shape": "None"
+  "model_sources": []
 }
