@@ -28,11 +28,16 @@ int StepBatch(
     const int* action_offsets,   // [n] start into action_flat
     const int* action_lens,      // [n] len; 0 => skip Select
     int fetch_obs_on_skip,       // non-zero => GetBattleData on skips
+    int copy_json,               // 0 = borrowed ptrs (stock lifetime); 1 = malloc copy
     int* out_errors,             // [n]
-    char** out_jsons,            // [n] malloc'd UTF-8 JSON; free via StepBatchFreeJsons
+    char** out_jsons,            // [n] UTF-8 JSON
     int* out_select_players      // [n] or NULL
 );
 ```
+
+When `copy_json==0`, pointers are borrowed from stock `GetBattleData` (valid until
+the next Select/GetBattleData/StepBatch on that handle). When `copy_json==1`,
+free with `StepBatchFreeJsons`.
 
 Per-env `out_errors[i]`:
 

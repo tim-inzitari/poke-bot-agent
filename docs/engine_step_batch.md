@@ -23,6 +23,20 @@ Companion: [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md)
 2. **Additive `libcg_step_batch.so`:** **BUILDS** with `g++ -std=c++20 -O3 -fPIC -shared` (no engine sources). Forwards stock symbols via `dlopen`.
 3. **`BattleStartSeeded`:** **NOT in shim** — stock `BattleStart` links `std::random_device`; seeded start needs an in-tree `Export.cpp` patch once sources are local.
 
+## Microbench (cloud, 2026-07-16)
+
+Stock `libcg.so` from public research-environments PR mirror + this shim. End-to-end `LibcgMultiEnv` (includes `json.loads`):
+
+| N | Python Select+Get steps/s | Native StepBatch steps/s | Speedup |
+|---|---|---|---|
+| 8 | ~9750 | ~10790 | **1.11×** |
+| 32 | ~9040 | ~9170 | **1.01×** |
+| 64 | ~8940 | ~9120 | **1.02×** |
+
+Short random-play games/s is noisy (~200–270 g/s both paths); step rate is the stable signal.
+
+**Finding:** once battles are already multi-handle in-process, N× ctypes crossings are **not** the dominant cost — stock `GetBattleData` JSON serialization + Python parse is. The shim is correct plumbing; large gains need an in-tree fork that returns binary/SparseVector batch obs (or skips JSON on search plies). GetBattleData-only raw loops also measure ~1.0× stock vs batch.
+
 ## Cloud inventory
 
 | Need | Present? |

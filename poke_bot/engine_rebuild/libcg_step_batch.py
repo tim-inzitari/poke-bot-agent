@@ -105,7 +105,8 @@ def _bind(lib: Any) -> None:
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_int),
-        ctypes.c_int,
+        ctypes.c_int,  # fetch_obs_on_skip
+        ctypes.c_int,  # copy_json
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_char_p),
         ctypes.POINTER(ctypes.c_int),
@@ -123,8 +124,13 @@ def step_batch_native(
     actions: Sequence[Optional[Sequence[int]]],
     *,
     fetch_obs_on_skip: bool = False,
+    copy_json: bool = False,
 ) -> tuple[list[int], list[Optional[str]], list[int]]:
-    """Run C ``StepBatch``. Returns (errors, json_strings, select_players)."""
+    """Run C ``StepBatch``. Returns (errors, json_strings, select_players).
+
+    Default ``copy_json=False`` matches stock ``GetBattleData`` lifetime: decode
+    immediately before the next Select/Get/StepBatch on that handle.
+    """
     n = len(handles)
     if len(actions) != n:
         raise ValueError("handles/actions length mismatch")
@@ -155,6 +161,7 @@ def step_batch_native(
             offsets,
             lens,
             1 if fetch_obs_on_skip else 0,
+            1 if copy_json else 0,
             errors,
             jsons,
             select_players,
@@ -176,7 +183,8 @@ def step_batch_native(
             else:
                 out_json.append(raw.decode())
     finally:
-        lib.StepBatchFreeJsons(jsons, n)
+        if copy_json:
+            lib.StepBatchFreeJsons(jsons, n)
     return out_errors, out_json, out_sp
 
 

@@ -132,11 +132,13 @@ const char* StepBatchLastError(void) {
 // action_lens[i]      : length for env i; 0 => skip Select (still may fetch JSON
 //                       if fetch_obs_on_skip != 0)
 // fetch_obs_on_skip   : if non-zero, GetBattleData even when action_lens[i]==0
-//                       or handles[i]==nullptr is skipped entirely
+// copy_json           : if non-zero, malloc-copy JSON (free with
+//                       StepBatchFreeJsons). If 0, return borrowed pointers from
+//                       stock GetBattleData (valid until next Select/GetBattleData/
+//                       StepBatch on that handle — same as stock ABI).
 // out_errors[i]       : Select return code; 0 ok; -1 skipped; -2 bad args /
 //                       stock not loaded; -3 malloc failure on json copy
-// out_jsons[i]        : malloc'd JSON copy (UTF-8) or nullptr; free with
-//                       StepBatchFreeJsons
+// out_jsons[i]        : JSON UTF-8 or nullptr
 // out_select_players[i]: SerialData.selectPlayer (or -1 if no fetch)
 //
 // Returns 0 on ABI success (per-env errors still in out_errors). Non-zero only
@@ -148,6 +150,7 @@ int StepBatch(
     const int* action_offsets,
     const int* action_lens,
     int fetch_obs_on_skip,
+    int copy_json,
     int* out_errors,
     char** out_jsons,
     int* out_select_players) {
@@ -207,12 +210,17 @@ int StepBatch(
     if (out_select_players) {
       out_select_players[i] = sd.selectPlayer;
     }
-    char* copy = dup_cstr(sd.json);
-    if (sd.json && !copy) {
-      out_errors[i] = -3;
-      continue;
+    if (copy_json) {
+      char* copy = dup_cstr(sd.json);
+      if (sd.json && !copy) {
+        out_errors[i] = -3;
+        continue;
+      }
+      out_jsons[i] = copy;
+    } else {
+      // Borrowed — cast away const for ctypes c_char_p symmetry with stock.
+      out_jsons[i] = const_cast<char*>(sd.json);
     }
-    out_jsons[i] = copy;
   }
   return 0;
 }
