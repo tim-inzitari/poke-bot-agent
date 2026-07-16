@@ -1,12 +1,14 @@
 """Pure-RL self-play leaf wiring (CPU sim + optional coalesced GPU leaves).
 
-Official ``libcg`` battles stay per-process on CPU. Network eval can either:
-  - load the policy in each sim worker (CPU-local, status quo bug for pure-RL), or
+Official ``libcg`` battles stay on CPU (one process, or multi-handle via
+``LibcgMultiEnv``). Network eval can either:
+  - load the policy in each sim worker (CPU-local), or
   - offload forwards to the persistent leaf servers that already coalesce batches
     across workers (same path round-robin ``_worker_play`` uses).
 
-This module only decides *which* path to take; it does not touch overnight
-launch scripts.
+:func:`plan_self_play_leaf_wiring` is consumed by ``remote_self_play_job`` and
+the multi-env collect path. Coalesce defaults for the tiny pure-RL net live in
+:func:`poke_bot.pure_rl.multi_env_self_play.pure_rl_leaf_coalesce_ms`.
 """
 
 from __future__ import annotations

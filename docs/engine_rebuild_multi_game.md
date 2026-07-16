@@ -141,7 +141,7 @@ SoA optional after `perf` on MultiEnv collect.
 | # | Milestone | Effort | Risk | Gain | Verdict |
 |---|---|---|---|---|---|
 | **M0** | Download source; prove multi-handle; inventory globals | S | Low | Reframes the whole project | **Done** |
-| **M1** | Ship/validate `LibcgMultiEnv` in pure-RL canary (fewer processes) | S–M | Low–Med (leaks) | Cut process tax immediately | **Do next** |
+| **M1** | Ship/validate `LibcgMultiEnv` in pure-RL canary (fewer processes) | S–M | Low–Med (leaks) | Cut process tax immediately | **Wired** (`POKEBOT_MULTI_ENV` / `--multi-env-per-worker`) |
 | **M2** | Soak + recycle policy for multi-handle workers | S | Med | Stable overnight | With M1 |
 | **M3** | C++ `step_batch` + seeded start in engine fork | M | Med | Kill ctypes/JSON overhead | Primary rebuild goal |
 | **M4** | SoA / SIMD on hottest fields | M–L | Med | Extra CPU throughput | After profiler |
@@ -180,7 +180,18 @@ Rebuild does **not** replace leaves. It removes the “32–40 processes × one 
 4. **M3 fork:** C++ `step_batch` + seeded `BattleStart`; golden transition hashes.
 5. **M4/M5** only if sim_step still dominates profiles.
 
-**Next coding milestone:** wire `LibcgMultiEnv` into pure-RL self-play behind a flag and bench games/hour vs process pool on the training box.
+**Enable (additive; WorkerPool remains default):**
+
+```bash
+# fewer OS processes × N official handles each (GPU leaves still used when up)
+POKEBOT_MULTI_ENV=1            # → 4 envs/process
+# or: --multi-env-per-worker 4 / POKEBOT_MULTI_ENV_PER_WORKER=4
+
+# pure-RL leaf coalesce (scoped; does not change Hope-large RR default of 4ms)
+PURE_RL_LEAF_COALESCE_MS=0     # launch_pure_rl sets this by default
+```
+
+**Next coding milestone:** soak MultiEnv overnight canary; then C++ `step_batch` fork.
 
 ---
 

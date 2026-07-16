@@ -55,11 +55,33 @@ def remote_promotion_job(job: dict[str, Any]) -> dict[str, Any]:
     return load_round_robin_module()._worker_promotion(job)
 
 
+def remote_self_play_multi_job(batch: dict[str, Any]) -> list[dict[str, Any]]:
+    """Batch self-play via in-process ``LibcgMultiEnv`` (spawn-safe).
+
+    ``batch`` is ``{"jobs": [job, ...]}``. Used when pure-RL enables
+    ``--multi-env-per-worker`` / ``POKEBOT_MULTI_ENV`` so one OS worker owns
+    many official libcg handles. GPU leaf wiring matches
+    :func:`remote_self_play_job`.
+    """
+    from poke_bot.pure_rl.multi_env_self_play import run_self_play_multi
+
+    jobs = list(batch.get("jobs") or [])
+    if not jobs:
+        return []
+    if len(jobs) == 1:
+        return [remote_self_play_job(jobs[0])]
+    return run_self_play_multi(jobs)
+
+
 def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
     """Pure self-play: current policy vs recent-self / itself (spawn-safe).
 
     Primary Stage A collect path (Abhyuday: millions of self-play variations).
     Builds a trusted record from our seat only — no baseline heuristics.
+
+    When the WorkerPool registered a leaf channel, both seats use coalesced
+    GPU leaves for same-checkpoint games (``gpu-leaf-both``); recent-self
+    opponents stay CPU-local on the opp seat (``gpu-leaf-us-only``).
     """
     import json
     import random

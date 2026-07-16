@@ -44,6 +44,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--allow-single-gpu", action="store_true")
     p.add_argument("--smoke", action="store_true")
     p.add_argument(
+        "--multi-env-per-worker",
+        type=int,
+        default=None,
+        help=(
+            "Forward to train_pure_rl: LibcgMultiEnv battles per OS worker. "
+            "Also honour POKEBOT_MULTI_ENV=1 in the child env."
+        ),
+    )
+    p.add_argument(
+        "--leaf-coalesce-ms",
+        type=float,
+        default=None,
+        help="Forward to train_pure_rl (default via PURE_RL_LEAF_COALESCE_MS=0).",
+    )
+    p.add_argument(
         "--remote-worker-endpoints",
         default=None,
         help=(
@@ -121,6 +136,9 @@ def main(argv: list[str] | None = None) -> int:
     env["PURE_RL_LEAF_GPU0_REPLICAS"] = str(hw.leaf_gpu0_replicas)
     env["PURE_RL_LEAF_GPU1_REPLICAS"] = str(hw.leaf_gpu1_replicas)
     env["PURE_RL_TORCH_THREADS"] = str(hw.torch_threads)
+    # Tiny ~1.6M pure-RL policy: coalesce≈0 beats the RR Hope-large default (4ms).
+    # Do not set LEAF_SERVER_COALESCE_MS globally here if already exported (ops override).
+    env.setdefault("PURE_RL_LEAF_COALESCE_MS", "0")
     if hw.allow_single_gpu:
         env["PURE_RL_ALLOW_SINGLE_GPU"] = "1"
 
@@ -158,6 +176,16 @@ def main(argv: list[str] | None = None) -> int:
         train_cmd.append("--smoke")
     if args.allow_single_gpu and "--allow-single-gpu" not in train_cmd:
         train_cmd.append("--allow-single-gpu")
+    if args.multi_env_per_worker is not None and not any(
+        a == "--multi-env-per-worker" or a.startswith("--multi-env-per-worker=")
+        for a in train_cmd
+    ):
+        train_cmd.extend(["--multi-env-per-worker", str(args.multi_env_per_worker)])
+    if args.leaf_coalesce_ms is not None and not any(
+        a == "--leaf-coalesce-ms" or a.startswith("--leaf-coalesce-ms=")
+        for a in train_cmd
+    ):
+        train_cmd.extend(["--leaf-coalesce-ms", str(args.leaf_coalesce_ms)])
     # Production: remotes ON by default (canary/smoke skips).
     has_remote_flag = any(
         a == "--remote-worker-endpoints" or a.startswith("--remote-worker-endpoints=")

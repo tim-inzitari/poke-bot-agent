@@ -100,6 +100,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="gpu-server",
         help="Local leaf inference mode for host workers",
     )
+    p.add_argument(
+        "--multi-env-per-worker",
+        type=int,
+        default=None,
+        help=(
+            "In-process LibcgMultiEnv battles per OS worker (default: off / 1). "
+            "Also: POKEBOT_MULTI_ENV=1 (→4) or POKEBOT_MULTI_ENV_PER_WORKER=N. "
+            "Keeps WorkerPool as default until set."
+        ),
+    )
+    p.add_argument(
+        "--leaf-coalesce-ms",
+        type=float,
+        default=None,
+        help=(
+            "Pure-RL leaf coalesce window (ms). Default 0 for ~1.6M policy "
+            "(does not change Hope-large RR config default of 4). "
+            "Env: PURE_RL_LEAF_COALESCE_MS (scoped; ignores RR LEAF_SERVER_COALESCE_MS)."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -534,10 +554,10 @@ class _LeafFarm:
             "timeout_s": config.SEARCH.remote_request_timeout_s,
         }
         print(
-            f"[pure_rl] leaf-eval=gpu-server x{len(self.procs)} devices={devices} "
-            f"workers={n_workers}",
-            flush=True,
-        )
+        f"[pure_rl] leaf-eval=gpu-server x{len(self.procs)} devices={devices} "
+        f"workers={n_workers} coalesce_ms={coalesce_ms}",
+        flush=True,
+    )
 
     def reload(self, ckpt: Path, digest: str) -> None:
         if not self.ctrl_qs:
@@ -876,6 +896,9 @@ def _consume_results(
                 "baseline_failed": bool(res.get("baseline_failed")),
                 "our_failed": bool(res.get("our_failed")),
                 "self_play": bool(res.get("self_play")),
+                "leaf_self_play_mode": res.get("leaf_self_play_mode"),
+                "leaf_remote": bool(res.get("leaf_remote")),
+                "multi_env": bool(res.get("multi_env")),
                 "invalid": bool(
                     res.get("resource_error")
                     or res.get("cancelled")
@@ -883,6 +906,14 @@ def _consume_results(
                 ),
             }
         )
+        mode = str(res.get("leaf_self_play_mode") or "")
+        if mode:
+            leaf_modes = stats.setdefault("leaf_modes", {})
+            leaf_modes[mode] = int(leaf_modes.get(mode, 0)) + 1
+        if res.get("leaf_remote"):
+            stats["leaf_remote"] = int(stats.get("leaf_remote", 0)) + 1
+        if res.get("multi_env"):
+            stats["multi_env_games"] = int(stats.get("multi_env_games", 0)) + 1
         if res.get("baseline_failed"):
             stats["baseline_failed"] += 1
             continue
@@ -910,6 +941,16 @@ def _consume_results(
         stats["with_record"] += 1
 
 
+def _flatten_batch_results(results_iter):
+    """Expand multi-env worker outputs (list[dict]) into a flat result stream."""
+    for item in results_iter:
+        if isinstance(item, list):
+            for res in item:
+                yield res
+        else:
+            yield item
+
+
 def _collect_wave(
     *,
     self_play_jobs: list[dict[str, Any]],
@@ -920,13 +961,21 @@ def _collect_wave(
     remote_farm,
     worker_play,
     worker_self_play,
+    multi_env_per_worker: int = 1,
+    worker_self_play_multi=None,
 ) -> tuple[CompactShardWriter, list[dict[str, Any]], dict[str, Any]]:
     """Self-play on host workers; light public-bot mix on remotes (+ leftover local)."""
+    from poke_bot.pure_rl.multi_env_self_play import (
+        chunk_jobs,
+        process_worker_count,
+    )
     from poke_bot.remote_jobs import iter_additive_results
     from poke_bot.worker_pool import WorkerPool
 
     writer = CompactShardWriter(shard_path)
     rows: list[dict[str, Any]] = []
+    multi_n = max(1, int(multi_env_per_worker))
+    proc_workers = process_worker_count(n_workers, multi_n)
     stats = {
         "ok": 0,
         "baseline_failed": 0,
@@ -936,23 +985,32 @@ def _collect_wave(
         "self_play": 0,
         "n_self_play_jobs": len(self_play_jobs),
         "n_baseline_jobs": len(baseline_jobs),
+        "multi_env_per_worker": multi_n,
+        "proc_workers": proc_workers,
+        "leaf_remote": 0,
+        "multi_env_games": 0,
+        "leaf_modes": {},
     }
     if not self_play_jobs and not baseline_jobs:
         return writer, rows, stats
 
-    local_workers = max(1, int(n_workers))
+    local_workers = max(1, int(proc_workers))
     # Primary: pure self-play saturates local CPU (+ leaf servers).
     if self_play_jobs:
         with WorkerPool(num_workers=local_workers, remote_channel=leaf_channel) as pool:
-            _consume_results(
-                pool.imap_unordered(worker_self_play, self_play_jobs),
-                writer,
-                rows,
-                stats,
-            )
+            if multi_n > 1 and worker_self_play_multi is not None:
+                batches = [{"jobs": chunk} for chunk in chunk_jobs(self_play_jobs, multi_n)]
+                results_iter = _flatten_batch_results(
+                    pool.imap_unordered(worker_self_play_multi, batches)
+                )
+            else:
+                results_iter = pool.imap_unordered(worker_self_play, self_play_jobs)
+            _consume_results(results_iter, writer, rows, stats)
     # Light mixture: public/roster via remotes (and local if no remotes).
+    # Baseline path stays one-game-per-process (baselines use cg.game singleton).
+    baseline_workers = max(1, int(n_workers))
     if baseline_jobs:
-        with WorkerPool(num_workers=local_workers, remote_channel=leaf_channel) as pool:
+        with WorkerPool(num_workers=baseline_workers, remote_channel=leaf_channel) as pool:
             if remote_farm is not None and remote_farm.total_workers > 0:
                 results_iter = iter_additive_results(
                     local_pool=pool,
@@ -960,7 +1018,7 @@ def _collect_wave(
                     jobs=baseline_jobs,
                     remote_clients=remote_farm.clients,
                     kind="play",
-                    local_workers=max(1, local_workers // 4),
+                    local_workers=max(1, baseline_workers // 4),
                     remote_workers=remote_farm.total_workers,
                 )
             else:
@@ -1112,18 +1170,42 @@ def run_full_loop(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
 
-    print(
-        f"[pure_rl] full hardware workers={hw.sim_workers} "
-        f"leaves_gpu0={hw.leaf_gpu0_replicas} leaves_gpu1={hw.leaf_gpu1_replicas} "
-        f"train_cuda={hw.train_cuda_device} remotes={endpoints or 'none'}",
-        flush=True,
-    )
-
-    # Importable worker entry (spawn-safe). Do NOT pass a dynamically loaded
-    # train_round_robin._worker_play — Pool pickle fails under spawn.
     from poke_bot.remote_sim_jobs import (
         remote_play_job as worker_play,
         remote_self_play_job as worker_self_play,
+        remote_self_play_multi_job as worker_self_play_multi,
+    )
+    from poke_bot.pure_rl.multi_env_self_play import (
+        process_worker_count,
+        pure_rl_leaf_coalesce_ms,
+        resolve_multi_env_per_worker,
+    )
+
+    multi_env_n = resolve_multi_env_per_worker(args.multi_env_per_worker)
+    proc_workers = process_worker_count(hw.sim_workers, multi_env_n)
+    if args.leaf_coalesce_ms is not None:
+        coalesce_ms = float(args.leaf_coalesce_ms)
+    else:
+        coalesce_ms = pure_rl_leaf_coalesce_ms(default=0.0)
+
+    # Persist throughput knobs into the run manifest (rewrite after resolve).
+    try:
+        manifest_path = run_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["multi_env_per_worker"] = multi_env_n
+        manifest["proc_workers_self_play"] = proc_workers
+        manifest["leaf_coalesce_ms"] = coalesce_ms
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    print(
+        f"[pure_rl] full hardware workers={hw.sim_workers} "
+        f"self_play_procs={proc_workers} multi_env={multi_env_n} "
+        f"leaf_coalesce_ms={coalesce_ms} "
+        f"leaves_gpu0={hw.leaf_gpu0_replicas} leaves_gpu1={hw.leaf_gpu1_replicas} "
+        f"train_cuda={hw.train_cuda_device} remotes={endpoints or 'none'}",
+        flush=True,
     )
 
     leaf = _LeafFarm()
@@ -1133,22 +1215,19 @@ def run_full_loop(args: argparse.Namespace) -> int:
     train_dev = torch.device(f"cuda:{hw.train_cuda_device}")
 
     try:
-        use_leaf = (
-            args.leaf_eval == "gpu-server"
-            and visible >= 1
-            and not args.allow_single_gpu
-        ) or (args.leaf_eval == "gpu-server" and visible >= 2)
         if args.leaf_eval == "gpu-server" and visible >= 1:
             leaf_devices = hw.leaf_cuda_devices()
             if visible < 2:
                 leaf_devices = [0] * max(1, hw.leaf_gpu0_replicas)
+            # Resp queues cover max(process counts) used by self-play or baseline pools.
+            leaf_slots = max(proc_workers, hw.sim_workers)
             leaf.start(
                 ckpt=ckpt,
                 digest=identity.digest,
                 leaf_devices=leaf_devices,
-                n_workers=hw.sim_workers,
+                n_workers=leaf_slots,
                 max_batch=int(config.HARDWARE.leaf_server_max_batch),
-                coalesce_ms=float(config.HARDWARE.leaf_server_coalesce_ms),
+                coalesce_ms=coalesce_ms,
             )
         else:
             print("[pure_rl] leaf-eval=cpu (local workers load model)", flush=True)
@@ -1231,6 +1310,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 f"[pure_rl] collect iter={it} self_play={len(self_jobs)} "
                 f"public_mix={len(base_jobs)} "
                 f"local_workers={hw.sim_workers} "
+                f"self_play_procs={proc_workers} multi_env={multi_env_n} "
                 f"remote_workers="
                 f"{remote_farm.total_workers if remote_farm else 0}",
                 flush=True,
@@ -1244,6 +1324,15 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 remote_farm=remote_farm,
                 worker_play=worker_play,
                 worker_self_play=worker_self_play,
+                multi_env_per_worker=multi_env_n,
+                worker_self_play_multi=worker_self_play_multi,
+            )
+            print(
+                f"[pure_rl] collect done iter={it} ok={stats.get('ok')} "
+                f"leaf_remote={stats.get('leaf_remote')} "
+                f"leaf_modes={stats.get('leaf_modes')} "
+                f"multi_env_games={stats.get('multi_env_games')}",
+                flush=True,
             )
             return {
                 "iteration": it,

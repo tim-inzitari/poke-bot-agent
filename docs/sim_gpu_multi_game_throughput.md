@@ -165,6 +165,12 @@ GPU net, no N× CUDA contexts). For the tiny pure-RL policy, also set
 tuned for larger nets. Confirm with real leaf telemetry (`inference_ms`,
 `batch_occupancy`).
 
+**Shipped in pure-RL launcher:** `scripts/launch_pure_rl.py` sets
+`PURE_RL_LEAF_COALESCE_MS=0` by default (scoped; RR Hope-large still reads
+`config.HARDWARE.leaf_server_coalesce_ms` / global 4 ms). Override with
+`--leaf-coalesce-ms` or env. Multi-env collect: `POKEBOT_MULTI_ENV=1` or
+`--multi-env-per-worker N`.
+
 ---
 
 ## 5. Recommended redesign (practical)
