@@ -7,14 +7,14 @@ incremental KV-cache serving share that contract. Single-guessed-world CABT
 MCTS is retained only as an explicitly labeled oracle diagnostic; it cannot
 generate trusted targets, pass promotion, or ship in a submission.
 
-Primary archetype is **hard-set to `hammer-pult`** (Hammer Dragapult) via
-`POKEBOT_PRIMARY_ARCHETYPE=hammer-pult` on every launch command. Pure
-`dragapult` and tech variants are Phase 6 specialists. Design notes live under
-`outputs/notes/`.
+> **Current production path (2026-07-16):** use the schema-v5 pure-RL pipeline
+> in [`docs/PURE_RL_PIPELINE.md`](docs/PURE_RL_PIPELINE.md). The older
+> Hammer-first bootstrap/round-robin commands below remain as diagnostics and
+> historical context; they are not the active production lineage.
 
-> Code default if the env var is unset: `deck_pool.primary_archetype()` returns
-> `"dragapult"`. Always export `POKEBOT_PRIMARY_ARCHETYPE=hammer-pult` for the
-> Phase 5 primary pipeline.
+Production core training is deck-weighted from a versioned ladder-mix artifact.
+No archetype is hard-coded as the primary. A later specialist must be selected
+explicitly from measured expected ladder value and pass its own immutable gate.
 
 ## Python environment
 
@@ -34,8 +34,8 @@ indices match `nvidia-smi`:
 
 | Index | Card | Role |
 |-------|------|------|
-| `CUDA_VISIBLE_DEVICES=0` | RTX 3080 Ti (12 GB) | core-kernel / Phase 6 specialists |
-| `CUDA_VISIBLE_DEVICES=1` | RTX PRO 5000 Blackwell (~48 GB) | primary hammer-pult bootstrap / RL train + default leaf-eval server |
+| `CUDA_VISIBLE_DEVICES=0` | RTX 3080 Ti (12 GB) | schema-v5 leaf inference / canaries |
+| `CUDA_VISIBLE_DEVICES=1` | RTX PRO 5000 Blackwell (~48 GB) | schema-v5 AWR train + leaf inference |
 
 Always set `CUDA_DEVICE_ORDER=PCI_BUS_ID` before `CUDA_VISIBLE_DEVICES` (without
 it, torch's "fastest-first" order inverts the indices and idx0 becomes

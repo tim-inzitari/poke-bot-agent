@@ -35,11 +35,12 @@ def test_heldout_excludes_forfeits_and_gates() -> None:
     rows = []
     for oid in ("iono", "dragapult-ex", "mega-abomasnow-ex", "mega-lucario-ex"):
         for i in range(50):
+            seat = i % 2
             rows.append(
                 {
                     "opponent_id": oid,
-                    "our_seat": 0,
-                    "winner": 0,
+                    "our_seat": seat,
+                    "winner": seat,
                     "baseline_failed": False,
                 }
             )
@@ -66,6 +67,20 @@ def test_abort_self_distill() -> None:
     )
     assert decision.abort
     assert decision.self_distill_flag
+    assert decision.advantage_signal == 0.0
+
+
+def test_abort_uses_raw_advantage_magnitude_not_whitened_mean() -> None:
+    decision = evaluate_aborts(
+        # A whitened signed mean is zero even when useful advantages exist.
+        mean_advantages=[0.0, 0.0, 0.0],
+        advantage_mean_abs=[0.45, 0.40, 0.35],
+        policy_prev_agreements=[0.99, 0.99, 0.99],
+        k=3,
+    )
+    assert not decision.abort
+    assert decision.reason == "ok"
+    assert decision.advantage_signal == pytest.approx(0.40)
 
 
 def test_hardware_requires_both_gpus() -> None:
@@ -96,6 +111,10 @@ def test_compact_shard_roundtrip(tmp_path) -> None:
                     "selected_index": 0,
                     "n_options": 2,
                     "observation": {"x": 1},
+                    "aux_labels": {
+                        "opp_hand": [7, 8],
+                        "privileged_label_source": "training_fork_exact_same_state",
+                    },
                 }
             )
         ],
@@ -104,4 +123,5 @@ def test_compact_shard_roundtrip(tmp_path) -> None:
     games = list(iter_shard_games(path))
     assert len(games) == 1
     assert games[0].decisions[0].selected_index == 0
+    assert games[0].decisions[0].aux_labels["opp_hand"] == [7, 8]
     assert games[0].target_provenance.get("soft_policy_targets") is False

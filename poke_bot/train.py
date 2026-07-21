@@ -6,6 +6,8 @@ that trusted serving consumes incrementally.
 
 from __future__ import annotations
 
+import copy
+import gc
 import math
 import random
 import time
@@ -17,7 +19,7 @@ import torch
 import torch.nn.functional as F
 from tqdm.auto import tqdm
 
-from . import archetypes, checkpoint, config, device as device_mod
+from . import archetypes, checkpoint, config, device as device_mod, features
 from .blackwell_heads import (
     BLACKWELL_STRATEGY_HEAD_PREFIXES,
     lethal_target_from_aux,
@@ -26,6 +28,7 @@ from .blackwell_heads import (
     prize_race_target_from_aux,
 )
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
+from .device_corpus import DeviceResidentBootstrapCorpus
 from .model import TemporalCabtTransformer, build_model
 
 # Distinct named belief + Blackwell strategy heads — warm-start may omit only
@@ -46,11 +49,16 @@ class TrainConfig:
     games_per_batch: int = 4
     max_decisions_per_batch: int = 256
     val_frac: float = 0.1
+    #: Keep both acting-seat records from an episode in the same split.
+    split_by_episode: bool = False
     early_stop_patience: int = 5
     value_loss_weight: float = 1.0
     aux_loss_weight: float = 0.1
     opp_hand_loss_weight: float = 0.2
     opp_remainder_loss_weight: float = 0.15
+    #: Training-only soft strategy guide. This must remain zero for core and
+    #: non-Alakazam runs; the specialist launcher owns the explicit opt-in.
+    alakazam_guide_loss_weight: float = 0.0
     #: Scope B (Blackwell Hammer) only — keep 0.0 for core / generic bootstrap.
     lethal_threat_loss_weight: float = 0.0
     prize_race_loss_weight: float = 0.0
@@ -64,21 +72,35 @@ class TrainConfig:
     awr_weight_max: float = 20.0
     #: Whitening advantages before exp(A/β) (pure_rl only).
     awr_normalize_advantages: bool = True
+    #: Precompute V(s) once at the iteration boundary and reuse it for every
+    #: AWR update. This makes the documented "stale critic" baseline real
+    #: instead of allowing it to drift with batch order.
+    awr_freeze_baseline: bool = False
     #: Subtract from policy loss: ``entropy_bonus * H(π)`` (pure_rl only).
     entropy_bonus: float = 0.01
 
     @classmethod
     def pure_rl_defaults(cls, **overrides: Any) -> "TrainConfig":
-        """Single-model pure-RL knobs: AWR on, all aux/strategy weights off."""
+        """Single-model pure-RL knobs: AWR on, all aux/strategy weights off.
+
+        Two measured passes over each fresh replay window are the production
+        default. Callers may override this for controlled experiments.
+        """
         cfg = cls(
             pure_rl=True,
             aux_loss_weight=0.0,
             opp_hand_loss_weight=0.0,
             opp_remainder_loss_weight=0.0,
+            alakazam_guide_loss_weight=0.0,
             lethal_threat_loss_weight=0.0,
             prize_race_loss_weight=0.0,
             early_stop_patience=3,
-            epochs=1,
+            epochs=2,
+            # Larger than the tiny default=4 so multi-k game shards finish under
+            # the collection wall time without inflating optimizer-step count.
+            games_per_batch=16,
+            max_decisions_per_batch=2048,
+            awr_freeze_baseline=True,
             awr_normalize_advantages=bool(
                 getattr(config.PURE_RL, "normalize_advantages", True)
             ),
@@ -100,6 +122,7 @@ class BatchMetrics:
     aux_loss: float = 0.0
     opp_hand_loss: float = 0.0
     opp_remainder_loss: float = 0.0
+    alakazam_guide_loss: float = 0.0
     lethal_threat_loss: float = 0.0
     prize_race_loss: float = 0.0
     total_loss: float = 0.0
@@ -109,11 +132,31 @@ class BatchMetrics:
     value_pred_mean: float = 0.0
     n_decisions: int = 0
     n_games: int = 0
+    n_alakazam_guide_rows: int = 0
+    n_archetype_rows: int = 0
+    n_opp_hand_rows: int = 0
+    n_opp_remainder_rows: int = 0
+    n_lethal_threat_rows: int = 0
+    n_prize_race_rows: int = 0
+    # Backward-compatible pipeline signal consumed by pure_rl.aborts. It is
+    # deliberately the raw mean absolute advantage, not a signed/whitened mean.
     mean_advantage: float = 0.0
+    raw_advantage_mean: float = 0.0
+    raw_advantage_std: float = 0.0
+    raw_advantage_mean_abs: float = 0.0
+    raw_advantage_mean_sq: float = 0.0
+    normalized_advantage_mean: float = 0.0
+    normalized_advantage_std: float = 0.0
+    normalized_advantage_mean_abs: float = 0.0
+    normalized_advantage_mean_sq: float = 0.0
     awr_weight_mean: float = 0.0
+    awr_weight_sum: float = 0.0
+    awr_weight_sq_sum: float = 0.0
     awr_weight_p50: float = 0.0
     awr_weight_p95: float = 0.0
     awr_weight_clip_frac: float = 0.0
+    awr_effective_sample_size: float = 0.0
+    awr_effective_sample_fraction: float = 0.0
     policy_selected_nll: float = 0.0
 
 
@@ -215,6 +258,64 @@ def belief_multihots_from_aux_labels(
     return hand_mh, rem_mh
 
 
+def masked_alakazam_guide_ce(
+    model_log_probs: torch.Tensor,
+    guide_target_indices: Sequence[int],
+    guide_confidences: Sequence[float],
+    n_options: Sequence[int],
+) -> tuple[torch.Tensor, int]:
+    """Confidence-weighted CE for collapsed advisory guide targets."""
+    if model_log_probs.dim() != 2:
+        raise ValueError("guide CE expects [rows, max_options] model log-probs")
+    rows = int(model_log_probs.size(0))
+    if not (
+        len(guide_target_indices) == len(guide_confidences) == len(n_options) == rows
+    ):
+        raise ValueError("guide rows do not align with policy rows")
+
+    losses: list[torch.Tensor] = []
+    for row, (raw_target, raw_confidence, raw_n) in enumerate(
+        zip(guide_target_indices, guide_confidences, n_options)
+    ):
+        n = int(raw_n)
+        target = int(raw_target)
+        confidence = float(raw_confidence)
+        if target < 0 or confidence <= 0.0:
+            continue
+        if n < 2 or n > int(model_log_probs.size(1)):
+            continue
+        if target >= n:
+            raise ValueError(
+                f"guide target is outside row {row}: target={target} options={n}"
+            )
+        bounded_confidence = min(1.0, max(0.0, confidence))
+        losses.append(-model_log_probs[row, target] * bounded_confidence)
+
+    if not losses:
+        return model_log_probs.sum() * 0.0, 0
+    return torch.stack(losses).mean(), len(losses)
+
+
+def count_usable_alakazam_guide_rows(
+    sequences: Sequence[GameSequence],
+) -> int:
+    """Count non-flat, comparable guide rows without running the model."""
+    usable = 0
+    for game in sequences:
+        for decision in game.decisions:
+            for stage in decision.policy_stages:
+                target = int(getattr(stage, "guide_target_index", -1))
+                confidence = float(getattr(stage, "guide_confidence", 0.0))
+                n = int(stage.options.num_words)
+                if target >= n:
+                    raise ValueError(
+                        "Alakazam guide target is not aligned to policy options"
+                    )
+                if n >= 2 and target >= 0 and confidence > 0.0:
+                    usable += 1
+    return usable
+
+
 def sequence_losses(
     model: TemporalCabtTransformer,
     seq: GameSequence,
@@ -223,6 +324,7 @@ def sequence_losses(
     aux_weight: float = 0.1,
     opp_hand_weight: float = 0.2,
     opp_remainder_weight: float = 0.15,
+    alakazam_guide_weight: float = 0.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     pure_rl: bool = False,
@@ -237,6 +339,7 @@ def sequence_losses(
         aux_weight=aux_weight,
         opp_hand_weight=opp_hand_weight,
         opp_remainder_weight=opp_remainder_weight,
+        alakazam_guide_weight=alakazam_guide_weight,
         lethal_threat_weight=lethal_threat_weight,
         prize_race_weight=prize_race_weight,
         pure_rl=pure_rl,
@@ -253,6 +356,7 @@ def batch_losses(
     aux_weight: float = 0.1,
     opp_hand_weight: float = 0.2,
     opp_remainder_weight: float = 0.15,
+    alakazam_guide_weight: float = 0.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     opp_hand_multihot: Optional[torch.Tensor] = None,
@@ -262,6 +366,9 @@ def batch_losses(
     awr_weight_max: float = 20.0,
     awr_normalize_advantages: bool = True,
     entropy_bonus: float = 0.0,
+    awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
+    awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
+    prediction_sink: Optional[list[int]] = None,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Causal history forward over all valid decisions.
 
@@ -272,15 +379,24 @@ def batch_losses(
     Belief card multilabel losses are attached with zero/masked defaults so
     late head add does not break the training loop when labels are absent.
 
+    Alakazam guide scores are collapsed during featurization to a unique-best
+    index and bounded confidence, then distilled with masked CE. The default
+    weight is zero, so core and older feature shards preserve exact behavior.
+
     Scope B (``lethal_threat`` / ``prize_race``) losses are masked when labels
     are absent and default-weight 0 so core / generic trains ignore them.
 
     When ``pure_rl=True``, soft behavior policy targets are rejected and the
     policy term is advantage-weighted regression (AWR) on the selected action
     index only — never CE toward cloned ``history_policy`` soft targets.
-    Advantages use a stale (detached) value baseline; optional per-batch
-    whitening and a small entropy bonus stabilize high-SPS pure RL.
+    AWR can consume a value cache keyed by ``(id(game), decision, stage)``.
+    ``rl_train_step`` precomputes that cache once per pure-RL iteration, making
+    the baseline genuinely stale/frozen. Direct callers without a cache retain
+    the legacy detached-online behavior. Optional per-batch whitening and a
+    small entropy bonus stabilize high-SPS pure RL.
     """
+    if float(alakazam_guide_weight) < 0.0:
+        raise ValueError("Alakazam guide loss weight cannot be negative")
     device = next(model.parameters()).device
     games = [s for s in seqs if s.decisions]
     if not games:
@@ -295,9 +411,13 @@ def batch_losses(
     soft_targets: list[Optional[list[float]]] = []
     hard_idx: list[int] = []
     value_targets: list[float] = []
+    awr_baseline_keys: list[tuple[int, int, int]] = []
     aux_rows: list[int] = []
     aux_labels: list[int] = []
     decision_aux: list[dict[str, Any]] = []
+    guide_target_rows: list[int] = []
+    guide_confidence_rows: list[float] = []
+    use_alakazam_guide = float(alakazam_guide_weight) > 0.0
     spatial_offset = 0
     for g in games:
         val = float(g.value)
@@ -380,7 +500,15 @@ def batch_losses(
                 soft_targets.append(soft)
                 hard_idx.append(idx)
                 value_targets.append(val)
+                awr_baseline_keys.append((id(g), t, stage_i))
                 decision_aux.append(dict(d.aux_labels or {}))
+                if use_alakazam_guide:
+                    guide_target_rows.append(
+                        int(getattr(stage, "guide_target_index", -1))
+                    )
+                    guide_confidence_rows.append(
+                        float(getattr(stage, "guide_confidence", 0.0))
+                    )
                 last_valid_row = len(valid_options) - 1
         label = _archetype_label(g.opp_archetype)
         if last_valid_row is not None and label is not None:
@@ -417,11 +545,33 @@ def batch_losses(
     selected_log_p = log_p[torch.arange(k, device=device), target_idx]
     policy_selected_nll = float((-selected_log_p.detach()).mean().item())
 
+    if use_alakazam_guide:
+        guide_loss, n_guide_rows = masked_alakazam_guide_ce(
+            log_p,
+            guide_target_rows,
+            guide_confidence_rows,
+            valid_n,
+        )
+    else:
+        guide_loss, n_guide_rows = log_p.sum() * 0.0, 0
+
     awr_mean_adv = 0.0
+    raw_adv_mean = 0.0
+    raw_adv_std = 0.0
+    raw_adv_mean_abs = 0.0
+    raw_adv_mean_sq = 0.0
+    norm_adv_mean = 0.0
+    norm_adv_std = 0.0
+    norm_adv_mean_abs = 0.0
+    norm_adv_mean_sq = 0.0
     awr_w_mean = 0.0
+    awr_w_sum = 0.0
+    awr_w_sq_sum = 0.0
     awr_w_p50 = 0.0
     awr_w_p95 = 0.0
     awr_clip_frac = 0.0
+    awr_ess = 0.0
+    awr_ess_frac = 0.0
 
     if pure_rl:
         if any(soft is not None for soft in soft_targets):
@@ -429,11 +579,51 @@ def batch_losses(
                 "PURE_RL=1 forbids soft factorized_policy_targets as CE/"
                 "behavior-clone training targets; store selected_index only"
             )
-        # Advantage vs stale (detached) value baseline — no V into policy graph.
-        advantages = v_target - value_pred.detach()
+        if awr_capture_baseline is not None:
+            awr_capture_baseline.update(
+                {
+                    key: float(value)
+                    for key, value in zip(
+                        awr_baseline_keys,
+                        value_pred.detach().float().cpu().tolist(),
+                    )
+                }
+            )
+        if awr_baseline_cache is None:
+            baseline_pred = value_pred.detach()
+        else:
+            missing = [key for key in awr_baseline_keys if key not in awr_baseline_cache]
+            if missing:
+                raise KeyError(
+                    "frozen AWR baseline cache is missing "
+                    f"{len(missing)} decision-stage row(s)"
+                )
+            baseline_pred = torch.tensor(
+                [awr_baseline_cache[key] for key in awr_baseline_keys],
+                device=device,
+                dtype=value_pred.dtype,
+            )
+
+        # Capture raw diagnostics before whitening. The compatibility
+        # ``mean_advantage`` signal intentionally uses mean(abs(A)) so symmetric
+        # positive/negative learning signal cannot look dead by cancellation.
+        raw_advantages = v_target - baseline_pred.detach()
+        raw_stats = raw_advantages.detach().float()
+        raw_adv_mean = float(raw_stats.mean().item())
+        raw_adv_std = float(raw_stats.std(unbiased=False).item())
+        raw_adv_mean_abs = float(raw_stats.abs().mean().item())
+        raw_adv_mean_sq = float(raw_stats.square().mean().item())
+        awr_mean_adv = raw_adv_mean_abs
+
+        advantages = raw_advantages
         if awr_normalize_advantages and k > 1:
             adv_std = advantages.std(unbiased=False).clamp_min(1e-6)
             advantages = (advantages - advantages.mean()) / adv_std
+        norm_stats = advantages.detach().float()
+        norm_adv_mean = float(norm_stats.mean().item())
+        norm_adv_std = float(norm_stats.std(unbiased=False).item())
+        norm_adv_mean_abs = float(norm_stats.abs().mean().item())
+        norm_adv_mean_sq = float(norm_stats.square().mean().item())
         beta = max(float(awr_beta), 1e-6)
         wmax = max(float(awr_weight_max), 1e-6)
         raw_w = torch.exp(advantages / beta)
@@ -444,8 +634,14 @@ def batch_losses(
             ent = -(probs * log_p).sum(dim=-1).mean()
             p_loss = p_loss - float(entropy_bonus) * ent
         policy_kl = torch.zeros((), device=device)
-        awr_mean_adv = float(advantages.detach().float().mean().item())
         awr_w_mean = float(weights.detach().float().mean().item())
+        awr_w_sum = float(weights.detach().float().sum().item())
+        awr_w_sq_sum = float(weights.detach().float().square().sum().item())
+        awr_ess = min(
+            float(k),
+            (awr_w_sum * awr_w_sum) / max(awr_w_sq_sum, 1e-12),
+        )
+        awr_ess_frac = awr_ess / max(k, 1)
         sorted_w, _ = torch.sort(weights.detach().float())
         awr_w_p50 = float(sorted_w[int(0.50 * (k - 1))].item())
         awr_w_p95 = float(sorted_w[int(0.95 * (k - 1))].item())
@@ -489,6 +685,8 @@ def batch_losses(
 
     # Masked card-head BCE from privileged aux labels (or explicit override).
     card_vocab = int(getattr(model, "belief_card_vocab", opp_hand_logits_all.size(-1)))
+    n_hand_rows = 0
+    n_remainder_rows = 0
     if opp_hand_multihot is None and opp_remainder_multihot is None:
         hand_rows: list[torch.Tensor] = []
         rem_rows: list[torch.Tensor] = []
@@ -505,6 +703,7 @@ def batch_losses(
                 rem_rows.append(rem_mh)
                 rem_idx.append(i)
         if hand_rows:
+            n_hand_rows = len(hand_rows)
             opp_hand_loss = F.binary_cross_entropy_with_logits(
                 opp_hand_logits_all.index_select(
                     0, torch.tensor(hand_idx, device=device, dtype=torch.long)
@@ -514,6 +713,7 @@ def batch_losses(
         else:
             opp_hand_loss = masked_belief_card_bce(opp_hand_logits_all, None)
         if rem_rows:
+            n_remainder_rows = len(rem_rows)
             opp_remainder_loss = F.binary_cross_entropy_with_logits(
                 opp_remainder_logits_all.index_select(
                     0, torch.tensor(rem_idx, device=device, dtype=torch.long)
@@ -535,6 +735,8 @@ def batch_losses(
         opp_remainder_loss = masked_belief_card_bce(
             opp_remainder_logits_all, rem_labels
         )
+        n_hand_rows = k if hand_labels is not None else 0
+        n_remainder_rows = k if rem_labels is not None else 0
 
     # Scope B — masked when labels absent; weights default 0 on core/generic.
     lethal_rows: list[float] = []
@@ -573,17 +775,21 @@ def batch_losses(
         p_loss
         + value_weight * v_loss
         + aux_weight * aux_loss
+        + float(alakazam_guide_weight) * guide_loss
         + float(opp_hand_weight) * opp_hand_loss
         + float(opp_remainder_weight) * opp_remainder_loss
         + float(lethal_threat_weight) * lethal_threat_loss
         + float(prize_race_weight) * prize_race_loss
     )
     preds = logits_all.argmax(dim=1)
+    if prediction_sink is not None:
+        prediction_sink.extend(int(x) for x in preds.detach().cpu().tolist())
     correct = int((preds == target_idx).sum().item())
     metrics = BatchMetrics(
         policy_loss=float(p_loss.detach().item()),
         value_loss=float(v_loss.detach().item()),
         aux_loss=float(aux_loss.detach().item()),
+        alakazam_guide_loss=float(guide_loss.detach().item()),
         opp_hand_loss=float(opp_hand_loss.detach().item()),
         opp_remainder_loss=float(opp_remainder_loss.detach().item()),
         lethal_threat_loss=float(lethal_threat_loss.detach().item()),
@@ -595,12 +801,272 @@ def batch_losses(
         value_pred_mean=float(value_pred.detach().float().mean().item()),
         n_decisions=k,
         n_games=len(games),
+        n_alakazam_guide_rows=int(n_guide_rows),
+        n_archetype_rows=len(aux_rows),
+        n_opp_hand_rows=int(n_hand_rows),
+        n_opp_remainder_rows=int(n_remainder_rows),
+        n_lethal_threat_rows=len(lethal_rows),
+        n_prize_race_rows=len(race_rows),
         mean_advantage=awr_mean_adv,
+        raw_advantage_mean=raw_adv_mean,
+        raw_advantage_std=raw_adv_std,
+        raw_advantage_mean_abs=raw_adv_mean_abs,
+        raw_advantage_mean_sq=raw_adv_mean_sq,
+        normalized_advantage_mean=norm_adv_mean,
+        normalized_advantage_std=norm_adv_std,
+        normalized_advantage_mean_abs=norm_adv_mean_abs,
+        normalized_advantage_mean_sq=norm_adv_mean_sq,
         awr_weight_mean=awr_w_mean,
+        awr_weight_sum=awr_w_sum,
+        awr_weight_sq_sum=awr_w_sq_sum,
         awr_weight_p50=awr_w_p50,
         awr_weight_p95=awr_w_p95,
         awr_weight_clip_frac=awr_clip_frac,
+        awr_effective_sample_size=awr_ess,
+        awr_effective_sample_fraction=awr_ess_frac,
         policy_selected_nll=policy_selected_nll,
+    )
+    return total, metrics
+
+
+def device_batch_losses(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    sample_ids: torch.Tensor,
+    *,
+    value_weight: float = 1.0,
+) -> tuple[torch.Tensor, BatchMetrics]:
+    """Hard-target stateless loss with every input already on the device.
+
+    This is deliberately narrow: the latest-ladder hot start has hard selected
+    actions and all auxiliary heads disabled.  Keeping that contract explicit
+    prevents the fast path from silently discarding a future target type.
+    """
+    if model.decision_context != "stateless":
+        raise ValueError("device-resident bootstrap requires stateless context")
+    board, options, counts, target_idx, v_target = corpus.batch(sample_ids)
+    k = int(target_idx.numel())
+    if k <= 0:
+        device = next(model.parameters()).device
+        return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
+
+    spatial = model.encode_board_packed(board, batch_size=k)
+    cls = model.pool_cls(spatial).unsqueeze(1)
+    states, _ = model.temporal_encode(cls, append=False, return_all=True)
+    state = states.squeeze(1)
+    logits = model.decode_options_packed(
+        options,
+        spatial,
+        state,
+        n_options=counts,
+        batch_size=k,
+    )
+    value_pred = torch.tanh(model.value_head(state)).squeeze(-1)
+    v_target = v_target.to(dtype=value_pred.dtype)
+    log_p = torch.nan_to_num(F.log_softmax(logits, dim=-1), neginf=0.0)
+    selected_log_p = log_p[
+        torch.arange(k, device=logits.device), target_idx
+    ]
+    p_loss = -selected_log_p.mean()
+    v_loss = F.smooth_l1_loss(value_pred, v_target)
+    total = p_loss + float(value_weight) * v_loss
+    preds = logits.argmax(dim=1)
+    correct = int((preds == target_idx).sum().item())
+    p_scalar = float(p_loss.detach().item())
+    metrics = BatchMetrics(
+        policy_loss=p_scalar,
+        value_loss=float(v_loss.detach().item()),
+        total_loss=float(total.detach().item()),
+        policy_acc=correct / max(k, 1),
+        policy_kl=max(p_scalar, 0.0),
+        target_value_mean=float(v_target.detach().float().mean().item()),
+        value_pred_mean=float(value_pred.detach().float().mean().item()),
+        n_decisions=k,
+        policy_selected_nll=p_scalar,
+    )
+    return total, metrics
+
+
+def device_exact_value_predictions(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    sample_ids: torch.Tensor,
+) -> torch.Tensor:
+    """Value predictions for an exact resident batch without option gathers."""
+    if model.decision_context != "stateless":
+        raise ValueError("device-resident exact replay requires stateless context")
+    board, _board_ids = corpus.board_batch(sample_ids)
+    k = int(sample_ids.numel())
+    spatial = model.encode_board_packed(board, batch_size=k)
+    cls = model.pool_cls(spatial).unsqueeze(1)
+    states, _ = model.temporal_encode(cls, append=False, return_all=True)
+    state = states.squeeze(1)
+    return torch.tanh(model.value_head(state)).squeeze(-1)
+
+
+def device_exact_batch_losses(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    sample_ids: torch.Tensor,
+    *,
+    baseline_pred: Optional[torch.Tensor] = None,
+    value_weight: float = 1.0,
+    aux_weight: float = 0.1,
+    opp_hand_weight: float = 0.4,
+    opp_remainder_weight: float = 0.3,
+    lethal_threat_weight: float = 0.1,
+    prize_race_weight: float = 0.1,
+    awr_beta: float = 0.5,
+    awr_weight_max: float = 20.0,
+    entropy_bonus: float = 0.01,
+) -> tuple[torch.Tensor, BatchMetrics]:
+    """Full AWR + exact-hidden losses with all source tensors on-device."""
+    if model.decision_context != "stateless":
+        raise ValueError("device-resident exact replay requires stateless context")
+    if not corpus.has_exact_targets:
+        raise ValueError("resident corpus lacks exact-hidden targets")
+    ids = sample_ids.reshape(-1).to(device=corpus.device, dtype=torch.long)
+    board, options, counts, target_idx, v_target = corpus.batch(ids)
+    k = int(target_idx.numel())
+    if k <= 0:
+        device = next(model.parameters()).device
+        return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
+
+    spatial = model.encode_board_packed(board, batch_size=k)
+    cls = model.pool_cls(spatial).unsqueeze(1)
+    states, _ = model.temporal_encode(cls, append=False, return_all=True)
+    state = states.squeeze(1)
+    logits = model.decode_options_packed(
+        options,
+        spatial,
+        state,
+        n_options=counts,
+        batch_size=k,
+    )
+    value_pred = torch.tanh(model.value_head(state)).squeeze(-1)
+    v_target = v_target.to(dtype=value_pred.dtype)
+    log_p = torch.nan_to_num(F.log_softmax(logits, dim=-1), neginf=0.0)
+    selected_log_p = log_p[
+        torch.arange(k, device=logits.device), target_idx
+    ]
+
+    baseline = value_pred.detach() if baseline_pred is None else baseline_pred.detach()
+    baseline = baseline.to(device=value_pred.device, dtype=value_pred.dtype).reshape(-1)
+    if baseline.numel() != k:
+        raise ValueError(f"AWR baseline rows {baseline.numel()} != batch rows {k}")
+    raw_advantages = v_target - baseline
+    raw_stats = raw_advantages.detach().float()
+    advantages = raw_advantages
+    if k > 1:
+        advantages = (advantages - advantages.mean()) / advantages.std(
+            unbiased=False
+        ).clamp_min(1e-6)
+    beta = max(float(awr_beta), 1e-6)
+    weight_max = max(float(awr_weight_max), 1e-6)
+    raw_weights = torch.exp(advantages / beta)
+    weights = torch.clamp(raw_weights, max=weight_max)
+    policy_loss = -(weights.detach() * selected_log_p).mean()
+    if float(entropy_bonus) > 0.0:
+        probabilities = torch.nan_to_num(log_p.exp(), nan=0.0)
+        entropy = -(probabilities * log_p).sum(dim=-1).mean()
+        policy_loss = policy_loss - float(entropy_bonus) * entropy
+    value_loss = F.smooth_l1_loss(value_pred, v_target)
+
+    belief = model.belief_aux_logits(state)
+    targets = corpus.exact_targets(ids)
+    aux_labels = targets["aux_class"]
+    aux_mask = aux_labels >= 0
+    if bool(aux_mask.any()):
+        aux_loss = F.cross_entropy(
+            belief["aux_logits"][aux_mask], aux_labels[aux_mask]
+        )
+    else:
+        aux_loss = belief["aux_logits"].sum() * 0.0
+    hand_mask = targets["hand_mask"]
+    if bool(hand_mask.any()):
+        opp_hand_loss = F.binary_cross_entropy_with_logits(
+            belief["opp_hand_logits"][hand_mask], targets["hand"][hand_mask]
+        )
+    else:
+        opp_hand_loss = belief["opp_hand_logits"].sum() * 0.0
+    remainder_mask = targets["remainder_mask"]
+    if bool(remainder_mask.any()):
+        opp_remainder_loss = F.binary_cross_entropy_with_logits(
+            belief["opp_remainder_logits"][remainder_mask],
+            targets["remainder"][remainder_mask],
+        )
+    else:
+        opp_remainder_loss = belief["opp_remainder_logits"].sum() * 0.0
+    lethal_mask = targets["lethal_mask"]
+    if bool(lethal_mask.any()):
+        lethal_threat_loss = F.binary_cross_entropy_with_logits(
+            belief["lethal_threat_logits"][lethal_mask],
+            targets["lethal"][lethal_mask].to(
+                dtype=belief["lethal_threat_logits"].dtype
+            ),
+        )
+    else:
+        lethal_threat_loss = belief["lethal_threat_logits"].sum() * 0.0
+    prize_mask = targets["prize_race_mask"]
+    if bool(prize_mask.any()):
+        prize_race_loss = F.smooth_l1_loss(
+            belief["prize_race_pred"][prize_mask],
+            targets["prize_race"][prize_mask].to(
+                dtype=belief["prize_race_pred"].dtype
+            ),
+        )
+    else:
+        prize_race_loss = belief["prize_race_pred"].sum() * 0.0
+
+    total = (
+        policy_loss
+        + float(value_weight) * value_loss
+        + float(aux_weight) * aux_loss
+        + float(opp_hand_weight) * opp_hand_loss
+        + float(opp_remainder_weight) * opp_remainder_loss
+        + float(lethal_threat_weight) * lethal_threat_loss
+        + float(prize_race_weight) * prize_race_loss
+    )
+    predictions = logits.argmax(dim=1)
+    weight_stats = weights.detach().float()
+    weight_sum = float(weight_stats.sum().item())
+    weight_sq_sum = float(weight_stats.square().sum().item())
+    effective_samples = min(
+        float(k), (weight_sum * weight_sum) / max(weight_sq_sum, 1e-12)
+    )
+    sorted_weights, _ = torch.sort(weight_stats)
+    normalized_stats = advantages.detach().float()
+    metrics = BatchMetrics(
+        policy_loss=float(policy_loss.detach().item()),
+        value_loss=float(value_loss.detach().item()),
+        aux_loss=float(aux_loss.detach().item()),
+        opp_hand_loss=float(opp_hand_loss.detach().item()),
+        opp_remainder_loss=float(opp_remainder_loss.detach().item()),
+        lethal_threat_loss=float(lethal_threat_loss.detach().item()),
+        prize_race_loss=float(prize_race_loss.detach().item()),
+        total_loss=float(total.detach().item()),
+        policy_acc=float((predictions == target_idx).float().mean().item()),
+        target_value_mean=float(v_target.detach().float().mean().item()),
+        value_pred_mean=float(value_pred.detach().float().mean().item()),
+        n_decisions=k,
+        mean_advantage=float(raw_stats.abs().mean().item()),
+        raw_advantage_mean=float(raw_stats.mean().item()),
+        raw_advantage_std=float(raw_stats.std(unbiased=False).item()),
+        raw_advantage_mean_abs=float(raw_stats.abs().mean().item()),
+        raw_advantage_mean_sq=float(raw_stats.square().mean().item()),
+        normalized_advantage_mean=float(normalized_stats.mean().item()),
+        normalized_advantage_std=float(normalized_stats.std(unbiased=False).item()),
+        normalized_advantage_mean_abs=float(normalized_stats.abs().mean().item()),
+        normalized_advantage_mean_sq=float(normalized_stats.square().mean().item()),
+        awr_weight_mean=float(weight_stats.mean().item()),
+        awr_weight_sum=weight_sum,
+        awr_weight_sq_sum=weight_sq_sum,
+        awr_weight_p50=float(sorted_weights[int(0.50 * (k - 1))].item()),
+        awr_weight_p95=float(sorted_weights[int(0.95 * (k - 1))].item()),
+        awr_weight_clip_frac=float((raw_weights >= weight_max).float().mean().item()),
+        awr_effective_sample_size=effective_samples,
+        awr_effective_sample_fraction=effective_samples / max(k, 1),
+        policy_selected_nll=float((-selected_log_p.detach()).mean().item()),
     )
     return total, metrics
 
@@ -616,10 +1082,37 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
     def wavg(attr: str) -> float:
         return sum(getattr(p, attr) * p.n_decisions for p in parts) / nd
 
+    raw_mean = wavg("raw_advantage_mean")
+    raw_mean_sq = wavg("raw_advantage_mean_sq")
+    normalized_mean = wavg("normalized_advantage_mean")
+    normalized_mean_sq = wavg("normalized_advantage_mean_sq")
+    weight_sum = sum(p.awr_weight_sum for p in parts)
+    weight_sq_sum = sum(p.awr_weight_sq_sum for p in parts)
+    ess = min(float(nd), (weight_sum * weight_sum) / max(weight_sq_sum, 1e-12))
+    # Non-AWR batches carry zero weight sums; avoid reporting a fictitious ESS.
+    if weight_sum <= 0.0:
+        ess = 0.0
+    guide_rows = sum(int(p.n_alakazam_guide_rows) for p in parts)
+    archetype_rows = sum(int(p.n_archetype_rows) for p in parts)
+    hand_rows = sum(int(p.n_opp_hand_rows) for p in parts)
+    remainder_rows = sum(int(p.n_opp_remainder_rows) for p in parts)
+    lethal_rows = sum(int(p.n_lethal_threat_rows) for p in parts)
+    prize_rows = sum(int(p.n_prize_race_rows) for p in parts)
+    guide_loss = (
+        sum(
+            float(p.alakazam_guide_loss) * int(p.n_alakazam_guide_rows)
+            for p in parts
+        )
+        / guide_rows
+        if guide_rows > 0
+        else 0.0
+    )
+
     return BatchMetrics(
         policy_loss=wavg("policy_loss"),
         value_loss=wavg("value_loss"),
         aux_loss=wavg("aux_loss"),
+        alakazam_guide_loss=guide_loss,
         opp_hand_loss=wavg("opp_hand_loss"),
         opp_remainder_loss=wavg("opp_remainder_loss"),
         lethal_threat_loss=wavg("lethal_threat_loss"),
@@ -631,20 +1124,67 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         value_pred_mean=wavg("value_pred_mean"),
         n_decisions=nd,
         n_games=ng,
+        n_alakazam_guide_rows=guide_rows,
+        n_archetype_rows=archetype_rows,
+        n_opp_hand_rows=hand_rows,
+        n_opp_remainder_rows=remainder_rows,
+        n_lethal_threat_rows=lethal_rows,
+        n_prize_race_rows=prize_rows,
         mean_advantage=wavg("mean_advantage"),
+        raw_advantage_mean=raw_mean,
+        raw_advantage_std=math.sqrt(max(raw_mean_sq - raw_mean * raw_mean, 0.0)),
+        raw_advantage_mean_abs=wavg("raw_advantage_mean_abs"),
+        raw_advantage_mean_sq=raw_mean_sq,
+        normalized_advantage_mean=normalized_mean,
+        normalized_advantage_std=math.sqrt(
+            max(normalized_mean_sq - normalized_mean * normalized_mean, 0.0)
+        ),
+        normalized_advantage_mean_abs=wavg("normalized_advantage_mean_abs"),
+        normalized_advantage_mean_sq=normalized_mean_sq,
         awr_weight_mean=wavg("awr_weight_mean"),
+        awr_weight_sum=weight_sum,
+        awr_weight_sq_sum=weight_sq_sum,
         awr_weight_p50=wavg("awr_weight_p50"),
         awr_weight_p95=wavg("awr_weight_p95"),
         awr_weight_clip_frac=wavg("awr_weight_clip_frac"),
+        awr_effective_sample_size=ess,
+        awr_effective_sample_fraction=ess / nd,
         policy_selected_nll=wavg("policy_selected_nll"),
     )
 
 
 def split_dataset(
-    ds: BootstrapDataset, val_frac: float, seed: int
+    ds: BootstrapDataset,
+    val_frac: float,
+    seed: int,
+    *,
+    group_by_episode: bool = False,
 ) -> tuple[list[GameSequence], list[GameSequence]]:
     seqs = list(ds.sequences)
     rng = random.Random(seed)
+    if group_by_episode and val_frac > 0 and len(seqs) > 1:
+        grouped: dict[str, list[GameSequence]] = {}
+        sequence_group: dict[int, str] = {}
+        for index, seq in enumerate(seqs):
+            episode_id = str(seq.episode_id or f"__missing_episode_{index}")
+            grouped.setdefault(episode_id, []).append(seq)
+            sequence_group[id(seq)] = episode_id
+        group_ids = list(grouped)
+        rng.shuffle(group_ids)
+        if len(group_ids) <= 1:
+            return seqs, []
+        target = max(1, int(len(seqs) * val_frac))
+        val_ids: set[str] = set()
+        selected = 0
+        # Always leave at least one whole episode in training.
+        for episode_id in group_ids[:-1]:
+            val_ids.add(episode_id)
+            selected += len(grouped[episode_id])
+            if selected >= target:
+                break
+        train = [seq for seq in seqs if sequence_group[id(seq)] not in val_ids]
+        val = [seq for seq in seqs if sequence_group[id(seq)] in val_ids]
+        return train, val
     rng.shuffle(seqs)
     if val_frac <= 0 or len(seqs) <= 1:
         return seqs, []
@@ -691,6 +1231,7 @@ def evaluate(
     *,
     cfg: TrainConfig,
     desc: str = "val",
+    awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
 ) -> BatchMetrics:
     model.eval()
     parts: list[BatchMetrics] = []
@@ -715,14 +1256,140 @@ def evaluate(
                 opp_remainder_weight=cfg.opp_remainder_loss_weight,
                 lethal_threat_weight=cfg.lethal_threat_loss_weight,
                 prize_race_weight=cfg.prize_race_loss_weight,
+                alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
                 pure_rl=bool(cfg.pure_rl),
                 awr_beta=float(cfg.awr_beta),
                 awr_weight_max=float(cfg.awr_weight_max),
                 awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
                 entropy_bonus=float(cfg.entropy_bonus),
+                awr_baseline_cache=awr_baseline_cache,
             )
         parts.append(m)
     return _merge_metrics(parts)
+
+
+@torch.no_grad()
+def evaluate_device_corpus(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    *,
+    cfg: TrainConfig,
+    batch_size: int,
+    desc: str = "val",
+) -> BatchMetrics:
+    """Evaluate the validation partition without moving inputs off device."""
+    model.eval()
+    parts: list[BatchMetrics] = []
+    batches = corpus.batches(
+        train=False,
+        batch_size=batch_size,
+        shuffle=False,
+        seed=cfg.seed,
+        epoch=0,
+    )
+    use_amp = bool(cfg.amp and corpus.device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    for sample_ids in tqdm(batches, desc=desc, leave=False, unit="batch"):
+        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            _, metrics = device_batch_losses(
+                model,
+                corpus,
+                sample_ids,
+                value_weight=cfg.value_loss_weight,
+            )
+        parts.append(metrics)
+    return _merge_metrics(parts)
+
+
+def _fit_device_batch_size(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    *,
+    requested: int,
+    cfg: TrainConfig,
+    use_amp: bool,
+    amp_dtype: torch.dtype,
+) -> int:
+    """Prove corpus + forward/backward fit, reducing only after a real OOM."""
+    size = min(max(1, int(requested)), corpus.train_samples)
+    if size <= 0:
+        raise ValueError("device corpus has no training samples")
+    cpu_rng = torch.random.get_rng_state()
+    cuda_rng = torch.cuda.get_rng_state(corpus.device) if corpus.device.type == "cuda" else None
+    try:
+        while True:
+            # Include the globally widest training row in the probe.  This
+            # exercises the decoder's rectangular padding at its actual worst
+            # width instead of approving an unusually easy first batch.
+            sample_ids = torch.arange(size, device=corpus.device, dtype=torch.long)
+            widest = torch.argmax(corpus.n_options[: corpus.train_samples]).to(
+                dtype=torch.long
+            )
+            sample_ids[-1] = widest
+            if corpus.device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(corpus.device)
+            model.train()
+            model.zero_grad(set_to_none=True)
+            oom = False
+            try:
+                with torch.amp.autocast(
+                    "cuda", enabled=use_amp, dtype=amp_dtype
+                ):
+                    total, _ = device_batch_losses(
+                        model,
+                        corpus,
+                        sample_ids,
+                        value_weight=cfg.value_loss_weight,
+                    )
+                total.backward()
+                if corpus.device.type == "cuda":
+                    torch.cuda.synchronize(corpus.device)
+            except RuntimeError as exc:
+                if not config.is_cuda_oom(exc):
+                    raise
+                oom = True
+            if not oom:
+                model.zero_grad(set_to_none=True)
+                if corpus.device.type == "cuda":
+                    peak = torch.cuda.max_memory_allocated(corpus.device)
+                    free, total_memory = torch.cuda.mem_get_info(corpus.device)
+                    print(
+                        f"[device-corpus] fit-test batch={size} passed "
+                        f"peak-allocated={peak / 2**30:.2f} GiB "
+                        f"CUDA-free={free / 2**30:.2f}/"
+                        f"{total_memory / 2**30:.2f} GiB",
+                        flush=True,
+                    )
+                return size
+
+            model.zero_grad(set_to_none=True)
+            del sample_ids
+            gc.collect()
+            if corpus.device.type == "cuda":
+                torch.cuda.empty_cache()
+            reduced = size // 2
+            if reduced < 128:
+                raise MemoryError(
+                    "device-resident corpus fits, but even a 128-sample "
+                    "training batch exhausts activation memory"
+                )
+            print(
+                f"[device-corpus] fit-test OOM at batch={size}; retrying "
+                f"batch={reduced}",
+                flush=True,
+            )
+            size = reduced
+    finally:
+        torch.random.set_rng_state(cpu_rng)
+        if cuda_rng is not None:
+            torch.cuda.set_rng_state(cuda_rng, corpus.device)
+        model.zero_grad(set_to_none=True)
+        if corpus.device.type == "cuda":
+            torch.cuda.empty_cache()
 
 
 def train_bootstrap(
@@ -733,6 +1400,10 @@ def train_bootstrap(
     train_cfg: Optional[TrainConfig] = None,
     resume: Union[str, bool, None] = "auto",
     device: Optional[torch.device] = None,
+    model_cfg: Optional[config.ModelConfig] = None,
+    init_checkpoint: Optional[Union[str, Path]] = None,
+    checkpoint_extra: Optional[dict[str, Any]] = None,
+    device_resident: bool = False,
 ) -> dict[str, Any]:
     """Run supervised BC/value training with early stopping + AMP + checkpoints."""
     cfg = train_cfg or TrainConfig()
@@ -742,7 +1413,12 @@ def train_bootstrap(
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
 
-    train_seqs, val_seqs = split_dataset(dataset, cfg.val_frac, cfg.seed)
+    train_seqs, val_seqs = split_dataset(
+        dataset,
+        cfg.val_frac,
+        cfg.seed,
+        group_by_episode=bool(cfg.split_by_episode),
+    )
     print(
         f"[train] device={device} games={len(dataset)} "
         f"train={len(train_seqs)} val={len(val_seqs)} decisions={dataset.n_decisions}",
@@ -750,11 +1426,19 @@ def train_bootstrap(
     )
 
     resume_path = checkpoint.resolve_resume_path(run_name, resume)
+    init_path = Path(init_checkpoint).expanduser().resolve() if init_checkpoint else None
+    if resume_path is not None and init_path is not None:
+        raise ValueError("init_checkpoint cannot be combined with a resumed run")
+    if init_path is not None and not init_path.is_file():
+        raise FileNotFoundError(f"initial checkpoint not found: {init_path}")
+    source_path = resume_path or init_path
     model = (
-        load_model_from_checkpoint(resume_path, device=device)
-        if resume_path is not None
-        else build_model(device=device)
+        load_model_from_checkpoint(source_path, device=device)
+        if source_path is not None
+        else build_model(model_cfg or config.MODEL, device=device)
     )
+    if model_cfg is not None and getattr(model, "cfg", None) != model_cfg:
+        raise ValueError("initial checkpoint model profile does not match model_cfg")
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
     )
@@ -780,9 +1464,11 @@ def train_bootstrap(
     state = TrainState(patience_left=cfg.early_stop_patience)
     mgr = checkpoint.CheckpointManager(run_name)
 
+    inherited_extra: dict[str, Any] = {}
     if resume_path is not None:
         print(f"[train] resuming from {resume_path}", flush=True)
         ckpt = checkpoint.load_checkpoint(resume_path, map_location=device)
+        inherited_extra = dict(ckpt.get("extra") or {})
         meta = checkpoint.apply_checkpoint(
             ckpt, model=model, optimizer=optimizer, scaler=scaler, scheduler=scheduler
         )
@@ -794,8 +1480,88 @@ def train_bootstrap(
         if "patience_left" in es:
             state.patience_left = int(es["patience_left"])
         state.history = list((meta.get("extra") or {}).get("history") or [])
+    elif init_path is not None:
+        print(f"[train] initializing weights from {init_path}", flush=True)
+        seed_ckpt = checkpoint.load_checkpoint(init_path, map_location="cpu")
+        seed_extra = dict(seed_ckpt.get("extra") or {})
+        for key in ("pure_rl", "smoke", "model_profile"):
+            if key in seed_extra:
+                inherited_extra[key] = seed_extra[key]
+        inherited_extra["initialized_from"] = str(init_path)
+        inherited_extra["initialized_from_digest"] = checkpoint.checkpoint_digest(
+            init_path
+        )
+
+    resident_corpus: Optional[DeviceResidentBootstrapCorpus] = None
+    resident_batch_size = int(cfg.max_decisions_per_batch)
+    if device_resident:
+        if device.type != "cuda":
+            raise ValueError("device-resident bootstrap requires a CUDA device")
+        if model.decision_context != "stateless":
+            raise ValueError(
+                "device-resident bootstrap is valid only for a stateless model"
+            )
+        weighted_aux = {
+            "aux": cfg.aux_loss_weight,
+            "opp_hand": cfg.opp_hand_loss_weight,
+            "opp_remainder": cfg.opp_remainder_loss_weight,
+            "lethal_threat": cfg.lethal_threat_loss_weight,
+            "prize_race": cfg.prize_race_loss_weight,
+            "alakazam_guide": cfg.alakazam_guide_loss_weight,
+        }
+        nonzero_aux = {
+            name: float(weight)
+            for name, weight in weighted_aux.items()
+            if float(weight) != 0.0
+        }
+        if nonzero_aux:
+            raise ValueError(
+                "device-resident bootstrap requires all auxiliary weights zero: "
+                f"{nonzero_aux}"
+            )
+        if cfg.pure_rl:
+            raise ValueError(
+                "device-resident bootstrap is supervised hard-target training, "
+                "not the AWR pure-RL update path"
+            )
+        resident_corpus = DeviceResidentBootstrapCorpus.from_splits(
+            train_seqs,
+            val_seqs,
+            device=device,
+        )
+        # The GPU corpus is now authoritative.  Release every host-side
+        # GameSequence reference so the training process cannot accumulate both
+        # representations and repeat the earlier host-memory failure.
+        dataset.sequences.clear()
+        train_seqs.clear()
+        val_seqs.clear()
+        gc.collect()
+        torch.cuda.empty_cache()
+        print(
+            "[device-corpus] host GameSequence corpus released; all bootstrap "
+            "features/targets remain on Blackwell",
+            flush=True,
+        )
+        resident_batch_size = _fit_device_batch_size(
+            model,
+            resident_corpus,
+            requested=cfg.max_decisions_per_batch,
+            cfg=cfg,
+            use_amp=use_amp,
+            amp_dtype=amp_dtype,
+        )
 
     def build_ckpt() -> dict[str, Any]:
+        extra = dict(inherited_extra)
+        extra.update(checkpoint_extra or {})
+        extra.update(
+            {
+                "history": state.history,
+                "train_cfg": cfg.__dict__,
+                "device_resident_bootstrap": bool(resident_corpus is not None),
+                "device_resident_batch_size": resident_batch_size,
+            }
+        )
         return checkpoint.build_checkpoint(
             model=model,
             optimizer=optimizer,
@@ -811,7 +1577,7 @@ def train_bootstrap(
             archetype_id=archetype_id,
             model_id=run_name,
             model_config=model.cfg,
-            extra={"history": state.history, "train_cfg": cfg.__dict__},
+            extra=extra,
         )
 
     mgr.install_signal_flush(build_ckpt)
@@ -827,29 +1593,47 @@ def train_bootstrap(
         for epoch in epoch_bar:
             state.epoch = epoch
             model.train()
-            batches = _iter_game_batches(
-                train_seqs,
-                cfg.games_per_batch,
-                cfg.max_decisions_per_batch,
-                shuffle=True,
-                seed=cfg.seed,
-                epoch=epoch,
-            )
+            if resident_corpus is not None:
+                batches = resident_corpus.batches(
+                    train=True,
+                    batch_size=resident_batch_size,
+                    shuffle=True,
+                    seed=cfg.seed,
+                    epoch=epoch,
+                )
+            else:
+                batches = _iter_game_batches(
+                    train_seqs,
+                    cfg.games_per_batch,
+                    cfg.max_decisions_per_batch,
+                    shuffle=True,
+                    seed=cfg.seed,
+                    epoch=epoch,
+                )
             epoch_parts: list[BatchMetrics] = []
             batch_bar = tqdm(batches, desc=f"train ep{epoch}", leave=False, unit="batch")
             for batch in batch_bar:
                 optimizer.zero_grad(set_to_none=True)
                 with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
-                    total, bm = batch_losses(
-                        model,
-                        batch,
-                        value_weight=cfg.value_loss_weight,
-                        aux_weight=cfg.aux_loss_weight,
-                        opp_hand_weight=cfg.opp_hand_loss_weight,
-                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
-                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
-                        prize_race_weight=cfg.prize_race_loss_weight,
-                    )
+                    if resident_corpus is not None:
+                        total, bm = device_batch_losses(
+                            model,
+                            resident_corpus,
+                            batch,
+                            value_weight=cfg.value_loss_weight,
+                        )
+                    else:
+                        total, bm = batch_losses(
+                            model,
+                            batch,
+                            value_weight=cfg.value_loss_weight,
+                            aux_weight=cfg.aux_loss_weight,
+                            opp_hand_weight=cfg.opp_hand_loss_weight,
+                            opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                            lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                            prize_race_weight=cfg.prize_race_loss_weight,
+                            alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        )
                 if bm.n_decisions == 0:
                     continue
 
@@ -866,9 +1650,40 @@ def train_bootstrap(
                     loss=f"{bm.total_loss:.3f}",
                     p=f"{bm.policy_loss:.3f}",
                     v=f"{bm.value_loss:.3f}",
-                    aux=f"{bm.aux_loss:.3f}",
-                    hand=f"{bm.opp_hand_loss:.3f}",
-                    rem=f"{bm.opp_remainder_loss:.3f}",
+                    aux=(
+                        "off"
+                        if cfg.aux_loss_weight == 0
+                        else f"{bm.aux_loss:.3f}/{bm.n_archetype_rows}"
+                    ),
+                    hand=(
+                        "off"
+                        if cfg.opp_hand_loss_weight == 0
+                        else f"{bm.opp_hand_loss:.3f}/{bm.n_opp_hand_rows}"
+                    ),
+                    rem=(
+                        "off"
+                        if cfg.opp_remainder_loss_weight == 0
+                        else f"{bm.opp_remainder_loss:.3f}/"
+                        f"{bm.n_opp_remainder_rows}"
+                    ),
+                    lethal=(
+                        "off"
+                        if cfg.lethal_threat_loss_weight == 0
+                        else f"{bm.lethal_threat_loss:.3f}/"
+                        f"{bm.n_lethal_threat_rows}"
+                    ),
+                    prize=(
+                        "off"
+                        if cfg.prize_race_loss_weight == 0
+                        else f"{bm.prize_race_loss:.3f}/"
+                        f"{bm.n_prize_race_rows}"
+                    ),
+                    guide=(
+                        "off"
+                        if cfg.alakazam_guide_loss_weight == 0
+                        else f"{bm.alakazam_guide_loss:.3f}/"
+                        f"{bm.n_alakazam_guide_rows}"
+                    ),
                     acc=f"{bm.policy_acc:.2%}",
                     step=state.step,
                 )
@@ -881,7 +1696,16 @@ def train_bootstrap(
                     )
 
             train_m = _merge_metrics(epoch_parts)
-            if val_seqs:
+            if resident_corpus is not None and resident_corpus.val_samples:
+                val_m = evaluate_device_corpus(
+                    model,
+                    resident_corpus,
+                    cfg=cfg,
+                    batch_size=resident_batch_size,
+                    desc=f"val ep{epoch}",
+                )
+                metric = val_m.total_loss
+            elif val_seqs:
                 val_m = evaluate(model, val_seqs, cfg=cfg, desc=f"val ep{epoch}")
                 metric = val_m.total_loss
             else:
@@ -951,6 +1775,219 @@ def train_bootstrap(
     }
 
 
+def supervised_rehearsal_step(
+    corpus: DeviceResidentBootstrapCorpus,
+    *,
+    base_ckpt: Union[str, Path],
+    output_path: Union[str, Path],
+    parent_digest: str,
+    rehearsal_iteration: int,
+    manifest_identity: dict[str, Any],
+    epochs: int = 1,
+    lr: float = 2e-5,
+    requested_batch_size: int = 8192,
+    seed: int = 0,
+    device: Optional[torch.device] = None,
+) -> dict[str, Any]:
+    """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
+
+    The returned checkpoint is immutable and keeps the RL iteration number
+    unchanged.  It restores the learner's optimizer moments when available,
+    applies a deliberately small learning rate for the supervised pass, and
+    saves the resulting optimizer state so the next AWR update can continue
+    from the exact trained learner rather than restarting AdamW.
+    """
+    base_path = Path(base_ckpt).expanduser().resolve()
+    out_path = Path(output_path).expanduser().resolve()
+    if not base_path.is_file():
+        raise FileNotFoundError(base_path)
+    if out_path.exists():
+        raise FileExistsError(out_path)
+    if epochs <= 0:
+        raise ValueError("rehearsal epochs must be positive")
+    if lr <= 0.0:
+        raise ValueError("rehearsal learning rate must be positive")
+    actual_parent_digest = checkpoint.checkpoint_digest(base_path)
+    if str(parent_digest) != actual_parent_digest:
+        raise ValueError(
+            "parent_digest does not match rehearsal base checkpoint: "
+            f"expected={parent_digest!r} actual={actual_parent_digest!r}"
+        )
+
+    device = device or corpus.device
+    if corpus.device != device:
+        raise ValueError(
+            f"resident corpus device {corpus.device} != rehearsal device {device}"
+        )
+    cfg = TrainConfig(
+        lr=float(lr),
+        epochs=int(epochs),
+        max_decisions_per_batch=int(requested_batch_size),
+        val_frac=0.10,
+        split_by_episode=True,
+        early_stop_patience=max(1, int(epochs)),
+        aux_loss_weight=0.0,
+        opp_hand_loss_weight=0.0,
+        opp_remainder_loss_weight=0.0,
+        lethal_threat_loss_weight=0.0,
+        prize_race_loss_weight=0.0,
+        amp=device.type == "cuda",
+        seed=int(seed),
+    )
+    torch.manual_seed(cfg.seed)
+    random.seed(cfg.seed)
+    model = load_model_from_checkpoint(base_path, device=device)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+    )
+    use_amp = bool(cfg.amp and device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    scaler = torch.amp.GradScaler(
+        "cuda", enabled=(use_amp and amp_dtype == torch.float16)
+    )
+    base_payload = checkpoint.load_checkpoint(base_path, map_location="cpu")
+    meta = checkpoint.apply_checkpoint(
+        base_payload,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        restore_rng=True,
+    )
+    optimizer_state_restored = "optimizer_state_dict" in base_payload
+    # Optimizer restore also restores its old param-group LR.  Rehearsal uses
+    # the explicitly recorded conservative LR while preserving the moments.
+    for group in optimizer.param_groups:
+        group["lr"] = cfg.lr
+
+    batch_size = _fit_device_batch_size(
+        model,
+        corpus,
+        requested=cfg.max_decisions_per_batch,
+        cfg=cfg,
+        use_amp=use_amp,
+        amp_dtype=amp_dtype,
+    )
+    step = int(meta.get("step", 0))
+    epoch0 = int(meta.get("epoch", 0))
+    rl_iteration = int(meta.get("rl_iteration", 0))
+    train_metrics = BatchMetrics()
+    started = time.time()
+    for epoch_offset in range(int(epochs)):
+        model.train()
+        parts: list[BatchMetrics] = []
+        batches = corpus.batches(
+            train=True,
+            batch_size=batch_size,
+            shuffle=True,
+            seed=cfg.seed,
+            epoch=epoch_offset,
+        )
+        bar = tqdm(
+            batches,
+            desc=(
+                f"expert rehearsal before iter{int(rehearsal_iteration)} "
+                f"ep{epoch_offset + 1}/{int(epochs)}"
+            ),
+            unit="batch",
+        )
+        for sample_ids in bar:
+            optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast(
+                "cuda", enabled=use_amp, dtype=amp_dtype
+            ):
+                total, metrics = device_batch_losses(
+                    model,
+                    corpus,
+                    sample_ids,
+                    value_weight=cfg.value_loss_weight,
+                )
+            scaler.scale(total).backward()
+            if cfg.grad_clip > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+            scaler.step(optimizer)
+            scaler.update()
+            step += 1
+            parts.append(metrics)
+            bar.set_postfix(
+                loss=f"{metrics.total_loss:.3f}",
+                policy=f"{metrics.policy_loss:.3f}",
+                value=f"{metrics.value_loss:.3f}",
+                acc=f"{metrics.policy_acc:.2%}",
+                step=step,
+            )
+        train_metrics = _merge_metrics(parts)
+
+    val_metrics = (
+        evaluate_device_corpus(
+            model,
+            corpus,
+            cfg=cfg,
+            batch_size=batch_size,
+            desc=f"expert validation before iter{int(rehearsal_iteration)}",
+        )
+        if corpus.val_samples
+        else train_metrics
+    )
+    inherited_extra = dict(base_payload.get("extra") or {})
+    rehearsal_record = {
+        "schema": 1,
+        "before_iteration": int(rehearsal_iteration),
+        "parent_digest": actual_parent_digest,
+        "manifest": dict(manifest_identity),
+        "epochs": int(epochs),
+        "learning_rate": float(lr),
+        "batch_size": int(batch_size),
+        "requested_batch_size": int(requested_batch_size),
+        "train_metrics": train_metrics.__dict__,
+        "validation_metrics": val_metrics.__dict__,
+        "elapsed_sec": float(time.time() - started),
+        "optimizer_state_restored": bool(optimizer_state_restored),
+    }
+    inherited_extra.update(
+        {
+            "pure_rl": True,
+            "expert_rehearsal": rehearsal_record,
+            "parent_digest": actual_parent_digest,
+        }
+    )
+    payload = checkpoint.build_checkpoint(
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler if use_amp else None,
+        step=step,
+        epoch=epoch0 + int(epochs),
+        rl_iteration=rl_iteration,
+        best_metric=float(val_metrics.total_loss),
+        early_stop_state={
+            "patience_left": max(1, int(epochs)),
+            "best_metric": float(val_metrics.total_loss),
+        },
+        archetype_id=str(base_payload.get("archetype_id") or "core"),
+        model_id=str(base_payload.get("model_id") or "pure_rl") + ".expert",
+        model_config=model.cfg,
+        extra=inherited_extra,
+    )
+    saved = checkpoint.immutable_torch_save(payload, out_path)
+    digest = checkpoint.checkpoint_digest(saved)
+    return {
+        "candidate_path": str(saved),
+        "candidate_digest": digest,
+        "parent_digest": actual_parent_digest,
+        "step": step,
+        "rl_iteration": rl_iteration,
+        "optimizer_state_restored": bool(optimizer_state_restored),
+        "batch_size": int(batch_size),
+        "train_metrics": train_metrics.__dict__,
+        "validation_metrics": val_metrics.__dict__,
+        "rehearsal": rehearsal_record,
+    }
+
+
 def process_with_oom_splitting(
     items: Sequence[Any],
     process: Callable[[list[Any]], Any],
@@ -981,6 +2018,161 @@ def process_with_oom_splitting(
     return completed
 
 
+@torch.no_grad()
+def _precompute_awr_baseline_cache(
+    model: TemporalCabtTransformer,
+    sequences: Sequence[GameSequence],
+    *,
+    cfg: TrainConfig,
+    desc: Optional[str] = None,
+) -> dict[tuple[int, int, int], float]:
+    """Snapshot V(s) for every selected decision-stage before an RL update.
+
+    Keys use the in-memory ``GameSequence`` identity plus decision/stage index;
+    split/shuffled batches retain those objects, so the cache remains stable for
+    the lifetime of one :func:`rl_train_step` without mutating replay records.
+    """
+    cache: dict[tuple[int, int, int], float] = {}
+    if not sequences:
+        return cache
+
+    was_training = model.training
+    model.eval()
+    device = next(model.parameters()).device
+    use_amp = bool(cfg.amp and device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    batches = _iter_game_batches(
+        list(sequences),
+        cfg.games_per_batch,
+        cfg.max_decisions_per_batch,
+        shuffle=False,
+        seed=cfg.seed,
+        epoch=0,
+    )
+    try:
+        visible_batches = (
+            tqdm(batches, desc=desc, leave=False, unit="batch")
+            if desc
+            else batches
+        )
+        for batch in visible_batches:
+            def _capture(work: list[GameSequence]) -> BatchMetrics:
+                with torch.amp.autocast(
+                    "cuda", enabled=use_amp, dtype=amp_dtype
+                ):
+                    _, metrics = batch_losses(
+                        model,
+                        work,
+                        value_weight=cfg.value_loss_weight,
+                        aux_weight=cfg.aux_loss_weight,
+                        opp_hand_weight=cfg.opp_hand_loss_weight,
+                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                        prize_race_weight=cfg.prize_race_loss_weight,
+                        alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        pure_rl=True,
+                        awr_beta=float(cfg.awr_beta),
+                        awr_weight_max=float(cfg.awr_weight_max),
+                        awr_normalize_advantages=bool(
+                            cfg.awr_normalize_advantages
+                        ),
+                        entropy_bonus=float(cfg.entropy_bonus),
+                        awr_capture_baseline=cache,
+                    )
+                return metrics
+
+            process_with_oom_splitting(
+                batch,
+                _capture,
+                on_split=(
+                    torch.cuda.empty_cache if device.type == "cuda" else None
+                ),
+            )
+    finally:
+        model.train(was_training)
+    return cache
+
+
+@torch.no_grad()
+def _policy_argmax_predictions(
+    model: TemporalCabtTransformer,
+    sequences: Sequence[GameSequence],
+    *,
+    cfg: TrainConfig,
+    awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
+    desc: Optional[str] = None,
+) -> list[int]:
+    """Return deterministic policy argmaxes in stable decision-stage order."""
+    if not sequences:
+        return []
+
+    predictions: list[int] = []
+    was_training = model.training
+    model.eval()
+    device = next(model.parameters()).device
+    use_amp = bool(cfg.amp and device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    batches = _iter_game_batches(
+        list(sequences),
+        cfg.games_per_batch,
+        cfg.max_decisions_per_batch,
+        shuffle=False,
+        seed=cfg.seed,
+        epoch=0,
+    )
+    try:
+        visible_batches = (
+            tqdm(batches, desc=desc, leave=False, unit="batch")
+            if desc
+            else batches
+        )
+        for batch in visible_batches:
+            def _predict(work: list[GameSequence]) -> BatchMetrics:
+                with torch.amp.autocast(
+                    "cuda", enabled=use_amp, dtype=amp_dtype
+                ):
+                    _, metrics = batch_losses(
+                        model,
+                        work,
+                        value_weight=cfg.value_loss_weight,
+                        aux_weight=cfg.aux_loss_weight,
+                        opp_hand_weight=cfg.opp_hand_loss_weight,
+                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                        prize_race_weight=cfg.prize_race_loss_weight,
+                        alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        pure_rl=bool(cfg.pure_rl),
+                        awr_beta=float(cfg.awr_beta),
+                        awr_weight_max=float(cfg.awr_weight_max),
+                        awr_normalize_advantages=bool(
+                            cfg.awr_normalize_advantages
+                        ),
+                        entropy_bonus=float(cfg.entropy_bonus),
+                        awr_baseline_cache=awr_baseline_cache,
+                        prediction_sink=predictions,
+                    )
+                return metrics
+
+            process_with_oom_splitting(
+                batch,
+                _predict,
+                on_split=(
+                    torch.cuda.empty_cache if device.type == "cuda" else None
+                ),
+            )
+    finally:
+        model.train(was_training)
+    return predictions
+
+
 def rl_train_step(
     dataset: BootstrapDataset,
     *,
@@ -994,21 +2186,27 @@ def rl_train_step(
     output_path: Optional[Union[str, Path]] = None,
     parent_digest: Optional[str] = None,
     training_provenance: Optional[dict[str, Any]] = None,
+    replace_existing: bool = False,
 ) -> dict[str, Any]:
     """One immutable history-policy candidate fit for the RL loop.
 
-    Unlike :func:`train_bootstrap` (persistent run with an epoch ceiling +
-    early-stop on BC val-loss — which silently no-ops once the ceiling is hit on
-    resume), this does a CLEAN fit each call: load ``base_ckpt`` weights, train
-    up to ``epochs`` full passes over the replay ``dataset`` with the AlphaZero
-    loss (policy CE toward the trusted behavior target in ``seq.policy_targets`` +
-    value regression toward the game outcome ``seq.value`` — both already
-    implemented in :func:`batch_losses`), with the same patience-based early
-    stop on val loss (falling back to train loss when no val split) as
-    bootstrap, then save the best net.
+    Unlike :func:`train_bootstrap`, each call is one RL iteration over a fresh
+    replay window. Model, Adam/scaler state and global learner counters resume
+    from ``base_ckpt``; early-stop selection remains local to the new window.
+    Pure RL uses AWR on selected actions plus terminal value regression.
 
     Returns ``{"latest_path", "metrics"}``. Deterministic-ish via ``seed``.
     """
+    actual_parent_digest = checkpoint.checkpoint_digest(base_ckpt)
+    if parent_digest is not None and str(parent_digest) != actual_parent_digest:
+        raise ValueError(
+            "pure-RL parent_digest does not match base checkpoint bytes: "
+            f"supplied={parent_digest!r} actual={actual_parent_digest!r} "
+            f"path={Path(base_ckpt).expanduser().resolve()}"
+        )
+    # Always persist the verified identity, including for callers which did
+    # not supply one.  A nullable lineage field is too easy to misinterpret.
+    parent_digest = actual_parent_digest
     cfg = cfg or TrainConfig()
     device = device or device_mod.training_device(
         prefer_name=config.HARDWARE.train_gpu_name, allow_cpu=False
@@ -1017,8 +2215,10 @@ def rl_train_step(
     random.seed(seed)
 
     model = load_model_from_checkpoint(base_ckpt, device=device)
-    if model.decision_context != "history":
-        raise ValueError("trusted RL training requires a history checkpoint")
+    if model.decision_context not in {"history", "stateless"}:
+        raise ValueError(
+            "trusted RL training requires a history or stateless checkpoint"
+        )
     initial_state = {
         k: v.detach().cpu().clone() for k, v in model.state_dict().items()
     }
@@ -1036,6 +2236,35 @@ def rl_train_step(
     )
     scaler = torch.amp.GradScaler("cuda", enabled=(use_amp and amp_dtype == torch.float16))
 
+    base_step = 0
+    base_epoch = 0
+    base_rl_iteration = 0
+    optimizer_state_restored = False
+    if cfg.pure_rl:
+        learner_ckpt = checkpoint.load_checkpoint(base_ckpt, map_location=device)
+        base_step = int(learner_ckpt.get("step", 0))
+        base_epoch = int(learner_ckpt.get("epoch", 0))
+        base_rl_iteration = int(learner_ckpt.get("rl_iteration", 0))
+        if "optimizer_state_dict" in learner_ckpt:
+            try:
+                checkpoint.apply_checkpoint(
+                    learner_ckpt,
+                    optimizer=optimizer,
+                    scaler=scaler if use_amp else None,
+                    restore_rng=False,
+                )
+            except (KeyError, RuntimeError, ValueError) as exc:
+                raise ValueError(
+                    "pure-RL parent optimizer state is incompatible with the "
+                    "loaded model; refusing a silent Adam reset"
+                ) from exc
+            optimizer_state_restored = True
+            # The checkpoint supplies moments/counters; the current iteration's
+            # explicit config remains authoritative for tunable hyperparameters.
+            for group in optimizer.param_groups:
+                group["lr"] = float(cfg.lr)
+                group["weight_decay"] = float(cfg.weight_decay)
+
     # Keep only decision-bearing games, then reuse bootstrap's val split / ES.
     usable = BootstrapDataset(
         sequences=[s for s in dataset.sequences if s.decisions]
@@ -1045,17 +2274,51 @@ def rl_train_step(
         train_seqs, val_seqs = list(usable.sequences), []
     if not train_seqs:
         raise ValueError("RL training dataset has no usable decision sequences")
+    if float(cfg.alakazam_guide_loss_weight) > 0.0:
+        guide_rows = count_usable_alakazam_guide_rows(
+            [*train_seqs, *val_seqs]
+        )
+        if guide_rows <= 0:
+            raise ValueError(
+                "nonzero Alakazam guide loss has no usable guide rows; "
+                "verify POKEBOT_ALAKAZAM_GUIDE_TARGETS=1 and scorer coverage"
+            )
+        print(
+            f"[rl-train] Alakazam guide rows={guide_rows} "
+            f"weight={float(cfg.alakazam_guide_loss_weight):.4f}",
+            flush=True,
+        )
+    awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None
+    if cfg.pure_rl and cfg.awr_freeze_baseline:
+        awr_baseline_cache = _precompute_awr_baseline_cache(
+            model,
+            [*train_seqs, *val_seqs],
+            cfg=cfg,
+            desc="rl-prep baseline",
+        )
+    agreement_sequences = [*train_seqs, *val_seqs]
+    parent_predictions = _policy_argmax_predictions(
+        model,
+        agreement_sequences,
+        cfg=cfg,
+        awr_baseline_cache=awr_baseline_cache,
+        desc="rl-agreement parent",
+    )
     patience = max(0, int(cfg.early_stop_patience))
     patience_left = patience
     best_metric = float("inf")
     best_state: Optional[dict[str, Any]] = None
+    best_optimizer_state: Optional[dict[str, Any]] = None
+    best_scaler_state: Optional[dict[str, Any]] = None
+    best_step = base_step
+    best_epoch_offset = 0
     best_train_m = BatchMetrics()
     best_val_m = BatchMetrics()
     best_validation_source = "heldout" if val_seqs else "current_data"
     last: BatchMetrics = BatchMetrics()
     stepped_epochs = 0
-    step = 0
-    epoch_bar = tqdm(range(max(1, epochs)), desc="rl-train", leave=False, unit="ep")
+    step = base_step
+    epoch_bar = tqdm(range(max(1, epochs)), desc="rl-epochs", leave=False, unit="ep")
     for epoch in epoch_bar:
         model.train()
         batches = _iter_game_batches(
@@ -1067,7 +2330,13 @@ def rl_train_step(
             epoch=epoch,
         )
         parts: list[BatchMetrics] = []
-        for batch in batches:
+        batch_bar = tqdm(
+            batches,
+            desc=f"rl-train ep{epoch}",
+            leave=False,
+            unit="batch",
+        )
+        for batch in batch_bar:
             def _train_chunk(work: list[GameSequence]) -> BatchMetrics:
                 nonlocal step
                 optimizer.zero_grad(set_to_none=True)
@@ -1081,11 +2350,13 @@ def rl_train_step(
                         opp_remainder_weight=cfg.opp_remainder_loss_weight,
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
+                        alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
                         awr_weight_max=float(cfg.awr_weight_max),
                         awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
                         entropy_bonus=float(cfg.entropy_bonus),
+                        awr_baseline_cache=awr_baseline_cache,
                     )
                 if bm.n_decisions == 0:
                     return bm
@@ -1107,16 +2378,70 @@ def rl_train_step(
                 except Exception:
                     pass
 
-            for bm in process_with_oom_splitting(
+            completed_parts = process_with_oom_splitting(
                 batch,
                 _train_chunk,
                 on_split=_clear_oom,
-            ):
+            )
+            for bm in completed_parts:
                 if bm.n_decisions > 0:
                     parts.append(bm)
+            visible = next(
+                (bm for bm in reversed(completed_parts) if bm.n_decisions > 0),
+                None,
+            )
+            if visible is not None:
+                batch_bar.set_postfix(
+                    loss=f"{visible.total_loss:.3f}",
+                    p=f"{visible.policy_loss:.3f}",
+                    v=f"{visible.value_loss:.3f}",
+                    aux=(
+                        "off"
+                        if cfg.aux_loss_weight == 0
+                        else f"{visible.aux_loss:.3f}/"
+                        f"{visible.n_archetype_rows}"
+                    ),
+                    hand=(
+                        "off"
+                        if cfg.opp_hand_loss_weight == 0
+                        else f"{visible.opp_hand_loss:.3f}/"
+                        f"{visible.n_opp_hand_rows}"
+                    ),
+                    rem=(
+                        "off"
+                        if cfg.opp_remainder_loss_weight == 0
+                        else f"{visible.opp_remainder_loss:.3f}/"
+                        f"{visible.n_opp_remainder_rows}"
+                    ),
+                    lethal=(
+                        "off"
+                        if cfg.lethal_threat_loss_weight == 0
+                        else f"{visible.lethal_threat_loss:.3f}/"
+                        f"{visible.n_lethal_threat_rows}"
+                    ),
+                    prize=(
+                        "off"
+                        if cfg.prize_race_loss_weight == 0
+                        else f"{visible.prize_race_loss:.3f}/"
+                        f"{visible.n_prize_race_rows}"
+                    ),
+                    guide=(
+                        "off"
+                        if cfg.alakazam_guide_loss_weight == 0
+                        else f"{visible.alakazam_guide_loss:.3f}/"
+                        f"{visible.n_alakazam_guide_rows}"
+                    ),
+                    acc=f"{visible.policy_acc:.2%}",
+                )
         last = _merge_metrics(parts)
         if val_seqs:
-            val_m = evaluate(model, val_seqs, cfg=cfg, desc=f"rl-val ep{epoch}")
+            val_m = evaluate(
+                model,
+                val_seqs,
+                cfg=cfg,
+                desc=f"rl-val ep{epoch}",
+                awr_baseline_cache=awr_baseline_cache,
+            )
             metric = val_m.total_loss
         else:
             val_m = last
@@ -1129,6 +2454,10 @@ def rl_train_step(
             best_train_m = last
             best_val_m = val_m
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            best_optimizer_state = copy.deepcopy(optimizer.state_dict())
+            best_scaler_state = copy.deepcopy(scaler.state_dict()) if use_amp else None
+            best_step = step
+            best_epoch_offset = epoch + 1
             if patience > 0:
                 patience_left = patience
             tqdm.write(
@@ -1148,9 +2477,40 @@ def rl_train_step(
             loss=f"{last.total_loss:.3f}",
             p=f"{last.policy_loss:.3f}",
             v=f"{last.value_loss:.3f}",
-            aux=f"{last.aux_loss:.3f}",
-            hand=f"{last.opp_hand_loss:.3f}",
-            rem=f"{last.opp_remainder_loss:.3f}",
+            aux=(
+                "off"
+                if cfg.aux_loss_weight == 0
+                else f"{last.aux_loss:.3f}/{last.n_archetype_rows}"
+            ),
+            hand=(
+                "off"
+                if cfg.opp_hand_loss_weight == 0
+                else f"{last.opp_hand_loss:.3f}/{last.n_opp_hand_rows}"
+            ),
+            rem=(
+                "off"
+                if cfg.opp_remainder_loss_weight == 0
+                else f"{last.opp_remainder_loss:.3f}/"
+                f"{last.n_opp_remainder_rows}"
+            ),
+            lethal=(
+                "off"
+                if cfg.lethal_threat_loss_weight == 0
+                else f"{last.lethal_threat_loss:.3f}/"
+                f"{last.n_lethal_threat_rows}"
+            ),
+            prize=(
+                "off"
+                if cfg.prize_race_loss_weight == 0
+                else f"{last.prize_race_loss:.3f}/"
+                f"{last.n_prize_race_rows}"
+            ),
+            guide=(
+                "off"
+                if cfg.alakazam_guide_loss_weight == 0
+                else f"{last.alakazam_guide_loss:.3f}/"
+                f"{last.n_alakazam_guide_rows}"
+            ),
             acc=f"{last.policy_acc:.2%}",
             best=f"{best_metric:.3f}",
             pat=patience_left if patience > 0 else "-",
@@ -1165,10 +2525,35 @@ def rl_train_step(
 
     if best_state is not None:
         model.load_state_dict(best_state)
+        if best_optimizer_state is not None:
+            optimizer.load_state_dict(best_optimizer_state)
+        if use_amp and best_scaler_state is not None:
+            scaler.load_state_dict(best_scaler_state)
+        step = best_step
         last = best_train_m
         validation_metrics = best_val_m
     else:
         validation_metrics = last
+
+    candidate_predictions = _policy_argmax_predictions(
+        model,
+        agreement_sequences,
+        cfg=cfg,
+        awr_baseline_cache=awr_baseline_cache,
+        desc="rl-agreement candidate",
+    )
+    if not parent_predictions or len(parent_predictions) != len(candidate_predictions):
+        raise RuntimeError(
+            "cannot measure parent/candidate policy agreement: "
+            f"parent_rows={len(parent_predictions)} "
+            f"candidate_rows={len(candidate_predictions)}"
+        )
+    policy_prev_agreement = sum(
+        int(parent == candidate)
+        for parent, candidate in zip(parent_predictions, candidate_predictions)
+    ) / float(len(parent_predictions))
+    rl_metrics = dict(last.__dict__)
+    rl_metrics["policy_prev_agreement"] = policy_prev_agreement
 
     delta_sq = 0.0
     base_sq = 0.0
@@ -1187,7 +2572,8 @@ def rl_train_step(
         optimizer=optimizer,
         scaler=scaler if use_amp else None,
         step=step,
-        epoch=int(stepped_epochs),
+        epoch=int(base_epoch + (best_epoch_offset or stepped_epochs)),
+        rl_iteration=int(base_rl_iteration + 1),
         best_metric=best_metric if best_state is not None else last.total_loss,
         early_stop_state={
             "patience_left": patience_left,
@@ -1197,20 +2583,39 @@ def rl_train_step(
         model_id=out_run_name,
         model_config=model.cfg,
         extra={
-            "rl_metrics": last.__dict__,
+            "pure_rl": bool(cfg.pure_rl),
+            "rl_metrics": rl_metrics,
             "validation_metrics": validation_metrics.__dict__,
             "validation_source": best_validation_source,
             "rl_epochs_ran": stepped_epochs,
             "rl_epochs_cap": int(epochs),
+            "rl_selected_epoch_offset": int(best_epoch_offset or stepped_epochs),
+            "global_step": int(step),
+            "optimizer_parent_step": int(base_step),
+            "optimizer_state_restored": optimizer_state_restored,
+            "awr_baseline_mode": (
+                "frozen_precomputed"
+                if awr_baseline_cache is not None
+                else "detached_online"
+            ),
+            "awr_baseline_rows": len(awr_baseline_cache or {}),
             "training_contract": "causal_realized_history",
             "parent_digest": parent_digest,
             "training_provenance": dict(training_provenance or {}),
             "update_norm_l2": update_norm,
             "relative_update_norm_l2": relative_update_norm,
+            "policy_prev_agreement": policy_prev_agreement,
+            "policy_prev_agreement_rows": len(parent_predictions),
         },
     )
     if output_path is not None:
-        saved_path = checkpoint.immutable_torch_save(ckpt, output_path)
+        # Iteration candidates are lineage evidence. Only an explicit caller
+        # override may replace one; pure-RL provenance is never implicit write
+        # permission.
+        if replace_existing:
+            saved_path = checkpoint.atomic_torch_save(ckpt, output_path)
+        else:
+            saved_path = checkpoint.immutable_torch_save(ckpt, output_path)
     else:
         mgr = checkpoint.CheckpointManager(out_run_name)
         saved = mgr.save(ckpt, is_best=False)
@@ -1221,14 +2626,24 @@ def rl_train_step(
         "candidate_path": str(saved_path),
         "candidate_digest": digest,
         "parent_digest": parent_digest,
-        "metrics": last.__dict__,
+        "metrics": rl_metrics,
         "validation_metrics": validation_metrics.__dict__,
         "validation_source": best_validation_source,
         "step": step,
+        "parent_step": base_step,
+        "optimizer_state_restored": optimizer_state_restored,
+        "rl_iteration": base_rl_iteration + 1,
+        "awr_baseline_mode": (
+            "frozen_precomputed"
+            if awr_baseline_cache is not None
+            else "detached_online"
+        ),
         "epochs_ran": stepped_epochs,
         "best_metric": best_metric if best_state is not None else last.total_loss,
         "update_norm_l2": update_norm,
         "relative_update_norm_l2": relative_update_norm,
+        "policy_prev_agreement": policy_prev_agreement,
+        "policy_prev_agreement_rows": len(parent_predictions),
     }
 
 
@@ -1272,10 +2687,26 @@ def load_model_from_checkpoint(
     state = ckpt.get("model_state_dict")
     if not isinstance(state, dict):
         raise ValueError(f"checkpoint {path} is missing model_state_dict")
+    dense = bool(getattr(cfg, "dense_card2vec", False))
     try:
-        encoder_vocab = int(state["board_bag.weight"].shape[0])
-        decoder_vocab = int(state["option_bag.weight"].shape[0])
         aux_classes = int(state["aux_head.3.weight"].shape[0])
+        if dense or "card2vec.card_emb.weight" in state:
+            # Factorized path: vocab sizes live on card2vec buffers / tables.
+            if "card2vec.board_kind" in state:
+                encoder_vocab = int(state["card2vec.board_kind"].shape[0])
+            else:
+                encoder_vocab = int(features.encoder_vocab_size())
+            if "card2vec.option_kind" in state:
+                decoder_vocab = int(state["card2vec.option_kind"].shape[0])
+            else:
+                decoder_vocab = int(features.decoder_vocab_size())
+            # Ensure cfg matches dense modules even if snap omitted the flag.
+            if not dense:
+                cfg.dense_card2vec = True
+                dense = True
+        else:
+            encoder_vocab = int(state["board_bag.weight"].shape[0])
+            decoder_vocab = int(state["option_bag.weight"].shape[0])
     except (KeyError, AttributeError, IndexError, TypeError) as exc:
         raise ValueError(
             f"checkpoint {path} lacks architecture-defining tensor shapes"

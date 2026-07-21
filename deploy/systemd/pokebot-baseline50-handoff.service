@@ -1,0 +1,13 @@
+[Unit]
+Description=One-shot clean handoff to the 50/50 public-baseline RL curriculum
+After=pokebot-pure-rl-continuous-rehearsal.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-envfix-stage-20260720
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-envfix-stage-20260720/scripts/handoff_baseline50_at_boundary.py --source-loop-state /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_core_continuous_rehearsal_v6_20260719/loop_state.json --source-run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_core_continuous_rehearsal_v6_20260719 --target-next-iteration 28 --unit pokebot-pure-rl-continuous-rehearsal.service --old-run pure_rl_core_continuous_rehearsal_v6_20260719 --new-run pure_rl_core_baseline50_v7_20260720 --staged-root /home/inzi/poke-bot-envfix-stage-20260720 --deployment-root /home/inzi/poke-bot-agent-deployments/pure-rl-continuous-rehearsal-v1 --base-root /home/inzi/poke-bot-agent --active-unit /home/inzi/.config/systemd/user/pokebot-pure-rl-continuous-rehearsal.service --base-unit /home/inzi/poke-bot-agent/deploy/systemd/pokebot-pure-rl-continuous-rehearsal.service --deployment-unit /home/inzi/poke-bot-agent-deployments/pure-rl-continuous-rehearsal-v1/deploy/systemd/pokebot-pure-rl-continuous-rehearsal.service --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --status /home/inzi/poke-bot-agent/outputs/state/baseline50-handoff/status.json
+TimeoutStartSec=infinity
+Restart=no
+MemoryMax=2G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/baseline50-handoff.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/baseline50-handoff.log

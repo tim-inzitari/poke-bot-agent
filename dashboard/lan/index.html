@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pokémon RL · Fleet Control</title>
+  <style>
+    :root{color-scheme:dark;--bg:#07100e;--panel:#0d1b17;--panel2:#11251f;--line:#214036;--text:#ecfff8;--muted:#90aca2;--green:#60f0b0;--yellow:#f3c969;--red:#ff7b77;--blue:#77bdfb}*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background:radial-gradient(circle at 80% -10%,#183b31 0,transparent 38%),var(--bg);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text)}main{max-width:1220px;margin:auto;padding:32px 24px 56px}header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:22px}h1{font:700 clamp(26px,4vw,44px)/1.05 system-ui,sans-serif;letter-spacing:-.04em;margin:6px 0}.eyebrow{color:var(--green);font-size:12px;letter-spacing:.14em;text-transform:uppercase}.sub{color:var(--muted);max-width:720px}.actions{display:flex;gap:9px;align-items:center}.button,.live{border:1px solid var(--line);border-radius:99px;padding:8px 12px;background:#10221c;color:var(--text);white-space:nowrap;font:inherit}.button{cursor:pointer}.button:hover{border-color:#3c6a5a}.live{color:var(--muted)}.live:before,.dot{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--yellow);margin-right:8px;box-shadow:0 0 12px currentColor}.live.ok:before,.dot.ok{background:var(--green)}.live.bad:before,.dot.bad{background:var(--red)}.settings{background:linear-gradient(150deg,#162d26,#0b1713);border:1px solid #315647;border-radius:14px;padding:18px;margin-bottom:14px}.settings-grid{display:grid;grid-template-columns:190px 1fr auto;gap:22px;align-items:end}.settings input[type=number]{display:block;width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#07130f;color:var(--text);font:inherit}.checks{display:flex;flex-wrap:wrap;gap:8px 16px}.checks label{white-space:nowrap;color:#bed2ca}.checks input{accent-color:var(--green)}.setting-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{position:relative;grid-column:span 3;background:linear-gradient(150deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:18px;min-width:0}.remove-card{display:none;position:absolute;right:9px;top:9px;z-index:3;width:28px;height:28px;border:1px solid #754442;border-radius:50%;background:#2c1515;color:#ffaaa5;cursor:pointer;font:18px/1 ui-monospace,monospace}.grid.layout-editing .remove-card{display:block}.grid.layout-editing .card:not([hidden]){cursor:grab;outline:1px dashed #4e8a74;outline-offset:-5px;padding-top:42px}.grid.layout-editing .card:not([hidden]):active{cursor:grabbing}.grid .card.dragging{opacity:.35}.wide{grid-column:span 8}.side{grid-column:span 4}.full{grid-column:1/-1}.label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.12em}.value{font:650 27px/1.15 system-ui,sans-serif;margin-top:8px;letter-spacing:-.03em}.small{font-size:17px}.bar{height:12px;border-radius:99px;background:#07130f;overflow:hidden;margin:16px 0 9px;border:1px solid #17352b}.fill{height:100%;width:0;background:linear-gradient(90deg,#3bc88f,var(--green));transition:width .35s ease}.fill.indeterminate{width:34%;animation:scan 1.4s ease-in-out infinite}@keyframes scan{0%{transform:translateX(-110%)}100%{transform:translateX(300%)}}.row{display:flex;justify-content:space-between;gap:16px}.muted{color:var(--muted)}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}.metric{border-top:1px solid var(--line);padding-top:11px}.metric b{display:block;font:650 19px system-ui,sans-serif;margin-top:4px}.gpu{padding:12px 0;border-bottom:1px solid var(--line)}.gpu:last-child{border:0}.gpu-head{display:flex;justify-content:space-between;gap:8px}.gpu-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:12px}.mono{white-space:pre-wrap;word-break:break-word;background:#07130f;border:1px solid #18382e;border-radius:9px;padding:12px;margin-top:12px;color:#bdebd8;max-height:210px;overflow:auto}.events{font-size:12px;color:#a9c7bb}.day-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:7px;margin-top:14px}.day{background:#081511;border:1px solid #24463a;border-radius:9px;padding:10px 7px;min-width:0}.day b{display:block;font:650 14px system-ui,sans-serif}.day span{display:block;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.day.active{border-color:var(--yellow);box-shadow:inset 0 0 0 1px #6d5724}.day.ready{border-color:#3c9f76;background:#0b2119}.day.waiting{opacity:.65}.fleet{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.host{background:#091713;border:1px solid #24463a;border-radius:11px;padding:15px;min-width:0}.host-title{display:flex;align-items:center;justify-content:space-between;gap:8px}.host-title b{font:650 18px system-ui,sans-serif}.host-role{color:var(--muted);font-size:11px;text-transform:uppercase}.host-stat{display:flex;justify-content:space-between;gap:12px;margin-top:10px}.host-stat span:last-child{text-align:right}.host-gpu{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);color:#bcd7cc;font-size:12px}.error{display:none;background:#3b1717;border:1px solid #833b3b;color:#ffd2cf;padding:12px;border-radius:9px;margin-bottom:14px}.footer{margin-top:18px;color:#638177;font-size:11px}@media(max-width:900px){.card,.wide,.side{grid-column:1/-1}.fleet{grid-template-columns:1fr}.day-grid{grid-template-columns:repeat(5,1fr)}.settings-grid{grid-template-columns:1fr}.setting-actions{justify-content:flex-start}.metric-grid{grid-template-columns:repeat(2,1fr)}header{display:block}.actions{margin-top:14px}}@media(max-width:480px){main{padding:22px 14px}.day-grid{grid-template-columns:repeat(2,1fr)}.metric-grid{grid-template-columns:1fr 1fr}.value{font-size:23px}.actions{flex-wrap:wrap}}
+  </style>
+</head>
+<body><main>
+  <header>
+    <div><div class="eyebrow">Bert · LAN control plane</div><h1>Pokémon RL fleet</h1><div class="sub">Authoritative exact-training and hardware telemetry from Inzi, Bert, and Elmo. Settings are saved in this browser.</div></div>
+    <div class="actions"><button id="settings-button" class="button" type="button">⚙ Settings</button><div id="live" class="live">CONNECTING</div></div>
+  </header>
+  <section id="settings" class="settings" hidden>
+    <div class="settings-grid">
+      <label><span class="label">Refresh seconds</span><input id="refresh-seconds" type="number" min="1" max="300" step="1" value="2"></label>
+      <div><div class="label" style="margin-bottom:8px">Widgets and hosts</div><div class="checks">
+        <label><input type="checkbox" data-widget-toggle="stage" checked> Stage</label>
+        <label><input type="checkbox" data-widget-toggle="bootstrap" checked> Replay / RL epoch</label>
+        <label><input type="checkbox" data-widget-toggle="throughput" checked> Throughput</label>
+        <label><input type="checkbox" data-widget-toggle="blackwell" checked> Blackwell</label>
+        <label><input type="checkbox" data-widget-toggle="progress" checked> Progress</label>
+        <label><input type="checkbox" data-widget-toggle="replay" checked> Rolling replay window</label>
+        <label><input type="checkbox" data-widget-toggle="baseline" checked> Baseline gate</label>
+        <label><input type="checkbox" data-widget-toggle="latest10" checked> Latest 10-day prep</label>
+        <label><input type="checkbox" data-widget-toggle="hardware" checked> Trainer GPUs</label>
+        <label><input type="checkbox" data-widget-toggle="model" checked> Model/events</label>
+        <label><input type="checkbox" data-widget-toggle="curriculum" checked> Curriculum RL</label>
+        <label><input type="checkbox" data-widget-toggle="command"> Service command</label>
+        <label><input type="checkbox" data-widget-toggle="pure" checked> Pure-RL status</label>
+        <label><input type="checkbox" data-widget-toggle="fleet" checked> Fleet</label>
+        <label><input type="checkbox" data-widget-toggle="scheduler" checked> Scheduler queues</label>
+        <label><input type="checkbox" data-widget-toggle="raw"> Raw telemetry</label>
+        <label><input type="checkbox" data-host-toggle="inzi" checked> Inzi</label>
+        <label><input type="checkbox" data-host-toggle="bert" checked> Bert</label>
+        <label><input type="checkbox" data-host-toggle="elmo" checked> Elmo</label>
+        <label><input id="edit-layout" type="checkbox"> Edit / reorder cards</label>
+      </div><div class="muted" style="margin-top:8px">Enable reorder, click Apply, then drag any card. Its position saves automatically.</div></div>
+      <div class="setting-actions"><button id="reset-layout" class="button" type="button">Reset order</button><button id="apply-settings" class="button" type="button">Apply</button></div>
+    </div>
+  </section>
+  <div id="error" class="error"></div>
+  <section class="grid">
+    <article class="card" data-card="stage" data-widget="stage"><div class="label">Stage</div><div id="stage" class="value small">Waiting…</div><div id="pid" class="muted">PID —</div></article>
+    <article class="card" data-card="bootstrap" data-widget="bootstrap"><div class="label">Replay / RL epoch</div><div id="pct" class="value">—%</div><div id="epoch" class="muted">epoch —</div></article>
+    <article class="card" data-card="throughput" data-widget="throughput"><div class="label">Training throughput</div><div id="rate" class="value">—</div><div id="rate-unit" class="muted">samples / second (SPS)</div><div id="rate-extra" class="muted">— games · — game-equivalents/s</div></article>
+    <article class="card" data-card="blackwell" data-widget="blackwell"><div class="label">Blackwell</div><div id="gpu-util" class="value">—%</div><div id="gpu-power" class="muted">— W · — GiB</div><div id="blackwell-active" class="muted">— active games</div><div id="blackwell-allocation" class="muted">allocation —</div></article>
+    <article class="card full" data-card="latest10" data-widget="latest10"><div class="row"><div><div class="label">Latest 10-day replay prep · July 9–18</div><div id="latest10-stage" class="value small">Waiting…</div></div><div style="text-align:right"><div class="label">Feature / Bert ready</div><div id="latest10-ready" class="value small">0 feature · 0 Bert</div></div></div><div class="bar"><div id="latest10-fill" class="fill"></div></div><div id="latest10-days" class="day-grid"></div><div id="latest10-line" class="mono">Waiting for latest-day status…</div></article>
+    <article class="card wide" data-card="progress" data-widget="progress">
+      <div class="row"><div><div id="progress-label" class="label">Current epoch progress</div><div id="count" class="value small">— / — batches</div></div><div style="text-align:right"><div class="label">ETA</div><div id="eta" class="value small">—</div></div></div>
+      <div class="bar"><div id="fill" class="fill"></div></div>
+      <div class="metric-grid"><div class="metric"><span class="muted">policy acc</span><b id="acc">—</b></div><div class="metric"><span class="muted">total loss</span><b id="loss">—</b></div><div class="metric"><span class="muted">policy</span><b id="ploss">—</b></div><div class="metric"><span class="muted">value</span><b id="vloss">—</b></div><div class="metric"><span class="muted">hand</span><b id="handloss">—</b></div><div class="metric"><span class="muted">remainder</span><b id="remloss">—</b></div><div class="metric"><span class="muted">archetype aux</span><b id="auxloss">—</b></div><div class="metric"><span class="muted">lethal / prize</span><b id="strategyloss">—</b></div><div class="metric"><span class="muted">Alakazam guide</span><b id="guideloss">—</b></div><div class="metric"><span class="muted">replay games</span><b id="batch-games">—</b></div><div class="metric"><span class="muted">live SPS</span><b id="batch-sps">—</b></div><div class="metric"><span class="muted">game-equivalents / sec</span><b id="batch-gps">—</b></div><div class="metric"><span class="muted">batch / sec</span><b id="batch-bps">—</b></div></div>
+      <div id="line" class="mono">Waiting for exact-training output…</div>
+    </article>
+    <article class="card side" data-card="replay" data-widget="replay"><div class="label">Rolling replay window</div><div id="replay-stage" class="value small">Waiting…</div><div id="replay-count" class="muted">— / — shards</div><div class="bar"><div id="replay-fill" class="fill"></div></div><div class="metric-grid"><div class="metric"><span class="muted">window size</span><b id="replay-bytes">—</b></div><div class="metric"><span class="muted">train sequences</span><b id="replay-sequences">—</b></div></div><div id="replay-line" class="mono">Waiting for replay-window telemetry…</div></article>
+    <article class="card full" data-card="baseline" data-widget="baseline"><div class="row"><div><div id="baseline-label" class="label">Official heldout gate · exact baselines × both seats</div><div id="baseline-wr" class="value small">Waiting…</div></div><div style="text-align:right"><div class="label">Games / checkpoint</div><div id="baseline-games" class="value small">—</div></div></div><div id="baseline-matchups" class="metric-grid"></div><div id="baseline-source" class="mono">No trusted heldout result yet.</div></article>
+    <article class="card side" data-card="hardware" data-widget="hardware"><div class="label">Inzi trainer hardware</div><div id="gpus"></div><div class="gpu"><div class="gpu-head"><span>System</span><span id="load">load —</span></div><div id="memory" class="gpu-name">memory —</div></div></article>
+    <article class="card full" data-card="pure" data-widget="pure"><div class="label">Live pure-RL status</div><div id="pure" class="mono">—</div></article>
+    <article class="card full" data-card="fleet" data-widget="fleet"><div class="label">Fleet</div><div id="fleet" class="fleet"><div class="host">Waiting for fleet telemetry…</div></div></article>
+    <article class="card full" data-card="scheduler" data-widget="scheduler"><div class="row"><div><div class="label">Scheduler queues</div><div id="scheduler-stage" class="value small">Waiting…</div></div><div style="text-align:right"><div class="label">Policy</div><div id="scheduler-policy" class="value small">soft high water</div></div></div><div class="metric-grid"><div class="metric"><span class="muted">Local claimed / high water</span><b id="scheduler-local">—</b><span id="scheduler-local-flow" class="muted">flow measuring</span></div><div class="metric"><span class="muted">Elmo server / protected reserve</span><b id="scheduler-elmo">—</b><span id="scheduler-elmo-flow" class="muted">flow measuring</span></div><div class="metric"><span class="muted">Bert server / protected reserve</span><b id="scheduler-bert">—</b><span id="scheduler-bert-flow" class="muted">flow measuring</span></div><div class="metric"><span class="muted">Unassigned / waiting ingest</span><b id="scheduler-unassigned">—</b><span id="scheduler-result-flow" class="muted">flow measuring</span></div></div><div id="scheduler-latency" class="muted" style="margin-top:12px">Network latency sample pending…</div><div id="scheduler-note" class="muted" style="margin-top:5px">Controller queues are endpoint-owned; waiting for live queue counters.</div></article>
+    <article class="card full" data-card="curriculum" data-widget="curriculum"><div class="row"><div><div class="label">Curriculum RL</div><div id="rl-stage" class="value small">Waiting…</div></div><div style="text-align:right"><div class="label">Iteration</div><div id="rl-iter" class="value small">—</div></div></div><div class="row" style="margin-top:14px"><div id="rl-count" class="muted">— / —</div><div id="rl-eta" class="muted">ETA —</div></div><div class="bar"><div id="rl-fill" class="fill"></div></div><div id="rl-replay" class="muted">Rolling replay window waiting…</div><div class="metric-grid"><div class="metric"><span class="muted">held-out win rate</span><b id="rl-wr">—</b></div><div class="metric"><span class="muted">games / sec</span><b id="rl-gps">—</b></div><div class="metric"><span class="muted">sequences / sec</span><b id="rl-sps">—</b></div><div class="metric"><span class="muted">remote workers</span><b id="rl-remotes">—</b></div><div class="metric"><span class="muted">iteration wall time</span><b id="rl-iter-time">—</b><span id="rl-iter-time-note" class="muted">waiting for timing data</span></div></div><div id="rl-line" class="mono">No curriculum run yet.</div><div id="rl-champion" class="muted" style="margin-top:9px">champion —</div></article>
+    <article class="card full" data-card="model" data-widget="model"><div class="row"><div><div class="label">Model</div><div id="model" class="value small">state evaluator</div></div><div style="text-align:right"><div class="label">Parameters</div><div id="params" class="value small">1,489,505</div></div></div><div id="model-config" class="muted" style="margin-top:10px">Waiting for model contract…</div><div id="model-heads" class="muted" style="margin-top:5px">Waiting for learned heads…</div><div id="model-seed" class="muted" style="margin-top:5px">Waiting for seed identity…</div><div id="events" class="mono events">Waiting for events…</div></article>
+    <article class="card full" data-card="command" data-widget="command" hidden><div class="label">Live service command</div><div id="command" class="mono">—</div></article>
+    <article class="card full" data-card="raw" data-widget="raw" hidden><div class="label">Raw telemetry</div><div id="raw" class="mono">—</div></article>
+  </section>
+  <div id="footer" class="footer">Dashboard hosted on Bert · telemetry pending</div>
+</main><script>
+const $=id=>document.getElementById(id);
+const num=(v,d=1)=>Number.isFinite(v)?v.toFixed(d):'—';
+const bytes=v=>Number.isFinite(v)?(v/1073741824).toFixed(1)+' GiB':'—';
+const duration=v=>{if(!Number.isFinite(v))return '—';const s=Math.max(0,Math.round(v)),h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return h?h+'h '+m+'m':m?m+'m '+r+'s':r+'s'};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const defaultOrder=['stage','bootstrap','throughput','blackwell','latest10','progress','replay','baseline','hardware','pure','fleet','scheduler','curriculum','model','command','raw'];
+const defaults={refresh:2,editing:false,order:defaultOrder,widgets:{stage:true,bootstrap:true,throughput:true,blackwell:true,latest10:true,progress:true,replay:true,baseline:true,hardware:true,model:true,curriculum:true,command:false,pure:true,fleet:true,scheduler:true,raw:false},hosts:{inzi:true,bert:true,elmo:true}};
+let settings=JSON.parse(JSON.stringify(defaults)),timer=null,lastData={},dragged=null;
+try{
+  const saved=JSON.parse(localStorage.getItem('pokebot-dashboard-settings')||'{}');
+  const savedOrder=Array.isArray(saved.order)?saved.order.filter(id=>defaultOrder.includes(id)):[];
+  const mergedOrder=[...savedOrder];
+  defaultOrder.forEach((id,index)=>{if(mergedOrder.includes(id))return;const prior=defaultOrder.slice(0,index).reverse().find(value=>mergedOrder.includes(value));const at=prior?mergedOrder.indexOf(prior)+1:mergedOrder.length;mergedOrder.splice(at,0,id)});
+  settings={refresh:saved.refresh||2,editing:!!saved.editing,order:mergedOrder,widgets:{...defaults.widgets,...(saved.widgets||{})},hosts:{...defaults.hosts,...(saved.hosts||{})}};
+}catch(_e){}
+function persistSettings(){localStorage.setItem('pokebot-dashboard-settings',JSON.stringify(settings))}
+function applyVisibility(){
+  const grid=document.querySelector('.grid');
+  if(!dragged){const cards=new Map([...grid.querySelectorAll('[data-card]')].map(el=>[el.dataset.card,el]));settings.order.forEach(id=>{if(cards.has(id))grid.appendChild(cards.get(id))})}
+  document.querySelectorAll('[data-widget]').forEach(el=>el.hidden=!settings.widgets[el.dataset.widget]);
+  document.querySelectorAll('[data-host]').forEach(el=>el.hidden=!settings.hosts[el.dataset.host]);
+  grid.classList.toggle('layout-editing',settings.editing);
+  grid.querySelectorAll('[data-card]').forEach(el=>el.draggable=settings.editing);
+  $('refresh-seconds').value=settings.refresh;
+  $('edit-layout').checked=settings.editing;
+  document.querySelectorAll('[data-widget-toggle]').forEach(el=>el.checked=!!settings.widgets[el.dataset.widgetToggle]);
+  document.querySelectorAll('[data-host-toggle]').forEach(el=>el.checked=!!settings.hosts[el.dataset.hostToggle]);
+}
+function saveSettings(){
+  settings.refresh=Math.max(1,Math.min(300,Number($('refresh-seconds').value)||2));
+  settings.editing=$('edit-layout').checked;
+  document.querySelectorAll('[data-widget-toggle]').forEach(el=>settings.widgets[el.dataset.widgetToggle]=el.checked);
+  document.querySelectorAll('[data-host-toggle]').forEach(el=>settings.hosts[el.dataset.hostToggle]=el.checked);
+  persistSettings();applyVisibility();render(lastData);schedule();
+}
+function hostHtml(key,h){
+  h=h||{};const s=h.system||{},w=h.worker||{},o=h.optimization||{},g=h.gpus||[],reachable=h.reachable!==false,active=!!w.active,testing=!!w.testing;
+  const gpu=g.map(x=>`<div class="host-gpu">GPU ${esc(x.index)} · ${esc(x.name)}<br>${x.assignment?'<b>'+esc(x.assignment)+'</b><br>':''}${x.unified_memory?'HW active ':''}${num(x.utilization,0)}%${Number.isFinite(x.active_frequency_mhz)?' · '+num(x.active_frequency_mhz,0)+' MHz':''}${!x.unified_memory&&Number.isFinite(x.renderer_utilization)?' · render '+num(x.renderer_utilization,0)+'%':''}${!x.unified_memory&&Number.isFinite(x.tiler_utilization)?' · tiler '+num(x.tiler_utilization,0)+'%':''} · ${Number.isFinite(x.power_w)?num(x.power_w,2)+' W · ':''}${num((x.memory_used_mib||0)/1024,1)}/${num((x.memory_total_mib||0)/1024,1)} GiB${x.unified_memory?' unified':''}${x.telemetry_source?'<br><span class="muted">'+esc(x.telemetry_source)+'</span>':''}</div>`).join('');
+  const workerBits=[active?(testing?'TEST LIVE':'LIVE'):'idle'];if(Number.isFinite(w.workers))workerBits.push(w.workers+' workers');if(Number.isFinite(w.leaf_servers))workerBits.push(w.leaf_servers+' leaves');
+  const treeBits=[];if(Number.isFinite(w.processes))treeBits.push(w.processes+' proc');if(Number.isFinite(w.tasks))treeBits.push(w.tasks.toLocaleString()+' tasks');
+  const heldRate=w.rate_live===false&&(Number.isFinite(w.gps)||Number.isFinite(w.sps));
+  const heldAge=heldRate&&Number.isFinite(w.rate_age_s)?' · last active '+Math.round(w.rate_age_s)+'s ago':'';
+  const rateNote=heldRate?heldAge+(w.sps_estimated?' · SPS est.':''):w.sps_estimated?' · SPS est.':testing?' · latest test':w.rate_source?' · measured':'';
+  const stage=testing?`<div class="host-stat"><span class="muted">test stage</span><span>${esc(o.stage||w.optimization_stage||'starting')}${(o.device||w.optimization_device)?' · '+esc(o.device||w.optimization_device):''}</span></div>`:'';
+  const allocation=!testing&&w.allocation_state?`<div class="host-stat"><span class="muted">allocation</span><span>${esc(w.allocation_state)}</span></div>`:'';
+  const allocationDetail=!testing&&w.allocation?`<div class="host-stat"><span class="muted">capacity</span><span>${esc(w.allocation)}</span></div>`:'';
+  return `<div class="host" data-host="${key}"><div class="host-title"><div><span class="dot ${reachable?(active?'ok':''):'bad'}"></span><b>${esc(h.name||key)}</b></div><span class="host-role">${esc(h.role||'host')}</span></div><div class="host-stat"><span class="muted">load / CPUs</span><span>${num(s.load_1m,1)} / ${s.cpu_count??'—'}</span></div><div class="host-stat"><span class="muted">memory</span><span>${bytes((s.memory_total_bytes||0)-(s.memory_available_bytes||0))} / ${bytes(s.memory_total_bytes)}</span></div>${stage}${allocation}${allocationDetail}<div class="host-stat"><span class="muted">${testing?'test tree':'worker'}</span><span>${workerBits.join(' · ')}</span></div><div class="host-stat"><span class="muted">worker tree</span><span>${treeBits.join(' · ')||'awaiting cgroup'}</span></div><div class="host-stat"><span class="muted">tree load</span><span>${num(w.cpu_percent,0)}% CPU · ${bytes(w.rss_bytes)}</span></div><div class="host-stat"><span class="muted">GPS / SPS</span><span>${num(w.gps,2)} / ${num(w.sps,0)}${rateNote}</span></div>${gpu||'<div class="host-gpu muted">No GPU telemetry</div>'}</div>`
+}
+function prepDayHtml(row){row=row||{};const bert=row.bert||{},active=!!row.service?.active||['transferring','concat'].includes(bert.stage),stage=bert.stage||(row.stage||'waiting'),host=bert.host||row.host||'—',label=stage==='concat'?'concat / verify':stage,klass=stage==='ready'?'ready':active?'active':'waiting',progress=bert.message||(Number.isFinite(row.current)?row.current+(Number.isFinite(row.total)?'/'+row.total:'')+' '+(row.unit||''):label);return `<div class="day ${klass}"><b>Jul ${esc((row.day||'').slice(-2))}</b><span>${esc(host)} · ${esc(label)}</span><span>${esc(progress)}</span></div>`}
+function setPaneText(id,value){
+  const el=$(id),first=el.dataset.scrollReady!=='1',distance=el.scrollHeight-el.scrollTop-el.clientHeight,follow=first||distance<18,oldTop=el.scrollTop;
+  el.textContent=String(value??'');el.dataset.scrollReady='1';
+  requestAnimationFrame(()=>{el.scrollTop=follow?el.scrollHeight:oldTop});
+}
+function render(d){
+  lastData=d||{};
+  const svc=d.service||{},tr=d.transition||{},p=d.training||d.bootstrap||{},be=d.baseline_eval||{},prep=d.latest10||{},c=d.curriculum||{},cp=c.progress||{},rw=c.replay_window||{},it=c.iteration_timing||{},gpus=d.gpus||[],model=d.model||{},sys=d.system||{},fleet=d.fleet||{},sq=d.scheduler_queues||c.scheduler_queues||{},isPrep=prep.started&&!prep.complete,curriculumActive=!!c.active,transitionActive=!!tr.active,pipelineActive=svc.active||prep.active||curriculumActive||transitionActive;
+  const rlTraining=curriculumActive&&String(cp.stage||c.stage||'').startsWith('train'),rlValidating=cp.stage==='train:validation',rlPolicy=cp.stage==='train:policy',rlPrep=String(cp.stage||'').startsWith('train:prep'),rlReplayLoading=cp.stage==='train:preparing'&&cp.unit==='GiB',rlAgreement=String(cp.stage||'').startsWith('train:agreement'),rlUnit=cp.unit||'games',rlMetrics=cp.metrics||{};
+  const rlPhaseLabel=rlValidating?'validating epoch '+(cp.epoch??'—'):rlPolicy?'policy epoch '+(cp.epoch??'—')+' · batch '+(cp.current??'—')+'/'+(cp.total??'—'):rlReplayLoading?'loading rolling replay window':rlPrep?'building frozen AWR baseline':rlAgreement?'policy agreement scan · '+String(cp.stage||'').split(':').pop():'preparing optimizer';
+  const fresh=d.observed_at&&Date.now()/1000-d.observed_at<35,ok=d.ok&&fresh,live=$('live'),packing=p.phase==='packing',baselining=p.phase==='baseline',validating=p.phase==='validation',training=p.phase==='training';
+  live.className='live '+(ok?(pipelineActive?'ok':'bad'):'bad');
+  live.textContent=ok?(pipelineActive?'LIVE':'STOPPED'):'STALE';
+  $('error').style.display=d.error?'block':'none';
+  $('error').textContent=d.error||'';
+  $('stage').textContent=isPrep?'Latest 10 · '+(prep.stage||'preparing')+' · '+(prep.host||'—'):transitionActive?(tr.label||'Deck Agnostic Core → Alakazam'):svc.active?(packing?'One-time corpus pack onto Blackwell':baselining?'AWR baseline pass · corpus remains in Blackwell VRAM':training?'Full-model exact training on Blackwell':validating?'Held-out validation · corpus remains in VRAM':'Trainer active · awaiting phase telemetry'):curriculumActive?(rlTraining?'Self-play RL · '+rlPhaseLabel:'Curriculum · '+(c.stage||'starting'))+(c.source_current===false?' · SOURCE CHECK':''):'Training stopped';
+  $('pid').textContent=isPrep?(prep.current_day||'—')+' · memory-capped workers':svc.pid?'PID '+svc.pid+' · '+bytes(svc.memory_bytes):curriculumActive?'PID '+((c.active_pids||[]).join(', ')||'starting')+' · '+(c.run||'run pending'):'no live PID';
+  $('pct').textContent=isPrep?num(prep.percent,0)+'%':curriculumActive?(Number.isFinite(cp.percent)?num(cp.percent,0)+'%':'LIVE'):p.status==='complete'||p.phase==='complete'?'DONE':packing?'PACK':Number.isFinite(p.percent)?num(p.percent,0)+'%':'LOAD';
+  $('epoch').textContent=isPrep?(prep.completed_days??0)+' of 10 day shards ready':curriculumActive?(rlTraining?'RL iteration '+(c.iteration??c.next_iteration??'—')+' · '+rlPhaseLabel:'RL iteration '+(c.iteration??c.next_iteration??'—')+' · '+(c.run||'—')):p.epoch?(transitionActive?'Alakazam epoch ':'checkpoint epoch ')+p.epoch+' / '+(p.epochs_target??'—')+' · '+(p.status==='complete'||p.phase==='complete'?'complete':p.all_training_tensors_device_resident?'ALL VRAM':'loading VRAM'):'preparing exact corpus';
+  $('rate').textContent=isPrep?num(prep.rate,2):curriculumActive?(rlTraining?num(cp.rate,2):Number.isFinite(c.sps)?num(c.sps,0):num(c.gps,2)):Number.isFinite(p.samples_per_second)?num(p.samples_per_second,0):packing?'PACK':'—';
+  $('rate-unit').textContent=isPrep?(prep.unit||'items')+' / second':curriculumActive?(rlTraining?(cp.rate_unit==='s/ep'?'seconds / epoch':cp.rate_unit==='ep/s'?'epochs / second':cp.rate_unit==='batch/s'?'batches / second':cp.rate_unit==='s/batch'?'seconds / batch':'measuring optimizer'):Number.isFinite(c.sps)?'sequences / second (SPS)':'games / second (GPS)'):packing?'cached shards loading':'samples / second (SPS)';
+  $('rate-extra').textContent=isPrep?'distributed corpus preparation':curriculumActive?(rlTraining?'Blackwell policy update · run-bound live tqdm':num(c.gps,2)+' games/s · '+(c.remote_workers??cp.remotes??'—')+' remote workers · '+(c.remote_queue_capacity??0)+' queued capacity · source '+(c.source_current===false?'STALE':'current')):Number.isFinite(p.corpus_games)?p.corpus_games.toLocaleString()+' replay games · '+num(p.game_equivalents_per_second,1)+' game-eq/s · '+num(p.batch_per_second,2)+' batch/s':'waiting for corpus totals';
+  $('progress-label').textContent=isPrep?'Distributed latest-ten preparation':curriculumActive?(rlTraining?(rlValidating?'Self-play RL validation · iteration '+(c.iteration??'—'):rlPolicy?'Self-play RL optimizer batches · iteration '+(c.iteration??'—'):'Self-play RL '+rlPhaseLabel+' · iteration '+(c.iteration??'—')):'Curriculum · '+(c.stage||'starting')):transitionActive?'Alakazam expert bootstrap · device-resident Blackwell':packing?'One-time full-corpus GPU pack':baselining?'AWR value refresh (resident corpus)':validating?'Held-out validation (resident corpus)':'Current exact-training epoch';
+  $('count').textContent=isPrep?(prep.current??'—')+' / '+(prep.total??'—')+' '+(prep.unit||'items'):curriculumActive?(cp.current??'—')+' / '+(cp.total??'—')+' '+rlUnit:(p.current??'—')+' / '+(p.total??'—')+' '+(packing?'shards':'batches');
+  $('eta').textContent=isPrep?(prep.host||'CPU prep'):curriculumActive?(cp.eta||(!rlTraining&&Number.isFinite(cp.current)&&Number.isFinite(cp.total)&&Number.isFinite(c.gps)&&c.gps>0?Math.max(0,Math.ceil((cp.total-cp.current)/c.gps))+'s':'measuring')):p.eta||((packing||baselining)?'measuring':'—');
+  const fill=$('fill');
+  fill.classList.toggle('indeterminate',curriculumActive?!Number.isFinite(cp.percent):!Number.isFinite(p.percent)&&!isPrep);
+  fill.style.width=Math.max(0,Math.min(100,isPrep?prep.percent:curriculumActive?cp.percent||0:p.percent||0))+'%';
+  const m=curriculumActive?(rlTraining?rlMetrics:{}):(p.metrics||{});
+  $('acc').textContent=Number.isFinite(m.acc)?num(m.acc,2)+'%':'—';
+  $('loss').textContent=num(m.loss,3);$('ploss').textContent=num(m.p,3);$('vloss').textContent=num(m.v,3);$('handloss').textContent=num(m.hand,3);$('remloss').textContent=num(m.remainder??m.rem,3);$('auxloss').textContent=num(m.aux,3);$('strategyloss').textContent=Number.isFinite(m.lethal)?num(m.lethal,3)+' / '+num(m.prize_race??m.prize,3):'—';$('guideloss').textContent=num(m.guide,3);$('batch-games').textContent=curriculumActive?(c.games??(rlUnit==='games'?cp.current:'—')):Number.isFinite(p.corpus_games)?p.corpus_games.toLocaleString():'—';$('batch-sps').textContent=curriculumActive?(rlTraining?'—':num(c.sps,0)):num(p.samples_per_second,0);$('batch-gps').textContent=curriculumActive?(rlTraining?'—':num(c.gps,2)):num(p.game_equivalents_per_second,1);$('batch-bps').textContent=curriculumActive?(cp.rate_unit==='batch/s'?num(cp.rate,2):'—'):num(p.batch_per_second,2);
+  setPaneText('line',(isPrep?prep.latest_line:curriculumActive?cp.line:p.latest_line)||'Waiting for live trainer output; no corpus reload is implied.');
+  $('replay-stage').textContent=(rw.stage||'waiting')+(Number.isFinite(rw.percent)?' · '+num(rw.percent,1)+'%':'');
+  $('replay-count').textContent=(rw.ready_shards??'—')+' / '+(rw.target_shards??rw.window_shards??'—')+' shards ready · iteration '+(rw.iteration??'—');
+  const replayFill=$('replay-fill');replayFill.classList.toggle('indeterminate',rw.available&&!Number.isFinite(rw.percent));replayFill.style.width=Math.max(0,Math.min(100,Number.isFinite(rw.percent)?rw.percent:0))+'%';
+  $('replay-bytes').textContent=bytes(rw.bytes_total);$('replay-sequences').textContent=Number.isFinite(rw.sequences)?rw.sequences.toLocaleString():'—';setPaneText('replay-line',rw.detail||'Waiting for replay-window telemetry…');
+  $('latest10-stage').textContent=(prep.complete?'READY':prep.active?'LIVE':'waiting')+' · '+num(prep.percent,0)+'% · '+(prep.stage||'—')+(prep.host?' on '+prep.host:'');
+  $('latest10-ready').textContent=(prep.completed_days??0)+' feature · '+(prep.bert_ready_days??0)+' Bert';
+  $('latest10-fill').style.width=Math.max(0,Math.min(100,prep.percent||0))+'%';
+  $('latest10-days').innerHTML=(prep.days||[]).map(prepDayHtml).join('')||'<div class="muted">No latest-day telemetry yet.</div>';
+  setPaneText('latest10-line',prep.latest_line||'Waiting for active day workers…');
+  const heldout=c.official_heldout||{},gate=heldout.available?heldout:be,isOfficialHeldout=!!heldout.available;
+  $('baseline-label').textContent=isOfficialHeldout?'Official heldout gate · '+(heldout.opponent_count??'—')+' baselines × both seats':'Official baseline gate · 17-deck balanced';
+  $('baseline-wr').textContent=gate.available?(gate.passed?'PASS · ':'NOT YET · ')+num((gate.wr||0)*100,1)+'% WR'+(Number.isFinite(gate.lower)&&Number.isFinite(gate.upper)?' · 90% CI '+num(gate.lower*100,1)+'–'+num(gate.upper*100,1)+'%':Number.isFinite(gate.lower)?' · lower '+num(gate.lower*100,1)+'%':''):'Waiting for first trusted heldout…';
+  $('baseline-games').textContent=gate.available?(gate.games??'—')+' games'+(isOfficialHeldout?' · iter '+(gate.iteration??'—'):' · '+(gate.deck_count??'—')+' decks'):'—';
+  $('baseline-matchups').innerHTML=(gate.matchups||[]).map(x=>`<div class="metric"><span class="muted">${esc(x.opponent_id)}</span><b>${num((x.wr||0)*100,1)}%</b><span class="muted">${x.games??'—'} games${isOfficialHeldout?' · seats '+(x.seat0??'—')+'/'+(x.seat1??'—'):' · lo '+num((x.lower||0)*100,1)+'%'}</span></div>`).join('');
+  setPaneText('baseline-source',gate.available?(isOfficialHeldout?'exact audit '+(gate.audit_passed?'PASS':'FAIL')+' · distribution '+(gate.exact_distribution?'exact':'invalid')+' · weights '+(gate.exact_weights?'exact':'invalid')+' · greedy '+(gate.greedy_required?'required':'unknown')+'\n':'')+'digest '+(gate.checkpoint_digest||'—')+'\n'+(gate.source||'—'):'No trusted heldout result yet.');
+  const blackwell=gpus.find(g=>g.index===1)||gpus[0]||{};
+  $('gpu-util').textContent=Number.isFinite(blackwell.utilization)?num(blackwell.utilization,0)+'%':'—%';
+  $('gpu-power').textContent=num(blackwell.power_w,0)+' W · '+num((blackwell.memory_used_mib||0)/1024,1)+' GiB'+(p.all_training_tensors_device_resident?' · full corpus resident':packing?' · packing before H2D':'');
+  const inziWorker=(fleet.inzi||{}).worker||{};$('blackwell-active').textContent=(inziWorker.active_games??'—')+' active local games';$('blackwell-allocation').textContent=inziWorker.allocation||inziWorker.allocation_state||'allocation waiting';
+  $('gpus').innerHTML=gpus.map(g=>`<div class="gpu"><div class="gpu-head"><span>GPU ${esc(g.index)} · ${num(g.utilization,0)}%</span><span>${num(g.power_w,0)} W</span></div><div class="gpu-name">${esc(g.name)} · ${num((g.memory_used_mib||0)/1024,1)}/${num((g.memory_total_mib||0)/1024,1)} GiB · ${num(g.temperature_c,0)}°C${g.assignment?' · '+esc(g.assignment):''}</div></div>`).join('')||'<div class="gpu muted">No GPU sample</div>';
+  $('load').textContent='load '+num(sys.load_1m,1)+' / '+(sys.cpu_count||'—');
+  $('memory').textContent='memory '+bytes((sys.memory_total_bytes||0)-(sys.memory_available_bytes||0))+' / '+bytes(sys.memory_total_bytes);
+  $('fleet').innerHTML=['inzi','bert','elmo'].map(k=>hostHtml(k,fleet[k])).join('');
+  const sql=sq.local||{},sqe=(sq.endpoints||{}).elmo||{},sqb=(sq.endpoints||{}).bert||{},sqr=sq.results||{};
+  $('scheduler-stage').textContent=(sq.available?'LIVE · ':'waiting · ')+(sq.mode||'scheduler telemetry');
+  $('scheduler-policy').textContent=sq.shared_endpoint_race_disabled?'endpoint-owned · race disabled':'soft high water';
+  $('scheduler-local').textContent=(sql.active_or_claimed??'—')+' / '+(sql.high_water??'—');
+  $('scheduler-local-flow').textContent='dispatch / drain '+num(sql.dispatch_gps,2)+' / '+num(sql.drain_gps,2)+' GPS';
+  const queueDepth=(row)=>'server '+(row.server_queued??'—')+' · reserve '+(row.controller_reserve_target??'—');
+  const queueFlow=(row)=>'dispatch / drain '+num(row.dispatch_gps,2)+' / '+num(row.drain_gps,2)+' GPS'+(Number.isFinite(row.queue_delta_gps)?' · Δ '+(row.queue_delta_gps>=0?'+':'')+num(row.queue_delta_gps,2):'');
+  $('scheduler-elmo').textContent=queueDepth(sqe);$('scheduler-elmo-flow').textContent=queueFlow(sqe);
+  $('scheduler-bert').textContent=queueDepth(sqb);$('scheduler-bert-flow').textContent=queueFlow(sqb);
+  $('scheduler-unassigned').textContent=(sq.unassigned??'—')+' / '+(sqr.waiting_ingest??0);
+  $('scheduler-result-flow').textContent='generation → ingest '+num(sqr.generation_gps,2)+' → '+num(sqr.ingest_gps,2)+' GPS';
+  const nl=d.network_latency||{},latencyAge=Number.isFinite(nl.sampled_at)?Math.max(0,Math.round((Date.now()/1000-nl.sampled_at)/60)):'—';$('scheduler-latency').textContent='10-minute ping · Inzi→Elmo '+num(nl.inzi_to_elmo_ms,2)+' ms · Inzi→Bert '+num(nl.inzi_to_bert_ms,2)+' ms · Bert→Elmo '+num(nl.bert_to_elmo_ms,2)+' ms · sampled '+latencyAge+'m ago';
+  $('scheduler-note').textContent=(sq.shared_endpoint_race_disabled?'Elmo and Bert quotas are isolated. ':'')+'Low water 50%; one worker-sized refill wave every 0.2s until soft high water. Returned trajectories may queue safely in the bounded disk-backed ingest buffer.';
+  $('rl-stage').textContent=(c.active?(c.source_current===false?'SOURCE STALE · ':'LIVE · '):'last · ')+(c.stage||'—');$('rl-iter').textContent=c.iteration??c.last_completed_iteration??'—';
+  $('rl-count').textContent=(cp.current??'—')+' / '+(cp.total??'—')+' '+(cp.unit||'');$('rl-eta').textContent='ETA '+(cp.eta||'measuring');const rlFill=$('rl-fill');rlFill.classList.toggle('indeterminate',c.active&&!Number.isFinite(cp.percent));rlFill.style.width=Math.max(0,Math.min(100,Number.isFinite(cp.percent)?cp.percent:0))+'%';$('rl-replay').textContent=(rw.stage||'replay window waiting')+(rw.detail?' · '+rw.detail:'');
+  $('rl-wr').textContent=Number.isFinite(c.heldout_wr)?num(c.heldout_wr*100,1)+'%'+(Number.isFinite(c.heldout_games)?' · '+Number(c.heldout_games).toLocaleString()+' games':'')+(c.heldout_recovery?' · exact audit':c.heldout_inherited?' · inherited iter '+(c.heldout_source_iteration??'—'):''):'—';$('rl-gps').textContent=num(c.gps,2);$('rl-sps').textContent=num(c.sps,1);$('rl-remotes').textContent=(c.remote_workers??c.progress?.remotes??'—')+' workers · '+(c.remote_queue_capacity??0)+' queued';
+  $('rl-iter-time').textContent=Number.isFinite(it.current_seconds)?duration(it.current_seconds)+' LIVE':duration(it.latest_seconds);const timingNotes=[];if(Number.isFinite(it.latest_seconds))timingNotes.push('last '+duration(it.latest_seconds)+(Number.isFinite(it.latest_iteration)?' · iter '+it.latest_iteration:''));if(Number.isFinite(it.rolling5_seconds))timingNotes.push((it.rolling5_samples||0)+'-iter avg '+duration(it.rolling5_seconds));$('rl-iter-time-note').textContent=timingNotes.join(' · ')||'waiting for timing data';
+  setPaneText('rl-line',c.progress?.line||'No curriculum progress line yet.');$('rl-champion').textContent='champion '+(c.champion||'—')+(Number.isFinite(c.promotion_wr)?' · last promotion '+num(c.promotion_wr*100,1)+'%'+(c.promotion_passed?' PASS':' FAIL'):'');
+  const profile=model.profile||{},enabledHeads=Object.entries(model.heads||{}).filter(([_name,row])=>row&&row.enabled!==false),headNames=enabledHeads.map(([name])=>name.replaceAll('_',' '));
+  $('model').textContent=(model.architecture||'state evaluator')+' · '+(profile.temporal_layers??model.temporal_layers??0)+' temporal · '+enabledHeads.length+' learned heads';$('params').textContent=Number.isFinite(model.trainable_parameters)?Number(model.trainable_parameters).toLocaleString():'—';
+  $('model-config').textContent='d_model '+(profile.d_model??'—')+' · spatial '+(profile.spatial_layers??'—')+' · option decoder '+(profile.option_decoder_layers??'—')+' · attention '+(profile.n_heads??'—')+' · FFN '+(profile.ff_dim??'—')+' · context '+(profile.max_context??'—')+' · '+(profile.temporal_pos||'—')+' · KV cache '+(profile.kv_cache?'on':'off');
+  $('model-heads').textContent='Heads: '+(headNames.join(', ')||'—')+((model.training_targets||{}).alakazam_guide?.enabled?' · Alakazam guide → shared policy target (not an extra parameterized head)':'');
+  const seedName=String(model.seed_checkpoint||'—').split('/').pop(),seedDigest=String(model.seed_checkpoint_digest||'—').replace(/^sha256:/,'').slice(0,12);$('model-seed').textContent='Seed: '+seedName+' · sha256 '+seedDigest+' · run '+(model.run||'—');
+  setPaneText('events',(d.recent_events||[]).join('\n')||'No recent canonical training events.');setPaneText('command',svc.command||'—');setPaneText('pure',transitionActive?(tr.label||tr.status||'Alakazam transition')+'\n'+(p.latest_line||'awaiting bootstrap telemetry'):d.pure_rl_status||cp.line||((p.mode||'exact training')+' · '+(p.phase||'—')+' · source '+(p.source||'—')));setPaneText('raw',JSON.stringify(d,null,2));
+  $('footer').textContent='Dashboard UI v6 on '+(d.dashboard_host||'Bert')+' · active source '+(curriculumActive?(c.source_current?'current':'STALE'):(p.fresh?'current':'historical'))+' · sample '+(d.observed_at?new Date(d.observed_at*1000).toLocaleTimeString():'—')+' · refresh '+settings.refresh+'s';
+  applyVisibility();
+}
+async function tick(){try{const r=await fetch('/api/status',{cache:'no-store'});render(await r.json())}catch(e){render({ok:false,error:String(e)})}schedule()}
+function schedule(){clearTimeout(timer);timer=setTimeout(tick,settings.refresh*1000)}
+const grid=document.querySelector('.grid');
+grid.querySelectorAll('[data-card]').forEach(card=>{
+  const button=document.createElement('button');button.type='button';button.className='remove-card';button.textContent='×';button.title='Hide this card (restore it in Settings)';button.setAttribute('aria-label','Hide '+card.dataset.card+' card');
+  button.addEventListener('mousedown',event=>event.stopPropagation());
+  button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();settings.widgets[card.dataset.card]=false;persistSettings();applyVisibility()});
+  card.appendChild(button);
+});
+grid.addEventListener('dragstart',event=>{
+  const card=event.target.closest('[data-card]');
+  if(!settings.editing||!card){event.preventDefault();return}
+  dragged=card;card.classList.add('dragging');clearTimeout(timer);
+  event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',card.dataset.card);
+});
+grid.addEventListener('dragover',event=>{
+  if(!dragged)return;
+  const target=event.target.closest('[data-card]');
+  if(!target||target===dragged||target.hidden)return;
+  event.preventDefault();
+  const rect=target.getBoundingClientRect(),sameRow=event.clientY>=rect.top&&event.clientY<=rect.bottom;
+  const after=sameRow?event.clientX>rect.left+rect.width/2:event.clientY>rect.top+rect.height/2;
+  grid.insertBefore(dragged,after?target.nextSibling:target);
+});
+grid.addEventListener('dragend',()=>{
+  if(!dragged)return;
+  dragged.classList.remove('dragging');dragged=null;
+  settings.order=[...grid.querySelectorAll('[data-card]')].map(el=>el.dataset.card);
+  persistSettings();applyVisibility();schedule();
+});
+$('settings-button').addEventListener('click',()=>{$('settings').hidden=!$('settings').hidden});
+$('apply-settings').addEventListener('click',saveSettings);
+$('reset-layout').addEventListener('click',()=>{settings.order=[...defaultOrder];persistSettings();applyVisibility()});
+applyVisibility();tick();
+</script></body></html>

@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from poke_bot import config, features
-from poke_bot.dataset import DecisionSample, GameSequence, PolicyStage
+from poke_bot import checkpoint, config, features
+from poke_bot.dataset import BootstrapDataset, DecisionSample, GameSequence, PolicyStage
 from poke_bot.model import build_model
-from poke_bot.train import TrainConfig, batch_losses
+from poke_bot.train import TrainConfig, batch_losses, rl_train_step
 
 
 def _sparse(words: int, offset: int = 0) -> features.SparseVector:
@@ -70,9 +70,12 @@ def test_pure_rl_defaults_zero_aux_weights() -> None:
     assert cfg.pure_rl is True
     assert cfg.aux_loss_weight == 0.0
     assert cfg.opp_hand_loss_weight == 0.0
+    assert cfg.alakazam_guide_loss_weight == 0.0
     assert cfg.lethal_threat_loss_weight == 0.0
     assert cfg.prize_race_loss_weight == 0.0
     assert cfg.awr_normalize_advantages is True
+    assert cfg.awr_freeze_baseline is True
+    assert cfg.epochs == 2
 
 
 def test_pure_rl_model_under_param_budget() -> None:
@@ -115,6 +118,123 @@ def test_awr_runs_without_soft_targets() -> None:
     assert metrics.n_decisions > 0
     assert metrics.awr_weight_mean > 0.0
     assert metrics.policy_selected_nll >= 0.0
+    assert metrics.raw_advantage_mean_abs > 0.0
+    assert metrics.mean_advantage == pytest.approx(metrics.raw_advantage_mean_abs)
+    assert metrics.raw_advantage_std >= 0.0
+    assert metrics.normalized_advantage_mean == pytest.approx(0.0, abs=1e-5)
+    assert metrics.normalized_advantage_std == pytest.approx(1.0, abs=1e-4)
+    assert 0.0 < metrics.awr_effective_sample_size <= metrics.n_decisions
+    assert 0.0 < metrics.awr_effective_sample_fraction <= 1.0
+
+
+def test_frozen_awr_baseline_survives_value_head_update() -> None:
+    torch.manual_seed(0)
+    model = _small_model()
+    seq = GameSequence(
+        episode_id="frozen",
+        seat=0,
+        archetype="dragapult",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0), _decision(1)],
+    )
+    cache: dict[tuple[int, int, int], float] = {}
+    _, before = batch_losses(
+        model,
+        [seq],
+        pure_rl=True,
+        awr_capture_baseline=cache,
+    )
+    assert len(cache) == before.n_decisions
+
+    with torch.no_grad():
+        model.value_head[-1].bias.add_(0.75)
+    _, frozen = batch_losses(
+        model,
+        [seq],
+        pure_rl=True,
+        awr_baseline_cache=cache,
+    )
+    _, online = batch_losses(model, [seq], pure_rl=True)
+
+    assert frozen.raw_advantage_mean == pytest.approx(before.raw_advantage_mean)
+    assert frozen.raw_advantage_mean_abs == pytest.approx(
+        before.raw_advantage_mean_abs
+    )
+    assert online.raw_advantage_mean != pytest.approx(before.raw_advantage_mean)
+
+
+def test_rl_train_step_restores_adam_and_global_counters(tmp_path) -> None:
+    torch.manual_seed(0)
+    model = _small_model()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
+    for _ in range(3):
+        optimizer.zero_grad(set_to_none=True)
+        sum(parameter.square().sum() for parameter in model.parameters()).backward()
+        optimizer.step()
+
+    base = tmp_path / "base.pt"
+    checkpoint.atomic_torch_save(
+        checkpoint.build_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            step=3,
+            epoch=2,
+            rl_iteration=4,
+            model_config=model.cfg,
+        ),
+        base,
+    )
+    seq = GameSequence(
+        episode_id="resume",
+        seat=0,
+        archetype="dragapult",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0), _decision(1)],
+    )
+    output = tmp_path / "candidate.pt"
+    cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        lr=0.0,
+        val_frac=0.0,
+        early_stop_patience=0,
+        games_per_batch=4,
+        max_decisions_per_batch=32,
+    )
+    result = rl_train_step(
+        BootstrapDataset(sequences=[seq]),
+        base_ckpt=base,
+        out_run_name="resume-test",
+        archetype_id="core",
+        epochs=1,
+        device=torch.device("cpu"),
+        cfg=cfg,
+        output_path=output,
+    )
+
+    assert result["parent_step"] == 3
+    assert result["step"] == 4
+    assert result["optimizer_state_restored"] is True
+    assert result["rl_iteration"] == 5
+    assert result["awr_baseline_mode"] == "frozen_precomputed"
+    assert result["policy_prev_agreement"] == pytest.approx(1.0)
+    assert result["metrics"]["policy_prev_agreement"] == pytest.approx(1.0)
+
+    saved = checkpoint.load_checkpoint(output)
+    assert saved["step"] == 4
+    assert saved["epoch"] == 3
+    assert saved["rl_iteration"] == 5
+    assert saved["extra"]["optimizer_state_restored"] is True
+    assert saved["extra"]["policy_prev_agreement"] == pytest.approx(1.0)
+    optimizer_steps = [
+        int(state["step"].item())
+        for state in saved["optimizer_state_dict"]["state"].values()
+        if "step" in state
+    ]
+    assert max(optimizer_steps) == 4
 
 
 def test_pure_rl_hard_fails_on_soft_behavior_targets() -> None:

@@ -234,7 +234,7 @@ def build_checkpoint(
             "decision_context": model_snapshot.get("decision_context"),
             "search_mode": search_snapshot.get("mode"),
             "trusted_policy_path": (
-                model_snapshot.get("decision_context") == "history"
+                model_snapshot.get("decision_context") in {"history", "stateless"}
                 and search_snapshot.get("mode") == "policy"
             ),
             "simulator": "competition_cg",
@@ -297,11 +297,11 @@ def load_checkpoint(
 
 
 def assert_trusted_policy_checkpoint(path: PathLike) -> dict[str, Any]:
-    """Fail closed unless ``path`` can serve the non-privileged history policy.
+    """Fail closed unless ``path`` can serve a non-privileged policy.
 
-    Pre-provenance checkpoints are accepted only when their model snapshot is
-    history/KV compatible. Checkpoints explicitly marked stateless, oracle, or
-    untrusted are rejected.
+    Realized-history and state-only policies both consume deployment-visible
+    observations. Oracle search and checkpoints explicitly marked untrusted
+    remain rejected.
     """
     ckpt = load_checkpoint(path, map_location="cpu")
     model_cfg = dict(ckpt.get("model_config") or {})
@@ -309,10 +309,10 @@ def assert_trusted_policy_checkpoint(path: PathLike) -> dict[str, Any]:
     decision_context = str(
         model_cfg.get("decision_context", provenance.get("decision_context", "history"))
     ).lower()
-    if decision_context != "history":
+    if decision_context not in {"history", "stateless"}:
         raise ValueError(
             f"checkpoint decision_context={decision_context!r}; trusted deployment "
-            "requires history"
+            "requires history or stateless policy context"
         )
     if provenance and provenance.get("trusted_policy_path") is False:
         raise ValueError("checkpoint provenance explicitly marks path untrusted")

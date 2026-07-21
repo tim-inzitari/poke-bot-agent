@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import ctypes
 import json
+import os
+from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from poke_bot.engine_rebuild.interfaces import (
@@ -27,11 +29,58 @@ from poke_bot.engine_rebuild.interfaces import (
 )
 
 
+_CUSTOM_LIBS: dict[str, Any] = {}
+
+
 def _load_sim_lib() -> Any:
-    """Import competition ``cg.sim`` (triggers ``GameInitialize`` once)."""
+    """Load official libcg or the explicit training-only hidden-state fork."""
+    # Resolve the vendored competition runtime from the repository before
+    # importing ``cg``.  Systemd/launchd/container jobs intentionally start
+    # with clean environments and must not depend on an interactive shell's
+    # PYTHONPATH or CG_LIB_PATH.
+    from poke_bot import cg_env
+
+    cg_env.ensure_cg_importable()
     from cg import sim  # type: ignore
 
-    return sim.lib
+    override = os.environ.get("POKEBOT_LIBCG_PATH", "").strip()
+    if not override:
+        return sim.lib
+    resolved = str(Path(override).expanduser().resolve())
+    if resolved in _CUSTOM_LIBS:
+        return _CUSTOM_LIBS[resolved]
+    if not Path(resolved).is_file():
+        raise FileNotFoundError(f"POKEBOT_LIBCG_PATH does not exist: {resolved}")
+    lib = ctypes.cdll.LoadLibrary(resolved)
+    lib.GameInitialize()
+    lib.BattleStart.restype = sim.StartData
+    lib.BattleStart.argtypes = [ctypes.POINTER(ctypes.c_int)]
+    lib.BattleFinish.argtypes = [ctypes.c_void_p]
+    lib.GetBattleData.restype = sim.SerialData
+    lib.GetBattleData.argtypes = [ctypes.c_void_p]
+    lib.Select.restype = ctypes.c_int
+    lib.Select.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+    ]
+    try:
+        lib.GetHiddenSnapshot.restype = ctypes.c_int
+        lib.GetHiddenSnapshot.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.c_int,
+        ]
+        lib.HiddenSnapshotAbiVersion.restype = ctypes.c_int
+        if int(lib.HiddenSnapshotAbiVersion()) != 1:
+            raise RuntimeError("unsupported hidden-state engine ABI")
+    except AttributeError as exc:
+        raise RuntimeError(
+            "POKEBOT_LIBCG_PATH must point to the training hidden-state fork"
+        ) from exc
+    _CUSTOM_LIBS[resolved] = lib
+    return lib
 
 
 class LibcgMultiEnv:
@@ -58,10 +107,19 @@ class LibcgMultiEnv:
             self._finish(i)
             if len(spec.deck0) != 60 or len(spec.deck1) != 60:
                 raise ValueError("each deck must contain 60 cards")
-            # Official BattleStart ignores seed in the public C ABI; seed is kept
-            # on ResetSpec for fork parity later.
             cards = (ctypes.c_int * 120)(*(list(spec.deck0) + list(spec.deck1)))
-            start = self._lib.BattleStart(cards)
+            # The official library has only BattleStart. The private fork adds
+            # BattleStartSeeded so individual-vs-batch benchmarks can execute
+            # exactly the same games instead of comparing different RNG draws.
+            try:
+                seeded_start = self._lib.BattleStartSeeded
+            except AttributeError:
+                seeded_start = None
+            start = (
+                seeded_start(cards, ctypes.c_uint32(int(spec.seed) & 0xFFFFFFFF))
+                if seeded_start is not None
+                else self._lib.BattleStart(cards)
+            )
             ptr = int(start.battlePtr or 0)
             if not ptr:
                 raise RuntimeError(
@@ -117,6 +175,40 @@ class LibcgMultiEnv:
     def close(self) -> None:
         for i in range(self._num_envs):
             self._finish(i)
+
+    def hidden_snapshot(self, env_id: int, player: int) -> dict[str, list[int]]:
+        """Return exact private zones for an auxiliary target only.
+
+        Official libcg intentionally lacks this symbol.  Calling this method is
+        therefore an explicit training-fork operation and cannot silently run
+        in submission/evaluation code.
+        """
+        i = int(env_id)
+        if not 0 <= i < self._num_envs:
+            raise IndexError(f"invalid env_id {env_id}")
+        ptr = self._ptrs[i]
+        if not ptr:
+            raise RuntimeError(f"environment {i} has no active battle")
+        try:
+            read_hidden = self._lib.GetHiddenSnapshot
+        except AttributeError as exc:
+            raise RuntimeError("hidden snapshot requested from official libcg") from exc
+        buffer = (ctypes.c_int * 64)()
+        used = int(read_hidden(ptr, int(player), buffer, len(buffer)))
+        if used < 3 or used > len(buffer):
+            raise RuntimeError(f"invalid hidden snapshot size {used}")
+        hand_n, deck_n, prize_n = (int(buffer[j]) for j in range(3))
+        if min(hand_n, deck_n, prize_n) < 0 or 3 + hand_n + deck_n + prize_n != used:
+            raise RuntimeError(
+                "hidden snapshot zone counts do not match returned payload"
+            )
+        offset = 3
+        hand = [int(buffer[j]) for j in range(offset, offset + hand_n)]
+        offset += hand_n
+        deck = [int(buffer[j]) for j in range(offset, offset + deck_n)]
+        offset += deck_n
+        prize = [int(buffer[j]) for j in range(offset, offset + prize_n)]
+        return {"hand": hand, "deck": deck, "prize": prize}
 
     def _finish(self, i: int) -> None:
         ptr = self._ptrs[i]

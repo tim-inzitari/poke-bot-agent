@@ -1,0 +1,71 @@
+[Unit]
+Description=Pokemon pure-RL core ladder trainer
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=POKEBOT_TRAINING_SAFETY_VERSION=20260717
+Environment=POKEBOT_TRAINING_ARM_FILE=/home/inzi/poke-bot-agent/outputs/state/TRAINING_ARMED
+# Fixed, measured-safe Inzi topology.  Never consume a stale watcher plan or
+# expand the local worker/leaf population inside a long-lived training unit.
+Environment=POKEBOT_LIVE_POOL=0
+# Each local WorkerPool is destroyed at the end of its bounded wave.  Keep
+# mid-wave recycling above this run's per-child work so all 24 children cannot
+# reach the same recycle boundary together; the per-wave teardown and 60/68
+# GiB cgroup remain the hard memory bounds.
+Environment=POKEBOT_WORKER_RECYCLE_GAMES=256
+Environment=WORKER_RECYCLE_GAMES=256
+Environment=PURE_RL_SIM_WORKERS=40
+Environment=PURE_RL_GAMES_IN_FLIGHT=40
+Environment=PURE_RL_LEAF_GPU0_REPLICAS=4
+Environment=PURE_RL_LEAF_GPU1_REPLICAS=48
+Environment=PURE_RL_REBALANCE_MAX_WORKERS=40
+Environment=PURE_RL_PER_WORKER_RSS_GB=1.3
+# Keep the measured-safe local hardware knee fixed at 24 workers.  Use the
+# shared completion queue for local/remote work stealing so a handful of slow
+# remote games cannot leave both Inzi GPUs idle at the end of a wave.
+Environment=PURE_RL_MID_ITER_SCHEDULER=1
+Environment=PURE_RL_REBALANCE_MIN_WORKERS=40
+Environment=PURE_RL_REMOTE_DISPATCH_CHUNK=16
+# Do not optimize a normally completing tail.  Sustained worker-capacity loss
+# below is the fail/restart signal; healthy final games may finish with idle GPU.
+Environment=PURE_RL_LOCAL_STRAGGLER_STALE_S=86400
+Environment=POKEBOT_WORKER_CAPACITY_RECOVERY_GRACE_S=60
+# A wedged remote game must fail before the unattended stall monitor.  The
+# systemd service then resumes transactionally from the last append-only
+# iteration commit; it never silently falls back to local execution.
+# A planned Elmo service rotation drains at 1,024 jobs and then rebuilds its
+# bounded worker/leaf tree.  Eight reconnect attempts cover that deliberate
+# gap without allowing an unbounded retry loop.
+Environment=POKEBOT_REMOTE_JOB_RETRIES=8
+Environment=POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S=90
+# Elmo's digest-addressed checkpoints are staged through this existing SMB
+# mount.  Refuse to create a run if the desktop session's GVFS mount vanished.
+Environment="POKEBOT_TRUENAS_CHECKPOINT_SMB=/run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint"
+ExecStartPre=/usr/bin/test -d /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint
+# The append-only loop ledger owns the current champion after the first
+# commit.  Do not pin the original bootstrap checkpoint here: after any
+# promotion, a systemd restart must resume the ledger's promoted digest.
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_pure_rl.py --run-name pure_rl_core_ladder_v12_blackwell48_elmostable_20260717T201740Z --mode core --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --preflight-profile quick --stall-minutes 20 --log outputs/logs/pure_rl_core_ladder_v12_blackwell48_elmostable_20260717T201740Z.log -- --iterations 1000 --games-per-iter 2048 --train-epochs 2 --heldout-games 200 --promotion-games 80 --game-timeout-s 600 --min-usable-game-frac 0.98 --remote-worker-endpoints 192.168.1.143:8765,bert.local:8766 --resume auto
+Restart=on-failure
+RestartSec=60
+# EX_TEMPFAIL means the singleton interlock found another trainer; EX_CONFIG
+# means the audited memory-safety version was not explicitly armed.  Neither
+# condition can improve through an automatic restart of this same unit.
+RestartPreventExitStatus=75 78
+TimeoutStopSec=45
+KillMode=control-group
+MemoryHigh=60G
+MemoryMax=68G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_core_ladder_v12_blackwell48_elmostable_20260717T201740Z.launcher.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_core_ladder_v12_blackwell48_elmostable_20260717T201740Z.launcher.log
+
+[Install]
+WantedBy=default.target

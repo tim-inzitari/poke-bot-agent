@@ -240,6 +240,18 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Local deployment snapshots, repair overlays, and licensed/private source.
+.private/
+.codex-deploy-staging/
+.codex-hidden-deploy/
+.staging/
+.staging_prefetch/
+
+# Runtime dashboard counters and one-off pre-repair backups.
+dashboard/lan/fleet_rate_state.json
+scripts/*.before_safety_gate_*
+poke_bot/remote_jobs.py.pre-constant-refill
+
 # Card reference PDF is 137MB (GitHub rejects files >100MB); keep it local only.
 # The committed cards/EN_Card_Data.csv holds all the card data we actually use.
 cards/*.pdf

@@ -263,27 +263,17 @@ def test_batch_losses_accepts_masked_belief_heads_without_labels() -> None:
     total.backward()
 
 
-def test_real_champion_ckpt_warmstarts_belief_heads() -> None:
+def test_real_legacy_champion_fails_closed_on_feature_schema() -> None:
     path = Path(
         "outputs/checkpoints/trusted_factorized_20260713T213354Z.evaluated.0aaa86457cf9ce3d.pt"
     )
     if not path.is_file():
         pytest.skip(f"missing champion ckpt {path}")
-    loaded = load_model_from_checkpoint(path, device=torch.device("cpu"))
-    assert "opp_hand_head" in loaded.aux_heads_present
-    assert "opp_remainder_head" in loaded.aux_heads_present
-    # Legacy champion has no card / Scope-B heads → warm-start path.
-    assert loaded.warm_started_belief_heads == (
-        "lethal_threat_head",
-        "opp_hand_head",
-        "opp_remainder_head",
-        "prize_race_head",
-    )
-    assert loaded.belief_card_vocab == features.card_vocab_size() == 1268
-    board = _empty_board()
-    options = _empty_options(2)
-    out = loaded.forward(board, options, n_options=[2])
-    assert tuple(out["opp_hand_logits"].shape) == (1, 1268)
-    assert tuple(out["opp_remainder_logits"].shape) == (1, 1268)
-    assert out["lethal_threat_logits"].numel() == 1
-    assert tuple(out["prize_race_pred"].shape) == (1, 2)
+    # Belief-head warm-start remains covered by the synthetic schema-current
+    # checkpoint above. This on-disk champion predates schema v5's composite
+    # option binding and slot identity, so loading it would silently restore
+    # the exact representation collision the new schema is meant to remove.
+    with pytest.raises(
+        RuntimeError, match="predates explicit slot/option-binding features"
+    ):
+        load_model_from_checkpoint(path, device=torch.device("cpu"))

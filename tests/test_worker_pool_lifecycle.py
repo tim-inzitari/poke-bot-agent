@@ -1,7 +1,11 @@
 import multiprocessing as mp
 import os
+import signal
+import time
 
-from poke_bot.worker_pool import WorkerPool
+import pytest
+
+from poke_bot.worker_pool import WorkerPool, WorkerPoolStopped
 
 
 def _remote_slot_task(payload) -> tuple[int, int]:
@@ -14,6 +18,21 @@ def _remote_slot_task(payload) -> tuple[int, int]:
     if not ready.wait(10):
         raise TimeoutError("both worker slots were not scheduled")
     return int(_REMOTE["slot"]), int(_REMOTE["generation"])
+
+
+def _single_apply_task(value: int) -> tuple[int, int]:
+    return os.getpid(), value * 2
+
+
+def _recycled_remote_slot_task(value: int) -> tuple[int, int, int, int]:
+    from poke_bot.batched_infer import _REMOTE
+
+    return (
+        os.getpid(),
+        int(_REMOTE["slot"]),
+        int(_REMOTE["generation"]),
+        value,
+    )
 
 
 def _remote_channel(workers: int) -> dict:
@@ -53,3 +72,180 @@ def test_mid_iteration_stop_terminates_once_without_slot_overflow() -> None:
         pool.request_stop("duplicate stop must be idempotent")
         pool.__exit__(None, None, None)
         assert pool.stopped is True
+
+
+def test_apply_runs_single_job_in_pool_child() -> None:
+    with WorkerPool(num_workers=1) as pool:
+        child_pid, value = pool.apply(_single_apply_task, 21)
+    assert child_pid != os.getpid()
+    assert value == 42
+
+
+def test_imap_unordered_surfaces_latched_stop_while_waiting_for_result() -> None:
+    """A lost Pool result must not leave the scheduler emitter blocked forever."""
+
+    class _NeverResult:
+        def next(self, timeout):
+            assert timeout == 1.0
+            raise mp.TimeoutError
+
+    class _FakePool:
+        def imap_unordered(self, _fn, _jobs, chunksize=1):
+            assert chunksize == 1
+            return _NeverResult()
+
+    pool = WorkerPool(num_workers=1)
+    pool._pool = _FakePool()  # type: ignore[assignment]
+    results = pool.imap_unordered(_single_apply_task, [1])
+    pool._terminated = True
+    pool._stop_reason = "synthetic abrupt worker loss"
+
+    with pytest.raises(WorkerPoolStopped, match="synthetic abrupt worker loss"):
+        next(results)
+
+
+def test_imap_unordered_stops_after_continuous_capacity_loss(monkeypatch) -> None:
+    """A lost local result must eventually terminate its unmonitored pool."""
+
+    class _DeadProcess:
+        pid = 123
+
+        @staticmethod
+        def is_alive() -> bool:
+            return False
+
+    class _NeverResult:
+        calls = 0
+
+        def next(self, timeout):
+            assert timeout == 1.0
+            self.calls += 1
+            raise mp.TimeoutError
+
+    class _FakePool:
+        def __init__(self):
+            self._pool = [_DeadProcess()]
+            self.results = _NeverResult()
+            self.terminate_calls = 0
+
+        def imap_unordered(self, _fn, _jobs, chunksize=1):
+            assert chunksize == 1
+            return self.results
+
+        def terminate(self):
+            self.terminate_calls += 1
+
+    ticks = iter((10.0, 12.0, 15.0))
+    monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+    fake_pool = _FakePool()
+    pool = WorkerPool(num_workers=1, capacity_recovery_grace_s=5.0)
+    pool._pool = fake_pool  # type: ignore[assignment]
+
+    with pytest.raises(
+        WorkerPoolStopped,
+        match=r"live=0 expected=1 unhealthy_for=5\.0s grace=5\.0s",
+    ):
+        next(pool.imap_unordered(_single_apply_task, [1]))
+
+    assert pool.stopped is True
+    assert fake_pool.results.calls == 3
+    assert fake_pool.terminate_calls == 1
+
+
+def test_imap_unordered_capacity_recovery_resets_grace(monkeypatch) -> None:
+    """A normal recycle may recover and later receive a fresh grace window."""
+
+    class _Process:
+        pid = 123
+
+        def __init__(self):
+            self._states = iter((False, False, True, False, False))
+
+        def is_alive(self) -> bool:
+            return next(self._states)
+
+    class _FiniteTimeouts:
+        calls = 0
+
+        def next(self, timeout):
+            assert timeout == 1.0
+            self.calls += 1
+            if self.calls <= 5:
+                raise mp.TimeoutError
+            raise StopIteration
+
+    class _FakePool:
+        def __init__(self):
+            self._pool = [_Process()]
+            self.results = _FiniteTimeouts()
+            self.terminate_calls = 0
+
+        def imap_unordered(self, _fn, _jobs, chunksize=1):
+            return self.results
+
+        def terminate(self):
+            self.terminate_calls += 1
+
+    # The two capacity-loss windows are each four seconds.  Without the full
+    # recovery resetting the first window, the second would fail immediately.
+    ticks = iter((0.0, 4.0, 10.0, 14.0))
+    monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+    fake_pool = _FakePool()
+    pool = WorkerPool(num_workers=1, capacity_recovery_grace_s=5.0)
+    pool._pool = fake_pool  # type: ignore[assignment]
+
+    assert list(pool.imap_unordered(_single_apply_task, [1])) == []
+    assert pool.stopped is False
+    assert fake_pool.results.calls == 6
+    assert fake_pool.terminate_calls == 0
+
+
+def test_remote_worker_recycling_releases_slot_and_rotates_generation() -> None:
+    """Remote services must recycle libcg workers without exhausting slots."""
+    remote = _remote_channel(1)
+    with WorkerPool(
+        num_workers=1,
+        recycle_games=1,
+        remote_channel=remote,
+    ) as pool:
+        assert pool.worker_capacity_healthy
+        assert len(pool.ready_worker_pids) == 1
+        rows = [pool.apply(_recycled_remote_slot_task, value) for value in range(4)]
+
+    pids = [pid for pid, _slot, _generation, _value in rows]
+    slots = [slot for _pid, slot, _generation, _value in rows]
+    generations = [generation for _pid, _slot, generation, _value in rows]
+    values = [value for _pid, _slot, _generation, value in rows]
+    assert len(set(pids)) == len(rows)
+    assert slots == [0, 0, 0, 0]
+    assert len(set(generations)) == len(rows)
+    assert values == [0, 1, 2, 3]
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGKILL"), reason="requires POSIX SIGKILL")
+def test_abrupt_remote_child_death_fails_closed_without_replacement_thrash() -> None:
+    """A crash bypasses Finalize, but must not lose a lease or spin forever."""
+    remote = _remote_channel(1)
+    pool = WorkerPool(
+        num_workers=1,
+        recycle_games=100,
+        remote_channel=remote,
+    )
+    pool.__enter__()
+    victim = pool.ready_worker_pids[0]
+    os.kill(victim, signal.SIGKILL)
+
+    deadline = time.monotonic() + 5.0
+    while not pool.stopped and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    try:
+        assert pool.stopped is True
+        assert pool.worker_capacity_healthy is False
+        # One replacement may begin before the 50ms parent reaper observes the
+        # dead owner. The shared failure latch prevents an unbounded spawn loop.
+        assert pool.initializer_attempts <= 3
+        with pytest.raises(WorkerPoolStopped):
+            pool.apply(_single_apply_task, 1)
+    finally:
+        pool.__exit__(None, None, None)

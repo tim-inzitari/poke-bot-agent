@@ -101,6 +101,66 @@ register(Archetype(
     slug_all=("dragapult",),
 ))
 
+# Preserve the row order used by every checkpoint created before the complete
+# ladder roster was registered.  Warm-start expansion copies these five rows
+# by name and moves the old final ``unknown`` row to the new final row.
+LEGACY_AUX_ARCHETYPE_IDS: tuple[str, ...] = tuple(ARCHETYPES)
+
+# Deck-agnostic core roster pinned by data/training_mixes/top_ladder.v1.json.
+# The three Dragapult-family entries above are already present; these entries
+# make every remaining ladder ID a real supervised auxiliary class instead of
+# silently masking 14/17 decks as unknown.
+_CORE_LADDER_GENERIC: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("alakazam", "Alakazam", ("alakazam",)),
+    ("crustle", "Crustle", ("crustle",)),
+    (
+        "marnie-s-grimmsnarl-ex",
+        "Marnie's Grimmsnarl ex",
+        ("marnie", "grimmsnarl"),
+    ),
+    ("garchomp", "Garchomp", ("garchomp",)),
+    ("cornerstone-ogerpon", "Cornerstone Ogerpon", ("cornerstone", "ogerpon")),
+    ("rockets-mewtwo", "Rocket's Mewtwo", ("rocket", "mewtwo")),
+    ("starmie", "Starmie", ("starmie",)),
+    ("archaludon-ex", "Archaludon ex", ("archaludon",)),
+    ("lopunny", "Lopunny", ("lopunny",)),
+    ("lucario", "Lucario", ("lucario",)),
+    ("gardevoir", "Gardevoir", ("gardevoir",)),
+    ("ns-zoroark", "N's Zoroark", ("zoroark",)),
+    ("raging-bolt", "Raging Bolt", ("raging", "bolt")),
+    ("festival-lead", "Festival Lead", ("festival", "lead")),
+)
+
+for _id, _name, _slug_all in _CORE_LADDER_GENERIC:
+    register(
+        Archetype(
+            id=_id,
+            name=_name,
+            description="Top-ladder deck family used by the deck-agnostic core.",
+            slug_all=_slug_all,
+        )
+    )
+
+CORE_LADDER_ARCHETYPE_IDS: tuple[str, ...] = (
+    "alakazam",
+    "crustle",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "cornerstone-ogerpon",
+    "rockets-mewtwo",
+    "starmie",
+    "hammer-pult",
+    "archaludon-ex",
+    "lopunny",
+    "lucario",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "gardevoir",
+    "ns-zoroark",
+    "raging-bolt",
+    "festival-lead",
+)
+
 
 def _counts(card_ids: Iterable[int]) -> Counter:
     return Counter(int(c) for c in card_ids)

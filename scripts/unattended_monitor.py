@@ -57,7 +57,18 @@ FATAL_PATTERNS = {
     ),
     "non_finite": re.compile(r"\b(?:nan|inf)\b|non-finite|loss explosion", re.I),
     "missing_opponent": re.compile(r"expected (?:baseline|opponent) unavailable", re.I),
-    "broken_pipe": re.compile(r"broken pipe|connection reset", re.I),
+    # A LAN worker closing a socket is an expected soft failure: the remote
+    # scheduler retries/falls back and logs phrases such as ``connection reset
+    # by peer`` or ``connection closed while reading frame``.  Matching those
+    # generic transport strings killed the healthy top-level trainer near the
+    # end of a wave.  Only an explicit fail-closed local pipe marker is fatal;
+    # an actually crashed trainer exits on its own and the launcher/systemd
+    # handle that exit without a monitor-induced false restart.
+    "broken_pipe": re.compile(
+        r"FAIL-CLOSED[^\n]*(?:broken pipe|connection reset)|"
+        r"(?:broken pipe|connection reset)[^\n]*FAIL-CLOSED",
+        re.I,
+    ),
     "fatal_gate": re.compile(r"FATAL HEALTH GATE|ABORT:", re.I),
     "hidden_info": re.compile(r"hidden-state leakage|info-set violation", re.I),
     "stale_generation": re.compile(r"stale.*generation|generation.*mismatch", re.I),
@@ -81,7 +92,8 @@ FATAL_PATTERNS = {
 OOM_PATTERN = re.compile(r"out of memory|CUDA OOM|OutOfMemory", re.I)
 PROGRESS_PATTERN = re.compile(
     r"iter(?:ation)?[ =:]+\d+|games?[ =:]+\d+|core search games|core bc games|"
-    r"core_deep_search|rl-train|PROMOTED|REJECTED|checkpoint",
+    r"core_deep_search|rl-train|PROMOTED|REJECTED|checkpoint|"
+    r"heartbeat|sps=|\bgame/s\b|pure_rl collect",
     re.I,
 )
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -129,10 +141,30 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Ignore pre-existing log content and monitor only new writes.",
     )
     p.add_argument(
+        "--start-offset",
+        type=int,
+        default=None,
+        help=(
+            "Start scanning at this byte offset. Launchers should capture the "
+            "append-only log size immediately before spawning the monitored "
+            "process so a restart cannot replay an old fatal line."
+        ),
+    )
+    p.add_argument(
         "--forbid-gpu-index",
         type=int,
         default=None,
         help="Request a safe stop if this process group allocates on the GPU.",
+    )
+    p.add_argument(
+        "--progress-status",
+        type=Path,
+        default=None,
+        help=(
+            "Optional sibling *.progress.status (tqdm / shard-mirror). "
+            "mtime or content changes count as progress so stall-guard is "
+            "not needed when bars live on stderr→progress.log."
+        ),
     )
     return p.parse_args(argv)
 
@@ -283,6 +315,45 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def _initial_log_offset(
+    log_path: Path,
+    *,
+    start_at_end: bool,
+    start_offset: int | None,
+) -> int:
+    """Resolve a restart-safe scan boundary for an append-only event log."""
+    current_size = log_path.stat().st_size if log_path.exists() else 0
+    if start_offset is not None:
+        return min(current_size, max(0, int(start_offset)))
+    return current_size if start_at_end else 0
+
+
+def _read_new_log_chunk(
+    log_path: Path,
+    *,
+    offset: int,
+    current_size: int,
+) -> tuple[str, int, bool]:
+    """Read unseen append-only data without replaying a truncated tail.
+
+    This monitor's own inode-preserving trim updates its cursor explicitly.  A
+    smaller file here therefore means an out-of-band truncation/trim.  The old
+    implementation reset to byte zero and could replay a retained FAIL-CLOSED
+    line, recreating the same restart loop that the per-attempt start offset is
+    meant to prevent.  Resynchronise at the new end instead.
+    """
+    if current_size < offset:
+        return "", current_size, True
+    if current_size == offset:
+        return "", offset, False
+    try:
+        with log_path.open("r", encoding="utf-8", errors="replace") as fh:
+            fh.seek(offset)
+            return fh.read(), fh.tell(), False
+    except OSError:
+        return "", offset, False
+
+
 def _request_stop(pid: int, process_group: bool, reason: str) -> None:
     print(f"MONITOR_ALERT stop_requested reason={reason}", flush=True)
     try:
@@ -317,10 +388,10 @@ def main() -> int:
     args.run_dir.mkdir(parents=True, exist_ok=True)
     state_path = args.run_dir / "monitor_state.json"
     alert_path = args.run_dir / "MONITOR_STOP_REQUESTED.json"
-    offset = (
-        args.log.stat().st_size
-        if args.start_at_end and args.log.exists()
-        else 0
+    offset = _initial_log_offset(
+        args.log,
+        start_at_end=bool(args.start_at_end),
+        start_offset=args.start_offset,
     )
     oom_count = 0
     last_progress = time.monotonic()
@@ -331,6 +402,13 @@ def main() -> int:
     last_metric_line = ""
     last_report = 0.0
     trim_count = 0
+    cursor_resync_count = 0
+    progress_status = (
+        args.progress_status.resolve()
+        if args.progress_status is not None
+        else None
+    )
+    last_status_key: tuple[float, int, str] | None = None
 
     while True:
         now = time.time()
@@ -341,17 +419,18 @@ def main() -> int:
         except OSError:
             size = 0
             log_age = float("inf")
-        if size < offset:
-            offset = 0
-        chunk = ""
-        if size > offset:
-            try:
-                with args.log.open("r", encoding="utf-8", errors="replace") as fh:
-                    fh.seek(offset)
-                    chunk = fh.read()
-                    offset = fh.tell()
-            except OSError:
-                chunk = ""
+        chunk, offset, cursor_resynced = _read_new_log_chunk(
+            args.log,
+            offset=offset,
+            current_size=size,
+        )
+        if cursor_resynced:
+            cursor_resync_count += 1
+            print(
+                "MONITOR_LOG_CURSOR resynchronised_after_shrink "
+                f"new_offset={offset}",
+                flush=True,
+            )
 
         clean_lines = [
             ANSI_PATTERN.sub("", line).strip()
@@ -368,6 +447,21 @@ def main() -> int:
             last_gate_line = gate_lines[-1]
         if metric_lines:
             last_metric_line = metric_lines[-1]
+        # tqdm bars / shard-mirror live on *.progress.status, not the event log.
+        if progress_status is not None and progress_status.is_file():
+            try:
+                st = progress_status.stat()
+                status_line = progress_status.read_text(
+                    encoding="utf-8", errors="replace"
+                ).strip()
+                status_key = (st.st_mtime, st.st_size, status_line[-240:])
+            except OSError:
+                status_key = None
+            if status_key is not None and status_key != last_status_key:
+                last_status_key = status_key
+                last_progress = time.monotonic()
+                if status_key[2]:
+                    last_progress_line = status_key[2]
         log_growth = max(0, size - max(last_size, 0))
         fatal = [
             name for name, pattern in FATAL_PATTERNS.items() if pattern.search(chunk)
@@ -434,11 +528,13 @@ def main() -> int:
                 "trim_threshold_bytes": threshold_bytes,
                 "trim_keep_bytes": keep_bytes,
                 "trim_count": trim_count,
+                "cursor_resync_count": cursor_resync_count,
             },
             "progress": {
                 "last_line": last_progress_line,
                 "last_gate": last_gate_line,
                 "last_metrics": last_metric_line,
+                "status_path": str(progress_status) if progress_status else "",
             },
             "oom_count": oom_count,
             "fatal_signals": fatal,

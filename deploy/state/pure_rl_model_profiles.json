@@ -1,0 +1,60 @@
+{
+  "schema": "poke_bot.pure_rl_model_profiles/v1",
+  "profiles": [
+    {
+      "id": "state_evaluator_v1",
+      "status": "superseded_by_full_game_temporal_v1",
+      "trainable_parameters": 1489505,
+      "parameter_verification": {
+        "method": "checkpoint_model_state_and_runtime_model_count",
+        "checkpoint_digest": "sha256:2df80140df0413d02c4b367985fbd0888c6195f6cfca8fbe7cb446adc48de7b7"
+      },
+      "profile": {
+        "attack_embed_dim": 48,
+        "card_embed_dim": 48,
+        "d_model": 96,
+        "decision_context": "stateless",
+        "dense_card2vec": true,
+        "dropout": 0.05,
+        "ff_dim": 384,
+        "history_action_scale": 0.1,
+        "kv_cache": false,
+        "max_context": 320,
+        "n_heads": 8,
+        "option_decoder_layers": 4,
+        "spatial_layers": 4,
+        "temporal_layers": 0,
+        "temporal_pos": "rope"
+      }
+    },
+    {
+      "id": "full_game_temporal_v1",
+      "status": "active_production",
+      "trainable_parameters": 1601345,
+      "sequence_scope": "one acting player's ordered within-game history, newest 320-step causal suffix",
+      "max_engine_steps": 4000,
+      "activation_policy": "after four additional completed stateless iterations, warm-start every existing head and run 25 iterations at 8192 games per iteration",
+      "parameter_verification": {
+        "method": "runtime_model_count_and_first_timestep_warmstart_parity",
+        "first_timestep_max_abs": 0.0
+      },
+      "profile": {
+        "attack_embed_dim": 48,
+        "card_embed_dim": 48,
+        "d_model": 96,
+        "decision_context": "history",
+        "dense_card2vec": true,
+        "dropout": 0.05,
+        "ff_dim": 384,
+        "history_action_scale": 0.1,
+        "kv_cache": true,
+        "max_context": 320,
+        "n_heads": 8,
+        "option_decoder_layers": 4,
+        "spatial_layers": 4,
+        "temporal_layers": 1,
+        "temporal_pos": "rope"
+      }
+    }
+  ]
+}

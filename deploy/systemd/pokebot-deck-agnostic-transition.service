@@ -1,0 +1,22 @@
+[Unit]
+Description=Freeze Deck Agnostic Core at 40 percent or 10-iteration plateau and launch Alakazam
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/watch_deck_agnostic_core_transition.py --source-run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_core_baseline50_v7_20260720 --source-unit pokebot-pure-rl-continuous-rehearsal.service --bootstrap-unit pokebot-pure-rl-alakazam-bootstrap.service --specialist-unit pokebot-pure-rl-alakazam.service --specialist-run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_public64k_v1_20260720 --specialist-deployment-root /home/inzi/poke-bot-agent-deployments/pure-rl-continuous-rehearsal-v1 --filtered-manifest /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json --bootstrap-ready /home/inzi/poke-bot-agent/outputs/state/alakazam-expert-bootstrap-ready.json --handoff-ready /home/inzi/poke-bot-agent/outputs/state/alakazam-specialist-build-ready.json --registry-root /home/inzi/poke-bot-model-registry --status /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-transition.json --start-iteration 0 --threshold-wr 0.40 --plateau-patience 10 --force-after-iteration 3 --required-heldout-games 1000 --min-expert-decisions 100000 --poll-seconds 15
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=30
+MemoryMax=1G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/deck_agnostic_core_transition.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/deck_agnostic_core_transition.log
+
+[Install]
+WantedBy=default.target

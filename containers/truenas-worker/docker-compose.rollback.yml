@@ -1,0 +1,7 @@
+# Emergency image-only rollback. Apply this last, after the selected base and
+# optional production override. Never rebuild or retag safety-20260717: it is
+# the preserved pre-capacity-grace artifact.
+
+services:
+  worker:
+    image: poke-bot-truenas-worker:safety-20260717

@@ -41,10 +41,13 @@ def test_write_read_roundtrip(tmp_path: Path) -> None:
     assert loaded.reason == "unit-test"
 
 
-def test_clamp_leaf_servers_not_above_workers() -> None:
+def test_clamp_leaf_servers_independent_of_workers() -> None:
+    """Leaf farms may exceed CPU worker counts (multi-env + shared leaf RPC)."""
+    from poke_bot.live_pool import _MAX_LEAF_SERVERS
+
     plan = LivePoolPlan(seq=1, workers=4, leaf_servers=99).clamped()
     assert plan.workers == 4
-    assert plan.leaf_servers == 4
+    assert plan.leaf_servers == _MAX_LEAF_SERVERS
 
 
 def test_clamp_hard_caps() -> None:
@@ -54,6 +57,62 @@ def test_clamp_hard_caps() -> None:
     assert plan.workers == 64
     assert plan.leaf_servers == 8
     assert plan.promotion_workers == 64
+
+
+def test_full_hw_leaf_gpu0_hard_capped() -> None:
+    """3080 Ti leaf count cannot exceed the conservative 12GB cap."""
+    from poke_bot.live_pool import _MAX_LEAF_GPU0
+
+    plan = LivePoolPlan(
+        seq=2, workers=96, leaf_servers=42, leaf_gpu0=18, leaf_gpu1=24
+    ).clamped()
+    assert plan.leaf_gpu0 == _MAX_LEAF_GPU0
+    assert plan.leaf_gpu0 <= 12
+    assert plan.leaf_gpu1 == 24
+    assert plan.leaf_servers == plan.leaf_gpu0 + plan.leaf_gpu1
+
+
+def test_max_ceilings_exceed_steady_defaults(monkeypatch) -> None:
+    """Headroom on workers + Blackwell only; 3080 Ti has no leaf headroom."""
+    from poke_bot.live_pool import (
+        _MAX_LEAF_GPU0,
+        _MAX_LEAF_GPU1,
+        _MAX_LEAF_SERVERS,
+        _MAX_WORKERS,
+    )
+    from poke_bot.pure_rl.hardware import full_hardware_profile
+    from poke_bot.pure_rl.mid_iter_scheduler import MidIterScheduler
+
+    for key in (
+        "PURE_RL_REBALANCE_MAX_WORKERS",
+        "PURE_RL_SIM_WORKERS",
+        "PURE_RL_LEAF_GPU0_REPLICAS",
+        "PURE_RL_LEAF_GPU1_REPLICAS",
+        "POKEBOT_SIM_WORKERS",
+        "POKEBOT_LEAF_GPU0_REPLICAS",
+        "POKEBOT_LEAF_GPU1_REPLICAS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    hw = full_hardware_profile()
+    sched = MidIterScheduler.from_env(baseline_workers=40)
+    assert _MAX_WORKERS >= 160
+    assert _MAX_LEAF_GPU0 <= 12
+    assert _MAX_LEAF_GPU1 >= 48
+    assert _MAX_LEAF_SERVERS >= _MAX_LEAF_GPU0 + _MAX_LEAF_GPU1
+    assert sched.max_workers >= 160
+    assert sched.target_workers < sched.max_workers
+    assert hw.sim_workers < _MAX_WORKERS
+    assert hw.leaf_gpu0_replicas <= _MAX_LEAF_GPU0
+    assert hw.leaf_gpu1_replicas < _MAX_LEAF_GPU1  # BW has headroom
+    # Fat plan: GPU0 crushed to cap; Blackwell keeps headroom.
+    fat = LivePoolPlan(
+        seq=9, workers=150, leaf_servers=72, leaf_gpu0=28, leaf_gpu1=44
+    ).clamped()
+    assert fat.workers == 150
+    assert fat.leaf_gpu0 == _MAX_LEAF_GPU0
+    assert fat.leaf_gpu1 == 44
+    assert fat.leaf_servers == fat.leaf_gpu0 + fat.leaf_gpu1
 
 
 def test_should_apply_plan_seq_and_apply_field() -> None:

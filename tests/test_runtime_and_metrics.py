@@ -135,6 +135,45 @@ def test_remote_response_generation_prevents_stale_slot_routing(monkeypatch) -> 
     assert telemetry["inference_batch_size_mean"] == 12
 
 
+def test_remote_response_reads_live_checkpoint_expectation_proxy(monkeypatch) -> None:
+    monkeypatch.setattr(batched_infer, "featurize_packets", _fake_features)
+    alive = threading.Event()
+    alive.set()
+    req = queue.Queue()
+    resp = queue.Queue()
+    expected = {"digest": "sha256:first", "version": 7, "pinned": []}
+    for rid, digest, version, value in (
+        (1, "sha256:first", 7, 0.1),
+        (2, "sha256:second", 8, 0.2),
+    ):
+        resp.put(
+            {
+                "generation": 3,
+                "rid": rid,
+                "ok": True,
+                "values": [(value, [1.0])],
+                "version": version,
+                "checkpoint_digest": digest,
+            }
+        )
+    client = RemoteLeafClient(
+        0,
+        req,
+        resp,
+        generation=3,
+        alive_evt=alive,
+        expected_digest=expected,
+        expected_version=expected,
+        timeout_s=0.1,
+    )
+    packet = LeafPacket(obs=object(), your_deck=[1] * 60, root_seat=0)
+    assert client([packet])[0].value == pytest.approx(0.1)
+
+    expected["digest"] = "sha256:second"
+    expected["version"] = 8
+    assert client([packet])[0].value == pytest.approx(0.2)
+
+
 def test_expected_field_completeness_and_greedy_isolation() -> None:
     report = FieldReport(
         gate_threshold=0.0,

@@ -13,6 +13,7 @@ cleanly under spawn.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,17 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
     GPU leaves for same-checkpoint games (``gpu-leaf-both``); recent-self
     opponents stay CPU-local on the opp seat (``gpu-leaf-us-only``).
     """
+    # Exact hidden-zone targets require the explicit private training engine.
+    # Route even a single game through the multi-handle adapter when that ABI
+    # is configured; hosts using the official engine continue normally and
+    # their unavailable belief labels are masked during training.
+    if bool(job.get("collect_privileged_belief", False)) and os.environ.get(
+        "POKEBOT_LIBCG_PATH", ""
+    ).strip():
+        from poke_bot.pure_rl.multi_env_self_play import run_self_play_multi
+
+        return run_self_play_multi([job])[0]
+
     import json
     import random
     import signal
@@ -114,6 +126,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             "cancelled": False,
             "training_eligible": True,
             "record_json": None,
+            "record_jsons": None,
             "error": None,
             "self_play": True,
         }
@@ -127,6 +140,11 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
         device = torch.device(job.get("device", "cpu"))
         us = str(job["checkpoint"])
         them = str(job.get("opponent_checkpoint") or us)
+        collect_both = bool(
+            job.get("training_eligible", True)
+            and job.get("collect_both_seats", False)
+            and them == us
+        )
 
         # Prefer coalesced GPU leaf servers when WorkerPool registered a channel
         # (same pattern as round-robin ``_worker_play``). Official libcg still
@@ -191,7 +209,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             deck=list(job.get("opp_deck") or deck),
             use_mcts=False,
             max_sims=0,
-            collect_targets=False,
+            collect_targets=collect_both,
             sample_actions=sample,
             action_temperature=temp,
             rng=random.Random(seed ^ 0xBEEF),
@@ -248,6 +266,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
         winner = int(result["winner"])
         value = 0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
         record = None
+        records = []
         if job.get("training_eligible", True) and us_agent.targets:
             rr = load_round_robin_module()
             record = rr._build_selfplay_record(
@@ -255,7 +274,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
                 our_deck=deck,
                 our_seat=our_seat,
                 value=value,
-                opp_id=opp_id,
+                opp_id=str(job.get("opp_archetype") or opp_id),
                 archetype=str(job.get("archetype") or "core"),
                 seed=seed,
                 target_provenance={
@@ -265,6 +284,34 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
                     "soft_policy_targets": False,
                 },
             )
+            if record is not None:
+                records.append(record)
+        if collect_both and them_agent.targets:
+            rr = load_round_robin_module()
+            opp_deck = list(job.get("opp_deck") or deck)
+            opp_value = 0.0 if winner == 2 else -value
+            opp_record = rr._build_selfplay_record(
+                them_agent.targets,
+                our_deck=opp_deck,
+                our_seat=1 - our_seat,
+                value=opp_value,
+                opp_id=f"self:{Path(us).name}",
+                archetype=str(
+                    job.get("opp_archetype")
+                    or job.get("archetype")
+                    or "core"
+                ),
+                seed=seed ^ 0x51DE,
+                target_provenance={
+                    **dict(job.get("target_provenance") or {}),
+                    "pure_rl": True,
+                    "self_play": True,
+                    "same_policy_second_seat": True,
+                    "soft_policy_targets": False,
+                },
+            )
+            if opp_record is not None:
+                records.append(opp_record)
         return {
             "job_index": int(job.get("job_index", 0)),
             "opponent_id": opp_id,
@@ -273,7 +320,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             "value": value,
             "steps": int(result.get("steps", 0)),
             "wall_s": wall_s,
-            "n_decisions": len(us_agent.targets),
+            "n_decisions": sum(len(r.get("steps") or []) for r in records),
             "baseline_failed": False,
             "our_failed": False,
             "resource_error": False,
@@ -285,6 +332,9 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             "record_json": (
                 json.dumps(record, separators=(",", ":")) if record else None
             ),
+            "record_jsons": [
+                json.dumps(row, separators=(",", ":")) for row in records
+            ],
             "error": None,
         }
     except BaseException as exc:  # noqa: BLE001

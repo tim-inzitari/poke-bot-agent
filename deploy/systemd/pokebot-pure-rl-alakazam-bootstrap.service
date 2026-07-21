@@ -1,0 +1,44 @@
+[Unit]
+Description=Alakazam-only device-resident expert warm start on Blackwell at core gate
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=1
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+Environment=PURE_RL_D_MODEL=96
+Environment=PURE_RL_SPATIAL_LAYERS=4
+Environment=PURE_RL_TEMPORAL_LAYERS=0
+Environment=PURE_RL_OPTION_DECODER_LAYERS=4
+Environment=PURE_RL_N_HEADS=8
+Environment=PURE_RL_FF_DIM=384
+Environment=PURE_RL_MAX_CONTEXT=320
+Environment=PURE_RL_TEMPORAL_POS=rope
+Environment=PURE_RL_DECISION_CONTEXT=stateless
+Environment=PURE_RL_HISTORY_ACTION_SCALE=0.1
+Environment=PURE_RL_CARD_EMBED_DIM=48
+Environment=PURE_RL_ATTACK_EMBED_DIM=48
+Environment=PURE_RL_DENSE_CARD2VEC=1
+Environment=PURE_RL_DROPOUT=0.05
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-model-registry/deck_agnostic_core/model.pt
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_alakazam_expert_bootstrap.py --filtered-manifest /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json --core-family /home/inzi/poke-bot-model-registry/deck_agnostic_core --registry-root /home/inzi/poke-bot-model-registry --ready /home/inzi/poke-bot-agent/outputs/state/alakazam-expert-bootstrap-ready.json --run-name alakazam_expert_bootstrap_v1_20260720 --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --epochs 25 --patience 5 --min-decisions 100000 --device-resident
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=14400
+TimeoutStopSec=60
+CPUWeight=100
+IOWeight=100
+MemoryHigh=80G
+MemoryMax=96G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/alakazam_expert_bootstrap.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/alakazam_expert_bootstrap.log

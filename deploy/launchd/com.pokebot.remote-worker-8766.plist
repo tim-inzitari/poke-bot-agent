@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pokebot.remote-worker-8766</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__POKEBOT_BERT_REPO__/scripts/run_bert_remote_worker_supervised.sh</string>
+    <string>__POKEBOT_BERT_REPO__</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__POKEBOT_BERT_REPO__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>REMOTE_REQUEST_TIMEOUT_S</key>
+    <string>120</string>
+    <key>POKEBOT_REMOTE_REQUEST_TIMEOUT_S</key>
+    <string>120</string>
+    <key>POKEBOT_REMOTE_WORKER_SAFETY_VERSION</key>
+    <string>20260717</string>
+    <key>PYTORCH_MPS_HIGH_WATERMARK_RATIO</key>
+    <string>0.25</string>
+    <key>PYTORCH_MPS_LOW_WATERMARK_RATIO</key>
+    <string>0.20</string>
+    <key>POKEBOT_MPS_EMPTY_CACHE_EVERY_BATCHES</key>
+    <string>1</string>
+    <key>POKEBOT_BERT_MAX_GROUP_RSS_MIB</key>
+    <string>18432</string>
+    <key>POKEBOT_BERT_MIN_FREE_PERCENT</key>
+    <string>30</string>
+    <key>POKEBOT_BERT_MAX_GROUP_PROCESSES</key>
+    <string>16</string>
+    <key>POKEBOT_BERT_RESTART_WINDOW_S</key>
+    <string>3600</string>
+    <key>POKEBOT_BERT_RESTART_LIMIT</key>
+    <string>3</string>
+    <key>POKEBOT_WORKER_RECYCLE_GAMES</key>
+    <string>32</string>
+    <key>WORKER_RECYCLE_GAMES</key>
+    <string>32</string>
+    <key>POKEBOT_REMOTE_MAX_CONNECTIONS</key>
+    <string>8</string>
+    <key>POKEBOT_REMOTE_TREE_RSS_LIMIT_GB</key>
+    <string>18</string>
+    <key>POKEBOT_REMOTE_MIN_FREE_RAM_GB</key>
+    <string>20</string>
+    <key>POKEBOT_REMOTE_MAX_SERVICE_JOBS</key>
+    <string>0</string>
+    <key>POKEBOT_REMOTE_WATCHDOG_INTERVAL_S</key>
+    <string>5</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <!-- A non-zero crash/watchdog exit is retried.  The wrapper exits zero
+         when its bounded restart circuit opens, leaving the job stopped. -->
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>120</integer>
+  <key>ProcessType</key>
+  <string>Standard</string>
+  <key>ExitTimeOut</key>
+  <integer>30</integer>
+  <key>AbandonProcessGroup</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>__POKEBOT_BERT_REPO__/outputs/logs/remote_worker_bert.log</string>
+  <key>StandardErrorPath</key>
+  <string>__POKEBOT_BERT_REPO__/outputs/logs/remote_worker_bert.log</string>
+</dict>
+</plist>

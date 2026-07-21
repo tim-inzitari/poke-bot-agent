@@ -1063,6 +1063,7 @@ def _build_selfplay_record(
                 "observation": obs,
                 "action": action,
                 "env_step": i,
+                "aux_labels": dict(t.get("aux_labels") or {}),
             }
         )
         factorized_policy_targets.append(rows)

@@ -9,7 +9,8 @@ model phase will consume:
     self/opp bench x8, self/opp active, self/opp player summary, hand, deck,
     stadium, global.
   - :func:`build_option_tokens` -> per-candidate-action tokens keyed by
-    OptionType / attackId / cardId / SelectContext.
+    OptionType / attackId / cardId / SelectContext plus explicit source/target
+    owner, area, and slot bindings.
   - :func:`enumerate_action_combos` -> the multi-select combos to score.
 
 Both builders return a :class:`SparseVector` (index/value/offset lists), which
@@ -43,13 +44,37 @@ DECODER_MAIN_FEATURE: int = 8
 #: none / END / YES / NO / 5x SpecialCondition / 5x Number bucket).
 DECODER_ATTACK_OFFSET: int = 14
 
+#: Option bindings are encoded after the legacy card/context blocks.  Every
+#: role-specific (owner, area, index) tuple gets one composite row.  A composite
+#: row is necessary: separate additive marginals can collapse two multi-select
+#: actions that pair the same owners/areas/indices differently.
+DECODER_BINDING_ROLE_COUNT: int = 4
+DECODER_BINDING_OWNER_COUNT: int = 3  # acting seat / opponent / unspecified
+DECODER_BINDING_AREA_COUNT: int = 13  # unknown=0, AreaType values are 1..12
+DECODER_BINDING_INDEX_COUNT: int = 65  # unknown=0, exact engine indices 0..63
+DECODER_BINDING_TUPLES_PER_ROLE: int = (
+    DECODER_BINDING_OWNER_COUNT
+    * DECODER_BINDING_AREA_COUNT
+    * DECODER_BINDING_INDEX_COUNT
+)
+DECODER_BINDING_VOCAB_SIZE: int = (
+    DECODER_BINDING_ROLE_COUNT * DECODER_BINDING_TUPLES_PER_ROLE
+)
+
+# Binding roles.  These are plain ints so importing this module does not force
+# the optional competition ``cg`` runtime to load.
+DECODER_BINDING_SOURCE: int = 0
+DECODER_BINDING_TARGET: int = 1
+DECODER_BINDING_TOOL: int = 2
+DECODER_BINDING_ENERGY: int = 3
+
 #: Hard materialization ceiling. Trusted callers fail if the complete ordered
 #: action space exceeds this bound; they never train/evaluate on a truncated set.
 MAX_ACTION_COMBOS: int = 4096
 
 #: Bump whenever feature indices or action enumeration semantics change. It is
 #: included in dataset cache keys so incompatible pickles are never reused.
-FEATURE_SCHEMA_VERSION: int = 4
+FEATURE_SCHEMA_VERSION: int = 5
 
 
 class ActionSpaceTooLarge(RuntimeError):
@@ -212,18 +237,29 @@ def encoder_vocab_size(headroom: int = 512) -> int:
     return span + headroom
 
 
-def decoder_vocab_size() -> int:
-    """EmbeddingBag vocab needed by :func:`build_option_tokens`.
-
-    14 typed flags + attack ids + (1 + 8 main features + 49 SelectContexts)
-    card-id blocks. SelectContext currently tops out at 48
-    (RECOVER_SPECIAL_CONDITION), so 49 contexts are reserved.
-    """
+def _decoder_legacy_vocab_size() -> int:
+    """End of the v4 decoder layout (kept stable for append-only migration)."""
     cc = card_vocab_size()
     ac = attack_vocab_size()
     card_offset = DECODER_ATTACK_OFFSET + ac
     n_contexts = int(cg_env.SelectContext.RECOVER_SPECIAL_CONDITION) + 1
     return card_offset + (1 + DECODER_MAIN_FEATURE + n_contexts) * cc
+
+
+def decoder_binding_offset() -> int:
+    """First decoder feature reserved for explicit option bindings."""
+    return _decoder_legacy_vocab_size()
+
+
+def decoder_vocab_size() -> int:
+    """EmbeddingBag vocab needed by :func:`build_option_tokens`.
+
+    14 typed flags + attack ids + (1 + 8 main features + 49 SelectContexts)
+    card-id blocks, followed by compact role-specific owner/area/index binding
+    features. SelectContext currently tops out at 48
+    (RECOVER_SPECIAL_CONDITION), so 49 contexts are reserved.
+    """
+    return decoder_binding_offset() + DECODER_BINDING_VOCAB_SIZE
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +474,87 @@ def _decoder_card(
         _decoder_card_id(sv, context, card.id, cc, weight)
 
 
+def _decoder_binding(
+    sv: SparseVector,
+    role: int,
+    *,
+    player_index: Optional[int],
+    area,
+    index: Optional[int],
+    your_index: int,
+    weight: float = 1.0,
+) -> None:
+    """Add an exact, role-specific (owner, area, index) option binding.
+
+    The engine has two seats, AreaType values 1..12, and at most 60 physical
+    cards.  Invalid values fail closed instead of folding into an overflow
+    bucket, because folding would make two legal bindings indistinguishable.
+    """
+    role = int(role)
+    if not 0 <= role < DECODER_BINDING_ROLE_COUNT:
+        raise ValueError(f"invalid decoder binding role: {role}")
+
+    if player_index is None:
+        owner_code = 2
+    elif int(player_index) == int(your_index):
+        owner_code = 0
+    elif int(player_index) == 1 - int(your_index):
+        owner_code = 1
+    else:
+        raise ValueError(f"invalid option playerIndex: {player_index}")
+
+    area_code = 0 if area is None else int(area)
+    if not 0 <= area_code < DECODER_BINDING_AREA_COUNT:
+        raise ValueError(f"option area is outside the feature schema: {area_code}")
+
+    if index is None:
+        index_code = 0
+    else:
+        raw_index = int(index)
+        if not 0 <= raw_index < DECODER_BINDING_INDEX_COUNT - 1:
+            raise ValueError(
+                "option index is outside the exact feature schema: "
+                f"{raw_index} (expected 0..{DECODER_BINDING_INDEX_COUNT - 2})"
+            )
+        index_code = raw_index + 1
+
+    tuple_index = (
+        (
+            role * DECODER_BINDING_OWNER_COUNT
+            + owner_code
+        )
+        * DECODER_BINDING_AREA_COUNT
+        + area_code
+    )
+    tuple_index = tuple_index * DECODER_BINDING_INDEX_COUNT + index_code
+    sv.add(decoder_binding_offset() + tuple_index, weight)
+
+
+def _decoder_binding_if_present(
+    sv: SparseVector,
+    role: int,
+    option,
+    *,
+    your_index: int,
+    weight: float,
+) -> None:
+    """Encode optional source fields used by SKILL and future option types."""
+    area = getattr(option, "area", None)
+    index = getattr(option, "index", None)
+    player_index = getattr(option, "playerIndex", None)
+    if area is None and index is None and player_index is None:
+        return
+    _decoder_binding(
+        sv,
+        role,
+        player_index=player_index,
+        area=area,
+        index=index,
+        your_index=your_index,
+        weight=weight,
+    )
+
+
 def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
     """Build one option token per candidate action combo.
 
@@ -479,28 +596,170 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                 sv.add(DECODER_ATTACK_OFFSET + o.attackId, weight)
             elif t == OptionType.PLAY:
                 _decoder_main(sv, 0, ps.hand[o.index], cc, weight)
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=your_index,
+                    area=cg_env.AreaType.HAND,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.ATTACH:
                 _decoder_main(sv, 1, get_card(obs, o.area, o.index, your_index), cc, weight)
-                _decoder_main(sv, 2, get_card(obs, o.inPlayArea, o.inPlayIndex, your_index), cc, weight)
+                _decoder_main(
+                    sv,
+                    2,
+                    get_card(obs, o.inPlayArea, o.inPlayIndex, your_index),
+                    cc,
+                    weight,
+                )
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=your_index,
+                    area=o.area,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_TARGET,
+                    player_index=your_index,
+                    area=o.inPlayArea,
+                    index=o.inPlayIndex,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.EVOLVE:
                 _decoder_main(sv, 3, get_card(obs, o.area, o.index, your_index), cc, weight)
-                _decoder_main(sv, 4, get_card(obs, o.inPlayArea, o.inPlayIndex, your_index), cc, weight)
+                _decoder_main(
+                    sv,
+                    4,
+                    get_card(obs, o.inPlayArea, o.inPlayIndex, your_index),
+                    cc,
+                    weight,
+                )
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=your_index,
+                    area=o.area,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_TARGET,
+                    player_index=your_index,
+                    area=o.inPlayArea,
+                    index=o.inPlayIndex,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.ABILITY:
                 _decoder_main(sv, 5, get_card(obs, o.area, o.index, your_index), cc, weight)
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=your_index,
+                    area=o.area,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.DISCARD:
                 _decoder_main(sv, 6, get_card(obs, o.area, o.index, your_index), cc, weight)
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=your_index,
+                    area=o.area,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.RETREAT:
                 _decoder_main(sv, 7, ps.active[0], cc, weight)
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=your_index,
+                    area=cg_env.AreaType.ACTIVE,
+                    index=0,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.CARD:
-                _decoder_card(sv, context, get_card(obs, o.area, o.index, o.playerIndex), cc, weight)
+                _decoder_card(
+                    sv,
+                    context,
+                    get_card(obs, o.area, o.index, o.playerIndex),
+                    cc,
+                    weight,
+                )
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=o.playerIndex,
+                    area=o.area,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.TOOL_CARD:
                 card = get_card(obs, o.area, o.index, o.playerIndex)
                 _decoder_card(sv, context, card.tools[o.toolIndex], cc, weight)
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=o.playerIndex,
+                    area=o.area,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_TOOL,
+                    player_index=o.playerIndex,
+                    area=cg_env.AreaType.TOOL,
+                    index=o.toolIndex,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t in (OptionType.ENERGY_CARD, OptionType.ENERGY):
                 card = get_card(obs, o.area, o.index, o.playerIndex)
                 _decoder_card(sv, context, card.energyCards[o.energyIndex], cc, weight)
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    player_index=o.playerIndex,
+                    area=o.area,
+                    index=o.index,
+                    your_index=your_index,
+                    weight=weight,
+                )
+                _decoder_binding(
+                    sv,
+                    DECODER_BINDING_ENERGY,
+                    player_index=o.playerIndex,
+                    area=cg_env.AreaType.ENERGY,
+                    index=o.energyIndex,
+                    your_index=your_index,
+                    weight=weight,
+                )
             elif t == OptionType.SKILL:
                 _decoder_card_id(sv, context, o.cardId, cc, weight)
+                _decoder_binding_if_present(
+                    sv,
+                    DECODER_BINDING_SOURCE,
+                    o,
+                    your_index=your_index,
+                    weight=weight,
+                )
     return sv
 
 

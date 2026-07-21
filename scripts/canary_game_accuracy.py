@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -27,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
         "--cg-parent",
         type=Path,
         default=Path(
-            __import__("os").environ.get("CG_LIB_PATH", str(DEFAULT_CG / "cg"))
+            os.environ.get("CG_LIB_PATH", str(DEFAULT_CG / "cg"))
         ).resolve().parent
         if (DEFAULT_CG / "cg").is_dir()
         else DEFAULT_CG,
@@ -35,6 +36,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--deck-csv", type=Path, default=DEFAULT_DECK)
     p.add_argument("--num-envs", type=int, default=4)
+    p.add_argument(
+        "--expected-libcg-sha256",
+        default=os.environ.get("POKEBOT_EXPECTED_LIBCG_SHA256", ""),
+        help="Fail unless the loaded original libcg has this SHA-256",
+    )
     p.add_argument("--json-out", type=Path, default=None)
     args = p.parse_args(argv)
 
@@ -47,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         cg_parent / "cg" / "libcg.dylib"
     ).is_file():
         # Also accept CG_LIB_PATH pointing at cg/
-        alt = Path(__import__("os").environ.get("CG_LIB_PATH", ""))
+        alt = Path(os.environ.get("CG_LIB_PATH", ""))
         if alt.is_dir() and (
             (alt / "libcg.so").is_file() or (alt / "libcg.dylib").is_file()
         ):
@@ -70,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         cg_parent=cg_parent,
         deck_csv=deck,
         num_envs=max(2, int(args.num_envs)),
+        expected_libcg_sha256=args.expected_libcg_sha256 or None,
     )
     print(json.dumps(report.to_dict(), indent=2))
     if args.json_out is not None:

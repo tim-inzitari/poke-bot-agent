@@ -9,6 +9,7 @@ See ``outputs/notes/gpu_batched_selfplay.md``.
 
 from __future__ import annotations
 
+import gc
 import math
 import os
 import queue as _queue
@@ -23,6 +24,43 @@ import torch.nn.functional as F
 
 from . import cg_env, config, features
 from .model import TemporalCabtTransformer
+
+
+def _mps_cache_release_interval() -> int:
+    """Return how often a long-lived MPS leaf releases its allocator cache.
+
+    MPSGraph specializes operations for the input shape.  Self-play changes
+    history length and legal-option count almost every move, so a persistent
+    leaf otherwise retains a large high-water allocation while it encounters
+    those shapes.  Releasing after every batch is the conservative default for
+    the shared-memory Macs.  ``0`` remains an explicit performance opt-out.
+    """
+
+    raw = os.environ.get("POKEBOT_MPS_EMPTY_CACHE_EVERY_BATCHES", "1")
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _release_mps_cache(*, collect: bool = False) -> None:
+    """Best-effort release of memory owned by a long-lived MPS leaf.
+
+    Synchronization must precede ``empty_cache`` so allocations still used by
+    queued kernels are eligible for release.  Cleanup must never turn a
+    successful inference or checkpoint reload into a server failure.
+    """
+
+    if collect:
+        gc.collect()
+    try:
+        torch.mps.synchronize()
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.mps.empty_cache()
+    except (AttributeError, RuntimeError):
+        pass
 
 
 def _policy_probs(logits: torch.Tensor) -> list[float]:
@@ -399,10 +437,13 @@ def set_remote_leaf_channel(
     *,
     generation: int = 0,
     alive_evt=None,
-    expected_digest: Optional[str] = None,
-    expected_version: Optional[int] = None,
+    expected_digest: object = None,
+    expected_version: object = None,
     timeout_s: Optional[float] = None,
     stop_event=None,
+    req_qs=None,
+    leaf_devices=None,
+    alive_evts=None,
 ) -> None:
     """Register this worker's slot + queues (called once in the pool init)."""
     _REMOTE.clear()
@@ -419,6 +460,11 @@ def set_remote_leaf_channel(
         if timeout_s is not None
         else config.SEARCH.remote_request_timeout_s
     )
+    # Optional multi-server fan-out: least-queue pick at request time so idle
+    # GPU0 leaves steal work instead of waiting on sticky home-server waves.
+    _REMOTE["req_qs"] = list(req_qs) if req_qs is not None else None
+    _REMOTE["leaf_devices"] = list(leaf_devices) if leaf_devices is not None else None
+    _REMOTE["alive_evts"] = list(alive_evts) if alive_evts is not None else None
 
 
 def has_remote_leaf_channel() -> bool:
@@ -442,10 +488,13 @@ class RemoteLeafClient:
         *,
         generation: int = 0,
         alive_evt=None,
-        expected_digest: Optional[str] = None,
-        expected_version: Optional[int] = None,
+        expected_digest: object = None,
+        expected_version: object = None,
         timeout_s: Optional[float] = None,
         stop_event=None,
+        req_qs=None,
+        leaf_devices=None,
+        alive_evts=None,
     ) -> None:
         self.slot = int(slot)
         self.req_q = req_q
@@ -455,6 +504,9 @@ class RemoteLeafClient:
         self.expected_digest = expected_digest
         self.expected_version = expected_version
         self.stop_event = stop_event
+        self.req_qs = list(req_qs) if req_qs is not None else None
+        self.leaf_devices = list(leaf_devices) if leaf_devices is not None else None
+        self.alive_evts = list(alive_evts) if alive_evts is not None else None
         self._deadline_monotonic: Optional[float] = None
         self.timeout_s = float(
             timeout_s
@@ -463,6 +515,39 @@ class RemoteLeafClient:
         )
         self._rid = 0
         self._telemetry_events: list[dict[str, float]] = []
+
+    @staticmethod
+    def _expected_field(source: object, field: str) -> object:
+        """Read a scalar expectation or a live manager-dict field.
+
+        Remote workers intentionally receive the same ``Manager().dict()`` for
+        digest and version so a checkpoint reload is visible without respawning
+        the simulator pool.  Resolve that proxy for every response instead of
+        comparing the response to the proxy object itself.
+        """
+        getter = getattr(source, "get", None)
+        if callable(getter):
+            return getter(field)
+        return source
+
+    def _select_req_target(self):
+        """Home sticky queue, or least-queue across replicas (GPU0-preferring)."""
+        if not self.req_qs or len(self.req_qs) <= 1:
+            return self.req_q, self.alive_evt
+        from poke_bot.pure_rl.hardware import pick_leaf_server_index
+
+        devices = self.leaf_devices or [1] * len(self.req_qs)
+        idx = pick_leaf_server_index(
+            req_qs=self.req_qs,
+            devices=devices,
+            alive_evts=self.alive_evts,
+        )
+        alive = None
+        if self.alive_evts is not None and idx < len(self.alive_evts):
+            alive = self.alive_evts[idx]
+        elif idx == 0:
+            alive = self.alive_evt
+        return self.req_qs[idx], alive
 
     def set_deadline(self, deadline_monotonic: Optional[float]) -> None:
         """Bound subsequent RPC waits by the active search move deadline."""
@@ -548,20 +633,21 @@ class RemoteLeafClient:
         if not packets:
             return []
         self._raise_if_cancelled()
-        put = getattr(self.req_q, "put", None)
-        if not callable(put):
-            raise TypeError(
-                f"RemoteLeafClient.req_q has no put() (got {type(self.req_q)!r}); "
-                "worker_pool likely passed a list of queues as the request queue "
-                "instead of one Queue (multi-replica shard bug)."
-            )
         fl = featurize_packets(packets)
         self._rid += 1
         rid = self._rid
-        if self.alive_evt is not None and not self.alive_evt.is_set():
+        req_q, alive_evt = self._select_req_target()
+        put = getattr(req_q, "put", None)
+        if not callable(put):
+            raise TypeError(
+                f"RemoteLeafClient.req_q has no put() (got {type(req_q)!r}); "
+                "worker_pool likely passed a list of queues as the request queue "
+                "instead of one Queue (multi-replica shard bug)."
+            )
+        if alive_evt is not None and not alive_evt.is_set():
             raise RemoteLeafError("leaf server is not alive")
         try:
-            request_queue_depth = max(0, int(self.req_q.qsize()))
+            request_queue_depth = max(0, int(req_q.qsize()))
         except (AttributeError, NotImplementedError, OSError):
             request_queue_depth = 0
         request = {
@@ -577,7 +663,7 @@ class RemoteLeafClient:
         if request_timeout <= 0:
             raise RemoteLeafTimeout("leaf request exceeded the move deadline")
         try:
-            self.req_q.put(request, timeout=request_timeout)
+            req_q.put(request, timeout=request_timeout)
         except _queue.Full as exc:
             raise RemoteLeafTimeout("leaf request queue put timed out") from exc
         deadline = time.monotonic() + request_timeout
@@ -589,7 +675,7 @@ class RemoteLeafClient:
                     f"leaf response timed out after {request_timeout:.3f}s "
                     f"(generation={self.generation} rid={rid})"
                 )
-            if self.alive_evt is not None and not self.alive_evt.is_set():
+            if alive_evt is not None and not alive_evt.is_set():
                 raise RemoteLeafError("leaf server died while request was in flight")
             try:
                 response = self.resp_q.get(timeout=min(remaining, 0.5))
@@ -608,21 +694,27 @@ class RemoteLeafClient:
                 continue
             if not response.get("ok", False):
                 raise RemoteLeafError(str(response.get("error") or "leaf server error"))
+            expected_digest = self._expected_field(
+                self.expected_digest, "digest"
+            )
+            expected_version = self._expected_field(
+                self.expected_version, "version"
+            )
             if (
-                self.expected_digest is not None
-                and response.get("checkpoint_digest") != self.expected_digest
+                expected_digest is not None
+                and response.get("checkpoint_digest") != expected_digest
             ):
                 raise RemoteLeafError(
                     "leaf response checkpoint digest mismatch: expected "
-                    f"{self.expected_digest}, got {response.get('checkpoint_digest')}"
+                    f"{expected_digest}, got {response.get('checkpoint_digest')}"
                 )
             if (
-                self.expected_version is not None
-                and int(response.get("version", -1)) != self.expected_version
+                expected_version is not None
+                and int(response.get("version", -1)) != int(expected_version)
             ):
                 raise RemoteLeafError(
                     "leaf response checkpoint version mismatch: expected "
-                    f"{self.expected_version}, got {response.get('version')}"
+                    f"{expected_version}, got {response.get('version')}"
                 )
             vp = response.get("values")
             if not isinstance(vp, list) or len(vp) != len(packets):
@@ -685,6 +777,9 @@ def remote_leaf_backend_from_worker():
         expected_version=_REMOTE.get("expected_version"),
         timeout_s=_REMOTE.get("timeout_s"),
         stop_event=_REMOTE.get("stop_event"),
+        req_qs=_REMOTE.get("req_qs"),
+        leaf_devices=_REMOTE.get("leaf_devices"),
+        alive_evts=_REMOTE.get("alive_evts"),
     )
 
 
@@ -773,6 +868,10 @@ def run_leaf_server(
     cancelled_generations: set[int] = set()
     server_started = time.perf_counter()
     requests_served = 0
+    inference_batches = 0
+    mps_cache_every = (
+        _mps_cache_release_interval() if device.type == "mps" else 0
+    )
     try:
         while not stop:
             # Drain control messages before accepting another inference batch.
@@ -789,17 +888,28 @@ def run_leaf_server(
                         if cmd == "reload":
                             requested_version = int(arg.get("version", version + 1))
                             requested_digest = arg.get("digest")
+                            candidate_model = None
                             try:
                                 path = str(arg["path"])
                                 actual = checkpoint_digest(path)
-                                if requested_digest is not None and actual != requested_digest:
+                                if (
+                                    requested_digest is not None
+                                    and actual != requested_digest
+                                ):
                                     raise ValueError(
                                         f"reload digest mismatch: expected "
                                         f"{requested_digest}, got {actual}"
                                     )
-                                new_model = load_model_from_checkpoint(path, device=device)
-                                new_model.eval()
-                                model = new_model
+                                candidate_model = load_model_from_checkpoint(
+                                    path, device=device
+                                )
+                                candidate_model.eval()
+                                old_model = model
+                                model = candidate_model
+                                candidate_model = None
+                                del old_model
+                                if device.type == "mps":
+                                    _release_mps_cache(collect=True)
                                 current_digest = actual
                                 version = requested_version
                                 _status(
@@ -811,6 +921,9 @@ def run_leaf_server(
                                     }
                                 )
                             except BaseException as exc:  # noqa: BLE001
+                                candidate_model = None
+                                if device.type == "mps":
+                                    _release_mps_cache(collect=True)
                                 _status(
                                     {
                                         "type": "reload",
@@ -918,6 +1031,13 @@ def run_leaf_server(
             except BaseException as exc:  # noqa: BLE001 - route failure to every caller
                 vp = []
                 error = f"{type(exc).__name__}: {exc}"
+            finally:
+                inference_batches += 1
+                if (
+                    mps_cache_every > 0
+                    and inference_batches % mps_cache_every == 0
+                ):
+                    _release_mps_cache()
             inference_ms = (time.perf_counter() - inference_t0) * 1000.0
             requests_served += len(valid_reqs)
             request_rate = requests_served / max(
@@ -959,5 +1079,11 @@ def run_leaf_server(
                     pass
                 off += k
     finally:
+        try:
+            del model
+        except UnboundLocalError:
+            pass
+        if device.type == "mps":
+            _release_mps_cache(collect=True)
         if alive_evt is not None:
             alive_evt.clear()

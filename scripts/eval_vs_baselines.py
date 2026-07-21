@@ -5,15 +5,15 @@ The trusted formal mode is the realized-history policy. Legacy single-world
 MCTS is an explicit oracle diagnostic only. Runtime/baseline failures, missing
 opponents, and fail-closed play invalidate results.
 
-Default ``--games-per-opp 8`` (= 4 games in each seat stratum) × ~26 opponents
-≈ 208 games — fine for smoke/progress; raise to ≥100 for formal evidence.
-Primary Phase 5 checkpoint is ``hammer-pult`` (set
-``POKEBOT_PRIMARY_ARCHETYPE=hammer-pult``).
+The default evaluates one configured deck.  ``--deck-suite core-ladder`` is the
+deck-agnostic gate: it evaluates every pinned top-ladder representative with
+exact deck/seat balance and reports both pooled and per-deck results.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -46,6 +46,25 @@ _WORKER_STATE: dict = {}
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--checkpoint", type=Path, required=True)
+    p.add_argument(
+        "--our-deck",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "Explicit 60-card deck CSV; repeat for a custom multi-deck suite. "
+            "Cannot be combined with --deck-suite core-ladder."
+        ),
+    )
+    p.add_argument(
+        "--deck-suite",
+        choices=("primary", "core-ladder"),
+        default="primary",
+        help=(
+            "Deck coverage contract. core-ladder uses all 17 pinned modal "
+            "top-ladder representatives."
+        ),
+    )
     p.add_argument("--games-per-opp", type=int, default=8, help="Must be even for balanced seats.")
     p.add_argument(
         "--min-games-per-opp",
@@ -82,6 +101,99 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _deck_digest(cards: list[int]) -> str:
+    """Stable digest of the exact ordered 60-card engine input."""
+    payload = ",".join(str(int(card_id)) for card_id in cards).encode("ascii")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _resolve_our_decks(args: argparse.Namespace) -> tuple[list[dict], dict]:
+    """Resolve and validate the requested deck coverage contract."""
+    explicit_paths = [Path(path) for path in args.our_deck]
+    if args.deck_suite == "core-ladder" and explicit_paths:
+        raise ValueError(
+            "--our-deck cannot be combined with --deck-suite core-ladder"
+        )
+
+    if args.deck_suite == "core-ladder":
+        from poke_bot.ladder_deck_mix import (
+            load_ladder_deck_mix,
+            load_ladder_deck_representatives,
+        )
+
+        mix_path = ROOT / "data" / "training_mixes" / "top_ladder.v1.json"
+        representatives_path = (
+            ROOT
+            / "data"
+            / "training_mixes"
+            / "top_ladder_representatives.v1.json"
+        )
+        mix = load_ladder_deck_mix(mix_path)
+        representatives = load_ladder_deck_representatives(
+            representatives_path
+        )
+        bound = representatives.bind(mix)
+        decks = [
+            {
+                "deck_id": item.bucket.deck_id,
+                "cards": list(item.card_ids),
+                "path": None,
+                "source": "pinned_top_ladder_modal_representative",
+                "sha256": _deck_digest(list(item.card_ids)),
+                "canonical_multiset_sha256": item.canonical_multiset_sha256,
+                "source_rank": item.bucket.source_rank,
+                "train_weight": item.bucket.train_weight,
+            }
+            for item in bound
+        ]
+        return decks, {
+            "suite": "core-ladder",
+            "deck_agnostic": True,
+            "mix_path": str(mix_path.resolve()),
+            "representatives_path": str(representatives_path.resolve()),
+            "contract": representatives.contract(mix),
+        }
+
+    if explicit_paths:
+        missing = [path for path in explicit_paths if not path.is_file()]
+        if missing:
+            raise ValueError(f"missing deck(s): {', '.join(map(str, missing))}")
+        seen: dict[str, int] = {}
+        decks = []
+        for path in explicit_paths:
+            resolved = path.resolve()
+            base_id = resolved.stem
+            seen[base_id] = seen.get(base_id, 0) + 1
+            deck_id = (
+                base_id if seen[base_id] == 1 else f"{base_id}-{seen[base_id]}"
+            )
+            cards = deck_pool.read_deck(resolved)
+            decks.append(
+                {
+                    "deck_id": deck_id,
+                    "cards": cards,
+                    "path": str(resolved),
+                    "source": "explicit",
+                    "sha256": _deck_digest(cards),
+                }
+            )
+        return decks, {
+            "suite": "explicit",
+            "deck_agnostic": len(decks) > 1,
+        }
+
+    cards = deck_pool.primary_deck()
+    return [
+        {
+            "deck_id": deck_pool.primary_archetype(),
+            "cards": cards,
+            "path": None,
+            "source": "configured_primary",
+            "sha256": _deck_digest(cards),
+        }
+    ], {"suite": "primary", "deck_agnostic": False}
+
+
 def _game_job(payload: dict) -> dict:
     """Worker entry: strict game with explicit failure attribution."""
     import random
@@ -98,6 +210,7 @@ def _game_job(payload: dict) -> dict:
 
     base = {
         "opponent_id": payload["spec"]["id"],
+        "our_deck_id": payload["our_deck_id"],
         "our_seat": int(payload["our_seat"]),
         "winner": 2,
         "steps": 0,
@@ -228,7 +341,11 @@ def _legacy_main(argv: list[str] | None = None) -> int:
     if not specs:
         print("ERROR: no loadable baselines", file=sys.stderr)
         return 2
-    our_deck = deck_pool.primary_deck()
+    try:
+        our_deck = _resolve_our_decks(args)[0][0]["cards"]
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     device = str(leaf_eval_device(prefer_name=config.HARDWARE.leaf_gpu_name))
 
     pairs = args.games_per_opp // 2
@@ -241,6 +358,7 @@ def _legacy_main(argv: list[str] | None = None) -> int:
                     {
                         "checkpoint": str(args.checkpoint),
                         "our_deck": our_deck,
+                        "our_deck_id": "legacy",
                         "spec": {
                             "id": spec.id,
                             "name": spec.name,
@@ -263,6 +381,7 @@ def _legacy_main(argv: list[str] | None = None) -> int:
                         {
                             "checkpoint": str(args.checkpoint),
                             "our_deck": our_deck,
+                            "our_deck_id": "legacy",
                             "spec": {
                                 "id": spec.id,
                                 "name": spec.name,
@@ -358,16 +477,28 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     paths.ensure_runtime_dirs()
     config.apply_runtime_perf()
+    try:
+        our_decks, deck_contract = _resolve_our_decks(args)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: invalid deck suite: {exc}", file=sys.stderr)
+        return 2
+    deck_seat_block = 2 * len(our_decks)
     min_games = int(args.min_games_per_opp or args.games_per_opp)
     if (
-        args.games_per_opp < 2
-        or args.games_per_opp % 2
-        or min_games < 2
+        args.games_per_opp < deck_seat_block
+        or args.games_per_opp % deck_seat_block
+        or min_games < deck_seat_block
+        or min_games % deck_seat_block
         or (args.greedy_ablation and (
-            args.greedy_games_per_opp < 2 or args.greedy_games_per_opp % 2
+            args.greedy_games_per_opp < deck_seat_block
+            or args.greedy_games_per_opp % deck_seat_block
         ))
     ):
-        print("ERROR: evaluation sample counts must be even and >= 2", file=sys.stderr)
+        print(
+            "ERROR: evaluation sample counts must be multiples of "
+            f"{deck_seat_block} (one game per deck in each seat)",
+            file=sys.stderr,
+        )
         return 2
     if min_games > args.games_per_opp:
         print("ERROR: --min-games-per-opp exceeds scheduled games", file=sys.stderr)
@@ -427,12 +558,23 @@ def main(argv: list[str] | None = None) -> int:
         expected_opponents=set(expected_ids),
         min_games_per_opponent=min_games,
     )
-    for item in unavailable:
-        report.mark_invalid(
-            f"expected opponent unavailable: {item['opponent_id']}: {item['error']}"
+    per_deck_min_games = min_games // len(our_decks)
+    deck_reports = {
+        entry["deck_id"]: FieldReport(
+            gate_threshold=args.gate,
+            expected_opponents=set(expected_ids),
+            min_games_per_opponent=per_deck_min_games,
         )
-
-    our_deck = deck_pool.primary_deck()
+        for entry in our_decks
+    }
+    for item in unavailable:
+        reason = (
+            f"expected opponent unavailable: {item['opponent_id']}: "
+            f"{item['error']}"
+        )
+        report.mark_invalid(reason)
+        for deck_report in deck_reports.values():
+            deck_report.mark_invalid(reason)
     jobs: list[dict] = []
     seed = int(args.seed)
 
@@ -450,10 +592,12 @@ def main(argv: list[str] | None = None) -> int:
         for game_i in range(args.games_per_opp):
             game_seed = seed
             seed += 1
+            deck_entry = our_decks[(game_i // 2) % len(our_decks)]
             jobs.append(
                 {
                     "checkpoint": identity.path,
-                    "our_deck": our_deck,
+                    "our_deck": deck_entry["cards"],
+                    "our_deck_id": deck_entry["deck_id"],
                     "spec": _spec_payload(spec),
                     "our_seat": game_i % 2,
                     "use_mcts": args.agent_mode == "oracle-mcts",
@@ -471,10 +615,12 @@ def main(argv: list[str] | None = None) -> int:
             for game_i in range(args.greedy_games_per_opp):
                 game_seed = seed
                 seed += 1
+                deck_entry = our_decks[(game_i // 2) % len(our_decks)]
                 jobs.append(
                     {
                         "checkpoint": identity.path,
-                        "our_deck": our_deck,
+                        "our_deck": deck_entry["cards"],
+                        "our_deck_id": deck_entry["deck_id"],
                         "spec": _spec_payload(spec),
                         "our_seat": game_i % 2,
                         "use_mcts": False,
@@ -555,9 +701,12 @@ def main(argv: list[str] | None = None) -> int:
             }
         else:
             report.mark_invalid(startup_error)
+            for deck_report in deck_reports.values():
+                deck_report.mark_invalid(startup_error)
 
     print(
         f"== strict eval expected={len(expected_ids)} available={len(specs)} "
+        f"our_decks={len(our_decks)} suite={deck_contract['suite']} "
         f"formal_games/opp={args.games_per_opp} min={min_games} "
         f"jobs={len(jobs)} checkpoint={identity.digest[:23]}",
         flush=True,
@@ -580,12 +729,23 @@ def main(argv: list[str] | None = None) -> int:
                     results.append(res)
                     if not res.get("valid"):
                         failures.append(res)
-                        report.mark_invalid(
-                            f"{res.get('failure_attribution')} failure vs "
-                            f"{res['opponent_id']}: {res.get('error')}"
+                        reason = (
+                            f"{res.get('failure_attribution')} failure for "
+                            f"{res['our_deck_id']} vs {res['opponent_id']}: "
+                            f"{res.get('error')}"
                         )
+                        report.mark_invalid(reason)
+                        deck_reports[res["our_deck_id"]].mark_invalid(reason)
                         continue
                     report.merge_game(
+                        res["opponent_id"],
+                        our_seat=res["our_seat"],
+                        winner=res["winner"],
+                        is_mirror=res["is_mirror"],
+                        mcts_on=res["mcts_on"],
+                        pair_id=None,
+                    )
+                    deck_reports[res["our_deck_id"]].merge_game(
                         res["opponent_id"],
                         our_seat=res["our_seat"],
                         winner=res["winner"],
@@ -600,6 +760,8 @@ def main(argv: list[str] | None = None) -> int:
         if server is not None and startup_error is None:
             if not server.is_alive() or not alive_evt.is_set():
                 report.mark_invalid("leaf server died during evaluation")
+                for deck_report in deck_reports.values():
+                    deck_report.mark_invalid("leaf server died during evaluation")
     finally:
         if server is not None:
             try:
@@ -626,6 +788,22 @@ def main(argv: list[str] | None = None) -> int:
                 pass
 
     summary = report.summary()
+    deck_metadata = [
+        {key: value for key, value in entry.items() if key != "cards"}
+        for entry in our_decks
+    ]
+    per_deck_summaries = []
+    for metadata in deck_metadata:
+        deck_summary = deck_reports[metadata["deck_id"]].summary()
+        per_deck_summaries.append({**metadata, "report": deck_summary})
+    deck_reports_valid = all(
+        row["report"]["valid"] for row in per_deck_summaries
+    )
+    deck_reports_pass = all(
+        row["report"]["all_pass"] for row in per_deck_summaries
+    )
+    summary["valid"] = bool(summary["valid"] and deck_reports_valid)
+    summary["all_pass"] = bool(summary["all_pass"] and deck_reports_pass)
     summary.update(
         {
             "checkpoint": identity.as_dict(),
@@ -639,6 +817,20 @@ def main(argv: list[str] | None = None) -> int:
             "engine_seedable": False,
             "pairing_claimed": False,
             "greedy_is_ablation_only": args.agent_mode == "oracle-mcts",
+            "our_deck": deck_metadata[0] if len(deck_metadata) == 1 else None,
+            "deck_agnostic_gate": {
+                **deck_contract,
+                "deck_count": len(our_decks),
+                "exact_deck_seat_balance": True,
+                "games_per_deck_per_opponent": (
+                    args.games_per_opp // len(our_decks)
+                ),
+                "minimum_games_per_deck_per_opponent": per_deck_min_games,
+                "roster": deck_metadata,
+                "all_deck_reports_valid": deck_reports_valid,
+                "all_deck_reports_pass": deck_reports_pass,
+                "per_deck": per_deck_summaries,
+            },
         }
     )
     if args.agent_mode != "policy":
@@ -648,7 +840,9 @@ def main(argv: list[str] | None = None) -> int:
             "single-world oracle MCTS is not trusted formal evidence"
         )
     else:
-        summary["promotion_eligible"] = bool(summary["valid"])
+        summary["promotion_eligible"] = bool(
+            summary["valid"] and summary["all_pass"]
+        )
     out = args.out or (paths.OUTPUTS_DIR / "eval" / "vs_baselines.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=2) + "\n")
@@ -666,6 +860,16 @@ def main(argv: list[str] | None = None) -> int:
             f"{row['draw_aware_score_interval']['lower']:.1%}",
             flush=True,
         )
+    if len(per_deck_summaries) > 1:
+        for row in per_deck_summaries:
+            pooled = row["report"]["pooled_formal"]
+            wr = "n/a" if pooled["wr"] is None else f"{pooled['wr']:.1%}"
+            print(
+                f"   deck={row['deck_id']:28} games={pooled['games']:3} "
+                f"wr={wr} valid={row['report']['valid']} "
+                f"pass={row['report']['all_pass']}",
+                flush=True,
+            )
     if not summary["valid"]:
         return 3
     return 0 if summary["all_pass"] else 1

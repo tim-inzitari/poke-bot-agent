@@ -1,0 +1,63 @@
+# Production lifecycle override for the passed Elmo canary.
+#
+# Apply this on top of exactly one canary/base GPU attachment file:
+#   docker compose -f docker-compose.yml -f docker-compose.production.yml ...
+# or, on a nvidia-container-toolkit host:
+#   docker compose -f docker-compose.host.yml -f docker-compose.production.yml ...
+#
+# The in-container supervisor still recognizes reserved exit 75 for rollback
+# compatibility, but routine job-count rotation is disabled. All actual exits
+# consume a durable failure slot. The third
+# failure in one hour opens the circuit with exit 0, so this outer policy
+# cannot restart it. The outer cap exists only for supervisor/container faults.
+
+name: poke-bot-truenas-worker
+
+services:
+  worker:
+    command: ["production"]
+    restart: "on-failure:3"
+    init: true
+    stop_grace_period: 90s
+    environment:
+      # Elmo has 24 logical CPUs and ample RAM. Use the entrypoint's audited
+      # ceiling while reserving four host CPUs and four control connections.
+      SIM_WORKERS: "20"
+      SIM_DEFAULT_WORKERS: "20"
+      POKEBOT_REMOTE_MAX_CONNECTIONS: "24"
+
+      # Never close admission for a routine job-count rotation while a trainer
+      # owns live sockets. Libcg children still recycle every 16 games, and the
+      # process/container memory guards remain authoritative.
+      POKEBOT_WORKER_RECYCLE_GAMES: "16"
+      WORKER_RECYCLE_GAMES: "16"
+      POKEBOT_REMOTE_MAX_SERVICE_JOBS: "0"
+      POKEBOT_REMOTE_PLANNED_ROTATION_EXIT_CODE: "75"
+
+      # Independent in-process guard, below the 40 GiB cgroup hard stop.
+      POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: "30"
+      POKEBOT_REMOTE_MIN_FREE_RAM_GB: "24"
+      POKEBOT_REMOTE_WATCHDOG_INTERVAL_S: "5"
+      POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: "60"
+
+      # Three unexpected exits or recovered unclean container attempts in an
+      # hour open a durable circuit under the runtime-logs bind mount.
+      POKEBOT_ELMO_SUPERVISOR_STATE_DIR: /workspace/runtime-logs/elmo-supervisor
+      POKEBOT_ELMO_RESTART_LIMIT: "3"
+      POKEBOT_ELMO_RESTART_WINDOW_S: "3600"
+      POKEBOT_ELMO_FAILURE_BACKOFF_S: "30"
+      POKEBOT_ELMO_ROTATION_DELAY_S: "10"
+      POKEBOT_ELMO_MIN_ROTATION_RUNTIME_S: "60"
+      POKEBOT_ELMO_CHILD_STOP_GRACE_S: "75"
+
+      # A successful trainer reload publishes this record atomically. Every
+      # production lifetime validates it and loads its exact digest instead of
+      # falling back to the original model.pt after a planned rotation.
+      POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE: /workspace/runtime-logs/elmo-supervisor/active-checkpoint.json
+      POKEBOT_REMOTE_CHECKPOINT_ROOT: /workspace/checkpoint
+
+    # Repeat the base limits here so production review cannot silently lose
+    # them if the base file is reorganized. Equal caps disable container swap.
+    mem_limit: 40g
+    memswap_limit: 40g
+    pids_limit: 320

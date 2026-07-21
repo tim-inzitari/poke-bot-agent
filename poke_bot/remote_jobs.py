@@ -18,12 +18,14 @@ from __future__ import annotations
 import copy
 import json
 import os
+import pickle
 import queue
 import shlex
 import shutil
 import socket
 import struct
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -52,6 +54,376 @@ _ELMO_HOSTS = frozenset({"192.168.1.143", "truenas.local", "truenas"})
 _BERT_HOSTS = frozenset({"192.168.1.157", "bert.local", "bert"})
 _BERT_SSH = os.environ.get("POKEBOT_BERT_SSH", "tsinzitari@bert.local")
 
+# Remote demand contract (max ≫ default; scheduler grows into max):
+#   Elmo default 20 / max 40; Bert default 10 / max 20.
+# Remotes should *run* a pool at max capacity and advertise default via
+# hello ``workers`` so legacy trainers don't jump to the ceiling.
+_ELMO_DEFAULT_WORKERS = 20
+_ELMO_MAX_WORKERS = 40
+_BERT_DEFAULT_WORKERS = 10
+_BERT_MAX_WORKERS = 20
+
+
+def result_queue_capacity(*, local_workers: int, remote_workers: int) -> int:
+    """Bound completed trajectory buffering to two waves of active slots.
+
+    Each result may carry a large game record, so an unbounded queue can turn
+    a slow shard writer into a parent-process memory leak.  Producers now
+    block after roughly two results per local/remote execution slot.
+    """
+
+    slots = max(1, max(0, int(local_workers)) + max(0, int(remote_workers)))
+    return 2 * slots
+
+
+class _SpillableResultQueue:
+    """Bound heavy result payloads in RAM and spill overflow to local disk.
+
+    Remote request threads must be able to acknowledge a completed trajectory
+    and submit their next game even while the main shard consumer is briefly
+    slower.  Blocking those threads on the in-memory result queue drains the
+    *remote* process queues to zero.  Making that queue unbounded recreates the
+    parent-process memory leak this module previously fixed.
+
+    This handoff keeps at most ``memory_capacity`` full payloads in RAM.  Extra
+    payloads are pickled into a per-dispatch directory and the metadata queue
+    carries only their small paths.  Disk overflow has its own hard byte cap;
+    once reached, normal producer backpressure resumes.  Thus refill can run
+    independently on Elmo and Bert without an unbounded RAM or disk queue.
+    """
+
+    def __init__(
+        self,
+        *,
+        memory_capacity: int,
+        spool_root: Optional[Path] = None,
+        max_spool_bytes: Optional[int] = None,
+    ) -> None:
+        self.memory_capacity = max(1, int(memory_capacity))
+        self._memory_slots = threading.BoundedSemaphore(self.memory_capacity)
+        self._items: queue.Queue[tuple[str, Any]] = queue.Queue()
+        self._state = threading.Condition()
+        self._closed = False
+        self._memory_items = 0
+        self._spool_bytes = 0
+        self._spool_files = 0
+        self._spilled_total = 0
+        self._spool_peak_bytes = 0
+        self._sequence = 0
+
+        if max_spool_bytes is None:
+            try:
+                max_gb = float(
+                    os.environ.get("POKEBOT_REMOTE_RESULT_SPOOL_MAX_GB", "16")
+                    or "16"
+                )
+            except (TypeError, ValueError):
+                max_gb = 16.0
+            max_spool_bytes = int(max(0.25, max_gb) * (1024**3))
+        self.max_spool_bytes = max(1024 * 1024, int(max_spool_bytes))
+
+        if spool_root is None:
+            configured = os.environ.get("POKEBOT_REMOTE_RESULT_SPOOL_DIR", "").strip()
+            spool_root = (
+                Path(configured).expanduser()
+                if configured
+                else Path(tempfile.gettempdir()) / "pokebot-remote-results"
+            )
+        root = Path(spool_root)
+        root.mkdir(parents=True, exist_ok=True)
+        self.spool_dir = Path(
+            tempfile.mkdtemp(prefix=f"dispatch-{os.getpid()}-", dir=str(root))
+        )
+
+    def put(self, item: tuple[str, Any], timeout: Optional[float] = None) -> None:
+        tag, payload = item
+        if tag != "ok":
+            self._items.put(("control", item))
+            return
+
+        if self._memory_slots.acquire(blocking=False):
+            with self._state:
+                if self._closed:
+                    self._memory_slots.release()
+                    raise queue.Full
+                self._memory_items += 1
+            self._items.put(("memory", item))
+            return
+
+        deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
+        with self._state:
+            while self._spool_bytes >= self.max_spool_bytes and not self._closed:
+                if deadline is None:
+                    self._state.wait()
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise queue.Full
+                self._state.wait(timeout=remaining)
+            if self._closed:
+                raise queue.Full
+
+            # Serialize under the state lock.  That admits at most one payload
+            # beyond the byte cap (its size is unknown until written), rather
+            # than letting hundreds of producers overshoot simultaneously.
+            self._sequence += 1
+            path = self.spool_dir / f"result-{self._sequence:08d}.pickle"
+            try:
+                with path.open("wb") as fh:
+                    pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
+                size = int(path.stat().st_size)
+            except Exception:
+                path.unlink(missing_ok=True)
+                raise
+            self._spool_bytes += size
+            self._spool_files += 1
+            self._spilled_total += 1
+            self._spool_peak_bytes = max(
+                self._spool_peak_bytes, self._spool_bytes
+            )
+        self._items.put(("spool", (tag, path, size)))
+
+    def get(self, block: bool = True, timeout: Optional[float] = None) -> tuple[str, Any]:
+        storage, item = self._items.get(block=block, timeout=timeout)
+        if storage == "control":
+            return item
+        if storage == "memory":
+            with self._state:
+                self._memory_items = max(0, self._memory_items - 1)
+            self._memory_slots.release()
+            return item
+
+        tag, path, size = item
+        try:
+            with Path(path).open("rb") as fh:
+                payload = pickle.load(fh)
+        finally:
+            Path(path).unlink(missing_ok=True)
+            with self._state:
+                self._spool_bytes = max(0, self._spool_bytes - int(size))
+                self._spool_files = max(0, self._spool_files - 1)
+                self._state.notify_all()
+        return tag, payload
+
+    def telemetry(self) -> dict[str, int]:
+        with self._state:
+            return {
+                "memory_capacity": self.memory_capacity,
+                "memory_items": self._memory_items,
+                "spool_files": self._spool_files,
+                "spool_bytes": self._spool_bytes,
+                "spilled_total": self._spilled_total,
+                "spool_peak_bytes": self._spool_peak_bytes,
+                "max_spool_bytes": self.max_spool_bytes,
+            }
+
+    def close(self) -> None:
+        with self._state:
+            self._closed = True
+            self._state.notify_all()
+        shutil.rmtree(self.spool_dir, ignore_errors=True)
+
+
+def _put_thread_result(
+    out_q: Any,
+    stop_event: threading.Event,
+    item: tuple[str, Any],
+) -> bool:
+    """Put one producer result without becoming immortal after cancellation."""
+    while not stop_event.is_set():
+        try:
+            out_q.put(item, timeout=0.1)
+            return True
+        except queue.Full:
+            continue
+    return False
+
+
+def _local_batch_is_tail_straggled(batch_size: int, outstanding: int) -> bool:
+    """Return whether a fixed local batch is down to its final stragglers."""
+    size = max(0, int(batch_size))
+    left = max(0, int(outstanding))
+    threshold = max(2, (size + 19) // 20)
+    return bool(size > 0 and 0 < left <= threshold)
+
+
+def _local_tail_override_ready(
+    *,
+    emitter_done: bool,
+    batch_size: int,
+    outstanding: int,
+    last_progress_mono: float,
+    now_mono: float,
+    stale_s: float,
+) -> bool:
+    """Allow immediate done handoff, or a near-tail batch stale past grace."""
+    if bool(emitter_done):
+        return True
+    if not _local_batch_is_tail_straggled(batch_size, outstanding):
+        return False
+    age_s = max(0.0, float(now_mono) - float(last_progress_mono))
+    return age_s >= max(0.0, float(stale_s))
+
+
+class _EndpointClaimCredits:
+    """Bound shared-deque claims while preserving work for each endpoint.
+
+    ``inflight`` counts jobs claimed by an endpoint but not yet completed.
+    Healthy endpoints with live emitters receive a bounded credit target; a
+    faster peer may refill its own credit but cannot consume another
+    endpoint's deficit.  Reservations deliberately stop in the final 5% of a
+    wave, where avoiding stranded tail work matters more than steady-state
+    queue depth.
+
+    The caller serializes this object with the dispatcher's claim lock.  It is
+    intentionally bookkeeping-only: no health probe, connect, submit, or
+    other network operation belongs in these methods.
+    """
+
+    def __init__(self, *, total_jobs: int) -> None:
+        total = max(0, int(total_jobs))
+        self.tail_jobs = max(1, (total + 19) // 20) if total > 0 else 0
+        self.targets: dict[str, int] = {}
+        self.inflight: dict[str, int] = {}
+        self.claimed_total: dict[str, int] = {}
+        self.live_claimants: dict[str, int] = {}
+        self.healthy: dict[str, bool] = {}
+
+    def register(self, endpoint: str) -> None:
+        ep = str(endpoint)
+        self.live_claimants[ep] = int(self.live_claimants.get(ep, 0)) + 1
+        self.inflight.setdefault(ep, 0)
+        self.claimed_total.setdefault(ep, 0)
+        self.healthy[ep] = True
+
+    def unregister(self, endpoint: str) -> None:
+        ep = str(endpoint)
+        live = max(0, int(self.live_claimants.get(ep, 0)) - 1)
+        self.live_claimants[ep] = live
+        if live <= 0:
+            # No claimant can use this endpoint's unused allowance.  Treat it
+            # as done so healthy peers may spill that credit rather than
+            # strand the deque.
+            self.healthy[ep] = False
+
+    def set_healthy(self, endpoint: str, healthy: bool) -> None:
+        ep = str(endpoint)
+        self.healthy[ep] = bool(healthy) and int(
+            self.live_claimants.get(ep, 0)
+        ) > 0
+
+    def set_target(self, endpoint: str, target: int) -> None:
+        self.targets[str(endpoint)] = max(0, int(target))
+
+    def note_claimed(self, endpoint: str, n: int) -> None:
+        ep = str(endpoint)
+        count = max(0, int(n))
+        self.inflight[ep] = int(self.inflight.get(ep, 0)) + count
+        self.claimed_total[ep] = int(self.claimed_total.get(ep, 0)) + count
+
+    def note_finished(self, endpoint: str, n: int = 1) -> None:
+        ep = str(endpoint)
+        count = max(0, int(n))
+        have = max(0, int(self.inflight.get(ep, 0)))
+        if count > have:
+            raise RuntimeError(
+                f"remote endpoint credit underflow for {ep}: "
+                f"finished={count} inflight={have}"
+            )
+        self.inflight[ep] = have - count
+
+    def _eligible_endpoints(self) -> list[str]:
+        return sorted(
+            ep
+            for ep, target in self.targets.items()
+            if int(target) > 0
+            and int(self.live_claimants.get(ep, 0)) > 0
+            and bool(self.healthy.get(ep, False))
+        )
+
+    def _effective_targets(self, remaining_count: int) -> dict[str, int]:
+        """Scale targets only when too little work remains to fill them all."""
+        endpoints = self._eligible_endpoints()
+        if not endpoints:
+            return {}
+        raw = {ep: max(0, int(self.targets.get(ep, 0))) for ep in endpoints}
+        total_target = sum(raw.values())
+        pending = max(0, int(remaining_count)) + sum(
+            max(0, int(self.inflight.get(ep, 0))) for ep in endpoints
+        )
+        if pending >= total_target:
+            return raw
+        if pending <= 0 or total_target <= 0:
+            return {ep: 0 for ep in endpoints}
+
+        # When less than one full combined credit remains, use cumulative
+        # weighted entitlement.  This both avoids a small-wave deadlock and
+        # remembers that a fast endpoint already consumed most of a long wave:
+        # the scarce final pre-tail jobs refill the under-served endpoint.
+        claimed = {
+            ep: max(0, int(self.claimed_total.get(ep, 0))) for ep in endpoints
+        }
+        future_total = sum(claimed.values()) + max(0, int(remaining_count))
+        desired = {
+            ep: (future_total * raw[ep]) // total_target
+            for ep in endpoints
+        }
+        left = future_total - sum(desired.values())
+        order = sorted(
+            endpoints,
+            key=lambda ep: (
+                -((future_total * raw[ep]) % total_target),
+                ep,
+            ),
+        )
+        for ep in order[:left]:
+            desired[ep] += 1
+        return {
+            ep: min(
+                raw[ep],
+                max(0, int(self.inflight.get(ep, 0)))
+                + max(0, desired[ep] - claimed[ep]),
+            )
+            for ep in endpoints
+        }
+
+    def claim_limit(
+        self,
+        endpoint: str,
+        *,
+        want: int,
+        remaining_count: int,
+        wave_remaining: int,
+    ) -> int:
+        """Return this endpoint's safe claim without consuming peer credit."""
+        requested = min(max(0, int(want)), max(0, int(remaining_count)))
+        if requested <= 0:
+            return 0
+        # The allocation tail is an explicit correctness/throughput override.
+        if max(0, int(wave_remaining)) <= self.tail_jobs:
+            return requested
+
+        ep = str(endpoint)
+        effective = self._effective_targets(remaining_count)
+        if ep not in effective:
+            # Unhealthy/done endpoints own no reserved work.  A still-running
+            # socket waits for a successful data result or health probe to
+            # restore eligibility; healthy peers may use the released credit.
+            return 0
+        own_room = max(
+            0, int(effective[ep]) - max(0, int(self.inflight.get(ep, 0)))
+        )
+        protected_for_peers = sum(
+            max(
+                0,
+                int(target) - max(0, int(self.inflight.get(other, 0))),
+            )
+            for other, target in effective.items()
+            if other != ep
+        )
+        shared_room = max(0, int(remaining_count) - protected_for_peers)
+        return min(requested, own_room, shared_room)
+
 
 def expand_endpoint_specs(specs: list[str]) -> list[str]:
     """Accept space-separated nargs or a single comma-separated token."""
@@ -62,6 +434,311 @@ def expand_endpoint_specs(specs: list[str]) -> list[str]:
             if part:
                 out.append(part)
     return out
+
+
+def _parse_endpoint_float_map(env_name: str) -> dict[str, float]:
+    """Parse ``host[:port]=value,...`` maps from env."""
+    raw = os.environ.get(env_name, "").strip()
+    out: dict[str, float] = {}
+    if not raw:
+        return out
+    for part in raw.split(","):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        key, _, val = part.partition("=")
+        key = key.strip().lower()
+        try:
+            w = float(val.strip())
+        except ValueError:
+            continue
+        out[key] = max(0.0, w)
+        # Also index bare host when key includes port.
+        if ":" in key:
+            host_only, _, _port = key.rpartition(":")
+            out.setdefault(host_only, max(0.0, w))
+    return out
+
+
+def _parse_endpoint_weight_map() -> dict[str, float]:
+    """Parse ``POKEBOT_REMOTE_ENDPOINT_WEIGHTS`` as ``host[:port]=w,...``."""
+    return _parse_endpoint_float_map("POKEBOT_REMOTE_ENDPOINT_WEIGHTS")
+
+
+def _parse_endpoint_int_map(env_name: str) -> dict[str, int]:
+    raw_map = _parse_endpoint_float_map(env_name)
+    return {k: max(0, int(round(v))) for k, v in raw_map.items()}
+
+
+def _lookup_endpoint_int(
+    mapping: dict[str, int], host: str, port: Optional[int] = None
+) -> Optional[int]:
+    host_l = str(host).strip().lower()
+    if port is not None:
+        keyed = f"{host_l}:{int(port)}"
+        if keyed in mapping:
+            return int(mapping[keyed])
+    if host_l in mapping:
+        return int(mapping[host_l])
+    return None
+
+
+def endpoint_role(host: str) -> str:
+    """Return ``elmo`` / ``bert`` / ``other`` for known LAN remotes."""
+    host_l = str(host).strip().lower()
+    if host_l in _ELMO_HOSTS or host_l.startswith("192.168.1.143"):
+        return "elmo"
+    if host_l in _BERT_HOSTS:
+        return "bert"
+    return "other"
+
+
+def endpoint_default_workers(host: str, port: Optional[int] = None) -> int:
+    """Steady-state demand floor (not the ceiling).
+
+    Override via ``POKEBOT_REMOTE_DEFAULT_WORKERS`` e.g.
+    ``192.168.1.143:8765=20,bert.local:8766=10``.
+    """
+    override = _lookup_endpoint_int(
+        _parse_endpoint_int_map("POKEBOT_REMOTE_DEFAULT_WORKERS"), host, port
+    )
+    if override is not None:
+        return max(1, int(override))
+    role = endpoint_role(host)
+    if role == "elmo":
+        return _ELMO_DEFAULT_WORKERS
+    if role == "bert":
+        return _BERT_DEFAULT_WORKERS
+    return 8
+
+
+def endpoint_max_workers(host: str, port: Optional[int] = None) -> int:
+    """Hard demand ceiling (scheduler may grow up to this).
+
+    Override via ``POKEBOT_REMOTE_MAX_WORKERS`` e.g.
+    ``192.168.1.143:8765=40,bert.local:8766=20``.
+    """
+    override = _lookup_endpoint_int(
+        _parse_endpoint_int_map("POKEBOT_REMOTE_MAX_WORKERS"), host, port
+    )
+    if override is not None:
+        return max(1, int(override))
+    role = endpoint_role(host)
+    if role == "elmo":
+        return _ELMO_MAX_WORKERS
+    if role == "bert":
+        return _BERT_MAX_WORKERS
+    return 16
+
+
+def endpoint_dispatch_chunk(
+    host: str,
+    port: Optional[int] = None,
+    *,
+    default: int,
+) -> int:
+    """Return the endpoint's total shared-queue backlog target.
+
+    This is *not* a LAN/RPC batch: every reserved job is still submitted as a
+    separate request.  The dispatcher divides this total across the endpoint's
+    live sockets, preventing the first socket threads from hoarding the whole
+    backlog while preserving a useful ready queue per remote host.
+    """
+    override = _lookup_endpoint_int(
+        _parse_endpoint_int_map("POKEBOT_REMOTE_ENDPOINT_CHUNKS"), host, port
+    )
+    return max(1, int(default if override is None else override))
+
+
+def remote_socket_prefetch_factor() -> int:
+    """Return request sockets opened per remote execution worker.
+
+    Production starts with one executing wave plus four server-queued waves.
+    A separate bounded reserve is admitted only if server telemetry reports
+    that the local queue fell below its low-water mark.  The additional
+    sockets do not add simulator processes, policy leaves, or model replicas.
+    """
+    try:
+        value = int(os.environ.get("POKEBOT_REMOTE_SOCKET_PREFETCH", "1") or "1")
+    except (TypeError, ValueError):
+        value = 1
+    return max(1, min(8, value))
+
+
+def remote_socket_prefetch_max_factor() -> int:
+    """Return the hard per-worker request-socket ceiling for low-water refill."""
+    base = remote_socket_prefetch_factor()
+    try:
+        value = int(
+            os.environ.get("POKEBOT_REMOTE_SOCKET_PREFETCH_MAX", str(base))
+            or str(base)
+        )
+    except (TypeError, ValueError):
+        value = base
+    return max(base, min(8, value))
+
+
+def remote_socket_target(execution_workers: int) -> int:
+    """Map scheduled execution-worker demand to queued request sockets."""
+    return max(0, int(execution_workers)) * remote_socket_prefetch_factor()
+
+
+def remote_socket_max_target(execution_workers: int) -> int:
+    """Map execution demand to the bounded low-water reserve ceiling."""
+    return max(0, int(execution_workers)) * remote_socket_prefetch_max_factor()
+
+
+def remote_queue_low_water_fraction() -> float:
+    """Fraction of the desired server-side waiting queue that triggers refill."""
+    try:
+        value = float(
+            os.environ.get("POKEBOT_REMOTE_QUEUE_LOW_WATER_FRAC", "0.5") or "0.5"
+        )
+    except (TypeError, ValueError):
+        value = 0.5
+    return max(0.1, min(0.9, value))
+
+
+def remote_queue_probe_interval_s() -> float:
+    """Minimum interval between parallel Elmo/Bert queue-depth probes."""
+    try:
+        value = float(
+            os.environ.get("POKEBOT_REMOTE_QUEUE_PROBE_S", "2") or "2"
+        )
+    except (TypeError, ValueError):
+        value = 2.0
+    return max(0.2, min(30.0, value))
+
+
+def remote_refill_games_per_socket() -> int:
+    """Return the private game reservation made by every socket refill."""
+    try:
+        value = int(os.environ.get("POKEBOT_REMOTE_REFILL_GAMES", "1") or "1")
+    except (TypeError, ValueError):
+        value = 1
+    return max(1, min(64, value))
+
+
+def endpoint_dispatch_weight(host: str, port: Optional[int] = None) -> float:
+    """Per-endpoint dispatch weight (default 1.0).
+
+    Override via ``POKEBOT_REMOTE_ENDPOINT_WEIGHTS`` e.g.
+    ``192.168.1.143:8765=1.0,bert.local:8766=0.4``.
+
+    When demand scheduling is active, slot counts use demand/max caps instead;
+    weights remain for legacy additive dispatch / multi-trainer sharing.
+    """
+    weights = _parse_endpoint_weight_map()
+    host_l = str(host).strip().lower()
+    if port is not None:
+        keyed = f"{host_l}:{int(port)}"
+        if keyed in weights:
+            return float(weights[keyed])
+    if host_l in weights:
+        return float(weights[host_l])
+    return 1.0
+
+
+def weighted_slot_count(advertised_workers: int, weight: float) -> int:
+    """Scale advertised worker sockets by dispatch weight (0 → skip endpoint)."""
+    n = max(0, int(advertised_workers))
+    w = max(0.0, float(weight))
+    if n <= 0 or w <= 0.0:
+        return 0
+    return max(1, int(round(n * w)))
+
+
+def remote_capacity_workers(info: "RemoteWorkerInfo") -> int:
+    """Process-pool capacity (= max) from hello; falls back to ``workers``."""
+    adv = max(0, int(info.workers))
+    mx = max(0, int(getattr(info, "max_workers", 0) or 0))
+    return max(adv, mx) if mx > 0 else adv
+
+
+def demand_slot_count(
+    *,
+    capacity: int,
+    demand: int,
+    max_cap: int,
+) -> int:
+    """In-flight sockets: ``min(capacity, max_cap, demand)`` (0 if any side 0)."""
+    cap = max(0, int(capacity))
+    dem = max(0, int(demand))
+    hi = max(0, int(max_cap))
+    if cap <= 0 or dem <= 0 or hi <= 0:
+        return 0
+    return max(1, min(cap, hi, dem))
+
+
+def weighted_remote_capacity(
+    clients: list["RemoteJobClient"],
+    *,
+    demand_by_endpoint: Optional[dict[str, int]] = None,
+) -> int:
+    """Sum of in-flight slots across connected farm clients.
+
+    With ``demand_by_endpoint``, uses scheduler demand clamped by per-host max
+    and hello capacity (max ≫ default). Otherwise legacy weight×advertised.
+    """
+    total = 0
+    for client in clients:
+        if client.info is None:
+            continue
+        if demand_by_endpoint is not None:
+            capacity = remote_capacity_workers(client.info)
+            max_cap = endpoint_max_workers(client.host, client.port)
+            demand = int(
+                demand_by_endpoint.get(
+                    client.endpoint,
+                    endpoint_default_workers(client.host, client.port),
+                )
+            )
+            total += demand_slot_count(
+                capacity=capacity, demand=demand, max_cap=max_cap
+            )
+            continue
+        w = endpoint_dispatch_weight(client.host, client.port)
+        total += weighted_slot_count(int(client.info.workers), w)
+    return total
+
+
+def describe_endpoint_weights(
+    clients: list["RemoteJobClient"],
+    *,
+    demand_by_endpoint: Optional[dict[str, int]] = None,
+) -> list[dict[str, Any]]:
+    """Per-endpoint weight/slot summary for collect-start logs."""
+    rows: list[dict[str, Any]] = []
+    for client in clients:
+        adv = int(client.info.workers) if client.info is not None else 0
+        capacity = (
+            remote_capacity_workers(client.info) if client.info is not None else 0
+        )
+        w = endpoint_dispatch_weight(client.host, client.port)
+        default = endpoint_default_workers(client.host, client.port)
+        max_cap = endpoint_max_workers(client.host, client.port)
+        if demand_by_endpoint is not None:
+            demand = int(demand_by_endpoint.get(client.endpoint, default))
+            slots = demand_slot_count(
+                capacity=capacity, demand=demand, max_cap=max_cap
+            )
+        else:
+            demand = default
+            slots = weighted_slot_count(adv, w)
+        rows.append(
+            {
+                "endpoint": client.endpoint,
+                "host": client.host,
+                "weight": w,
+                "advertised_workers": adv,
+                "capacity_workers": capacity,
+                "default_workers": default,
+                "max_workers": max_cap,
+                "demand_workers": demand,
+                "dispatch_slots": slots,
+            }
+        )
+    return rows
 
 
 def _smb_checkpoint_dir() -> Path | None:
@@ -290,17 +967,30 @@ def resolve_remote_workdir_path(host: str, local_path: str) -> str:
 def prepare_remote_play_job(host: str, job: dict[str, Any]) -> dict[str, Any]:
     """Deep-copy a play/promotion job with host-native filesystem paths."""
     out = copy.deepcopy(job)
-    ckpt = out.get("checkpoint")
-    if ckpt:
-        host_l = host.strip().lower()
-        # Elmo only bind-mounts ``/workspace/checkpoint/`` (not the full repo).
-        # Play jobs may auto-pin a peer digest from ``job["checkpoint"]``, so the
-        # path must be the staged SMB basename — not ``/workspace/outputs/...``.
-        # Bert keeps a full checkout; workdir remap is enough there.
-        if host_l in _ELMO_HOSTS:
-            out["checkpoint"] = resolve_remote_checkpoint_path(host, str(ckpt))
-        elif host_l in _BERT_HOSTS:
-            out["checkpoint"] = resolve_remote_workdir_path(host, str(ckpt))
+    host_l = host.strip().lower()
+    mapped_checkpoints: dict[str, str] = {}
+    for field_name in (
+        "checkpoint",
+        "opponent_checkpoint",
+        "candidate_checkpoint",
+        "parent_checkpoint",
+    ):
+        checkpoint = out.get(field_name)
+        if not checkpoint:
+            continue
+        raw = str(checkpoint)
+        mapped = mapped_checkpoints.get(raw)
+        if mapped is None:
+            # Elmo only bind-mounts ``/workspace/checkpoint/`` (not the full
+            # repo), so every checkpoint used by either seat must be staged.
+            # Bert keeps a full checkout; remapping both seats to that checkout
+            # is sufficient and avoids an rsync on every submitted game.
+            if host_l in _ELMO_HOSTS or host_l in _BERT_HOSTS:
+                mapped = resolve_remote_checkpoint_path(host, raw)
+            else:
+                mapped = raw
+            mapped_checkpoints[raw] = mapped
+        out[field_name] = mapped
     spec = out.get("spec")
     if isinstance(spec, dict) and spec.get("path"):
         spec["path"] = resolve_remote_workdir_path(host, str(spec["path"]))
@@ -309,6 +999,79 @@ def prepare_remote_play_job(host: str, job: dict[str, Any]) -> dict[str, Any]:
 
 class RemoteJobsError(RuntimeError):
     """Protocol or transport failure talking to a remote worker."""
+
+
+class RemoteResultError(RemoteJobsError):
+    """A well-formed remote reply whose game result is unusable.
+
+    Keeping semantic failures in the same exception family as transport
+    failures lets the existing additive collectors retry locally (or fail
+    closed when local fallback is disabled) before remote completion metrics
+    are incremented.
+    """
+
+    def __init__(self, reason: str, result: dict[str, Any]) -> None:
+        super().__init__(f"remote result failed: {reason}")
+        self.reason = str(reason)
+        self.result = result
+
+
+_REMOTE_RESULT_FAILURE_FLAGS = (
+    "our_failed",
+    "resource_error",
+    "cancelled",
+    "trust_failure",
+    "game_timeout",
+    "search_budget_exhausted",
+    "baseline_failed",
+)
+
+
+def remote_result_failure_reason(result: dict[str, Any]) -> Optional[str]:
+    """Return why a remote game payload is unusable, or ``None`` if valid.
+
+    Remote workers intentionally return game/runtime failures inside an
+    otherwise successful ``{type: result, ok: true}`` protocol frame.  Those
+    payloads must not look like productive remote games to demand scheduling.
+    The helper is public so callers with stricter collection policy can choose
+    explicit local retry or fail-closed behavior without duplicating flags.
+    """
+    failed_flags = [
+        flag for flag in _REMOTE_RESULT_FAILURE_FLAGS if bool(result.get(flag))
+    ]
+    if result.get("ok") is False:
+        failed_flags.append("ok=false")
+
+    status = str(result.get("status") or "").strip().lower()
+    if status in {"error", "failed", "failure"}:
+        failed_flags.append(f"status={status}")
+
+    result_type = str(result.get("type") or "").strip().lower()
+    if result_type in {"error", "failed", "failure"}:
+        failed_flags.append(f"type={result_type}")
+
+    error = result.get("error")
+    has_error = error not in (None, "", False, [], {})
+    if not failed_flags and not has_error:
+        return None
+
+    reason = ", ".join(dict.fromkeys(failed_flags)) or "error payload"
+    if has_error:
+        reason = f"{reason}: {error}"
+    return reason
+
+
+def require_remote_result_success(result: dict[str, Any]) -> dict[str, Any]:
+    """Return a usable result or raise :class:`RemoteResultError`.
+
+    Call this before crediting a remote completion.  ``RemoteJobClient`` does
+    so centrally, which preserves valid-job behavior while activating the
+    collectors' existing local-fallback/fail-closed paths for semantic errors.
+    """
+    reason = remote_result_failure_reason(result)
+    if reason is not None:
+        raise RemoteResultError(reason, result)
+    return result
 
 
 def encode_frame(payload: dict[str, Any]) -> bytes:
@@ -359,6 +1122,12 @@ class RemoteWorkerInfo:
     checkpoint_digest: Optional[str]
     hostname: str
     free_ram_gb: Optional[float] = None
+    job_kinds: tuple[str, ...] = ()
+    capabilities: tuple[str, ...] = ()
+    #: Process-pool capacity (max). 0 → treat ``workers`` as capacity.
+    max_workers: int = 0
+    #: Steady-state advertise hint from remote (optional).
+    default_workers: int = 0
 
 
 def _env_float(name: str, default: float) -> float:
@@ -421,9 +1190,26 @@ class RemoteJobClient:
         reply = read_frame(sock)
         if reply.get("type") != "hello_ok" or int(reply.get("proto", -1)) != PROTO_VERSION:
             raise RemoteJobsError(f"unexpected hello reply: {reply!r}")
+        raw_kinds = reply.get("job_kinds") or []
+        if isinstance(raw_kinds, str):
+            kinds = tuple(k.strip() for k in raw_kinds.split(",") if k.strip())
+        else:
+            kinds = tuple(str(k) for k in raw_kinds)
+        raw_capabilities = reply.get("capabilities") or []
+        if isinstance(raw_capabilities, str):
+            capabilities = tuple(
+                value.strip()
+                for value in raw_capabilities.split(",")
+                if value.strip()
+            )
+        else:
+            capabilities = tuple(str(value) for value in raw_capabilities)
+        workers = int(reply.get("workers", 0))
+        max_workers = int(reply.get("max_workers", 0) or 0)
+        default_workers = int(reply.get("default_workers", 0) or 0)
         self.info = RemoteWorkerInfo(
             endpoint=self.endpoint,
-            workers=int(reply.get("workers", 0)),
+            workers=workers,
             leaf_servers=int(reply.get("leaf_servers", 0)),
             gpu_name=str(reply.get("gpu_name") or ""),
             device=str(reply.get("device") or ""),
@@ -434,6 +1220,10 @@ class RemoteJobClient:
                 if reply.get("free_ram_gb") is not None
                 else None
             ),
+            job_kinds=kinds,
+            capabilities=capabilities,
+            max_workers=max_workers,
+            default_workers=default_workers,
         )
         return self.info
 
@@ -571,7 +1361,7 @@ class RemoteJobClient:
             payload = reply.get("result")
             if not isinstance(payload, dict):
                 raise RemoteJobsError("remote result missing body")
-            return payload
+            return require_remote_result_success(payload)
         assert last_exc is not None
         raise last_exc
 
@@ -748,13 +1538,17 @@ def _clone_remote_client(template: RemoteJobClient) -> RemoteJobClient:
 
 def _parallel_remote_slots(
     remote_clients: list[RemoteJobClient],
+    *,
+    demand_by_endpoint: Optional[dict[str, int]] = None,
 ) -> tuple[list[RemoteJobClient], list[RemoteJobClient]]:
-    """Expand farm endpoints into ``info.workers`` concurrent sockets each.
+    """Expand farm endpoints into concurrent sockets (one in-flight game each).
 
-    ``serve_forever`` handles one job per socket; concurrent sockets are the
-    unit of remote in-flight capacity. Returns ``(all_slots, owned_clones)``
-    where ``owned_clones`` must be closed by the caller (slot 0 per endpoint
-    reuses the farm's existing session and is not closed here).
+    With ``demand_by_endpoint``, opens ``min(capacity, max_cap, demand)`` sockets
+    so defaults stay below max and the scheduler can grow into headroom.
+    Without demand, legacy behaviour uses weight × hello ``workers``.
+
+    Returns ``(all_slots, owned_clones)`` where ``owned_clones`` must be closed
+    by the caller (slot 0 per endpoint reuses the farm session).
     """
     slots: list[RemoteJobClient] = []
     owned: list[RemoteJobClient] = []
@@ -774,8 +1568,53 @@ def _parallel_remote_slots(
                     flush=True,
                 )
                 continue
-        n = max(1, int(template.info.workers) if template.info is not None else 1)
-        n = max(1, n // divisor)
+        advertised = max(
+            1, int(template.info.workers) if template.info is not None else 1
+        )
+        capacity = (
+            remote_capacity_workers(template.info)
+            if template.info is not None
+            else advertised
+        )
+        max_cap = endpoint_max_workers(template.host, template.port)
+        default = endpoint_default_workers(template.host, template.port)
+        if demand_by_endpoint is not None:
+            demand = int(demand_by_endpoint.get(template.endpoint, default))
+            n = demand_slot_count(
+                capacity=capacity, demand=demand, max_cap=max_cap
+            )
+            print(
+                f"[remote] {getattr(template, 'endpoint', '?')} "
+                f"demand={demand} slots={n}/{capacity} "
+                f"(default={default} max={max_cap} hello_workers={advertised})",
+                flush=True,
+            )
+        else:
+            weight = endpoint_dispatch_weight(template.host, template.port)
+            n = weighted_slot_count(advertised, weight)
+            if weight < 0.999:
+                print(
+                    f"[remote] {getattr(template, 'endpoint', '?')} weight={weight:.2f} "
+                    f"slots={n}/{advertised}",
+                    flush=True,
+                )
+        n = max(0, n // divisor) if divisor > 1 else n
+        execution_slots = n
+        n = remote_socket_target(execution_slots)
+        if n <= 0:
+            print(
+                f"[remote] {getattr(template, 'endpoint', '?')} "
+                f"→ 0 dispatch slots (skipped this wave)",
+                flush=True,
+            )
+            continue
+        if n != execution_slots:
+            print(
+                f"[remote] {getattr(template, 'endpoint', '?')} "
+                f"socket_prefetch={n} ({execution_slots} workers × "
+                f"{remote_socket_prefetch_factor()})",
+                flush=True,
+            )
         slots.append(template)
         for _ in range(n - 1):
             clone = _clone_remote_client(template)
@@ -793,6 +1632,7 @@ def iter_additive_results(
     kind: str = "play",
     local_workers: int,
     remote_workers: int = 0,
+    on_execution: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> Iterator[dict[str, Any]]:
     """Run local WorkerPool and optional remote TCP workers in parallel.
 
@@ -804,7 +1644,10 @@ def iter_additive_results(
     capacity is real in-flight games — not one serial pipeline per host.
     """
     if not remote_clients or int(remote_workers) <= 0:
-        yield from local_pool.imap_unordered(local_fn, jobs)
+        for row in local_pool.imap_unordered(local_fn, jobs):
+            if on_execution is not None:
+                on_execution({"origin": "local", "kind": kind})
+            yield row
         return
 
     local_jobs, remote_jobs = split_jobs_additive(
@@ -812,20 +1655,34 @@ def iter_additive_results(
         local_workers=local_workers,
         remote_workers=remote_workers,
     )
-    out_q: queue.Queue[tuple[str, Any]] = queue.Queue()
+    out_q = _SpillableResultQueue(
+        memory_capacity=result_queue_capacity(
+            local_workers=local_workers, remote_workers=remote_workers
+        )
+    )
     errors: list[BaseException] = []
     owned_clients: list[RemoteJobClient] = []
+    producer_stop = threading.Event()
+    threads: list[threading.Thread] = []
+    remote_slots: list[RemoteJobClient] = []
 
     def _emit_local() -> None:
         try:
             if local_jobs:
                 for row in local_pool.imap_unordered(local_fn, local_jobs):
-                    out_q.put(("ok", row))
+                    if producer_stop.is_set():
+                        return
+                    if on_execution is not None:
+                        on_execution({"origin": "local", "kind": kind})
+                    if not _put_thread_result(
+                        out_q, producer_stop, ("ok", row)
+                    ):
+                        return
         except BaseException as exc:  # noqa: BLE001
             errors.append(exc)
-            out_q.put(("err", exc))
+            _put_thread_result(out_q, producer_stop, ("err", exc))
         finally:
-            out_q.put(("done", None))
+            _put_thread_result(out_q, producer_stop, ("done", None))
 
     no_local_fallback = _env_truthy("POKEBOT_REMOTE_NO_LOCAL_FALLBACK") or _env_truthy(
         "POKEBOT_REMOTE_ONLY"
@@ -867,11 +1724,25 @@ def iter_additive_results(
     def _emit_remote(client: RemoteJobClient, batch: list[dict[str, Any]]) -> None:
         try:
             for index, job in enumerate(batch):
+                if producer_stop.is_set():
+                    return
                 try:
                     if no_local_fallback:
-                        out_q.put(("ok", _submit_remote_with_retry(client, job)))
+                        row = _submit_remote_with_retry(client, job)
                     else:
-                        out_q.put(("ok", client.submit_job(job, kind=kind)))
+                        row = client.submit_job(job, kind=kind)
+                    if on_execution is not None:
+                        on_execution(
+                            {
+                                "origin": "remote",
+                                "endpoint": client.endpoint,
+                                "kind": kind,
+                            }
+                        )
+                    if not _put_thread_result(
+                        out_q, producer_stop, ("ok", row)
+                    ):
+                        return
                 except (TimeoutError, OSError, RemoteJobsError) as exc:
                     remaining = batch[index:]
                     if no_local_fallback:
@@ -894,17 +1765,29 @@ def iter_additive_results(
                     # worker fn on this additive thread — SIGALRM / thread-local
                     # assumptions break with "signal only works in main thread".
                     for fallback_job in remaining:
-                        out_q.put(("ok", local_pool.apply(local_fn, fallback_job)))
+                        if producer_stop.is_set():
+                            return
+                        row = local_pool.apply(local_fn, fallback_job)
+                        if on_execution is not None:
+                            on_execution(
+                                {
+                                    "origin": "local_fallback",
+                                    "endpoint": client.endpoint,
+                                    "kind": kind,
+                                }
+                            )
+                        if not _put_thread_result(
+                            out_q, producer_stop, ("ok", row)
+                        ):
+                            return
                     return
         except BaseException as exc:  # noqa: BLE001
             errors.append(exc)
-            out_q.put(("err", exc))
+            _put_thread_result(out_q, producer_stop, ("err", exc))
         finally:
-            out_q.put(("done", None))
+            _put_thread_result(out_q, producer_stop, ("done", None))
 
     try:
-        threads: list[threading.Thread] = []
-        remote_slots: list[RemoteJobClient] = []
         if remote_jobs:
             remote_slots, owned_clients = _parallel_remote_slots(remote_clients)
             if not remote_slots:
@@ -943,6 +1826,7 @@ def iter_additive_results(
             )
         if remote_jobs and remote_slots:
             n_slots = len(remote_slots)
+            per_endpoint_jobs: dict[str, int] = {}
             for slot_index, client in enumerate(remote_slots):
                 batch = [
                     job
@@ -951,6 +1835,9 @@ def iter_additive_results(
                 ]
                 if not batch:
                     continue
+                per_endpoint_jobs[client.endpoint] = (
+                    int(per_endpoint_jobs.get(client.endpoint, 0)) + len(batch)
+                )
                 threads.append(
                     threading.Thread(
                         target=_emit_remote,
@@ -958,6 +1845,17 @@ def iter_additive_results(
                         name=f"additive-remote-{client.endpoint}-{slot_index}",
                         daemon=True,
                     )
+                )
+            if per_endpoint_jobs:
+                parts = [
+                    f"{ep}={n}"
+                    for ep, n in sorted(per_endpoint_jobs.items(), key=lambda x: x[0])
+                ]
+                print(
+                    f"[remote] dispatch kind={kind} local_jobs={len(local_jobs)} "
+                    f"remote_jobs={len(remote_jobs)} slots={n_slots} "
+                    f"per_endpoint[{', '.join(parts)}]",
+                    flush=True,
                 )
         for thread in threads:
             thread.start()
@@ -969,6 +1867,7 @@ def iter_additive_results(
                 pending -= 1
                 continue
             if tag == "err":
+                producer_stop.set()
                 raise payload
             yield payload
 
@@ -977,11 +1876,1191 @@ def iter_additive_results(
         if errors:
             raise errors[0]
     finally:
+        producer_stop.set()
         for client in owned_clients:
             try:
                 client.close()
             except Exception:
                 pass
+        for thread in threads:
+            thread.join(timeout=1.0)
+        out_q.close()
+
+
+def _result_decision_count(result: Any) -> int:
+    """Best-effort telemetry count that can never fail a completed game."""
+    try:
+        return max(0, int(result.get("n_decisions") or 0))
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def iter_scheduled_additive_results(
+    *,
+    local_pool: Any,
+    local_fn: Callable[[dict[str, Any]], dict[str, Any]],
+    jobs: list[dict[str, Any]],
+    remote_clients: list[RemoteJobClient],
+    kind: str = "play",
+    scheduler: Any,
+    local_workers: int,
+    remote_workers: int = 0,
+    on_remote_slots: Optional[Callable[[dict[str, int]], None]] = None,
+    on_execution: Optional[Callable[[dict[str, Any]], None]] = None,
+) -> Iterator[dict[str, Any]]:
+    """Additive collect with mid-wave rebalance of *new chunk claims*.
+
+    Remotes still receive **large job chunks** per socket refill (LAN RTT
+    amortize) — never chatty per-game scheduler RPCs. Scheduler metrics use
+    wave wall-clock GPS only (see ``mid_iter_scheduler.WaveGpsTracker``).
+
+    ``on_remote_slots`` (optional) is invoked with
+    ``{active, demand, claimed_remote}`` whenever open remote sockets or
+    scheduler demand change — used to keep tqdm ``remotes=`` live.
+    """
+    if scheduler is None or not remote_clients or int(remote_workers) <= 0:
+        yield from iter_additive_results(
+            local_pool=local_pool,
+            local_fn=local_fn,
+            jobs=jobs,
+            remote_clients=remote_clients,
+            kind=kind,
+            local_workers=local_workers,
+            remote_workers=remote_workers,
+            on_execution=on_execution,
+        )
+        return
+
+    from collections import deque
+
+    remaining: deque[dict[str, Any]] = deque(jobs)
+    claim_lock = threading.Lock()
+    grow_lock = threading.Lock()  # also guards slots_by_endpoint / retire_tokens
+    claimed_local = 0
+    claimed_remote = 0
+    out_q = _SpillableResultQueue(
+        memory_capacity=result_queue_capacity(
+            local_workers=local_workers, remote_workers=remote_workers
+        )
+    )
+    errors: list[BaseException] = []
+    owned_clients: list[RemoteJobClient] = []
+    producer_stop = threading.Event()
+    threads: list[threading.Thread] = []
+    slots_by_endpoint: dict[str, int] = {}
+    refill_slot_floor: dict[str, int] = {}
+    low_water_recovery: set[str] = set()
+    initial_remote_tokens: set[int] = set()
+    initial_remote_leaders: set[int] = set()
+    initial_endpoint_leaders_ready = threading.Event()
+    # A local emitter may legitimately finish after remotes have claimed the
+    # whole queue.  It can also be alive but unable to refill: ``imap_unordered``
+    # does not return from a fixed-size claim until its final straggler finishes.
+    # In either case the remaining remote emitters must be allowed to drain the
+    # tail even when their historical claim fraction is above the scheduler's
+    # soft ceiling.  Without this hand-off the queue can be non-empty with no
+    # eligible claimant forever.
+    local_emitter_done = threading.Event()
+    local_batch_size = 0
+    local_batch_outstanding = 0
+    local_last_progress_mono = time.monotonic()
+    local_straggler_stale_s = max(
+        0.0, _env_float("PURE_RL_LOCAL_STRAGGLER_STALE_S", 30.0)
+    )
+    tail_override_logged = False
+    total_jobs = len(jobs)
+    endpoint_templates: dict[str, RemoteJobClient] = {}
+    for template in remote_clients:
+        endpoint_templates.setdefault(template.endpoint, template)
+    # Jobs reserved for a remote are staged in an endpoint-owned controller
+    # queue. Elmo request threads can only drain Elmo's deque and Bert request
+    # threads can only drain Bert's deque; OS thread timing can no longer turn
+    # a shared-deque lock race into endpoint starvation.
+    endpoint_owned_queues: dict[str, deque[dict[str, Any]]] = {
+        endpoint: deque() for endpoint in endpoint_templates
+    }
+    endpoint_queue_high_water: dict[str, int] = {
+        endpoint: 0 for endpoint in endpoint_templates
+    }
+    endpoint_queue_safety_ceiling: dict[str, int] = {
+        endpoint: 0 for endpoint in endpoint_templates
+    }
+    endpoint_credits = _EndpointClaimCredits(total_jobs=total_jobs)
+    credit_demand_signature: Optional[tuple[tuple[str, int], ...]] = None
+    log_scheduler = getattr(scheduler, "maybe_tick", None)
+    no_local_fallback = _env_truthy(
+        "POKEBOT_REMOTE_NO_LOCAL_FALLBACK"
+    ) or _env_truthy("POKEBOT_REMOTE_ONLY")
+    remote_only = _env_truthy("POKEBOT_REMOTE_ONLY")
+    demand_queue_mode = _env_truthy("POKEBOT_REMOTE_DEMAND_QUEUE")
+    endpoint_owned_queue_mode = bool(demand_queue_mode or remote_only)
+
+    def _refresh_endpoint_credit_targets(dec: Any) -> None:
+        """Refresh pure per-endpoint work targets under ``claim_lock``.
+
+        Scheduler demand is the intended execution concurrency.  Each healthy
+        endpoint additionally owns its configured server-queue target (four
+        execution waves by default), matching the low-water refill contract.
+        This function performs environment/config arithmetic only; it never
+        opens a socket or probes a remote while the shared deque is locked.
+        """
+        nonlocal credit_demand_signature
+        demand_map = dict(getattr(dec, "remote_demand", None) or {})
+        signature = tuple(
+            sorted(
+                (
+                    ep,
+                    max(
+                        0,
+                        int(
+                            demand_map.get(
+                                ep,
+                                endpoint_default_workers(
+                                    template.host, template.port
+                                ),
+                            )
+                        ),
+                    ),
+                )
+                for ep, template in endpoint_templates.items()
+            )
+        )
+        if signature == credit_demand_signature:
+            return
+        credit_demand_signature = signature
+        for ep, execution_demand in signature:
+            template = endpoint_templates[ep]
+            execution = min(
+                max(0, int(execution_demand)),
+                endpoint_max_workers(template.host, template.port),
+            )
+            if execution <= 0:
+                endpoint_credits.set_target(ep, 0)
+                endpoint_queue_high_water[ep] = 0
+                endpoint_queue_safety_ceiling[ep] = 0
+                continue
+            queue_target = endpoint_dispatch_chunk(
+                template.host,
+                template.port,
+                default=4 * execution,
+            )
+            # Capacity includes one executing wave plus the endpoint-specific
+            # waiting queue. With production settings this is Elmo 48+336 and
+            # Bert 16+112. The queues are disjoint even though their source is
+            # the same finite collection wave.
+            high_water = execution + queue_target
+            endpoint_queue_high_water[ep] = high_water
+            # The scheduling target is soft: one execution wave may be in
+            # transition while a low-water refill is being admitted. This
+            # ceiling exists only for device/file-descriptor safety and is not
+            # used as the ordinary refill target.
+            endpoint_queue_safety_ceiling[ep] = high_water + execution
+            endpoint_credits.set_target(
+                ep, endpoint_queue_safety_ceiling[ep]
+            )
+
+    def _endpoint_remote_available_locked() -> int:
+        available = len(remaining)
+        if demand_queue_mode and not remote_only:
+            local_reserve = (
+                0
+                if local_emitter_done.is_set()
+                else max(int(local_workers), int(local_batch_outstanding))
+            )
+            available = max(0, available - local_reserve)
+        return available
+
+    def _refill_endpoint_queue_locked(endpoint: str, dec: Any) -> int:
+        """Fill one endpoint-owned queue without consuming peer credit.
+
+        Caller holds ``claim_lock``. Credit accounting includes queued plus
+        executing jobs, so a completion releases exactly one refill slot for
+        the same endpoint. This is local bookkeeping only; no network I/O is
+        performed while the lock is held.
+        """
+        nonlocal claimed_remote
+        ep = str(endpoint)
+        _refresh_endpoint_credit_targets(dec)
+        owned = endpoint_owned_queues.setdefault(ep, deque())
+        target = max(0, int(endpoint_queue_high_water.get(ep, 0)))
+        if target <= 0 or not remaining:
+            return 0
+        need = max(0, target - len(owned))
+        if need <= 0:
+            return 0
+        available = _endpoint_remote_available_locked()
+        granted = endpoint_credits.claim_limit(
+            ep,
+            want=need,
+            remaining_count=available,
+            wave_remaining=len(remaining),
+        )
+        if granted <= 0:
+            return 0
+        for _ in range(granted):
+            owned.append(remaining.popleft())
+        claimed_remote += granted
+        endpoint_credits.note_claimed(ep, granted)
+        return granted
+
+    def _finish_remote_credit(endpoint: str, n: int = 1) -> None:
+        """Release completed remote work and restore data-path health."""
+        with claim_lock:
+            endpoint_credits.note_finished(endpoint, n)
+            # A returned game is stronger evidence than a failed control probe.
+            endpoint_credits.set_healthy(endpoint, True)
+
+    def _finish_initial_remote_claim(token: Optional[int]) -> None:
+        if token is None:
+            return
+        initial_remote_tokens.discard(int(token))
+        initial_remote_leaders.discard(int(token))
+        if not initial_remote_leaders:
+            initial_endpoint_leaders_ready.set()
+
+    def _claim(
+        side: str,
+        want: int,
+        *,
+        initial_token: Optional[int] = None,
+        endpoint: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        nonlocal claimed_local, claimed_remote
+        nonlocal local_batch_size, local_batch_outstanding
+        nonlocal local_last_progress_mono, tail_override_logged
+        requested_want = max(0, int(want))
+        want = requested_want
+        if want <= 0:
+            return []
+        with claim_lock:
+            initial_attempt = bool(
+                side == "remote"
+                and initial_token is not None
+                and initial_token in initial_remote_tokens
+            )
+            if side == "remote" and endpoint_owned_queue_mode:
+                if endpoint is None:
+                    raise RuntimeError("remote claim missing endpoint")
+                dec = scheduler.decision()
+                _refill_endpoint_queue_locked(str(endpoint), dec)
+                owned = endpoint_owned_queues.setdefault(str(endpoint), deque())
+                take = min(requested_want, len(owned))
+                batch = [owned.popleft() for _ in range(take)]
+                if initial_attempt:
+                    _finish_initial_remote_claim(initial_token)
+                if callable(log_scheduler):
+                    try:
+                        log_scheduler(remaining=len(remaining))
+                    except Exception:
+                        pass
+                # Never fall through to the shared deque: an empty Bert queue
+                # must wait for Bert credit/refill, not race an Elmo claimant.
+                return batch
+            if not remaining:
+                if initial_attempt:
+                    _finish_initial_remote_claim(initial_token)
+                return []
+            dec = scheduler.decision()
+            local_share = float(dec.local_share)
+            min_local = float(getattr(scheduler, "min_local_frac", 0.40))
+            total_claimed = claimed_local + claimed_remote
+            if side == "remote":
+                if remote_only:
+                    want = min(want, len(remaining))
+                elif demand_queue_mode:
+                    # Completion speed is the demand signal. Keep every live
+                    # remote socket fed, but reserve one complete local wave so
+                    # fast remotes cannot empty the shared deque before the
+                    # already-full local pool asks for its next batch.
+                    local_reserve = (
+                        0
+                        if local_emitter_done.is_set()
+                        else max(int(local_workers), int(local_batch_outstanding))
+                    )
+                    remote_room = max(0, len(remaining) - local_reserve)
+                    want = min(want, remote_room)
+                else:
+                    # Legacy soft-share mode. Large private socket chunks used
+                    # with this gate can create burst starvation; production
+                    # uses the bounded demand queue above.
+                    demand_map = getattr(dec, "remote_demand", None) or {}
+                    try:
+                        demand_sum = int(sum(int(v) for v in demand_map.values()))
+                    except Exception:
+                        demand_sum = max(0, int(remote_workers))
+                    demand_sum = max(1, demand_sum)
+                    demand_frac = float(demand_sum) / float(
+                        max(1, int(local_workers)) + demand_sum
+                    )
+                    max_remote_frac = min(
+                        float(getattr(scheduler, "max_remote_frac", 0.60)),
+                        max(
+                            float(dec.remote_share),
+                            float(getattr(scheduler, "min_remote_frac", 0.0)),
+                            demand_frac,
+                        ),
+                    )
+                    if total_claimed > 0:
+                        room = int(
+                            max_remote_frac * (total_claimed + want)
+                            - claimed_remote
+                        )
+                        want = min(want, max(0, room))
+                    prefer = float(
+                        getattr(scheduler, "prefer_local_frac", min_local)
+                    )
+                    local_floor = max(
+                        min_local, min(prefer, float(local_share))
+                    )
+                    target_local = local_floor * max(total_claimed + want, 1)
+                    if (
+                        claimed_local + 1 < target_local * 0.50
+                        and claimed_local < max(8, int(local_workers) // 4)
+                        and total_claimed > want
+                    ):
+                        want = max(0, want // 2)
+                # Do not treat every partially-completed local batch as a
+                # straggler.  That would bypass the remote share ceiling after
+                # the first ordinary local completion and could move the whole
+                # tail onto slower remotes.  The production latch had two
+                # outstanding results; reserve this override for the final 5%
+                # of a batch (with a two-result floor).
+                now_mono = time.monotonic()
+                local_progress_age_s = max(
+                    0.0, now_mono - float(local_last_progress_mono)
+                )
+                local_claimant_stale = _local_tail_override_ready(
+                    emitter_done=local_emitter_done.is_set(),
+                    batch_size=local_batch_size,
+                    outstanding=local_batch_outstanding,
+                    last_progress_mono=local_last_progress_mono,
+                    now_mono=now_mono,
+                    stale_s=local_straggler_stale_s,
+                )
+                if (
+                    want <= 0
+                    and remaining
+                    and local_claimant_stale
+                ):
+                    # Tail-drain correctness override.  The share limit is a
+                    # throughput preference, not permission to strand jobs
+                    # after the local claimant has exited or is stuck waiting
+                    # for the last result(s) of an underfilled fixed batch.
+                    want = min(max(1, requested_want), len(remaining))
+                    if not tail_override_logged:
+                        local_state = (
+                            "done"
+                            if local_emitter_done.is_set()
+                            else (
+                                f"underfilled "
+                                f"({local_batch_outstanding}/{local_batch_size} "
+                                f"outstanding; stale={local_progress_age_s:.1f}s/"
+                                f"{local_straggler_stale_s:.1f}s)"
+                            )
+                        )
+                        print(
+                            "[remote] scheduled tail-drain override: local "
+                            f"emitter is {local_state}; ignoring remote soft share for "
+                            f"{len(remaining)} remaining job(s)",
+                            flush=True,
+                        )
+                        tail_override_logged = True
+            else:
+                # Local-primary / additive: always allow local claims up to
+                # remaining — demand growth never soft-caps local. Endpoint
+                # credit fairness is never a steal from the local claimant.
+                pass
+            want = min(want, len(remaining))
+            if initial_attempt:
+                # First remote claims are a synchronized round. Cap each slot
+                # to its fair share of the still-unclaimed work, reserving room
+                # for later slots (and therefore later endpoints) instead of
+                # letting the first Elmo thread take a 128-job chunk before any
+                # Bert thread runs.
+                unclaimed = max(1, len(initial_remote_tokens))
+                fair_share = max(1, (len(remaining) + unclaimed - 1) // unclaimed)
+                want = min(want, fair_share)
+                if (
+                    want <= 0
+                    and int(initial_token) in initial_remote_leaders
+                    and remaining
+                ):
+                    # One leader per endpoint is an execution-proof reservation.
+                    # It may exceed a transient soft share by one job, never the
+                    # hard remote capacity or no-fallback contract.
+                    want = 1
+                _finish_initial_remote_claim(initial_token)
+            if side == "remote":
+                if endpoint is None:
+                    raise RuntimeError("remote claim missing endpoint")
+                _refresh_endpoint_credit_targets(dec)
+                remote_available = len(remaining)
+                if demand_queue_mode and not remote_only:
+                    local_reserve = (
+                        0
+                        if local_emitter_done.is_set()
+                        else max(int(local_workers), int(local_batch_outstanding))
+                    )
+                    remote_available = max(0, len(remaining) - local_reserve)
+                want = endpoint_credits.claim_limit(
+                    endpoint,
+                    want=want,
+                    remaining_count=remote_available,
+                    wave_remaining=len(remaining),
+                )
+            if want <= 0:
+                return []
+            batch = [remaining.popleft() for _ in range(want)]
+            if side == "remote":
+                claimed_remote += len(batch)
+                endpoint_credits.note_claimed(str(endpoint), len(batch))
+            else:
+                claimed_local += len(batch)
+                local_batch_size = len(batch)
+                local_batch_outstanding = len(batch)
+                local_last_progress_mono = time.monotonic()
+            if callable(log_scheduler):
+                try:
+                    log_scheduler(remaining=len(remaining))
+                except Exception:
+                    pass
+            return batch
+
+    def _emit_local() -> None:
+        nonlocal local_batch_outstanding, local_last_progress_mono
+        try:
+            local_chunk = max(4, int(local_workers))
+            while True:
+                if producer_stop.is_set():
+                    return
+                batch = _claim("local", local_chunk)
+                if not batch:
+                    break
+                for row in local_pool.imap_unordered(local_fn, batch):
+                    if producer_stop.is_set():
+                        return
+                    with claim_lock:
+                        local_batch_outstanding = max(
+                            0, int(local_batch_outstanding) - 1
+                        )
+                        local_last_progress_mono = time.monotonic()
+                    scheduler.note_completed(
+                        side="local",
+                        n=1,
+                        decisions=_result_decision_count(row),
+                    )
+                    if on_execution is not None:
+                        on_execution({"origin": "local", "kind": kind})
+                    if not _put_thread_result(
+                        out_q, producer_stop, ("ok", row)
+                    ):
+                        return
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+            _put_thread_result(out_q, producer_stop, ("err", exc))
+        finally:
+            local_emitter_done.set()
+            _put_thread_result(out_q, producer_stop, ("done", None))
+
+    # Cooperative retire tokens: when demand shrinks, excess emit threads
+    # exit between chunks so live sockets fall with demand (not grow-only).
+    retire_tokens: dict[str, int] = {}
+
+    def _account_remote_slot_exit(endpoint: str) -> tuple[int, int]:
+        """Remove one live emitter from both slot and reservation accounting."""
+        ep = str(endpoint)
+        with grow_lock:
+            before = max(0, int(slots_by_endpoint.get(ep, 0)))
+            after = max(0, before - 1)
+            slots_by_endpoint[ep] = after
+        with claim_lock:
+            endpoint_credits.unregister(ep)
+        return before, after
+
+    def _submit_remote_with_retry(
+        client: RemoteJobClient, job: dict[str, Any]
+    ) -> dict[str, Any]:
+        max_attempts = max(
+            1, int(os.environ.get("POKEBOT_REMOTE_JOB_RETRIES", "8") or "8")
+        )
+        last_exc: Optional[BaseException] = None
+        for attempt in range(max_attempts):
+            try:
+                return client.submit_job(job, kind=kind)
+            except (TimeoutError, OSError, RemoteJobsError) as exc:
+                last_exc = exc
+                print(
+                    f"[remote] {client.endpoint} scheduled job attempt "
+                    f"{attempt + 1}/{max_attempts} failed "
+                    f"({type(exc).__name__}: {exc}); reconnect+retry remote",
+                    flush=True,
+                )
+                try:
+                    client.reconnect()
+                except (TimeoutError, OSError, RemoteJobsError):
+                    time.sleep(min(30.0, 2.0 * (attempt + 1)))
+                else:
+                    time.sleep(min(5.0, 0.5 * (attempt + 1)))
+        assert last_exc is not None
+        raise last_exc
+
+    def _emit_remote(
+        client: RemoteJobClient,
+        initial_token: Optional[int] = None,
+    ) -> None:
+        # Fair, shallow reservations keep every remote socket fed.  This claim
+        # is only an in-process deque operation; it does not amortize LAN RTT.
+        # Stay alive on soft-capped empty claims so demand→target→live claims
+        # can resume (exiting here left tqdm remotes= and claimed_remote flat
+        # while demand climbed). Retire when demand_shrink hands us a token.
+        nonlocal claimed_remote
+        idle_spins = 0
+        ep = client.endpoint
+        first_claim = initial_token is not None
+        retiring = False
+        try:
+            while True:
+                if producer_stop.is_set():
+                    return
+                with grow_lock:
+                    tok = int(retire_tokens.get(ep, 0))
+                    if tok > 0:
+                        retire_tokens[ep] = tok - 1
+                        retiring = True
+                        try:
+                            client.close()
+                        except Exception:
+                            pass
+                        return
+                dec = scheduler.decision()
+                endpoint_backlog = endpoint_dispatch_chunk(
+                    client.host,
+                    client.port,
+                    default=int(getattr(dec, "remote_chunk", 128)),
+                )
+                with grow_lock:
+                    live_endpoint_slots = max(
+                        1, int(slots_by_endpoint.get(ep, 1))
+                    )
+                chunk = max(
+                    remote_refill_games_per_socket(),
+                    (int(endpoint_backlog) + live_endpoint_slots - 1)
+                    // live_endpoint_slots,
+                )
+                batch = _claim(
+                    "remote",
+                    chunk,
+                    initial_token=initial_token if first_claim else None,
+                    endpoint=ep,
+                )
+                was_initial_claim = first_claim
+                if first_claim:
+                    first_claim = False
+                if not batch:
+                    with claim_lock:
+                        left = len(remaining)
+                    if left <= 0:
+                        break
+                    idle_spins += 1
+                    time.sleep(min(0.25, 0.02 * float(idle_spins)))
+                    continue
+                idle_spins = 0
+                for index, job in enumerate(batch):
+                    if producer_stop.is_set():
+                        return
+                    # Retire only between claimed chunks.  Returning the
+                    # unstarted suffix here used to create a deterministic
+                    # tail deadlock: local had already exited, while the
+                    # surviving remotes were above their soft share and could
+                    # not reclaim the returned jobs.  A slot now completes the
+                    # batch it owns, then consumes its retire token at the top
+                    # of the outer loop.
+                    try:
+                        row = (
+                            _submit_remote_with_retry(client, job)
+                            if no_local_fallback
+                            else client.submit_job(job, kind=kind)
+                        )
+                        _finish_remote_credit(ep)
+                        scheduler.note_completed(
+                            side="remote",
+                            n=1,
+                            decisions=_result_decision_count(row),
+                        )
+                        if on_execution is not None:
+                            on_execution(
+                                {
+                                    "origin": "remote",
+                                    "endpoint": client.endpoint,
+                                    "kind": kind,
+                                }
+                            )
+                        if not _put_thread_result(
+                            out_q, producer_stop, ("ok", row)
+                        ):
+                            return
+                    except (TimeoutError, OSError, RemoteJobsError) as exc:
+                        remaining_jobs = batch[index:]
+                        if no_local_fallback:
+                            print(
+                                f"[remote] {client.endpoint} scheduled slot failed "
+                                f"after remote retries ({type(exc).__name__}: {exc}); "
+                                f"NOT falling back {len(remaining_jobs)} job(s)",
+                                flush=True,
+                            )
+                            raise
+                        print(
+                            f"[remote] {client.endpoint} chunk slot failed "
+                            f"({type(exc).__name__}: {exc}); "
+                            f"falling back {len(remaining_jobs)} job(s) to local",
+                            flush=True,
+                        )
+                        for fallback_job in remaining_jobs:
+                            if producer_stop.is_set():
+                                return
+                            row = local_pool.apply(local_fn, fallback_job)
+                            _finish_remote_credit(ep)
+                            scheduler.note_completed(
+                                side="local",
+                                n=1,
+                                decisions=_result_decision_count(row),
+                            )
+                            if on_execution is not None:
+                                on_execution(
+                                    {
+                                        "origin": "local_fallback",
+                                        "endpoint": client.endpoint,
+                                        "kind": kind,
+                                    }
+                                )
+                            if not _put_thread_result(
+                                out_q, producer_stop, ("ok", row)
+                            ):
+                                return
+                        return
+                # Refill independently as soon as this socket completes.  A
+                # global post-first-claim rendezvous drained both remote queues
+                # to zero while the final startup token lagged on a busy host.
+                if was_initial_claim:
+                    # Wait only for one reservation per endpoint, never for all
+                    # request sockets. This preserves Bert/Elmo admission on a
+                    # tiny queue and is already set before a real game returns.
+                    initial_endpoint_leaders_ready.wait(timeout=5.0)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+            _put_thread_result(out_q, producer_stop, ("err", exc))
+        finally:
+            before, after = _account_remote_slot_exit(ep)
+            if retiring:
+                print(
+                    f"[remote] {ep} demand_shrink "
+                    f"slots={before}->{after} "
+                    f"(cap demand; cooperative retire)",
+                    flush=True,
+                )
+            _put_thread_result(out_q, producer_stop, ("done", None))
+
+    try:
+        bind = getattr(scheduler, "bind_remote_endpoints", None)
+        if callable(bind):
+            try:
+                bind(remote_clients)
+            except Exception as exc:
+                print(f"[pure_rl] scheduler bind_remotes failed: {exc!r}", flush=True)
+
+        # Initial tick documents metrics contract in the event log.
+        try:
+            dec0 = scheduler.maybe_tick(remaining=total_jobs, force=True)
+            if dec0 is not None:
+                print(
+                    f"[pure_rl] mid_iter_rebalance=start {dec0.as_log()} "
+                    f"jobs={total_jobs} kind={kind}",
+                    flush=True,
+                )
+        except Exception as exc:
+            print(f"[pure_rl] scheduler start tick failed: {exc!r}", flush=True)
+
+        demand0 = {}
+        try:
+            demand0 = dict(scheduler.decision().remote_demand or {})
+        except Exception:
+            demand0 = {}
+        remote_slots, owned_clients = _parallel_remote_slots(
+            remote_clients, demand_by_endpoint=demand0 or None
+        )
+        if no_local_fallback and not remote_slots:
+            raise RemoteJobsError(
+                "scheduled dispatch has no live remote slots and local fallback "
+                "is disabled"
+            )
+        # Start endpoint sockets round-robin.  Grouped Elmo-then-Bert startup
+        # made the faster endpoint wait behind hundreds of thread starts and
+        # amplified synchronized waves on the return path.
+        endpoint_buckets: dict[str, list[RemoteJobClient]] = {}
+        for client in remote_slots:
+            endpoint_buckets.setdefault(client.endpoint, []).append(client)
+        if len(endpoint_buckets) > 1:
+            interleaved: list[RemoteJobClient] = []
+            depth = max(len(bucket) for bucket in endpoint_buckets.values())
+            for index in range(depth):
+                for bucket in endpoint_buckets.values():
+                    if index < len(bucket):
+                        interleaved.append(bucket[index])
+            remote_slots = interleaved
+
+        initial_remote_tokens.update(range(len(remote_slots)))
+        first_slot_by_endpoint: dict[str, int] = {}
+        for slot_index, client in enumerate(remote_slots):
+            first_slot_by_endpoint.setdefault(client.endpoint, slot_index)
+        initial_remote_leaders.update(first_slot_by_endpoint.values())
+        if not initial_remote_leaders:
+            initial_endpoint_leaders_ready.set()
+        if not remote_only:
+            threads.append(
+                threading.Thread(target=_emit_local, name="sched-local", daemon=True)
+            )
+        for slot_index, client in enumerate(remote_slots):
+            slots_by_endpoint[client.endpoint] = (
+                slots_by_endpoint.get(client.endpoint, 0) + 1
+            )
+            # Register every endpoint before any thread starts.  Thus the
+            # first fast Elmo claimant already protects Bert's full credit;
+            # fairness does not depend on OS thread-start order.
+            endpoint_credits.register(client.endpoint)
+            threads.append(
+                threading.Thread(
+                    target=_emit_remote,
+                    args=(client, slot_index),
+                    name=f"sched-remote-{client.endpoint}-{slot_index}",
+                    daemon=True,
+                )
+            )
+        endpoint_queue_depths: dict[str, int] = {}
+        if endpoint_owned_queue_mode:
+            # Deterministic controller-side partition before any request
+            # thread starts. Both endpoint credits are registered above, so
+            # the first refill protects the other endpoint's full capacity.
+            with claim_lock:
+                dec = scheduler.decision()
+                for endpoint in sorted(endpoint_templates):
+                    _refill_endpoint_queue_locked(endpoint, dec)
+                endpoint_queue_depths = {
+                    endpoint: len(queue_)
+                    for endpoint, queue_ in endpoint_owned_queues.items()
+                }
+            print(
+                "[remote] endpoint_owned_queues "
+                f"depths={endpoint_queue_depths} "
+                f"high_water={dict(endpoint_queue_high_water)} "
+                f"safety_ceiling={dict(endpoint_queue_safety_ceiling)} "
+                "shared_endpoint_race=disabled",
+                flush=True,
+            )
+        print(
+            f"[remote] scheduled_dispatch kind={kind} jobs={total_jobs} "
+            f"remote_slots={len(remote_slots)} "
+            f"remote_chunk={int(scheduler.decision().remote_chunk)} "
+            f"refill_games={remote_refill_games_per_socket()} "
+            f"demand={demand0 or '-'} "
+            f"result_buffer=ram:{out_q.memory_capacity}+"
+            f"disk:{out_q.max_spool_bytes / (1024**3):.1f}GiB "
+            f"(chunked RTT amortize; metrics=wave_wall_clock_gps; "
+            f"remote_demand max≫default)",
+            flush=True,
+        )
+        for thread in threads:
+            thread.start()
+
+        pending = len(threads)
+        last_log = time.monotonic()
+        last_refill_probe = last_log
+
+        def _publish_remote_slots() -> None:
+            """Push live active-socket + demand counts to tqdm / monitors."""
+            if on_remote_slots is None:
+                return
+            try:
+                active = int(sum(slots_by_endpoint.values()))
+                dem_map = dict(scheduler.remote_demand() or {})
+                demand_n = int(sum(int(v) for v in dem_map.values())) if dem_map else active
+                on_remote_slots(
+                    {
+                        "active": active,
+                        "demand": demand_n,
+                        "claimed_remote": int(claimed_remote),
+                    }
+                )
+            except Exception:
+                pass
+
+        _publish_remote_slots()
+
+        def _maybe_grow_remote_slots(dec: Any) -> None:
+            """Hot-add remote sockets when scheduler demand rises mid-wave."""
+            nonlocal pending
+            demand = dict(getattr(dec, "remote_demand", None) or {})
+            if not demand:
+                return
+            grew = False
+            with grow_lock:
+                for template in remote_clients:
+                    ep = template.endpoint
+                    want = remote_socket_target(int(demand.get(ep, 0)))
+                    have = int(slots_by_endpoint.get(ep, 0))
+                    if want <= have:
+                        continue
+                    extras = want - have
+                    for i in range(extras):
+                        try:
+                            clone = _clone_remote_client(template)
+                        except (TimeoutError, OSError, RemoteJobsError) as exc:
+                            print(
+                                f"[remote] {ep} grow slot failed "
+                                f"({type(exc).__name__}: {exc})",
+                                flush=True,
+                            )
+                            break
+                        owned_clients.append(clone)
+                        slots_by_endpoint[ep] = slots_by_endpoint.get(ep, 0) + 1
+                        with claim_lock:
+                            endpoint_credits.register(ep)
+                        t = threading.Thread(
+                            target=_emit_remote,
+                            args=(clone,),
+                            name=f"sched-remote-grow-{ep}-{have + i}",
+                            daemon=True,
+                        )
+                        threads.append(t)
+                        pending += 1
+                        t.start()
+                    if slots_by_endpoint.get(ep, 0) > have:
+                        grew = True
+                        print(
+                            f"[remote] {ep} demand_grow "
+                            f"slots={have}->{slots_by_endpoint[ep]} "
+                            f"(socket target={want})",
+                            flush=True,
+                        )
+            if grew:
+                _publish_remote_slots()
+
+        def _maybe_shrink_remote_slots(dec: Any) -> None:
+            """Retire excess emit threads when demand falls (completion-time).
+
+            Grow-only left sockets stuck at the peak (e.g. 37) after
+            ``demand_hurt_wave_gps`` shrunk demand back to 20/10 — GPS stayed
+            ~6.7 while the faster 20/10 operating point was ~15 g/s. Tokens make
+            emitters exit between chunks so ``remotes=`` tracks demand down.
+            """
+            demand = dict(getattr(dec, "remote_demand", None) or {})
+            if not demand:
+                return
+            shrunk = False
+            with grow_lock:
+                for template in remote_clients:
+                    ep = template.endpoint
+                    want = remote_socket_target(
+                        max(0, int(demand.get(ep, 0)))
+                    )
+                    # A low-water refill reserve is held for the rest of this
+                    # collection wave.  Shrinking it immediately on the next
+                    # ordinary scheduler tick recreates the starvation cycle.
+                    want = max(want, int(refill_slot_floor.get(ep, 0)))
+                    have = int(slots_by_endpoint.get(ep, 0))
+                    pending_retire = int(retire_tokens.get(ep, 0))
+                    # Effective live after already-queued retires.
+                    effective = have - pending_retire
+                    if effective <= want:
+                        continue
+                    extras = effective - want
+                    retire_tokens[ep] = pending_retire + extras
+                    shrunk = True
+                    print(
+                        f"[remote] {ep} demand_shrink_queue "
+                        f"slots={have} want={want} retire+={extras} "
+                        f"(live sockets must fall with completion gate)",
+                        flush=True,
+                    )
+            if shrunk:
+                _publish_remote_slots()
+
+        def _maybe_refill_low_remote_queues() -> None:
+            """Refill one execution wave per probe until high water returns.
+
+            ``health.active_jobs`` is the authoritative server-side count of
+            executing plus locally queued games.  Refill is based on queued
+            games (active minus execution workers), not TCP socket estimates.
+            Both endpoint probes happen concurrently; reserve emitters are
+            opened round-robin so a low Bert queue cannot wait behind Elmo.
+            """
+            nonlocal pending
+            with claim_lock:
+                jobs_left = len(remaining)
+            # Do not overfill the final allocation tail; idle stragglers are
+            # expected and explicitly outside the steady-state queue contract.
+            if jobs_left <= max(32, int(total_jobs * 0.05)):
+                return
+
+            samples: dict[str, dict[str, Any]] = {}
+            failed_probes: set[str] = set()
+            sample_lock = threading.Lock()
+
+            def _probe(template: RemoteJobClient) -> None:
+                control = RemoteJobClient(
+                    template.host,
+                    template.port,
+                    timeout_s=min(5.0, template.timeout_s),
+                    connect_timeout_s=min(5.0, template.connect_timeout_s),
+                    control_timeout_s=min(5.0, template.control_timeout_s),
+                )
+                try:
+                    control.connect()
+                    health = control.health()
+                    with sample_lock:
+                        samples[template.endpoint] = health
+                except (TimeoutError, OSError, RemoteJobsError) as exc:
+                    with sample_lock:
+                        failed_probes.add(template.endpoint)
+                    print(
+                        f"[remote] {template.endpoint} queue_probe failed "
+                        f"({type(exc).__name__}: {exc}); keeping existing slots",
+                        flush=True,
+                    )
+                finally:
+                    control.close()
+
+            probes = [
+                threading.Thread(
+                    target=_probe,
+                    args=(template,),
+                    name=f"remote-queue-probe-{template.endpoint}",
+                    daemon=True,
+                )
+                for template in remote_clients
+            ]
+            for probe in probes:
+                probe.start()
+            for probe in probes:
+                probe.join(timeout=6.0)
+
+            # Probe I/O has completed before taking the deque lock.  A
+            # successful health reply (including active_jobs=0) keeps the
+            # endpoint's reservation; a failed probe releases unused credit
+            # until a data-path result or later probe proves it healthy again.
+            with claim_lock:
+                for endpoint in samples:
+                    endpoint_credits.set_healthy(endpoint, True)
+                for endpoint in failed_probes:
+                    endpoint_credits.set_healthy(endpoint, False)
+
+            try:
+                demand = dict(scheduler.decision().remote_demand or {})
+            except Exception:
+                demand = {}
+            fraction = remote_queue_low_water_fraction()
+            plans: list[tuple[RemoteJobClient, int, int, int, int, int]] = []
+            for template in remote_clients:
+                health = samples.get(template.endpoint)
+                if not health:
+                    continue
+                execution = demand_slot_count(
+                    capacity=remote_capacity_workers(template.info),
+                    demand=int(demand.get(template.endpoint, 0)),
+                    max_cap=endpoint_max_workers(template.host, template.port),
+                )
+                if execution <= 0:
+                    continue
+                controller_high_water = endpoint_dispatch_chunk(
+                    template.host,
+                    template.port,
+                    default=4 * execution,
+                )
+                active = max(0, int(health.get("active_jobs") or 0))
+                queued = max(0, active - execution)
+                with grow_lock:
+                    have = int(slots_by_endpoint.get(template.endpoint, 0))
+                max_slots = remote_socket_max_target(execution)
+                # A protected controller queue may exceed the number of
+                # requests that the remote server can admit. Treat both values
+                # as soft high-water targets and leave the extra work on the
+                # trainer rather than pretending the remote can queue it.
+                server_high_water = max(
+                    1,
+                    min(
+                        controller_high_water,
+                        max(0, max_slots - execution),
+                    ),
+                )
+                low_water = max(1, int(server_high_water * fraction))
+                endpoint = template.endpoint
+                if queued < low_water:
+                    low_water_recovery.add(endpoint)
+                elif queued >= server_high_water:
+                    low_water_recovery.discard(endpoint)
+                if endpoint not in low_water_recovery:
+                    continue
+                restore_active = execution + server_high_water
+                extras = min(
+                    max(0, max_slots - have),
+                    execution,
+                    max(1, restore_active - active),
+                    jobs_left,
+                )
+                if extras > 0:
+                    plans.append(
+                        (
+                            template,
+                            extras,
+                            active,
+                            queued,
+                            low_water,
+                            server_high_water,
+                        )
+                    )
+
+            if not plans:
+                return
+
+            # Round-robin growth across endpoints.  Each newly started emitter
+            # claims and sends independently, so Elmo and Bert refill together.
+            max_extras = max(plan[1] for plan in plans)
+            started: dict[str, int] = {plan[0].endpoint: 0 for plan in plans}
+            for depth in range(max_extras):
+                for (
+                    template,
+                    extras,
+                    _active,
+                    _queued,
+                    _low_water,
+                    _high_water,
+                ) in plans:
+                    if depth >= extras or producer_stop.is_set():
+                        continue
+                    ep = template.endpoint
+                    try:
+                        clone = _clone_remote_client(template)
+                    except (TimeoutError, OSError, RemoteJobsError) as exc:
+                        print(
+                            f"[remote] {ep} low_water grow failed "
+                            f"({type(exc).__name__}: {exc})",
+                            flush=True,
+                        )
+                        continue
+                    owned_clients.append(clone)
+                    with grow_lock:
+                        have = int(slots_by_endpoint.get(ep, 0))
+                        slots_by_endpoint[ep] = have + 1
+                        retire_tokens[ep] = 0
+                        refill_slot_floor[ep] = slots_by_endpoint[ep]
+                        with claim_lock:
+                            endpoint_credits.register(ep)
+                    thread = threading.Thread(
+                        target=_emit_remote,
+                        args=(clone,),
+                        name=f"sched-remote-low-water-{ep}-{have}",
+                        daemon=True,
+                    )
+                    threads.append(thread)
+                    pending += 1
+                    started[ep] += 1
+                    thread.start()
+
+            for template, _extras, active, queued, low_water, high_water in plans:
+                ep = template.endpoint
+                added = int(started.get(ep, 0))
+                if added <= 0:
+                    continue
+                print(
+                    f"[remote] {ep} LOW_WATER_REFILL active={active} "
+                    f"queued={queued}<{low_water} added={added} "
+                    f"wave={int(demand.get(ep, 0))} high_water={high_water} "
+                    f"slots={slots_by_endpoint.get(ep, 0)}/"
+                    f"{remote_socket_max_target(int(demand.get(ep, 0)))}",
+                    flush=True,
+                )
+            _publish_remote_slots()
+
+        while pending > 0:
+            tag, payload = out_q.get()
+            if tag == "done":
+                pending -= 1
+                _publish_remote_slots()
+                continue
+            if tag == "err":
+                producer_stop.set()
+                raise payload
+            yield payload
+            now = time.monotonic()
+            if now - last_refill_probe >= remote_queue_probe_interval_s():
+                last_refill_probe = now
+                try:
+                    _maybe_refill_low_remote_queues()
+                except Exception as refill_exc:
+                    print(
+                        f"[remote] low_water refill check skipped: {refill_exc!r}",
+                        flush=True,
+                    )
+            if now - last_log >= 15.0:
+                last_log = now
+                try:
+                    with claim_lock:
+                        rem = len(remaining)
+                    dec = scheduler.maybe_tick(remaining=rem, force=False)
+                    if dec is not None:
+                        active_n = int(sum(slots_by_endpoint.values()))
+                        print(
+                            f"[pure_rl] mid_iter_rebalance={dec.as_log()} "
+                            f"claimed_local={claimed_local} "
+                            f"claimed_remote={claimed_remote} "
+                            f"remote_slots_live={active_n} remaining={rem} "
+                            f"result_buffer={out_q.telemetry()}",
+                            flush=True,
+                        )
+                        try:
+                            # Shrink first so a hurt-probe can cut sockets before
+                            # any re-grow on the same tick.
+                            _maybe_shrink_remote_slots(dec)
+                            _maybe_grow_remote_slots(dec)
+                        except Exception as slot_exc:
+                            print(
+                                f"[remote] demand slot adjust skipped: {slot_exc!r}",
+                                flush=True,
+                            )
+                        _publish_remote_slots()
+                except Exception:
+                    pass
+
+        for thread in threads:
+            thread.join(timeout=1.0)
+        if errors:
+            raise errors[0]
+        with claim_lock:
+            stranded = len(remaining)
+        if stranded:
+            raise RemoteJobsError(
+                "scheduled dispatch exhausted all emitters with "
+                f"{stranded} unclaimed job(s)"
+            )
+        try:
+            dec_f = scheduler.maybe_tick(remaining=0, force=True)
+            if dec_f is not None:
+                print(
+                    f"[pure_rl] mid_iter_rebalance=done {dec_f.as_log()} "
+                    f"claimed_local={claimed_local} claimed_remote={claimed_remote}",
+                    flush=True,
+                )
+        except Exception:
+            pass
+    finally:
+        producer_stop.set()
+        for client in owned_clients:
+            try:
+                client.close()
+            except Exception:
+                pass
+        for thread in threads:
+            thread.join(timeout=1.0)
+        out_q.close()
 
 
 @dataclass
@@ -1003,15 +3082,32 @@ class RemoteWorkerFarm:
 
     @property
     def total_workers(self) -> int:
+        """Advertised default slots (hello ``workers``); not the pool ceiling."""
         return sum(
             int(client.info.workers)
             for client in self.clients
             if client.info is not None
         )
 
-    def connect(self) -> list[RemoteWorkerInfo]:
+    @property
+    def total_capacity(self) -> int:
+        """Process-pool capacity across endpoints (``max_workers`` / headroom)."""
+        return sum(
+            remote_capacity_workers(client.info)
+            for client in self.clients
+            if client.info is not None
+        )
+
+    def connect(self, *, require_all: bool = False) -> list[RemoteWorkerInfo]:
+        """Connect farm endpoints.
+
+        ``require_all=False`` (default): skip dead endpoints so a mid-redeploy
+        blip on Elmo does not zero *all* remotes (bert can still take work).
+        ``require_all=True``: fail-closed if any endpoint is unreachable.
+        """
         self.close()
         infos: list[RemoteWorkerInfo] = []
+        errors: list[str] = []
         for endpoint in self.endpoints:
             client = RemoteJobClient(
                 *parse_endpoint(endpoint),
@@ -1019,8 +3115,27 @@ class RemoteWorkerFarm:
                 connect_timeout_s=self.connect_timeout_s,
                 control_timeout_s=self.control_timeout_s,
             )
-            infos.append(client.connect())
-            self.clients.append(client)
+            try:
+                infos.append(client.connect())
+                self.clients.append(client)
+            except Exception as exc:  # noqa: BLE001 — surface per-endpoint
+                errors.append(f"{endpoint}: {type(exc).__name__}: {exc}")
+                try:
+                    client.close()
+                except Exception:
+                    pass
+                if require_all:
+                    self.close()
+                    raise
+                print(
+                    f"[remote] connect skip {endpoint} ({type(exc).__name__}: {exc}); "
+                    "continuing with live endpoints",
+                    flush=True,
+                )
+        if not infos and self.endpoints:
+            raise RemoteJobsError(
+                "no remote endpoints reachable: " + "; ".join(errors)
+            )
         return infos
 
     def close(self) -> None:
@@ -1234,6 +3349,7 @@ def serve_forever(
     backlog: int = 64,
     stop_event: Optional[threading.Event] = None,
     idle_timeout_s: float = 60.0,
+    max_connections: int = 128,
 ) -> None:
     """Accept connections; each connection is handled sequentially (one job at a
     time per socket). Concurrent sockets = concurrent in-flight games, bounded
@@ -1242,7 +3358,17 @@ def serve_forever(
     ``idle_timeout_s`` bounds each ``recv`` so a wedged peer cannot hang the
     handler thread forever. Idle timeouts are retried (not treated as hangup)
     so long-lived farm sockets survive train/promo gaps between waves.
+
+    ``max_connections`` is a hard thread/socket cap.  In particular, a TCP-only
+    container health check must not be able to create an unbounded number of
+    daemon threads while the worker is busy.  Malformed probes and clients that
+    disconnect mid-frame are normal network noise and are closed quietly.
     """
+
+    connection_limit = threading.BoundedSemaphore(max(1, int(max_connections)))
+    active_lock = threading.Lock()
+    active_connections: set[socket.socket] = set()
+    active_threads: set[threading.Thread] = set()
 
     def _handle_conn(conn: socket.socket, addr: tuple[str, int]) -> None:
         # Bounded recv so a wedged peer cannot hang the handler thread forever,
@@ -1250,34 +3376,46 @@ def serve_forever(
         # NOT be torn down — treat read timeouts as keep-waiting, not hangup.
         conn.settimeout(float(idle_timeout_s))
         try:
-            first = read_frame(conn)
+            try:
+                first = read_frame(conn)
+            except (OSError, RemoteJobsError, TimeoutError, socket.timeout):
+                return
             if first.get("type") != "hello":
-                send_frame(
-                    conn,
-                    {
-                        "type": "error",
-                        "error": "expected hello",
-                    },
-                )
+                try:
+                    send_frame(
+                        conn,
+                        {
+                            "type": "error",
+                            "error": "expected hello",
+                        },
+                    )
+                except OSError:
+                    pass
                 return
             if int(first.get("proto", -1)) != PROTO_VERSION:
+                try:
+                    send_frame(
+                        conn,
+                        {
+                            "type": "error",
+                            "error": f"unsupported proto {first.get('proto')}",
+                        },
+                    )
+                except OSError:
+                    pass
+                return
+            info = hello() if hello is not None else {}
+            try:
                 send_frame(
                     conn,
                     {
-                        "type": "error",
-                        "error": f"unsupported proto {first.get('proto')}",
+                        "type": "hello_ok",
+                        "proto": PROTO_VERSION,
+                        **info,
                     },
                 )
+            except OSError:
                 return
-            info = hello() if hello is not None else {}
-            send_frame(
-                conn,
-                {
-                    "type": "hello_ok",
-                    "proto": PROTO_VERSION,
-                    **info,
-                },
-            )
             while True:
                 if stop_event is not None and stop_event.is_set():
                     break
@@ -1288,39 +3426,64 @@ def serve_forever(
                     # during local train/promo; closing them here surfaces as
                     # client "connection closed while reading frame".
                     continue
-                except RemoteJobsError:
+                except (OSError, RemoteJobsError):
                     break
                 mtype = msg.get("type")
                 if mtype == "bye":
                     break
                 if mtype == "ping":
-                    send_frame(
-                        conn,
-                        {
-                            "type": "pong",
-                            "t0": msg.get("t0"),
-                            "t1": time.time(),
-                        },
-                    )
+                    try:
+                        send_frame(
+                            conn,
+                            {
+                                "type": "pong",
+                                "t0": msg.get("t0"),
+                                "t1": time.time(),
+                            },
+                        )
+                    except OSError:
+                        break
                     continue
                 try:
                     reply = handler(msg)
                 except BaseException as exc:  # noqa: BLE001 - keep connection alive
-                    send_frame(
-                        conn,
-                        {
-                            "type": "result" if mtype == "job" else "error",
-                            "ok": False,
-                            "error": f"{type(exc).__name__}: {exc}",
-                        },
-                    )
+                    try:
+                        send_frame(
+                            conn,
+                            {
+                                "type": "result" if mtype == "job" else "error",
+                                "ok": False,
+                                "error": f"{type(exc).__name__}: {exc}",
+                            },
+                        )
+                    except OSError:
+                        break
                     continue
-                send_frame(conn, reply)
+                try:
+                    send_frame(conn, reply)
+                except OSError:
+                    break
         finally:
+            with active_lock:
+                active_connections.discard(conn)
             try:
                 conn.close()
             except Exception:
                 pass
+
+    def _run_conn(conn: socket.socket, addr: tuple[str, int]) -> None:
+        try:
+            try:
+                _handle_conn(conn, addr)
+            except (OSError, RemoteJobsError, TimeoutError, socket.timeout):
+                # Last-resort containment for a peer disappearing between a
+                # handler operation and its reply. Never emit thread tracebacks
+                # for routine health probes or trainer teardown.
+                pass
+        finally:
+            with active_lock:
+                active_threads.discard(threading.current_thread())
+            connection_limit.release()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1333,12 +3496,41 @@ def serve_forever(
                 conn, addr = server.accept()
             except socket.timeout:
                 continue
+            if not connection_limit.acquire(blocking=False):
+                # Admission is deliberately silent: the peer has not completed
+                # the protocol handshake, and blocking here would stall accept.
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+                continue
+            with active_lock:
+                active_connections.add(conn)
             thread = threading.Thread(
-                target=_handle_conn,
+                target=_run_conn,
                 args=(conn, addr),
                 name=f"remote-job-{addr[0]}:{addr[1]}",
                 daemon=True,
             )
+            with active_lock:
+                active_threads.add(thread)
             thread.start()
     finally:
         server.close()
+        # Closing accepted sockets wakes idle readers immediately instead of
+        # leaving one thread per client around until idle_timeout_s expires.
+        with active_lock:
+            connections = list(active_connections)
+            threads = list(active_threads)
+        for conn in connections:
+            try:
+                conn.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                conn.close()
+            except OSError:
+                pass
+        deadline = time.monotonic() + 5.0
+        for thread in threads:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))

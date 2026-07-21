@@ -1,140 +1,299 @@
-# Pure RL Pipeline
+# Pure-RL Pipeline: Schema-v5 Production Runbook
 
-Independent pure-RL line on branch `cursor/pure-rl-full-rebuild-2d48`
-(PR vs `main` — not a Hope merge). Hope tip archived at
-`archive/a-new-hope-pre-pure-rl` (+ tag).
+This document is the source of truth for the post-audit training line. Older
+phase names, overnight commands, Hammer-specific plans, and one-epoch notes are
+historical only. A production run is not authorized merely because a checkpoint
+exists: code, representation, remotes, lineage, collection, training, promotion,
+and release gates must all pass.
 
-1. **Deck-agnostic core** (Stage A) with AWR, search off, full-box hardware  
-2. **Warm-start `hammer-pult`** specialist → held-out gate → greedy submit  
+## Non-negotiable contract
 
-## Abhyuday / field guidance (design gospel)
+- Use feature schema **v5**. Legacy or schema-mismatched checkpoints fail closed.
+- Accept only a compact production policy below **2 million parameters**. The
+  current schema-v5 seed is 1,935,507 parameters. The broader 3.5M code guard is
+  an emergency ceiling, not production acceptance.
+- Train one policy on Inzi. Elmo and Bert provide whole-game collection capacity;
+  they are not independent trainers.
+- Keep search off during this line. Collection is sampled policy play; evaluation
+  and submission are greedy.
+- Run each iteration serially:
 
-Source: [Kaggle discussion 717697 — “Sharing my Reinforcement Learning journey”](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/717697)
-(Abhyuday / pure-RL competitor comments).
+  ```text
+  collect with incumbent
+      -> two fresh-data AWR passes
+      -> immutable candidate
+      -> candidate-vs-incumbent promotion gate
+      -> publish selected incumbent
+      -> reload and verify every local leaf and required remote
+      -> next collection wave
+  ```
 
-**Cited resources**
+- Never overlap collection for iteration `t+1` with training or promotion for
+  iteration `t`. That would mix policy versions and invalidate the shard lineage.
+- Require all configured remotes in production and disable silent local fallback.
+  A missing endpoint, stale digest, failed reload, failed pin, semantically failed
+  remote job, or zero remote completions stops the wave.
+- Keep auto-progress and submission **off by default**. A human-reviewed gate must
+  name the exact accepted digest before either is armed.
+- Do not hard-code Hammer as the specialist. Select a specialist by expected
+  value under a versioned ladder mix after the core gate passes.
 
-| Resource | Role |
-|---|---|
-| [OpenAI Spinning Up](https://spinningup.openai.com/en/latest/spinningup/spinningup.html) | Explicit RL primer he linked (“helped me understand the basics”) — actor–critic, advantages, on-policy freshness |
-| [YouTube `eKC5PlYoboE`](https://www.youtube.com/watch?v=eKC5PlYoboE) | Cited in our runbook as foundations context; treat as RL / actor-critic mindset alongside Spinning Up (his post also points at TCG strategy videos for *human* meta study — we still keep **no rules knowledge as skill prior**) |
+## Schema-v5 representation
 
-**Checklist (enforced)**
+Schema v5 binds each selectable option to its exact engine identity. The option
+decoder receives a composite `(role, owner, area, index)` token, not independent
+additive marginals:
 
-1. **Pure RL / pure self-play** — millions of variations; no hand-written rules knowledge as the skill prior (`PURE_RL_SELF_PLAY_FRAC` default **0.85**; self vs recent-self pool).
-2. **Not AlphaZero-style** — no MCTS visit-target overnight path; `mcts_sims=0` in collect.
-3. **Competition starter is terrible** — refuse starter paths; fresh small seed; `bootstrap_mix=0`.
-4. **Efficient board representation + small policy** — `pure_rl_model_config()` ~**1.6M** params (`d_model=16`); fail-closed if `>3.5M`; prefer **&lt;2M**.
-5. **High throughput** — aspirational ~7k SPS via volume: host CPU + GPU0/1 leaves + Elmo + bert whole-game farms. See [sim GPU / multi-game throughput](sim_gpu_multi_game_throughput.md) (leaf wiring) and the first-class [engine rebuild / multi-env fork plan](engine_rebuild_multi_game.md) (discussion 717141 / `ptcg_engine`).
-6. **Refined curriculum** — self-play first; core multi-archetype decks then widen; official public bots for **gate** + light mix only.
-7. **Representation richness** — audit obs for decisions (ongoing); do not starve the info set.
-8. **Spinning Up mindset** — actor–critic AWR, `A = R − V` (stale V), fresh short replay window.
-9. **Top-250-cards style focus early** — Stage A samples a small multi-archetype deck pool (not full 2k-card BC); widen later after gate.
+- roles: source, target, tool, and energy;
+- owner: acting seat, opponent, or unspecified;
+- area: the engine area, with an explicit unknown value;
+- index: the exact engine index, with an explicit unknown value.
 
-## Spinning Up alignment
+The composite vocabulary has 10,140 rows (`4 x 3 x 13 x 65`). This preserves
+pairing information for ordered and multi-select actions that would otherwise
+collapse to the same owner/area/index marginals. Spatial slot embeddings preserve
+board position as well. The legal-action enumerator must expose complete support;
+it fails rather than silently truncating an oversized action space.
 
-Guide: [OpenAI Spinning Up](https://spinningup.openai.com/en/latest/spinningup/spinningup.html).
-We keep **AWR** (advantage-weighted regression on played actions) rather than a
-half-baked PPO — same actor-critic / advantage spirit, simpler for high-SPS
-imperfect-info collect.
+History is part of the policy input. When the temporal window rolls over, the KV
+cache is recomputed from the retained raw window so online inference matches
+offline training for both RoPE and learned positional modes. A checkpoint is
+loadable only when its feature schema, model profile, decision context, and
+trusted pure-RL provenance agree with the runtime.
 
-| Spinning Up idea | Pure-RL knob / code |
-|---|---|
-| Actor–critic: π from advantages, V ≈ E[return\|s] | AWR on `selected_index`; value head → terminal W/L/D; **no** CE to behavior π |
-| Advantage = return − baseline | `A = R − V(s)` with **stale/detached** V (optional whitening) |
-| On-policy / fresh data | `PURE_RL_REPLAY_WINDOW_SHARDS` (default 2); `bootstrap_mix=0` enforced |
-| Exploration vs exploitation | Collect: temperature sample; eval/submit: **greedy** |
-| Prefer simple algorithms | Search OFF; not AlphaZero MCTS visit targets |
-| Discount γ | **γ = 1** (undiscounted Monte Carlo terminal return) |
+## Learner contract
 
-## Small model (mandatory)
+The learner uses advantage-weighted regression on the actions actually played,
+plus a terminal-return value target:
 
-`poke_bot.pure_rl.model_profile.pure_rl_model_config()` — default
-`d_model=16`, 1/1/1 layers, `ff=32`, `ctx=32` → ~**1.6M** params.
-Launch **fail-closes** if `sum(p.numel()) > 3.5M`. Do **not** warm-start from
-Hope's d=256 primary or the competition starter.
+- undiscounted terminal return (`gamma = 1`);
+- a frozen, detached critic baseline for the iteration;
+- raw and normalized advantages recorded separately;
+- effective sample size and weight clipping recorded;
+- fresh replay only, using the configured short shard window;
+- optimizer, scaler, and global step restored on resume;
+- incompatible optimizer state fails closed;
+- no behavior-policy cross-entropy, starter-policy bootstrap, strategy-head loss,
+  or MCTS visit target.
 
-## Fatal learning contract
+The production default is **two AWR passes per iteration**. Two passes are a
+measured local default, not a teaching from Kaggle and not a permanent constant.
+Change it only as a new, explicitly fingerprinted experiment after comparing
+learning signal, effective sample size, overfit indicators, and held-out results.
 
-- `TrainConfig.pure_rl_defaults()` → AWR on factorized `selected_index`  
-- Stale (detached) value baseline; optional advantage whitening; weight clip  
-- Soft `history_policy` CE targets **hard-fail**; `bootstrap_mix=0`  
-- Aux / strategy head loss weights **0**; `POKEBOT_BLACKWELL_STRATEGY_HEADS=0`  
-- Collect: `mcts_sims=0`, temperature sample (annealed); eval/submit: greedy  
-- Fresh-data window; self-distill abort  
-- **Self-play first**; public bots = held-out gate + light mix  
+## What the Kaggle evidence does and does not say
 
-## Full hardware (from Stage A)
+The field evidence supports compact models, fast simulation, large self-play
+volume, refined curricula, a rich decision-complete state, replay inspection,
+and early focus on a useful card subset. Relevant Abhyuday material:
 
-| Resource | Role |
-|---|---|
-| CPU workers | Max sim / in-flight games (self-play primary) |
-| GPU1 Blackwell | Train + majority leaf replicas |
-| GPU0 3080 Ti | Same-model leaf replicas |
-| Elmo + bert | Additive whole-game farms (light public mix + capacity) |
-| Overlap | Collect shard `t+1` while training shard `t` |
+- [Discussion 717697](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/717697)
+- [Discussion 724362](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/724362)
+- [Discussion 723576](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/723576)
+- [Discussion 709160](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/discussion/709160)
 
-One active AWR trainee on the host. Remotes are **not** a second trainer.
+Taken together, these posts motivate the sub-2M profile, throughput work,
+millions-of-games mindset, curriculum design, top-card coverage, and replay/state
+audits. They **do not prescribe AWR, two epochs/passes, exact temperatures, gate
+thresholds, replay-window length, or our promotion protocol**. Those are local
+engineering hypotheses and must be measured as such.
 
-Profile: `poke_bot.pure_rl.hardware.full_hardware_profile()`.  
-Remote protocol: `poke_bot.remote_jobs.RemoteWorkerFarm` + `iter_additive_results`.  
-Default endpoints: `192.168.1.143:8765,bert.local:8766`.
+Two additional public snapshots are useful for roster and meta cross-checks, not
+as unreviewed training recipes:
 
-## Commands
+- [beicicc: public experiment snapshot, Jul 15](https://www.kaggle.com/code/beicicc/ptcg-public-experiment-snapshot-jul15)
+- [makimakiai: public 28+ / sample-4 roster update](https://www.kaggle.com/code/makimakiai/ptcg-public-28-plus-sample-4-roster-update)
 
-```bash
-# CI / wiring canary (no CABT, no remotes)
-POKEBOT_PYTHON=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python \
-  bash scripts/canary_pure_rl.sh
+## Ladder mix and specialist choice
 
-# Overnight core (fresh small seed; self-play heavy; remotes on)
-export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export CUDA_VISIBLE_DEVICES=0,1
-export POKEBOT_BLACKWELL_STRATEGY_HEADS=0
-export POKEBOT_PYTHON=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python
+The official [2026-07-12 episode dataset](https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-2026-07-12)
+gives this observed top-ladder episode spread:
 
-$POKEBOT_PYTHON -u scripts/launch_pure_rl.py \
-  --mode core \
-  --run-name pure_rl_core_overnight_<UTC> \
-  --preflight-profile none \
-  --log outputs/logs/pure_rl_core.log \
-  --remote-worker-endpoints 192.168.1.143:8765,bert.local:8766 \
-  -- \
-  --base-checkpoint outputs/pure_rl/<run>/checkpoints/seed.pt \
-  --iterations 1000 \
-  --games-per-iter 256 \
-  --heldout-games 200 \
-  --gate-wr 0.70
+| Rank | Deck family | Episode prevalence |
+|---:|---|---:|
+| 1 | Alakazam | 35.7% |
+| 2 | Crustle | 23.3% |
+| 3 | Grimmsnarl | 9.4% |
+| 4 | Garchomp | 5.6% |
+| 5 | Cornerstone Ogerpon | 4.9% |
+| 6 | Rocket Mewtwo | 4.5% |
+| 7 | Starmie | 4.0% |
+| 8 | Hammer | 3.8% |
 
-# After CORE_GATE_PASSED: warm-start specialist
-python -u scripts/warm_start_pure_rl_specialist.py \
-  --core-checkpoint outputs/pure_rl/pure_rl_core_overnight/checkpoints/iter_XXXXX.pt \
-  --run-name pure_rl_hammer --archetype hammer-pult
+These percentages measure **prevalence in that dated episode sample**, not deck
+strength, matchup win rate, player skill, or future ladder share. Do not call
+Alakazam the strongest deck from this table, and do not infer that Hammer is the
+best specialist because an older plan named it. The table covers 91.2% of all
+seat appearances in that sample; it is intentionally not renormalized to 100%.
+
+Use a versioned ladder-mix artifact with its content digest in the manifest and
+ledger. Derive deterministic collection quotas from that artifact, while keeping
+promotion and official held-out decks fixed and excluded from training. Record
+deck identity in every shard. A duplicate/missing deck, invalid distribution, or
+mix-digest drift on resume is a lineage error.
+
+After the core gate, estimate each specialist candidate's ladder value:
+
+```text
+expected_ladder_value(specialist)
+    = sum(meta_weight[opponent] * gated_matchup_value[specialist, opponent])
 ```
+
+Choose only among candidates with adequate, seat-balanced matchup coverage and
+confidence bounds. Version the meta weights and evaluation matrix. Prevalence can
+set evaluation priority; it cannot replace measured matchup value.
+
+## Immutable lineage and iteration artifacts
+
+Every production run has one append-only lineage. At creation, persist and hash:
+
+- base checkpoint content and trusted schema-v5 provenance;
+- actual model profile and parameter count;
+- git revision plus source-tree content digest;
+- full resolved training and collection configuration;
+- deck-distribution artifact and digest;
+- collection and held-out opponent identities and checkpoint digests;
+- required remote endpoints;
+- RNG seed and iteration number.
+
+Resume only from the committed loop ledger. The current design fingerprint must
+match the ledger and manifest. Never infer progress from a filename, directory
+listing, or “latest checkpoint.” Partial shards and candidates are either
+recovered under their recorded transaction or quarantined; they are never reused
+as if committed. Smoke runs live in a separate namespace and cannot occupy a
+production run name.
+
+Each iteration writes immutable, digest-addressed artifacts for:
+
+1. collection jobs and retained trajectories, including policy and opponent
+   digests, seats, deck IDs, result status, and execution origin;
+2. raw/normalized advantage metrics, ESS, losses, optimizer state, and two-pass
+   completion;
+3. the candidate checkpoint and its parent digest;
+4. seat-balanced candidate-vs-incumbent promotion evidence and confidence result;
+5. selected incumbent digest—candidate on pass, previous incumbent on reject;
+6. successful local-leaf and required-remote reload/pin acknowledgements for that
+   exact selected digest;
+7. one terminal iteration commit.
+
+No next-iteration job may be issued before item 7.
 
 ## Gates
 
-- Held-out official four baselines, ≥200 seat-balanced games, WR ≥ 0.70  
-- Exclude `baseline_failed` forfeits (`poke_bot.pure_rl.eval_public`)  
-- Abort promote on self-distill / ~zero advantage (`poke_bot.pure_rl.aborts`)  
+### Collection gate
 
-## Layout
+- Every trajectory identifies the exact incumbent, opponent, seats, and deck.
+- The usable trajectory fraction meets the configured minimum.
+- Required remote work actually completed remotely; fallback is zero.
+- Engine failures, forfeits, timeouts, and semantically failed jobs are explicit
+  metrics, not wins and not silently discarded.
 
+### Candidate promotion gate
+
+- Evaluate candidate versus incumbent with both seats and fixed decks.
+- Use the configured bootstrap confidence bound and non-regression floor.
+- Publish the candidate only on a pass. A rejection republishes the incumbent;
+  it does not relabel the candidate as accepted.
+- Reload the selected digest on every local leaf and required remote, then verify
+  reported digest/version before collection resumes.
+
+### Core held-out gate
+
+- Keep official held-out opponents completely outside replay and curriculum data.
+- Use at least the configured seat-balanced game count.
+- Require both the aggregate point-win-rate threshold and the per-opponent floor.
+- Exclude infrastructure failures from the competitive score while separately
+  failing the reliability gate if those failures exceed tolerance.
+- Treat repeated evaluation against the same public set as development feedback;
+  reserve a locked release suite for final specialist/submission choice.
+
+### Specialist and release gate
+
+- Select the specialist by expected ladder value, never by a hard-coded deck name.
+- Re-run core non-regression, the versioned ladder matrix, and the locked release
+  suite on the exact proposed digest.
+- Submission tooling must receive that exact accepted digest. It must never fall
+  back to newest-by-mtime or a rejected candidate.
+
+## Required-remotes policy
+
+Production uses Inzi for training and local leaves, with Elmo and Bert as required
+whole-game farms. Before launch:
+
+- deploy one coherent code snapshot and the exact schema-v5 checkpoint;
+- verify each service reports healthy leaves and the expected checkpoint digest;
+- run a two-checkpoint canary so incumbent/opponent staging cannot alias;
+- test reload and pin acknowledgement for the exact digest;
+- complete at least one real trajectory on each remote;
+- verify reconnect/retry still fails closed when a required endpoint is removed.
+
+Set `POKEBOT_REMOTE_REQUIRE_ALL=1` and
+`POKEBOT_REMOTE_NO_LOCAL_FALLBACK=1`. Do not weaken those settings to keep an
+overnight job alive; stop, repair, repeat the canary, and then resume from the
+ledger.
+
+## Safe preflight and launch template
+
+Do not copy this template into production until the current code tests, coherent
+remote deployment, two-checkpoint canary, and real per-remote canary have all
+passed. Fill every placeholder deliberately. Use a new immutable run name.
+
+```bash
+# Supply these values deliberately. `${name:?message}` aborts before launch when
+# any required value is missing; no production path or run name is inferred.
+: "${POKEBOT_PYTHON:?set the absolute training-environment Python path}"
+: "${RUN_NAME:?set a new immutable run name}"
+: "${BASE_CHECKPOINT:?set the verified schema-v5 seed path}"
+: "${REMOTE_ENDPOINTS:?set both required host:port endpoints}"
+: "${ITERATIONS:?set the reviewed iteration count}"
+: "${GAMES_PER_ITER:?set the reviewed games-per-iteration count}"
+: "${HELDOUT_GAMES:?set the reviewed held-out game count}"
+
+# Wiring-only local canary. It writes to the smoke namespace.
+POKEBOT_PYTHON="$POKEBOT_PYTHON" bash scripts/canary_pure_rl.sh
+
+# Required production controls.
+export POKEBOT_PYTHON
+export POKEBOT_REMOTE_REQUIRE_ALL=1
+export POKEBOT_REMOTE_NO_LOCAL_FALLBACK=1
+export POKEBOT_BLACKWELL_STRATEGY_HEADS=0
+
+# Template only: quick preflight stays enabled; automation stays explicitly off.
+"$POKEBOT_PYTHON" -u scripts/launch_pure_rl.py \
+  --mode core \
+  --run-name "$RUN_NAME" \
+  --preflight-profile quick \
+  --no-auto-progress \
+  --remote-worker-endpoints "$REMOTE_ENDPOINTS" \
+  --log "outputs/logs/${RUN_NAME}.log" \
+  -- \
+  --base-checkpoint "$BASE_CHECKPOINT" \
+  --iterations "$ITERATIONS" \
+  --games-per-iter "$GAMES_PER_ITER" \
+  --train-epochs 2 \
+  --heldout-games "$HELDOUT_GAMES"
 ```
-outputs/pure_rl/<run-name>/
-  shards/
-  checkpoints/
-  metrics/
-  manifest.json
-  CORE_GATE_PASSED | SPECIALIST_GATE_PASSED
-```
 
-## Post-core / specialist (future)
+Do not use `--preflight-profile none` for a new production lineage. Do not pass
+`--auto-progress`, and do not start submission tooling, until the exact core gate
+artifact and chosen specialist have been reviewed.
 
-**Do not change Stage A core self-play overnight for these.** Sequence: finish
-`CORE_GATE_PASSED` → then revisit for hammer-pult / specialist warm-start.
+## Stop conditions
 
-| Notebook | Notes (skim / deferred) |
-|---|---|
-| [beicicc — ptcg-public-experiment-snapshot-jul15](https://www.kaggle.com/code/beicicc/ptcg-public-experiment-snapshot-jul15) | Public experiment snapshot (Jul 15). Revisit after core for specialist deck ideas, representation tricks, and training recipes — **not** Stage A collect. |
-| [makimakiai — ptcg-public-28-plus-sample-4-roster-update](https://www.kaggle.com/code/makimakiai/ptcg-public-28-plus-sample-4-roster-update) | Public 28+ + sample-4 roster update. Candidate later for specialist/meta roster mix and gate opponent sampling — **park only** until core gate. |
+Stop the run rather than improvising if any of these occur:
+
+- schema, model-profile, source, config, deck-mix, opponent, or parent-digest
+  disagreement;
+- a required remote is absent, returns a stale digest/version, or completes no
+  assigned work;
+- silent local fallback or mixed execution origin;
+- partial/duplicate iteration commit or an unowned artifact;
+- too few usable trajectories, collapsed effective sample size, non-finite loss,
+  or incompatible optimizer state;
+- candidate promotion, per-opponent held-out, core, specialist, or locked release
+  gate failure;
+- any tool attempts to select “latest” instead of an exact accepted digest.
+
+Quarantine the affected lineage without deleting it, record the reason, repair
+the cause, repeat the relevant canary, and resume only when the immutable ledger
+permits it.

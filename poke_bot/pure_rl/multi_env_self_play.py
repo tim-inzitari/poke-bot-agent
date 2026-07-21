@@ -12,6 +12,7 @@ single-game ``remote_self_play_job`` path).
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Optional, Sequence
 
 
@@ -153,6 +154,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "cancelled": False,
             "training_eligible": True,
             "record_json": None,
+            "record_jsons": None,
             "error": None,
             "self_play": True,
             "multi_env": True,
@@ -176,6 +178,11 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
             us = str(job["checkpoint"])
             them = str(job.get("opponent_checkpoint") or us)
+            collect_both = bool(
+                job.get("training_eligible", True)
+                and job.get("collect_both_seats", False)
+                and them == us
+            )
             plan = plan_self_play_leaf_wiring(
                 us_checkpoint=us,
                 them_checkpoint=them,
@@ -226,7 +233,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 deck=opp_deck,
                 use_mcts=False,
                 max_sims=0,
-                collect_targets=False,
+                collect_targets=collect_both,
                 sample_actions=sample,
                 action_temperature=temp,
                 rng=random.Random(seed ^ 0xBEEF),
@@ -268,7 +275,28 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 agent = agents0[i] if seat == 0 else agents1[i]
                 assert agent is not None
                 try:
+                    privileged_aux = None
+                    target_count_before = len(agent.targets)
+                    if bool(
+                        jobs[i].get("collect_privileged_belief", False)
+                    ) and bool(getattr(agent, "collect_targets", False)):
+                        hidden = env.hidden_snapshot(i, 1 - seat)
+                        privileged_aux = {
+                            "opp_hand": hidden["hand"],
+                            "opp_deck_order": hidden["deck"],
+                            "opp_prizes": hidden["prize"],
+                            "privileged_label_source": (
+                                "training_fork_exact_same_state"
+                            ),
+                        }
                     actions[i] = list(agent(obs))
+                    if privileged_aux is not None:
+                        if len(agent.targets) != target_count_before + 1:
+                            raise RuntimeError(
+                                "privileged belief collection expected exactly "
+                                "one policy target for the acting state"
+                            )
+                        agent.targets[-1]["aux_labels"] = privileged_aux
                 except BaseException as exc:  # noqa: BLE001
                     failed_seat[i] = seat
                     errors[i] = f"{type(exc).__name__}: {exc}"
@@ -294,7 +322,9 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             our_seat = our_seats[i]
             plan = plans[i]
             us_agent = agents0[i] if our_seat == 0 else agents1[i]
+            them_agent = agents1[i] if our_seat == 0 else agents0[i]
             assert us_agent is not None
+            assert them_agent is not None
             if failed_seat[i] is not None:
                 failed = int(failed_seat[i])
                 if failed == our_seat:
@@ -357,13 +387,18 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             winner = int(result_code)
             value = 0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
             record = None
+            records = []
             if job.get("training_eligible", True) and us_agent.targets:
                 record = rr._build_selfplay_record(
                     us_agent.targets,
                     our_deck=list(job["our_deck"]),
                     our_seat=our_seat,
                     value=value,
-                    opp_id=str(job.get("opponent_id") or "self"),
+                    opp_id=str(
+                        job.get("opp_archetype")
+                        or job.get("opponent_id")
+                        or "self"
+                    ),
                     archetype=str(job.get("archetype") or "core"),
                     seed=int(job["seed"]),
                     target_provenance={
@@ -374,6 +409,43 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "multi_env": True,
                     },
                 )
+                if record is not None:
+                    records.append(record)
+            us = str(job["checkpoint"])
+            them = str(job.get("opponent_checkpoint") or us)
+            collect_both = bool(
+                job.get("training_eligible", True)
+                and job.get("collect_both_seats", False)
+                and them == us
+            )
+            if collect_both and them_agent.targets:
+                opp_deck = list(job.get("opp_deck") or job["our_deck"])
+                opp_value = 0.0 if winner == 2 else -value
+                opp_record = rr._build_selfplay_record(
+                    them_agent.targets,
+                    our_deck=opp_deck,
+                    our_seat=1 - our_seat,
+                    value=opp_value,
+                    opp_id=str(
+                        job.get("archetype") or f"self:{Path(us).name}"
+                    ),
+                    archetype=str(
+                        job.get("opp_archetype")
+                        or job.get("archetype")
+                        or "core"
+                    ),
+                    seed=int(job["seed"]) ^ 0x51DE,
+                    target_provenance={
+                        **dict(job.get("target_provenance") or {}),
+                        "pure_rl": True,
+                        "self_play": True,
+                        "same_policy_second_seat": True,
+                        "soft_policy_targets": False,
+                        "multi_env": True,
+                    },
+                )
+                if opp_record is not None:
+                    records.append(opp_record)
             results.append(
                 {
                     "job_index": int(job.get("job_index", 0)),
@@ -399,6 +471,9 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "record_json": (
                         json.dumps(record, separators=(",", ":")) if record else None
                     ),
+                    "record_jsons": [
+                        json.dumps(row, separators=(",", ":")) for row in records
+                    ],
                     "error": None,
                 }
             )

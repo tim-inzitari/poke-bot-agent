@@ -8,6 +8,7 @@ live rules engine.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -34,6 +35,22 @@ class AccuracyReport:
             "ok": self.ok,
             "checks": [asdict(c) for c in self.checks],
         }
+
+
+class _RecordingLib:
+    """Transparent libcg proxy that records each original GetBattleData payload."""
+
+    def __init__(self, lib: Any) -> None:
+        self._lib = lib
+        self.last_observation: dict[int, dict] = {}
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._lib, name)
+
+    def GetBattleData(self, ptr: Any) -> Any:  # noqa: N802 - native ABI name
+        serial = self._lib.GetBattleData(ptr)
+        self.last_observation[int(ptr)] = json.loads(serial.json.decode())
+        return serial
 
 
 def _load_deck(deck_csv: Path) -> list[int]:
@@ -67,6 +84,7 @@ def run_live_accuracy_suite(
     deck_csv: Path,
     num_envs: int = 4,
     max_steps: int = 80,
+    expected_libcg_sha256: Optional[str] = None,
 ) -> AccuracyReport:
     """Run accuracy suite. ``cg_parent`` is the dir containing the ``cg`` package."""
     import sys
@@ -91,11 +109,57 @@ def run_live_accuracy_suite(
 
     n = max(2, int(num_envs))
     checks: list[AccuracyCheckResult] = [
+        _check_official_binary(
+            lib,
+            cg_parent=cg_parent,
+            expected_sha256=expected_libcg_sha256,
+        ),
         _check_isolation(lib, deck, num_envs=n),
         _check_wrapper_obs_fresh(lib, deck, num_envs=n, max_steps=max_steps),
         _check_valid_playthrough(lib, deck, num_envs=n, max_steps=400),
     ]
     return AccuracyReport(ok=all(c.ok for c in checks), checks=checks)
+
+
+def _check_official_binary(
+    lib: Any,
+    *,
+    cg_parent: Path,
+    expected_sha256: Optional[str],
+) -> AccuracyCheckResult:
+    """Prove the adapter is bound to the pinned original competition binary."""
+    candidates = (cg_parent / "cg" / "libcg.so", cg_parent / "cg" / "libcg.dylib")
+    binary = next((path.resolve() for path in candidates if path.is_file()), None)
+    if binary is None:
+        return AccuracyCheckResult("official_binary", False, "libcg binary is missing")
+    try:
+        loaded = Path(str(lib._name)).resolve()
+        digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+        expected = str(expected_sha256 or "").removeprefix("sha256:").strip().lower()
+        same_binary = loaded == binary
+        digest_matches = not expected or digest == expected
+        ok = same_binary and digest_matches
+        detail = "ok" if ok else (
+            f"loaded={loaded} expected_path={binary} digest={digest} "
+            f"expected_digest={expected or 'not-pinned'}"
+        )
+        return AccuracyCheckResult(
+            "official_binary",
+            ok,
+            detail,
+            {
+                "path": str(binary),
+                "loaded_path": str(loaded),
+                "sha256": digest,
+                "expected_sha256": expected or None,
+                "same_binary": same_binary,
+                "digest_matches": digest_matches,
+            },
+        )
+    except Exception as exc:
+        return AccuracyCheckResult(
+            "official_binary", False, f"{type(exc).__name__}: {exc}"
+        )
 
 
 def _check_isolation(lib: Any, deck: list[int], *, num_envs: int) -> AccuracyCheckResult:
@@ -146,10 +210,14 @@ def _check_wrapper_obs_fresh(
     from poke_bot.engine_rebuild.interfaces import ResetSpec
     from poke_bot.engine_rebuild.libcg_multi_env import LibcgMultiEnv
 
-    env = LibcgMultiEnv(num_envs, lib=lib)
+    recording = _RecordingLib(lib)
+    env = LibcgMultiEnv(num_envs, lib=recording)
     try:
         batch = env.reset([ResetSpec(deck, deck, seed=i) for i in range(num_envs)])
-        mismatches = 0
+        exact_capture_mismatches = 0
+        stable_reread_mismatches = 0
+        done_mismatches = 0
+        read_once_log_batches = 0
         steps = 0
         for _ in range(max_steps):
             if all(e.done for e in batch.envs):
@@ -168,18 +236,41 @@ def _check_wrapper_obs_fresh(
                 ptr = env._ptrs[i]
                 if ptr is None:
                     continue
+                captured = recording.last_observation.get(int(ptr))
+                if captured != e.obs:
+                    exact_capture_mismatches += 1
                 sd = lib.GetBattleData(ptr)
                 fresh = json.loads(sd.json.decode())
-                if fingerprint_select(fresh) != fingerprint_select(e.obs):
-                    mismatches += 1
+                # The original API drains top-level logs on read. Compare the
+                # exact first payload above, then all stable state fields on a
+                # second direct read so this intentional delta cannot hide a
+                # stale board/select/result field.
+                expected_stable = {k: v for k, v in e.obs.items() if k != "logs"}
+                fresh_stable = {k: v for k, v in fresh.items() if k != "logs"}
+                if fresh_stable != expected_stable:
+                    stable_reread_mismatches += 1
+                if e.obs.get("logs") and not fresh.get("logs"):
+                    read_once_log_batches += 1
                 if _is_done(fresh) != e.done:
-                    mismatches += 1
+                    done_mismatches += 1
+        mismatches = (
+            exact_capture_mismatches
+            + stable_reread_mismatches
+            + done_mismatches
+        )
         ok = mismatches == 0 and steps > 0
         return AccuracyCheckResult(
             "wrapper_obs_fresh",
             ok,
             "ok" if ok else f"stale/mismatched obs x{mismatches}",
-            {"steps": steps, "mismatches": mismatches},
+            {
+                "steps": steps,
+                "mismatches": mismatches,
+                "exact_capture_mismatches": exact_capture_mismatches,
+                "stable_reread_mismatches": stable_reread_mismatches,
+                "done_mismatches": done_mismatches,
+                "read_once_log_batches": read_once_log_batches,
+            },
         )
     except Exception as exc:
         return AccuracyCheckResult(

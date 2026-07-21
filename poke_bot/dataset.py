@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional, Union
 
-from . import config, features
+from . import alakazam_heuristics, config, features
 from .replay_import import assert_info_set, InfoSetViolation
 
 
@@ -33,6 +34,13 @@ class PolicyStage:
     options: features.SparseVector
     action_combos: list[list[int]]
     target_index: int
+    #: Training-only Alakazam guide target collapsed from transient scorer
+    #: output. ``-1`` masks the stage. Keeping two scalars rather than a Python
+    #: score list per legal action prevents large rollout windows from growing
+    #: by multiple GiB.
+    guide_target_index: int = -1
+    #: Unique-best margin, clamped to [0, 1], used to weight guide CE.
+    guide_confidence: float = 0.0
 
 
 @dataclass
@@ -106,14 +114,46 @@ def featurize_step(
 
     action = [int(x) for x in (step.get("action") or [])]
     stage_defs = features.factorized_teacher_forcing_stages(obs, action)
-    policy_stages = [
-        PolicyStage(
-            options=features.build_option_tokens(obs, combos),
-            action_combos=[list(combo) for combo in combos],
-            target_index=target_index,
+    policy_stages: list[PolicyStage] = []
+    for combos, target_index in stage_defs:
+        stage_combos = [list(combo) for combo in combos]
+        raw_guide = (
+            alakazam_heuristics.guide_scores(
+                obs,
+                stage_combos,
+                deck=deck,
+            )
+            if alakazam_heuristics.enabled()
+            else None
         )
-        for combos, target_index in stage_defs
-    ]
+        guide_target_index = -1
+        guide_confidence = 0.0
+        if raw_guide is not None:
+            candidate = [float(value) for value in raw_guide]
+            # Scoring must cover the full legal stage: otherwise a collapsed
+            # CE target would silently treat unknown actions as inferior.
+            if len(candidate) == len(stage_combos) and all(
+                math.isfinite(value) for value in candidate
+            ):
+                order = sorted(
+                    range(len(candidate)),
+                    key=lambda index: candidate[index],
+                    reverse=True,
+                )
+                if len(order) >= 2:
+                    margin = candidate[order[0]] - candidate[order[1]]
+                    if margin > 1e-8:
+                        guide_target_index = int(order[0])
+                        guide_confidence = min(1.0, max(0.0, float(margin)))
+        policy_stages.append(
+            PolicyStage(
+                options=features.build_option_tokens(obs, stage_combos),
+                action_combos=stage_combos,
+                target_index=target_index,
+                guide_target_index=guide_target_index,
+                guide_confidence=guide_confidence,
+            )
+        )
     combos = policy_stages[0].action_combos
     board = features.build_board_tokens(obs, deck)
     option_sv = policy_stages[0].options
@@ -374,9 +414,8 @@ class BootstrapDataset:
             "dataset_schema": DATASET_CACHE_SCHEMA_VERSION,
             "feature_schema": features.FEATURE_SCHEMA_VERSION,
         }
-        records: list[dict[str, Any]] = []
         with path.open("r", encoding="utf-8") as fh:
-            for raw in fh:
+            for raw in tqdm(fh, desc=f"featurize {path.name}", unit="seq"):
                 if not raw.strip():
                     continue
                 if max_games > 0 and stats["records_total"] >= max_games:
@@ -386,29 +425,28 @@ class BootstrapDataset:
                     obj = json.loads(raw)
                     if not isinstance(obj, dict):
                         raise TypeError("record is not an object")
-                    records.append(obj)
                 except Exception:
                     reasons = stats["drop_reasons"]
                     reasons["invalid_json"] = reasons.get("invalid_json", 0) + 1
                     stats["records_dropped"] += 1
-        for record in tqdm(records, desc=f"featurize {path.name}", unit="seq"):
-            seq, reason, details = convert_record(
-                record, max_context=max_ctx, verify_info_set=verify_info_set
-            )
-            for key in (
-                "decisions_truncated",
-                "policy_targets_padded",
-                "policy_targets_truncated",
-            ):
-                stats[key] += int(details.get(key, 0))
-            if seq is None:
-                reason = reason or "unknown"
-                reasons = stats["drop_reasons"]
-                reasons[reason] = reasons.get(reason, 0) + 1
-                stats["records_dropped"] += 1
-                continue
-            sequences.append(seq)
-            stats["records_kept"] += 1
+                    continue
+                seq, reason, details = convert_record(
+                    obj, max_context=max_ctx, verify_info_set=verify_info_set
+                )
+                for key in (
+                    "decisions_truncated",
+                    "policy_targets_padded",
+                    "policy_targets_truncated",
+                ):
+                    stats[key] += int(details.get(key, 0))
+                if seq is None:
+                    reason = reason or "unknown"
+                    reasons = stats["drop_reasons"]
+                    reasons[reason] = reasons.get(reason, 0) + 1
+                    stats["records_dropped"] += 1
+                    continue
+                sequences.append(seq)
+                stats["records_kept"] += 1
 
         if use_cache and cache_path is not None:
             tmp = cache_path.with_suffix(".tmp")

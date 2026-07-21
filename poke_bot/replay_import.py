@@ -17,7 +17,7 @@ import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Sequence
 
 from . import archetypes
 
@@ -230,12 +230,34 @@ def assert_info_set(observation: dict[str, Any], *, strict: bool = True) -> Info
     return report
 
 
-def _is_option_index_action(action: Any, option_count: int) -> bool:
-    if not isinstance(action, list) or not action:
+def _is_option_index_action(
+    action: Any,
+    option_count: int,
+    *,
+    min_count: int = 0,
+    max_count: Optional[int] = None,
+) -> bool:
+    """Whether one logged action is legal for the *recorded* select frame.
+
+    Kaggle episodes can batch actions for subsequent, unrecorded select frames
+    into the same environment step.  Those trailing actions must not be taught
+    against the first frame's option set.  Reject the whole ambiguous frame and
+    retain the other causal decisions from the episode.
+    """
+    if not isinstance(action, list):
         return False
-    if option_count <= 0:
+    if option_count < 0:
         return False
-    return all(isinstance(v, int) and 0 <= v < option_count for v in action)
+    lo = max(0, min(int(min_count), option_count))
+    raw_hi = option_count if max_count is None else int(max_count)
+    hi = max(lo, min(raw_hi, option_count))
+    if not lo <= len(action) <= hi:
+        return False
+    if not all(isinstance(v, int) for v in action):
+        return False
+    if len(action) != len(set(action)):
+        return False
+    return all(0 <= v < option_count for v in action)
 
 
 def convert_episode_to_records(
@@ -243,6 +265,8 @@ def convert_episode_to_records(
     *,
     source: str = "",
     archetype_filter: Optional[str] = None,
+    seat_archetypes: Optional[Sequence[str]] = None,
+    allowed_archetypes: Optional[Iterable[str]] = None,
     require_complete: bool = True,
     strict_info_set: bool = True,
 ) -> list[dict[str, Any]]:
@@ -251,7 +275,18 @@ def convert_episode_to_records(
     Each record is one JSONL line: whole-game decision sequence for one seat
     that matches ``archetype_filter`` (or any bootstrap archetype if None).
     """
-    decks, arches = classify_episode_seats(payload)
+    decks, inferred_arches = classify_episode_seats(payload)
+    if seat_archetypes is None:
+        arches = inferred_arches
+    else:
+        if len(seat_archetypes) != 2:
+            raise ValueError("seat_archetypes must contain exactly two labels")
+        arches = [str(seat_archetypes[0]), str(seat_archetypes[1])]
+    allowed = (
+        set(BOOTSTRAP_ARCHETYPES)
+        if allowed_archetypes is None
+        else {str(value) for value in allowed_archetypes}
+    )
     winner = _final_winner(payload)
     if require_complete and winner < 0:
         return []
@@ -263,6 +298,7 @@ def convert_episode_to_records(
     seat_steps: list[list[dict[str, Any]]] = [[], []]
     info_flags: list[list[str]] = [[], []]
     remasked_any = [False, False]
+    incompatible_action_frames = [0, 0]
 
     steps = payload.get("steps") or []
     for env_step, step in enumerate(steps):
@@ -274,21 +310,25 @@ def convert_episode_to_records(
             observation = entry.get("observation") or {}
             select = observation.get("select")
             current = observation.get("current")
-            action = entry.get("action") or []
+            raw_action = entry.get("action")
 
             # Skip deck-submit / non-decision frames.
-            if select is None or current is None:
+            if select is None or current is None or raw_action is None:
                 continue
-            options = (select.get("option") or []) if isinstance(select, dict) else []
-            if not _is_option_index_action(action, len(options)):
-                continue
-
-            # Only keep the seat's own view (entry index == acting yourIndex usually,
-            # but always trust yourIndex for masking).
+            action = raw_action
+            # Kaggle stores both seat views at an environment step; only the
+            # acting seat's entry has a target action for this observation.
             your_index = int(current.get("yourIndex", seat))
             if your_index != seat:
-                # Observation belongs to a different acting player — skip.
-                # (Kaggle stores each seat's view in that seat's entry.)
+                continue
+            options = (select.get("option") or []) if isinstance(select, dict) else []
+            if not _is_option_index_action(
+                action,
+                len(options),
+                min_count=int(select.get("minCount", 0)),
+                max_count=int(select.get("maxCount", len(options))),
+            ):
+                incompatible_action_frames[seat] += 1
                 continue
 
             masked_obs, aux, report = _strip_opp_private(observation)
@@ -334,7 +374,7 @@ def convert_episode_to_records(
         arch = arches[seat]
         if archetype_filter is not None and arch != archetype_filter:
             continue
-        if archetype_filter is None and arch not in BOOTSTRAP_ARCHETYPES:
+        if archetype_filter is None and arch not in allowed:
             continue
         if not seat_steps[seat]:
             continue
@@ -371,6 +411,9 @@ def convert_episode_to_records(
                 "info_set_flags": list(dict.fromkeys(info_flags[seat])),
                 "info_set_remasked": remasked_any[seat],
                 "n_decisions": len(seat_steps[seat]),
+                "dropped_incompatible_action_frames": incompatible_action_frames[
+                    seat
+                ],
             }
         )
     return records
@@ -399,6 +442,8 @@ def _convert_job(job: dict[str, Any]) -> list[dict[str, Any]]:
             payload,
             source=job.get("source", ""),
             archetype_filter=job.get("archetype_filter"),
+            seat_archetypes=job.get("seat_archetypes"),
+            allowed_archetypes=job.get("allowed_archetypes"),
             require_complete=bool(job.get("require_complete", True)),
             strict_info_set=bool(job.get("strict_info_set", True)),
         )

@@ -2,7 +2,7 @@
   "schema": 1,
   "profiles": {
     "quick": {
-      "budget_seconds": 30,
+      "budget_seconds": 60,
       "network": false,
       "gpu": false,
       "native_games": false,

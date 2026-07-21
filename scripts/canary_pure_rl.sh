@@ -37,6 +37,7 @@ echo "[canary] smoke specialist loop"
   --preflight-profile none \
   --run-name "canary_pure_rl_hammer_loop" \
   -- \
+  --specialist-archetype hammer-pult \
   --base-checkpoint "outputs/pure_rl/canary_pure_rl_hammer/checkpoints/hammer-pult_warmstart.pt" \
   --iterations 1 \
   --smoke-games 4 \

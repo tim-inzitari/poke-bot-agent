@@ -14,6 +14,7 @@ from poke_bot.pure_rl.model_profile import (
     validate_param_budget,
 )
 from poke_bot.pure_rl.shards import CompactShardWriter, compact_decision_from_step
+from poke_bot.pure_rl.wr_trend import load_iter_metrics, wr_trend_line
 
 __all__ = [
     "AbortDecision",
@@ -28,9 +29,11 @@ __all__ = [
     "count_params",
     "evaluate_aborts",
     "full_hardware_profile",
+    "load_iter_metrics",
     "metrics_to_dict",
     "pure_rl_model_config",
     "stage_for_iteration",
     "stage_to_dict",
     "validate_param_budget",
+    "wr_trend_line",
 ]

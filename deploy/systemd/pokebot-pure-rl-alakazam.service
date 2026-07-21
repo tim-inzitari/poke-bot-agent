@@ -1,0 +1,87 @@
+[Unit]
+Description=Pokemon Alakazam specialist continuous RL (73k paired-Iono learner v13)
+Wants=network-online.target
+After=network-online.target pokebot-pure-rl-alakazam-bootstrap.service
+Requires=pokebot-pure-rl-alakazam-bootstrap.service
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v6
+Environment=PYTHONUNBUFFERED=1
+Environment=POKEBOT_TRAINING_SAFETY_VERSION=20260717
+Environment=POKEBOT_TRAINING_ARM_FILE=/home/inzi/poke-bot-agent/outputs/state/TRAINING_ARMED
+Environment=POKEBOT_ALAKAZAM_GUIDE_TARGETS=1
+Environment=POKEBOT_LIVE_POOL=0
+Environment=POKEBOT_WORKER_RECYCLE_GAMES=256
+Environment=WORKER_RECYCLE_GAMES=256
+Environment=POKEBOT_MULTI_ENV=1
+Environment=POKEBOT_MULTI_ENV_PER_WORKER=4
+Environment=POKEBOT_LIBCG_PATH=/home/inzi/poke-bot-agent/outputs/engines/libcg_hidden_inzi_v1.so
+Environment=POKEBOT_EXPECTED_LIBCG_SHA256=ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c
+Environment=PURE_RL_SELF_PLAY_FRAC=0.125
+Environment=PURE_RL_PUBLIC_MIX_LOCAL_ONLY=0
+Environment=PURE_RL_PUBLIC_MIX_MIN_LOCAL_FRAC=0.50
+Environment=PURE_RL_SIM_WORKERS=96
+Environment=PURE_RL_GAMES_IN_FLIGHT=96
+Environment=PURE_RL_ALLOW_SINGLE_GPU=1
+Environment=PURE_RL_LEAF_GPU0_REPLICAS=0
+Environment=PURE_RL_LEAF_GPU1_REPLICAS=24
+Environment=PURE_RL_REBALANCE_MAX_WORKERS=96
+Environment=PURE_RL_PER_WORKER_RSS_GB=1.3
+Environment=PURE_RL_MID_ITER_SCHEDULER=1
+Environment=PURE_RL_REBALANCE_MIN_WORKERS=96
+Environment=PURE_RL_REBALANCE_MIN_LOCAL_FRAC=0.35
+Environment=PURE_RL_REBALANCE_PREFER_LOCAL_FRAC=0.45
+Environment=PURE_RL_REBALANCE_MAX_REMOTE_FRAC=0.65
+Environment=PURE_RL_REBALANCE_MIN_REMOTE_FRAC=0.55
+Environment="POKEBOT_REMOTE_MAX_WORKERS=192.168.1.143:8765=48,bert.local:8766=16"
+Environment=PURE_RL_REMOTE_DISPATCH_CHUNK=256
+Environment=POKEBOT_REMOTE_DEMAND_QUEUE=1
+Environment=POKEBOT_REMOTE_SOCKET_PREFETCH=5
+Environment=POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=8
+Environment=POKEBOT_REMOTE_REFILL_GAMES=1
+# Keep one protected controller-side reserve beyond Bert's 8x socket window.
+# Elmo can no longer consume this quota because scheduled dispatch uses
+# endpoint-owned queues. 16 executing + 112 admitted + 64 controller-ready.
+Environment="POKEBOT_REMOTE_ENDPOINT_CHUNKS=192.168.1.143:8765=336,bert.local:8766=176"
+Environment=POKEBOT_REMOTE_QUEUE_LOW_WATER_FRAC=0.50
+Environment=POKEBOT_REMOTE_QUEUE_PROBE_S=1.0
+Environment=POKEBOT_REMOTE_RESULT_SPOOL_DIR=/home/inzi/poke-bot-agent/outputs/spool/remote-results
+Environment=POKEBOT_REMOTE_RESULT_SPOOL_MAX_GB=16
+Environment=PURE_RL_MEASUREMENT_DECKS=alakazam
+Environment=PURE_RL_REPLAY_STREAM_CACHE=1
+Environment=PURE_RL_REPLAY_FEATURIZE_WORKERS=8
+Environment=PURE_RL_REPLAY_CACHE_LOAD_WORKERS=4
+Environment=PURE_RL_REPLAY_STREAM_CHUNK_MIB=64
+Environment=PURE_RL_REPLAY_CACHE_PARALLEL_MIN_MIB=64
+Environment=PURE_RL_REPLAY_CACHE_KEEP_SHARDS=2
+Environment=PURE_RL_REPLAY_WINDOW_SHARDS=2
+Environment=PURE_RL_LOCAL_STRAGGLER_STALE_S=30
+Environment=POKEBOT_WORKER_CAPACITY_RECOVERY_GRACE_S=60
+Environment=POKEBOT_REMOTE_JOB_RETRIES=8
+Environment=POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S=90
+Environment="POKEBOT_TRUENAS_CHECKPOINT_SMB=/run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint"
+ExecStartPre=/usr/bin/test -d /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/engines/libcg_hidden_inzi_v1.so
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/alakazam_expert_bootstrap.pt
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/alakazam_v9_iter0_trained_salvage.pt
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_resident_v9_20260720/shards/iter_00000.jsonl
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_pure_rl.py --run-name pure_rl_alakazam_resident_v13_20260720 --mode specialist --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --preflight-profile none --allow-single-gpu --multi-env-per-worker 4 --stall-minutes 20 --log outputs/logs/pure_rl_alakazam_resident_v13_20260720.log -- --specialist-archetype alakazam --base-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/alakazam_v9_iter0_trained_salvage.pt --initial-learner-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/alakazam_v9_iter0_trained_salvage.pt --initial-replay-shard /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_resident_v9_20260720/shards/iter_00000.jsonl --official-collect-frac 0.50 --official-exploit-opponents iono --official-exploit-frac 0.50 --official-exploit-temperature 0.35 --archetype-aux-loss-weight 0.05 --opp-hand-loss-weight 0.05 --opp-remainder-loss-weight 0.05 --lethal-threat-loss-weight 0.025 --prize-race-loss-weight 0.025 --alakazam-guide-loss-weight 0.05 --iterations 100 --games-per-iter 73728 --train-epochs 2 --train-games-per-batch 240 --train-max-decisions-per-batch 32768 --train-warmup-max-decisions-per-batch 8192 --train-warmup-iterations 30 --train-device-resident --train-device-resident-min-free-gib 8 --measurement-decks alakazam --heldout-games 1000 --heldout-remotes --gate-wr 0.50 --heldout-per-opponent-floor 0.50 --promotion-games 80 --game-timeout-s 600 --min-usable-game-frac 0.98 --remote-worker-endpoints 192.168.1.143:8765,bert.local:8766 --expert-rehearsal-every 5 --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json --expert-rehearsal-epochs 5 --expert-rehearsal-batch-size 12288 --expert-min-decisions 100000 --continuous-learner-min-wr 0.35 --artifact-history-iterations 5 --min-free-disk-gb 100 --resume auto
+Restart=on-failure
+RestartSec=60
+RestartPreventExitStatus=75 78
+TimeoutStopSec=45
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_alakazam_resident_v13_20260720.launcher.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_alakazam_resident_v13_20260720.launcher.log
+
+[Install]
+WantedBy=default.target

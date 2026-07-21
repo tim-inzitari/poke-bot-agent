@@ -63,25 +63,39 @@ def _set_default_env() -> None:
 _set_default_env()
 
 
+def _env_value(name: str) -> str | None:
+    """Resolve configuration environment names without double-prefixing.
+
+    Most callers pass a short name such as ``CARD_VOCAB`` and retain the
+    established ``POKEBOT_CARD_VOCAB`` contract.  The pure-RL dataclass passes
+    its already-scoped public names (``PURE_RL_*``); those must be checked
+    exactly before the backwards-compatible ``POKEBOT_PURE_RL_*`` fallback.
+    Exact scoped names win when both forms are present.
+    """
+    if name.startswith("PURE_RL_") and name in os.environ:
+        return os.environ[name]
+    return os.environ.get(f"POKEBOT_{name}")
+
+
 def _env_int(name: str, default: int) -> int:
-    v = os.environ.get(f"POKEBOT_{name}")
+    v = _env_value(name)
     return int(v) if v is not None else default
 
 
 def _env_float(name: str, default: float) -> float:
-    v = os.environ.get(f"POKEBOT_{name}")
+    v = _env_value(name)
     return float(v) if v is not None else default
 
 
 def _env_bool(name: str, default: bool) -> bool:
-    v = os.environ.get(f"POKEBOT_{name}")
+    v = _env_value(name)
     if v is None:
         return default
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _env_path(name: str, default: Path) -> Path:
-    v = os.environ.get(f"POKEBOT_{name}")
+    v = _env_value(name)
     return Path(v).expanduser() if v else default
 
 
@@ -161,7 +175,10 @@ class HardwareConfig:
 
     #: Recycle each sim worker process after this many games. Bounds libcg's
     #: slow per-process leak → no unbounded memory growth on long unattended runs.
-    worker_recycle_games: int = _env_int("WORKER_RECYCLE_GAMES", 200)
+    worker_recycle_games: int = _env_int(
+        "POKEBOT_WORKER_RECYCLE_GAMES",
+        _env_int("WORKER_RECYCLE_GAMES", 200),
+    )
 
     # --- primary (Blackwell) GPU leaf-eval server + RL concurrency -----------
     #: Concurrent persistent GPU leaf-eval server replicas on the Blackwell.
@@ -183,7 +200,10 @@ class HardwareConfig:
     rl_games_in_flight: int = _env_int("RL_GAMES_IN_FLIGHT", 40)
     #: Approx resident memory per sim/game worker (cg runtime + torch import +
     #: featurization buffers). Used to cap concurrency so RSS stays in budget.
-    per_worker_rss_gb: float = _env_float("PER_WORKER_RSS_GB", 0.8)
+    #: Measured reality on the dedicated pure-RL box is ~1.3 GiB/worker (the
+    #: old 0.8 guess under-budgeted and let local worker counts grow into
+    #: swap). Override via PURE_RL_PER_WORKER_RSS_GB for other hosts.
+    per_worker_rss_gb: float = _env_float("PER_WORKER_RSS_GB", 1.3)
 
     # --- RAM budget (PHYSICAL 128 GB + 256 GB swap as a SOFT overflow) --------
     # CONSOLIDATED stance: the objective is MAX GPU + 32-thread CPU utilisation
@@ -261,8 +281,14 @@ class ModelConfig:
     #: Previous-own-action embedding residual. Kept conservative so legacy
     #: board-history checkpoints are not destabilized before anchored fine-tune.
     history_action_scale: float = _env_float("HISTORY_ACTION_SCALE", 0.1)
+    #: Card / attack table width for dense card2vec (Option A compose).
     card_embed_dim: int = _env_int("CARD_EMBED_DIM", 64)
     attack_embed_dim: int = _env_int("ATTACK_EMBED_DIM", 32)
+    #: Dense/factorized card embeddings (shared card+attack+role → d_model).
+    #: Global default OFF (Hope / core_kernel keep flat bags). Pure RL turns
+    #: this ON via :func:`poke_bot.pure_rl.model_profile.pure_rl_model_config`.
+    #: See :mod:`poke_bot.card2vec`. Architecture-incompatible with flat bags.
+    dense_card2vec: bool = _env_bool("DENSE_CARD2VEC", False)
     dropout: float = _env_float("DROPOUT", 0.1)
 
     @property
@@ -338,6 +364,13 @@ class PureRLConfig:
     bootstrap_mix: float = _env_float("PURE_RL_BOOTSTRAP_MIX", 0.0)
     gate_wr: float = _env_float("PURE_RL_GATE_WR", 0.70)
     min_heldout_games: int = _env_int("PURE_RL_MIN_HELDOUT_GAMES", 200)
+    #: Games collected per iter (trajectories / sample size). Throughput
+    #: (decisions/sec) is separate — engine/workers/remotes. Default is in the
+    #: thousands for overnight volume toward ~1M games, paired with measured
+    #: multi-epoch AWR (two fresh-data passes by default),
+    #: short replay window, and rotating fictitious-self opponents so a mega-shard
+    #: does not overfit one twin policy. Override: PURE_RL_GAMES_PER_ITER.
+    games_per_iter: int = _env_int("PURE_RL_GAMES_PER_ITER", 2048)
     collect_temperature: float = _env_float("PURE_RL_COLLECT_TEMPERATURE", 1.0)
     #: Anneal collect temperature toward this floor after early iters.
     collect_temperature_final: float = _env_float(
@@ -355,7 +388,9 @@ class PureRLConfig:
     #: Abhyuday: primary signal = self-play; public bots are light mix + gate.
     self_play_frac: float = _env_float("PURE_RL_SELF_PLAY_FRAC", 0.85)
     #: Max recent champions kept for fictitious opponent pool.
-    opponent_pool_size: int = _env_int("PURE_RL_OPPONENT_POOL_SIZE", 4)
+    #: Slightly larger than early defaults so bigger collects still rotate
+    #: across multiple recent ckpts (diversity vs one mega-homogeneous shard).
+    opponent_pool_size: int = _env_int("PURE_RL_OPPONENT_POOL_SIZE", 6)
     param_fail_max: int = _env_int("PURE_RL_PARAM_FAIL_MAX", 3_500_000)
 
 

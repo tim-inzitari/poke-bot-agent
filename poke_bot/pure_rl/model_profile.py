@@ -1,4 +1,4 @@
-"""Small fast Pure-RL model profile (~1–3M params, Kaggle SPS class)."""
+"""Small, state-only Pure-RL policy/value profile for high-throughput rollout."""
 
 from __future__ import annotations
 
@@ -16,11 +16,26 @@ PURE_RL_PARAM_FAIL_MAX = int(os.environ.get("PURE_RL_PARAM_FAIL_MAX", "3500000")
 PURE_RL_PARAM_TARGET_MAX = int(os.environ.get("PURE_RL_PARAM_TARGET_MAX", "3000000"))
 
 
-def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
-    """Lean history policy for high-SPS pure RL (not Hope's d=256 primary).
+def _dense_card2vec_flag() -> bool:
+    """Pure RL default ON. Opt out via ``PURE_RL_DENSE_CARD2VEC=0`` / ``DENSE_CARD2VEC=0``."""
+    raw = os.environ.get("PURE_RL_DENSE_CARD2VEC")
+    if raw is None:
+        raw = os.environ.get("DENSE_CARD2VEC")
+    if raw is None:
+        return True
+    return str(raw).strip().lower() not in ("", "0", "false", "no", "off")
 
-    Default lands ~2.4M params with the production encoder vocab (~22k).
-    Override via ``PURE_RL_D_MODEL`` / layer env knobs or ``overrides``.
+
+def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
+    """Lean state evaluator for high-SPS pure RL (not Hope's d=256 primary).
+
+    The temporal-policy experiment did not improve the formal baseline gate
+    and made cross-game leaf batching re-encode up to 320 prior boards. New
+    runs therefore default to a state-only 4/0/4 network at ``d_model=96``
+    (about 1.5M trainable parameters). Search and belief code can add
+    lookahead without putting realized-history attention on every decision.
+
+    Old history checkpoints remain loadable. Override via ``PURE_RL_*``.
     """
     def _i(name: str, default: int) -> int:
         raw = os.environ.get(f"PURE_RL_{name}")
@@ -30,27 +45,43 @@ def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
         raw = os.environ.get(f"PURE_RL_{name}")
         return float(raw) if raw is not None else default
 
-    # Prefer ~1.6M (Abhyuday <2M / high-SPS class); override via PURE_RL_D_MODEL.
+    # Dense card2vec frees ~1.5M flat EmbeddingBag params (Option A compose).
+    # Spend that budget on the current board/action evaluator, not a temporal
+    # tower whose compute scales with realized history length.
+    # Production state default: 4/0/4 @ d96 (~1.5M).
+    # Flat-bag / tiny 2/2/2@d16 / 6/6/6 checkpoints are architecture-
+    # incompatible — fresh seed required when changing these defaults.
     cfg = config.ModelConfig(
-        d_model=_i("D_MODEL", 16),
-        spatial_layers=_i("SPATIAL_LAYERS", 1),
-        temporal_layers=_i("TEMPORAL_LAYERS", 1),
-        option_decoder_layers=_i("OPTION_DECODER_LAYERS", 1),
-        n_heads=_i("N_HEADS", 4),
-        ff_dim=_i("FF_DIM", 32),
-        max_context=_i("MAX_CONTEXT", 32),
+        d_model=_i("D_MODEL", 96),
+        spatial_layers=_i("SPATIAL_LAYERS", 4),
+        temporal_layers=_i("TEMPORAL_LAYERS", 0),
+        option_decoder_layers=_i("OPTION_DECODER_LAYERS", 4),
+        n_heads=_i("N_HEADS", 8),
+        ff_dim=_i("FF_DIM", 384),
+        # Hope ladder evidence: outputs/notes/max_context.md — p99=309,
+        # coverage@320=99.15% (n=4985 games); 256 only covered 97.46%.
+        max_context=_i("MAX_CONTEXT", 320),
         temporal_pos=os.environ.get("PURE_RL_TEMPORAL_POS", "rope"),
-        decision_context="history",
-        kv_cache=True,
+        decision_context=os.environ.get(
+            "PURE_RL_DECISION_CONTEXT", "stateless"
+        ).strip().lower(),
+        kv_cache=False,
         history_action_scale=_f("HISTORY_ACTION_SCALE", 0.1),
-        card_embed_dim=_i("CARD_EMBED_DIM", 16),
-        attack_embed_dim=_i("ATTACK_EMBED_DIM", 16),
+        card_embed_dim=_i("CARD_EMBED_DIM", 48),
+        attack_embed_dim=_i("ATTACK_EMBED_DIM", 48),
+        dense_card2vec=_dense_card2vec_flag(),
         dropout=_f("DROPOUT", 0.05),
     )
     for key, value in overrides.items():
         if not hasattr(cfg, key):
             raise TypeError(f"unknown ModelConfig field: {key}")
         setattr(cfg, key, value)
+    if cfg.decision_context not in {"history", "stateless"}:
+        raise ValueError(
+            "PURE_RL_DECISION_CONTEXT must be 'history' or 'stateless', got "
+            f"{cfg.decision_context!r}"
+        )
+    cfg.kv_cache = bool(cfg.decision_context == "history" and cfg.temporal_layers > 0)
     if cfg.d_model % cfg.n_heads != 0:
         raise ValueError(
             f"pure_rl d_model={cfg.d_model} not divisible by n_heads={cfg.n_heads}"
@@ -94,7 +125,8 @@ def build_pure_rl_model(
         f"[pure_rl] model_params={n} ({n / 1e6:.3f}M) "
         f"d_model={cfg.d_model} L={cfg.spatial_layers}/"
         f"{cfg.temporal_layers}/{cfg.option_decoder_layers} "
-        f"ff={cfg.ff_dim} ctx={cfg.max_context}",
+        f"ff={cfg.ff_dim} ctx={cfg.max_context} "
+        f"dense_card2vec={bool(cfg.dense_card2vec)}",
         flush=True,
     )
     if validate:

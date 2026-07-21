@@ -27,12 +27,135 @@ from . import paths
 LIVE_POOL_PLAN_PATH: Path = paths.OUTPUTS_DIR / "state" / "live_pool_plan.json"
 
 # Hard clamps — defensive against bogus watcher / hand edits.
+# Worker / total-leaf MAXes are headroom above steady defaults. 3080 Ti (12GB)
+# has NO leaf headroom — CUDA/OOM above ~12 replicas; growth goes to Blackwell
+# only (max 48). Sibling agents may shrink GPU0 further below this cap.
+def _env_max(name: str, default: int) -> int:
+    raw = os.environ.get(name) or os.environ.get(f"POKEBOT_{name}")
+    if raw is None or str(raw).strip() == "":
+        return int(default)
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return int(default)
+
+
 _MIN_WORKERS = 1
-_MAX_WORKERS = 128
+_MAX_WORKERS = _env_max("LIVE_POOL_MAX_WORKERS", 160)
 _MIN_LEAF_SERVERS = 1
-_MAX_LEAF_SERVERS = 16
+# Total = GPU0 cap + Blackwell headroom (12 + 48).
+_MAX_LEAF_GPU0 = _env_max("LIVE_POOL_MAX_LEAF_GPU0", 12)
+_MAX_LEAF_GPU1 = _env_max("LIVE_POOL_MAX_LEAF_GPU1", 48)
+_MAX_LEAF_SERVERS = _env_max(
+    "LIVE_POOL_MAX_LEAF_SERVERS", _MAX_LEAF_GPU0 + _MAX_LEAF_GPU1
+)
 _MIN_PROMOTION_WORKERS = 1
 _MAX_PROMOTION_WORKERS = 64
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name) or os.environ.get(f"POKEBOT_{name}")
+    if raw is None or str(raw).strip() == "":
+        return float(default)
+    try:
+        return float(raw)
+    except ValueError:
+        return float(default)
+
+
+# Measured-reality defaults (see per_worker_rss_gb doc in config.py): sim
+# workers run ~1.3 GiB RSS each once libcg + torch import + game buffers
+# settle; small leaf/relay procs run ~0.33 GiB each. Reserve covers the
+# train-parent process (~3.5 GiB) plus OS/page-cache slack.
+_DEFAULT_PER_WORKER_RSS_GB = 1.3
+_DEFAULT_LEAF_RSS_GB = 0.33
+_DEFAULT_WORKER_RAM_RESERVE_GB = 6.0
+_DEFAULT_FREE_RAM_FLOOR_GB = 8.0
+
+
+def sample_mem_gb() -> tuple[float, float]:
+    """Return ``(mem_total_gb, mem_available_gb)`` from ``/proc/meminfo``.
+
+    Returns ``(0.0, 0.0)`` on any failure (non-Linux host, sandboxed test,
+    missing file) so callers can treat that as "no signal — do not clamp".
+    """
+    try:
+        meta: dict[str, int] = {}
+        with open("/proc/meminfo", encoding="utf-8") as fh:
+            for line in fh:
+                key, _, rest = line.partition(":")
+                meta[key.strip()] = int(rest.strip().split()[0])
+        total = meta.get("MemTotal", 0) / 1e6
+        avail = meta.get("MemAvailable", meta.get("MemFree", 0)) / 1e6
+        return float(total), float(avail)
+    except Exception:
+        return 0.0, 0.0
+
+
+def max_local_workers_for_ram(
+    *,
+    mem_total_gb: Optional[float] = None,
+    mem_available_gb: Optional[float] = None,
+    per_worker_rss_gb: Optional[float] = None,
+    leaf_count: int = 0,
+    leaf_rss_gb: Optional[float] = None,
+    reserve_gb: Optional[float] = None,
+    free_ram_floor_gb: Optional[float] = None,
+    min_workers: int = 1,
+) -> int:
+    """Hard ceiling on local sim workers that fit in *physical* RAM (no swap).
+
+    ``budget_gb = base_gb - reserve_gb (parent+OS) - leaf_count *
+    leaf_rss_gb - free_ram_floor_gb``; ``workers = floor(budget_gb /
+    per_worker_rss_gb)``. ``base_gb`` prefers ``mem_total_gb`` (a stable
+    planning capacity) and falls back to ``mem_available_gb`` only when
+    total is unknown — this is a *steady* ceiling, not a per-tick signal.
+    Callers that want a live "shrink now" trigger from a momentary
+    ``mem_available_gb`` dip should gate on that separately (see
+    :mod:`poke_bot.pure_rl.mid_iter_scheduler`).
+
+    All knobs are env-overridable (``PURE_RL_*`` / ``POKEBOT_*``) and sample
+    real ``/proc/meminfo`` + measured-reality constants when omitted, so
+    production call sites need no wiring. Tests should pass explicit values
+    (or monkeypatch this function) for determinism.
+    """
+    if mem_total_gb is None or mem_available_gb is None:
+        sampled_total, sampled_avail = sample_mem_gb()
+        if mem_total_gb is None:
+            mem_total_gb = sampled_total
+        if mem_available_gb is None:
+            mem_available_gb = sampled_avail
+    if per_worker_rss_gb is None:
+        per_worker_rss_gb = _env_float(
+            "PURE_RL_PER_WORKER_RSS_GB", _DEFAULT_PER_WORKER_RSS_GB
+        )
+    if leaf_rss_gb is None:
+        leaf_rss_gb = _env_float("PURE_RL_LEAF_RSS_GB", _DEFAULT_LEAF_RSS_GB)
+    if reserve_gb is None:
+        reserve_gb = _env_float(
+            "PURE_RL_WORKER_RAM_RESERVE_GB", _DEFAULT_WORKER_RAM_RESERVE_GB
+        )
+    if free_ram_floor_gb is None:
+        free_ram_floor_gb = _env_float(
+            "PURE_RL_FREE_RAM_FLOOR_GB", _DEFAULT_FREE_RAM_FLOOR_GB
+        )
+
+    base_gb = float(mem_total_gb) if mem_total_gb and mem_total_gb > 0 else float(
+        mem_available_gb or 0.0
+    )
+    if base_gb <= 0:
+        # No memory signal at all — never clamp on an unknown quantity.
+        return max(int(min_workers), 1_000_000)
+
+    budget_gb = (
+        base_gb
+        - float(reserve_gb)
+        - float(max(0, int(leaf_count))) * float(leaf_rss_gb)
+        - float(free_ram_floor_gb)
+    )
+    safe_per_worker = max(1e-6, float(per_worker_rss_gb))
+    workers = int(budget_gb // safe_per_worker) if budget_gb > 0 else 0
+    return max(int(min_workers), workers)
 
 
 @dataclass
@@ -42,6 +165,8 @@ class LivePoolPlan:
     seq: int = 0
     workers: Optional[int] = None
     leaf_servers: Optional[int] = None
+    leaf_gpu0: Optional[int] = None
+    leaf_gpu1: Optional[int] = None
     promotion_workers: Optional[int] = None
     apply: str = "next_iter"
     updated: str = ""
@@ -65,11 +190,28 @@ class LivePoolPlan:
         if workers is not None:
             workers = max(_MIN_WORKERS, min(int(workers), hi_w))
 
+        leaf_gpu0 = self.leaf_gpu0
+        leaf_gpu1 = self.leaf_gpu1
+        hi_g0 = min(hi_l, _MAX_LEAF_GPU0)
+        hi_g1 = min(hi_l, _MAX_LEAF_GPU1)
+        if leaf_gpu0 is not None:
+            # Hard cap 3080 Ti — never allow growth past conservative VRAM limit.
+            leaf_gpu0 = max(0, min(int(leaf_gpu0), hi_g0))
+        if leaf_gpu1 is not None:
+            leaf_gpu1 = max(0, min(int(leaf_gpu1), hi_g1))
+        if leaf_gpu0 is not None and leaf_gpu1 is not None:
+            total_explicit = int(leaf_gpu0) + int(leaf_gpu1)
+            if total_explicit > hi_l and total_explicit > 0:
+                # Prefer keeping GPU0 at its (already capped) count; shed from BW.
+                leaf_gpu0 = min(int(leaf_gpu0), hi_g0, hi_l)
+                leaf_gpu1 = max(0, min(hi_g1, hi_l - int(leaf_gpu0)))
+
         leaf_servers = self.leaf_servers
-        if leaf_servers is not None:
+        if leaf_gpu0 is not None and leaf_gpu1 is not None:
+            leaf_servers = int(leaf_gpu0) + int(leaf_gpu1)
+        elif leaf_servers is not None:
+            # Leaves are independent of sim_workers (multi-env + shared leaf RPC).
             leaf_servers = max(_MIN_LEAF_SERVERS, min(int(leaf_servers), hi_l))
-            if workers is not None:
-                leaf_servers = min(leaf_servers, workers)
 
         promotion_workers = self.promotion_workers
         if promotion_workers is not None:
@@ -82,6 +224,8 @@ class LivePoolPlan:
             seq=int(self.seq),
             workers=workers,
             leaf_servers=leaf_servers,
+            leaf_gpu0=leaf_gpu0,
+            leaf_gpu1=leaf_gpu1,
             promotion_workers=promotion_workers,
             apply=str(self.apply or "next_iter"),
             updated=str(self.updated or ""),
@@ -109,6 +253,8 @@ def write_live_pool_plan(
     seq: int,
     workers: Optional[int] = None,
     leaf_servers: Optional[int] = None,
+    leaf_gpu0: Optional[int] = None,
+    leaf_gpu1: Optional[int] = None,
     promotion_workers: Optional[int] = None,
     reason: str = "",
     path: Optional[Path] = None,
@@ -119,6 +265,8 @@ def write_live_pool_plan(
         seq=int(seq),
         workers=workers,
         leaf_servers=leaf_servers,
+        leaf_gpu0=leaf_gpu0,
+        leaf_gpu1=leaf_gpu1,
         promotion_workers=promotion_workers,
         apply=apply,
         updated=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -131,6 +279,8 @@ def write_live_pool_plan(
             "seq": plan.seq,
             "workers": plan.workers,
             "leaf_servers": plan.leaf_servers,
+            "leaf_gpu0": plan.leaf_gpu0,
+            "leaf_gpu1": plan.leaf_gpu1,
             "promotion_workers": plan.promotion_workers,
             "apply": plan.apply,
             "updated": plan.updated,
@@ -167,6 +317,8 @@ def read_live_pool_plan(path: Optional[Path] = None) -> Optional[LivePoolPlan]:
         seq=seq,
         workers=_opt_int("workers"),
         leaf_servers=_opt_int("leaf_servers"),
+        leaf_gpu0=_opt_int("leaf_gpu0"),
+        leaf_gpu1=_opt_int("leaf_gpu1"),
         promotion_workers=_opt_int("promotion_workers"),
         apply=str(raw.get("apply") or "next_iter"),
         updated=str(raw.get("updated") or ""),
@@ -204,6 +356,15 @@ class LeafTopology:
     timeout_s: float = 30.0
 
     def remote_channel(self, *, generation: int = 0) -> dict[str, Any]:
+        # leaf_gpu may be a single device string ("cuda:1") for legacy single-GPU
+        # topologies; dual-GPU farms pass leaf_devices via train_pure_rl._LeafFarm.
+        leaf_devices: list[int] = []
+        raw = str(self.leaf_gpu or "").strip().lower()
+        if raw.startswith("cuda:"):
+            try:
+                leaf_devices = [int(raw.split(":", 1)[1])] * max(1, int(self.n_servers))
+            except ValueError:
+                leaf_devices = []
         return {
             "req_qs": self.req_qs,
             "resp_qs": self.resp_qs,
@@ -214,6 +375,7 @@ class LeafTopology:
             "expected_digest": self.digest,
             "expected_version": int(self.version),
             "timeout_s": float(self.timeout_s),
+            "leaf_devices": leaf_devices,
         }
 
     def shutdown(self, *, join_timeout_s: float = 10.0) -> None:
@@ -281,9 +443,11 @@ def spawn_leaf_topology(
     from .batched_infer import run_leaf_server
 
     n_workers = max(_MIN_WORKERS, min(int(n_workers), _MAX_WORKERS))
+    # Do not clamp leaf count to worker slots — dual-GPU farms often run more
+    # leaf replicas than CPU workers to saturate underfed cards.
     n_servers = max(
         _MIN_LEAF_SERVERS,
-        min(int(n_servers), n_workers, _MAX_LEAF_SERVERS),
+        min(int(n_servers), _MAX_LEAF_SERVERS),
     )
     mpctx = mp.get_context("spawn")
     topo = LeafTopology(

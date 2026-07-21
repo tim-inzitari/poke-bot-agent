@@ -18,6 +18,10 @@ class CompactDecision:
     n_options: int
     action: list[int]
     observation: dict[str, Any] = field(default_factory=dict)
+    # Training-only labels are never part of the policy observation.  They are
+    # retained only when the simulator/replay importer can construct them
+    # exactly; downstream losses mask individual missing targets.
+    aux_labels: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -65,6 +69,7 @@ def compact_decision_from_step(
         n_options=int(n_options),
         action=action,
         observation=dict(step.get("observation") or {}),
+        aux_labels=dict(step.get("aux_labels") or {}),
     )
 
 
@@ -89,6 +94,7 @@ def game_to_jsonable(game: CompactGame) -> dict[str, Any]:
                 "n_options": d.n_options,
                 "action": list(d.action),
                 "observation": d.observation,
+                "aux_labels": d.aux_labels,
             }
             for d in game.decisions
         ],
@@ -150,6 +156,7 @@ def iter_shard_games(path: Path) -> Iterator[CompactGame]:
                     n_options=int(d.get("n_options") or 1),
                     action=[int(x) for x in (d.get("action") or [])],
                     observation=dict(d.get("observation") or {}),
+                    aux_labels=dict(d.get("aux_labels") or {}),
                 )
                 for d in (raw.get("decisions") or [])
             ]

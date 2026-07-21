@@ -1,0 +1,96 @@
+# TrueNAS / Elmo remote-worker canary.
+#
+# Safety invariants:
+#   * The first deployment starts with four sim processes.
+#   * entrypoint.sh refuses a pool larger than 20 processes.
+#   * The container cannot consume host swap or more than 40 GiB RAM.
+#   * Docker never restarts the canary automatically.
+
+name: poke-bot-truenas-worker
+
+services:
+  worker:
+    image: poke-bot-truenas-worker:safety-20260717.3
+    container_name: poke-bot-truenas-worker
+    # The entrypoint and Python sources are baked into this immutable safety
+    # tag. Never bind a newer script over an older image: that caused the Elmo
+    # exit-2 loop on 2026-07-17.
+    init: true
+    restart: "no"
+    stop_grace_period: 90s
+    ports:
+      - "8765:8765"
+    environment:
+      CUDA_DEVICE_ORDER: PCI_BUS_ID
+      POKEBOT_WORKER_CPU_ONLY: "1"
+      POKEBOT_REMOTE_WORKER_ARM_FILE: /workspace/runtime-logs/REMOTE_WORKER_ARMED
+      # Exercise child recycling during the 100-game canary and stop the whole
+      # service before either native libcg or CUDA caches can grow unbounded.
+      POKEBOT_WORKER_RECYCLE_GAMES: "16"
+      WORKER_RECYCLE_GAMES: "16"
+      POKEBOT_REMOTE_MAX_SERVICE_JOBS: "100"
+      POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: "30"
+      POKEBOT_REMOTE_MIN_FREE_RAM_GB: "24"
+      # Keep control/health capacity outside the 12 advertised game sockets.
+      # Without this reserve, a fully busy worker falsely becomes unhealthy.
+      POKEBOT_REMOTE_MAX_CONNECTIONS: "16"
+      POKEBOT_REMOTE_WATCHDOG_INTERVAL_S: "5"
+      # A maxtasksperchild recycle briefly reduces ready capacity while its
+      # replacement completes the native-runtime and leaf-slot initializer.
+      POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: "60"
+      POKEBOT_PRIMARY_ARCHETYPE: hammer-pult
+      POKEBOT_CHECKPOINT: /workspace/checkpoint/model.pt
+      CG_LIB_PATH: /workspace/kaggle/input/cg-lib
+      # Raise both variables together during staged 4 -> 8 -> 12 -> 16 -> 20
+      # canaries. The entrypoint rejects anything above the fixed ceiling.
+      SIM_WORKERS: "${ELMO_SIM_WORKERS:-4}"
+      SIM_DEFAULT_WORKERS: "${ELMO_SIM_DEFAULT_WORKERS:-4}"
+      ELMO_SIM_WORKER_CEILING: "20"
+      LEAF_SERVERS: "2"
+      LEAF_GPU: cuda:0
+      LEAF_MAX_BATCH: "192"
+      LEAF_QUEUE_DEPTH: "96"
+      LEAF_COALESCE_MS: "2"
+      REMOTE_JOB_PORT: "8765"
+      POKEBOT_OPENING_MOVE_TIME_MULT: "1.0"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ${POKEBOT_CHECKPOINT_HOST:-./checkpoint}:/workspace/checkpoint:ro
+      - ${POKEBOT_RUNTIME_HOST:-./runtime-logs}:/workspace/runtime-logs
+    shm_size: "2gb"
+    cpus: 20
+    mem_limit: 40g
+    # Equal memory and memory+swap caps disable container swap.
+    memswap_limit: 40g
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+    healthcheck:
+      # Perform the real framed hello + health exchange. A raw TCP connect used
+      # to report healthy while leaves were dead and flooded logs with errors.
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os;
+          from poke_bot.remote_jobs import RemoteJobClient;
+          c=RemoteJobClient('127.0.0.1', int(os.environ.get('REMOTE_JOB_PORT','8765')), timeout_s=5, connect_timeout_s=5, control_timeout_s=8);
+          i=c.connect(); h=c.health(); c.close();
+          assert i.workers == int(os.environ['SIM_DEFAULT_WORKERS']), (i.workers, os.environ['SIM_DEFAULT_WORKERS']);
+          assert 0 < (i.max_workers or i.workers) <= int(os.environ['ELMO_SIM_WORKER_CEILING']), (i.max_workers, i.workers);
+          assert h.get('ok') is True and h.get('controller_healthy') is True and h.get('leaf_alive') is True and h.get('leaf_identity_ok') is True, h
+      interval: 60s
+      timeout: 12s
+      retries: 3
+      start_period: 180s

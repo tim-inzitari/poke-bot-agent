@@ -9,6 +9,7 @@ unless ``PURE_RL_ALLOW_SINGLE_GPU=1``.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
 import signal
 import subprocess
@@ -19,6 +20,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LOG = ROOT / "outputs/logs/pure_rl.log"
+TRAINING_SAFETY_VERSION = "20260717"
+LAUNCH_LOCK = ROOT / "outputs/state/pure_rl_launcher.lock"
+DEFAULT_TRAINING_ARM_FILE = ROOT / "outputs/state/TRAINING_ARMED"
 
 
 def _env_float(name: str, default: float) -> float:
@@ -26,6 +30,17 @@ def _env_float(name: str, default: float) -> float:
         return float(os.environ.get(name, default))
     except ValueError:
         return default
+
+
+def _preflight_environment(
+    source: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Return a test environment isolated from live trainer tuning knobs."""
+    clean = dict(os.environ if source is None else source)
+    for key in tuple(clean):
+        if key.startswith(("PURE_RL_", "POKEBOT_")):
+            clean.pop(key, None)
+    return clean
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -77,6 +92,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Do not spawn resource_watcher --emit-live-pool (auto-rebalance).",
     )
     p.add_argument(
+        "--auto-progress",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Explicitly arm the core→specialist watcher. Default OFF; the "
+            "specialist must be selected from a versioned ladder mix."
+        ),
+    )
+    p.add_argument(
+        "--specialist-archetype",
+        default=None,
+        help="Required with --auto-progress; never inferred or hard-coded",
+    )
+    p.add_argument(
         "train_args",
         nargs=argparse.REMAINDER,
         help="Args after '--' forwarded to train_pure_rl.py",
@@ -87,24 +116,159 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.run_name is None:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         args.run_name = f"pure_rl_{args.mode}_{stamp}"
+    if args.auto_progress and not str(args.specialist_archetype or "").strip():
+        p.error("--auto-progress requires --specialist-archetype")
+    if args.auto_progress:
+        trainer_source = (ROOT / "scripts/train_pure_rl.py").read_text(
+            encoding="utf-8"
+        )
+        if '"--specialist-archetype"' not in trainer_source:
+            p.error(
+                "--auto-progress is unavailable until train_pure_rl.py "
+                "consumes --specialist-archetype end-to-end"
+            )
     return args
 
 
 def open_stable_log(path: Path):
+    """Open the stable watch path append-only across launcher restarts."""
     path = path if path.is_absolute() else ROOT / path
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         path.unlink()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_APPEND, 0o644)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     return os.fdopen(fd, "wb", buffering=0)
+
+
+def progress_log_path(log_path: Path) -> Path:
+    """Sibling file for tqdm bars (stderr), e.g. pure_rl_core.progress.log."""
+    log_path = log_path if log_path.is_absolute() else ROOT / log_path
+    return log_path.with_name(f"{log_path.stem}.progress.log")
+
+
+def progress_status_path(log_path: Path) -> Path:
+    """Single-line status rewritten each bar tick (in-place watcher)."""
+    prog = progress_log_path(log_path)
+    return prog.with_name(prog.name.replace(".progress.log", ".progress.status"))
+
+
+def publish_stable_log_aliases(log_path: Path) -> None:
+    """Atomically point the permanent event/tqdm tails at this run.
+
+    Per-run files remain authoritative archives.  These three aliases are the
+    stable operator contract across run names and launcher versions.
+    """
+    log_path = log_path if log_path.is_absolute() else ROOT / log_path
+    progress_path = progress_log_path(log_path)
+    status_path = progress_status_path(log_path)
+    aliases = {
+        log_path.parent / "training.log": log_path,
+        log_path.parent / "training.progress.log": progress_path,
+        log_path.parent / "training.progress.status": status_path,
+    }
+    for alias, target in aliases.items():
+        if alias == target:
+            continue
+        alias.parent.mkdir(parents=True, exist_ok=True)
+        temporary = alias.with_name(f".{alias.name}.link-{os.getpid()}")
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        temporary.symlink_to(os.path.relpath(target, alias.parent))
+        os.replace(temporary, alias)
+
+
+def _normalized_child_returncode(returncode: int) -> int:
+    """Map subprocess signal returns to conventional shell exit statuses."""
+    code = int(returncode)
+    return 128 + abs(code) if code < 0 else code
+
+
+def _production_training_arm(
+    source: dict[str, str] | None = None,
+) -> tuple[bool, Path]:
+    """Require independent environment and filesystem production consent."""
+    env = os.environ if source is None else source
+    configured = env.get(
+        "POKEBOT_TRAINING_ARM_FILE",
+        str(DEFAULT_TRAINING_ARM_FILE),
+    )
+    arm_file = Path(configured)
+    if not arm_file.is_absolute():
+        arm_file = ROOT / arm_file
+    try:
+        token_matches = arm_file.read_bytes() == TRAINING_SAFETY_VERSION.encode()
+    except OSError:
+        token_matches = False
+    return (
+        env.get("POKEBOT_TRAINING_SAFETY_VERSION", "")
+        == TRAINING_SAFETY_VERSION
+        and token_matches,
+        arm_file,
+    )
+
+
+def _acquire_launch_lock(path: Path, *, run_name: str):
+    """Hold the one-full-hardware-trainer-per-checkout interlock.
+
+    Detached recovery scripts previously raced systemd and could start another
+    launcher while the first trainer was still alive.  ``flock`` is released
+    automatically if the launcher crashes or is killed, so a stale text record
+    can never keep the machine wedged.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stream = path.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        stream.seek(0)
+        owner = stream.read().strip()
+        stream.close()
+        return None, owner
+    stream.seek(0)
+    stream.truncate()
+    stream.write(
+        f"pid={os.getpid()} run={run_name} "
+        f"started={datetime.now(timezone.utc).isoformat()}\n"
+    )
+    stream.flush()
+    return stream, ""
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    production_armed, arm_file = _production_training_arm()
+    if not args.smoke and not production_armed:
+        print(
+            "error: production training requires both memory-safety env "
+            f"version {TRAINING_SAFETY_VERSION} and exact token file "
+            f"{arm_file}; refusing to spawn workers",
+            file=sys.stderr,
+        )
+        return 78
+    launch_lock, lock_owner = _acquire_launch_lock(
+        LAUNCH_LOCK,
+        run_name=str(args.run_name),
+    )
+    if launch_lock is None:
+        print(
+            "error: another full-hardware trainer launcher owns "
+            f"{LAUNCH_LOCK} ({lock_owner or 'owner record unavailable'}); "
+            "refusing an overlapping start",
+            file=sys.stderr,
+        )
+        return 75
     sys.path.insert(0, str(ROOT))
     from poke_bot.pure_rl.hardware import full_hardware_profile
     from dataclasses import replace
 
+    # Safe no-swap steady default for this box: measured per-worker RSS
+    # (~1.3 GiB) x higher worker counts (96/160) does not fit in 124 GiB
+    # RAM alongside ~60 leaf servers + parent without swapping. 48 keeps
+    # MemAvailable comfortably >20 GiB with 60 leaves. Operators can still
+    # override via PURE_RL_SIM_WORKERS in the shell env before launch.
+    os.environ.setdefault("PURE_RL_SIM_WORKERS", "48")
     hw = full_hardware_profile()
     if args.allow_single_gpu or args.smoke:
         hw = replace(hw, allow_single_gpu=True)
@@ -144,19 +308,44 @@ def main(argv: list[str] | None = None) -> int:
     # Tiny ~1.6M pure-RL policy: coalesce≈0 beats the RR Hope-large default (4ms).
     # Do not set LEAF_SERVER_COALESCE_MS globally here if already exported (ops override).
     env.setdefault("PURE_RL_LEAF_COALESCE_MS", "0")
-    # Throughput defaults for next-iter restarts (override with POKEBOT_MULTI_ENV=0).
-    if str(env.get("POKEBOT_MULTI_ENV", "")).strip().lower() not in (
-        "0",
-        "false",
-        "no",
-        "off",
-    ):
-        env.setdefault("POKEBOT_MULTI_ENV", "1")
-        env.setdefault("POKEBOT_MULTI_ENV_PER_WORKER", "4")
-        env.setdefault("PURE_RL_MULTI_ENV", "1")
-        env.setdefault("PURE_RL_MULTI_ENV_PER_WORKER", "4")
+    # MultiEnv (N>1) saves RAM but cuts OS workers (procs=sim//N) and starves
+    # GPU leaves on this box — measured ~1.5g/s vs ~3.8g/s at N=1. Opt-in only.
+    env.setdefault("POKEBOT_MULTI_ENV", "0")
+    env.setdefault("POKEBOT_MULTI_ENV_PER_WORKER", "1")
+    env.setdefault("PURE_RL_MULTI_ENV", "0")
+    env.setdefault("PURE_RL_MULTI_ENV_PER_WORKER", "1")
     # Live pool auto-rebalance ON unless explicitly disabled.
     env.setdefault("POKEBOT_LIVE_POOL", "1")
+    # Local-primary soft floor for additive self-play RR split.
+    env.setdefault("PURE_RL_REBALANCE_MIN_LOCAL_FRAC", "0.40")
+    # Public mix (baseline vs public/roster opponents) finishes fast locally
+    # — route it local-only by default so remotes stay free for self-play.
+    # Set 0/false to fall back to PURE_RL_PUBLIC_MIX_MIN_LOCAL_FRAC instead.
+    env.setdefault("PURE_RL_PUBLIC_MIX_LOCAL_ONLY", "1")
+    env.setdefault("PURE_RL_PUBLIC_MIX_MIN_LOCAL_FRAC", "0.95")
+    # No-swap RAM cap for THIS box: local worker ceiling == the safe steady
+    # target (48), not headroom above it — measured ~1.3 GiB/worker plus ~60
+    # leaf servers at ~0.33 GiB each does not fit 96/160 workers in 124 GiB
+    # RAM without swapping. Remotes (Elmo/bert) stay additive on top; total
+    # max 10000 ≫ peak local+remote (never binding).
+    env.setdefault("PURE_RL_REBALANCE_MAX_WORKERS", "48")
+    env.setdefault("PURE_RL_REBALANCE_MAX_TOTAL_WORKERS", "10000")
+    env.setdefault("PURE_RL_REBALANCE_MIN_REMOTE_FRAC", "0.25")
+    env.setdefault("POKEBOT_LIVE_POOL_MAX_WORKERS", "48")
+    env.setdefault("POKEBOT_LIVE_POOL_MAX_LEAF_GPU0", "12")
+    env.setdefault("POKEBOT_LIVE_POOL_MAX_LEAF_GPU1", "48")
+    env.setdefault("POKEBOT_LIVE_POOL_MAX_LEAF_SERVERS", "60")
+    # Per-worker RSS budget used by the RAM-fit clamp (apply_live_pool_plan /
+    # resource_watcher); measured reality on this box, not the old 0.8 guess.
+    env.setdefault("PURE_RL_PER_WORKER_RSS_GB", "1.3")
+    if not args.smoke and not args.no_remote_workers:
+        # Configured production farms are part of the execution contract. A
+        # missing endpoint or exhausted remote retry must stop the wave instead
+        # of silently shifting the advertised remote work onto Inzi.
+        env.setdefault("POKEBOT_REMOTE_REQUIRE_ALL", "1")
+        env.setdefault("POKEBOT_REMOTE_NO_LOCAL_FALLBACK", "1")
+    # Keep \\r tqdm bars on stderr → *.progress.log (+ *.progress.status mirror).
+    env.setdefault("PURE_RL_TQDM_INPLACE", "1")
     if hw.allow_single_gpu:
         env["PURE_RL_ALLOW_SINGLE_GPU"] = "1"
 
@@ -170,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.python,
             ],
             cwd=ROOT,
-            env=env,
+            env=_preflight_environment(),
             check=False,
         )
         if preflight.returncode != 0:
@@ -194,7 +383,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.python,
                 str(accuracy_script),
                 "--num-envs",
-                env.get("POKEBOT_MULTI_ENV_PER_WORKER", "4"),
+                env.get("POKEBOT_MULTI_ENV_PER_WORKER", "1"),
                 "--json-out",
                 str(ROOT / "outputs/state/game_accuracy_canary.json"),
             ],
@@ -284,14 +473,31 @@ def main(argv: list[str] | None = None) -> int:
         if str(endpoints).strip():
             train_cmd.extend(["--remote-worker-endpoints", str(endpoints)])
 
-    log_path = args.log if args.log.is_absolute() else ROOT / args.log
+    log_path = (args.log if args.log.is_absolute() else ROOT / args.log).resolve()
+    prog_path = progress_log_path(log_path).resolve()
+    status_path = progress_status_path(log_path).resolve()
+    env["PURE_RL_PROGRESS_LOG"] = str(prog_path)
+    publish_stable_log_aliases(log_path)
     log_stream = open_stable_log(log_path)
+    # tqdm bars (\\r in-place) on stderr → progress.log; status file for watchers.
+    progress_stream = open_stable_log(prog_path)
+    # The event log is append-only across systemd restarts. Capture the exact
+    # boundary before this training attempt starts so its monitor sees every new
+    # line but never replays a prior attempt's FAIL-CLOSED marker. Replaying the
+    # old tail caused a one-minute SIGTERM/restart loop in production.
+    monitor_log_start_offset = log_path.stat().st_size
     print(
         f"PURE_RL_RUN name={args.run_name} mode={args.mode} "
         f"workers={hw.sim_workers} leaves0={hw.leaf_gpu0_replicas} "
         f"leaves1={hw.leaf_gpu1_replicas} "
         f"multi_env={multi_n} leaf_coalesce_ms={coalesce_ms} "
-        f"log={log_path}",
+        f"log={log_path} progress_log={prog_path} progress_status={status_path}",
+        flush=True,
+    )
+    print(
+        f"PURE_RL_FOLLOW event_log: tail -F {log_path} | "
+        f"tqdm_games: bash scripts/watch_pure_rl_progress.sh "
+        f"(or: watch -n1 cat {status_path}; less -r +F {prog_path})",
         flush=True,
     )
     training = subprocess.Popen(
@@ -299,9 +505,25 @@ def main(argv: list[str] | None = None) -> int:
         cwd=ROOT,
         env=env,
         stdout=log_stream,
-        stderr=subprocess.STDOUT,
+        stderr=progress_stream,
         start_new_session=True,
     )
+    # Fail-loud if a future edit re-merges stderr into the event log.
+    try:
+        err_target = Path(os.readlink(f"/proc/{training.pid}/fd/2")).resolve()
+    except OSError:
+        err_target = Path("?")
+    print(
+        f"PURE_RL_PROGRESS_SPLIT stdout={log_path} stderr={prog_path} "
+        f"child_fd2={err_target} status={status_path}",
+        flush=True,
+    )
+    if err_target != prog_path:
+        print(
+            "warning: train stderr is not progress.log — tqdm/sps will not "
+            "land in the progress view; check launch wiring",
+            flush=True,
+        )
 
     watcher = None
     watcher_script = ROOT / "scripts/resource_watcher.py"
@@ -346,6 +568,8 @@ def main(argv: list[str] | None = None) -> int:
             str(log_path),
             "--run-dir",
             str(run_dir),
+            "--start-offset",
+            str(monitor_log_start_offset),
             "--interval",
             str(args.monitor_interval),
             "--stall-minutes",
@@ -359,11 +583,56 @@ def main(argv: list[str] | None = None) -> int:
             "--log-keep-mb",
             str(args.log_keep_mb),
             "--process-group",
+            "--progress-status",
+            str(status_path),
         ]
         monitor = subprocess.Popen(monitor_cmd, cwd=ROOT, env=env, start_new_session=True)
-        print(f"PURE_RL_PIDS training={training.pid} monitor={monitor.pid}", flush=True)
-    else:
-        print(f"PURE_RL_PIDS training={training.pid}", flush=True)
+
+    auto_progress = None
+    want_auto = args.auto_progress
+    auto_script = ROOT / "scripts/pure_rl_auto_progress.py"
+    if want_auto and auto_script.is_file():
+        run_dir = ROOT / "outputs/pure_rl" / args.run_name
+        auto_log = ROOT / "outputs/logs/pure_rl_auto_progress.log"
+        auto_cmd = [
+            args.python,
+            "-u",
+            str(auto_script),
+            "--core-run-dir",
+            str(run_dir),
+            "--python",
+            args.python,
+            "--archetype",
+            str(args.specialist_archetype),
+        ]
+        if args.no_remote_workers:
+            auto_cmd.append("--no-remote-workers")
+        elif args.remote_worker_endpoints is not None:
+            auto_cmd.extend(
+                ["--remote-worker-endpoints", str(args.remote_worker_endpoints)]
+            )
+        auto_progress = subprocess.Popen(
+            auto_cmd,
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        print(
+            f"PURE_RL_AUTO_PROGRESS pid={auto_progress.pid} "
+            f"state={run_dir / 'auto_progress/state.json'} log={auto_log}",
+            flush=True,
+        )
+
+    pid_bits = [f"training={training.pid}"]
+    if monitor is not None:
+        pid_bits.append(f"monitor={monitor.pid}")
+    if watcher is not None:
+        pid_bits.append(f"watcher={watcher.pid}")
+    if auto_progress is not None:
+        pid_bits.append(f"auto_progress={auto_progress.pid}")
+    print(f"PURE_RL_PIDS {' '.join(pid_bits)}", flush=True)
 
     def _stop(_signum: int, _frame: object) -> None:
         try:
@@ -374,12 +643,14 @@ def main(argv: list[str] | None = None) -> int:
             monitor.terminate()
         if watcher and watcher.poll() is None:
             watcher.terminate()
+        # Do NOT terminate auto_progress — it owns phase transitions after gate.
 
     prev = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
-        return training.wait()
+        return _normalized_child_returncode(training.wait())
     finally:
         log_stream.close()
+        progress_stream.close()
         for proc in (monitor, watcher):
             if proc and proc.poll() is None:
                 proc.terminate()
@@ -389,6 +660,7 @@ def main(argv: list[str] | None = None) -> int:
                     proc.kill()
         for sig, handler in prev.items():
             signal.signal(sig, handler)
+        launch_lock.close()
 
 
 if __name__ == "__main__":

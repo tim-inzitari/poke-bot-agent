@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Warm-start hammer-pult specialist from a pure-RL / core checkpoint.
+"""Warm-start an explicitly selected specialist from a pure-RL/core checkpoint.
 
 Uses Hope ``CoreKernel.warm_start_specialist`` when the checkpoint is a core
 kernel; otherwise copies a plain TemporalCabtTransformer checkpoint into the
@@ -21,7 +21,11 @@ if str(ROOT) not in sys.path:
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--core-checkpoint", type=Path, required=True)
-    p.add_argument("--archetype", default="hammer-pult")
+    p.add_argument(
+        "--archetype",
+        required=True,
+        help="Specialist chosen from a versioned ladder-value evaluation",
+    )
     p.add_argument("--run-name", required=True)
     p.add_argument("--device", default="cpu")
     return p.parse_args(argv)

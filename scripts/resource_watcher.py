@@ -178,13 +178,50 @@ class Knob:
         return False
 
 
+def _ram_worker_ceiling(default_leaf_count: int = 60) -> int:
+    """No-swap RAM ceiling for local worker knobs (env/`/proc/meminfo`-aware).
+
+    Torch-free import (``poke_bot.live_pool`` has no heavy deps) so this
+    watcher keeps its "cheap + isolated" design goal. Falls back to the
+    caller's fixed ceiling if the helper is unavailable for any reason.
+    """
+    try:
+        from poke_bot.live_pool import max_local_workers_for_ram
+
+        return max_local_workers_for_ram(leaf_count=default_leaf_count, min_workers=8)
+    except Exception:
+        return 160
+
+
 def default_knobs(cores: int) -> dict[str, Knob]:
+    # Steady defaults stay moderate; ceilings are headroom (max ≫ default) —
+    # but never above what physical RAM can sustain without swap. The old
+    # fixed 160 ceiling let the watcher ratchet local workers past the
+    # no-swap RAM budget overnight; clamp it to the RAM-fit ceiling instead.
+    # Leaves: 3080 Ti hard-capped (no headroom); all leaf growth → Blackwell.
+    ram_ceiling = min(160, _ram_worker_ceiling())
+    worker_ceiling = max(32, ram_ceiling)
+    worker_floor = min(32, worker_ceiling)
+    in_flight_floor = min(24, worker_ceiling)
     return {
-        # Blackwell hammer side
-        "rl_games_in_flight": Knob("POKEBOT_RL_GAMES_IN_FLIGHT", 40, 4, 64, 24),
-        "leaf_server_replicas": Knob("POKEBOT_LEAF_SERVER_REPLICAS", 6, 1, 10, 4),
+        # Blackwell hammer side / pure-RL local collect
+        "rl_games_in_flight": Knob(
+            "POKEBOT_RL_GAMES_IN_FLIGHT",
+            min(40, worker_ceiling),
+            4,
+            worker_ceiling,
+            in_flight_floor,
+        ),
+        # Total leaf replicas; GPU0 pinned ≤12, growth assigned to GPU1 only.
+        "leaf_server_replicas": Knob("POKEBOT_LEAF_SERVER_REPLICAS", 30, 2, 60, 16),
         # shared CPU sim pool
-        "sim_workers": Knob("POKEBOT_SIM_WORKERS", min(cores, 32), 2, min(cores * 2, 56), 16),
+        "sim_workers": Knob(
+            "POKEBOT_SIM_WORKERS",
+            min(cores, worker_ceiling),
+            4,
+            worker_ceiling,
+            worker_floor,
+        ),
         # 3080 Ti core-kernel side
         "ti_games_per_batch": Knob("POKEBOT_TI_GAMES_PER_BATCH", 24, 4, 48, 12),
         "ti_max_decisions": Knob("POKEBOT_TI_MAX_DECISIONS", 2048, 512, 6144, 1024),
@@ -244,6 +281,33 @@ def main(argv=None) -> int:
     knobs = default_knobs(cores)
     live_seq = 0
 
+    # Resume from prior plans so a watcher restart does not snap back to floor.
+    try:
+        if args.plan.is_file():
+            prev = json.loads(args.plan.read_text(encoding="utf-8"))
+            prev_knobs = prev.get("knobs") or {}
+            for name, knob in knobs.items():
+                raw = prev_knobs.get(name) or {}
+                if "value" in raw:
+                    knob.value = max(knob.floor, min(knob.ceiling, int(raw["value"])))
+        if args.live_pool_plan.is_file():
+            live_prev = json.loads(args.live_pool_plan.read_text(encoding="utf-8"))
+            live_seq = max(0, int(live_prev.get("seq") or 0))
+            lw = live_prev.get("workers")
+            ll = live_prev.get("leaf_servers")
+            if lw is not None:
+                knobs["rl_games_in_flight"].value = max(
+                    knobs["rl_games_in_flight"].floor,
+                    min(knobs["rl_games_in_flight"].ceiling, int(lw)),
+                )
+            if ll is not None:
+                knobs["leaf_server_replicas"].value = max(
+                    knobs["leaf_server_replicas"].floor,
+                    min(knobs["leaf_server_replicas"].ceiling, int(ll)),
+                )
+    except Exception:
+        pass
+
     def log(msg: str) -> None:
         line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {msg}"
         with args.log.open("a", encoding="utf-8") as fh:
@@ -264,15 +328,62 @@ def main(argv=None) -> int:
         if args.emit_live_pool:
             live_seq += 1
             try:
-                from poke_bot.live_pool import write_live_pool_plan
+                from poke_bot.live_pool import (
+                    _MAX_LEAF_GPU0,
+                    _MAX_LEAF_GPU1,
+                    write_live_pool_plan,
+                )
 
                 # Prefer in-flight games for workers; fall back to sim_workers.
                 workers = int(knobs["rl_games_in_flight"].value)
                 leaf_servers = int(knobs["leaf_server_replicas"].value)
+                env_l0 = os.environ.get("PURE_RL_LEAF_GPU0_REPLICAS")
+                env_l1 = os.environ.get("PURE_RL_LEAF_GPU1_REPLICAS")
+                # 3080 Ti: pin at min(env/plan, hard max). Never grow GPU0.
+                # Sibling agents may shrink GPU0 further; we only enforce the cap.
+                prev_g0 = None
+                try:
+                    if args.live_pool_plan.is_file():
+                        prev_live = json.loads(
+                            args.live_pool_plan.read_text(encoding="utf-8")
+                        )
+                        if prev_live.get("leaf_gpu0") is not None:
+                            prev_g0 = int(prev_live["leaf_gpu0"])
+                except Exception:
+                    prev_g0 = None
+                if env_l0 and str(env_l0).strip():
+                    leaf_gpu0 = max(1, min(int(env_l0), _MAX_LEAF_GPU0))
+                elif prev_g0 is not None:
+                    leaf_gpu0 = max(1, min(prev_g0, _MAX_LEAF_GPU0))
+                else:
+                    leaf_gpu0 = _MAX_LEAF_GPU0
+                if env_l1 and str(env_l1).strip():
+                    leaf_gpu1 = max(1, min(int(env_l1), _MAX_LEAF_GPU1))
+                else:
+                    leaf_gpu1 = max(1, leaf_servers - leaf_gpu0)
+                # Floor workers at PURE_RL_SIM_WORKERS on every emit — bump/backoff
+                # of rl_games_in_flight alone was shrinking the self-play pool to
+                # ~44 and starving dual-GPU leaf feed (sticky bind coverage).
+                env_w = os.environ.get("PURE_RL_SIM_WORKERS") or os.environ.get(
+                    "PURE_RL_GAMES_IN_FLIGHT"
+                )
+                if env_w is not None and str(env_w).strip():
+                    workers = max(workers, int(env_w))
+                    knobs["rl_games_in_flight"].value = workers
+                if reason == "init":
+                    leaf_servers = max(leaf_servers, int(leaf_gpu0) + int(leaf_gpu1))
+                    knobs["leaf_server_replicas"].value = leaf_servers
+                # All total-leaf growth/backoff beyond the GPU0 pin goes to BW.
+                leaf_gpu0 = max(1, min(int(leaf_gpu0), _MAX_LEAF_GPU0))
+                leaf_gpu1 = max(1, min(_MAX_LEAF_GPU1, int(leaf_servers) - leaf_gpu0))
+                leaf_servers = int(leaf_gpu0) + int(leaf_gpu1)
+                knobs["leaf_server_replicas"].value = leaf_servers
                 write_live_pool_plan(
                     seq=live_seq,
                     workers=workers,
                     leaf_servers=leaf_servers,
+                    leaf_gpu0=leaf_gpu0,
+                    leaf_gpu1=leaf_gpu1,
                     promotion_workers=int(args.promotion_workers),
                     reason=reason,
                     path=args.live_pool_plan,
@@ -281,10 +392,15 @@ def main(argv=None) -> int:
             except Exception as exc:
                 log(f"[watcher] live_pool_plan write failed: {exc!r}")
 
+    knob_headroom = ", ".join(
+        f"{k.env} default/start={k.value} ceiling={k.ceiling} (max>default={k.ceiling > k.value})"
+        for k in knobs.values()
+    )
     log(f"[watcher] start pid={os.getpid()} cores={cores} interval={args.interval}s "
         f"hysteresis={args.hysteresis} min_bump={args.min_bump_interval}s "
         f"ceilings: vram<={args.vram_max_pct}% ram<={args.ram_max_gb}GB "
         f"cpu<={args.cpu_max_pct}% emit_live_pool={args.emit_live_pool}")
+    log(f"[watcher] knob headroom (max≫steady): {knob_headroom}")
     write_plan("init")
 
     ok_streak = 0
@@ -349,9 +465,22 @@ def main(argv=None) -> int:
                             if knobs[name].bump():
                                 changed.append(name)
                                 break  # one CPU-knob bump per interval (gentle)
-                    if bw_pct < args.vram_max_pct - 15 and ram_headroom:
-                        if knobs["leaf_server_replicas"].bump():
-                            changed.append("leaf_server_replicas")
+                    # Grow leaves only on Blackwell VRAM/util headroom.
+                    # Never use 3080 Ti underfeed as a reason to add replicas
+                    # (GPU0 is hard-capped; growth is assigned to GPU1 only).
+                    if (
+                        ram_headroom
+                        and bw_pct < args.vram_max_pct - 15
+                        and ti_pct < args.vram_max_pct  # Ti already safe
+                        and bw_util < 90.0
+                    ):
+                        steps = 2 if bw_util < 60.0 else 1
+                        for _ in range(steps):
+                            if knobs["leaf_server_replicas"].bump():
+                                if "leaf_server_replicas" not in changed:
+                                    changed.append("leaf_server_replicas")
+                            else:
+                                break
                     if changed:
                         last_bump = now
                         ok_streak = 0
