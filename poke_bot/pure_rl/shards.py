@@ -110,8 +110,33 @@ class CompactShardWriter:
         self._n_games = 0
         self._n_decisions = 0
         self._t0 = time.time()
+        self._read_only = False
+
+    @classmethod
+    def from_completed_shard(
+        cls,
+        path: Path,
+        *,
+        n_games: int,
+        n_decisions: int,
+        elapsed_sec: float,
+    ) -> "CompactShardWriter":
+        """Rehydrate counters for an immutable, receipt-verified shard."""
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        if int(n_games) < 0 or int(n_decisions) < 0:
+            raise ValueError("completed shard counters must be non-negative")
+        writer = cls(path)
+        writer._n_games = int(n_games)
+        writer._n_decisions = int(n_decisions)
+        writer._t0 = time.time() - max(float(elapsed_sec), 1e-6)
+        writer._read_only = True
+        return writer
 
     def write_game(self, game: CompactGame) -> None:
+        if self._read_only:
+            raise RuntimeError(f"completed shard is immutable: {self.path}")
         line = json.dumps(game_to_jsonable(game), separators=(",", ":"))
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")

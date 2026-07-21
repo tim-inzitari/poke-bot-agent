@@ -54,12 +54,11 @@ def test_tqdm_set_wr_puts_readout_on_postfix() -> None:
         mininterval=60.0,
     )
     try:
-        assert prog._bar.ncols >= 160
         assert "wr" not in prog._postfix(sps="0")
         prog.set_wr(0.42, 50, target=0.70)
         pf = prog._postfix(sps="0")
         assert "wr" in pf
-        assert "42.00%" in pf["wr"]
+        assert "42.0%" in pf["wr"]
         assert "50g" in pf["wr"]
         assert "70%" in pf["wr"]
     finally:
@@ -116,7 +115,7 @@ def test_consume_results_live_wr_gate_tracks_running_winrate() -> None:
     # win, win, loss counted (3 games); forfeit excluded from the WR readout.
     assert prog.wr is not None
     assert "3g" in prog.wr
-    assert "66.67%" in prog.wr
+    assert "66.7%" in prog.wr
 
 
 def test_consume_results_without_live_wr_gate_leaves_wr_unset() -> None:

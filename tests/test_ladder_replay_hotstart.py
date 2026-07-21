@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from poke_bot.ladder_deck_mix import (
 from poke_bot.ladder_replay import LadderReplayClassifier
 from poke_bot.train import split_dataset
 from scripts.run_top_ladder_hotstart import _sha256, _validate_dataset
+from scripts.split_top_ladder_dataset import main as split_top_ladder_dataset
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -124,3 +126,137 @@ def test_followup_shard_can_have_partial_family_coverage(tmp_path: Path) -> None
     )
     with pytest.raises(RuntimeError, match="missing="):
         _validate_dataset(dataset, meta, MIX, require_all_families=True)
+
+
+def test_top_ladder_split_routes_every_record_and_rebuilds_metadata(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent.jsonl"
+    records = [
+        {
+            "source": "pokemon-tcg-ai-battle-episodes-2026-07-03",
+            "episode_id": "a",
+            "seat": 0,
+            "archetype": "crustle",
+            "n_decisions": 3,
+            "info_set_ok": True,
+        },
+        {
+            "source": "pokemon-tcg-ai-battle-episodes-2026-07-04",
+            "episode_id": "b",
+            "seat": 1,
+            "archetype": "alakazam",
+            "n_decisions": 5,
+            "info_set_ok": True,
+        },
+        {
+            "source": "pokemon-tcg-ai-battle-episodes-2026-07-05",
+            "episode_id": "c",
+            "seat": 0,
+            "archetype": "crustle",
+            "n_decisions": 7,
+            "info_set_ok": True,
+        },
+    ]
+    parent.write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+    mix = load_ladder_deck_mix(MIX)
+    parent_meta = {
+        "output_sha256": _sha256(parent),
+        "sources": [
+            {"date": f"2026-07-0{day}", "slug": f"day-{day}"}
+            for day in (3, 4, 5)
+        ],
+        "classifier": {
+            "mix_artifact_sha256": mix.artifact_sha256,
+            "active_deck_ids": [entry.deck_id for entry in mix.decks],
+        },
+        "policy_scope": "all_valid_top_ladder_seats",
+        "quality_gates": {"passed": True},
+        "stats": {"records_written": len(records)},
+    }
+    parent.with_suffix(".meta.json").write_text(
+        json.dumps(parent_meta), encoding="utf-8"
+    )
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+
+    assert (
+        split_top_ladder_dataset(
+            [
+                "--dataset",
+                str(parent),
+                "--shard",
+                "2026-07-03",
+                "2026-07-04",
+                str(first),
+                "--shard",
+                "2026-07-05",
+                "2026-07-05",
+                str(second),
+                "--min-sequences",
+                "1",
+            ]
+        )
+        == 0
+    )
+    first_rows = [json.loads(line) for line in first.read_text().splitlines()]
+    second_rows = [json.loads(line) for line in second.read_text().splitlines()]
+    assert [row["episode_id"] for row in first_rows] == ["a", "b"]
+    assert [row["episode_id"] for row in second_rows] == ["c"]
+    assert len(first_rows) + len(second_rows) == len(records)
+    first_meta = json.loads(first.with_suffix(".meta.json").read_text())
+    second_meta = json.loads(second.with_suffix(".meta.json").read_text())
+    assert first_meta["output_sha256"] == _sha256(first)
+    assert second_meta["output_sha256"] == _sha256(second)
+    assert first_meta["stats"]["decisions_written"] == 8
+    assert second_meta["stats"]["decisions_written"] == 7
+
+
+def test_top_ladder_split_quality_failure_leaves_no_final_children(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent.jsonl"
+    record = {
+        "source": "pokemon-tcg-ai-battle-episodes-2026-07-03",
+        "episode_id": "a",
+        "seat": 0,
+        "archetype": "unknown",
+        "n_decisions": 3,
+        "info_set_ok": True,
+    }
+    parent.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    mix = load_ladder_deck_mix(MIX)
+    parent.with_suffix(".meta.json").write_text(
+        json.dumps(
+            {
+                "output_sha256": _sha256(parent),
+                "sources": [{"date": "2026-07-03", "slug": "day-3"}],
+                "classifier": {
+                    "mix_artifact_sha256": mix.artifact_sha256,
+                    "active_deck_ids": [entry.deck_id for entry in mix.decks],
+                },
+                "quality_gates": {"passed": True},
+                "stats": {"records_written": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+    child = tmp_path / "child.jsonl"
+
+    with pytest.raises(RuntimeError, match="recognized seat fraction"):
+        split_top_ladder_dataset(
+            [
+                "--dataset",
+                str(parent),
+                "--shard",
+                "2026-07-03",
+                "2026-07-03",
+                str(child),
+            ]
+        )
+
+    assert not child.exists()
+    assert not child.with_suffix(".meta.json").exists()

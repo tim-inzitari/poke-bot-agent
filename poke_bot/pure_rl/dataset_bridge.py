@@ -7,9 +7,10 @@ import json
 import multiprocessing as mp
 import os
 import pickle
+import re
 import shutil
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -27,6 +28,7 @@ from poke_bot.blackwell_heads import attach_blackwell_strategy_labels
 
 
 COMPACT_CACHE_SCHEMA_VERSION = 2
+_STREAM_STAGING_NAME = re.compile(r"^iter_\d{5}\.(\d+)\.\d+$")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -187,6 +189,16 @@ def _range_worker(
     }
 
 
+def _read_cached_part(part_path: Path) -> list[GameSequence]:
+    """Load one immutable cache part; kept separate for bounded prefetch."""
+    with part_path.open("rb") as handle:
+        payload = pickle.load(handle)
+    sequences = payload.get("sequences")
+    if not isinstance(sequences, list):
+        raise TypeError(f"invalid replay-cache payload: {part_path}")
+    return sequences
+
+
 def _load_cached_parts(
     shard: Path,
     manifest: dict[str, Any],
@@ -202,21 +214,57 @@ def _load_cached_parts(
         parts_total=len(parts),
         percent=0.0,
     )
-    for index, part in enumerate(
-        tqdm(parts, desc=f"replay-cache load {shard.name}", unit="part")
-    ):
-        part_path = Path(str(part["path"]))
-        with part_path.open("rb") as handle:
-            payload = pickle.load(handle)
-        sequences.extend(list(payload["sequences"]))
+    # Pickle decode plus disk reads measured ~30% faster with four threads on
+    # Inzi.  Submit only one part per worker at a time: unlike executor.map,
+    # this cannot decode the entire 25+ GiB replay cache behind a slow early
+    # part and create an unbounded memory spike.  Results are consumed in
+    # manifest order so train/validation splitting remains deterministic.
+    workers = max(
+        1,
+        min(
+            4,
+            len(parts),
+            _env_int("PURE_RL_REPLAY_CACHE_LOAD_WORKERS", 4),
+        ),
+    )
+
+    def consume(index: int, loaded: list[GameSequence]) -> None:
+        sequences.extend(loaded)
         _write_status(
             shard,
             stage="cache_load",
+            workers=workers,
             parts_complete=index + 1,
             parts_total=len(parts),
             percent=100.0 * (index + 1) / max(1, len(parts)),
             sequences_loaded=len(sequences),
         )
+
+    progress = tqdm(parts, desc=f"replay-cache load {shard.name}", unit="part")
+    if workers == 1:
+        for index, part in enumerate(progress):
+            consume(index, _read_cached_part(Path(str(part["path"]))))
+    else:
+        with ThreadPoolExecutor(
+            max_workers=workers,
+            thread_name_prefix="replay-cache-load",
+        ) as executor:
+            pending = {
+                index: executor.submit(
+                    _read_cached_part, Path(str(parts[index]["path"]))
+                )
+                for index in range(workers)
+            }
+            next_submit = workers
+            for index, _part in enumerate(progress):
+                loaded = pending.pop(index).result()
+                consume(index, loaded)
+                if next_submit < len(parts):
+                    pending[next_submit] = executor.submit(
+                        _read_cached_part,
+                        Path(str(parts[next_submit]["path"])),
+                    )
+                    next_submit += 1
     return sequences
 
 
@@ -234,6 +282,63 @@ def _valid_manifest(
         return manifest
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
+
+
+def validated_replay_cache_manifest(
+    shard: Path,
+    *,
+    verify_info_set: bool = False,
+    max_context: Optional[int] = None,
+) -> Optional[dict[str, Any]]:
+    """Return a fully reconciled cache manifest for one immutable shard.
+
+    A completed stream-cache is also the strongest bounded proof that every
+    newline-complete source record was parsed and featurized.  Recovery uses
+    this helper before preserving a collected shard after a trainer crash.
+    Merely finding ``manifest.json`` is not sufficient: all aggregate counters
+    and byte coverage must agree with both the current source stat and the
+    individual immutable cache parts.
+    """
+    shard = Path(shard)
+    if not shard.is_file():
+        return None
+    max_ctx = int(
+        max_context if max_context is not None else config.MODEL.max_context
+    )
+    signature = _cache_signature(
+        shard,
+        verify_info_set=verify_info_set,
+        max_context=max_ctx,
+    )
+    _cache_dir, manifest_path = _cache_paths(shard, signature)
+    manifest = _valid_manifest(manifest_path, signature)
+    if manifest is None:
+        return None
+    parts = list(manifest.get("parts") or [])
+    try:
+        indices = [int(part["index"]) for part in parts]
+        covered_bytes = sum(int(part["bytes"]) for part in parts)
+        records = sum(int(part["records"]) for part in parts)
+        kept = sum(int(part["kept"]) for part in parts)
+        dropped = sum(int(part["dropped"]) for part in parts)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if indices != list(range(len(parts))):
+        return None
+    if covered_bytes != int(signature["source_size"]):
+        return None
+    if (
+        records != int(manifest.get("records", -1))
+        or kept != int(manifest.get("sequences", -1))
+        or dropped != int(manifest.get("dropped", -1))
+        or records != kept + dropped
+    ):
+        return None
+    return {
+        **manifest,
+        "manifest_path": str(manifest_path),
+        "covered_bytes": covered_bytes,
+    }
 
 
 def _build_parallel_cache(
@@ -334,6 +439,79 @@ def _prune_cache_run(cache_dir: Path) -> None:
             pass
 
 
+def _stream_staging_pid_is_alive(pid: int) -> bool:
+    """Conservatively report whether a stream-cache owner may still exist."""
+    if int(pid) == os.getpid():
+        return True
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        # Never delete another process's staging merely because its status
+        # cannot be inspected under a different user/security context.
+        return True
+    return True
+
+
+def _prune_stale_stream_staging() -> dict[str, int]:
+    """Remove bounded-cache staging left behind by dead trainer PIDs.
+
+    ``finish`` and ``abort`` already remove their own directory, but SIGKILL,
+    OOM termination, or a host reboot cannot run either cleanup path.  Every
+    staging leaf is PID-addressed, so a new collection can safely scavenge only
+    leaves whose owner no longer exists.  Live/ambiguous owners fail closed.
+    """
+    root = Path(config.HARDWARE.cache_dir) / "pure_rl_compact_staging"
+    removed = 0
+    reclaimed = 0
+    kept = 0
+    try:
+        run_roots = list(root.iterdir())
+    except OSError:
+        return {"removed": 0, "reclaimed_bytes": 0, "kept": 0}
+    for run_root in run_roots:
+        if not run_root.is_dir():
+            continue
+        try:
+            leaves = list(run_root.iterdir())
+        except OSError:
+            continue
+        for leaf in leaves:
+            match = _STREAM_STAGING_NAME.fullmatch(leaf.name)
+            if not match or not leaf.is_dir():
+                continue
+            if _stream_staging_pid_is_alive(int(match.group(1))):
+                kept += 1
+                continue
+            try:
+                size = sum(
+                    path.stat().st_size
+                    for path in leaf.rglob("*")
+                    if path.is_file()
+                )
+                shutil.rmtree(leaf)
+            except OSError:
+                # Cleanup is an optimization. A permission or transient I/O
+                # failure must not prevent training from starting.
+                kept += 1
+                continue
+            removed += 1
+            reclaimed += int(size)
+        try:
+            run_root.rmdir()
+        except OSError:
+            pass
+    if removed:
+        print(
+            "[pure_rl] stale stream-cache cleanup "
+            f"dirs={removed} reclaimed_gib={reclaimed / 2**30:.2f} "
+            f"live_or_ambiguous={kept}",
+            flush=True,
+        )
+    return {"removed": removed, "reclaimed_bytes": reclaimed, "kept": kept}
+
+
 class StreamingReplayCache:
     """Featurize newline-complete shard prefixes while collection continues.
 
@@ -408,6 +586,7 @@ class StreamingReplayCache:
             or not shard.name.startswith("iter_")
         ):
             return None
+        _prune_stale_stream_staging()
         max_ctx = int(
             max_context if max_context is not None else config.MODEL.max_context
         )

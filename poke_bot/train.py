@@ -11,7 +11,7 @@ import gc
 import math
 import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
 
@@ -28,7 +28,7 @@ from .blackwell_heads import (
     prize_race_target_from_aux,
 )
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
-from .device_corpus import DeviceResidentBootstrapCorpus
+from .device_corpus import DEFAULT_MIN_FREE_GIB, DeviceResidentBootstrapCorpus
 from .model import TemporalCabtTransformer, build_model
 
 # Distinct named belief + Blackwell strategy heads — warm-start may omit only
@@ -78,6 +78,9 @@ class TrainConfig:
     awr_freeze_baseline: bool = False
     #: Subtract from policy loss: ``entropy_bonus * H(π)`` (pure_rl only).
     entropy_bonus: float = 0.01
+    #: Temporal hot-start only: keep the new history state close to the copied
+    #: stateless parent's normalized state during frozen-trunk calibration.
+    history_identity_loss_weight: float = 0.0
 
     @classmethod
     def pure_rl_defaults(cls, **overrides: Any) -> "TrainConfig":
@@ -125,6 +128,7 @@ class BatchMetrics:
     alakazam_guide_loss: float = 0.0
     lethal_threat_loss: float = 0.0
     prize_race_loss: float = 0.0
+    history_identity_loss: float = 0.0
     total_loss: float = 0.0
     policy_acc: float = 0.0
     policy_kl: float = 0.0
@@ -189,6 +193,32 @@ def belief_head_names_from_state_keys(keys: Sequence[str]) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
+def belief_card_vocab_from_state(state: dict[str, Any]) -> int:
+    """Resolve the belief-card vocabulary for old or current checkpoints.
+
+    Legacy policy checkpoints legitimately predate the opponent hand and
+    hidden-remainder heads. In that case the live card vocabulary used by
+    ``load_model_from_checkpoint`` is authoritative. A partially upgraded
+    checkpoint may provide either head, but any present tensor must be a valid
+    linear weight and the two output widths must agree.
+    """
+
+    widths: dict[str, int] = {}
+    for name in ("opp_hand_head", "opp_remainder_head"):
+        weight = state.get(f"{name}.weight")
+        if weight is None:
+            continue
+        if getattr(weight, "ndim", 0) != 2:
+            raise ValueError(f"checkpoint {name} weight must be rank-2")
+        width = int(weight.shape[0])
+        if width <= 0:
+            raise ValueError(f"checkpoint {name} vocabulary must be positive")
+        widths[name] = width
+    if len(set(widths.values())) > 1:
+        raise ValueError("checkpoint opponent belief head vocabularies disagree")
+    return next(iter(widths.values()), int(features.card_vocab_size()))
+
+
 def masked_belief_card_bce(
     logits: torch.Tensor,
     multilabel: Optional[torch.Tensor],
@@ -237,6 +267,9 @@ def belief_multihots_from_aux_labels(
     hand_ids = _card_ids_from_aux_field(aux_labels.get("opp_hand"))
     deck_ids = _card_ids_from_aux_field(aux_labels.get("opp_deck_order"))
     prize_ids = _card_ids_from_aux_field(aux_labels.get("opp_prizes"))
+    exact_remainder_ids = _card_ids_from_aux_field(
+        aux_labels.get("opp_hidden_remainder")
+    )
     hand_mh: Optional[torch.Tensor] = None
     if hand_ids is not None:
         hand_mh = torch.zeros(card_vocab, device=device)
@@ -244,7 +277,9 @@ def belief_multihots_from_aux_labels(
             if 0 <= int(card_id) < card_vocab:
                 hand_mh[int(card_id)] = 1.0
     rem_ids: Optional[list[int]] = None
-    if hand_ids is not None or deck_ids is not None or prize_ids is not None:
+    if exact_remainder_ids is not None:
+        rem_ids = list(exact_remainder_ids)
+    elif hand_ids is not None or deck_ids is not None or prize_ids is not None:
         rem_ids = []
         for src in (hand_ids, deck_ids, prize_ids):
             if src:
@@ -369,6 +404,7 @@ def batch_losses(
     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
     awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
     prediction_sink: Optional[list[int]] = None,
+    history_identity_weight: float = 0.0,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Causal history forward over all valid decisions.
 
@@ -406,6 +442,7 @@ def batch_losses(
     spatial_all = model.encode_board(all_boards)
     valid_spatial: list[torch.Tensor] = []
     valid_states: list[torch.Tensor] = []
+    valid_identity_states: list[torch.Tensor] = []
     valid_options = []
     valid_n: list[int] = []
     soft_targets: list[Optional[list[float]]] = []
@@ -437,12 +474,16 @@ def batch_losses(
                 cls, append=False, return_all=True
             )
             game_states = game_states.squeeze(0)
+            game_identity_states = model.temporal_norm(
+                model.pool_cls(game_spatial)
+            ).detach()
         else:
             cls = model.pool_cls(game_spatial).unsqueeze(1)
             game_states, _ = model.temporal_encode(
                 cls, append=False, return_all=True
             )
             game_states = game_states.squeeze(1)
+            game_identity_states = game_states.detach()
         last_valid_row: Optional[int] = None
         for t, d in enumerate(g.decisions):
             stages = d.policy_stages or [
@@ -495,6 +536,7 @@ def batch_losses(
                     continue
                 valid_spatial.append(game_spatial[t])
                 valid_states.append(game_states[t])
+                valid_identity_states.append(game_identity_states[t])
                 valid_options.append(stage.options)
                 valid_n.append(n_opt)
                 soft_targets.append(soft)
@@ -522,6 +564,7 @@ def batch_losses(
         )
 
     state_all = torch.stack(valid_states, dim=0)
+    identity_state_all = torch.stack(valid_identity_states, dim=0)
     current_spatial = torch.stack(valid_spatial, dim=0)
     logits_all = model.decode_options(
         valid_options,
@@ -666,6 +709,11 @@ def batch_losses(
         policy_kl = (p_loss - target_entropy).clamp_min(0.0)
 
     v_loss = F.smooth_l1_loss(value_pred, v_target)
+    history_identity_loss = (
+        F.mse_loss(state_all, identity_state_all)
+        if float(history_identity_weight) > 0.0
+        else state_all.sum() * 0.0
+    )
 
     aux_loss = torch.zeros((), device=device)
     if aux_weight > 0 and aux_rows:
@@ -780,6 +828,7 @@ def batch_losses(
         + float(opp_remainder_weight) * opp_remainder_loss
         + float(lethal_threat_weight) * lethal_threat_loss
         + float(prize_race_weight) * prize_race_loss
+        + float(history_identity_weight) * history_identity_loss
     )
     preds = logits_all.argmax(dim=1)
     if prediction_sink is not None:
@@ -794,6 +843,7 @@ def batch_losses(
         opp_remainder_loss=float(opp_remainder_loss.detach().item()),
         lethal_threat_loss=float(lethal_threat_loss.detach().item()),
         prize_race_loss=float(prize_race_loss.detach().item()),
+        history_identity_loss=float(history_identity_loss.detach().item()),
         total_loss=float(total.detach().item()),
         policy_acc=correct / max(k, 1),
         policy_kl=float(policy_kl.detach().item()) if torch.is_tensor(policy_kl) else float(policy_kl),
@@ -825,6 +875,48 @@ def batch_losses(
         awr_effective_sample_size=awr_ess,
         awr_effective_sample_fraction=awr_ess_frac,
         policy_selected_nll=policy_selected_nll,
+    )
+    return total, metrics
+
+
+def _resident_hard_target_objective(
+    model: TemporalCabtTransformer,
+    logits: torch.Tensor,
+    state: torch.Tensor,
+    target_idx: torch.Tensor,
+    v_target: torch.Tensor,
+    *,
+    value_weight: float,
+    n_games: int = 0,
+) -> tuple[torch.Tensor, BatchMetrics]:
+    """Shared supervised objective for stateless and temporal resident paths."""
+    k = int(target_idx.numel())
+    if k <= 0:
+        device = next(model.parameters()).device
+        return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
+    value_pred = torch.tanh(model.value_head(state)).squeeze(-1)
+    v_target = v_target.to(dtype=value_pred.dtype)
+    log_p = torch.nan_to_num(F.log_softmax(logits, dim=-1), neginf=0.0)
+    selected_log_p = log_p[
+        torch.arange(k, device=logits.device), target_idx
+    ]
+    p_loss = -selected_log_p.mean()
+    v_loss = F.smooth_l1_loss(value_pred, v_target)
+    total = p_loss + float(value_weight) * v_loss
+    preds = logits.argmax(dim=1)
+    correct = int((preds == target_idx).sum().item())
+    p_scalar = float(p_loss.detach().item())
+    metrics = BatchMetrics(
+        policy_loss=p_scalar,
+        value_loss=float(v_loss.detach().item()),
+        total_loss=float(total.detach().item()),
+        policy_acc=correct / max(k, 1),
+        policy_kl=max(p_scalar, 0.0),
+        target_value_mean=float(v_target.detach().float().mean().item()),
+        value_pred_mean=float(value_pred.detach().float().mean().item()),
+        n_decisions=k,
+        n_games=int(n_games),
+        policy_selected_nll=p_scalar,
     )
     return total, metrics
 
@@ -861,29 +953,328 @@ def device_batch_losses(
         n_options=counts,
         batch_size=k,
     )
-    value_pred = torch.tanh(model.value_head(state)).squeeze(-1)
-    v_target = v_target.to(dtype=value_pred.dtype)
-    log_p = torch.nan_to_num(F.log_softmax(logits, dim=-1), neginf=0.0)
-    selected_log_p = log_p[
-        torch.arange(k, device=logits.device), target_idx
-    ]
-    p_loss = -selected_log_p.mean()
-    v_loss = F.smooth_l1_loss(value_pred, v_target)
-    total = p_loss + float(value_weight) * v_loss
-    preds = logits.argmax(dim=1)
-    correct = int((preds == target_idx).sum().item())
-    p_scalar = float(p_loss.detach().item())
-    metrics = BatchMetrics(
-        policy_loss=p_scalar,
-        value_loss=float(v_loss.detach().item()),
-        total_loss=float(total.detach().item()),
-        policy_acc=correct / max(k, 1),
-        policy_kl=max(p_scalar, 0.0),
-        target_value_mean=float(v_target.detach().float().mean().item()),
-        value_pred_mean=float(value_pred.detach().float().mean().item()),
-        n_decisions=k,
-        policy_selected_nll=p_scalar,
+    return _resident_hard_target_objective(
+        model,
+        logits,
+        state,
+        target_idx,
+        v_target,
+        value_weight=value_weight,
     )
+
+
+def device_temporal_batch_losses(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    game_ids: torch.Tensor,
+    *,
+    value_weight: float = 1.0,
+    aux_weight: float = 0.0,
+    opp_hand_weight: float = 0.0,
+    opp_remainder_weight: float = 0.0,
+    lethal_threat_weight: float = 0.0,
+    prize_race_weight: float = 0.0,
+    alakazam_guide_weight: float = 0.0,
+) -> tuple[torch.Tensor, BatchMetrics]:
+    """Hard-target full-game loss with every resident temporal target.
+
+    Policy/value behavior is the same as :func:`_resident_hard_target_objective`.
+    Optional auxiliary targets are trained only on rows whose packed presence
+    masks are valid.  In particular, an absent exact opponent hand is not
+    interpreted as an observed empty hand.
+    """
+    if model.decision_context != "history":
+        raise ValueError("temporal resident loss requires history context")
+    for name, weight in (
+        ("aux", aux_weight),
+        ("opp_hand", opp_hand_weight),
+        ("opp_remainder", opp_remainder_weight),
+        ("lethal_threat", lethal_threat_weight),
+        ("prize_race", prize_race_weight),
+        ("alakazam_guide", alakazam_guide_weight),
+    ):
+        if float(weight) < 0.0:
+            raise ValueError(f"resident temporal {name} weight cannot be negative")
+    (
+        board,
+        previous_actions,
+        options,
+        counts,
+        target_idx,
+        v_target,
+        game_lengths,
+        sample_state_rows,
+    ) = corpus.temporal_batch(game_ids)
+    decisions = int(game_lengths.sum().item())
+    samples = int(target_idx.numel())
+    if decisions <= 0 or samples <= 0:
+        device = next(model.parameters()).device
+        return torch.zeros((), device=device, requires_grad=True), BatchMetrics()
+    if int(game_lengths.max().item()) > int(model.max_context):
+        raise ValueError(
+            "resident temporal game exceeds checkpoint context: "
+            f"game={int(game_lengths.max().item())} max={int(model.max_context)}"
+        )
+
+    spatial = model.encode_board_packed(board, batch_size=decisions)
+    action_state = model.encode_previous_actions_packed(
+        previous_actions, batch_size=decisions
+    )
+    cls = model.pool_cls(spatial) + float(model.cfg.history_action_scale) * action_state
+
+    # Games of equal length can share one temporal call: the batch dimension is
+    # isolated by attention, while avoiding one Python/model launch per game.
+    lengths = [int(value) for value in game_lengths.cpu().tolist()]
+    starts: list[int] = []
+    cursor = 0
+    by_length: dict[int, list[int]] = {}
+    for length in lengths:
+        starts.append(cursor)
+        by_length.setdefault(length, []).append(cursor)
+        cursor += length
+    state_parts: list[torch.Tensor] = []
+    row_parts: list[torch.Tensor] = []
+    for length, group_starts in by_length.items():
+        tokens = torch.stack(
+            [cls[start : start + length] for start in group_starts], dim=0
+        )
+        encoded, _ = model.temporal_encode(
+            tokens, append=False, return_all=True
+        )
+        state_parts.append(encoded.reshape(-1, model.d_model))
+        row_parts.append(
+            torch.cat(
+                [
+                    torch.arange(
+                        start,
+                        start + length,
+                        device=corpus.device,
+                        dtype=torch.long,
+                    )
+                    for start in group_starts
+                ]
+            )
+        )
+    grouped_states = torch.cat(state_parts, dim=0)
+    grouped_rows = torch.cat(row_parts, dim=0)
+    state_by_decision = grouped_states.index_select(
+        0, torch.argsort(grouped_rows)
+    )
+    state = state_by_decision.index_select(0, sample_state_rows)
+    sample_spatial = spatial.index_select(0, sample_state_rows)
+    logits = model.decode_options_packed(
+        options,
+        sample_spatial,
+        state,
+        n_options=counts,
+        batch_size=samples,
+    )
+    total, metrics = _resident_hard_target_objective(
+        model,
+        logits,
+        state,
+        target_idx,
+        v_target,
+        value_weight=value_weight,
+        n_games=int(game_ids.numel()),
+    )
+    if not any(
+        float(weight) > 0.0
+        for weight in (
+            aux_weight,
+            opp_hand_weight,
+            opp_remainder_weight,
+            lethal_threat_weight,
+            prize_race_weight,
+            alakazam_guide_weight,
+        )
+    ):
+        # Retain the historical policy/value-only path exactly, including RNG
+        # consumption (``aux_head`` contains dropout on nonzero-dropout models).
+        return total, metrics
+
+    # Recreate the packed sample ids in the same caller-specified game order
+    # used by ``temporal_batch``.  Exact targets are decision-indexed while
+    # archetype and guide targets are sample-indexed, so both mappings matter.
+    assert corpus.game_sample_offset is not None
+    resident_game_ids = game_ids.reshape(-1).to(
+        device=corpus.device, dtype=torch.long
+    )
+    sample_starts = corpus.game_sample_offset.index_select(
+        0, resident_game_ids
+    ).to(dtype=torch.long)
+    sample_ends = corpus.game_sample_offset.index_select(
+        0, resident_game_ids + 1
+    ).to(dtype=torch.long)
+    sample_ids, _sample_lengths = corpus._expand_ranges(  # noqa: SLF001
+        sample_starts, sample_ends
+    )
+    if int(sample_ids.numel()) != samples:
+        raise AssertionError(
+            "resident temporal sample target mapping disagrees with policy rows"
+        )
+    board_ids = corpus.sample_board.index_select(0, sample_ids).to(
+        dtype=torch.long
+    )
+
+    belief = model.belief_aux_logits(state)
+    aux_loss = belief["aux_logits"].sum() * 0.0
+    opp_hand_loss = belief["opp_hand_logits"].sum() * 0.0
+    opp_remainder_loss = belief["opp_remainder_logits"].sum() * 0.0
+    lethal_threat_loss = belief["lethal_threat_logits"].sum() * 0.0
+    prize_race_loss = belief["prize_race_pred"].sum() * 0.0
+    guide_log_p = torch.nan_to_num(
+        F.log_softmax(logits, dim=-1), neginf=0.0
+    )
+    guide_loss = guide_log_p.sum() * 0.0
+
+    n_archetype_rows = 0
+    if corpus.sample_aux_class is not None:
+        aux_target = corpus.sample_aux_class.index_select(0, sample_ids).to(
+            dtype=torch.long
+        )
+        aux_mask = aux_target >= 0
+        if bool(aux_mask.any()):
+            aux_loss = F.cross_entropy(
+                belief["aux_logits"][aux_mask], aux_target[aux_mask]
+            )
+            n_archetype_rows = int(aux_mask.sum().item())
+
+    n_opp_hand_rows = 0
+    hand_fields = (
+        corpus.hand_index,
+        corpus.hand_offset,
+        corpus.hand_present,
+    )
+    if int(corpus.belief_card_vocab) > 0 and all(
+        value is not None for value in hand_fields
+    ):
+        assert corpus.hand_index is not None
+        assert corpus.hand_offset is not None
+        assert corpus.hand_present is not None
+        hand_target, hand_mask = corpus._card_multihot(  # noqa: SLF001
+            board_ids,
+            index=corpus.hand_index,
+            offset=corpus.hand_offset,
+            present=corpus.hand_present,
+        )
+        if bool(hand_mask.any()):
+            opp_hand_loss = F.binary_cross_entropy_with_logits(
+                belief["opp_hand_logits"][hand_mask], hand_target[hand_mask]
+            )
+            n_opp_hand_rows = int(hand_mask.sum().item())
+
+    n_opp_remainder_rows = 0
+    remainder_fields = (
+        corpus.remainder_index,
+        corpus.remainder_offset,
+        corpus.remainder_present,
+    )
+    if int(corpus.belief_card_vocab) > 0 and all(
+        value is not None for value in remainder_fields
+    ):
+        assert corpus.remainder_index is not None
+        assert corpus.remainder_offset is not None
+        assert corpus.remainder_present is not None
+        remainder_target, remainder_mask = corpus._card_multihot(  # noqa: SLF001
+            board_ids,
+            index=corpus.remainder_index,
+            offset=corpus.remainder_offset,
+            present=corpus.remainder_present,
+        )
+        if bool(remainder_mask.any()):
+            opp_remainder_loss = F.binary_cross_entropy_with_logits(
+                belief["opp_remainder_logits"][remainder_mask],
+                remainder_target[remainder_mask],
+            )
+            n_opp_remainder_rows = int(remainder_mask.sum().item())
+
+    n_lethal_threat_rows = 0
+    if corpus.lethal_target is not None:
+        lethal_target = corpus.lethal_target.index_select(0, board_ids).to(
+            dtype=belief["lethal_threat_logits"].dtype
+        )
+        lethal_mask = torch.isfinite(lethal_target)
+        if bool(lethal_mask.any()):
+            lethal_threat_loss = F.binary_cross_entropy_with_logits(
+                belief["lethal_threat_logits"][lethal_mask],
+                lethal_target[lethal_mask],
+            )
+            n_lethal_threat_rows = int(lethal_mask.sum().item())
+
+    n_prize_race_rows = 0
+    if corpus.prize_race_target is not None:
+        prize_race_target = corpus.prize_race_target.index_select(
+            0, board_ids
+        ).to(dtype=belief["prize_race_pred"].dtype)
+        prize_race_mask = torch.isfinite(prize_race_target).all(dim=1)
+        if bool(prize_race_mask.any()):
+            prize_race_loss = F.smooth_l1_loss(
+                belief["prize_race_pred"][prize_race_mask],
+                prize_race_target[prize_race_mask],
+            )
+            n_prize_race_rows = int(prize_race_mask.sum().item())
+
+    n_guide_rows = 0
+    if (
+        corpus.guide_target_index is not None
+        and corpus.guide_confidence is not None
+    ):
+        guide_target = corpus.guide_target_index.index_select(
+            0, sample_ids
+        ).to(dtype=torch.long)
+        guide_confidence = corpus.guide_confidence.index_select(
+            0, sample_ids
+        ).to(dtype=guide_log_p.dtype)
+        invalid_guide = (guide_target >= counts) & (guide_target >= 0)
+        if bool(invalid_guide.any()):
+            bad_row = int(torch.nonzero(invalid_guide, as_tuple=False)[0].item())
+            raise ValueError(
+                "resident Alakazam guide target is outside option row: "
+                f"target={int(guide_target[bad_row].item())} "
+                f"options={int(counts[bad_row].item())}"
+            )
+        guide_mask = (
+            (guide_target >= 0)
+            & (guide_confidence > 0.0)
+            & (counts >= 2)
+        )
+        if bool(guide_mask.any()):
+            guide_rows = torch.nonzero(guide_mask, as_tuple=False).flatten()
+            bounded_confidence = guide_confidence.index_select(
+                0, guide_rows
+            ).clamp(0.0, 1.0)
+            guide_loss = -(
+                guide_log_p[
+                    guide_rows,
+                    guide_target.index_select(0, guide_rows),
+                ]
+                * bounded_confidence
+            ).mean()
+            n_guide_rows = int(guide_rows.numel())
+
+    total = (
+        total
+        + float(aux_weight) * aux_loss
+        + float(opp_hand_weight) * opp_hand_loss
+        + float(opp_remainder_weight) * opp_remainder_loss
+        + float(lethal_threat_weight) * lethal_threat_loss
+        + float(prize_race_weight) * prize_race_loss
+        + float(alakazam_guide_weight) * guide_loss
+    )
+    metrics.aux_loss = float(aux_loss.detach().item())
+    metrics.opp_hand_loss = float(opp_hand_loss.detach().item())
+    metrics.opp_remainder_loss = float(opp_remainder_loss.detach().item())
+    metrics.lethal_threat_loss = float(lethal_threat_loss.detach().item())
+    metrics.prize_race_loss = float(prize_race_loss.detach().item())
+    metrics.alakazam_guide_loss = float(guide_loss.detach().item())
+    metrics.total_loss = float(total.detach().item())
+    metrics.n_archetype_rows = n_archetype_rows
+    metrics.n_opp_hand_rows = n_opp_hand_rows
+    metrics.n_opp_remainder_rows = n_opp_remainder_rows
+    metrics.n_lethal_threat_rows = n_lethal_threat_rows
+    metrics.n_prize_race_rows = n_prize_race_rows
+    metrics.n_alakazam_guide_rows = n_guide_rows
     return total, metrics
 
 
@@ -916,8 +1307,10 @@ def device_exact_batch_losses(
     opp_remainder_weight: float = 0.3,
     lethal_threat_weight: float = 0.1,
     prize_race_weight: float = 0.1,
+    alakazam_guide_weight: float = 0.0,
     awr_beta: float = 0.5,
     awr_weight_max: float = 20.0,
+    awr_normalize_advantages: bool = True,
     entropy_bonus: float = 0.01,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Full AWR + exact-hidden losses with all source tensors on-device."""
@@ -950,6 +1343,48 @@ def device_exact_batch_losses(
         torch.arange(k, device=logits.device), target_idx
     ]
 
+    guide_loss = log_p.sum() * 0.0
+    n_guide_rows = 0
+    if float(alakazam_guide_weight) > 0.0:
+        if not corpus.has_guide_targets:
+            raise ValueError(
+                "nonzero Alakazam guide weight requires resident guide targets"
+            )
+        assert corpus.guide_target_index is not None
+        assert corpus.guide_confidence is not None
+        guide_target = corpus.guide_target_index.index_select(0, ids).to(
+            dtype=torch.long
+        )
+        guide_confidence = corpus.guide_confidence.index_select(0, ids).to(
+            dtype=log_p.dtype
+        )
+        invalid = (guide_target >= counts) & (guide_target >= 0)
+        if bool(invalid.any()):
+            bad_row = int(torch.nonzero(invalid, as_tuple=False)[0].item())
+            raise ValueError(
+                "resident Alakazam guide target is outside option row: "
+                f"target={int(guide_target[bad_row].item())} "
+                f"options={int(counts[bad_row].item())}"
+            )
+        guide_mask = (
+            (guide_target >= 0)
+            & (guide_confidence > 0.0)
+            & (counts >= 2)
+        )
+        if bool(guide_mask.any()):
+            guide_rows = torch.nonzero(guide_mask, as_tuple=False).flatten()
+            bounded_confidence = guide_confidence.index_select(
+                0, guide_rows
+            ).clamp(0.0, 1.0)
+            guide_loss = -(
+                log_p[
+                    guide_rows,
+                    guide_target.index_select(0, guide_rows),
+                ]
+                * bounded_confidence
+            ).mean()
+            n_guide_rows = int(guide_rows.numel())
+
     baseline = value_pred.detach() if baseline_pred is None else baseline_pred.detach()
     baseline = baseline.to(device=value_pred.device, dtype=value_pred.dtype).reshape(-1)
     if baseline.numel() != k:
@@ -957,7 +1392,7 @@ def device_exact_batch_losses(
     raw_advantages = v_target - baseline
     raw_stats = raw_advantages.detach().float()
     advantages = raw_advantages
-    if k > 1:
+    if awr_normalize_advantages and k > 1:
         advantages = (advantages - advantages.mean()) / advantages.std(
             unbiased=False
         ).clamp_min(1e-6)
@@ -1026,6 +1461,7 @@ def device_exact_batch_losses(
         + float(opp_remainder_weight) * opp_remainder_loss
         + float(lethal_threat_weight) * lethal_threat_loss
         + float(prize_race_weight) * prize_race_loss
+        + float(alakazam_guide_weight) * guide_loss
     )
     predictions = logits.argmax(dim=1)
     weight_stats = weights.detach().float()
@@ -1040,6 +1476,7 @@ def device_exact_batch_losses(
         policy_loss=float(policy_loss.detach().item()),
         value_loss=float(value_loss.detach().item()),
         aux_loss=float(aux_loss.detach().item()),
+        alakazam_guide_loss=float(guide_loss.detach().item()),
         opp_hand_loss=float(opp_hand_loss.detach().item()),
         opp_remainder_loss=float(opp_remainder_loss.detach().item()),
         lethal_threat_loss=float(lethal_threat_loss.detach().item()),
@@ -1049,6 +1486,12 @@ def device_exact_batch_losses(
         target_value_mean=float(v_target.detach().float().mean().item()),
         value_pred_mean=float(value_pred.detach().float().mean().item()),
         n_decisions=k,
+        n_alakazam_guide_rows=n_guide_rows,
+        n_archetype_rows=int(aux_mask.sum().item()),
+        n_opp_hand_rows=int(hand_mask.sum().item()),
+        n_opp_remainder_rows=int(remainder_mask.sum().item()),
+        n_lethal_threat_rows=int(lethal_mask.sum().item()),
+        n_prize_race_rows=int(prize_mask.sum().item()),
         mean_advantage=float(raw_stats.abs().mean().item()),
         raw_advantage_mean=float(raw_stats.mean().item()),
         raw_advantage_std=float(raw_stats.std(unbiased=False).item()),
@@ -1117,6 +1560,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         opp_remainder_loss=wavg("opp_remainder_loss"),
         lethal_threat_loss=wavg("lethal_threat_loss"),
         prize_race_loss=wavg("prize_race_loss"),
+        history_identity_loss=wavg("history_identity_loss"),
         total_loss=wavg("total_loss"),
         policy_acc=wavg("policy_acc"),
         policy_kl=wavg("policy_kl"),
@@ -1194,6 +1638,52 @@ def split_dataset(
     return seqs[n_val:], seqs[:n_val]
 
 
+def cap_game_sequence_context(
+    sequence: GameSequence,
+    max_context: int,
+) -> tuple[GameSequence, bool]:
+    """Keep a causal game prefix within the temporal attention cap.
+
+    The sequence remains owned by exactly one acting seat and one episode.
+    A rare game longer than the measured 320-step window contributes its
+    correctly conditioned prefix; no reset chunk or cross-game packing is
+    introduced merely to retain the tail.
+    """
+    cap = int(max_context)
+    if cap <= 0:
+        raise ValueError("history max_context must be positive")
+    if len(sequence.decisions) <= cap:
+        return sequence, False
+
+    def _prefix(value):
+        return value[:cap] if value is not None else None
+
+    return (
+        replace(
+            sequence,
+            decisions=list(sequence.decisions[:cap]),
+            policy_targets=_prefix(sequence.policy_targets),
+            factorized_policy_targets=_prefix(
+                sequence.factorized_policy_targets
+            ),
+        ),
+        True,
+    )
+
+
+def cap_history_sequences(
+    sequences: Sequence[GameSequence],
+    max_context: int,
+) -> tuple[list[GameSequence], int]:
+    capped: list[GameSequence] = []
+    truncated = 0
+    for sequence in sequences:
+        row, changed = cap_game_sequence_context(sequence, max_context)
+        capped.append(row)
+        truncated += int(changed)
+    return capped, truncated
+
+
 def _iter_game_batches(
     sequences: list[GameSequence],
     games_per_batch: int,
@@ -1263,6 +1753,9 @@ def evaluate(
                 awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
                 entropy_bonus=float(cfg.entropy_bonus),
                 awr_baseline_cache=awr_baseline_cache,
+                history_identity_weight=float(
+                    cfg.history_identity_loss_weight
+                ),
             )
         parts.append(m)
     return _merge_metrics(parts)
@@ -1280,6 +1773,167 @@ def evaluate_device_corpus(
     """Evaluate the validation partition without moving inputs off device."""
     model.eval()
     parts: list[BatchMetrics] = []
+    temporal = model.decision_context == "history"
+    batches = (
+        corpus.temporal_batches(
+            train=False,
+            batch_size=batch_size,
+            shuffle=False,
+            seed=cfg.seed,
+            epoch=0,
+        )
+        if temporal
+        else corpus.batches(
+            train=False,
+            batch_size=batch_size,
+            shuffle=False,
+            seed=cfg.seed,
+            epoch=0,
+        )
+    )
+    use_amp = bool(cfg.amp and corpus.device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    for batch_ids in tqdm(batches, desc=desc, leave=False, unit="batch"):
+        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            if temporal:
+                _, metrics = device_temporal_batch_losses(
+                    model,
+                    corpus,
+                    batch_ids,
+                    value_weight=cfg.value_loss_weight,
+                    aux_weight=cfg.aux_loss_weight,
+                    opp_hand_weight=cfg.opp_hand_loss_weight,
+                    opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                    lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                    prize_race_weight=cfg.prize_race_loss_weight,
+                    alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                )
+            else:
+                _, metrics = device_batch_losses(
+                    model,
+                    corpus,
+                    batch_ids,
+                    value_weight=cfg.value_loss_weight,
+                )
+        parts.append(metrics)
+    return _merge_metrics(parts)
+
+
+@torch.no_grad()
+def _device_exact_value_cache(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    *,
+    cfg: TrainConfig,
+    batch_size: int,
+    desc: str,
+) -> torch.Tensor:
+    """Freeze V(s) for every resident train/validation sample on-device."""
+    was_training = model.training
+    model.eval()
+    values = torch.empty(
+        corpus.total_samples,
+        device=corpus.device,
+        dtype=torch.float32,
+    )
+    ids = torch.arange(
+        corpus.total_samples, device=corpus.device, dtype=torch.long
+    )
+    batches = list(ids.split(max(1, int(batch_size))))
+    use_amp = bool(cfg.amp and corpus.device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    try:
+        for sample_ids in tqdm(batches, desc=desc, leave=False, unit="batch"):
+            with torch.amp.autocast(
+                "cuda", enabled=use_amp, dtype=amp_dtype
+            ):
+                prediction = device_exact_value_predictions(
+                    model, corpus, sample_ids
+                )
+            values.index_copy_(0, sample_ids, prediction.float())
+    finally:
+        model.train(was_training)
+    return values
+
+
+@torch.no_grad()
+def _device_exact_policy_predictions(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    *,
+    cfg: TrainConfig,
+    batch_size: int,
+    desc: str,
+) -> torch.Tensor:
+    """Stable argmax policy rows for resident parent/candidate agreement."""
+    was_training = model.training
+    model.eval()
+    predictions = torch.empty(
+        corpus.total_samples,
+        device=corpus.device,
+        dtype=torch.int32,
+    )
+    ids = torch.arange(
+        corpus.total_samples, device=corpus.device, dtype=torch.long
+    )
+    batches = list(ids.split(max(1, int(batch_size))))
+    use_amp = bool(cfg.amp and corpus.device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    try:
+        for sample_ids in tqdm(batches, desc=desc, leave=False, unit="batch"):
+            with torch.amp.autocast(
+                "cuda", enabled=use_amp, dtype=amp_dtype
+            ):
+                board, options, counts, _target, _value = corpus.batch(
+                    sample_ids
+                )
+                k = int(sample_ids.numel())
+                spatial = model.encode_board_packed(board, batch_size=k)
+                cls = model.pool_cls(spatial).unsqueeze(1)
+                states, _ = model.temporal_encode(
+                    cls, append=False, return_all=True
+                )
+                logits = model.decode_options_packed(
+                    options,
+                    spatial,
+                    states.squeeze(1),
+                    n_options=counts,
+                    batch_size=k,
+                )
+            predictions.index_copy_(
+                0, sample_ids, logits.argmax(dim=1).to(dtype=torch.int32)
+            )
+    finally:
+        model.train(was_training)
+    return predictions
+
+
+@torch.no_grad()
+def _evaluate_device_exact_corpus(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    *,
+    cfg: TrainConfig,
+    batch_size: int,
+    baseline: torch.Tensor,
+    desc: str,
+) -> BatchMetrics:
+    """Evaluate exact resident validation rows with the frozen AWR baseline."""
+    was_training = model.training
+    model.eval()
+    parts: list[BatchMetrics] = []
     batches = corpus.batches(
         train=False,
         batch_size=batch_size,
@@ -1293,15 +1947,31 @@ def evaluate_device_corpus(
         if (use_amp and torch.cuda.is_bf16_supported())
         else torch.float16
     )
-    for sample_ids in tqdm(batches, desc=desc, leave=False, unit="batch"):
-        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
-            _, metrics = device_batch_losses(
-                model,
-                corpus,
-                sample_ids,
-                value_weight=cfg.value_loss_weight,
-            )
-        parts.append(metrics)
+    try:
+        for sample_ids in tqdm(batches, desc=desc, leave=False, unit="batch"):
+            with torch.amp.autocast(
+                "cuda", enabled=use_amp, dtype=amp_dtype
+            ):
+                _, metrics = device_exact_batch_losses(
+                    model,
+                    corpus,
+                    sample_ids,
+                    baseline_pred=baseline.index_select(0, sample_ids),
+                    value_weight=cfg.value_loss_weight,
+                    aux_weight=cfg.aux_loss_weight,
+                    opp_hand_weight=cfg.opp_hand_loss_weight,
+                    opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                    lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                    prize_race_weight=cfg.prize_race_loss_weight,
+                    alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                    awr_beta=cfg.awr_beta,
+                    awr_weight_max=cfg.awr_weight_max,
+                    awr_normalize_advantages=cfg.awr_normalize_advantages,
+                    entropy_bonus=cfg.entropy_bonus,
+                )
+            parts.append(metrics)
+    finally:
+        model.train(was_training)
     return _merge_metrics(parts)
 
 
@@ -1313,6 +1983,7 @@ def _fit_device_batch_size(
     cfg: TrainConfig,
     use_amp: bool,
     amp_dtype: torch.dtype,
+    min_step_free_gib: float = 2.0,
 ) -> int:
     """Prove corpus + forward/backward fit, reducing only after a real OOM."""
     size = min(max(1, int(requested)), corpus.train_samples)
@@ -1325,11 +1996,17 @@ def _fit_device_batch_size(
             # Include the globally widest training row in the probe.  This
             # exercises the decoder's rectangular padding at its actual worst
             # width instead of approving an unusually easy first batch.
-            sample_ids = torch.arange(size, device=corpus.device, dtype=torch.long)
-            widest = torch.argmax(corpus.n_options[: corpus.train_samples]).to(
-                dtype=torch.long
-            )
-            sample_ids[-1] = widest
+            temporal = model.decision_context == "history"
+            if temporal:
+                batch_ids = corpus.temporal_probe_batch(size)
+            else:
+                batch_ids = torch.arange(
+                    size, device=corpus.device, dtype=torch.long
+                )
+                widest = torch.argmax(
+                    corpus.n_options[: corpus.train_samples]
+                ).to(dtype=torch.long)
+                batch_ids[-1] = widest
             if corpus.device.type == "cuda":
                 torch.cuda.reset_peak_memory_stats(corpus.device)
             model.train()
@@ -1339,12 +2016,50 @@ def _fit_device_batch_size(
                 with torch.amp.autocast(
                     "cuda", enabled=use_amp, dtype=amp_dtype
                 ):
-                    total, _ = device_batch_losses(
-                        model,
-                        corpus,
-                        sample_ids,
-                        value_weight=cfg.value_loss_weight,
-                    )
+                    if temporal:
+                        total, _ = device_temporal_batch_losses(
+                            model,
+                            corpus,
+                            batch_ids,
+                            value_weight=cfg.value_loss_weight,
+                            aux_weight=cfg.aux_loss_weight,
+                            opp_hand_weight=cfg.opp_hand_loss_weight,
+                            opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                            lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                            prize_race_weight=cfg.prize_race_loss_weight,
+                            alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        )
+                    elif cfg.pure_rl and corpus.has_exact_targets:
+                        total, _ = device_exact_batch_losses(
+                            model,
+                            corpus,
+                            batch_ids,
+                            baseline_pred=torch.zeros(
+                                size,
+                                device=corpus.device,
+                                dtype=torch.float32,
+                            ),
+                            value_weight=cfg.value_loss_weight,
+                            aux_weight=cfg.aux_loss_weight,
+                            opp_hand_weight=cfg.opp_hand_loss_weight,
+                            opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                            lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                            prize_race_weight=cfg.prize_race_loss_weight,
+                            alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                            awr_beta=cfg.awr_beta,
+                            awr_weight_max=cfg.awr_weight_max,
+                            awr_normalize_advantages=(
+                                cfg.awr_normalize_advantages
+                            ),
+                            entropy_bonus=cfg.entropy_bonus,
+                        )
+                    else:
+                        total, _ = device_batch_losses(
+                            model,
+                            corpus,
+                            batch_ids,
+                            value_weight=cfg.value_loss_weight,
+                        )
                 total.backward()
                 if corpus.device.type == "cuda":
                     torch.cuda.synchronize(corpus.device)
@@ -1357,17 +2072,29 @@ def _fit_device_batch_size(
                 if corpus.device.type == "cuda":
                     peak = torch.cuda.max_memory_allocated(corpus.device)
                     free, total_memory = torch.cuda.mem_get_info(corpus.device)
-                    print(
-                        f"[device-corpus] fit-test batch={size} passed "
-                        f"peak-allocated={peak / 2**30:.2f} GiB "
-                        f"CUDA-free={free / 2**30:.2f}/"
-                        f"{total_memory / 2**30:.2f} GiB",
-                        flush=True,
-                    )
-                return size
+                    if free < int(float(min_step_free_gib) * 2**30):
+                        oom = True
+                        print(
+                            f"[device-corpus] fit-test batch={size} rejected: "
+                            f"post-step CUDA-free={free / 2**30:.2f} GiB < "
+                            f"required {float(min_step_free_gib):.2f} GiB",
+                            flush=True,
+                        )
+                if not oom:
+                    if corpus.device.type == "cuda":
+                        free, total_memory = torch.cuda.mem_get_info(corpus.device)
+                        peak = torch.cuda.max_memory_allocated(corpus.device)
+                        print(
+                            f"[device-corpus] fit-test batch={size} passed "
+                            f"peak-allocated={peak / 2**30:.2f} GiB "
+                            f"CUDA-free={free / 2**30:.2f}/"
+                            f"{total_memory / 2**30:.2f} GiB",
+                            flush=True,
+                        )
+                    return size
 
             model.zero_grad(set_to_none=True)
-            del sample_ids
+            del batch_ids
             gc.collect()
             if corpus.device.type == "cuda":
                 torch.cuda.empty_cache()
@@ -1404,6 +2131,7 @@ def train_bootstrap(
     init_checkpoint: Optional[Union[str, Path]] = None,
     checkpoint_extra: Optional[dict[str, Any]] = None,
     device_resident: bool = False,
+    trainable_parameter_prefixes: Optional[Sequence[str]] = None,
 ) -> dict[str, Any]:
     """Run supervised BC/value training with early stopping + AMP + checkpoints."""
     cfg = train_cfg or TrainConfig()
@@ -1439,8 +2167,40 @@ def train_bootstrap(
     )
     if model_cfg is not None and getattr(model, "cfg", None) != model_cfg:
         raise ValueError("initial checkpoint model profile does not match model_cfg")
+    if model.decision_context == "history":
+        train_seqs, train_truncated = cap_history_sequences(
+            train_seqs, model.max_context
+        )
+        val_seqs, val_truncated = cap_history_sequences(
+            val_seqs, model.max_context
+        )
+        print(
+            f"[train] game-bounded temporal context={model.max_context} "
+            f"truncated_sequences={train_truncated + val_truncated}",
+            flush=True,
+        )
+    trainable_prefixes = tuple(
+        str(value) for value in (trainable_parameter_prefixes or ())
+    )
+    if trainable_prefixes:
+        for name, parameter in model.named_parameters():
+            parameter.requires_grad_(
+                any(name.startswith(prefix) for prefix in trainable_prefixes)
+            )
+    trainable_parameters = [
+        parameter for parameter in model.parameters() if parameter.requires_grad
+    ]
+    if not trainable_parameters:
+        raise ValueError("training freeze policy left no trainable parameters")
+    if trainable_prefixes:
+        print(
+            "[train] frozen-copy calibration trainable_prefixes="
+            f"{list(trainable_prefixes)} params="
+            f"{sum(parameter.numel() for parameter in trainable_parameters)}",
+            flush=True,
+        )
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+        trainable_parameters, lr=cfg.lr, weight_decay=cfg.weight_decay
     )
     # Blackwell throughput: allow TF32 matmuls and prefer bf16 autocast.
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -1560,6 +2320,10 @@ def train_bootstrap(
                 "train_cfg": cfg.__dict__,
                 "device_resident_bootstrap": bool(resident_corpus is not None),
                 "device_resident_batch_size": resident_batch_size,
+                "trainable_parameter_prefixes": list(trainable_prefixes),
+                "trainable_parameter_count": int(
+                    sum(parameter.numel() for parameter in trainable_parameters)
+                ),
             }
         )
         return checkpoint.build_checkpoint(
@@ -1633,6 +2397,9 @@ def train_bootstrap(
                             lethal_threat_weight=cfg.lethal_threat_loss_weight,
                             prize_race_weight=cfg.prize_race_loss_weight,
                             alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                            history_identity_weight=float(
+                                cfg.history_identity_loss_weight
+                            ),
                         )
                 if bm.n_decisions == 0:
                     continue
@@ -1640,7 +2407,9 @@ def train_bootstrap(
                 scaler.scale(total).backward()
                 if cfg.grad_clip > 0:
                     scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                    torch.nn.utils.clip_grad_norm_(
+                        trainable_parameters, cfg.grad_clip
+                    )
                 scaler.step(optimizer)
                 scaler.update()
 
@@ -1787,7 +2556,14 @@ def supervised_rehearsal_step(
     lr: float = 2e-5,
     requested_batch_size: int = 8192,
     seed: int = 0,
+    corpus_split_seed: int = 0,
     device: Optional[torch.device] = None,
+    aux_loss_weight: float = 0.0,
+    opp_hand_loss_weight: float = 0.0,
+    opp_remainder_loss_weight: float = 0.0,
+    lethal_threat_loss_weight: float = 0.0,
+    prize_race_loss_weight: float = 0.0,
+    alakazam_guide_loss_weight: float = 0.0,
 ) -> dict[str, Any]:
     """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
 
@@ -1807,6 +2583,16 @@ def supervised_rehearsal_step(
         raise ValueError("rehearsal epochs must be positive")
     if lr <= 0.0:
         raise ValueError("rehearsal learning rate must be positive")
+    for name, weight in (
+        ("aux", aux_loss_weight),
+        ("opp_hand", opp_hand_loss_weight),
+        ("opp_remainder", opp_remainder_loss_weight),
+        ("lethal_threat", lethal_threat_loss_weight),
+        ("prize_race", prize_race_loss_weight),
+        ("alakazam_guide", alakazam_guide_loss_weight),
+    ):
+        if float(weight) < 0.0:
+            raise ValueError(f"rehearsal {name} loss weight cannot be negative")
     actual_parent_digest = checkpoint.checkpoint_digest(base_path)
     if str(parent_digest) != actual_parent_digest:
         raise ValueError(
@@ -1826,17 +2612,21 @@ def supervised_rehearsal_step(
         val_frac=0.10,
         split_by_episode=True,
         early_stop_patience=max(1, int(epochs)),
-        aux_loss_weight=0.0,
-        opp_hand_loss_weight=0.0,
-        opp_remainder_loss_weight=0.0,
-        lethal_threat_loss_weight=0.0,
-        prize_race_loss_weight=0.0,
+        aux_loss_weight=float(aux_loss_weight),
+        opp_hand_loss_weight=float(opp_hand_loss_weight),
+        opp_remainder_loss_weight=float(opp_remainder_loss_weight),
+        lethal_threat_loss_weight=float(lethal_threat_loss_weight),
+        prize_race_loss_weight=float(prize_race_loss_weight),
+        alakazam_guide_loss_weight=float(alakazam_guide_loss_weight),
         amp=device.type == "cuda",
         seed=int(seed),
     )
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
     model = load_model_from_checkpoint(base_path, device=device)
+    warm_started_heads_before = tuple(
+        getattr(model, "warm_started_belief_heads", ()) or ()
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
     )
@@ -1850,14 +2640,22 @@ def supervised_rehearsal_step(
         "cuda", enabled=(use_amp and amp_dtype == torch.float16)
     )
     base_payload = checkpoint.load_checkpoint(base_path, map_location="cpu")
-    meta = checkpoint.apply_checkpoint(
-        base_payload,
-        model=model,
-        optimizer=optimizer,
-        scaler=scaler,
-        restore_rng=True,
-    )
-    optimizer_state_restored = "optimizer_state_dict" in base_payload
+    if warm_started_heads_before:
+        # ``load_model_from_checkpoint`` already restored every pre-existing
+        # tensor and deterministically initialized only allowed new heads. An
+        # optimizer snapshot from the legacy architecture cannot contain those
+        # parameters, so preserve counters/RNG and use fresh AdamW state.
+        meta = checkpoint.apply_checkpoint(base_payload, restore_rng=True)
+        optimizer_state_restored = False
+    else:
+        meta = checkpoint.apply_checkpoint(
+            base_payload,
+            model=model,
+            optimizer=optimizer,
+            scaler=scaler,
+            restore_rng=True,
+        )
+        optimizer_state_restored = "optimizer_state_dict" in base_payload
     # Optimizer restore also restores its old param-group LR.  Rehearsal uses
     # the explicitly recorded conservative LR while preserving the moments.
     for group in optimizer.param_groups:
@@ -1876,15 +2674,30 @@ def supervised_rehearsal_step(
     rl_iteration = int(meta.get("rl_iteration", 0))
     train_metrics = BatchMetrics()
     started = time.time()
+    temporal_rehearsal = model.decision_context == "history"
+    if temporal_rehearsal and not corpus.has_temporal_layout:
+        raise ValueError(
+            "history checkpoint requires a resident full-game rehearsal layout"
+        )
     for epoch_offset in range(int(epochs)):
         model.train()
         parts: list[BatchMetrics] = []
-        batches = corpus.batches(
-            train=True,
-            batch_size=batch_size,
-            shuffle=True,
-            seed=cfg.seed,
-            epoch=epoch_offset,
+        batches = (
+            corpus.temporal_batches(
+                train=True,
+                batch_size=batch_size,
+                shuffle=True,
+                seed=cfg.seed,
+                epoch=epoch_offset,
+            )
+            if temporal_rehearsal
+            else corpus.batches(
+                train=True,
+                batch_size=batch_size,
+                shuffle=True,
+                seed=cfg.seed,
+                epoch=epoch_offset,
+            )
         )
         bar = tqdm(
             batches,
@@ -1894,17 +2707,31 @@ def supervised_rehearsal_step(
             ),
             unit="batch",
         )
-        for sample_ids in bar:
+        for batch_ids in bar:
             optimizer.zero_grad(set_to_none=True)
             with torch.amp.autocast(
                 "cuda", enabled=use_amp, dtype=amp_dtype
             ):
-                total, metrics = device_batch_losses(
-                    model,
-                    corpus,
-                    sample_ids,
-                    value_weight=cfg.value_loss_weight,
-                )
+                if temporal_rehearsal:
+                    total, metrics = device_temporal_batch_losses(
+                        model,
+                        corpus,
+                        batch_ids,
+                        value_weight=cfg.value_loss_weight,
+                        aux_weight=cfg.aux_loss_weight,
+                        opp_hand_weight=cfg.opp_hand_loss_weight,
+                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                        prize_race_weight=cfg.prize_race_loss_weight,
+                        alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                    )
+                else:
+                    total, metrics = device_batch_losses(
+                        model,
+                        corpus,
+                        batch_ids,
+                        value_weight=cfg.value_loss_weight,
+                    )
             scaler.scale(total).backward()
             if cfg.grad_clip > 0:
                 scaler.unscale_(optimizer)
@@ -1933,6 +2760,20 @@ def supervised_rehearsal_step(
         if corpus.val_samples
         else train_metrics
     )
+    warm_head_loss_weights = {
+        "opp_hand_head": float(cfg.opp_hand_loss_weight),
+        "opp_remainder_head": float(cfg.opp_remainder_loss_weight),
+        "lethal_threat_head": float(cfg.lethal_threat_loss_weight),
+        "prize_race_head": float(cfg.prize_race_loss_weight),
+    }
+    warm_started_heads_remaining = tuple(
+        name
+        for name in warm_started_heads_before
+        if warm_head_loss_weights.get(name, 0.0) <= 0.0
+    )
+    # Every positive-weight exact target has trained its head, so subsequent
+    # policy use must consume the learned outputs instead of the warm fallback.
+    model.warm_started_belief_heads = warm_started_heads_remaining
     inherited_extra = dict(base_payload.get("extra") or {})
     rehearsal_record = {
         "schema": 1,
@@ -1947,6 +2788,22 @@ def supervised_rehearsal_step(
         "validation_metrics": val_metrics.__dict__,
         "elapsed_sec": float(time.time() - started),
         "optimizer_state_restored": bool(optimizer_state_restored),
+        "warm_started_belief_heads_before": list(warm_started_heads_before),
+        "warm_started_belief_heads_remaining": list(
+            warm_started_heads_remaining
+        ),
+        "decision_context": str(model.decision_context),
+        "resident_temporal_layout": bool(corpus.has_temporal_layout),
+        "corpus_split_seed": int(corpus_split_seed),
+        "loss_weights": {
+            "value": float(cfg.value_loss_weight),
+            "archetype": float(cfg.aux_loss_weight),
+            "opponent_hand": float(cfg.opp_hand_loss_weight),
+            "opponent_hidden_remainder": float(cfg.opp_remainder_loss_weight),
+            "lethal_threat": float(cfg.lethal_threat_loss_weight),
+            "prize_race": float(cfg.prize_race_loss_weight),
+            "alakazam_guide": float(cfg.alakazam_guide_loss_weight),
+        },
     }
     inherited_extra.update(
         {
@@ -2187,13 +3044,18 @@ def rl_train_step(
     parent_digest: Optional[str] = None,
     training_provenance: Optional[dict[str, Any]] = None,
     replace_existing: bool = False,
+    device_resident: bool = False,
+    device_resident_min_free_gib: float = DEFAULT_MIN_FREE_GIB,
 ) -> dict[str, Any]:
     """One immutable history-policy candidate fit for the RL loop.
 
     Unlike :func:`train_bootstrap`, each call is one RL iteration over a fresh
     replay window. Model, Adam/scaler state and global learner counters resume
     from ``base_ckpt``; early-stop selection remains local to the new window.
-    Pure RL uses AWR on selected actions plus terminal value regression.
+    Pure RL uses AWR on selected actions plus terminal value regression.  A
+    stateless CUDA learner can pack the complete exact replay window once and
+    keep the frozen baseline, shuffle order, features, and targets on-device;
+    this removes repeated Python packing/H2D gaps between optimizer batches.
 
     Returns ``{"latest_path", "metrics"}``. Deterministic-ish via ``seed``.
     """
@@ -2266,9 +3128,17 @@ def rl_train_step(
                 group["weight_decay"] = float(cfg.weight_decay)
 
     # Keep only decision-bearing games, then reuse bootstrap's val split / ES.
-    usable = BootstrapDataset(
-        sequences=[s for s in dataset.sequences if s.decisions]
-    )
+    usable_sequences = [s for s in dataset.sequences if s.decisions]
+    if model.decision_context == "history":
+        usable_sequences, truncated_sequences = cap_history_sequences(
+            usable_sequences, model.max_context
+        )
+        print(
+            f"[rl-train] game-bounded temporal context={model.max_context} "
+            f"truncated_sequences={truncated_sequences}",
+            flush=True,
+        )
+    usable = BootstrapDataset(sequences=usable_sequences)
     train_seqs, val_seqs = split_dataset(usable, cfg.val_frac, seed)
     if not train_seqs:
         train_seqs, val_seqs = list(usable.sequences), []
@@ -2288,8 +3158,88 @@ def rl_train_step(
             f"weight={float(cfg.alakazam_guide_loss_weight):.4f}",
             flush=True,
         )
+    resident_corpus: Optional[DeviceResidentBootstrapCorpus] = None
+    resident_baseline: Optional[torch.Tensor] = None
+    resident_batch_size = int(cfg.max_decisions_per_batch)
+    if device_resident:
+        if device.type != "cuda":
+            raise ValueError("device-resident RL training requires CUDA")
+        if model.decision_context != "stateless":
+            raise ValueError(
+                "device-resident RL training requires a stateless checkpoint"
+            )
+        if not cfg.pure_rl or not cfg.awr_freeze_baseline:
+            raise ValueError(
+                "device-resident RL requires pure RL with a frozen AWR baseline"
+            )
+        try:
+            resident_corpus = DeviceResidentBootstrapCorpus.from_splits(
+                train_seqs,
+                val_seqs,
+                device=device,
+                min_free_gib=float(device_resident_min_free_gib),
+                exact_card_vocab=int(model.belief_card_vocab),
+            )
+            resident_batch_size = _fit_device_batch_size(
+                model,
+                resident_corpus,
+                requested=cfg.max_decisions_per_batch,
+                cfg=cfg,
+                use_amp=use_amp,
+                amp_dtype=amp_dtype,
+                min_step_free_gib=max(
+                    2.0, min(4.0, float(device_resident_min_free_gib) / 2.0)
+                ),
+            )
+        except (MemoryError, torch.OutOfMemoryError) as exc:
+            resident_corpus = None
+            gc.collect()
+            torch.cuda.empty_cache()
+            print(
+                "[device-corpus-rl] capacity fallback to bounded CPU batches: "
+                f"{exc}",
+                flush=True,
+            )
+        except RuntimeError as exc:
+            # Some CUDA/PyTorch combinations surface allocation failure as a
+            # plain RuntimeError instead of torch.OutOfMemoryError.  Preserve
+            # fail-closed behavior for every other runtime/data error.
+            if not config.is_cuda_oom(exc):
+                raise
+            resident_corpus = None
+            gc.collect()
+            torch.cuda.empty_cache()
+            print(
+                "[device-corpus-rl] CUDA capacity fallback to bounded CPU "
+                f"batches: {exc}",
+                flush=True,
+            )
+        if resident_corpus is not None:
+            # The GPU corpus is now authoritative. Keep no second copy of the
+            # 25+ GiB replay window in Python objects while optimization runs.
+            dataset.sequences.clear()
+            usable.sequences.clear()
+            train_seqs.clear()
+            val_seqs.clear()
+            gc.collect()
+            torch.cuda.empty_cache()
+            print(
+                "[device-corpus-rl] ALL replay features/targets resident "
+                f"bytes={resident_corpus.input_bytes} "
+                f"samples={resident_corpus.total_samples} "
+                f"batch={resident_batch_size}; host GameSequence corpus released",
+                flush=True,
+            )
     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None
-    if cfg.pure_rl and cfg.awr_freeze_baseline:
+    if resident_corpus is not None:
+        resident_baseline = _device_exact_value_cache(
+            model,
+            resident_corpus,
+            cfg=cfg,
+            batch_size=resident_batch_size,
+            desc="rl-prep baseline",
+        )
+    elif cfg.pure_rl and cfg.awr_freeze_baseline:
         awr_baseline_cache = _precompute_awr_baseline_cache(
             model,
             [*train_seqs, *val_seqs],
@@ -2297,13 +3247,24 @@ def rl_train_step(
             desc="rl-prep baseline",
         )
     agreement_sequences = [*train_seqs, *val_seqs]
-    parent_predictions = _policy_argmax_predictions(
-        model,
-        agreement_sequences,
-        cfg=cfg,
-        awr_baseline_cache=awr_baseline_cache,
-        desc="rl-agreement parent",
-    )
+    if resident_corpus is not None:
+        parent_predictions: Union[list[int], torch.Tensor] = (
+            _device_exact_policy_predictions(
+                model,
+                resident_corpus,
+                cfg=cfg,
+                batch_size=resident_batch_size,
+                desc="rl-agreement parent",
+            )
+        )
+    else:
+        parent_predictions = _policy_argmax_predictions(
+            model,
+            agreement_sequences,
+            cfg=cfg,
+            awr_baseline_cache=awr_baseline_cache,
+            desc="rl-agreement parent",
+        )
     patience = max(0, int(cfg.early_stop_patience))
     patience_left = patience
     best_metric = float("inf")
@@ -2314,21 +3275,41 @@ def rl_train_step(
     best_epoch_offset = 0
     best_train_m = BatchMetrics()
     best_val_m = BatchMetrics()
-    best_validation_source = "heldout" if val_seqs else "current_data"
+    best_validation_source = (
+        "heldout"
+        if (
+            resident_corpus.val_samples
+            if resident_corpus is not None
+            else val_seqs
+        )
+        else "current_data"
+    )
     last: BatchMetrics = BatchMetrics()
+    last_epoch_optimizer_sps = 0.0
     stepped_epochs = 0
     step = base_step
     epoch_bar = tqdm(range(max(1, epochs)), desc="rl-epochs", leave=False, unit="ep")
     for epoch in epoch_bar:
         model.train()
-        batches = _iter_game_batches(
-            train_seqs,
-            cfg.games_per_batch,
-            cfg.max_decisions_per_batch,
-            shuffle=True,
-            seed=seed,
-            epoch=epoch,
-        )
+        epoch_started = time.monotonic()
+        epoch_samples = 0
+        if resident_corpus is not None:
+            batches: Sequence[Any] = resident_corpus.batches(
+                train=True,
+                batch_size=resident_batch_size,
+                shuffle=True,
+                seed=seed,
+                epoch=epoch,
+            )
+        else:
+            batches = _iter_game_batches(
+                train_seqs,
+                cfg.games_per_batch,
+                cfg.max_decisions_per_batch,
+                shuffle=True,
+                seed=seed,
+                epoch=epoch,
+            )
         parts: list[BatchMetrics] = []
         batch_bar = tqdm(
             batches,
@@ -2337,8 +3318,22 @@ def rl_train_step(
             unit="batch",
         )
         for batch in batch_bar:
-            def _train_chunk(work: list[GameSequence]) -> BatchMetrics:
+            def _apply_update(total: torch.Tensor, bm: BatchMetrics) -> BatchMetrics:
                 nonlocal step
+                if bm.n_decisions == 0:
+                    return bm
+                if not torch.isfinite(total):
+                    raise FloatingPointError(f"non-finite training loss: {total}")
+                scaler.scale(total).backward()
+                if cfg.grad_clip > 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                scaler.step(optimizer)
+                scaler.update()
+                step += 1
+                return bm
+
+            def _train_chunk(work: list[GameSequence]) -> BatchMetrics:
                 optimizer.zero_grad(set_to_none=True)
                 with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                     total, bm = batch_losses(
@@ -2358,18 +3353,7 @@ def rl_train_step(
                         entropy_bonus=float(cfg.entropy_bonus),
                         awr_baseline_cache=awr_baseline_cache,
                     )
-                if bm.n_decisions == 0:
-                    return bm
-                if not torch.isfinite(total):
-                    raise FloatingPointError(f"non-finite training loss: {total}")
-                scaler.scale(total).backward()
-                if cfg.grad_clip > 0:
-                    scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-                scaler.step(optimizer)
-                scaler.update()
-                step += 1
-                return bm
+                return _apply_update(total, bm)
 
             def _clear_oom() -> None:
                 optimizer.zero_grad(set_to_none=True)
@@ -2378,14 +3362,45 @@ def rl_train_step(
                 except Exception:
                     pass
 
-            completed_parts = process_with_oom_splitting(
-                batch,
-                _train_chunk,
-                on_split=_clear_oom,
-            )
+            if resident_corpus is not None:
+                assert resident_baseline is not None
+                sample_ids = batch
+                optimizer.zero_grad(set_to_none=True)
+                with torch.amp.autocast(
+                    "cuda", enabled=use_amp, dtype=amp_dtype
+                ):
+                    total, resident_metrics = device_exact_batch_losses(
+                        model,
+                        resident_corpus,
+                        sample_ids,
+                        baseline_pred=resident_baseline.index_select(
+                            0, sample_ids
+                        ),
+                        value_weight=cfg.value_loss_weight,
+                        aux_weight=cfg.aux_loss_weight,
+                        opp_hand_weight=cfg.opp_hand_loss_weight,
+                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                        prize_race_weight=cfg.prize_race_loss_weight,
+                        alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        awr_beta=cfg.awr_beta,
+                        awr_weight_max=cfg.awr_weight_max,
+                        awr_normalize_advantages=(
+                            cfg.awr_normalize_advantages
+                        ),
+                        entropy_bonus=cfg.entropy_bonus,
+                    )
+                completed_parts = [_apply_update(total, resident_metrics)]
+            else:
+                completed_parts = process_with_oom_splitting(
+                    batch,
+                    _train_chunk,
+                    on_split=_clear_oom,
+                )
             for bm in completed_parts:
                 if bm.n_decisions > 0:
                     parts.append(bm)
+                    epoch_samples += int(bm.n_decisions)
             visible = next(
                 (bm for bm in reversed(completed_parts) if bm.n_decisions > 0),
                 None,
@@ -2432,9 +3447,24 @@ def rl_train_step(
                         f"{visible.n_alakazam_guide_rows}"
                     ),
                     acc=f"{visible.policy_acc:.2%}",
+                    sps=f"{epoch_samples / max(time.monotonic() - epoch_started, 1e-6):.0f}",
                 )
         last = _merge_metrics(parts)
-        if val_seqs:
+        last_epoch_optimizer_sps = epoch_samples / max(
+            time.monotonic() - epoch_started, 1e-6
+        )
+        if resident_corpus is not None and resident_corpus.val_samples:
+            assert resident_baseline is not None
+            val_m = _evaluate_device_exact_corpus(
+                model,
+                resident_corpus,
+                cfg=cfg,
+                batch_size=resident_batch_size,
+                baseline=resident_baseline,
+                desc=f"rl-val ep{epoch}",
+            )
+            metric = val_m.total_loss
+        elif val_seqs:
             val_m = evaluate(
                 model,
                 val_seqs,
@@ -2535,25 +3565,59 @@ def rl_train_step(
     else:
         validation_metrics = last
 
-    candidate_predictions = _policy_argmax_predictions(
-        model,
-        agreement_sequences,
-        cfg=cfg,
-        awr_baseline_cache=awr_baseline_cache,
-        desc="rl-agreement candidate",
-    )
-    if not parent_predictions or len(parent_predictions) != len(candidate_predictions):
-        raise RuntimeError(
-            "cannot measure parent/candidate policy agreement: "
-            f"parent_rows={len(parent_predictions)} "
-            f"candidate_rows={len(candidate_predictions)}"
+    if resident_corpus is not None:
+        candidate_predictions: Union[list[int], torch.Tensor] = (
+            _device_exact_policy_predictions(
+                model,
+                resident_corpus,
+                cfg=cfg,
+                batch_size=resident_batch_size,
+                desc="rl-agreement candidate",
+            )
         )
-    policy_prev_agreement = sum(
-        int(parent == candidate)
-        for parent, candidate in zip(parent_predictions, candidate_predictions)
-    ) / float(len(parent_predictions))
+    else:
+        candidate_predictions = _policy_argmax_predictions(
+            model,
+            agreement_sequences,
+            cfg=cfg,
+            awr_baseline_cache=awr_baseline_cache,
+            desc="rl-agreement candidate",
+        )
+    if isinstance(parent_predictions, torch.Tensor):
+        if not isinstance(candidate_predictions, torch.Tensor):
+            raise RuntimeError("resident candidate agreement type mismatch")
+        parent_rows = int(parent_predictions.numel())
+        candidate_rows = int(candidate_predictions.numel())
+        if parent_rows <= 0 or parent_rows != candidate_rows:
+            raise RuntimeError(
+                "cannot measure resident parent/candidate policy agreement: "
+                f"parent_rows={parent_rows} candidate_rows={candidate_rows}"
+            )
+        policy_prev_agreement = float(
+            (parent_predictions == candidate_predictions)
+            .float()
+            .mean()
+            .item()
+        )
+    else:
+        if isinstance(candidate_predictions, torch.Tensor):
+            raise RuntimeError("host candidate agreement type mismatch")
+        parent_rows = len(parent_predictions)
+        candidate_rows = len(candidate_predictions)
+        if parent_rows <= 0 or parent_rows != candidate_rows:
+            raise RuntimeError(
+                "cannot measure parent/candidate policy agreement: "
+                f"parent_rows={parent_rows} candidate_rows={candidate_rows}"
+            )
+        policy_prev_agreement = sum(
+            int(parent == candidate)
+            for parent, candidate in zip(
+                parent_predictions, candidate_predictions
+            )
+        ) / float(parent_rows)
     rl_metrics = dict(last.__dict__)
     rl_metrics["policy_prev_agreement"] = policy_prev_agreement
+    rl_metrics["optimizer_samples_per_second"] = last_epoch_optimizer_sps
 
     delta_sq = 0.0
     base_sq = 0.0
@@ -2584,6 +3648,7 @@ def rl_train_step(
         model_config=model.cfg,
         extra={
             "pure_rl": bool(cfg.pure_rl),
+            "param_count": int(sum(p.numel() for p in model.parameters())),
             "rl_metrics": rl_metrics,
             "validation_metrics": validation_metrics.__dict__,
             "validation_source": best_validation_source,
@@ -2594,18 +3659,45 @@ def rl_train_step(
             "optimizer_parent_step": int(base_step),
             "optimizer_state_restored": optimizer_state_restored,
             "awr_baseline_mode": (
-                "frozen_precomputed"
+                "frozen_device_resident"
+                if resident_baseline is not None
+                else "frozen_precomputed"
                 if awr_baseline_cache is not None
                 else "detached_online"
             ),
-            "awr_baseline_rows": len(awr_baseline_cache or {}),
+            "awr_baseline_rows": (
+                int(resident_baseline.numel())
+                if resident_baseline is not None
+                else len(awr_baseline_cache or {})
+            ),
+            "device_resident_rl": resident_corpus is not None,
+            "device_resident_bytes": (
+                int(resident_corpus.input_bytes)
+                if resident_corpus is not None
+                else 0
+            ),
+            "device_resident_batch_size": (
+                int(resident_batch_size)
+                if resident_corpus is not None
+                else None
+            ),
+            "device_resident_build_seconds": (
+                float(resident_corpus.build_seconds)
+                if resident_corpus is not None
+                else None
+            ),
+            "device_resident_samples": (
+                int(resident_corpus.total_samples)
+                if resident_corpus is not None
+                else 0
+            ),
             "training_contract": "causal_realized_history",
             "parent_digest": parent_digest,
             "training_provenance": dict(training_provenance or {}),
             "update_norm_l2": update_norm,
             "relative_update_norm_l2": relative_update_norm,
             "policy_prev_agreement": policy_prev_agreement,
-            "policy_prev_agreement_rows": len(parent_predictions),
+            "policy_prev_agreement_rows": parent_rows,
         },
     )
     if output_path is not None:
@@ -2634,16 +3726,37 @@ def rl_train_step(
         "optimizer_state_restored": optimizer_state_restored,
         "rl_iteration": base_rl_iteration + 1,
         "awr_baseline_mode": (
-            "frozen_precomputed"
+            "frozen_device_resident"
+            if resident_baseline is not None
+            else "frozen_precomputed"
             if awr_baseline_cache is not None
             else "detached_online"
+        ),
+        "device_resident_rl": resident_corpus is not None,
+        "device_resident_bytes": (
+            int(resident_corpus.input_bytes)
+            if resident_corpus is not None
+            else 0
+        ),
+        "device_resident_batch_size": (
+            int(resident_batch_size) if resident_corpus is not None else None
+        ),
+        "device_resident_build_seconds": (
+            float(resident_corpus.build_seconds)
+            if resident_corpus is not None
+            else None
+        ),
+        "device_resident_samples": (
+            int(resident_corpus.total_samples)
+            if resident_corpus is not None
+            else 0
         ),
         "epochs_ran": stepped_epochs,
         "best_metric": best_metric if best_state is not None else last.total_loss,
         "update_norm_l2": update_norm,
         "relative_update_norm_l2": relative_update_norm,
         "policy_prev_agreement": policy_prev_agreement,
-        "policy_prev_agreement_rows": len(parent_predictions),
+        "policy_prev_agreement_rows": parent_rows,
     }
 
 
@@ -2712,13 +3825,7 @@ def load_model_from_checkpoint(
             f"checkpoint {path} lacks architecture-defining tensor shapes"
         ) from exc
 
-    belief_card_vocab: Optional[int] = None
-    hand_w = state.get("opp_hand_head.weight")
-    rem_w = state.get("opp_remainder_head.weight")
-    if hand_w is not None and hasattr(hand_w, "shape"):
-        belief_card_vocab = int(hand_w.shape[0])
-    elif rem_w is not None and hasattr(rem_w, "shape"):
-        belief_card_vocab = int(rem_w.shape[0])
+    belief_card_vocab = belief_card_vocab_from_state(state)
 
     model = build_model(
         cfg,

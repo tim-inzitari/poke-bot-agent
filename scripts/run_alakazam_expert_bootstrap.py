@@ -54,8 +54,36 @@ def resolve_filtered_manifest(
     ):
         raise ValueError("Alakazam filtered feature manifest failed its contract")
     source = Path(str(manifest.get("source_manifest") or ""))
-    if not source.is_file() or sha256(source) != manifest.get("source_manifest_sha256"):
-        raise ValueError("filtered manifest source identity is unavailable or changed")
+    source_matches = source.is_file() and sha256(source) == manifest.get(
+        "source_manifest_sha256"
+    )
+    if not source_matches:
+        # The source all-decks manifest is useful provenance, but the sealed
+        # filtered corpus is the actual training input. Disk retention may
+        # legitimately remove that much larger upstream corpus. Accept this
+        # only through the explicit protected pointer whose digest pins the
+        # filtered manifest bytes; direct-manifest callers still fail closed.
+        pointer_path = Path(path).expanduser().resolve()
+        try:
+            pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+            raw_manifest = Path(str(pointer.get("manifest") or "")).expanduser()
+            pinned_manifest = (
+                raw_manifest.resolve()
+                if raw_manifest.is_absolute()
+                else (pointer_path.parent / raw_manifest).resolve()
+            )
+            protected_fallback = (
+                pointer.get("schema") == "poke_bot.pinned_expert_corpus/v1"
+                and pointer.get("protected") is True
+                and pinned_manifest == manifest_path
+                and sha256(manifest_path) == pointer.get("manifest_sha256")
+            )
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            protected_fallback = False
+        if not protected_fallback:
+            raise ValueError(
+                "filtered manifest source identity is unavailable or changed"
+            )
     return manifest_path, manifest
 
 

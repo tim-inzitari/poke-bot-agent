@@ -1,0 +1,12 @@
+[Unit]
+Description=Switch Alakazam RL collection to the safety-approved learner at iter-1 boundary
+After=pokebot-pure-rl-alakazam.service
+Wants=pokebot-pure-rl-alakazam.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v4
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/apply_continuous_behavior_at_boundary.py --loop-state /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_resident_v9_20260720/loop_state.json --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_resident_v9_20260720 --target-next-iteration 1 --unit pokebot-pure-rl-alakazam.service --staged-root /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v4 --staged-unit /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v4/deploy/systemd/pokebot-pure-rl-alakazam.service --active-unit /home/inzi/.config/systemd/user/pokebot-pure-rl-alakazam.service --base-unit /home/inzi/poke-bot-agent/deploy/systemd/pokebot-pure-rl-alakazam.service --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --status /home/inzi/poke-bot-agent/outputs/state/continuous-behavior-boundary/status.json --migration-reason continuous_learner_rollout_v1 --poll-seconds 0.05
+TimeoutStartSec=infinity
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/continuous-behavior-boundary.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/continuous-behavior-boundary.log

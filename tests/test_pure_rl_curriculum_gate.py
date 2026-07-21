@@ -111,10 +111,6 @@ def test_compact_shard_roundtrip(tmp_path) -> None:
                     "selected_index": 0,
                     "n_options": 2,
                     "observation": {"x": 1},
-                    "aux_labels": {
-                        "opp_hand": [7, 8],
-                        "privileged_label_source": "training_fork_exact_same_state",
-                    },
                 }
             )
         ],
@@ -123,5 +119,4 @@ def test_compact_shard_roundtrip(tmp_path) -> None:
     games = list(iter_shard_games(path))
     assert len(games) == 1
     assert games[0].decisions[0].selected_index == 0
-    assert games[0].decisions[0].aux_labels["opp_hand"] == [7, 8]
     assert games[0].target_provenance.get("soft_policy_targets") is False

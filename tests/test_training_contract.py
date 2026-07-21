@@ -73,7 +73,12 @@ def test_training_and_incremental_inference_share_history_contract() -> None:
 
     hook = model.temporal_blocks[0].register_forward_pre_hook(_capture)
     try:
-        loss, metrics = batch_losses(model, [seq], aux_weight=1.0)
+        loss, metrics = batch_losses(
+            model,
+            [seq],
+            aux_weight=1.0,
+            history_identity_weight=1.0,
+        )
     finally:
         hook.remove()
 
@@ -81,6 +86,7 @@ def test_training_and_incremental_inference_share_history_contract() -> None:
     assert seen_temporal_lengths == [2]
     assert metrics.n_decisions == 2
     assert metrics.aux_loss == 0.0  # unknown opponent ids are masked
+    assert metrics.history_identity_loss >= 0.0
     assert metrics.target_value_mean == 1.0
 
     offline_states, offline_spatial = model.encode_history(
@@ -180,3 +186,14 @@ def test_agent_reset_clears_history_and_cache() -> None:
     agent.reset_game()
     assert agent.board_history == []
     assert agent._kv_cache is None
+
+
+def test_remote_leaf_agent_honors_full_game_context_override() -> None:
+    agent = PolicyAgent(
+        model=None,
+        deck=[1] * 60,
+        use_mcts=False,
+        leaf_backend=lambda _packets: [],
+        max_context_override=4096,
+    )
+    assert agent._history_context_limit() == 4096

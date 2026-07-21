@@ -14,6 +14,7 @@ from __future__ import annotations
 import copy
 import json
 import zipfile
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -209,6 +210,55 @@ def _strip_opp_private(
     return obs, aux, report
 
 
+def derive_opponent_hidden_remainder(
+    masked_observation: dict[str, Any],
+    opponent_deck: Sequence[int],
+) -> Optional[list[int]]:
+    """Derive an exact target-only hidden-card remainder from a known deck.
+
+    Official episodes expose both submitted 60-card decks but normally mask the
+    opponent hand/prize/deck split in an acting seat's observation.  The union
+    of those hidden zones is still exact: full submitted deck minus every
+    publicly serialized opponent card.  This label is useful for the belief
+    remainder head and does not reveal which hidden card is in which zone.
+
+    The helper fails closed when card conservation cannot be proven.  It never
+    changes ``masked_observation`` and never reconstructs/fabricates a hand.
+    """
+    deck = [int(card_id) for card_id in opponent_deck]
+    if len(deck) != 60:
+        return None
+    try:
+        current = masked_observation.get("current") or {}
+        your_index = int(current.get("yourIndex", -1))
+        players = current.get("players") or []
+        if your_index not in (0, 1) or len(players) != 2:
+            return None
+        opponent_index = 1 - your_index
+        opponent = players[opponent_index]
+        if not isinstance(opponent, dict) or opponent.get("hand") is not None:
+            return None
+
+        # Reuse the deployment belief code's serial-aware public-card walk so
+        # tools, energies, pre-evolutions, stadiums, and visible prize cards are
+        # accounted exactly once.
+        from .belief import _outside_prediction_counter, _visible_prize_counter
+
+        public = _outside_prediction_counter(masked_observation, opponent_index)
+        public.update(_visible_prize_counter(opponent))
+        remaining = Counter(deck)
+        remaining.subtract(public)
+        if any(count < 0 for count in remaining.values()):
+            return None
+        return [
+            int(card_id)
+            for card_id, count in sorted(remaining.items())
+            for _ in range(int(count))
+        ]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def assert_info_set(observation: dict[str, Any], *, strict: bool = True) -> InfoSetReport:
     """Assert (and optionally remask) that ``observation`` is info-set clean.
 
@@ -348,6 +398,17 @@ def convert_episode_to_records(
             opp_seat = 1 - seat
             aux_clean["opp_archetype"] = arches[opp_seat]
             aux_clean["opp_agent"] = agent_names[opp_seat]
+            opponent_deck = decks[opp_seat]
+            if opponent_deck is not None:
+                hidden_remainder = derive_opponent_hidden_remainder(
+                    masked_obs,
+                    opponent_deck,
+                )
+                if hidden_remainder is not None:
+                    aux_clean["opp_hidden_remainder"] = hidden_remainder
+                    aux_clean["opp_hidden_remainder_source"] = (
+                        "official_full_deck_minus_public_evidence"
+                    )
 
             seat_steps[seat].append(
                 {

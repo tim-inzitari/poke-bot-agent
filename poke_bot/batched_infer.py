@@ -193,11 +193,17 @@ def _forward_chunk(
             )
     logits_all = out["policy_logits"]
     value_all = out["value"]
+    # Copy each result tensor to the host once.  Calling ``.cpu()`` / ``.item()``
+    # per row serializes MPS command buffers and turns a unified-memory batch
+    # into 2*B host/device synchronization points.  A single bulk readback is
+    # numerically identical and also reduces CUDA launch synchronization.
+    logits_host = logits_all.detach().float().cpu()
+    values_host = value_all.detach().float().cpu()
     results: list[tuple[float, list[float]]] = []
     for i in range(len(boards)):
         n = int(n_opts[i])
-        priors = _policy_probs(logits_all[i, :n])
-        value = float(value_all[i].item())
+        priors = _policy_probs(logits_host[i, :n])
+        value = float(values_host[i].item())
         if seats[i] != root_seats[i]:
             value = -value
         results.append((value, priors))

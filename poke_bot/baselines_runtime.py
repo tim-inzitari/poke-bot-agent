@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import sys
 import types
@@ -13,6 +14,8 @@ from typing import Any, Callable, Optional
 from . import deck_pool, paths
 
 AgentFn = Callable[[dict], list[int]]
+
+BASELINE_JOB_CONTRACT_SCHEMA = "poke_bot.portable_baseline_spec/v1"
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,124 @@ class BaselineSpec:
     @property
     def deck_csv(self) -> Path:
         return self.path / "deck.csv"
+
+
+def baseline_content_digest(path: Path) -> str:
+    """Return a location-independent digest of an installed baseline tree.
+
+    Remote game jobs must not trust an absolute path from the dispatch host:
+    Inzi, Elmo, and Bert intentionally install the repository at different
+    locations.  The digest binds the stable ``group/dir_name`` identity to the
+    exact local files while excluding interpreter/log debris.
+    """
+    root = Path(path).expanduser().resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"baseline directory does not exist: {root}")
+    rows: list[dict[str, Any]] = []
+    for child in sorted(item for item in root.rglob("*") if item.is_file()):
+        if "__pycache__" in child.parts or child.suffix in (".pyc", ".log"):
+            continue
+        resolved = child.resolve()
+        if root not in resolved.parents:
+            raise ValueError(f"baseline file escapes its directory: {child}")
+        digest = hashlib.sha256()
+        with resolved.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        rows.append(
+            {
+                "path": child.relative_to(root).as_posix(),
+                "size": int(resolved.stat().st_size),
+                "digest": f"sha256:{digest.hexdigest()}",
+            }
+        )
+    canonical = json.dumps(
+        rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+
+def baseline_spec_payload(spec: BaselineSpec) -> dict[str, Any]:
+    """Serialize a baseline for a location-independent worker job."""
+    return {
+        "id": spec.id,
+        "name": spec.name,
+        "dir_name": spec.dir_name,
+        "group": spec.group,
+        "source": spec.source,
+        # Kept for old local consumers and diagnostics only. Workers resolve
+        # group/dir_name against their own BASELINES_DIR and never execute it.
+        "path": str(spec.path),
+        "contract_schema": BASELINE_JOB_CONTRACT_SCHEMA,
+        "content_digest": baseline_content_digest(spec.path),
+    }
+
+
+def resolve_baseline_spec_payload(
+    payload: dict[str, Any], *, require_content_identity: bool = False
+) -> BaselineSpec:
+    """Resolve a serialized baseline against this host and verify its bytes.
+
+    This deliberately ignores the sender's absolute ``path``.  Path traversal,
+    manifest identity drift, missing content identity (when required), and any
+    byte mismatch all fail closed before baseline code is imported.
+    """
+    row = dict(payload)
+    expected_digest = str(row.pop("content_digest", "") or "")
+    schema = str(row.pop("contract_schema", "") or "")
+    row.pop("path", None)
+
+    if require_content_identity and (
+        schema != BASELINE_JOB_CONTRACT_SCHEMA or not expected_digest
+    ):
+        raise ValueError("portable baseline job is missing its content identity")
+    if schema and schema != BASELINE_JOB_CONTRACT_SCHEMA:
+        raise ValueError(f"unsupported baseline job contract: {schema}")
+
+    baseline_id = str(row.get("id") or "")
+    group = str(row.get("group") or "")
+    dir_name = str(row.get("dir_name") or "")
+    for label, value in (("group", group), ("dir_name", dir_name)):
+        component = Path(value)
+        if (
+            not value
+            or value in (".", "..")
+            or component.is_absolute()
+            or len(component.parts) != 1
+        ):
+            raise ValueError(f"unsafe baseline {label}: {value!r}")
+
+    manifest_rows = {spec.id: spec for spec in load_manifest()}
+    manifest_spec = manifest_rows.get(baseline_id)
+    if manifest_spec is None:
+        raise ValueError(f"baseline id is absent from local manifest: {baseline_id!r}")
+    if (manifest_spec.group, manifest_spec.dir_name) != (group, dir_name):
+        raise ValueError(
+            "baseline manifest identity mismatch: "
+            f"{baseline_id!r} requested {group}/{dir_name}, local manifest has "
+            f"{manifest_spec.group}/{manifest_spec.dir_name}"
+        )
+
+    local_path = (paths.BASELINES_DIR / group / dir_name).resolve()
+    base = paths.BASELINES_DIR.resolve()
+    if base not in local_path.parents:
+        raise ValueError(f"baseline path escapes local library: {local_path}")
+    if expected_digest:
+        actual_digest = baseline_content_digest(local_path)
+        if actual_digest != expected_digest:
+            raise ValueError(
+                f"baseline content mismatch for {baseline_id}: "
+                f"expected {expected_digest}, local {actual_digest}"
+            )
+
+    return BaselineSpec(
+        id=baseline_id,
+        name=str(row.get("name") or baseline_id),
+        dir_name=dir_name,
+        group=group,
+        source=str(row.get("source") or ""),
+        path=local_path,
+    )
 
 
 def load_manifest(manifest: Optional[Path] = None) -> list[BaselineSpec]:

@@ -713,6 +713,40 @@ class TemporalCabtTransformer(nn.Module):
         rows = torch.tensor([i for i, _ in present], dtype=torch.long, device=device)
         return out.index_copy(0, rows, encoded)
 
+    def encode_previous_actions_packed(
+        self,
+        packed: PackedSparse,
+        *,
+        batch_size: int,
+    ) -> Tensor:
+        """Encode one already-shifted resident action row per timestep.
+
+        Empty CSR rows are the causal ``None`` token used for the first
+        decision in each game.  Keeping the shift in the corpus gather avoids
+        reconstructing millions of :class:`SparseVector` objects on the host.
+        """
+        count = int(batch_size)
+        if count < 0 or packed.offset.numel() != count + 1:
+            raise ValueError(
+                "packed previous-action offsets do not match batch size"
+            )
+        device = next(self.parameters()).device
+        if packed.index.numel() == 0:
+            return torch.zeros(
+                count,
+                self.d_model,
+                device=device,
+                dtype=self._activation_dtype(device),
+            )
+        self._validate_sparse_indices(
+            packed.index, self.decoder_vocab, "previous-action"
+        )
+        return self._embed_option_bag(
+            packed.index,
+            packed.offset,
+            packed.value,
+        )
+
     def _activation_dtype(self, device: torch.device) -> torch.dtype:
         """Match autocast activation dtype so zero buffers don't fight bf16."""
         if device.type == "cuda" and torch.is_autocast_enabled("cuda"):

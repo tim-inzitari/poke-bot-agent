@@ -28,10 +28,12 @@ from tqdm.auto import tqdm
 from poke_bot import checkpoint, config, deck_pool, paths
 from poke_bot.agent import PolicyAgent, play_game
 from poke_bot.baselines_runtime import (
+    baseline_spec_payload,
     ensure_baselines_installed,
     filter_loadable_baselines,
     load_baseline_agent,
     load_manifest,
+    resolve_baseline_spec_payload,
 )
 from poke_bot.device import leaf_eval_device
 from poke_bot.eval_metrics import FieldReport
@@ -54,6 +56,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Explicit 60-card deck CSV; repeat for a custom multi-deck suite. "
             "Cannot be combined with --deck-suite core-ladder."
+        ),
+    )
+    p.add_argument(
+        "--our-archetype",
+        default=None,
+        help=(
+            "Evaluate one exact pinned top-ladder representative by archetype "
+            "ID (for example, alakazam). Cannot be combined with --our-deck "
+            "or --deck-suite core-ladder."
         ),
     )
     p.add_argument(
@@ -110,10 +121,16 @@ def _deck_digest(cards: list[int]) -> str:
 def _resolve_our_decks(args: argparse.Namespace) -> tuple[list[dict], dict]:
     """Resolve and validate the requested deck coverage contract."""
     explicit_paths = [Path(path) for path in args.our_deck]
-    if args.deck_suite == "core-ladder" and explicit_paths:
+    requested_archetype = str(
+        getattr(args, "our_archetype", None) or ""
+    ).strip().lower()
+    if args.deck_suite == "core-ladder" and (explicit_paths or requested_archetype):
         raise ValueError(
-            "--our-deck cannot be combined with --deck-suite core-ladder"
+            "--our-deck/--our-archetype cannot be combined with "
+            "--deck-suite core-ladder"
         )
+    if explicit_paths and requested_archetype:
+        raise ValueError("--our-deck cannot be combined with --our-archetype")
 
     if args.deck_suite == "core-ladder":
         from poke_bot.ladder_deck_mix import (
@@ -152,6 +169,57 @@ def _resolve_our_decks(args: argparse.Namespace) -> tuple[list[dict], dict]:
             "mix_path": str(mix_path.resolve()),
             "representatives_path": str(representatives_path.resolve()),
             "contract": representatives.contract(mix),
+        }
+
+    if requested_archetype:
+        from poke_bot.ladder_deck_mix import (
+            load_ladder_deck_mix,
+            load_ladder_deck_representatives,
+        )
+
+        mix_path = ROOT / "data" / "training_mixes" / "top_ladder.v1.json"
+        representatives_path = (
+            ROOT
+            / "data"
+            / "training_mixes"
+            / "top_ladder_representatives.v1.json"
+        )
+        mix = load_ladder_deck_mix(mix_path)
+        representatives = load_ladder_deck_representatives(
+            representatives_path
+        )
+        matches = [
+            item
+            for item in representatives.bind(mix)
+            if item.bucket.deck_id.lower() == requested_archetype
+        ]
+        if len(matches) != 1:
+            available = sorted(
+                item.bucket.deck_id for item in representatives.bind(mix)
+            )
+            raise ValueError(
+                f"unknown pinned archetype {requested_archetype!r}; "
+                f"available={available}"
+            )
+        item = matches[0]
+        cards = list(item.card_ids)
+        return [
+            {
+                "deck_id": item.bucket.deck_id,
+                "cards": cards,
+                "path": None,
+                "source": "pinned_top_ladder_modal_representative",
+                "sha256": _deck_digest(cards),
+                "canonical_multiset_sha256": item.canonical_multiset_sha256,
+                "source_rank": item.bucket.source_rank,
+                "train_weight": item.bucket.train_weight,
+            }
+        ], {
+            "suite": "pinned-archetype",
+            "deck_agnostic": False,
+            "archetype": item.bucket.deck_id,
+            "mix_path": str(mix_path.resolve()),
+            "representatives_path": str(representatives_path.resolve()),
         }
 
     if explicit_paths:
@@ -242,10 +310,8 @@ def _game_job(payload: dict) -> dict:
                 _WORKER_STATE["model_key"] = key
             model = _WORKER_STATE["model"]
         our_deck = payload["our_deck"]
-        spec_d = dict(payload["spec"])
-        spec_d["path"] = Path(spec_d["path"])
-        spec = BaselineSpec(**spec_d)
         try:
+            spec = resolve_baseline_spec_payload(payload["spec"])
             opp_fn, opp_deck = load_baseline_agent(spec)
         except Exception as exc:
             return {
@@ -579,14 +645,7 @@ def main(argv: list[str] | None = None) -> int:
     seed = int(args.seed)
 
     def _spec_payload(spec) -> dict:
-        return {
-            "id": spec.id,
-            "name": spec.name,
-            "dir_name": spec.dir_name,
-            "group": spec.group,
-            "source": spec.source,
-            "path": str(spec.path),
-        }
+        return baseline_spec_payload(spec)
 
     for spec in specs:
         for game_i in range(args.games_per_opp):

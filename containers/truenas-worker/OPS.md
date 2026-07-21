@@ -29,7 +29,7 @@ host's GPU attachment and apply the production file second.
 - Production reloads atomically publish an exact path+SHA-256 record under
   `runtime-logs`; a later lifetime refuses to start if that record cannot be
   reproduced from the read-only `/workspace/checkpoint` mount.
-- The image is pinned to `poke-bot-truenas-worker:safety-20260717.3`; its
+- The image is pinned to `poke-bot-truenas-worker:safety-20260717.4`; its
   entrypoint, supervisor, and Python package are baked together.
 - The prior `poke-bot-truenas-worker:safety-20260717` tag is retained unchanged
   for rollback; never rebuild or retag it.
@@ -87,9 +87,9 @@ From `/mnt/Main/Elmo/poke-bot-agent`:
 ```bash
 docker build \
   --file containers/truenas-worker/Dockerfile \
-  --tag poke-bot-truenas-worker:safety-20260717.3 \
+  --tag poke-bot-truenas-worker:safety-20260717.4 \
   .
-docker image inspect poke-bot-truenas-worker:safety-20260717.3 \
+docker image inspect poke-bot-truenas-worker:safety-20260717.4 \
   --format '{{ index .Config.Labels "org.opencontainers.image.version" }}'
 # Confirm the pre-change image still exists as a distinct rollback artifact.
 docker image inspect poke-bot-truenas-worker:safety-20260717 \

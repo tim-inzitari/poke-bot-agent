@@ -81,6 +81,7 @@ from poke_bot.pure_rl.shards import (  # noqa: E402
 )
 from poke_bot.train import (  # noqa: E402
     TrainConfig,
+    belief_card_vocab_from_state,
     rl_train_step,
     supervised_rehearsal_step,
 )
@@ -6115,28 +6116,26 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 parent_state = dict(
                     parent_checkpoint.get("model_state_dict") or {}
                 )
-                hand_weight = parent_state.get("opp_hand_head.weight")
-                remainder_weight = parent_state.get(
-                    "opp_remainder_head.weight"
+                rehearsal_belief_card_vocab = belief_card_vocab_from_state(
+                    parent_state
                 )
-                if (
-                    hand_weight is None
-                    or remainder_weight is None
-                    or getattr(hand_weight, "ndim", 0) != 2
-                    or getattr(remainder_weight, "ndim", 0) != 2
-                ):
-                    raise RuntimeError(
-                        "all-head expert rehearsal requires checkpoint "
-                        "opponent belief heads"
+                missing_rehearsal_heads = sorted(
+                    name
+                    for name in (
+                        "opp_hand_head",
+                        "opp_remainder_head",
+                        "lethal_threat_head",
+                        "prize_race_head",
                     )
-                rehearsal_belief_card_vocab = int(hand_weight.shape[0])
-                if (
-                    rehearsal_belief_card_vocab <= 0
-                    or int(remainder_weight.shape[0])
-                    != rehearsal_belief_card_vocab
-                ):
-                    raise RuntimeError(
-                        "checkpoint opponent belief head vocabularies disagree"
+                    if f"{name}.weight" not in parent_state
+                )
+                if missing_rehearsal_heads:
+                    print(
+                        "[pure_rl] EXPERT_HEAD_WARM_START "
+                        f"before_iter={it} missing={missing_rehearsal_heads} "
+                        f"belief_card_vocab={rehearsal_belief_card_vocab} "
+                        "optimizer=fresh",
+                        flush=True,
                     )
             manifest_identity = resolve_expert_manifest(
                 Path(args.expert_manifest),

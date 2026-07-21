@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+import poke_bot.remote_jobs as remote_jobs
 from poke_bot.remote_jobs import (
     PROTO_VERSION,
     RemoteJobsError,
@@ -11,6 +12,46 @@ from poke_bot.remote_jobs import (
     send_frame,
     serve_forever,
 )
+
+
+def test_fast_and_stdlib_json_frames_are_wire_compatible(monkeypatch) -> None:
+    """Changing codecs must not change any training payload semantics."""
+    fast_codec = remote_jobs._orjson
+    if fast_codec is None:
+        pytest.skip("orjson is optional")
+    payload = {
+        "job_index": 7,
+        "record_jsons": ['{"steps":[{"action":3,"value":-1.0}]}'],
+        "unicode": "Alakazam Ψ",
+        "integer_key_map": {1: "one"},
+    }
+
+    monkeypatch.setattr(remote_jobs, "_orjson", None)
+    std_frame = remote_jobs.encode_frame(payload)
+    monkeypatch.setattr(remote_jobs, "_orjson", fast_codec)
+    left, right = socket.socketpair()
+    try:
+        left.sendall(std_frame)
+        assert remote_jobs.read_frame(right) == {
+            **payload,
+            "integer_key_map": {"1": "one"},
+        }
+    finally:
+        left.close()
+        right.close()
+
+    fast_frame = remote_jobs.encode_frame(payload)
+    monkeypatch.setattr(remote_jobs, "_orjson", None)
+    left, right = socket.socketpair()
+    try:
+        left.sendall(fast_frame)
+        assert remote_jobs.read_frame(right) == {
+            **payload,
+            "integer_key_map": {"1": "one"},
+        }
+    finally:
+        left.close()
+        right.close()
 
 
 def _unused_port() -> int:

@@ -14,6 +14,15 @@ from poke_bot.model import TemporalCabtTransformer, build_model
 #: Fail closed above this — leaves headroom over the 3M product target.
 PURE_RL_PARAM_FAIL_MAX = int(os.environ.get("PURE_RL_PARAM_FAIL_MAX", "3500000"))
 PURE_RL_PARAM_TARGET_MAX = int(os.environ.get("PURE_RL_PARAM_TARGET_MAX", "3000000"))
+# Sequences never cross a game boundary. Prior corpus measurement showed a
+# 320-decision causal suffix covers about 99.15% of games; retaining this cap
+# avoids the quadratic cost of padding the rare long game toward 4,000 steps.
+PURE_RL_HISTORY_MAX_CONTEXT = int(
+    os.environ.get("PURE_RL_HISTORY_MAX_CONTEXT", "320")
+)
+# Backward-compatible import name for the already-staged warm-start tooling.
+# "Full game" describes sequence ownership, not an unbounded attention span.
+PURE_RL_FULL_GAME_MAX_CONTEXT = PURE_RL_HISTORY_MAX_CONTEXT
 
 
 def _dense_card2vec_flag() -> bool:
@@ -92,6 +101,27 @@ def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
             f"{cfg.d_model // cfg.n_heads}"
         )
     return cfg
+
+
+def pure_rl_history_model_config(**overrides: Any) -> config.ModelConfig:
+    """One-layer causal model over one game-bounded acting-seat sequence.
+
+    This is an explicit experimental profile rather than a changed production
+    default. It keeps the lean spatial/option trunk, adds one temporal block,
+    retains the newest 320 decisions within that game, and enables the
+    incremental KV cache used during play. Training must use game-bounded
+    :class:`GameSequence` batches; the stateless GPU-resident flattened-corpus
+    path is intentionally incompatible. Longer games drop only their oldest
+    prefix; games are never concatenated.
+    """
+    history = {
+        "temporal_layers": 1,
+        "decision_context": "history",
+        "kv_cache": True,
+        "max_context": PURE_RL_HISTORY_MAX_CONTEXT,
+    }
+    history.update(overrides)
+    return pure_rl_model_config(**history)
 
 
 def count_params(model: torch.nn.Module) -> int:

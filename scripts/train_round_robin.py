@@ -533,6 +533,7 @@ def _worker_play(job: dict) -> dict:
     our_deck = job["our_deck"]
 
     def _base_result(**over) -> dict:
+        sampled = bool(job.get("sample_actions", not bool(job.get("greedy", False))))
         r = {
             "job_index": int(job["job_index"]),
             "opponent_id": opp_id,
@@ -553,6 +554,9 @@ def _worker_play(job: dict) -> dict:
             "game_timeout": False,
             "cancelled": False,
             "training_eligible": bool(job.get("training_eligible", True)),
+            "archetype": job.get("archetype"),
+            "checkpoint_digest": job.get("checkpoint_digest"),
+            "action_selection": "sampled" if sampled else "greedy",
             "record_json": None,
             "error": None,
         }
@@ -592,7 +596,10 @@ def _worker_play(job: dict) -> dict:
 
         from poke_bot import batched_infer
         from poke_bot.agent import PolicyAgent, play_game
-        from poke_bot.baselines_runtime import BaselineSpec, load_baseline_agent
+        from poke_bot.baselines_runtime import (
+            load_baseline_agent,
+            resolve_baseline_spec_payload,
+        )
         from poke_bot.train import load_model_from_checkpoint
 
         # Remote GPU leaf-eval server active? Then OUR net forwards run on the
@@ -612,10 +619,13 @@ def _worker_play(job: dict) -> dict:
                 _WORKER_STATE["key"] = key
             model = _WORKER_STATE["model"]
 
-        spec_d = dict(job["spec"])
-        spec_d["path"] = Path(spec_d["path"])
-        spec = BaselineSpec(**spec_d)
         try:
+            spec = resolve_baseline_spec_payload(
+                job["spec"],
+                require_content_identity=bool(
+                    job.get("require_portable_baseline_contract", False)
+                ),
+            )
             opp_fn, opp_deck = load_baseline_agent(spec)
         except Exception as exc:  # noqa: BLE001
             return _fail(f"load: {type(exc).__name__}: {exc}")
@@ -802,6 +812,11 @@ def _worker_play(job: dict) -> dict:
                 json.dumps(record, separators=(",", ":")) if record else None
             ),
             "training_eligible": bool(job.get("training_eligible", True)),
+            "archetype": job.get("archetype"),
+            "checkpoint_digest": job.get("checkpoint_digest"),
+            "action_selection": (
+                "sampled" if bool(job.get("sample_actions", not (oracle or belief))) else "greedy"
+            ),
             "seed": job["seed"],
             "pair_id": job.get("pair_id"),
             "baseline_failed": False,

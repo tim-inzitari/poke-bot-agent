@@ -47,9 +47,11 @@ from tqdm.auto import tqdm
 from poke_bot import config, paths
 from poke_bot.baselines_runtime import (
     BaselineSpec,
+    baseline_spec_payload,
     ensure_baselines_installed,
     filter_loadable_baselines,
     load_manifest,
+    resolve_baseline_spec_payload,
 )
 from poke_bot.eval_metrics import wilson_interval, wilson_lower
 from poke_bot.worker_pool import WorkerPool
@@ -128,14 +130,7 @@ def _pair_key(a: str, b: str) -> str:
 
 
 def _spec_payload(spec: BaselineSpec) -> dict[str, Any]:
-    return {
-        "id": spec.id,
-        "name": spec.name,
-        "dir_name": spec.dir_name,
-        "group": spec.group,
-        "source": spec.source,
-        "path": str(spec.path),
-    }
+    return baseline_spec_payload(spec)
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +145,10 @@ def _game_job(payload: dict) -> dict:
 
     from poke_bot import config as _config
     from poke_bot.agent import install_quiet_stdout, play_game
-    from poke_bot.baselines_runtime import BaselineSpec, load_baseline_agent
+    from poke_bot.baselines_runtime import (
+        load_baseline_agent,
+        resolve_baseline_spec_payload,
+    )
 
     install_quiet_stdout(_config.agent_verbose())
 
@@ -192,8 +190,8 @@ def _game_job(payload: dict) -> dict:
         )
 
     try:
-        a_spec = BaselineSpec(**{**payload["a_spec"], "path": Path(payload["a_spec"]["path"])})
-        b_spec = BaselineSpec(**{**payload["b_spec"], "path": Path(payload["b_spec"]["path"])})
+        a_spec = resolve_baseline_spec_payload(payload["a_spec"])
+        b_spec = resolve_baseline_spec_payload(payload["b_spec"])
         try:
             a_fn, a_deck = load_baseline_agent(a_spec)
         except Exception as exc:  # noqa: BLE001

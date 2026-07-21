@@ -16,6 +16,7 @@ from .interfaces import (
     ResetSpec,
 )
 from .fake_env import FakeMultiEnv
+from .libcg_batch import BatchedLibcgMultiEnv, load_batch_library
 from .libcg_multi_env import LibcgMultiEnv
 from .parity import (
     TransitionRecord,
@@ -28,6 +29,7 @@ from .parity import (
 __all__ = [
     "Action",
     "BatchObs",
+    "BatchedLibcgMultiEnv",
     "EnvObs",
     "FakeMultiEnv",
     "LibcgMultiEnv",
@@ -37,5 +39,6 @@ __all__ = [
     "assert_parity",
     "fingerprint_select",
     "record_episode",
+    "load_batch_library",
     "transition_hash",
 ]

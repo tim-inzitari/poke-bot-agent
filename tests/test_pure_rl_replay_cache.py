@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pickle
+import threading
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,8 @@ import pytest
 from poke_bot import config
 from poke_bot.pure_rl.dataset_bridge import (
     StreamingReplayCache,
+    _load_cached_parts,
+    _prune_stale_stream_staging,
     _range_worker,
     dataset_from_shard,
 )
@@ -81,6 +84,47 @@ def test_completed_cache_is_reused(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert len(second.sequences) == 0
 
 
+def test_cached_parts_load_in_manifest_order_with_bounded_parallelism(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shard = tmp_path / "run" / "shards" / "iter_00000.jsonl"
+    shard.parent.mkdir(parents=True)
+    shard.write_text("")
+    parts = []
+    for index in range(9):
+        path = tmp_path / f"part_{index:03d}.pkl"
+        with path.open("wb") as handle:
+            pickle.dump({"sequences": [index]}, handle)
+        parts.append({"index": index, "path": str(path)})
+    monkeypatch.setenv("PURE_RL_REPLAY_CACHE_LOAD_WORKERS", "4")
+    from poke_bot.pure_rl import dataset_bridge
+
+    original_read = dataset_bridge._read_cached_part
+    lock = threading.Lock()
+    four_active = threading.Event()
+    active = 0
+    max_active = 0
+
+    def tracked_read(path: Path):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+            if active == 4:
+                four_active.set()
+        four_active.wait(timeout=2.0)
+        try:
+            return original_read(path)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(dataset_bridge, "_read_cached_part", tracked_read)
+
+    assert _load_cached_parts(shard, {"parts": parts}) == list(range(9))
+    assert max_active == 4
+
+
 def test_stream_cache_publishes_only_complete_source(tmp_path: Path, monkeypatch) -> None:
     shard = tmp_path / "run" / "shards" / "iter_00003.jsonl"
     monkeypatch.setattr(config.HARDWARE, "cache_dir", tmp_path / "cache")
@@ -102,3 +146,23 @@ def test_stream_cache_publishes_only_complete_source(tmp_path: Path, monkeypatch
     for part in manifest["parts"]:
         with Path(part["path"]).open("rb") as handle:
             assert len(pickle.load(handle)["sequences"]) == 0
+
+
+def test_stream_cache_startup_prunes_only_dead_pid_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(config.HARDWARE, "cache_dir", tmp_path / "cache")
+    root = tmp_path / "cache" / "pure_rl_compact_staging" / "run-key"
+    dead = root / "iter_00000.99999999.123"
+    live = root / f"iter_00001.{__import__('os').getpid()}.456"
+    unrelated = root / "do-not-touch"
+    for directory in (dead, live, unrelated):
+        directory.mkdir(parents=True)
+        (directory / "part.pkl").write_bytes(b"cache")
+
+    report = _prune_stale_stream_staging()
+
+    assert report == {"removed": 1, "reclaimed_bytes": 5, "kept": 1}
+    assert not dead.exists()
+    assert (live / "part.pkl").is_file()
+    assert (unrelated / "part.pkl").is_file()

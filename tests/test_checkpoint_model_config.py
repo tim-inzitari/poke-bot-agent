@@ -44,6 +44,27 @@ def test_checkpoint_reconstructs_saved_model_config(tmp_path: Path) -> None:
     assert checkpoint.assert_trusted_policy_checkpoint(path)["decision_context"] == "history"
 
 
+def test_stateless_policy_checkpoint_is_trusted_without_oracle_state(
+    tmp_path: Path,
+) -> None:
+    cfg = _config()
+    cfg.decision_context = "stateless"
+    cfg.temporal_layers = 0
+    cfg.kv_cache = False
+    model = build_model(
+        cfg,
+        aux_archetype_classes=3,
+        encoder_vocab=37,
+        decoder_vocab=41,
+    )
+    payload = checkpoint.build_checkpoint(model=model, model_config=cfg)
+    path = checkpoint.atomic_torch_save(payload, tmp_path / "state-only.pt")
+
+    trusted = checkpoint.assert_trusted_policy_checkpoint(path)
+    assert trusted["decision_context"] == "stateless"
+    assert trusted["provenance"]["trusted_policy_path"] is True
+
+
 def test_checkpoint_rejects_incompatible_model_config(tmp_path: Path) -> None:
     cfg = _config()
     model = build_model(

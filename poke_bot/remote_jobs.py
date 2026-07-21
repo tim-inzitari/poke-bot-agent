@@ -28,9 +28,15 @@ import subprocess
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
+
+try:  # Optional fast, GIL-friendly codec; wire format remains ordinary JSON.
+    import orjson as _orjson
+except ImportError:  # pragma: no cover - exercised on minimal worker images
+    _orjson = None
 
 PROTO_VERSION = 1
 DEFAULT_PORT = 8765
@@ -1075,9 +1081,17 @@ def require_remote_result_success(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def encode_frame(payload: dict[str, Any]) -> bytes:
-    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode(
-        "utf-8"
-    )
+    if _orjson is not None:
+        try:
+            # Match stdlib json's acceptance/stringification of integer keys.
+            # The bytes are still ordinary UTF-8 JSON and remain cross-codec.
+            body = _orjson.dumps(payload, option=_orjson.OPT_NON_STR_KEYS)
+        except (TypeError, ValueError) as exc:
+            raise RemoteJobsError(f"invalid JSON payload: {exc}") from exc
+    else:
+        body = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode(
+            "utf-8"
+        )
     if len(body) > _MAX_FRAME:
         raise RemoteJobsError(f"frame too large: {len(body)} bytes")
     return _HDR.pack(len(body)) + body
@@ -1100,8 +1114,12 @@ def read_frame(sock: socket.socket) -> dict[str, Any]:
         raise RemoteJobsError(f"frame length {length} exceeds max {_MAX_FRAME}")
     body = _recvexact(sock, length)
     try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        payload = (
+            _orjson.loads(body)
+            if _orjson is not None
+            else json.loads(body.decode("utf-8"))
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise RemoteJobsError(f"invalid JSON frame: {exc}") from exc
     if not isinstance(payload, dict):
         raise RemoteJobsError(f"frame root must be object, got {type(payload)!r}")
@@ -1329,15 +1347,22 @@ class RemoteJobClient:
         job_buffer_s = _env_float("POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S", 600.0)
         last_exc: Optional[BaseException] = None
         for attempt in range(2):
-            sock = self._require_sock()
-            prev = sock.gettimeout()
-            sock.settimeout(
-                max(
-                    self.timeout_s,
-                    float(remote_job.get("game_timeout_s") or 900) + job_buffer_s,
-                )
-            )
+            sock: Optional[socket.socket] = None
+            prev: Optional[float] = None
             try:
+                # Keep the socket lookup inside the retry boundary. A farm
+                # template can remain present after its worker/container has
+                # recycled while its socket was cleared; that is a healable
+                # hangup, not a terminal "not connected" job failure.
+                sock = self._require_sock()
+                prev = sock.gettimeout()
+                sock.settimeout(
+                    max(
+                        self.timeout_s,
+                        float(remote_job.get("game_timeout_s") or 900)
+                        + job_buffer_s,
+                    )
+                )
                 send_frame(sock, {"type": "job", "kind": kind, "job": remote_job})
                 reply = read_frame(sock)
             except (TimeoutError, OSError, RemoteJobsError) as exc:
@@ -1350,10 +1375,11 @@ class RemoteJobClient:
                     continue
                 raise
             finally:
-                try:
-                    sock.settimeout(prev)
-                except Exception:
-                    pass
+                if sock is not None:
+                    try:
+                        sock.settimeout(prev)
+                    except Exception:
+                        pass
             if reply.get("type") != "result":
                 raise RemoteJobsError(f"unexpected job reply: {reply!r}")
             if not reply.get("ok", False):
@@ -1369,10 +1395,16 @@ class RemoteJobClient:
         """Send a control-plane frame with ``control_timeout_s``; one hangup retry."""
         last_exc: Optional[BaseException] = None
         for attempt in range(2):
-            sock = self._require_sock()
-            prev = sock.gettimeout()
-            sock.settimeout(self.control_timeout_s)
+            sock: Optional[socket.socket] = None
+            prev: Optional[float] = None
             try:
+                # ``_require_sock`` must be covered by the reconnect retry.
+                # A client may still be registered in the farm after a worker
+                # replacement but have ``_sock is None``; this exact state used
+                # to abort the between-iteration checkpoint hard gate.
+                sock = self._require_sock()
+                prev = sock.gettimeout()
+                sock.settimeout(self.control_timeout_s)
                 send_frame(sock, msg)
                 return read_frame(sock)
             except (TimeoutError, OSError, RemoteJobsError) as exc:
@@ -1385,10 +1417,11 @@ class RemoteJobClient:
                     continue
                 raise
             finally:
-                try:
-                    sock.settimeout(prev)
-                except Exception:
-                    pass
+                if sock is not None:
+                    try:
+                        sock.settimeout(prev)
+                    except Exception:
+                        pass
         assert last_exc is not None
         raise last_exc
 
@@ -1946,6 +1979,9 @@ def iter_scheduled_additive_results(
     errors: list[BaseException] = []
     owned_clients: list[RemoteJobClient] = []
     producer_stop = threading.Event()
+    refill_monitor_stop = threading.Event()
+    refill_monitor: Optional[threading.Thread] = None
+    pending_lock = threading.Lock()
     threads: list[threading.Thread] = []
     slots_by_endpoint: dict[str, int] = {}
     refill_slot_floor: dict[str, int] = {}
@@ -2673,7 +2709,6 @@ def iter_scheduled_additive_results(
 
         pending = len(threads)
         last_log = time.monotonic()
-        last_refill_probe = last_log
 
         def _publish_remote_slots() -> None:
             """Push live active-socket + demand counts to tqdm / monitors."""
@@ -2731,7 +2766,8 @@ def iter_scheduled_additive_results(
                             daemon=True,
                         )
                         threads.append(t)
-                        pending += 1
+                        with pending_lock:
+                            pending += 1
                         t.start()
                     if slots_by_endpoint.get(ep, 0) > have:
                         grew = True
@@ -2785,13 +2821,15 @@ def iter_scheduled_additive_results(
                 _publish_remote_slots()
 
         def _maybe_refill_low_remote_queues() -> None:
-            """Refill one execution wave per probe until high water returns.
+            """Fill every low remote queue to high water in one probe pass.
 
             ``health.active_jobs`` is the authoritative server-side count of
             executing plus locally queued games.  Refill is based on queued
             games (active minus execution workers), not TCP socket estimates.
-            Both endpoint probes happen concurrently; reserve emitters are
-            opened round-robin so a low Bert queue cannot wait behind Elmo.
+            Both endpoint probes and all required reserve connections happen
+            concurrently, so a low Bert queue cannot wait behind Elmo.  This
+            function is called by an independent cadence thread; result ingest
+            can never pause the 0.2-second queue controller.
             """
             nonlocal pending
             with claim_lock:
@@ -2806,23 +2844,24 @@ def iter_scheduled_additive_results(
             sample_lock = threading.Lock()
 
             def _probe(template: RemoteJobClient) -> None:
+                endpoint = template.endpoint
                 control = RemoteJobClient(
                     template.host,
                     template.port,
-                    timeout_s=min(5.0, template.timeout_s),
-                    connect_timeout_s=min(5.0, template.connect_timeout_s),
-                    control_timeout_s=min(5.0, template.control_timeout_s),
+                    timeout_s=min(3.0, template.timeout_s),
+                    connect_timeout_s=min(1.0, template.connect_timeout_s),
+                    control_timeout_s=min(2.0, template.control_timeout_s),
                 )
                 try:
                     control.connect()
                     health = control.health()
                     with sample_lock:
-                        samples[template.endpoint] = health
+                        samples[endpoint] = health
                 except (TimeoutError, OSError, RemoteJobsError) as exc:
                     with sample_lock:
-                        failed_probes.add(template.endpoint)
+                        failed_probes.add(endpoint)
                     print(
-                        f"[remote] {template.endpoint} queue_probe failed "
+                        f"[remote] {endpoint} queue_probe failed "
                         f"({type(exc).__name__}: {exc}); keeping existing slots",
                         flush=True,
                     )
@@ -2841,24 +2880,27 @@ def iter_scheduled_additive_results(
             for probe in probes:
                 probe.start()
             for probe in probes:
-                probe.join(timeout=6.0)
+                # Never start another probe on the same socket while a prior
+                # read is outstanding. Overlapped health frames corrupted the
+                # stream and created false queue-empty samples under load.
+                probe.join()
 
             # Probe I/O has completed before taking the deque lock.  A
             # successful health reply (including active_jobs=0) keeps the
-            # endpoint's reservation; a failed probe releases unused credit
-            # until a data-path result or later probe proves it healthy again.
+            # endpoint's reservation. A transient control timeout does not
+            # revoke data-path credit: doing so used to starve a busy remote.
             with claim_lock:
                 for endpoint in samples:
                     endpoint_credits.set_healthy(endpoint, True)
-                for endpoint in failed_probes:
-                    endpoint_credits.set_healthy(endpoint, False)
 
             try:
                 demand = dict(scheduler.decision().remote_demand or {})
             except Exception:
                 demand = {}
             fraction = remote_queue_low_water_fraction()
-            plans: list[tuple[RemoteJobClient, int, int, int, int, int]] = []
+            plans: list[
+                tuple[RemoteJobClient, int, int, int, int, int, int]
+            ] = []
             for template in remote_clients:
                 health = samples.get(template.endpoint)
                 if not health:
@@ -2900,10 +2942,12 @@ def iter_scheduled_additive_results(
                 if endpoint not in low_water_recovery:
                     continue
                 restore_active = execution + server_high_water
+                # One poll means one complete top-up.  The old ``execution``
+                # term capped this at a single 48/16-worker wave, so a drained
+                # queue needed several result-driven probes to recover.
                 extras = min(
                     max(0, max_slots - have),
-                    execution,
-                    max(1, restore_active - active),
+                    max(0, restore_active - active),
                     jobs_left,
                 )
                 if extras > 0:
@@ -2915,16 +2959,19 @@ def iter_scheduled_additive_results(
                             queued,
                             low_water,
                             server_high_water,
+                            max_slots,
                         )
                     )
 
             if not plans:
                 return
 
-            # Round-robin growth across endpoints.  Each newly started emitter
-            # claims and sends independently, so Elmo and Bert refill together.
+            # Build the request list round-robin, then connect concurrently.
+            # This starts the *entire* high-water deficit in this one pass.
             max_extras = max(plan[1] for plan in plans)
             started: dict[str, int] = {plan[0].endpoint: 0 for plan in plans}
+            limits = {plan[0].endpoint: int(plan[6]) for plan in plans}
+            requests: list[RemoteJobClient] = []
             for depth in range(max_extras):
                 for (
                     template,
@@ -2933,12 +2980,39 @@ def iter_scheduled_additive_results(
                     _queued,
                     _low_water,
                     _high_water,
+                    _max_slots,
                 ) in plans:
-                    if depth >= extras or producer_stop.is_set():
+                    if depth >= extras:
                         continue
+                    requests.append(template)
+
+            def _open_refill_client(template: RemoteJobClient) -> RemoteJobClient:
+                client = RemoteJobClient(
+                    template.host,
+                    template.port,
+                    timeout_s=template.timeout_s,
+                    connect_timeout_s=min(2.0, template.connect_timeout_s),
+                    control_timeout_s=min(2.0, template.control_timeout_s),
+                )
+                client.connect()
+                return client
+
+            open_workers = min(32, max(1, len(requests)))
+            with ThreadPoolExecutor(
+                max_workers=open_workers,
+                thread_name_prefix="remote-refill-connect",
+            ) as connector_pool:
+                future_templates = {
+                    connector_pool.submit(_open_refill_client, template): template
+                    for template in requests
+                    if not producer_stop.is_set()
+                    and not refill_monitor_stop.is_set()
+                }
+                for future in as_completed(future_templates):
+                    template = future_templates[future]
                     ep = template.endpoint
                     try:
-                        clone = _clone_remote_client(template)
+                        clone = future.result()
                     except (TimeoutError, OSError, RemoteJobsError) as exc:
                         print(
                             f"[remote] {ep} low_water grow failed "
@@ -2946,9 +3020,16 @@ def iter_scheduled_additive_results(
                             flush=True,
                         )
                         continue
-                    owned_clients.append(clone)
                     with grow_lock:
                         have = int(slots_by_endpoint.get(ep, 0))
+                        if (
+                            producer_stop.is_set()
+                            or refill_monitor_stop.is_set()
+                            or have >= int(limits.get(ep, have))
+                        ):
+                            clone.close()
+                            continue
+                        owned_clients.append(clone)
                         slots_by_endpoint[ep] = have + 1
                         retire_tokens[ep] = 0
                         refill_slot_floor[ep] = slots_by_endpoint[ep]
@@ -2961,11 +3042,20 @@ def iter_scheduled_additive_results(
                         daemon=True,
                     )
                     threads.append(thread)
-                    pending += 1
+                    with pending_lock:
+                        pending += 1
                     started[ep] += 1
                     thread.start()
 
-            for template, _extras, active, queued, low_water, high_water in plans:
+            for (
+                template,
+                _extras,
+                active,
+                queued,
+                low_water,
+                high_water,
+                _max_slots,
+            ) in plans:
                 ep = template.endpoint
                 added = int(started.get(ep, 0))
                 if added <= 0:
@@ -2973,26 +3063,38 @@ def iter_scheduled_additive_results(
                 print(
                     f"[remote] {ep} LOW_WATER_REFILL active={active} "
                     f"queued={queued}<{low_water} added={added} "
-                    f"wave={int(demand.get(ep, 0))} high_water={high_water} "
+                    f"fill=high_water target_active="
+                    f"{int(demand.get(ep, 0)) + high_water} "
+                    f"high_water={high_water} "
                     f"slots={slots_by_endpoint.get(ep, 0)}/"
                     f"{remote_socket_max_target(int(demand.get(ep, 0)))}",
                     flush=True,
                 )
             _publish_remote_slots()
 
-        while pending > 0:
-            tag, payload = out_q.get()
-            if tag == "done":
-                pending -= 1
-                _publish_remote_slots()
-                continue
-            if tag == "err":
-                producer_stop.set()
-                raise payload
-            yield payload
-            now = time.monotonic()
-            if now - last_refill_probe >= remote_queue_probe_interval_s():
-                last_refill_probe = now
+        def _remote_queue_refill_monitor() -> None:
+            interval = remote_queue_probe_interval_s()
+            print(
+                "[remote] queue_refill_controller "
+                f"interval={interval:.3f}s low_water="
+                f"{remote_queue_low_water_fraction():.0%} "
+                "action=fill_to_high_water endpoints=parallel "
+                "ingest_coupled=false",
+                flush=True,
+            )
+            # Let the initial prefetch wave reach the servers before measuring
+            # it.  Subsequent deadlines use perf_counter so tests (and callers)
+            # that patch scheduler monotonic time cannot stall this controller.
+            next_probe = time.perf_counter() + interval
+            while (
+                not producer_stop.is_set()
+                and not refill_monitor_stop.is_set()
+            ):
+                now_counter = time.perf_counter()
+                if refill_monitor_stop.wait(
+                    max(0.0, next_probe - now_counter)
+                ):
+                    return
                 try:
                     _maybe_refill_low_remote_queues()
                 except Exception as refill_exc:
@@ -3000,6 +3102,33 @@ def iter_scheduled_additive_results(
                         f"[remote] low_water refill check skipped: {refill_exc!r}",
                         flush=True,
                     )
+                next_probe += interval
+                now_counter = time.perf_counter()
+                if next_probe < now_counter:
+                    next_probe = now_counter
+
+        refill_monitor = threading.Thread(
+            target=_remote_queue_refill_monitor,
+            name="remote-queue-refill-controller",
+            daemon=True,
+        )
+        refill_monitor.start()
+
+        while True:
+            with pending_lock:
+                if pending <= 0:
+                    break
+            tag, payload = out_q.get()
+            if tag == "done":
+                with pending_lock:
+                    pending -= 1
+                _publish_remote_slots()
+                continue
+            if tag == "err":
+                producer_stop.set()
+                raise payload
+            yield payload
+            now = time.monotonic()
             if now - last_log >= 15.0:
                 last_log = now
                 try:
@@ -3030,6 +3159,8 @@ def iter_scheduled_additive_results(
                 except Exception:
                     pass
 
+        refill_monitor_stop.set()
+        refill_monitor.join(timeout=3.0)
         for thread in threads:
             thread.join(timeout=1.0)
         if errors:
@@ -3053,6 +3184,9 @@ def iter_scheduled_additive_results(
             pass
     finally:
         producer_stop.set()
+        refill_monitor_stop.set()
+        if refill_monitor is not None:
+            refill_monitor.join(timeout=3.0)
         for client in owned_clients:
             try:
                 client.close()

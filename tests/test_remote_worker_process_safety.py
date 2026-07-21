@@ -2,8 +2,10 @@ from pathlib import Path
 
 from scripts.run_remote_worker import (
     _close_mp_queue,
+    _parse_args,
     _remote_worker_arm_error,
     _shutdown_leaf_servers,
+    _worker_capacity_watchdog_update,
 )
 
 
@@ -75,10 +77,170 @@ def test_remote_worker_has_signal_watchdog_and_full_cleanup() -> None:
     assert "manager = mpctx.Manager()" in source
     assert "manager.shutdown()" in source
     assert "ready_pids = pool.ready_worker_pids" in source
-    assert "if not pool.worker_capacity_healthy" in source
+    assert "_worker_capacity_watchdog_update(" in source
+    assert "missing_pool_samples" not in source
+    assert "POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S" in source
     assert 'default=int(os.environ.get("SIM_WORKERS", "4"))' in source
     assert 'default=int(os.environ.get("LEAF_SERVERS", "1"))' in source
     assert 'os.environ.get("POKEBOT_REMOTE_TREE_RSS_LIMIT_GB", "32")' in source
+
+
+def test_capacity_watchdog_allows_full_monotonic_recycle_grace() -> None:
+    unhealthy_since, reason = _worker_capacity_watchdog_update(
+        now_s=100.0,
+        unhealthy_since_s=None,
+        capacity_healthy=False,
+        pool_stopped=False,
+        ready_workers=11,
+        expected_workers=12,
+        initializer_attempts=13,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+    )
+    assert unhealthy_since == 100.0
+    assert reason is None
+
+    unhealthy_since, reason = _worker_capacity_watchdog_update(
+        now_s=159.999,
+        unhealthy_since_s=unhealthy_since,
+        capacity_healthy=False,
+        pool_stopped=False,
+        ready_workers=11,
+        expected_workers=12,
+        initializer_attempts=13,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+    )
+    assert unhealthy_since == 100.0
+    assert reason is None
+
+    unhealthy_since, reason = _worker_capacity_watchdog_update(
+        now_s=160.0,
+        unhealthy_since_s=unhealthy_since,
+        capacity_healthy=False,
+        pool_stopped=False,
+        ready_workers=11,
+        expected_workers=12,
+        initializer_attempts=13,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+    )
+    assert unhealthy_since == 100.0
+    assert reason is not None
+    assert "unhealthy_for=60.0s grace=60.0s" in reason
+
+
+def test_capacity_watchdog_recovery_resets_the_grace_window() -> None:
+    unhealthy_since, reason = _worker_capacity_watchdog_update(
+        now_s=10.0,
+        unhealthy_since_s=5.0,
+        capacity_healthy=True,
+        pool_stopped=False,
+        ready_workers=12,
+        expected_workers=12,
+        initializer_attempts=13,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+    )
+    assert unhealthy_since is None
+    assert reason is None
+
+    unhealthy_since, reason = _worker_capacity_watchdog_update(
+        now_s=100.0,
+        unhealthy_since_s=unhealthy_since,
+        capacity_healthy=False,
+        pool_stopped=False,
+        ready_workers=11,
+        expected_workers=12,
+        initializer_attempts=14,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+    )
+    assert unhealthy_since == 100.0
+    assert reason is None
+
+
+def test_capacity_watchdog_treats_rotating_minority_as_healthy() -> None:
+    unhealthy_since, reason = _worker_capacity_watchdog_update(
+        now_s=200.0,
+        unhealthy_since_s=100.0,
+        capacity_healthy=False,
+        pool_stopped=False,
+        ready_workers=30,
+        expected_workers=36,
+        initializer_attempts=500,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+        minimum_ready_workers=29,
+    )
+    assert unhealthy_since is None
+    assert reason is None
+
+    unhealthy_since, reason = _worker_capacity_watchdog_update(
+        now_s=200.0,
+        unhealthy_since_s=100.0,
+        capacity_healthy=False,
+        pool_stopped=False,
+        ready_workers=28,
+        expected_workers=36,
+        initializer_attempts=500,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+        minimum_ready_workers=29,
+    )
+    assert unhealthy_since == 100.0
+    assert reason is not None
+    assert "minimum_ready=29" in reason
+
+def test_capacity_watchdog_fails_stopped_or_initializer_failed_pool_immediately() -> None:
+    _, stopped_reason = _worker_capacity_watchdog_update(
+        now_s=1.0,
+        unhealthy_since_s=None,
+        capacity_healthy=False,
+        pool_stopped=True,
+        ready_workers=11,
+        expected_workers=12,
+        initializer_attempts=13,
+        initializer_failures=0,
+        recovery_grace_s=60.0,
+    )
+    assert stopped_reason is not None
+    assert "pool stopped" in stopped_reason
+
+    _, initializer_reason = _worker_capacity_watchdog_update(
+        now_s=1.0,
+        unhealthy_since_s=None,
+        capacity_healthy=False,
+        pool_stopped=False,
+        ready_workers=11,
+        expected_workers=12,
+        initializer_attempts=13,
+        initializer_failures=1,
+        recovery_grace_s=60.0,
+    )
+    assert initializer_reason is not None
+    assert "initializer failed" in initializer_reason
+
+
+def test_capacity_recovery_grace_is_configurable_by_env_and_cli(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S", "60"
+    )
+    assert _parse_args([]).worker_capacity_recovery_grace_s == 60.0
+    assert (
+        _parse_args(["--worker-capacity-recovery-grace-s", "30"])
+        .worker_capacity_recovery_grace_s
+        == 30.0
+    )
+    monkeypatch.setenv("POKEBOT_REMOTE_WORKER_MIN_READY_FRAC", "0.80")
+    assert _parse_args([]).worker_capacity_min_ready_frac == 0.80
+    assert (
+        _parse_args(["--worker-capacity-min-ready-frac", "0.90"])
+        .worker_capacity_min_ready_frac
+        == 0.90
+    )
 
 
 def test_non_smoke_arm_requires_env_and_exact_token_file(

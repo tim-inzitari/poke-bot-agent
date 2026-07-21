@@ -34,6 +34,8 @@ SHARD_FORMAT_VERSION = 1
 MANIFEST_FORMAT = "pokebot-bootstrap-feature-manifest"
 MANIFEST_FORMAT_VERSION = 1
 COMPACT_MODE = "stateless-core-v1"
+COMPACT_MODE_TEMPORAL_EXPERT = "temporal-expert-v1"
+SUPPORTED_COMPACT_MODES = frozenset({COMPACT_MODE, COMPACT_MODE_TEMPORAL_EXPERT})
 
 
 def _sha256(path: Path) -> str:
@@ -82,11 +84,79 @@ def compact_stateless_sequence(sequence: GameSequence) -> GameSequence:
     return sequence
 
 
+def compact_temporal_expert_sequence(sequence: GameSequence) -> GameSequence:
+    """Compact an expert sequence without destroying temporal/aux targets.
+
+    Unlike :func:`compact_stateless_sequence`, this representation retains the
+    shifted previous-action token, privileged target-only labels, and collapsed
+    Alakazam guide targets.  Opponent-private values remain exclusively under
+    ``DecisionSample.aux_labels``; they are never copied into board features.
+    """
+    sequence.deck = array("I", sequence.deck)  # type: ignore[assignment]
+    sequence.source = ""
+    sequence.target_provenance = {}
+    hard_targets_only = sequence.factorized_policy_targets is None
+    for decision in sequence.decisions:
+        _compact_sparse(decision.board)
+        _compact_sparse(decision.options)
+        if decision.action_token is None:
+            raise ValueError("temporal expert decision is missing its action token")
+        _compact_sparse(decision.action_token)
+        decision.action = []
+        if hard_targets_only:
+            decision.action_combos = []
+        for stage in decision.policy_stages:
+            _compact_sparse(stage.options)
+            if hard_targets_only:
+                stage.action_combos = []
+    return sequence
+
+
+def _target_coverage(sequence: GameSequence) -> dict[str, int]:
+    coverage = {
+        "temporal_action_rows": 0,
+        "opponent_hand_rows": 0,
+        "opponent_remainder_rows": 0,
+        "opponent_private_prize_rows": 0,
+        "lethal_threat_rows": 0,
+        "prize_race_rows": 0,
+        "guide_rows": 0,
+    }
+    for decision in sequence.decisions:
+        # Legacy compact shards (and callers inspecting them before full
+        # hydration) may contain decision-like rows without the newer temporal
+        # or auxiliary attributes.  Missing labels mean zero coverage; they do
+        # not make an otherwise readable legacy manifest unfilterable.
+        if getattr(decision, "action_token", None) is not None:
+            coverage["temporal_action_rows"] += 1
+        aux = dict(getattr(decision, "aux_labels", None) or {})
+        if aux.get("opp_hand") is not None:
+            coverage["opponent_hand_rows"] += 1
+        if aux.get("opp_hidden_remainder") is not None or any(
+            aux.get(key) is not None
+            for key in ("opp_hand", "opp_deck_order", "opp_prizes")
+        ):
+            coverage["opponent_remainder_rows"] += 1
+        if aux.get("opp_prizes") is not None:
+            coverage["opponent_private_prize_rows"] += 1
+        if aux.get("lethal_threat") is not None:
+            coverage["lethal_threat_rows"] += 1
+        if aux.get("prize_race") is not None:
+            coverage["prize_race_rows"] += 1
+        coverage["guide_rows"] += sum(
+            int(getattr(stage, "guide_target_index", -1) >= 0)
+            for stage in (getattr(decision, "policy_stages", None) or ())
+        )
+    return coverage
+
+
 def _convert_raw(
     raw: str,
     max_context: int,
     verify_info_set: bool,
     allowed_sources: tuple[str, ...],
+    compact_mode: str,
+    required_archetype: str,
 ) -> tuple[Optional[GameSequence], Optional[str], dict[str, int]]:
     try:
         record = json.loads(raw)
@@ -104,13 +174,24 @@ def _convert_raw(
             "policy_targets_padded": 0,
             "policy_targets_truncated": 0,
         }
+    if required_archetype and str(record.get("archetype") or "").casefold() != required_archetype:
+        return None, "archetype_mismatch", {
+            "decisions_truncated": 0,
+            "policy_targets_padded": 0,
+            "policy_targets_truncated": 0,
+        }
     sequence, reason, details = convert_record(
         record,
         max_context=max_context,
         verify_info_set=verify_info_set,
     )
     if sequence is not None:
-        compact_stateless_sequence(sequence)
+        if compact_mode == COMPACT_MODE:
+            compact_stateless_sequence(sequence)
+        elif compact_mode == COMPACT_MODE_TEMPORAL_EXPERT:
+            compact_temporal_expert_sequence(sequence)
+        else:  # guarded by write_feature_shard; defensive for worker callers
+            raise ValueError(f"unsupported compact mode: {compact_mode}")
     return sequence, reason, details
 
 
@@ -126,7 +207,7 @@ def _iter_nonempty_lines(path: Path, max_records: int = 0) -> Iterator[str]:
                 return
 
 
-def _new_stats() -> dict[str, Any]:
+def _new_stats(compact_mode: str = COMPACT_MODE) -> dict[str, Any]:
     return {
         "records_total": 0,
         "records_kept": 0,
@@ -138,7 +219,16 @@ def _new_stats() -> dict[str, Any]:
         "policy_targets_truncated": 0,
         "dataset_schema": DATASET_CACHE_SCHEMA_VERSION,
         "feature_schema": features.FEATURE_SCHEMA_VERSION,
-        "compact_mode": COMPACT_MODE,
+        "compact_mode": compact_mode,
+        "target_coverage": {
+            "temporal_action_rows": 0,
+            "opponent_hand_rows": 0,
+            "opponent_remainder_rows": 0,
+            "opponent_private_prize_rows": 0,
+            "lethal_threat_rows": 0,
+            "prize_race_rows": 0,
+            "guide_rows": 0,
+        },
     }
 
 
@@ -162,6 +252,9 @@ def _account(
         return None
     stats["records_kept"] += 1
     stats["decisions_kept"] += len(sequence)
+    coverage = stats["target_coverage"]
+    for key, count in _target_coverage(sequence).items():
+        coverage[key] = int(coverage.get(key, 0)) + int(count)
     return sequence
 
 
@@ -175,6 +268,8 @@ def write_feature_shard(
     max_in_flight: int = 0,
     max_records: int = 0,
     verify_info_set: bool = True,
+    compact_mode: str = COMPACT_MODE,
+    required_archetype: str = "",
 ) -> dict[str, Any]:
     """Build one atomic feature stream with bounded parent/worker memory."""
     jsonl_path = Path(jsonl_path).resolve()
@@ -185,18 +280,23 @@ def write_feature_shard(
         raise ValueError("workers must be positive")
     if output_path.exists():
         raise FileExistsError(output_path)
+    compact_mode = str(compact_mode).strip()
+    if compact_mode not in SUPPORTED_COMPACT_MODES:
+        raise ValueError(f"unsupported compact mode: {compact_mode}")
+    required_archetype = str(required_archetype).strip().casefold()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     partial = output_path.with_name(f".{output_path.name}.partial.{os.getpid()}")
     sidecar = output_path.with_suffix(output_path.suffix + ".json")
     sidecar_tmp = sidecar.with_name(f".{sidecar.name}.partial.{os.getpid()}")
     in_flight = max(workers, max_in_flight or workers * 2)
-    stats = _new_stats()
+    stats = _new_stats(compact_mode)
     header = {
         "format": SHARD_FORMAT,
         "format_version": SHARD_FORMAT_VERSION,
         "dataset_schema": DATASET_CACHE_SCHEMA_VERSION,
         "feature_schema": features.FEATURE_SCHEMA_VERSION,
-        "compact_mode": COMPACT_MODE,
+        "compact_mode": compact_mode,
+        "required_archetype": required_archetype or None,
         "source_jsonl": jsonl_path.name,
         "source_jsonl_bytes": jsonl_path.stat().st_size,
         "source_dates": list(source_dates),
@@ -228,6 +328,8 @@ def write_feature_shard(
                         max_context,
                         verify_info_set,
                         allowed_sources,
+                        compact_mode,
+                        required_archetype,
                     )
                 )
                 return True
@@ -327,7 +429,10 @@ def load_feature_manifest(
     if not shards:
         raise ValueError("feature manifest contains no shards")
     sequences: list[GameSequence] = []
-    combined = _new_stats()
+    manifest_mode = str(payload.get("compact_mode") or COMPACT_MODE)
+    if manifest_mode not in SUPPORTED_COMPACT_MODES:
+        raise ValueError(f"unsupported manifest compact mode: {manifest_mode}")
+    combined = _new_stats(manifest_mode)
     combined["records_total"] = 0
     from tqdm.auto import tqdm
 
@@ -351,6 +456,9 @@ def load_feature_manifest(
             combined["drop_reasons"][reason] = (
                 int(combined["drop_reasons"].get(reason, 0)) + int(count)
             )
+        combined_coverage = combined["target_coverage"]
+        for key, count in dict(stats.get("target_coverage") or {}).items():
+            combined_coverage[key] = int(combined_coverage.get(key, 0)) + int(count)
         expected = int(stats.get("records_kept", 0))
         before = len(sequences)
         for sequence in tqdm(

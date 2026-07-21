@@ -41,7 +41,15 @@ except ModuleNotFoundError:  # direct ``python scripts/unattended_monitor.py``
 
 
 FATAL_PATTERNS = {
-    "fail_closed": re.compile(r"FAIL-CLOSED|fail[_ -]closed(?:_games)?=[1-9]", re.I),
+    # A remote worker can briefly reject work while recycling children or
+    # reloading a checkpoint.  Those lines are explicitly retried by the
+    # scheduler and always begin with ``[remote]``.  Killing the trainer merely
+    # because the nested remote error contains "fail-closed" turns a recoverable
+    # endpoint outage into loss of the entire append-only iteration.
+    "fail_closed": re.compile(
+        r"^(?!\[remote\]).*(?:FAIL-CLOSED|fail[_ -]closed(?:_games)?=[1-9])",
+        re.I | re.M,
+    ),
     "zero_target": re.compile(r"zero[_ -]target(?:_games)?=[1-9]", re.I),
     "incomplete": re.compile(
         r"game (?:is )?incomplete|incomplete after|reached max_steps", re.I
@@ -51,9 +59,9 @@ FATAL_PATTERNS = {
     # lines that embed ``pin digest mismatch`` / reload JSON (Elmo/bert can
     # soft-drop + reconnect without killing the overnight trainer).
     "digest_mismatch": re.compile(
-        r"(?:initial checkpoint|reload|leaf response checkpoint) digest mismatch|"
-        r"FAIL-CLOSED.*digest",
-        re.I,
+        r"^(?!\[remote\]).*(?:(?:initial checkpoint|reload|leaf response "
+        r"checkpoint) digest mismatch|FAIL-CLOSED.*digest)",
+        re.I | re.M,
     ),
     "non_finite": re.compile(r"\b(?:nan|inf)\b|non-finite|loss explosion", re.I),
     "missing_opponent": re.compile(r"expected (?:baseline|opponent) unavailable", re.I),
@@ -164,6 +172,16 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
             "Optional sibling *.progress.status (tqdm / shard-mirror). "
             "mtime or content changes count as progress so stall-guard is "
             "not needed when bars live on stderr→progress.log."
+        ),
+    )
+    p.add_argument(
+        "--progress-log",
+        type=Path,
+        default=None,
+        help=(
+            "Optional sibling *.progress.log. Direct tqdm users such as the "
+            "optimizer and agreement passes do not update *.progress.status; "
+            "append activity here must therefore reset the stall timer."
         ),
     )
     return p.parse_args(argv)
@@ -354,6 +372,38 @@ def _read_new_log_chunk(
         return "", offset, False
 
 
+def _progress_file_sample(
+    path: Path,
+    *,
+    now: float | None = None,
+    tail_bytes: int = 64 * 1024,
+) -> tuple[tuple[int, int, str] | None, str, float]:
+    """Return a change key, latest visible tqdm frame, and file age.
+
+    Collection bars mirror into ``*.progress.status``, while policy training,
+    validation, and agreement passes use tqdm directly on stderr.  Their only
+    live heartbeat is the append-only progress log.  Sampling the tail avoids
+    loading a potentially long-running log and makes any append or rewrite a
+    trusted liveness signal without treating CPU usage alone as correctness.
+    """
+    observed_at = time.time() if now is None else float(now)
+    try:
+        st = path.stat()
+        with path.open("rb") as stream:
+            stream.seek(max(0, int(st.st_size) - max(1, int(tail_bytes))))
+            raw = stream.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None, "", float("inf")
+    visible_lines = [
+        ANSI_PATTERN.sub("", line).strip()
+        for line in raw.replace("\r", "\n").splitlines()
+        if line.strip()
+    ]
+    latest = visible_lines[-1] if visible_lines else ""
+    key = (int(st.st_mtime_ns), int(st.st_size), latest[-240:])
+    return key, latest, max(0.0, observed_at - float(st.st_mtime))
+
+
 def _request_stop(pid: int, process_group: bool, reason: str) -> None:
     print(f"MONITOR_ALERT stop_requested reason={reason}", flush=True)
     try:
@@ -409,6 +459,13 @@ def main() -> int:
         else None
     )
     last_status_key: tuple[float, int, str] | None = None
+    progress_log = (
+        args.progress_log.resolve()
+        if args.progress_log is not None
+        else None
+    )
+    last_progress_log_key: tuple[int, int, str] | None = None
+    progress_log_age = float("inf")
 
     while True:
         now = time.time()
@@ -462,6 +519,22 @@ def main() -> int:
                 last_progress = time.monotonic()
                 if status_key[2]:
                     last_progress_line = status_key[2]
+        # Optimizer/validation/agreement tqdm instances write directly to
+        # stderr→*.progress.log and intentionally do not touch the collector's
+        # *.progress.status mirror.  Missing this heartbeat killed a healthy
+        # 110-GiB trainer at 94% of its parent-agreement pass.
+        if progress_log is not None:
+            progress_log_key, progress_log_line, progress_log_age = (
+                _progress_file_sample(progress_log, now=now)
+            )
+            if (
+                progress_log_key is not None
+                and progress_log_key != last_progress_log_key
+            ):
+                last_progress_log_key = progress_log_key
+                last_progress = time.monotonic()
+                if progress_log_line:
+                    last_progress_line = progress_log_line
         log_growth = max(0, size - max(last_size, 0))
         fatal = [
             name for name, pattern in FATAL_PATTERNS.items() if pattern.search(chunk)
@@ -535,6 +608,8 @@ def main() -> int:
                 "last_gate": last_gate_line,
                 "last_metrics": last_metric_line,
                 "status_path": str(progress_status) if progress_status else "",
+                "log_path": str(progress_log) if progress_log else "",
+                "log_age_seconds": progress_log_age,
             },
             "oom_count": oom_count,
             "fatal_signals": fatal,

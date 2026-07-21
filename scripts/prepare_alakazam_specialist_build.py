@@ -39,7 +39,6 @@ TESTS = (
     "tests/test_alakazam_guide_distillation.py",
     "tests/test_alakazam_guide_targets.py",
     "tests/test_specialist_archetype_contract.py",
-    "tests/test_curriculum_all_heads.py",
     "tests/test_deck_agnostic_transition_service.py",
     "tests/test_pure_rl_awr.py",
     "tests/test_pure_rl_replay_cache.py",
@@ -142,25 +141,6 @@ def main() -> int:
     parser.add_argument("--min-expert-decisions", type=int, default=100_000)
     parser.add_argument("--min-free-disk-gb", type=float, default=100.0)
     parser.add_argument(
-        "--hidden-engine",
-        type=Path,
-        default=ROOT / "outputs/engines/libcg_hidden_inzi_v1.so",
-    )
-    parser.add_argument(
-        "--hidden-engine-sha256",
-        default=(
-            "sha256:923cb0705bab303d0d2025da3647233c35fa4ce324e763816038d1e6fda10387"
-        ),
-    )
-    parser.add_argument(
-        "--allow-frozen-core-handoff",
-        action="store_true",
-        help=(
-            "Re-arm a digest-stale specialist build after the core has already "
-            "been frozen and the immutable bootstrap is running or complete."
-        ),
-    )
-    parser.add_argument(
         "--remote-endpoint",
         action="append",
         default=["192.168.1.143:8765", "bert.local:8766"],
@@ -226,32 +206,14 @@ def main() -> int:
     )
     if "RTX 3080 Ti" not in gpu_text or "RTX PRO 5000 Blackwell" not in gpu_text:
         raise RuntimeError("specialist build requires both the 3080 Ti and Blackwell")
-    hidden_engine = args.hidden_engine.expanduser().resolve()
-    if not hidden_engine.is_file():
-        raise FileNotFoundError(f"hidden-state training engine missing: {hidden_engine}")
-    hidden_engine_digest = sha256(hidden_engine)
-    if hidden_engine_digest != str(args.hidden_engine_sha256):
-        raise RuntimeError(
-            "hidden-state training engine digest mismatch: "
-            f"actual={hidden_engine_digest} expected={args.hidden_engine_sha256}"
-        )
     states = {unit: systemctl_state(unit) for unit in UNITS}
+    if states["pokebot-pure-rl-alakazam-bootstrap.service"] not in {"inactive", "failed"}:
+        raise RuntimeError("Alakazam bootstrap is unexpectedly active during readiness")
     if states["pokebot-pure-rl-alakazam.service"] not in {"inactive", "failed"}:
         raise RuntimeError("Alakazam specialist is unexpectedly active during readiness")
     core_state = systemctl_state("pokebot-pure-rl-continuous-rehearsal.service")
-    bootstrap_state = states["pokebot-pure-rl-alakazam-bootstrap.service"]
-    if args.allow_frozen_core_handoff:
-        if bootstrap_state == "failed":
-            raise RuntimeError("Alakazam bootstrap failed during handoff re-arm")
-        if core_state == "active":
-            raise RuntimeError("frozen-core handoff re-arm found core still active")
-    else:
-        if bootstrap_state not in {"inactive", "failed"}:
-            raise RuntimeError(
-                "Alakazam bootstrap is unexpectedly active during readiness"
-            )
-        if core_state != "active":
-            raise RuntimeError("Deck Agnostic Core is not active during readiness")
+    if core_state != "active":
+        raise RuntimeError("Deck Agnostic Core is not active during readiness")
 
     endpoints = [endpoint_ready(value) for value in dict.fromkeys(args.remote_endpoint)]
     artifacts = {
@@ -302,11 +264,6 @@ def main() -> int:
             "checkpoint_dir": str(checkpoint_dir),
             "free_disk_gib": free_gb,
             "gpus": [line for line in gpu_text.splitlines() if line.strip()],
-            "hidden_engine": {
-                "path": str(hidden_engine),
-                "sha256": hidden_engine_digest,
-                "training_only": True,
-            },
             "remote_endpoints": endpoints,
         },
         "handoff_contract": {

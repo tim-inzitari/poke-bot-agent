@@ -172,6 +172,83 @@ def test_client_rejects_semantic_failure_before_returning(
         client.submit_job({"game_timeout_s": 1})
 
 
+@pytest.mark.parametrize("operation", ["control", "job"])
+def test_disconnected_registered_client_reconnects_before_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """A present client with no socket must heal instead of failing the gate."""
+
+    class _Socket:
+        timeout: float | None = 30.0
+
+        def gettimeout(self) -> float | None:
+            return self.timeout
+
+        def settimeout(self, timeout: float | None) -> None:
+            self.timeout = timeout
+
+    sent: list[dict[str, object]] = []
+    reconnects: list[bool] = []
+    client = RemoteJobClient("recycled-worker.example")
+    assert client._sock is None
+
+    def _reconnect() -> RemoteWorkerInfo:
+        reconnects.append(True)
+        client._sock = _Socket()  # type: ignore[assignment]
+        return RemoteWorkerInfo(
+            endpoint=client.endpoint,
+            workers=1,
+            leaf_servers=0,
+            gpu_name="",
+            device="cpu",
+            checkpoint_digest=None,
+            hostname=client.host,
+        )
+
+    monkeypatch.setattr(client, "reconnect", _reconnect)
+    monkeypatch.setattr(
+        remote_jobs,
+        "send_frame",
+        lambda _sock, message: sent.append(message),
+    )
+    if operation == "control":
+        monkeypatch.setattr(
+            remote_jobs,
+            "read_frame",
+            lambda _sock: {"type": "reload_ok", "ok": True},
+        )
+        reply = client._control_call({"type": "reload", "path": "/tmp/a.pt"})
+        assert reply["type"] == "reload_ok"
+    else:
+        monkeypatch.setattr(
+            remote_jobs,
+            "resolve_remote_checkpoint_path",
+            lambda _h, path: path,
+        )
+        monkeypatch.setattr(
+            remote_jobs,
+            "read_frame",
+            lambda _sock: {
+                "type": "result",
+                "ok": True,
+                "result": {
+                    "winner": 0,
+                    "our_failed": False,
+                    "resource_error": False,
+                    "cancelled": False,
+                    "error": None,
+                    "record_json": "{}",
+                },
+            },
+        )
+        reply = client.submit_job({"game_timeout_s": 1})
+        assert reply["winner"] == 0
+
+    assert reconnects == [True]
+    assert len(sent) == 1
+
+
 def test_semantic_remote_failure_uses_existing_local_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -752,9 +829,9 @@ def test_low_water_refills_elmo_and_bert_in_the_same_probe_round(
 ) -> None:
     monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
     monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH", "1")
-    monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH_MAX", "2")
+    monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH_MAX", "4")
     monkeypatch.setenv("POKEBOT_REMOTE_QUEUE_LOW_WATER_FRAC", "0.5")
-    monkeypatch.setenv("POKEBOT_REMOTE_QUEUE_PROBE_S", "0.5")
+    monkeypatch.setenv("POKEBOT_REMOTE_QUEUE_PROBE_S", "0.2")
     monkeypatch.setenv(
         "POKEBOT_REMOTE_ENDPOINT_CHUNKS",
         "elmo.test:8765=4,bert.test:8766=4",
@@ -786,7 +863,7 @@ def test_low_water_refills_elmo_and_bert_in_the_same_probe_round(
             )
 
         def submit_job(self, job, *, kind="play"):
-            # Keep the wave alive past the 0.5 s probe floor.
+            # Keep the wave alive long enough to observe the independent probe.
             threading.Event().wait(0.03)
             return {"job_index": job["job_index"], "source": self.endpoint}
 
@@ -815,8 +892,7 @@ def test_low_water_refills_elmo_and_bert_in_the_same_probe_round(
             return dict(Decision.remote_demand)
 
     monkeypatch.setattr(remote_jobs, "RemoteJobClient", ProbeAndReserveClient)
-    rows = list(
-        iter_scheduled_additive_results(
+    stream = iter_scheduled_additive_results(
             local_pool=_ScheduledPool(),
             local_fn=lambda job: {"job_index": job["job_index"]},
             jobs=[{"job_index": index} for index in range(160)],
@@ -826,13 +902,20 @@ def test_low_water_refills_elmo_and_bert_in_the_same_probe_round(
             local_workers=1,
             remote_workers=2,
         )
-    )
+    # Pause result ingestion after the first row. The refill controller must
+    # still run on its own 0.2 s cadence and top up both endpoints completely.
+    first = next(stream)
+    threading.Event().wait(0.6)
+    rows = [first, *stream]
 
     assert len(rows) == 160
     assert set(reserve_started) == set(endpoints)
     output = capsys.readouterr().out
+    assert "queue_refill_controller interval=0.200s" in output
     assert "elmo.test:8765 LOW_WATER_REFILL" in output
     assert "bert.test:8766 LOW_WATER_REFILL" in output
+    assert output.count("fill=high_water") >= 2
+    assert output.count("added=3") >= 2
 
 
 def test_endpoint_credit_keeps_slow_bert_fed_across_a_long_wave() -> None:

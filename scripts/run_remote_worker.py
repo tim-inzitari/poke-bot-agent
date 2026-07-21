@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import multiprocessing as mp
 import os
 import signal
@@ -32,6 +33,12 @@ if str(REPO_ROOT) not in sys.path:
 
 #: Advertised capability set for trainer dispatch / redeploy gates.
 REMOTE_JOB_KINDS = ("play", "promotion", "self_play")
+REMOTE_WORKER_CAPABILITIES = (
+    "greedy_play_v1",
+    "active_checkpoint_job_barrier_v1",
+    "play_result_contract_v1",
+    "portable_baseline_spec_v1",
+)
 REMOTE_WORKER_SAFETY_VERSION = "20260717"
 REMOTE_WORKER_ARM_FILE = REPO_ROOT / "outputs" / "state" / "REMOTE_WORKER_ARMED"
 # Production supervisors may opt into this reserved code to distinguish a
@@ -297,6 +304,74 @@ def _service_shutdown_exit_code(
     if planned_rotation:
         return int(planned_rotation_exit_code)
     return REMOTE_WORKER_WATCHDOG_EXIT_CODE
+
+
+def _worker_capacity_watchdog_update(
+    *,
+    now_s: float,
+    unhealthy_since_s: Optional[float],
+    capacity_healthy: bool,
+    pool_stopped: bool,
+    ready_workers: int,
+    expected_workers: int,
+    initializer_attempts: int,
+    initializer_failures: int,
+    recovery_grace_s: float,
+    minimum_ready_workers: Optional[int] = None,
+) -> tuple[Optional[float], Optional[str]]:
+    """Advance the worker-capacity watchdog without penalizing normal recycle.
+
+    ``multiprocessing.Pool`` replaces a child after ``maxtasksperchild``.  The
+    replacement is alive before its complete initializer/slot handshake makes
+    it ready, so a healthy recycling pool can briefly report N-1 capacity.
+    Give that state a monotonic recovery window.  A pool that has explicitly
+    stopped or recorded an initializer failure is not recovering and still
+    fails immediately.
+    """
+    now = float(now_s)
+    grace = max(0.0, float(recovery_grace_s))
+    minimum_ready = min(
+        max(1, int(expected_workers)),
+        max(
+            1,
+            int(
+                expected_workers
+                if minimum_ready_workers is None
+                else minimum_ready_workers
+            ),
+        ),
+    )
+    details = (
+        f"ready={int(ready_workers)} minimum_ready={minimum_ready} "
+        f"expected={int(expected_workers)} "
+        f"init_attempts={int(initializer_attempts)} "
+        f"init_failures={int(initializer_failures)}"
+    )
+
+    if pool_stopped:
+        return (
+            now if unhealthy_since_s is None else float(unhealthy_since_s),
+            f"sim worker pool stopped: {details}",
+        )
+    if int(initializer_failures) > 0:
+        return (
+            now if unhealthy_since_s is None else float(unhealthy_since_s),
+            f"sim worker initializer failed: {details}",
+        )
+    if capacity_healthy or int(ready_workers) >= minimum_ready:
+        return None, None
+
+    unhealthy_since = (
+        now if unhealthy_since_s is None else float(unhealthy_since_s)
+    )
+    unhealthy_for = max(0.0, now - unhealthy_since)
+    if unhealthy_for < grace:
+        return unhealthy_since, None
+    return (
+        unhealthy_since,
+        "sim worker capacity did not recover within grace: "
+        f"{details} unhealthy_for={unhealthy_for:.1f}s grace={grace:.1f}s",
+    )
 
 
 def _remote_worker_arm_error(*, smoke: bool) -> Optional[str]:
@@ -595,6 +670,32 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         type=float,
         default=float(os.environ.get("POKEBOT_REMOTE_WATCHDOG_INTERVAL_S", "5")),
     )
+    p.add_argument(
+        "--worker-capacity-recovery-grace-s",
+        type=float,
+        default=float(
+            os.environ.get(
+                "POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S",
+                "15",
+            )
+        ),
+        help=(
+            "Time a running sim pool may remain below full ready capacity "
+            "while a recycled child initializes; stopped pools and initializer "
+            "failures remain immediately fatal (default: 15s)"
+        ),
+    )
+    p.add_argument(
+        "--worker-capacity-min-ready-frac",
+        type=float,
+        default=float(
+            os.environ.get("POKEBOT_REMOTE_WORKER_MIN_READY_FRAC", "0.80")
+        ),
+        help=(
+            "Ready-worker fraction considered healthy during bounded child "
+            "rotation. Stopped pools and initializer failures remain fatal."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -754,6 +855,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             file=sys.stderr,
         )
         return 64
+    if not 0.0 < float(args.worker_capacity_min_ready_frac) <= 1.0:
+        print(
+            "[remote-worker] ERROR: --worker-capacity-min-ready-frac must be "
+            "within (0, 1]",
+            file=sys.stderr,
+        )
+        return 64
     os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
     if args.cpu_only_workers:
         os.environ["POKEBOT_WORKER_CPU_ONLY"] = "1"
@@ -820,7 +928,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         f"leaf_max_batch={args.leaf_max_batch} ckpt={ckpt.name} "
         f"digest={digest[:12]}… "
         f"rss_limit={args.tree_rss_limit_gb:.1f}GiB "
-        f"min_free={args.min_free_ram_gb:.1f}GiB",
+        f"min_free={args.min_free_ram_gb:.1f}GiB "
+        "worker_capacity_recovery_grace="
+        f"{max(0.0, float(args.worker_capacity_recovery_grace_s)):.1f}s",
         flush=True,
     )
 
@@ -1055,10 +1165,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         "controller_error": None,
         "jobs_completed": 0,
         "jobs_failed": 0,
+        "decisions_completed": 0,
+        "trajectories_completed": 0,
         "started_at": time.time(),
         "tree_rss_gb": None,
         "free_ram_gb": _free_ram_gb(),
         "live_worker_pids": list(pool.ready_worker_pids),
+        "worker_capacity_unhealthy_for_s": 0.0,
         "shutdown_reason": None,
         "shutdown_exit_code": 0,
         "leaf_expect": leaf_expect,
@@ -1211,11 +1324,20 @@ def main(argv: Optional[list[str]] = None) -> int:
             "tree_rss_limit_gb": float(args.tree_rss_limit_gb),
             "live_worker_pids": list(state.get("live_worker_pids") or []),
             "worker_capacity_healthy": pool.worker_capacity_healthy,
+            "worker_capacity_recovery_grace_s": max(
+                0.0, float(args.worker_capacity_recovery_grace_s)
+            ),
+            "worker_capacity_unhealthy_for_s": float(
+                state.get("worker_capacity_unhealthy_for_s") or 0.0
+            ),
             "shutdown_reason": state.get("shutdown_reason"),
             "jobs_completed": state["jobs_completed"],
             "jobs_failed": state["jobs_failed"],
+            "decisions_completed": state["decisions_completed"],
+            "trajectories_completed": state["trajectories_completed"],
             "uptime_s": time.time() - state["started_at"],
             "job_kinds": list(REMOTE_JOB_KINDS),
+            "capabilities": list(REMOTE_WORKER_CAPABILITIES),
         }
 
     def hello() -> dict[str, Any]:
@@ -1524,6 +1646,19 @@ def main(argv: Optional[list[str]] = None) -> int:
                     state["active_jobs"] = max(0, int(state["active_jobs"]) - 1)
                     if succeeded:
                         state["jobs_completed"] += 1
+                        try:
+                            state["decisions_completed"] += max(
+                                0, int(result.get("n_decisions") or 0)
+                            )
+                            records = list(result.get("record_jsons") or [])
+                            if not records and result.get("record_json"):
+                                records = [result["record_json"]]
+                            state["trajectories_completed"] += len(records)
+                        except (AttributeError, TypeError, ValueError):
+                            # Telemetry must never change a completed job into a
+                            # failed one; malformed results are handled by the
+                            # existing result-validation path on the trainer.
+                            pass
                     else:
                         state["jobs_failed"] += 1
                     ctrl_cond.notify_all()
@@ -1541,8 +1676,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         stop_event.set()
 
     def _watch_resources() -> None:
-        missing_pool_samples = 0
+        capacity_unhealthy_since: Optional[float] = None
         interval = max(1.0, float(args.watchdog_interval_s))
+        capacity_recovery_grace = max(
+            0.0, float(args.worker_capacity_recovery_grace_s)
+        )
+        capacity_min_ready = max(
+            1,
+            int(math.ceil(n_workers * float(args.worker_capacity_min_ready_frac))),
+        )
         while not stop_event.wait(interval):
             # A multiprocessing child can be alive while repeatedly failing
             # its initializer or waiting for a response-slot lease. Only the
@@ -1552,10 +1694,51 @@ def main(argv: Optional[list[str]] = None) -> int:
             state["tree_rss_gb"] = _process_tree_rss_gb()
             state["free_ram_gb"] = _free_ram_gb()
 
-            if not pool.worker_capacity_healthy:
-                missing_pool_samples += 1
-            else:
-                missing_pool_samples = 0
+            now = time.monotonic()
+            prior_unhealthy_since = capacity_unhealthy_since
+            capacity_unhealthy_since, capacity_reason = (
+                _worker_capacity_watchdog_update(
+                    now_s=now,
+                    unhealthy_since_s=capacity_unhealthy_since,
+                    capacity_healthy=pool.worker_capacity_healthy,
+                    pool_stopped=pool.stopped,
+                    ready_workers=len(ready_pids),
+                    expected_workers=n_workers,
+                    initializer_attempts=pool.initializer_attempts,
+                    initializer_failures=pool.initializer_failures,
+                    recovery_grace_s=capacity_recovery_grace,
+                    minimum_ready_workers=capacity_min_ready,
+                )
+            )
+            state["worker_capacity_unhealthy_for_s"] = (
+                max(0.0, now - capacity_unhealthy_since)
+                if capacity_unhealthy_since is not None
+                else 0.0
+            )
+            if (
+                prior_unhealthy_since is None
+                and capacity_unhealthy_since is not None
+                and capacity_reason is None
+            ):
+                print(
+                    "[remote-worker] WATCHDOG sim worker capacity reduced; "
+                    f"ready={len(ready_pids)} minimum_ready={capacity_min_ready} "
+                    f"expected={n_workers} "
+                    f"allowing {capacity_recovery_grace:.1f}s for recycle recovery",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            elif (
+                prior_unhealthy_since is not None
+                and capacity_unhealthy_since is None
+            ):
+                print(
+                    "[remote-worker] WATCHDOG sim worker capacity recovered "
+                    f"after {max(0.0, now - prior_unhealthy_since):.1f}s; "
+                    f"ready={len(ready_pids)} expected={n_workers}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
             reason: Optional[str] = None
             shutdown_exit_code = _service_shutdown_exit_code(
@@ -1571,13 +1754,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             ]
             if dead_leaves:
                 reason = f"leaf process/event died indices={dead_leaves}"
-            elif missing_pool_samples >= 3:
-                reason = (
-                    "sim worker capacity did not recover: "
-                    f"ready={len(ready_pids)} expected={n_workers} "
-                    f"init_attempts={pool.initializer_attempts} "
-                    f"init_failures={pool.initializer_failures}"
-                )
+            elif capacity_reason is not None:
+                reason = capacity_reason
 
             rss_gb = state.get("tree_rss_gb")
             if (

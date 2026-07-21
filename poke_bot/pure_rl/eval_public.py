@@ -31,6 +31,191 @@ class HeldOutGateResult:
     reason: str = ""
 
 
+def _wilson_interval(
+    wins: float,
+    games: int,
+    *,
+    confidence_z: float = 1.96,
+) -> tuple[float, float]:
+    """Return a Wilson interval for wins where a draw counts as half a win."""
+    n = int(games)
+    if n <= 0:
+        return 0.0, 0.0
+    wr = float(wins) / n
+    z = max(0.0, float(confidence_z))
+    denom = 1.0 + z * z / n
+    center = (wr + z * z / (2.0 * n)) / denom
+    radius = (
+        z
+        * math.sqrt(max(0.0, wr * (1.0 - wr) / n + z * z / (4.0 * n * n)))
+        / denom
+    )
+    return max(0.0, center - radius), min(1.0, center + radius)
+
+
+def heldout_goal_rank(
+    evidence: dict[str, Any],
+    *,
+    official_ids: Optional[Iterable[str]] = None,
+    per_opponent_floor: float = 0.50,
+    confidence_z: float = 1.96,
+) -> tuple[float, ...]:
+    """Rank exact held-out evidence by progress toward beating every baseline.
+
+    The weakest official matchup is intentionally primary.  Pooled win rate
+    alone can hide a catastrophic matchup and is therefore only a late
+    tie-breaker.  Missing per-opponent evidence ranks below audited evidence.
+    """
+    ordered = tuple(official_ids or OFFICIAL_BASELINE_IDS)
+    per = evidence.get("per_opponent")
+    if not isinstance(per, dict) or any(oid not in per for oid in ordered):
+        return (
+            0.0,
+            -1.0,
+            -1.0,
+            -1.0,
+            -1.0,
+            -1.0,
+            float(evidence.get("confidence_lower", -1.0)),
+            float(evidence.get("win_rate", -1.0)),
+            float(evidence.get("games", -1)),
+        )
+
+    wrs: list[float] = []
+    lowers: list[float] = []
+    for oid in ordered:
+        bucket = per.get(oid)
+        if not isinstance(bucket, dict):
+            return (0.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+        try:
+            games = int(bucket.get("games", 0))
+            wins = float(bucket.get("wins", 0.0))
+        except (TypeError, ValueError):
+            return (0.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+        if games <= 0:
+            return (0.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+        wr = wins / games
+        lower, _ = _wilson_interval(wins, games, confidence_z=confidence_z)
+        wrs.append(wr)
+        lowers.append(lower)
+
+    floor = max(float(per_opponent_floor), 1e-12)
+    clipped_progress = sum(min(wr / floor, 1.0) for wr in wrs) / len(wrs)
+    all_clear = float(all(wr >= floor for wr in wrs))
+    return (
+        1.0,
+        all_clear,
+        min(lowers),
+        min(wrs),
+        clipped_progress,
+        sum(lowers) / len(lowers),
+        float(evidence.get("confidence_lower", -1.0)),
+        float(evidence.get("win_rate", -1.0)),
+        float(evidence.get("games", -1)),
+    )
+
+
+def heldout_exploration_decision(
+    candidate: dict[str, Any],
+    anchor: dict[str, Any],
+    *,
+    official_ids: Optional[Iterable[str]] = None,
+    per_opponent_floor: float = 0.50,
+    max_per_opponent_regression: float = 0.02,
+    minimum_progress_gain: float = 0.01,
+) -> dict[str, Any]:
+    """Decide whether a non-champion candidate is safe to keep learning from.
+
+    The immutable held-out champion is still selected by :func:`heldout_goal_rank`.
+    This narrower decision only prevents the *learner* from snapping back to an
+    old checkpoint because of a few games of sampling noise.  A candidate must
+    have complete equal-or-better sample coverage, remain within the explicit
+    point-WR margin against every official opponent, and improve average clipped
+    progress toward the per-opponent floor.  Comparing every candidate to the
+    protected anchor (rather than to the previous exploratory learner) prevents
+    cumulative regression across iterations.
+    """
+    ordered = tuple(official_ids or OFFICIAL_BASELINE_IDS)
+    margin = max(0.0, float(max_per_opponent_regression))
+    required_gain = max(0.0, float(minimum_progress_gain))
+    floor = max(float(per_opponent_floor), 1e-12)
+
+    def _rates(evidence: dict[str, Any]) -> tuple[dict[str, float], dict[str, int]] | None:
+        per = evidence.get("per_opponent")
+        if not isinstance(per, dict) or any(oid not in per for oid in ordered):
+            return None
+        rates: dict[str, float] = {}
+        games_by_opponent: dict[str, int] = {}
+        for oid in ordered:
+            bucket = per.get(oid)
+            if not isinstance(bucket, dict):
+                return None
+            try:
+                games = int(bucket.get("games", 0))
+                wins = float(bucket.get("wins", 0.0))
+            except (TypeError, ValueError):
+                return None
+            if games <= 0 or not 0.0 <= wins <= float(games):
+                return None
+            games_by_opponent[oid] = games
+            rates[oid] = wins / games
+        return rates, games_by_opponent
+
+    candidate_values = _rates(candidate)
+    anchor_values = _rates(anchor)
+    if candidate_values is None or anchor_values is None:
+        return {
+            "eligible": False,
+            "reason": "missing_or_invalid_exact_per_opponent_evidence",
+        }
+    candidate_rates, candidate_games = candidate_values
+    anchor_rates, anchor_games = anchor_values
+    insufficient = [
+        oid
+        for oid in ordered
+        if candidate_games[oid] < anchor_games[oid]
+    ]
+    regressions = {
+        oid: candidate_rates[oid] - anchor_rates[oid]
+        for oid in ordered
+    }
+    candidate_progress = sum(
+        min(candidate_rates[oid] / floor, 1.0) for oid in ordered
+    ) / len(ordered)
+    anchor_progress = sum(
+        min(anchor_rates[oid] / floor, 1.0) for oid in ordered
+    ) / len(ordered)
+    progress_gain = candidate_progress - anchor_progress
+    violating = [
+        oid for oid in ordered if regressions[oid] < -margin - 1e-12
+    ]
+    eligible = bool(
+        not insufficient
+        and not violating
+        and progress_gain > required_gain + 1e-12
+    )
+    if insufficient:
+        reason = "insufficient_candidate_coverage"
+    elif violating:
+        reason = "per_opponent_regression_exceeds_margin"
+    elif progress_gain <= required_gain + 1e-12:
+        reason = "insufficient_clipped_progress_gain"
+    else:
+        reason = "pareto_noninferior_progress"
+    return {
+        "eligible": eligible,
+        "reason": reason,
+        "max_per_opponent_regression": margin,
+        "minimum_progress_gain": required_gain,
+        "candidate_clipped_progress": candidate_progress,
+        "anchor_clipped_progress": anchor_progress,
+        "clipped_progress_gain": progress_gain,
+        "per_opponent_delta": regressions,
+        "insufficient_coverage": insufficient,
+        "violating_opponents": violating,
+    }
+
+
 def aggregate_heldout_wr(
     game_rows: Iterable[dict[str, Any]],
     *,
@@ -94,21 +279,11 @@ def aggregate_heldout_wr(
             losses += 1.0
             bucket["losses"] += 1.0
     wr = (wins / games) if games else 0.0
-    z = max(0.0, float(confidence_z))
-    if games:
-        denom = 1.0 + z * z / games
-        center = (wr + z * z / (2.0 * games)) / denom
-        radius = (
-            z
-            * math.sqrt(
-                max(0.0, wr * (1.0 - wr) / games + z * z / (4.0 * games * games))
-            )
-            / denom
-        )
-        lower = max(0.0, center - radius)
-        upper = min(1.0, center + radius)
-    else:
-        lower = upper = 0.0
+    lower, upper = _wilson_interval(
+        wins,
+        games,
+        confidence_z=confidence_z,
+    )
 
     per_min = (
         int(min_games_per_opponent)

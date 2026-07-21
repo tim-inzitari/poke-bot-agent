@@ -28,6 +28,7 @@ R = TypeVar("R")
 _POOL_GENERATIONS = itertools.count(1)
 _GENERATION_POOL_SCALE = 1_000_000_000
 _GENERATION_SLOT_SCALE = 1_000_000
+_DEAD_OWNER_RECHECK_S = 0.10
 
 
 class WorkerPoolStopped(RuntimeError):
@@ -589,7 +590,15 @@ class WorkerPool:
         self._monitor_thread = None
 
     def _monitor_remote_workers(self) -> None:
-        """Latch abrupt exits/initializer failures before Pool can churn."""
+        """Latch abrupt exits/initializer failures before Pool can churn.
+
+        A clean ``maxtasksperchild`` retirement can disappear from Pool's
+        current child list just before its high-priority Finalize callback
+        releases the response-slot lease.  Pool-list membership therefore is
+        not proof of a crash.  Only an owner PID that is dead and still owns
+        the same slot after a short recheck is fatal.
+        """
+        dead_owner_first_seen: dict[tuple[int, int], float] = {}
         while not self._monitor_stop.wait(0.05):
             failure_event = self._worker_failure_event
             if failure_event is not None and failure_event.is_set():
@@ -603,15 +612,24 @@ class WorkerPool:
             ready = self._slot_ready
             if condition is None or owners is None or ready is None:
                 return
-            pool_pids = set(self.live_worker_pids)
+            now = time.monotonic()
+            observed_dead: set[tuple[int, int]] = set()
             stale: list[tuple[int, int]] = []
             with condition:
                 for slot, raw_owner in enumerate(owners):
                     owner = int(raw_owner)
-                    if owner > 0 and (
-                        owner not in pool_pids or not _pid_is_alive(owner)
-                    ):
+                    if owner <= 0 or _pid_is_alive(owner):
+                        continue
+                    key = (int(slot), owner)
+                    observed_dead.add(key)
+                    first_seen = dead_owner_first_seen.setdefault(key, now)
+                    if now - first_seen >= _DEAD_OWNER_RECHECK_S:
                         stale.append((slot, owner))
+                dead_owner_first_seen = {
+                    key: first_seen
+                    for key, first_seen in dead_owner_first_seen.items()
+                    if key in observed_dead
+                }
                 if stale:
                     for slot, owner in stale:
                         if int(owners[slot]) == owner:

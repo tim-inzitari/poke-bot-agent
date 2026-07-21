@@ -222,6 +222,67 @@ def test_remote_worker_recycling_releases_slot_and_rotates_generation() -> None:
     assert values == [0, 1, 2, 3]
 
 
+def test_remote_slot_monitor_tolerates_live_retiring_owner() -> None:
+    """Pool-list absence alone must not fail a clean retiring child."""
+
+    class _EmptyPool:
+        _pool = ()
+
+        def terminate(self) -> None:
+            raise AssertionError("live retiring owner must not terminate the pool")
+
+    ctx = mp.get_context("spawn")
+    owner = os.getpid()
+    pool = WorkerPool(num_workers=1)
+    pool._pool = _EmptyPool()  # type: ignore[assignment]
+    pool._slot_condition = ctx.Condition(ctx.RLock())
+    pool._slot_owners = ctx.Array("q", [owner], lock=False)
+    pool._slot_ready = ctx.Array("q", [owner], lock=False)
+    pool._worker_failure_event = ctx.Event()
+    pool._start_worker_monitor()
+    try:
+        # Three monitor periods cover the dead-owner confirmation window. The
+        # pre-fix monitor stopped on its first sample because _pool is empty.
+        time.sleep(0.20)
+        assert pool.stopped is False
+        assert int(pool._slot_owners[0]) == owner
+        assert int(pool._slot_ready[0]) == owner
+        assert pool._worker_failure_event.is_set() is False
+    finally:
+        pool._finish_worker_monitor()
+
+
+def test_remote_worker_recycling_stress_keeps_pool_healthy() -> None:
+    """Concurrent recycle waves must not trip the remote slot reaper."""
+    workers = 3
+    values = list(range(24))
+    remote = _remote_channel(workers)
+    with WorkerPool(
+        num_workers=workers,
+        recycle_games=1,
+        remote_channel=remote,
+    ) as pool:
+        rows = list(
+            pool.imap_unordered(
+                _recycled_remote_slot_task,
+                values,
+                chunksize=1,
+            )
+        )
+        pool.wait_until_ready(timeout_s=30)
+        assert pool.stopped is False
+        assert pool.worker_capacity_healthy
+
+    assert sorted(value for _pid, _slot, _generation, value in rows) == values
+    assert len({pid for pid, _slot, _generation, _value in rows}) == len(values)
+    assert len({generation for _pid, _slot, generation, _value in rows}) == len(
+        values
+    )
+    assert {slot for _pid, slot, _generation, _value in rows} <= set(
+        range(workers)
+    )
+
+
 @pytest.mark.skipif(not hasattr(signal, "SIGKILL"), reason="requires POSIX SIGKILL")
 def test_abrupt_remote_child_death_fails_closed_without_replacement_thrash() -> None:
     """A crash bypasses Finalize, but must not lose a lease or spin forever."""

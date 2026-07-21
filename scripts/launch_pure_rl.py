@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import json
 import os
 import signal
 import subprocess
@@ -183,6 +184,32 @@ def _normalized_child_returncode(returncode: int) -> int:
     """Map subprocess signal returns to conventional shell exit statuses."""
     code = int(returncode)
     return 128 + abs(code) if code < 0 else code
+
+
+def _monitor_requested_this_attempt_stop(
+    alert_path: Path,
+    *,
+    training_pid: int,
+    attempt_started_at: float,
+) -> bool:
+    """Return true only for a monitor stop belonging to this exact child.
+
+    The unattended monitor terminates an unsafe or genuinely stalled trainer
+    with SIGTERM.  Returning the conventional 143 from the launcher makes a
+    ``Restart=on-failure`` unit immediately recollect the same iteration.  A
+    PID and timestamp match lets the launcher instead return the unit's
+    restart-prevent status (75), while stale alerts and ordinary/manual stops
+    retain their normal semantics.
+    """
+    try:
+        payload = json.loads(alert_path.read_text(encoding="utf-8"))
+        return (
+            int(payload.get("pid", -1)) == int(training_pid)
+            and float(payload.get("timestamp", 0.0)) >= float(attempt_started_at)
+            and bool(str(payload.get("reason", "")).strip())
+        )
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
 
 
 def _production_training_arm(
@@ -500,6 +527,7 @@ def main(argv: list[str] | None = None) -> int:
         f"(or: watch -n1 cat {status_path}; less -r +F {prog_path})",
         flush=True,
     )
+    attempt_started_at = time.time()
     training = subprocess.Popen(
         train_cmd,
         cwd=ROOT,
@@ -554,10 +582,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"PURE_RL_WATCHER pid={watcher.pid} emit_live_pool=1", flush=True)
 
+    run_dir = ROOT / "outputs/pure_rl" / args.run_name
+    monitor_alert_path = run_dir / "MONITOR_STOP_REQUESTED.json"
     monitor = None
     monitor_script = ROOT / "scripts/unattended_monitor.py"
     if monitor_script.is_file() and not args.smoke:
-        run_dir = ROOT / "outputs/pure_rl" / args.run_name
         monitor_cmd = [
             args.python,
             "-u",
@@ -585,6 +614,8 @@ def main(argv: list[str] | None = None) -> int:
             "--process-group",
             "--progress-status",
             str(status_path),
+            "--progress-log",
+            str(prog_path),
         ]
         monitor = subprocess.Popen(monitor_cmd, cwd=ROOT, env=env, start_new_session=True)
 
@@ -647,7 +678,19 @@ def main(argv: list[str] | None = None) -> int:
 
     prev = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
-        return _normalized_child_returncode(training.wait())
+        child_status = _normalized_child_returncode(training.wait())
+        if child_status == 143 and _monitor_requested_this_attempt_stop(
+            monitor_alert_path,
+            training_pid=training.pid,
+            attempt_started_at=attempt_started_at,
+        ):
+            print(
+                "MONITOR_STOP_CONFIRMED restart_prevent_status=75 "
+                f"training_pid={training.pid}",
+                flush=True,
+            )
+            return 75
+        return child_status
     finally:
         log_stream.close()
         progress_stream.close()

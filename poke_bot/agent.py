@@ -192,16 +192,35 @@ class PolicyAgent:
         self._fail_closed_logged = False
         self.belief_history = PublicBeliefHistory()
 
+    def _history_context_limit(self) -> int:
+        """Resolve the checkpoint/job-specific history window.
+
+        Remote GPU-leaf agents intentionally have ``model=None``. Their job's
+        immutable ``model_max_context`` override must therefore win over the
+        process-global default, especially for full-game temporal checkpoints.
+        """
+        limit = (
+            int(self.max_context_override)
+            if self.max_context_override is not None
+            else int(self.model.max_context)
+            if self.model is not None
+            else int(config.MODEL.max_context)
+        )
+        if limit <= 0:
+            raise ValueError(f"history context limit must be positive, got {limit}")
+        return limit
+
     @torch.no_grad()
     def greedy_select(self, obs_dict: dict) -> list[int]:
         features.assert_info_set(obs_dict)
         board = features.build_board_tokens(obs_dict, self.deck)
         self.board_history.append(board)
         self.previous_action_history.append(self._previous_action_token)
-        if len(self.board_history) > config.MODEL.max_context:
-            self.board_history = self.board_history[-config.MODEL.max_context :]
+        max_context = self._history_context_limit()
+        if len(self.board_history) > max_context:
+            self.board_history = self.board_history[-max_context:]
             self.previous_action_history = self.previous_action_history[
-                -config.MODEL.max_context :
+                -max_context:
             ]
         obs = cg_env.to_observation(obs_dict)
         if obs.current is None:
@@ -376,13 +395,7 @@ class PolicyAgent:
         board = features.build_board_tokens(obs_dict, self.deck)
         self.board_history.append(board)
         self.previous_action_history.append(self._previous_action_token)
-        max_context = (
-            int(self.max_context_override)
-            if self.max_context_override is not None
-            else int(self.model.max_context)
-            if self.model is not None
-            else int(config.MODEL.max_context)
-        )
+        max_context = self._history_context_limit()
         self.board_history = self.board_history[-max_context:]
         self.previous_action_history = self.previous_action_history[-max_context:]
         max_sims = int(self.max_sims or max(128, config.SEARCH.sims_per_move))

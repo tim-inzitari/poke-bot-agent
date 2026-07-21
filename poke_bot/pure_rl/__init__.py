@@ -10,6 +10,7 @@ from poke_bot.pure_rl.metrics import IterationMetrics, metrics_to_dict
 from poke_bot.pure_rl.model_profile import (
     build_pure_rl_model,
     count_params,
+    pure_rl_history_model_config,
     pure_rl_model_config,
     validate_param_budget,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "full_hardware_profile",
     "load_iter_metrics",
     "metrics_to_dict",
+    "pure_rl_history_model_config",
     "pure_rl_model_config",
     "stage_for_iteration",
     "stage_to_dict",

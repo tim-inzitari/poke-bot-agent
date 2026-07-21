@@ -15,35 +15,51 @@ name: poke-bot-truenas-worker
 
 services:
   worker:
+    image: poke-bot-truenas-worker:safety-20260720.8-persistent-workers
     command: ["production"]
     restart: "on-failure:3"
     init: true
     stop_grace_period: 90s
     environment:
-      # Elmo has 24 logical CPUs and ample RAM. Use the entrypoint's audited
-      # ceiling while reserving four host CPUs and four control connections.
-      SIM_WORKERS: "20"
-      SIM_DEFAULT_WORKERS: "20"
-      POKEBOT_REMOTE_MAX_CONNECTIONS: "24"
+      # Elmo's Ryzen 9 5900X may use all 24 logical CPUs. GPU-blocked games can
+      # safely oversubscribe CPU threads. The measured 36-worker topology keeps
+      # the RTX 3060 fed while preserving capacity for child replacement.
+      SIM_WORKERS: "36"
+      SIM_DEFAULT_WORKERS: "36"
+      ELMO_SIM_WORKER_CEILING: "48"
+      POKEBOT_REMOTE_MAX_CONNECTIONS: "420"
+      LEAF_SERVERS: "2"
+      LEAF_MAX_BATCH: "256"
 
       # Never close admission for a routine job-count rotation while a trainer
-      # owns live sockets. Libcg children still recycle every 16 games, and the
-      # process/container memory guards remain authoritative.
-      POKEBOT_WORKER_RECYCLE_GAMES: "16"
-      WORKER_RECYCLE_GAMES: "16"
+      # owns live sockets. Recycling every 16 games kept multiple replacements
+      # initializing continuously and tripped the exact-capacity watchdog. A
+      # 256-game lifetime bounds native growth while the independent 30/64 GiB
+      # guards remain authoritative.
+      POKEBOT_WORKER_RECYCLE_GAMES: "256"
+      WORKER_RECYCLE_GAMES: "256"
       POKEBOT_REMOTE_MAX_SERVICE_JOBS: "0"
       POKEBOT_REMOTE_PLANNED_ROTATION_EXIT_CODE: "75"
 
-      # Independent in-process guard, below the 40 GiB cgroup hard stop.
+      # This immutable safety image validates a 30 GiB in-process guard. The
+      # outer cgroup is 64 GiB/no-swap, and the host-free guard remains an
+      # independent stop. Raise this only with a newly audited image.
       POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: "30"
       POKEBOT_REMOTE_MIN_FREE_RAM_GB: "24"
       POKEBOT_REMOTE_WATCHDOG_INTERVAL_S: "5"
-      POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: "60"
+      # Under 48-way load a recycled libcg child has taken slightly over one
+      # minute to initialize. Keep serving with the healthy capacity while the
+      # pool heals instead of killing the entire endpoint at 60.0 seconds.
+      POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: "300"
+      POKEBOT_REMOTE_WORKER_MIN_READY_FRAC: "0.80"
 
-      # Three unexpected exits or recovered unclean container attempts in an
-      # hour open a durable circuit under the runtime-logs bind mount.
+      # Unexpected exits or recovered unclean container attempts in an hour
+      # open a durable circuit under the runtime-logs bind mount.
       POKEBOT_ELMO_SUPERVISOR_STATE_DIR: /workspace/runtime-logs/elmo-supervisor
-      POKEBOT_ELMO_RESTART_LIMIT: "3"
+      # The worker's memory, RSS, identity, and host-free guards remain hard.
+      # A transient child-capacity exit should self-heal rather than opening a
+      # clean-exit Docker circuit after only three attempts during a long run.
+      POKEBOT_ELMO_RESTART_LIMIT: "20"
       POKEBOT_ELMO_RESTART_WINDOW_S: "3600"
       POKEBOT_ELMO_FAILURE_BACKOFF_S: "30"
       POKEBOT_ELMO_ROTATION_DELAY_S: "10"
@@ -58,6 +74,11 @@ services:
 
     # Repeat the base limits here so production review cannot silently lose
     # them if the base file is reorganized. Equal caps disable container swap.
-    mem_limit: 40g
-    memswap_limit: 40g
-    pids_limit: 320
+    mem_limit: 64g
+    memswap_limit: 64g
+    # Request handlers plus 36 simulators, two leaves, and recycle overlap need
+    # headroom beyond the former 768-thread ceiling.
+    pids_limit: 1536
+    volumes:
+      - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint:/workspace/checkpoint:ro
+      - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs:/workspace/runtime-logs

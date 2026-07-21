@@ -12,12 +12,14 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
 
 _ITER_CHECKPOINT = re.compile(r"^iter_(\d{5})\.pt$")
 _EXPERT_CHECKPOINT = re.compile(r"^expert_before_iter_(\d{5})\.pt$")
+_QUARANTINE_ITERATION = re.compile(r"^iter_(\d{5})$")
 
 
 def _sha256(path: Path) -> str:
@@ -72,6 +74,81 @@ def protected_checkpoint_paths(state: dict[str, Any]) -> set[Path]:
         if isinstance(row, dict) and row.get("path"):
             protected.add(Path(str(row["path"])).expanduser().resolve())
     return protected
+
+
+def _retire_committed_quarantine(
+    run_dir: Path, *, completed_iteration: int
+) -> tuple[int, list[int]]:
+    """Remove failed-attempt bytes only after an immutable commit exists.
+
+    Recovery quarantine is deliberately durable while an iteration is
+    uncommitted. Once the clean retry commits, those partial shards and
+    checkpoints can never be consumed again. Preserve their plans/failure
+    ledgers in a compact receipt before reclaiming the large payloads.
+    """
+    root = run_dir / "quarantine"
+    reclaimed = 0
+    retired: list[int] = []
+    try:
+        candidates = sorted(root.iterdir())
+    except OSError:
+        return reclaimed, retired
+    for candidate in candidates:
+        match = _QUARANTINE_ITERATION.fullmatch(candidate.name)
+        if not match or not candidate.is_dir():
+            continue
+        iteration = int(match.group(1))
+        commit = run_dir / "commits" / f"iter_{iteration:05d}.json"
+        if iteration > int(completed_iteration) or not commit.is_file():
+            continue
+        failures: list[dict[str, Any]] = []
+        for failure in sorted(candidate.glob("attempt_*/failure.json")):
+            try:
+                payload = json.loads(failure.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                # Do not destroy recovery evidence we cannot preserve exactly.
+                failures = []
+                break
+            failures.append(
+                {
+                    "source": str(failure),
+                    "payload": payload,
+                }
+            )
+        if not failures:
+            continue
+        size = sum(
+            path.stat().st_size for path in candidate.rglob("*") if path.is_file()
+        )
+        receipt = (
+            run_dir
+            / "artifact_receipts"
+            / "quarantine"
+            / f"iter_{iteration:05d}.json"
+        )
+        row = {
+            "schema": 1,
+            "kind": "committed_iteration_recovery_quarantine",
+            "iteration": iteration,
+            "retired_after_iteration": int(completed_iteration),
+            "bytes": int(size),
+            "commit": str(commit),
+            "failures": failures,
+            "reason": "clean_retry_committed_partial_attempts_unreachable",
+        }
+        _write_exclusive(receipt, row)
+        if json.loads(receipt.read_text(encoding="utf-8")) != row:
+            raise RuntimeError(
+                f"quarantine retirement receipt verification failed: {receipt}"
+            )
+        shutil.rmtree(candidate)
+        reclaimed += int(size)
+        retired.append(iteration)
+    try:
+        root.rmdir()
+    except OSError:
+        pass
+    return reclaimed, retired
 
 
 def apply_artifact_retention(
@@ -174,11 +251,19 @@ def apply_artifact_retention(
         )
         retired_expert_checkpoints.append(before_iteration)
 
+    reclaimed_quarantine, retired_quarantine = _retire_committed_quarantine(
+        run_dir, completed_iteration=completed
+    )
+
     return {
         "retire_through_shard": retire_through,
         "retired_shards": retired_shards,
         "retired_checkpoints": retired_checkpoints,
         "retired_expert_checkpoints": retired_expert_checkpoints,
-        "reclaimed_bytes": reclaimed_shards + reclaimed_checkpoints,
+        "retired_quarantine_iterations": retired_quarantine,
+        "reclaimed_quarantine_bytes": reclaimed_quarantine,
+        "reclaimed_bytes": (
+            reclaimed_shards + reclaimed_checkpoints + reclaimed_quarantine
+        ),
         "protected_checkpoints": sorted(str(path) for path in protected),
     }

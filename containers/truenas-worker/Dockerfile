@@ -3,7 +3,7 @@
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 LABEL org.opencontainers.image.title="poke-bot Elmo remote worker" \
-      org.opencontainers.image.version="safety-20260717.3" \
+      org.opencontainers.image.version="safety-20260719.7-portable-baselines" \
       org.opencontainers.image.description="Bounded, recycling Pokemon RL remote worker"
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -30,7 +30,7 @@ RUN python -m pip install --upgrade pip setuptools wheel \
     && python -m pip install \
         --index-url https://download.pytorch.org/whl/cu124 \
         torch==2.6.0 \
-    && python -m pip install numpy tqdm psutil kaggle-environments
+    && python -m pip install numpy tqdm psutil kaggle-environments orjson==3.11.9
 
 COPY poke_bot/ /workspace/poke_bot/
 COPY scripts/ /workspace/scripts/
@@ -42,7 +42,7 @@ COPY containers/truenas-worker/entrypoint.sh /entrypoint.sh
 COPY containers/truenas-worker/supervise-production.sh /supervise-production.sh
 
 # Four is the initial canary, not an advertised-only value hiding a larger
-# process pool. entrypoint.sh enforces the 20-process production ceiling.
+# process pool. Production values are supplied by the guarded override.
 ENV CG_LIB_PATH=/workspace/kaggle/input/cg-lib \
     PYTHONPATH=/workspace \
     POKEBOT_REMOTE_WORKER_SAFETY_VERSION=20260717 \

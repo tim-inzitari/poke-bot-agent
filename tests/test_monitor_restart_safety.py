@@ -67,6 +67,22 @@ def test_remote_transport_soft_drop_never_stops_the_healthy_trainer() -> None:
     )
 
 
+def test_retriable_remote_fail_closed_does_not_stop_trainer() -> None:
+    remote = (
+        "[remote] 192.168.1.143:8765 scheduled job attempt 1/8 failed "
+        "(RemoteJobsError: remote worker fail-closed: sim worker capacity "
+        "did not recover within grace); reconnect+retry remote"
+    )
+    assert not unattended_monitor.FATAL_PATTERNS["fail_closed"].search(remote)
+    assert not unattended_monitor.FATAL_PATTERNS["digest_mismatch"].search(
+        "[remote] worker fail-closed: leaf response checkpoint digest mismatch"
+    )
+    assert unattended_monitor.FATAL_PATTERNS["fail_closed"].search(
+        "FAIL-CLOSED local replay writer integrity failure"
+    )
+
+
+
 def test_out_of_band_log_shrink_does_not_replay_retained_fatal_tail(
     tmp_path: Path,
 ) -> None:

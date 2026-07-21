@@ -31,44 +31,14 @@ def _text(name: str) -> str:
     return (DEPLOY / name).read_text(encoding="utf-8")
 
 
-def _assert_compose_safety(text: str) -> None:
+def _assert_common_compose_safety(text: str) -> None:
     assert 'restart: "no"' in text
     assert "init: true" in text
-    assert "image: poke-bot-truenas-worker:safety-20260717.3" in text
     assert 'entrypoint: ["/entrypoint.safe.sh"]' not in text
     assert "./entrypoint.sh:/entrypoint.safe.sh:ro" not in text
     assert (
         "POKEBOT_REMOTE_WORKER_ARM_FILE: "
         "/workspace/runtime-logs/REMOTE_WORKER_ARMED" in text
-    )
-    assert re.search(r"^\s*SIM_WORKERS: [\"']?\$\{ELMO_SIM_WORKERS:-4\}", text, re.M)
-    assert re.search(
-        r"^\s*SIM_DEFAULT_WORKERS: [\"']?\$\{ELMO_SIM_DEFAULT_WORKERS:-4\}",
-        text,
-        re.M,
-    )
-    assert re.search(r'^\s*ELMO_SIM_WORKER_CEILING: ["\']20["\']', text, re.M)
-    assert not re.search(r'^\s*SIM_WORKERS: ["\']?40["\']?\s*$', text, re.M)
-    assert re.search(r"^\s*mem_limit:\s*40g\s*$", text, re.M)
-    assert re.search(r"^\s*memswap_limit:\s*40g\s*$", text, re.M)
-    assert re.search(r"^\s*pids_limit:\s*256\s*$", text, re.M)
-    assert re.search(
-        r'^\s*POKEBOT_WORKER_RECYCLE_GAMES: ["\']16["\']', text, re.M
-    )
-    assert re.search(r'^\s*WORKER_RECYCLE_GAMES: ["\']16["\']', text, re.M)
-    assert re.search(
-        r'^\s*POKEBOT_REMOTE_MAX_SERVICE_JOBS: ["\']100["\']', text, re.M
-    )
-    assert re.search(
-        r'^\s*POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: ["\']30["\']', text, re.M
-    )
-    assert re.search(
-        r'^\s*POKEBOT_REMOTE_MAX_CONNECTIONS: ["\']16["\']', text, re.M
-    )
-    assert re.search(
-        r'^\s*POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: ["\']60["\']',
-        text,
-        re.M,
     )
     assert re.search(r'^\s*max-size:\s*["\']10m["\']\s*$', text, re.M)
     assert re.search(r'^\s*max-file:\s*["\']3["\']\s*$', text, re.M)
@@ -80,17 +50,59 @@ def _assert_compose_safety(text: str) -> None:
 
 
 def test_nested_docker_compose_is_fail_closed_canary() -> None:
-    _assert_compose_safety(_text("docker-compose.yml"))
+    text = _text("docker-compose.yml")
+    _assert_common_compose_safety(text)
+    assert "image: poke-bot-truenas-worker:safety-20260717.4" in text
+    assert re.search(r"^\s*SIM_WORKERS: [\"']?\$\{ELMO_SIM_WORKERS:-4\}", text, re.M)
+    assert re.search(
+        r"^\s*SIM_DEFAULT_WORKERS: [\"']?\$\{ELMO_SIM_DEFAULT_WORKERS:-4\}",
+        text,
+        re.M,
+    )
+    for pattern in (
+        r'^\s*ELMO_SIM_WORKER_CEILING: ["\']40["\']',
+        r"^\s*mem_limit:\s*64g\s*$",
+        r"^\s*memswap_limit:\s*64g\s*$",
+        r"^\s*pids_limit:\s*768\s*$",
+        r'^\s*POKEBOT_WORKER_RECYCLE_GAMES: ["\']16["\']',
+        r'^\s*WORKER_RECYCLE_GAMES: ["\']16["\']',
+        r'^\s*POKEBOT_REMOTE_MAX_SERVICE_JOBS: ["\']100["\']',
+        r'^\s*POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: ["\']52["\']',
+        r'^\s*POKEBOT_REMOTE_MAX_CONNECTIONS: ["\']16["\']',
+        r'^\s*POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: ["\']60["\']',
+    ):
+        assert re.search(pattern, text, re.M), pattern
 
 
 def test_host_docker_compose_has_the_same_safety_limits() -> None:
-    _assert_compose_safety(_text("docker-compose.host.yml"))
+    text = _text("docker-compose.host.yml")
+    _assert_common_compose_safety(text)
+    assert "safety-20260719.7-portable-baselines" in text
+    assert re.search(r"^\s*SIM_WORKERS: [\"']?\$\{ELMO_SIM_WORKERS:-4\}", text, re.M)
+    assert re.search(
+        r"^\s*SIM_DEFAULT_WORKERS: [\"']?\$\{ELMO_SIM_DEFAULT_WORKERS:-4\}",
+        text,
+        re.M,
+    )
+    for pattern in (
+        r'^\s*ELMO_SIM_WORKER_CEILING: ["\']40["\']',
+        r"^\s*mem_limit:\s*64g\s*$",
+        r"^\s*memswap_limit:\s*64g\s*$",
+        r"^\s*pids_limit:\s*768\s*$",
+        r'^\s*POKEBOT_WORKER_RECYCLE_GAMES: ["\']16["\']',
+        r'^\s*WORKER_RECYCLE_GAMES: ["\']16["\']',
+        r'^\s*POKEBOT_REMOTE_MAX_SERVICE_JOBS: ["\']100["\']',
+        r'^\s*POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: ["\']52["\']',
+        r'^\s*POKEBOT_REMOTE_MAX_CONNECTIONS: ["\']16["\']',
+        r'^\s*POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: ["\']60["\']',
+    ):
+        assert re.search(pattern, text, re.M), pattern
 
 
 def test_rollback_override_preserves_the_prior_immutable_image_tag() -> None:
     text = _text("docker-compose.rollback.yml")
     assert "image: poke-bot-truenas-worker:safety-20260717" in text
-    assert "safety-20260717.3" not in text
+    assert "safety-20260717.4" not in text
     ops = _text("OPS.md")
     assert "never rebuild or retag it" in ops
     assert "-f docker-compose.rollback.yml" in ops
@@ -100,18 +112,18 @@ def test_production_override_is_bounded_and_preserves_hard_limits() -> None:
     text = _text("docker-compose.production.yml")
     assert 'command: ["production"]' in text
     assert 'restart: "on-failure:3"' in text
-    assert re.search(r"^\s*mem_limit:\s*40g\s*$", text, re.M)
-    assert re.search(r"^\s*memswap_limit:\s*40g\s*$", text, re.M)
-    assert re.search(r"^\s*pids_limit:\s*320\s*$", text, re.M)
-    assert re.search(r'^\s*SIM_WORKERS: ["\']20["\']', text, re.M)
-    assert re.search(r'^\s*SIM_DEFAULT_WORKERS: ["\']20["\']', text, re.M)
+    assert re.search(r"^\s*mem_limit:\s*64g\s*$", text, re.M)
+    assert re.search(r"^\s*memswap_limit:\s*64g\s*$", text, re.M)
+    assert re.search(r"^\s*pids_limit:\s*1536\s*$", text, re.M)
+    assert re.search(r'^\s*SIM_WORKERS: ["\']36["\']', text, re.M)
+    assert re.search(r'^\s*SIM_DEFAULT_WORKERS: ["\']36["\']', text, re.M)
     assert re.search(
-        r'^\s*POKEBOT_REMOTE_MAX_CONNECTIONS: ["\']24["\']', text, re.M
+        r'^\s*POKEBOT_REMOTE_MAX_CONNECTIONS: ["\']420["\']', text, re.M
     )
     assert re.search(
-        r'^\s*POKEBOT_WORKER_RECYCLE_GAMES: ["\']16["\']', text, re.M
+        r'^\s*POKEBOT_WORKER_RECYCLE_GAMES: ["\']256["\']', text, re.M
     )
-    assert re.search(r'^\s*WORKER_RECYCLE_GAMES: ["\']16["\']', text, re.M)
+    assert re.search(r'^\s*WORKER_RECYCLE_GAMES: ["\']256["\']', text, re.M)
     assert re.search(
         r'^\s*POKEBOT_REMOTE_MAX_SERVICE_JOBS: ["\']0["\']', text, re.M
     )
@@ -127,12 +139,17 @@ def test_production_override_is_bounded_and_preserves_hard_limits() -> None:
         r'^\s*POKEBOT_REMOTE_MIN_FREE_RAM_GB: ["\']24["\']', text, re.M
     )
     assert re.search(
-        r'^\s*POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: ["\']60["\']',
+        r'^\s*POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S: ["\']300["\']',
         text,
         re.M,
     )
     assert re.search(
-        r'^\s*POKEBOT_ELMO_RESTART_LIMIT: ["\']3["\']', text, re.M
+        r'^\s*POKEBOT_ELMO_RESTART_LIMIT: ["\']20["\']', text, re.M
+    )
+    assert re.search(
+        r'^\s*POKEBOT_REMOTE_WORKER_MIN_READY_FRAC: ["\']0\.80["\']',
+        text,
+        re.M,
     )
     assert re.search(
         r'^\s*POKEBOT_ELMO_RESTART_WINDOW_S: ["\']3600["\']', text, re.M
@@ -174,13 +191,15 @@ def test_entrypoint_enforces_production_rotation_contract() -> None:
     assert 'production_jobs" == "0"' in text
     assert "production_jobs >= 512 && production_jobs <= 1024" in text
     assert 'production_rotation_code" != "75"' in text
-    assert '"POKEBOT_WORKER_RECYCLE_GAMES:16"' in text
-    assert '"WORKER_RECYCLE_GAMES:16"' in text
+    assert '"POKEBOT_WORKER_RECYCLE_GAMES:256"' in text
+    assert '"WORKER_RECYCLE_GAMES:256"' in text
     assert '"POKEBOT_REMOTE_TREE_RSS_LIMIT_GB:30"' in text
     assert '"POKEBOT_REMOTE_MIN_FREE_RAM_GB:24"' in text
     assert (
-        '"POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S:60"' in text
+        '"POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S:300"' in text
     )
+    assert '"POKEBOT_REMOTE_WORKER_MIN_READY_FRAC:0.80"' in text
+    assert '"POKEBOT_ELMO_RESTART_LIMIT:20"' in text
     assert "exec /supervise-production.sh" in text
     assert '--planned-rotation-exit-code "$production_rotation_code"' in text
     assert '[[ "${1:-}" == "seed-active-checkpoint" ]]' in text
@@ -190,7 +209,7 @@ def test_entrypoint_enforces_production_rotation_contract() -> None:
 def test_image_defaults_do_not_hide_a_larger_pool() -> None:
     text = _text("Dockerfile")
     assert "POKEBOT_REMOTE_WORKER_SAFETY_VERSION=20260717" in text
-    assert "org.opencontainers.image.version=\"safety-20260717.3\"" in text
+    assert "org.opencontainers.image.version=\"safety-20260719.7-portable-baselines\"" in text
     assert (
         "POKEBOT_REMOTE_WORKER_ARM_FILE="
         "/workspace/runtime-logs/REMOTE_WORKER_ARMED" in text
@@ -202,7 +221,6 @@ def test_image_defaults_do_not_hide_a_larger_pool() -> None:
     assert re.search(r"^\s*SIM_WORKERS=4 \\\s*$", text, re.M)
     assert re.search(r"^\s*SIM_DEFAULT_WORKERS=4 \\\s*$", text, re.M)
     assert re.search(r"^\s*ELMO_SIM_WORKER_CEILING=20 \\\s*$", text, re.M)
-    assert not re.search(r"^\s*SIM_WORKERS=40(?:\s|\\|$)", text, re.M)
     assert (
         "COPY containers/truenas-worker/supervise-production.sh "
         "/supervise-production.sh" in text

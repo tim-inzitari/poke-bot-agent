@@ -263,3 +263,30 @@ def test_derangement_has_minimum_mirrors_when_quota_is_infeasible() -> None:
     # Four of five tokens are family a, so 2 * 4 - 5 = 3 mirrors are
     # mathematically unavoidable.
     assert sum(our == opponent for our, opponent in zip(ours, opponents)) == 3
+
+
+def test_measurement_decks_are_a_strict_ordered_subset() -> None:
+    from scripts import train_pure_rl
+
+    decks, _mix, _representatives, _contract = train_pure_rl._core_ladder_decks()
+    selected = train_pure_rl._select_measurement_decks(
+        decks, "lucario,alakazam,starmie,crustle"
+    )
+
+    assert [name for name, _cards in selected] == [
+        "lucario",
+        "alakazam",
+        "starmie",
+        "crustle",
+    ]
+    assert all(len(cards) == 60 for _name, cards in selected)
+
+
+def test_measurement_decks_fail_closed_on_unknown_or_duplicate_ids() -> None:
+    from scripts import train_pure_rl
+
+    decks = [("lucario", list(range(60))), ("alakazam", list(range(60, 120)))]
+    with pytest.raises(ValueError, match="outside the active training pool"):
+        train_pure_rl._select_measurement_decks(decks, "lucario,missing")
+    with pytest.raises(ValueError, match="duplicate"):
+        train_pure_rl._select_measurement_decks(decks, "lucario,lucario")

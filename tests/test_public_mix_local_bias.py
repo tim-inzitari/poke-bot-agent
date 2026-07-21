@@ -43,6 +43,12 @@ def _fake_remote_farm(*, workers: int = 20, max_workers: int = 40) -> types.Simp
         checkpoint_digest=None,
         hostname="elmo",
         job_kinds=("self_play", "play"),
+        capabilities=(
+            "greedy_play_v1",
+            "active_checkpoint_job_barrier_v1",
+            "play_result_contract_v1",
+            "portable_baseline_spec_v1",
+        ),
         max_workers=max_workers,
         default_workers=workers,
     )
@@ -132,11 +138,31 @@ def test_public_mix_local_only_disabled_falls_back_to_heavy_local_frac(
     assert local_slots >= remote_cap * 18
 
 
-def test_heldout_eval_never_reaches_remote_dispatch() -> None:
-    """_heldout_eval always passes remote_farm=None (local greedy only)."""
-    src = Path(__file__).resolve().parents[1] / "scripts" / "train_pure_rl.py"
-    text = src.read_text(encoding="utf-8")
-    start = text.index("def _heldout_eval(")
-    end = text.index("def run_full_loop(")
-    body = text[start:end]
-    assert "remote_farm=None" in body
+def test_formal_heldout_adds_remotes_without_inflating_local_pool(
+    mod, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("PURE_RL_PUBLIC_MIX_LOCAL_ONLY", raising=False)
+    farm = _fake_remote_farm(workers=20, max_workers=40)
+    local_slots, remote_cap, weight_bits = mod._remote_dispatch_slots(
+        remote_farm=farm,
+        scheduler=None,
+        baseline_workers=32,
+        kind="play",
+        allow_remote_play=True,
+    )
+    assert local_slots == 32
+    assert remote_cap > 0
+    assert "formal_heldout_additive" in weight_bits
+
+
+def test_formal_heldout_remote_capabilities_are_fail_closed(mod) -> None:
+    farm = _fake_remote_farm()
+    audit = mod._remote_heldout_capability_audit(
+        farm, required_endpoints=["192.168.1.143:8765"]
+    )
+    assert audit["passed"] is True
+    farm.clients[0].info.capabilities = ()
+    audit = mod._remote_heldout_capability_audit(
+        farm, required_endpoints=["192.168.1.143:8765"]
+    )
+    assert audit["passed"] is False

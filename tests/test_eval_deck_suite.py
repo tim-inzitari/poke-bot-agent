@@ -11,10 +11,16 @@ from scripts.eval_vs_baselines import (
 )
 
 
-def _args(*, deck_suite: str, our_deck: list[Path] | None = None) -> argparse.Namespace:
+def _args(
+    *,
+    deck_suite: str,
+    our_deck: list[Path] | None = None,
+    our_archetype: str | None = None,
+) -> argparse.Namespace:
     return argparse.Namespace(
         deck_suite=deck_suite,
         our_deck=list(our_deck or []),
+        our_archetype=our_archetype,
     )
 
 
@@ -57,4 +63,31 @@ def test_explicit_decks_are_repeatable_and_conflict_with_core_suite(
     with pytest.raises(ValueError, match="cannot be combined"):
         _resolve_our_decks(
             _args(deck_suite="core-ladder", our_deck=[first])
+        )
+
+
+def test_single_pinned_archetype_uses_exact_ladder_representative() -> None:
+    decks, contract = _resolve_our_decks(
+        _args(deck_suite="primary", our_archetype="AlAkAzAm")
+    )
+
+    assert [row["deck_id"] for row in decks] == ["alakazam"]
+    assert len(decks[0]["cards"]) == 60
+    assert decks[0]["source"] == "pinned_top_ladder_modal_representative"
+    assert contract["suite"] == "pinned-archetype"
+    assert contract["archetype"] == "alakazam"
+
+
+def test_single_pinned_archetype_rejects_conflicting_explicit_deck(
+    tmp_path: Path,
+) -> None:
+    deck = tmp_path / "deck.csv"
+    deck.write_text("\n".join(str(i) for i in range(1, 61)) + "\n")
+    with pytest.raises(ValueError, match="cannot be combined"):
+        _resolve_our_decks(
+            _args(
+                deck_suite="primary",
+                our_deck=[deck],
+                our_archetype="alakazam",
+            )
         )

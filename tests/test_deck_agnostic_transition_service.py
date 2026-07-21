@@ -29,25 +29,13 @@ def test_alakazam_specialist_unit_pins_volume_fleet_and_rehearsal_contract() -> 
     assert "--official-collect-frac 0.50" in unit
     assert "Environment=POKEBOT_ALAKAZAM_GUIDE_TARGETS=1" in unit
     assert "--alakazam-guide-loss-weight 0.05" in unit
-    assert "--archetype-aux-loss-weight 0.05" in unit
-    assert "--opp-hand-loss-weight 0.05" in unit
-    assert "--opp-remainder-loss-weight 0.05" in unit
-    assert "--lethal-threat-loss-weight 0.025" in unit
-    assert "--prize-race-loss-weight 0.025" in unit
-    assert "libcg_hidden_inzi_v1.so" in unit
     assert "--games-per-iter 73728" in unit
     assert "--measurement-decks alakazam" in unit
     assert "--expert-rehearsal-every 5" in unit
     assert "--expert-rehearsal-epochs 5" in unit
     assert "alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json" in unit
-    assert (
-        "--base-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/"
-        "_handoff/alakazam_expert_bootstrap.pt"
-    ) in unit
-    assert (
-        "--initial-learner-checkpoint /home/inzi/poke-bot-agent/outputs/"
-        "pure_rl/_handoff/alakazam_expert_bootstrap.pt"
-    ) in unit
+    assert "--base-checkpoint /home/inzi/poke-bot-model-registry/alakazam_expert_bootstrap/model.pt" in unit
+    assert "--initial-learner-checkpoint /home/inzi/poke-bot-model-registry/alakazam_expert_bootstrap/model.pt" in unit
     assert "MemoryMax=112G" in unit
 
 

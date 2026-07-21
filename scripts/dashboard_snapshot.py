@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,7 @@ LATEST10_FINALIZER_SERVICE = "pokemon-latest10-finalize.service"
 CORE_RL_SERVICE = "pokebot-pure-rl-continuous-rehearsal.service"
 ALAKAZAM_BOOTSTRAP_SERVICE = "pokebot-pure-rl-alakazam-bootstrap.service"
 ALAKAZAM_SPECIALIST_SERVICE = "pokebot-pure-rl-alakazam.service"
+STRONG_PUBLIC_GATE_SERVICE = "pokebot-alakazam-strong-public-gate.service"
 ROOT = Path("/home/inzi/poke-bot-agent")
 BOOTSTRAP_LOG = ROOT / "outputs/logs/bootstrap.log"
 ALAKAZAM_BOOTSTRAP_LOG = ROOT / "outputs/logs/alakazam_expert_bootstrap.log"
@@ -51,7 +53,22 @@ ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 LATEST10_STATUS = ROOT / "scripts/latest10_status.py"
 DASHBOARD_ITERATION_TIMER = ROOT / "outputs/state/dashboard_iteration_timer.json"
 MODEL_PROFILE_REGISTRY = ROOT / "outputs/state/pure_rl_model_profiles.json"
+DORMANT_MODEL_MODULES = ROOT / "outputs/state/alakazam_dormant_model_modules_v1.json"
 PUBLIC_MIX_LIVE_WR = ROOT / "outputs/state/public_mix_live_wr.json"
+COMPETITION_GATE_PROGRAM = ROOT / "ops/alakazam_gate_program_v1.json"
+STRONG_PUBLIC_GATE_PROGRESS = (
+    ROOT / "outputs/logs/alakazam_strong_public_gate.progress.status"
+)
+STRONG_PUBLIC_GATE_LOG = ROOT / "outputs/logs/alakazam_strong_public_gate.progress.log"
+PROTECTED_BASELINE_GATE = Path(
+    "/home/inzi/poke-bot-model-registry/alakazam_baseline_gate/manifest.json"
+)
+OFFICIAL_BASELINE_IDS = (
+    "iono",
+    "dragapult-ex",
+    "mega-abomasnow-ex",
+    "mega-lucario-ex",
+)
 
 
 def run(argv: list[str], timeout: float = 3.0) -> str:
@@ -186,6 +203,15 @@ def curriculum_worker_state(
     leaves0 = as_number(environment.get("PURE_RL_LEAF_GPU0_REPLICAS", "")) or 0
     leaves1 = as_number(environment.get("PURE_RL_LEAF_GPU1_REPLICAS", "")) or 0
     multi_env = as_number(environment.get("POKEBOT_MULTI_ENV_PER_WORKER", ""))
+    optimizer_runtime = {
+        "awr_beta": as_float(environment.get("PURE_RL_AWR_BETA")),
+        "awr_weight_max": as_float(
+            environment.get("PURE_RL_AWR_WEIGHT_MAX")
+        ),
+    }
+    optimizer_runtime = {
+        key: value for key, value in optimizer_runtime.items() if value is not None
+    }
     return {
         "active": bool(active_units and selected),
         "listening": None,
@@ -200,6 +226,7 @@ def curriculum_worker_state(
         "cpu_percent": cpu_percent,
         "rss_bytes": memory_current or rss_bytes,
         "command": command or ", ".join(active_units),
+        "optimizer_runtime": optimizer_runtime,
         "source": "systemd-user-cgroup",
     }
 
@@ -353,6 +380,28 @@ def read_tail(path: Path, max_bytes: int = 1_000_000) -> str:
             return handle.read().decode("utf-8", "replace")
     except OSError:
         return ""
+
+
+def checkpoint_parameter_telemetry(log_path: Path) -> dict[str, Any]:
+    """Return the latest parameter count produced by an actual checkpoint load."""
+    raw = ANSI_RE.sub("", read_tail(log_path, 512_000)).replace("\r", "\n")
+    matches = list(
+        re.finditer(
+            r"\[pure_rl\] loaded checkpoint params=(\d+) path=(\S+)",
+            raw,
+        )
+    )
+    if not matches:
+        return {}
+    latest = matches[-1]
+    count = int(latest.group(1))
+    if count <= 0:
+        return {}
+    return {
+        "trainable_parameters": count,
+        "checkpoint": latest.group(2),
+        "source": str(log_path),
+    }
 
 
 def parse_metric(line: str, name: str) -> float | None:
@@ -839,6 +888,120 @@ def committed_official_heldout_state(
             matching = row
             break
     if matching is None:
+        audit = evidence.get("audit")
+        report_identity = audit.get("report") if isinstance(audit, dict) else None
+        if (
+            iteration == -1
+            and isinstance(audit, dict)
+            and audit.get("passed") is True
+            and audit.get("source") == "trusted_external_new_lineage_anchor"
+            and audit.get("terminal_gate_eligible") is False
+            and isinstance(report_identity, dict)
+        ):
+            report_path = Path(str(report_identity.get("path") or ""))
+            try:
+                payload = report_path.read_bytes()
+                report_digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+                report = json.loads(payload)
+            except (OSError, ValueError, TypeError):
+                return {"available": False, "reason": "seed audit report is unreadable"}
+            expected_digest = str(report_identity.get("digest") or "")
+            checkpoint = report.get("checkpoint")
+            pooled = report.get("pooled_formal")
+            deck_gate = report.get("deck_agnostic_gate")
+            report_matchups = report.get("matchups")
+            evidence_matchups = evidence.get("per_opponent")
+            if (
+                report_digest != expected_digest
+                or not isinstance(checkpoint, dict)
+                or str(checkpoint.get("digest") or "") != digest
+                or report.get("valid") is not True
+                or report.get("trusted_formal") is not True
+                or report.get("formal_mode") != "policy"
+                or list(report.get("failures") or [])
+                or not isinstance(pooled, dict)
+                or not isinstance(deck_gate, dict)
+                or deck_gate.get("exact_deck_seat_balance") is not True
+                or not isinstance(report_matchups, list)
+                or not isinstance(evidence_matchups, dict)
+            ):
+                return {"available": False, "reason": "seed audit report failed reconciliation"}
+            games = int(evidence.get("games") or 0)
+            pooled_wr = as_float(pooled.get("wr"))
+            evidence_wr = as_float(evidence.get("win_rate"))
+            if (
+                games <= 0
+                or int(report.get("scheduled_jobs") or 0) != games
+                or int(report.get("completed_jobs") or 0) != games
+                or int(pooled.get("games") or 0) != games
+                or pooled_wr is None
+                or evidence_wr is None
+                or abs(pooled_wr - evidence_wr) > 1e-12
+            ):
+                return {"available": False, "reason": "seed audit totals mismatch"}
+            by_id = {
+                str(row.get("opponent_id") or ""): row
+                for row in report_matchups
+                if isinstance(row, dict)
+            }
+            if set(by_id) != set(OFFICIAL_BASELINE_IDS):
+                return {"available": False, "reason": "seed audit opponent mismatch"}
+            matchups: list[dict[str, Any]] = []
+            for opponent_id in OFFICIAL_BASELINE_IDS:
+                row = by_id[opponent_id]
+                anchored = evidence_matchups.get(opponent_id)
+                if not isinstance(anchored, dict):
+                    return {"available": False, "reason": "seed audit matchup missing"}
+                matchup_games = int(row.get("games") or 0)
+                wins = as_float(row.get("wins"))
+                draws = as_float(row.get("draws"))
+                anchored_wins = as_float(anchored.get("wins"))
+                if wins is None or draws is None or anchored_wins is None:
+                    return {"available": False, "reason": "seed audit matchup mismatch"}
+                score = wins + 0.5 * draws
+                if (
+                    matchup_games <= 0
+                    or matchup_games % 2
+                    or int(anchored.get("games") or 0) != matchup_games
+                    or abs(anchored_wins - score) > 1e-12
+                ):
+                    return {"available": False, "reason": "seed audit matchup mismatch"}
+                matchups.append(
+                    {
+                        "opponent_id": opponent_id,
+                        "games": matchup_games,
+                        "wr": score / matchup_games,
+                        "wins": score,
+                        "draws": draws,
+                        "losses": float(row.get("losses") or 0.0),
+                        "seat0": matchup_games // 2,
+                        "seat1": matchup_games // 2,
+                    }
+                )
+            return {
+                "available": True,
+                "kind": "external_seed_official_heldout_anchor",
+                "valid": True,
+                "passed": False,
+                "reason": "nonterminal_seed_audit",
+                "games": games,
+                "wr": as_float(evidence.get("win_rate")),
+                "lower": as_float(evidence.get("confidence_lower")),
+                "upper": as_float(evidence.get("confidence_upper")),
+                "iteration": -1,
+                "lineage_iteration": -1,
+                "checkpoint": identity.get("path"),
+                "checkpoint_digest": digest,
+                "matchups": matchups,
+                "opponent_count": len(matchups),
+                "audit_passed": True,
+                "exact_distribution": True,
+                "exact_weights": True,
+                "greedy_required": True,
+                "terminal_gate_eligible": False,
+                "source": str(report_path),
+                "updated_at": report_path.stat().st_mtime,
+            }
         return {"available": False, "reason": "heldout champion commit is missing"}
 
     gate = matching.get("raw_heldout_gate")
@@ -918,6 +1081,137 @@ def committed_official_heldout_state(
         "source": str(source) if source is not None else None,
         "updated_at": source.stat().st_mtime if source is not None and source.is_file() else None,
     }
+
+
+def latest_committed_official_heldout_state(
+    loop: dict[str, Any],
+    run_dir: Path | None,
+    *,
+    global_iteration_offset: int = 0,
+) -> dict[str, Any]:
+    """Return the newest fully audited official-baseline holdout attempt.
+
+    This is deliberately separate from :func:`committed_official_heldout_state`.
+    The latter tracks the protected best checkpoint; this view answers whether
+    the most recent candidate actually ran its exact holdout, even when that
+    candidate was rejected and the protected checkpoint therefore stayed put.
+    """
+
+    if run_dir is None:
+        return {"available": False, "reason": "run directory is unavailable"}
+    heldout_identity = (
+        loop.get("heldout_champion")
+        if isinstance(loop.get("heldout_champion"), dict)
+        else {}
+    )
+    heldout_digest = str(heldout_identity.get("digest") or "")
+    for history_row in reversed(loop.get("history") or []):
+        if not isinstance(history_row, dict) or history_row.get("completed") is not True:
+            continue
+        iteration = history_row.get("iteration")
+        candidate = history_row.get("candidate")
+        audit = history_row.get("heldout_audit")
+        gate = history_row.get("raw_heldout_gate")
+        if (
+            not isinstance(iteration, int)
+            or not isinstance(candidate, dict)
+            or not isinstance(audit, dict)
+            or not isinstance(gate, dict)
+        ):
+            continue
+        source = run_dir / "commits" / f"iter_{iteration:05d}.json"
+        if not source.is_file():
+            continue
+        digest = str(candidate.get("digest") or "")
+        audit_games = int(audit.get("valid_games") or 0)
+        gate_games = int(gate.get("games") or 0)
+        gate_wr = as_float(gate.get("win_rate"))
+        audit_matchups = audit.get("per_opponent")
+        gate_matchups = gate.get("per_opponent")
+        if (
+            not digest
+            or audit.get("passed") is not True
+            or audit.get("exact_distribution") is not True
+            or audit.get("exact_weights") is not True
+            or audit.get("greedy_required") is not True
+            or str(audit.get("checkpoint_digest") or "") != digest
+            or audit_games <= 0
+            or audit_games != gate_games
+            or gate_wr is None
+            or not isinstance(audit_matchups, dict)
+            or not isinstance(gate_matchups, dict)
+            or set(audit_matchups) != set(OFFICIAL_BASELINE_IDS)
+            or set(gate_matchups) != set(OFFICIAL_BASELINE_IDS)
+        ):
+            continue
+        matchups: list[dict[str, Any]] = []
+        valid = True
+        for opponent_id in OFFICIAL_BASELINE_IDS:
+            audit_row = audit_matchups.get(opponent_id)
+            gate_row = gate_matchups.get(opponent_id)
+            if not isinstance(audit_row, dict) or not isinstance(gate_row, dict):
+                valid = False
+                break
+            games = int(gate_row.get("games") or 0)
+            audit_row_games = int(audit_row.get("games") or 0)
+            seat0 = int(audit_row.get("seat0") or gate_row.get("seat0_games") or 0)
+            seat1 = int(audit_row.get("seat1") or gate_row.get("seat1_games") or 0)
+            wr = as_float(gate_row.get("win_rate"))
+            if (
+                games <= 0
+                or games != audit_row_games
+                or seat0 + seat1 != games
+                or wr is None
+            ):
+                valid = False
+                break
+            matchups.append(
+                {
+                    "opponent_id": opponent_id,
+                    "games": games,
+                    "wr": wr,
+                    "wins": as_float(gate_row.get("wins")),
+                    "draws": as_float(gate_row.get("draws")),
+                    "losses": as_float(gate_row.get("losses")),
+                    "seat0": seat0,
+                    "seat1": seat1,
+                }
+            )
+        if not valid or sum(int(row["games"]) for row in matchups) != gate_games:
+            continue
+        learner_after = (
+            history_row.get("learner_after")
+            if isinstance(history_row.get("learner_after"), dict)
+            else {}
+        )
+        return {
+            "available": True,
+            "kind": "latest_committed_official_heldout_attempt",
+            "valid": True,
+            "passed": gate.get("passed") is True,
+            "reason": gate.get("reason"),
+            "games": gate_games,
+            "wr": gate_wr,
+            "lower": as_float(gate.get("confidence_lower")),
+            "upper": as_float(gate.get("confidence_upper")),
+            "iteration": iteration + int(global_iteration_offset),
+            "lineage_iteration": iteration,
+            "checkpoint": candidate.get("path"),
+            "checkpoint_digest": digest,
+            "matchups": matchups,
+            "opponent_count": len(matchups),
+            "audit_passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "greedy_required": True,
+            "protected_champion": digest == heldout_digest,
+            "heldout_champion_updated": history_row.get("heldout_champion_updated")
+            is True,
+            "learner_retained": str(learner_after.get("digest") or "") == digest,
+            "source": str(source),
+            "updated_at": source.stat().st_mtime,
+        }
+    return {"available": False, "reason": "no committed exact holdout attempt"}
 
 
 def gpu_state() -> list[dict[str, Any]]:
@@ -1127,6 +1421,9 @@ def learner_model_state(
     loop: dict[str, Any] | None = None,
     *,
     iteration: int | None = None,
+    runtime_optimizer: dict[str, Any] | None = None,
+    runtime_parameter_contract: dict[str, Any] | None = None,
+    dormant_modules_path: Path = DORMANT_MODEL_MODULES,
 ) -> dict[str, Any]:
     """Describe the exact live model plus explicitly non-live staged profiles.
 
@@ -1135,9 +1432,19 @@ def learner_model_state(
     independently deployed profile registry whose full config must match. If
     neither source matches, report an unknown count instead of a plausible lie.
     """
-    learner = ((manifest.get("design_contract") or {}).get("learner") or {})
+    design_contract = manifest.get("design_contract") or {}
+    learner = design_contract.get("learner") or {}
+    expert = design_contract.get("expert_rehearsal") or {}
     profile = learner.get("profile") if isinstance(learner.get("profile"), dict) else {}
     loop = loop if isinstance(loop, dict) else {}
+    runtime_optimizer = (
+        runtime_optimizer if isinstance(runtime_optimizer, dict) else {}
+    )
+    runtime_parameter_contract = (
+        runtime_parameter_contract
+        if isinstance(runtime_parameter_contract, dict)
+        else {}
+    )
 
     registry = read_json(MODEL_PROFILE_REGISTRY)
     registry_profiles = registry.get("profiles") or []
@@ -1161,9 +1468,18 @@ def learner_model_state(
         ):
             planned_profile = candidate
 
-    parameter_count = as_number(str(learner.get("trainable_parameters") or ""))
+    runtime_parameter_count = as_number(
+        str(runtime_parameter_contract.get("trainable_parameters") or "")
+    )
+    parameter_count = (
+        runtime_parameter_count
+        if runtime_parameter_count is not None and runtime_parameter_count > 0
+        else as_number(str(learner.get("trainable_parameters") or ""))
+    )
     parameter_source = None
-    if parameter_count is not None:
+    if runtime_parameter_count is not None and runtime_parameter_count > 0:
+        parameter_source = "runtime checkpoint load"
+    elif parameter_count is not None:
         parameter_source = "manifest.design_contract.learner"
     if parameter_count is None:
         base_contract = manifest.get("base_checkpoint_contract") or {}
@@ -1220,6 +1536,51 @@ def learner_model_state(
         if temporal_layers > 0 or profile.get("decision_context") == "history"
         else "stateless state evaluator"
     )
+    dormant_contract = read_json(dormant_modules_path)
+    dormant_modules: list[dict[str, Any]] = []
+    if dormant_contract.get("schema") == "poke_bot.dormant_model_modules/v1":
+        for candidate in dormant_contract.get("modules") or []:
+            if not isinstance(candidate, dict):
+                continue
+            expert_count = int(candidate.get("expert_count") or 0)
+            hidden_dim = int(candidate.get("hidden_dim") or 0)
+            bottleneck_dim = int(candidate.get("bottleneck_dim") or 0)
+            expected_parameters = expert_count * (
+                hidden_dim * bottleneck_dim
+                + bottleneck_dim
+                + bottleneck_dim * hidden_dim
+                + hidden_dim
+            )
+            candidate_parameters = int(candidate.get("parameter_count") or 0)
+            if (
+                candidate.get("status") != "staged_non_active"
+                or candidate.get("runtime_enabled") is not False
+                or candidate.get("optimizer_active") is not False
+                or candidate.get("present_in_active_checkpoint") is not False
+                or candidate_parameters <= 0
+                or candidate_parameters != expected_parameters
+            ):
+                continue
+            dormant_modules.append(dict(candidate))
+    staged_non_active_parameters = sum(
+        int(row.get("parameter_count") or 0) for row in dormant_modules
+    )
+    current_checkpoint_parameters = (
+        int(parameter_count) if parameter_count is not None else None
+    )
+    parameter_breakdown = {
+        "current_checkpoint_total": current_checkpoint_parameters,
+        "optimizer_active_current": current_checkpoint_parameters,
+        "current_non_active": 0 if current_checkpoint_parameters is not None else None,
+        "staged_non_active": staged_non_active_parameters,
+        "staged_architecture_total": (
+            current_checkpoint_parameters + staged_non_active_parameters
+            if current_checkpoint_parameters is not None
+            else None
+        ),
+        "staged_modules": len(dormant_modules),
+        "source": str(dormant_modules_path),
+    }
     return {
         "implementation": "TemporalCabtTransformer",
         "architecture": architecture,
@@ -1228,6 +1589,10 @@ def learner_model_state(
         "profile_id": matched_profile.get("id"),
         "trainable_parameters": parameter_count,
         "parameter_source": parameter_source,
+        "parameter_evidence_checkpoint": runtime_parameter_contract.get("checkpoint"),
+        "parameter_evidence_source": runtime_parameter_contract.get("source"),
+        "parameter_breakdown": parameter_breakdown,
+        "dormant_modules": dormant_modules,
         "active_checkpoint": active_checkpoint.get("path"),
         "active_checkpoint_digest": active_checkpoint.get("digest"),
         "training_schedule": {
@@ -1237,6 +1602,50 @@ def learner_model_state(
             "warmup_max_decisions_per_batch": warmup_cap,
             "warmup_iterations": warmup_iterations,
             "steady_max_decisions_per_batch": steady_cap,
+        },
+        "optimizer": {
+            "curriculum": {
+                "name": "AdamW",
+                "learning_rate": as_float(learner.get("learning_rate")) or 3e-4,
+                "weight_decay": as_float(learner.get("weight_decay")) or 1e-4,
+                "gradient_clip_norm": as_float(learner.get("gradient_clip_norm"))
+                or 1.0,
+                "scheduler": "constant_per_iteration",
+                "precision": "bf16_autocast",
+                "optimizer_state_restored": True,
+                "epochs": as_number(str(learner.get("epochs") or "")),
+                "games_per_batch": as_number(
+                    str(learner.get("games_per_batch") or "")
+                ),
+                "max_decisions_per_batch": active_cap,
+                "awr_frozen_baseline": True,
+                "awr_beta": as_float(runtime_optimizer.get("awr_beta"))
+                or as_float(learner.get("awr_beta"))
+                or 0.5,
+                "awr_weight_max": as_float(
+                    runtime_optimizer.get("awr_weight_max")
+                )
+                or as_float(learner.get("awr_weight_max"))
+                or 20.0,
+                "entropy_bonus": as_float(learner.get("entropy_bonus")) or 0.01,
+            },
+            "expert_rehearsal": {
+                "name": "AdamW",
+                "learning_rate": as_float(expert.get("learning_rate")),
+                "weight_decay": 1e-4,
+                "gradient_clip_norm": 1.0,
+                "scheduler": "constant",
+                "precision": "bf16_autocast",
+                "epochs": as_number(str(expert.get("epochs") or "")),
+                "requested_batch_size": as_number(
+                    str(expert.get("requested_batch_size") or "")
+                ),
+            },
+            "source": (
+                "live systemd environment + immutable manifest contract"
+                if runtime_optimizer
+                else "live trainer implementation + immutable manifest contract"
+            ),
         },
         "planned_profile": planned_profile,
         "heads": {
@@ -1270,6 +1679,368 @@ def read_json(path: Path) -> dict[str, Any]:
         return value if isinstance(value, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def competition_gate_program_state(
+    official_heldout: dict[str, Any],
+    public_mix_live: dict[str, Any],
+    *,
+    contract_path: Path = COMPETITION_GATE_PROGRAM,
+    registry_path: Path = PROTECTED_BASELINE_GATE,
+) -> dict[str, Any]:
+    """Reconcile the accepted gate and the next public-agent gate fail-closed.
+
+    The exact heldout result, protected model registry, and owner decision are
+    distinct facts.  The dashboard may call the prior milestone ``accepted``
+    only when all three point to the same checkpoint and exact game totals.
+    Sampled public-mix trajectories are kept as a separately labeled progress
+    diagnostic; they can never populate the exact gate result.
+    """
+
+    contract = read_json(contract_path)
+    registry = read_json(registry_path)
+    if contract.get("schema") != "poke_bot.competition_gate_program/v1":
+        return {
+            "available": False,
+            "reason": "competition gate program is missing or has the wrong schema",
+            "source": str(contract_path),
+        }
+
+    active_gate_id = str(contract.get("active_gate_id") or "")
+    active_semantics = (
+        contract.get("active_gate_semantics")
+        if isinstance(contract.get("active_gate_semantics"), dict)
+        else {}
+    )
+    accepted_contract = contract.get("accepted_gate")
+    next_contract = contract.get("next_gate")
+    if not isinstance(accepted_contract, dict) or not isinstance(next_contract, dict):
+        return {
+            "available": False,
+            "reason": "competition gate program is incomplete",
+            "source": str(contract_path),
+        }
+
+    accepted_digest = str(accepted_contract.get("checkpoint_digest") or "")
+    exact_expected = accepted_contract.get("exact_holdout")
+    if not isinstance(exact_expected, dict):
+        exact_expected = {}
+    official_digest = str(official_heldout.get("checkpoint_digest") or "")
+    registry_digest = str(registry.get("checkpoint_digest") or "")
+    expected_games = int(exact_expected.get("games") or 0)
+    official_games = int(official_heldout.get("games") or 0)
+    expected_wr = as_float(exact_expected.get("win_rate"))
+    official_wr = as_float(official_heldout.get("wr"))
+    expected_lower = as_float(exact_expected.get("confidence_lower"))
+    official_lower = as_float(official_heldout.get("lower"))
+    exact_values_match = bool(
+        expected_wr is not None
+        and official_wr is not None
+        and abs(expected_wr - official_wr) <= 1e-12
+        and expected_lower is not None
+        and official_lower is not None
+        and abs(expected_lower - official_lower) <= 1e-12
+    )
+    accepted_reconciled = bool(
+        accepted_contract.get("status") == "accepted"
+        and accepted_digest
+        and accepted_digest == official_digest == registry_digest
+        and official_heldout.get("available") is True
+        and official_heldout.get("valid") is True
+        and official_heldout.get("audit_passed") is True
+        and official_heldout.get("exact_distribution") is True
+        and official_heldout.get("exact_weights") is True
+        and official_heldout.get("greedy_required") is True
+        and expected_games > 0
+        and official_games == expected_games
+        and exact_values_match
+        and registry.get("immutable") is True
+        and registry.get("automatic_pruning_allowed") is False
+    )
+    submissions = [
+        row
+        for row in (accepted_contract.get("submissions") or [])
+        if isinstance(row, dict)
+    ]
+    accepted = {
+        "available": True,
+        "accepted": accepted_reconciled,
+        "status": "accepted" if accepted_reconciled else "identity mismatch",
+        "id": accepted_contract.get("id"),
+        "label": accepted_contract.get("label"),
+        "checkpoint_digest": accepted_digest,
+        "decision_basis": accepted_contract.get("decision_basis"),
+        "raw_legacy_gate": accepted_contract.get("raw_legacy_gate") or {},
+        "submissions": submissions,
+        "submission_bundle_sha256": accepted_contract.get(
+            "submission_bundle_sha256"
+        ),
+        "identity_reconciled": accepted_reconciled,
+        "registry_protected": bool(
+            registry.get("immutable") is True
+            and registry.get("automatic_pruning_allowed") is False
+        ),
+    }
+
+    roster = [
+        dict(row)
+        for row in (next_contract.get("roster") or [])
+        if isinstance(row, dict)
+    ]
+    evaluation = (
+        next_contract.get("evaluation")
+        if isinstance(next_contract.get("evaluation"), dict)
+        else {}
+    )
+    pass_criteria = (
+        next_contract.get("pass_criteria")
+        if isinstance(next_contract.get("pass_criteria"), dict)
+        else {}
+    )
+    roster_ids = [str(row.get("opponent_id") or "") for row in roster]
+    content_digests = [str(row.get("content_digest") or "") for row in roster]
+    research_measurements = [
+        dict(row)
+        for row in (next_contract.get("research_measurements") or [])
+        if isinstance(row, dict)
+    ]
+    research_ids = [
+        str(row.get("opponent_id") or "") for row in research_measurements
+    ]
+    research_valid = bool(
+        len(research_measurements) == 4
+        and set(research_ids) == set(OFFICIAL_BASELINE_IDS)
+        and len(research_ids) == len(set(research_ids))
+        and sum(int(row.get("games") or 0) for row in research_measurements) == 1000
+        and all(
+            int(row.get("games") or 0) == 250
+            and int(row.get("seat0_games") or 0) == 125
+            and int(row.get("seat1_games") or 0) == 125
+            and bool(str(row.get("archetype_id") or "").strip())
+            and bool(str(row.get("archetype_label") or "").strip())
+            and (as_float(row.get("gate_weight")) or 0.0) == 0.0
+            and row.get("diagnostic_only") is True
+            and row.get("included_in_gate_pass") is False
+            for row in research_measurements
+        )
+    )
+    per_opponent_games = int(evaluation.get("games_per_opponent") or 0)
+    seat0 = int(evaluation.get("seat0_games_per_opponent") or 0)
+    seat1 = int(evaluation.get("seat1_games_per_opponent") or 0)
+    total_games = int(evaluation.get("games_total") or 0)
+    original_four_gate_weight = as_float(
+        active_semantics.get("original_four_gate_weight")
+    )
+    semantics_valid = bool(
+        active_gate_id
+        and active_gate_id == str(next_contract.get("id") or "")
+        and int(active_semantics.get("gate_roster_size") or 0) == len(roster)
+        and int(active_semantics.get("games_per_opponent") or 0)
+        == per_opponent_games
+        and int(active_semantics.get("gate_games_total") or 0) == total_games
+        and active_semantics.get("original_four_role") == "research_control_only"
+        and original_four_gate_weight is not None
+        and original_four_gate_weight == 0.0
+    )
+    roster_valid = bool(
+        roster
+        and semantics_valid
+        and all(roster_ids)
+        and all(str(row.get("archetype_id") or "").strip() for row in roster)
+        and all(str(row.get("archetype_label") or "").strip() for row in roster)
+        and len(roster_ids) == len(set(roster_ids))
+        and set(roster_ids).isdisjoint(OFFICIAL_BASELINE_IDS)
+        and set(roster_ids).isdisjoint(research_ids)
+        and all(content_digests)
+        and len(content_digests) == len(set(content_digests))
+        and all((as_float(row.get("weight")) or 0.0) > 0.0 for row in roster)
+        and per_opponent_games > 0
+        and seat0 + seat1 == per_opponent_games
+        and total_games == len(roster) * per_opponent_games
+        and int(evaluation.get("minimum_games_per_opponent") or 0)
+        == per_opponent_games
+        and evaluation.get("all_matchups_must_complete") is True
+        and evaluation.get("partial_results_gate_eligible") is False
+        and evaluation.get("sequential_early_stop") is False
+        and evaluation.get("mode") == "greedy"
+        and evaluation.get("fixed_seed_manifest_required") is True
+        and evaluation.get("formal_eval_disjoint_from_training") is True
+        and evaluation.get("checkpoint_digest_required") is True
+        and evaluation.get("package_digest_deduplicated") is True
+        and research_valid
+    )
+
+    sampled_rows = {
+        str(row.get("opponent_id") or ""): row
+        for row in (public_mix_live.get("matchups") or [])
+        if isinstance(row, dict)
+    }
+    diagnostic_rows: list[dict[str, Any]] = []
+    weighted_score = 0.0
+    covered_weight = 0.0
+    diagnostic_games = 0
+    for member in roster:
+        opponent_id = str(member.get("opponent_id") or "")
+        sampled = sampled_rows.get(opponent_id) or {}
+        games = int(sampled.get("games") or 0)
+        wr = as_float(sampled.get("win_rate"))
+        weight = as_float(member.get("weight")) or 0.0
+        if games > 0 and wr is not None and weight > 0:
+            weighted_score += weight * wr
+            covered_weight += weight
+            diagnostic_games += games
+        diagnostic_rows.append(
+            {
+                "opponent_id": opponent_id,
+                "tier": member.get("tier"),
+                "weight": weight,
+                "games": games,
+                "wr": wr,
+                "seat0": int(sampled.get("seat0") or 0),
+                "seat1": int(sampled.get("seat1") or 0),
+                "content_digest": member.get("content_digest"),
+            }
+        )
+    matchup_games = sum(
+        int(row.get("games") or 0)
+        for row in (public_mix_live.get("matchups") or [])
+        if isinstance(row, dict)
+    )
+    public_games = int(public_mix_live.get("games") or 0)
+    diagnostic_valid = bool(
+        public_mix_live.get("available") is True
+        and public_mix_live.get("checkpoint_mixed") is not True
+        and public_mix_live.get("checkpoint_digest")
+        and matchup_games == public_games
+        and covered_weight > 0
+    )
+    diagnostic = {
+        "available": diagnostic_valid,
+        "definition": next_contract.get("diagnostic_definition"),
+        "iteration": public_mix_live.get("iteration"),
+        "checkpoint_digest": public_mix_live.get("checkpoint_digest"),
+        "games": diagnostic_games,
+        "roster_coverage": (
+            sum(1 for row in diagnostic_rows if int(row["games"]) > 0)
+            / len(diagnostic_rows)
+            if diagnostic_rows
+            else 0.0
+        ),
+        "skill_weighted_wr": (
+            weighted_score / covered_weight if diagnostic_valid else None
+        ),
+        "rows": diagnostic_rows,
+        "source": str(next_contract.get("diagnostic_pointer") or ""),
+    }
+
+    result_path = Path(str(next_contract.get("exact_result_pointer") or ""))
+    exact_result = read_json(result_path) if str(result_path) else {}
+    result_matchups = [
+        row
+        for row in (exact_result.get("matchups") or [])
+        if isinstance(row, dict)
+    ]
+    result_ids = [str(row.get("opponent_id") or "") for row in result_matchups]
+    result_distribution_valid = bool(
+        len(result_matchups) == len(roster)
+        and len(result_ids) == len(set(result_ids))
+        and set(result_ids) == set(roster_ids)
+        and all(
+            int(row.get("games") or 0) == per_opponent_games
+            and int(row.get("seat0") or 0) == seat0
+            and int(row.get("seat1") or 0) == seat1
+            for row in result_matchups
+        )
+    )
+    result_audit = (
+        exact_result.get("audit")
+        if isinstance(exact_result.get("audit"), dict)
+        else {}
+    )
+    fixed_seed_manifest = (
+        result_audit.get("fixed_seed_manifest")
+        if isinstance(result_audit.get("fixed_seed_manifest"), dict)
+        else {}
+    )
+    fixed_seed_evidence = bool(
+        result_audit.get("fixed_seeds") is True
+        or (
+            int(fixed_seed_manifest.get("gate_games") or 0) == total_games
+            and bool(str(fixed_seed_manifest.get("mapping") or "").strip())
+            and bool(str(result_audit.get("fixed_seed_manifest_digest") or "").strip())
+        )
+    )
+    exact_result_valid = bool(
+        exact_result.get("schema") == "poke_bot.public_agent_gate_result/v1"
+        and exact_result.get("gate_id") == next_contract.get("id")
+        and official_digest
+        and str(exact_result.get("checkpoint_digest") or "") == official_digest
+        and int(exact_result.get("games") or 0) == total_games
+        and result_distribution_valid
+        and result_audit.get("passed") is True
+        and str(result_audit.get("checkpoint_digest") or "") == official_digest
+        and result_audit.get("exact_distribution") is True
+        and result_audit.get("both_seats") is True
+        and result_audit.get("greedy") is True
+        and fixed_seed_evidence
+    )
+    result_checks = (
+        exact_result.get("checks")
+        if isinstance(exact_result.get("checks"), dict)
+        else {}
+    )
+    required_result_checks = (
+        "audit",
+        "skill_weighted_win_rate",
+        "skill_weighted_confidence_lower",
+        "s_tier_mean_floor",
+        "individual_opponent_floor",
+    )
+    exact_passed = bool(
+        exact_result_valid
+        and exact_result.get("passed") is True
+        and all(result_checks.get(name) is True for name in required_result_checks)
+    )
+    next_gate = {
+        "available": roster_valid,
+        "status": (
+            "passed"
+            if exact_passed
+            else "failed"
+            if exact_result_valid
+            else str(next_contract.get("status") or "queued")
+        ),
+        "id": next_contract.get("id"),
+        "label": next_contract.get("label"),
+        "purpose": next_contract.get("purpose"),
+        "candidate_source": next_contract.get("candidate_source"),
+        "evaluation": evaluation,
+        "pass_criteria": pass_criteria,
+        "milestones": next_contract.get("milestones") or [],
+        "roster": roster,
+        "excluded_aliases": next_contract.get("excluded_aliases") or [],
+        "research_measurements": research_measurements,
+        "research_measurements_valid": research_valid,
+        "diagnostic": diagnostic,
+        "exact_result_available": exact_result_valid,
+        "exact_result": exact_result if exact_result_valid else {},
+        "exact_result_source": str(result_path),
+        "contract_valid": roster_valid,
+        "contract_reason": (
+            None
+            if roster_valid
+            else "active gate identity, semantics, roster, or exact allocation is invalid"
+        ),
+    }
+    return {
+        "available": True,
+        "active_gate_id": active_gate_id,
+        "active_gate_semantics": active_semantics,
+        "accepted_gate": accepted,
+        "next_gate": next_gate,
+        "source": str(contract_path),
+        "updated_at_utc": contract.get("updated_at_utc"),
+    }
 
 
 def replay_window_state(
@@ -1536,6 +2307,59 @@ def _tqdm_rate(timing: str, units: tuple[str, ...]) -> tuple[float | None, str |
 def _tqdm_eta(timing: str) -> str | None:
     match = re.search(r"<([^,\]]+)", timing)
     return match.group(1).strip() if match else None
+
+
+def annotate_expert_optimizer_sps(
+    progress: dict[str, Any],
+    raw_training_log: str,
+) -> dict[str, Any]:
+    """Convert the live expert batch rate to exact optimizer sample SPS.
+
+    The expert tqdm reports batches/second, while the device-corpus pack line
+    records the exact train and validation sample counts.  Combining those
+    two run-bound values avoids both a blank SPS card and reuse of rollout SPS
+    from the preceding collection phase.
+    """
+    stage = str(progress.get("stage") or "")
+    if stage not in {"train:expert", "train:expert:validation"}:
+        return progress
+    if isinstance(progress.get("sps"), (int, float)):
+        return progress
+    rate = as_float(progress.get("rate"))
+    total_batches = as_number(str(progress.get("total") or ""))
+    rate_unit = str(progress.get("rate_unit") or "")
+    if rate is None or rate <= 0.0 or not total_batches or total_batches <= 0:
+        return progress
+    if rate_unit == "batch/s":
+        batches_per_second = rate
+    elif rate_unit == "s/batch":
+        batches_per_second = 1.0 / rate
+    else:
+        return progress
+
+    split_rows = list(
+        re.finditer(
+            r"\[device-corpus\]\s+CPU pack=.*?\bsamples=(\d+)\s+"
+            r"train=(\d+)\s+val=(\d+)",
+            ANSI_RE.sub("", raw_training_log).replace("\r", "\n"),
+        )
+    )
+    if not split_rows:
+        return progress
+    _all_samples, train_samples, val_samples = (
+        int(value) for value in split_rows[-1].groups()
+    )
+    split_samples = (
+        val_samples if stage == "train:expert:validation" else train_samples
+    )
+    if split_samples <= 0:
+        return progress
+
+    enriched = dict(progress)
+    enriched["sps"] = batches_per_second * split_samples / total_batches
+    enriched["sps_source"] = "exact device-corpus split × live tqdm batch rate"
+    enriched["optimizer_samples"] = split_samples
+    return enriched
 
 
 def parse_curriculum_progress(
@@ -2018,24 +2842,101 @@ def infer_between_bar_progress(
     return updated
 
 
-def _metric_iteration_wall_seconds(payload: dict[str, Any]) -> float | None:
-    """Return full collect-to-commit wall time, including legacy metrics."""
+def _expert_rehearsal_exclusion_seconds(
+    run_dir: Path | None,
+    iteration: int,
+    extra: dict[str, Any] | None = None,
+) -> float | None:
+    """Return expert-only wall time, or ``None`` when it cannot be proven.
+
+    Rehearsal is an out-of-band correction pass rather than part of curriculum
+    iteration throughput.  New receipts can carry an exact duration.  Older
+    runs are reconstructed conservatively from the immutable completed-
+    collection timestamp through the immutable rehearsal-receipt timestamp.
+    A missing rehearsal returns ``0``; a known rehearsal without trustworthy
+    timing returns ``None`` so it cannot contaminate iteration averages.
+    """
+    extra = extra if isinstance(extra, dict) else {}
+    record = (
+        extra.get("expert_rehearsal")
+        if isinstance(extra.get("expert_rehearsal"), dict)
+        else {}
+    )
+    receipt_path = (
+        run_dir / "rehearsals" / f"before_iter_{int(iteration):05d}.json"
+        if run_dir is not None
+        else None
+    )
+    receipt_exists = bool(receipt_path is not None and receipt_path.is_file())
+    if not record and not receipt_exists:
+        return 0.0
+
+    for candidate in (
+        record.get("wall_elapsed_sec"),
+        record.get("elapsed_sec"),
+        (record.get("rehearsal") or {}).get("elapsed_sec")
+        if isinstance(record.get("rehearsal"), dict)
+        else None,
+    ):
+        seconds = as_float(candidate)
+        if seconds is not None and seconds >= 0:
+            return seconds
+
+    if run_dir is None or not receipt_exists:
+        return None
+    collection = read_json(
+        run_dir / "collection_receipts" / f"iter_{int(iteration):05d}.json"
+    )
+    rehearsal = read_json(receipt_path)
+    started_at = as_float(collection.get("completed_at"))
+    completed_at = as_float(rehearsal.get("completed_at"))
+    if completed_at is None:
+        try:
+            completed_at = receipt_path.stat().st_mtime
+        except OSError:
+            completed_at = None
+    if (
+        started_at is None
+        or completed_at is None
+        or completed_at < started_at
+    ):
+        return None
+    return completed_at - started_at
+
+
+def _metric_iteration_wall_seconds(
+    payload: dict[str, Any],
+    *,
+    run_dir: Path | None = None,
+) -> float | None:
+    """Return curriculum work time with expert rehearsal removed."""
     extra = payload.get("extra") if isinstance(payload.get("extra"), dict) else {}
     explicit = as_float(extra.get("iteration_wall_sec"))
     if explicit is not None and explicit >= 0:
-        return explicit
-    post_collect = as_float(
-        extra.get("post_collect_elapsed_sec", extra.get("elapsed_sec"))
-    )
-    collect_stats = (
-        extra.get("collect_stats")
-        if isinstance(extra.get("collect_stats"), dict)
-        else {}
-    )
-    collect = as_float(collect_stats.get("collect_elapsed_sec"))
-    if post_collect is not None and collect is not None:
-        return max(0.0, post_collect) + max(0.0, collect)
-    return max(0.0, post_collect) if post_collect is not None else None
+        wall_seconds = explicit
+    else:
+        post_collect = as_float(
+            extra.get("post_collect_elapsed_sec", extra.get("elapsed_sec"))
+        )
+        collect_stats = (
+            extra.get("collect_stats")
+            if isinstance(extra.get("collect_stats"), dict)
+            else {}
+        )
+        collect = as_float(collect_stats.get("collect_elapsed_sec"))
+        if post_collect is not None and collect is not None:
+            wall_seconds = max(0.0, post_collect) + max(0.0, collect)
+        elif post_collect is not None:
+            wall_seconds = max(0.0, post_collect)
+        else:
+            return None
+    iteration = payload.get("iteration")
+    if not isinstance(iteration, int):
+        return wall_seconds
+    excluded = _expert_rehearsal_exclusion_seconds(run_dir, iteration, extra)
+    if excluded is None:
+        return None
+    return max(0.0, wall_seconds - excluded)
 
 
 def iteration_timing_state(
@@ -2057,24 +2958,86 @@ def iteration_timing_state(
             "history": [],
         }
     history: list[dict[str, Any]] = []
+    throughput_history: list[dict[str, Any]] = []
     metrics_dir = run_dir / "metrics"
     for path in sorted(metrics_dir.glob("iter_*.json")):
         payload = read_json(path)
         iteration = payload.get("iteration")
-        seconds = _metric_iteration_wall_seconds(payload)
-        if not isinstance(iteration, int) or seconds is None:
+        if not isinstance(iteration, int):
             continue
+        extra = payload.get("extra") if isinstance(payload.get("extra"), dict) else {}
+        collect_stats = (
+            extra.get("collect_stats")
+            if isinstance(extra.get("collect_stats"), dict)
+            else {}
+        )
+        games = as_float(payload.get("games"))
+        decisions = as_float(payload.get("decisions"))
+        collect_seconds = as_float(collect_stats.get("collect_elapsed_sec"))
+        gps = as_float(payload.get("games_per_sec"))
+        sps = as_float(payload.get("decisions_per_sec"))
+        if collect_seconds is not None and collect_seconds > 0:
+            if games is not None and games >= 0:
+                gps = games / collect_seconds
+            if decisions is not None and decisions >= 0:
+                sps = decisions / collect_seconds
+        if gps is not None or sps is not None:
+            throughput_history.append(
+                {
+                    "iteration": iteration + int(global_iteration_offset),
+                    "lineage_iteration": iteration,
+                    "gps": gps,
+                    "sps": sps,
+                    "games": games,
+                    "decisions": decisions,
+                    "collect_seconds": collect_seconds,
+                }
+            )
+        seconds = _metric_iteration_wall_seconds(payload, run_dir=run_dir)
+        if seconds is None:
+            continue
+        excluded = _expert_rehearsal_exclusion_seconds(
+            run_dir,
+            iteration,
+            payload.get("extra") if isinstance(payload.get("extra"), dict) else {},
+        )
         history.append(
             {
                 "iteration": iteration + int(global_iteration_offset),
                 "lineage_iteration": iteration,
                 "seconds": seconds,
+                "expert_rehearsal_excluded_seconds": excluded or 0.0,
             }
         )
     history.sort(key=lambda row: int(row["lineage_iteration"]))
     history = history[-20:]
+    throughput_history.sort(key=lambda row: int(row["lineage_iteration"]))
+    throughput_history = throughput_history[-20:]
     latest = history[-1] if history else None
     rolling = history[-5:]
+    latest_throughput = throughput_history[-1] if throughput_history else None
+    rolling_throughput = throughput_history[-5:]
+
+    def weighted_rate(rows: list[dict[str, Any]], numerator: str) -> float | None:
+        exact = [
+            row
+            for row in rows
+            if as_float(row.get(numerator)) is not None
+            and as_float(row.get("collect_seconds")) is not None
+            and float(row["collect_seconds"]) > 0
+        ]
+        if exact:
+            return sum(float(row[numerator]) for row in exact) / sum(
+                float(row["collect_seconds"]) for row in exact
+            )
+        rate_name = "gps" if numerator == "games" else "sps"
+        rates = [
+            float(row[rate_name])
+            for row in rows
+            if as_float(row.get(rate_name)) is not None
+        ]
+        return sum(rates) / len(rates) if rates else None
+
     runtime = read_json(run_dir / "iteration_runtime.json")
     current_iteration = runtime.get("iteration")
     started_at = as_float(runtime.get("started_at"))
@@ -2082,6 +3045,7 @@ def iteration_timing_state(
     current_seconds: float | None = None
     display_current_iteration: int | None = None
     current_source: str | None = None
+    current_paused_for_expert_rehearsal = False
     if (
         active
         and isinstance(current_iteration, int)
@@ -2090,9 +3054,37 @@ def iteration_timing_state(
         and phase != "completed"
         and 0 <= started_at <= time.time() + 5
     ):
-        current_seconds = max(0.0, time.time() - started_at)
+        raw_current_seconds = max(0.0, time.time() - started_at)
+        if str(progress_stage or "").startswith("train:expert"):
+            collection = read_json(
+                run_dir
+                / "collection_receipts"
+                / f"iter_{int(current_iteration):05d}.json"
+            )
+            stats = (
+                collection.get("stats")
+                if isinstance(collection.get("stats"), dict)
+                else {}
+            )
+            collected_seconds = as_float(stats.get("collect_elapsed_sec"))
+            current_seconds = (
+                max(0.0, collected_seconds)
+                if collected_seconds is not None
+                else None
+            )
+            current_paused_for_expert_rehearsal = True
+            current_source = "collection receipt; expert rehearsal excluded"
+        else:
+            excluded = _expert_rehearsal_exclusion_seconds(
+                run_dir, current_iteration
+            )
+            current_seconds = (
+                max(0.0, raw_current_seconds - excluded)
+                if excluded is not None
+                else None
+            )
+            current_source = "trainer runtime; expert rehearsal excluded"
         display_current_iteration = current_iteration + int(global_iteration_offset)
-        current_source = "trainer runtime"
     elif (
         active
         and isinstance(next_iteration, int)
@@ -2134,6 +3126,7 @@ def iteration_timing_state(
         "current_iteration": display_current_iteration,
         "current_seconds": current_seconds,
         "current_source": current_source,
+        "current_paused_for_expert_rehearsal": current_paused_for_expert_rehearsal,
         "latest_iteration": latest.get("iteration") if latest else None,
         "latest_seconds": latest.get("seconds") if latest else None,
         "rolling5_seconds": (
@@ -2143,7 +3136,19 @@ def iteration_timing_state(
         ),
         "rolling5_samples": len(rolling),
         "history": history,
-        "source": "committed metrics + persisted live iteration timer",
+        "latest_throughput_iteration": (
+            latest_throughput.get("iteration") if latest_throughput else None
+        ),
+        "latest_gps": latest_throughput.get("gps") if latest_throughput else None,
+        "latest_sps": latest_throughput.get("sps") if latest_throughput else None,
+        "rolling5_gps": weighted_rate(rolling_throughput, "games"),
+        "rolling5_sps": weighted_rate(rolling_throughput, "decisions"),
+        "rolling5_throughput_samples": len(rolling_throughput),
+        "throughput_history": throughput_history,
+        "source": (
+            "committed metrics + persisted live iteration timer; "
+            "expert rehearsal excluded"
+        ),
     }
 
 
@@ -2326,6 +3331,131 @@ def expert_rehearsal_state(
     }
 
 
+def strong_public_gate_runtime_state(
+    active_gate: dict[str, Any] | None = None,
+    *,
+    curriculum_progress: dict[str, Any] | None = None,
+    curriculum_active: bool = False,
+) -> dict[str, Any]:
+    """Return live progress normalized to the pinned active-gate contract.
+
+    The service runs the active strong-public gate first and may then run the
+    original-four research controls.  Once that second phase starts, its
+    1,000-game counter must not replace the completed 2,000-game active gate
+    in dashboard telemetry.
+    """
+
+    recognized_stages = {
+        "heldout:strong_public_gate",
+        "heldout:original_four_research",
+    }
+    main_progress = (
+        curriculum_progress if isinstance(curriculum_progress, dict) else {}
+    )
+    main_stage = str(main_progress.get("stage") or "")
+    if main_stage in recognized_stages:
+        progress = dict(main_progress)
+        stage = main_stage
+        recognized = True
+        active = bool(curriculum_active)
+        updated_at = None
+        source = "main curriculum run-bound progress"
+    else:
+        active = run(
+            ["systemctl", "--user", "is-active", STRONG_PUBLIC_GATE_SERVICE],
+            timeout=2,
+        ) == "active"
+        status = read_tail(STRONG_PUBLIC_GATE_PROGRESS, 20_000).strip()
+        log = read_tail(STRONG_PUBLIC_GATE_LOG, 300_000)
+        progress = parse_curriculum_progress(status, log)
+        stage = str(progress.get("stage") or "")
+        recognized = stage in recognized_stages
+        updated_at = max(
+            (
+                path.stat().st_mtime
+                for path in (STRONG_PUBLIC_GATE_PROGRESS, STRONG_PUBLIC_GATE_LOG)
+                if path.is_file()
+            ),
+            default=None,
+        )
+        source = str(STRONG_PUBLIC_GATE_PROGRESS)
+    age_s = max(0.0, time.time() - updated_at) if updated_at else None
+    gate = active_gate if isinstance(active_gate, dict) else {}
+    evaluation = (
+        gate.get("evaluation") if isinstance(gate.get("evaluation"), dict) else {}
+    )
+    roster = gate.get("roster") if isinstance(gate.get("roster"), list) else []
+    gate_total = int(evaluation.get("games_total") or 0)
+    games_per_opponent = int(evaluation.get("games_per_opponent") or 0)
+    roster_size = len(roster)
+    contract_aligned = bool(
+        gate.get("available") is True
+        and gate.get("contract_valid") is True
+        and roster_size > 0
+        and games_per_opponent > 0
+        and gate_total == roster_size * games_per_opponent
+    )
+    raw_current = int(progress.get("current") or 0) if recognized else 0
+    raw_total = int(progress.get("total") or 0) if recognized else 0
+    active_phase_aligned = bool(
+        stage != "heldout:strong_public_gate"
+        or (
+            contract_aligned
+            and raw_total == gate_total
+            and 0 <= raw_current <= gate_total
+        )
+    )
+    if contract_aligned and stage == "heldout:strong_public_gate" and active_phase_aligned:
+        gate_current = raw_current
+    elif contract_aligned and stage == "heldout:original_four_research":
+        gate_current = gate_total
+    else:
+        gate_current = 0
+    gate_percent = (
+        100.0 * gate_current / gate_total
+        if contract_aligned and gate_total > 0
+        else None
+    )
+    return {
+        "available": contract_aligned,
+        "telemetry_available": bool(active or recognized),
+        "active": active,
+        "current": gate_current,
+        "total": gate_total if contract_aligned else 0,
+        "percent": gate_percent,
+        "roster_size": roster_size if contract_aligned else 0,
+        "games_per_opponent": games_per_opponent if contract_aligned else 0,
+        "allocation_label": (
+            f"{roster_size} x {games_per_opponent}"
+            if contract_aligned
+            else None
+        ),
+        "contract_aligned": contract_aligned,
+        "progress_aligned": active_phase_aligned,
+        "active_gate_complete": bool(contract_aligned and gate_current == gate_total),
+        "phase_current": raw_current,
+        "phase_total": raw_total,
+        "iteration": progress.get("iteration") if recognized else None,
+        "stage": stage if recognized else ("starting" if active else "idle"),
+        "phase": (
+            "active_gate"
+            if stage == "heldout:strong_public_gate"
+            else "research_controls"
+            if stage == "heldout:original_four_research"
+            else "starting"
+            if active
+            else "idle"
+        ),
+        "gps": progress.get("gps") if recognized else None,
+        "sps": progress.get("sps") if recognized else None,
+        "remotes": progress.get("remotes") if recognized else None,
+        "line": progress.get("line") if recognized else None,
+        "updated_at": updated_at,
+        "age_s": age_s,
+        "source": source,
+    }
+
+
 def curriculum_state() -> dict[str, Any]:
     root = ROOT / "outputs/pure_rl"
     active_units, active_pids, active_run_name = _active_curriculum_services()
@@ -2374,6 +3504,11 @@ def curriculum_state() -> dict[str, Any]:
         global_iteration_offset=global_iteration_offset,
         handoff=handoff,
     )
+    latest_official_heldout = latest_committed_official_heldout_state(
+        loop,
+        run_dir,
+        global_iteration_offset=global_iteration_offset,
+    )
     run_name = (
         active_run_name
         or loop.get("run_name")
@@ -2411,6 +3546,7 @@ def curriculum_state() -> dict[str, Any]:
         iteration_hint=iteration_hint,
         train_epochs=2,
     )
+    progress = annotate_expert_optimizer_sps(progress, raw_training_log)
     replay_window = replay_window_state(
         run_dir,
         loop,
@@ -2521,6 +3657,17 @@ def curriculum_state() -> dict[str, Any]:
         public_mix_live["lineage_iteration"] = public_mix_iteration
         public_mix_live["iteration"] = public_mix_iteration + global_iteration_offset
         public_mix_live["age_s"] = public_mix_age
+    gate_program = competition_gate_program_state(
+        official_heldout,
+        public_mix_live,
+    )
+    if isinstance(gate_program.get("next_gate"), dict):
+        active_gate = gate_program["next_gate"]
+        active_gate["runtime"] = strong_public_gate_runtime_state(
+            active_gate,
+            curriculum_progress=display_progress,
+            curriculum_active=bool(active_units),
+        )
     extra = metrics.get("extra") if isinstance(metrics.get("extra"), dict) else {}
     promotion = extra.get("promotion") if isinstance(extra.get("promotion"), dict) else {}
     champion = loop.get("champion") if isinstance(loop.get("champion"), dict) else {}
@@ -2672,6 +3819,7 @@ def curriculum_state() -> dict[str, Any]:
         "iteration_timing": iteration_timing,
         "expert_rehearsal": expert_rehearsal,
         "public_mix_live": public_mix_live,
+        "gate_program": gate_program,
         "progress_source": str(progress_source),
         "progress_status_source": str(status_path),
         "progress_log_source": str(run_progress_log) if run_progress_log else None,
@@ -2705,6 +3853,7 @@ def curriculum_state() -> dict[str, Any]:
             )
         ),
         "official_heldout": official_heldout,
+        "latest_official_heldout": latest_official_heldout,
         "gate_passed": gate_passed,
         "promotion_wr": promotion.get("wr"),
         "promotion_passed": promotion.get("passed"),
@@ -2729,6 +3878,10 @@ def curriculum_state() -> dict[str, Any]:
                 if isinstance(lineage_iteration, int)
                 else None
             ),
+            runtime_optimizer=worker.get("optimizer_runtime"),
+            runtime_parameter_contract=checkpoint_parameter_telemetry(
+                ROOT / "outputs/logs" / f"{run_name}.log"
+            ) if run_name else {},
         ),
         "champion": champion.get("path"),
         "updated_at": (
@@ -2993,6 +4146,68 @@ def latest10_state() -> dict[str, Any]:
     }
 
 
+def authoritative_training_state(
+    curriculum: dict[str, Any], transition: dict[str, Any]
+) -> dict[str, Any]:
+    """Select the live trainer before completed bootstrap history.
+
+    ``ALAKAZAM_BOOTSTRAP_READY`` is intentionally durable, so its existence is
+    not evidence that bootstrap is still the active workload. Once a
+    curriculum run is known, mirror that run into the legacy ``training``
+    payload instead of allowing the completed marker to shadow production.
+    """
+    if curriculum.get("run"):
+        progress = curriculum.get("progress") or {}
+        worker = curriculum.get("worker") or {}
+        active_pids = curriculum.get("active_pids") or []
+        return {
+            "authoritative": True,
+            "source": curriculum.get("progress_source"),
+            "log": curriculum.get("progress_log_source"),
+            "latest_line": progress.get("line"),
+            "updated_at": curriculum.get("progress_updated_at"),
+            "fresh": curriculum.get("source_current"),
+            "status": "running" if curriculum.get("active") else "stopped",
+            "mode": "curriculum_rl",
+            "phase": progress.get("stage") or curriculum.get("stage"),
+            "epoch": progress.get("epoch"),
+            "current": progress.get("current"),
+            "total": progress.get("total"),
+            "percent": progress.get("percent"),
+            "rate": progress.get("rate"),
+            "rate_unit": progress.get("rate_unit"),
+            "samples_per_second": progress.get("sps"),
+            "game_equivalents_per_second": progress.get("gps"),
+            "eta": progress.get("eta"),
+            "metrics": progress.get("metrics") or {},
+            "run": curriculum.get("run"),
+            "iteration": progress.get("iteration", curriculum.get("iteration")),
+            "service": {
+                "active": bool(curriculum.get("active")),
+                "pid": active_pids[0] if active_pids else None,
+                "memory_bytes": worker.get("rss_bytes"),
+                "source": worker.get("source"),
+            },
+        }
+
+    bootstrap = transition.get("bootstrap") or {}
+    bootstrap_live = bool(
+        bootstrap.get("active")
+        and (
+            int(bootstrap.get("pid") or 0) > 0
+            or bootstrap.get("sub_state") == "running"
+        )
+    )
+    if (
+        ALAKAZAM_BOOTSTRAP_READY.is_file()
+        or bootstrap_live
+        or transition.get("status")
+        == "training_alakazam_expert_bootstrap_blackwell_device_resident"
+    ):
+        return alakazam_bootstrap_progress()
+    return exact_training_state()
+
+
 def main() -> None:
     # Elmo is an independent host. Fetch its three views concurrently so a
     # slow SSH handshake cannot serialize into the outer Bert→Inzi timeout.
@@ -3021,20 +4236,7 @@ def main() -> None:
         elif index == 1 and curriculum.get("active"):
             gpu["production_active"] = True
             gpu["assignment"] = "PRODUCTION · policy leaves + trainer"
-    training = (
-        alakazam_bootstrap_progress()
-        if ALAKAZAM_BOOTSTRAP_READY.is_file()
-        or (
-            transition.get("bootstrap", {}).get("active")
-            and (
-                int(transition.get("bootstrap", {}).get("pid") or 0) > 0
-                or transition.get("bootstrap", {}).get("sub_state") == "running"
-            )
-        )
-        or transition.get("status")
-        == "training_alakazam_expert_bootstrap_blackwell_device_resident"
-        else exact_training_state()
-    )
+    training = authoritative_training_state(curriculum, transition)
     baseline_eval = baseline_eval_state()
     print(
         json.dumps(

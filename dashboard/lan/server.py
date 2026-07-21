@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import socket
@@ -21,6 +22,17 @@ INDEX = ROOT / "index.html"
 REMOTE_SNAPSHOT = "/home/inzi/poke-bot-agent-deployments/state-core-v1/scripts/dashboard_snapshot.py"
 LOCAL_SNAPSHOT = ROOT / "fleet_host_snapshot.py"
 RATE_STATE = ROOT / "fleet_rate_state.json"
+UI_VERSION_TOKEN = b"__DASHBOARD_UI_VERSION__"
+
+
+def dashboard_ui_version() -> str:
+    """Return a content identity shared by the page and status endpoint."""
+    return hashlib.sha256(INDEX.read_bytes()).hexdigest()[:16]
+
+
+def rendered_index() -> bytes:
+    source = INDEX.read_bytes()
+    return source.replace(UI_VERSION_TOKEN, dashboard_ui_version().encode("ascii"))
 
 
 class SnapshotCache:
@@ -176,6 +188,55 @@ class SnapshotCache:
             age_s,
         )
 
+    def _retain_collection_sps(
+        self,
+        *,
+        identity: str,
+        sampled_at: float,
+        sps: float | None,
+        source: str,
+    ) -> tuple[float | None, bool, float | None, str]:
+        """Bridge short SPS-only gaps without carrying rates across phases.
+
+        The collector's tqdm frame and the scheduler's wave summary are
+        sampled asynchronously.  A frame can therefore contain a valid GPS
+        and ``sps=0`` even though the immediately preceding frame contained a
+        measured SPS.  Retain only the last *positive* SPS for the exact same
+        run/iteration/stage; a new phase starts blank instead of inheriting a
+        stale rate.
+        """
+        key = "fleet:collection-sps"
+        if isinstance(sps, (int, float)) and float(sps) > 0.0:
+            measured = float(sps)
+            self.last_valid_rates[key] = {
+                "identity": identity,
+                "sampled_at": float(sampled_at),
+                "sps": measured,
+                "source": source,
+            }
+            self._persist_rate_state()
+            return measured, False, 0.0, source
+
+        cached = self.last_valid_rates.get(key) or {}
+        cached_sps = cached.get("sps")
+        if (
+            cached.get("identity") == identity
+            and isinstance(cached_sps, (int, float))
+            and float(cached_sps) > 0.0
+        ):
+            age_s = max(
+                0.0,
+                float(sampled_at)
+                - float(cached.get("sampled_at") or sampled_at),
+            )
+            return (
+                float(cached_sps),
+                True,
+                age_s,
+                "last positive same-phase SPS; live telemetry sample gap",
+            )
+        return sps, False, None, source
+
     def _counter_rate(
         self,
         key: str,
@@ -259,6 +320,7 @@ class SnapshotCache:
             if isinstance(progress.get("sps"), (int, float))
             else None
         )
+        current_density = None
         if (
             collecting
             and total_gps is not None
@@ -266,11 +328,29 @@ class SnapshotCache:
             and total_sps is not None
             and total_sps > 0
         ):
-            density = total_sps / total_gps
+            current_density = total_sps / total_gps
             # A malformed/tail zero should not erase the last useful estimate.
-            if 1.0 <= density <= 10000.0:
-                self.decision_density[run_name] = density
+            if 1.0 <= current_density <= 10000.0:
+                self.decision_density[run_name] = current_density
         density = self.decision_density.get(run_name)
+        # Formal heldout/promotion games intentionally do not retain replay
+        # trajectories, so their collector emits sps=0.  Reconcile that phase
+        # with the latest committed collection's exact games/decision rates
+        # rather than displaying a false zero or a density from another run.
+        timing = curriculum.get("iteration_timing") or {}
+        receipt_gps = timing.get("latest_gps")
+        receipt_sps = timing.get("latest_sps")
+        if (
+            current_density is None
+            and isinstance(receipt_gps, (int, float))
+            and float(receipt_gps) > 0.0
+            and isinstance(receipt_sps, (int, float))
+            and float(receipt_sps) > 0.0
+        ):
+            receipt_density = float(receipt_sps) / float(receipt_gps)
+            if 1.0 <= receipt_density <= 10000.0:
+                density = receipt_density
+                self.decision_density[run_name] = receipt_density
 
         remote_gps: dict[str, float | None] = {}
         remote_sps: dict[str, float | None] = {}
@@ -656,18 +736,83 @@ class SnapshotCache:
             inzi_worker["allocation"] = (
                 f"{local_slots} simulator slots · {leaf_servers} Blackwell policy leaves"
             )
+        fleet_total_gps = (
+            scheduler_wave_gps
+            if scheduler_wave_gps is not None and scheduler_wave_gps > 0
+            else total_gps
+        )
+        estimated_fleet_sps = (
+            float(fleet_total_gps) * float(density)
+            if collecting
+            and (stage.startswith("heldout") or stage == "promotion")
+            and isinstance(fleet_total_gps, (int, float))
+            and float(fleet_total_gps) > 0.0
+            and (not isinstance(total_sps, (int, float)) or float(total_sps) <= 0.0)
+            and isinstance(density, (int, float))
+            and float(density) > 0.0
+            else None
+        )
+        raw_fleet_total_sps = (
+            scheduler_wave_sps
+            if scheduler_wave_sps is not None and scheduler_wave_sps > 0
+            else estimated_fleet_sps
+            if estimated_fleet_sps is not None
+            else total_sps
+        )
+        raw_fleet_rate_source = (
+            "trainer scheduler generation telemetry"
+            if scheduler_wave_sps is not None and scheduler_wave_sps > 0
+            else "estimated from live GPS × latest committed decision density"
+            if estimated_fleet_sps is not None
+            else "collector ingest telemetry"
+        )
+        raw_fleet_sps_estimated = bool(
+            estimated_fleet_sps is not None
+            and not (scheduler_wave_sps is not None and scheduler_wave_sps > 0)
+        )
+        if collecting:
+            (
+                display_sps,
+                display_sps_held,
+                display_sps_age_s,
+                display_sps_source,
+            ) = self._retain_collection_sps(
+                identity=phase_identity,
+                sampled_at=now,
+                sps=total_sps,
+                source="collector cumulative sequence telemetry",
+            )
+            # Before the collector emits its first positive SPS frame, only a
+            # scheduler rate measured in this exact phase may replace zero.
+            # A decisions/game density retained from an earlier iteration is
+            # intentionally limited to non-replay heldout/promotion phases.
+            if (
+                (not isinstance(display_sps, (int, float)) or display_sps <= 0)
+                and isinstance(raw_fleet_total_sps, (int, float))
+                and raw_fleet_total_sps > 0
+            ):
+                display_sps = raw_fleet_total_sps
+                display_sps_source = raw_fleet_rate_source
+                display_sps_held = False
+                display_sps_age_s = 0.0
+        else:
+            display_sps = raw_fleet_total_sps
+            display_sps_held = False
+            display_sps_age_s = None
+            display_sps_source = raw_fleet_rate_source
         value["fleet_rates"] = {
             "stage": stage,
             "iteration": iteration,
-            "total_gps": (
-                scheduler_wave_gps
-                if scheduler_wave_gps is not None and scheduler_wave_gps > 0
-                else total_gps
-            ),
-            "total_sps": (
-                scheduler_wave_sps
-                if scheduler_wave_sps is not None and scheduler_wave_sps > 0
-                else total_sps
+            "total_gps": fleet_total_gps,
+            "total_sps": raw_fleet_total_sps,
+            "display_sps": display_sps,
+            "display_sps_held": display_sps_held,
+            "display_sps_age_s": display_sps_age_s,
+            "display_sps_source": display_sps_source,
+            "display_sps_estimated": bool(
+                raw_fleet_sps_estimated
+                and display_sps == raw_fleet_total_sps
+                and not display_sps_held
             ),
             "ingest_gps": total_gps,
             "ingest_sps": total_sps,
@@ -678,11 +823,7 @@ class SnapshotCache:
             "buffered_results": buffered_results,
             "decisions_per_game": density,
             "window_s": 15.0,
-            "rate_source": (
-                "trainer scheduler generation telemetry"
-                if scheduler_wave_gps is not None
-                else "collector ingest telemetry"
-            ),
+            "rate_source": raw_fleet_rate_source,
         }
 
     def _annotate_scheduler_queues(self, value: dict[str, Any]) -> None:
@@ -702,9 +843,14 @@ class SnapshotCache:
         rates = value.get("fleet_rates") or {}
         observed_at = float(value.get("observed_at") or time.time())
         progress = curriculum.get("progress") or {}
+        stage = str(progress.get("stage") or curriculum.get("stage") or "")
+        generation_stage = bool(
+            curriculum.get("active")
+            and (stage.startswith("collect:") or stage in {"heldout", "promotion"})
+        )
         identity = (
             f"{curriculum.get('run')}:{progress.get('iteration')}:"
-            f"{progress.get('stage')}"
+            f"{stage}"
         )
         inzi_worker = ((fleet.get("inzi") or {}).get("worker") or {})
         local_active = inzi_worker.get("active_games")
@@ -774,6 +920,42 @@ class SnapshotCache:
                 ),
                 flow_source="remote admitted/completed monotonic counters",
             )
+        # ``progress.current/total`` changes grain with the phase. During
+        # collection it counts games, but during learner prep/training it
+        # counts optimizer batches. Never turn the remaining batch count into
+        # an apparent rollout backlog after collection has completed.
+        if not generation_stage:
+            queues["unassigned"] = 0 if curriculum.get("active") and stage else None
+            queues["unassigned_estimated"] = False
+            queues["unassigned_source"] = (
+                f"scheduler idle outside game-generation phase ({stage})"
+                if stage
+                else "scheduler phase unavailable"
+            )
+        elif not isinstance(queues.get("unassigned"), (int, float)):
+            total = progress.get("total")
+            completed = progress.get("current")
+            reserved = sum(
+                max(0, int(row.get("dispatch_reserved") or 0))
+                for row in endpoint_rows.values()
+                if isinstance(row, dict)
+            )
+            if isinstance(total, (int, float)):
+                queues["unassigned"] = max(
+                    0,
+                    int(total)
+                    - reserved
+                    - max(0, int(local_active or 0))
+                    - max(0, int(completed or 0)),
+                )
+                queues["unassigned_estimated"] = True
+                queues["unassigned_source"] = (
+                    "pre-heartbeat upper estimate: total - protected reservations "
+                    "- local claim - ingested results"
+                )
+        else:
+            queues["unassigned_estimated"] = False
+            queues["unassigned_source"] = "trainer remaining counter"
         queues["results"] = {
             "waiting_ingest": rates.get("buffered_results"),
             "generation_gps": rates.get("total_gps"),
@@ -981,6 +1163,14 @@ class SnapshotCache:
 CACHE = SnapshotCache()
 
 
+class DashboardHTTPServer(ThreadingHTTPServer):
+    """Keep the LAN dashboard responsive across many open refresh tabs."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+    request_queue_size = 128
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "PokeBotDashboard/1.0"
 
@@ -996,14 +1186,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.partition("?")[0]
         if path in ("/", "/index.html"):
-            self.send_bytes(INDEX.read_bytes(), "text/html; charset=utf-8")
+            self.send_bytes(rendered_index(), "text/html; charset=utf-8")
             return
         if path == "/api/status":
-            body = json.dumps(CACHE.get(), separators=(",", ":")).encode()
+            payload = CACHE.get()
+            payload["dashboard_ui_version"] = dashboard_ui_version()
+            body = json.dumps(payload, separators=(",", ":")).encode()
             self.send_bytes(body, "application/json; charset=utf-8")
             return
         if path == "/health":
             payload = CACHE.get()
+            payload["dashboard_ui_version"] = dashboard_ui_version()
             status = HTTPStatus.OK if payload.get("ok") else HTTPStatus.SERVICE_UNAVAILABLE
             self.send_bytes(json.dumps(payload).encode(), "application/json", status)
             return
@@ -1020,7 +1213,7 @@ def main() -> None:
     args = parser.parse_args()
     worker = threading.Thread(target=CACHE.loop, name="telemetry", daemon=True)
     worker.start()
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server = DashboardHTTPServer((args.host, args.port), Handler)
     try:
         server.serve_forever()
     finally:

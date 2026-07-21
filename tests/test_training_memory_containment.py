@@ -138,10 +138,23 @@ def test_replay_window_is_released_before_any_evaluation_or_next_collect() -> No
         "heldout_rows, heldout_audit = _heldout_eval(", promotion_at
     )
     next_collect_at = full_loop.index(
-        "pending_collect = _kick_collect(next_it", heldout_at
+        "pending_collect = _kick_collect(\n                    next_it", heldout_at
     )
     assert train_at < finally_at < delete_at < trim_at
     assert trim_at < promotion_at < heldout_at < next_collect_at
+
+
+def test_leaf_farm_does_not_overlap_replay_expansion_or_training() -> None:
+    src = (ROOT / "scripts" / "train_pure_rl.py").read_text(encoding="utf-8")
+    full_loop = src[src.index("def run_full_loop(") :]
+    suspend_marker = full_loop.index("suspend leaf farm before rehearsal/replay")
+    stop_at = full_loop.index("leaf.stop()", suspend_marker)
+    dataset_at = full_loop.index("dataset = _dataset_from_replay_window(", stop_at)
+    train_at = full_loop.index("result = rl_train_step(", dataset_at)
+    release_at = full_loop.index("replay memory released iter=", train_at)
+    restore_at = full_loop.index("_rebuild_leaves_if_needed(", release_at)
+    promotion_at = full_loop.index("promotion begin", restore_at)
+    assert stop_at < dataset_at < train_at < release_at < restore_at < promotion_at
 
 
 def test_leaf_farm_reaps_terminated_children_and_closes_every_queue() -> None:
