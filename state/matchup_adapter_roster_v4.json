@@ -1,0 +1,51 @@
+{
+  "schema": "poke_bot.matchup_adapter_roster_stage/v1",
+  "status": "tested_staged_not_active",
+  "checkpoint_format": "alakazam-matchup-adapter-bank-v4",
+  "activation_policy": "next_safe_checkpoint_boundary_after_current_rehearsal",
+  "runtime_enabled": false,
+  "mutually_exclusive_route_per_decision": true,
+  "unknown_route_exact_bypass": true,
+  "expert_count": 22,
+  "parameter_count": 36080,
+  "expert_ids": [
+    "crustle",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "cornerstone-ogerpon",
+    "rockets-mewtwo",
+    "starmie",
+    "hammer-pult",
+    "alakazam",
+    "lucario",
+    "archaludon-ex",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "dudunsparce",
+    "hops-trevenant",
+    "walrein",
+    "dragapult-dusknoir",
+    "dragapult-blaziken",
+    "lopunny",
+    "gardevoir",
+    "ns-zoroark",
+    "raging-bolt",
+    "festival-lead"
+  ],
+  "source_sha256": {
+    "poke_bot/matchup_adapters.py": "44cbabd24a219ebc2e6ed380b172318049449fc2fa898164866eca5c157f7dee",
+    "poke_bot/dormant_adapter_compat.py": "17f5db775119ec1ba1ab29f35f1e5c6cec0e14b4844c63db52701be422b8e2f4"
+  },
+  "validation": {
+    "tests_passed": 59,
+    "test_files": [
+      "tests/test_matchup_adapters.py",
+      "tests/test_matchup_adapter_activation.py",
+      "tests/test_matchup_adapter_corpus_stream.py",
+      "tests/test_matchup_adapter_streaming_trainer.py"
+    ],
+    "append_only_v1_v2_v3_checkpoint_expansion": true,
+    "zero_output_new_routes": true,
+    "unrelated_routes_receive_no_gradient": true
+  }
+}

@@ -776,6 +776,9 @@ def _worker_play(job: dict) -> dict:
                 archetype=job.get("archetype", "hammer-pult"),
                 seed=int(job["seed"]),
                 target_provenance=dict(job.get("target_provenance") or {}),
+                opp_archetype=(
+                    str(job.get("opp_archetype") or "") or None
+                ),
             )
         return {
             "job_index": int(job["job_index"]),
@@ -987,6 +990,7 @@ def _build_selfplay_record(
     archetype: str,
     seed: int,
     target_provenance: dict[str, Any],
+    opp_archetype: str | None = None,
 ) -> dict | None:
     """Build one trusted history-policy training record.
 
@@ -1085,11 +1089,17 @@ def _build_selfplay_record(
 
     if not steps:
         return None
+    opponent_archetype_id = str(opp_archetype or opp_id)
+    target_provenance = {
+        **dict(target_provenance),
+        "opponent_id": str(opp_id),
+        "opponent_archetype_id": opponent_archetype_id,
+    }
     return {
         "episode_id": f"rl-{archetype}-{opp_id}-{our_seat}-{seed}",
         "seat": int(our_seat),
         "archetype": archetype,
-        "opp_archetype": opp_id,
+        "opp_archetype": opponent_archetype_id,
         "deck": list(our_deck),
         "value": float(value),
         "steps": steps,
@@ -1101,7 +1111,7 @@ def _build_selfplay_record(
             if target_source == "belief_mcts"
             else "trusted_policy_round_robin"
         ),
-        "target_provenance": dict(target_provenance),
+        "target_provenance": target_provenance,
     }
 
 

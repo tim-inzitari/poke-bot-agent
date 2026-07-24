@@ -1,0 +1,81 @@
+{
+  "schema": "poke_bot.specialist_cycle_handoff_contract/v1",
+  "shared_core": {
+    "family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_distilled_from_hops_trevenant_and_starmie_v2_epoch20_gatepass",
+    "ready": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-trevenant-starmie-v2-epoch20-ready.json",
+    "frozen_family_overrides": {
+      "alakazam": "alakazam-owner-accepted-iter39-v1"
+    }
+  },
+  "core_refresh_template": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/post_starmie_core_v2_handoff_v1.json",
+  "selection": {
+    "state": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/state/specialists.yaml",
+    "corpus_root": "/home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v2",
+    "minimum_decisions": 20000,
+    "minimum_decisions_by_specialist": {
+      "dragapult-dusknoir": 10000
+    },
+    "strict_priority_prefix": [
+      "dragapult-dusknoir"
+    ]
+  },
+  "prestage": {
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
+    "ladder_representatives": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/data/training_mixes/top_ladder_representatives.v1.json",
+    "representatives": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/data/training_mixes/specialist_representatives.v1.json",
+    "cpu_pack_root": "/home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/prestaged-specialists",
+    "required_target_coverage": [
+      "temporal_action_rows",
+      "opponent_hand_rows",
+      "opponent_remainder_rows",
+      "opponent_private_prize_rows",
+      "lethal_threat_rows",
+      "prize_race_rows"
+    ],
+    "live_training_modification_allowed": false,
+    "selector_update_allowed": false,
+    "service_control_allowed": false
+  },
+  "gate_materialization": {
+    "base_gate_contract": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/alakazam_gate_program_v1.json",
+    "base_frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json",
+    "baseline_root": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/baselines",
+    "baseline_manifest": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/baselines/manifest.json",
+    "fleet_sync": [
+      {
+        "host": "elmo",
+        "baseline_root": "/mnt/Main/main/poke-bot-agent/baselines",
+        "container": "poke-bot-truenas-worker"
+      },
+      {
+        "host": "bert.local",
+        "baseline_root": "/Users/tsinzitari/workspace/poke-bot-agent/baselines",
+        "container": null
+      }
+    ]
+  },
+  "training": {
+    "supervised_epochs": 25,
+    "patience_diagnostic_only": 5,
+    "minimum_decisions": 20000,
+    "requested_decisions_per_batch": 12288
+  },
+  "runtime": {
+    "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
+    "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
+    "runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/trevenant-public-matchup-tree-iter5-v1.json",
+    "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v37.inactive.json",
+    "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v37.audit.json",
+    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-v37-ready.json",
+    "runtime_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/specialist_runtime_registry_v1.json",
+    "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json",
+    "selector_env": "/home/inzi/.config/pokebot/specialist_runtime.env",
+    "state_root": "/home/inzi/poke-bot-agent/outputs/state",
+    "training_service": "pokebot-pure-rl-trevenant-staged.service",
+    "handoff_service": "pokebot-specialist-cycle-handoff.service",
+    "population_handoff_service": "pokebot-population-round-robin-handoff.service",
+    "population_training_service": "pokebot-population-round-robin.service",
+    "gate_handler_service": "pokebot-specialist-passed-gate-handler.service",
+    "lock": "/home/inzi/.local/state/pokebot/specialist-cycle-handoff-v1.lock"
+  }
+}

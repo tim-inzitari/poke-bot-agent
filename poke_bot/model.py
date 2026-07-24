@@ -36,6 +36,7 @@ import torch.nn.functional as F
 
 from . import config, features
 from .features import SparseVector
+from .matchup_adapters import MatchupAdapterBank
 
 Tensor = torch.Tensor
 
@@ -222,6 +223,7 @@ class TemporalSelfAttention(nn.Module):
         cache_k: Optional[Tensor] = None,
         cache_v: Optional[Tensor] = None,
         cache_offset: int = 0,
+        key_padding_mask: Optional[Tensor] = None,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Returns ``(out, new_k, new_v)`` where new_k/v include prior cache."""
         b, t, _ = x.shape
@@ -238,9 +240,28 @@ class TemporalSelfAttention(nn.Module):
             v = torch.cat([cache_v, v], dim=2)
 
         drop = self.dropout.p if self.training else 0.0
-        if cache_k is None:
+        if cache_k is not None and key_padding_mask is not None:
+            raise ValueError("key padding is only supported for offline temporal encode")
+        if cache_k is None and key_padding_mask is None:
             attn = F.scaled_dot_product_attention(
                 q, k, v, dropout_p=drop, is_causal=True
+            )
+        elif cache_k is None:
+            padding = key_padding_mask.to(device=q.device, dtype=torch.bool)
+            if tuple(padding.shape) != (b, t):
+                raise ValueError(
+                    "temporal key padding mask shape mismatch: "
+                    f"expected={(b, t)} actual={tuple(padding.shape)}"
+                )
+            causal = torch.ones(t, t, device=q.device, dtype=torch.bool).tril_()
+            allow = causal.view(1, 1, t, t) & (~padding).view(b, 1, 1, t)
+            attn = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=allow,
+                dropout_p=drop,
+                is_causal=False,
             )
         else:
             # Append path: q_len may be << k_len; build an additive causal mask.
@@ -294,10 +315,16 @@ class TemporalBlock(nn.Module):
         cache_k: Optional[Tensor] = None,
         cache_v: Optional[Tensor] = None,
         cache_offset: int = 0,
+        key_padding_mask: Optional[Tensor] = None,
     ) -> tuple[Tensor, Tensor, Tensor]:
         h = self.norm1(x)
         attn_out, new_k, new_v = self.attn(
-            h, rope=rope, cache_k=cache_k, cache_v=cache_v, cache_offset=cache_offset
+            h,
+            rope=rope,
+            cache_k=cache_k,
+            cache_v=cache_v,
+            cache_offset=cache_offset,
+            key_padding_mask=key_padding_mask,
         )
         x = x + attn_out
         x = x + self.ff(self.norm2(x))
@@ -532,6 +559,15 @@ class TemporalCabtTransformer(nn.Module):
         # Populated by warm-start load when new head keys were missing in ckpt.
         self.warm_started_belief_heads: tuple[str, ...] = ()
 
+        # Dormant policy/value-only residuals.  Construct this after every base
+        # module so adding the bank cannot perturb fresh base initialization via
+        # RNG consumption.  Its parameters are opt-in trainable; the dedicated
+        # bootstrap path below the model explicitly re-enables only this bank.
+        self.matchup_adapter_bank = MatchupAdapterBank(
+            enabled=bool(getattr(cfg, "matchup_adapters_enabled", False))
+        )
+        self.matchup_adapter_bank.requires_grad_(False)
+
     def _load_from_state_dict(
         self,
         state_dict,
@@ -570,6 +606,23 @@ class TemporalCabtTransformer(nn.Module):
             unexpected_keys,
             error_msgs,
         )
+
+    def matchup_policy_value_state(
+        self,
+        state_vec: Tensor,
+        routes: Optional[Union[Tensor, Sequence[int]]] = None,
+        *,
+        enabled: Optional[bool] = None,
+    ) -> Tensor:
+        """Return policy/value state after optional exact-match adaptation.
+
+        ``routes=None`` is an unconditional exact bypass.  The archetype and
+        other auxiliary heads intentionally never call this helper.
+        """
+
+        if routes is None:
+            return state_vec
+        return self.matchup_adapter_bank(state_vec, routes, enabled=enabled)
 
     def belief_aux_logits(self, state_vec: Tensor) -> dict[str, Tensor]:
         """Info-set belief / strategy logits from ``state_vec`` (root-only).
@@ -776,6 +829,7 @@ class TemporalCabtTransformer(nn.Module):
         append: bool = True,
         return_all: bool = False,
         position_offset: int = 0,
+        key_padding_mask: Optional[Tensor] = None,
     ) -> tuple[Tensor, Optional[TemporalKVCache]]:
         """Causal temporal encode.
 
@@ -792,6 +846,14 @@ class TemporalCabtTransformer(nn.Module):
         b, t, _ = cls_tokens.shape
         if t <= 0:
             raise ValueError("temporal_encode requires at least one token")
+        if key_padding_mask is not None:
+            if kv_cache is not None:
+                raise ValueError("temporal key padding cannot be combined with a KV cache")
+            if tuple(key_padding_mask.shape) != (b, t):
+                raise ValueError(
+                    "temporal key padding mask shape mismatch: "
+                    f"expected={(b, t)} actual={tuple(key_padding_mask.shape)}"
+                )
         position_offset = int(position_offset)
         if position_offset < 0:
             raise ValueError(
@@ -815,6 +877,8 @@ class TemporalCabtTransformer(nn.Module):
                 )
             dropped = t - self.max_context
             cls_tokens = cls_tokens[:, dropped:, :]
+            if key_padding_mask is not None:
+                key_padding_mask = key_padding_mask[:, dropped:]
             t = self.max_context
             position_offset += dropped
         raw_cls_tokens = cls_tokens
@@ -891,7 +955,12 @@ class TemporalCabtTransformer(nn.Module):
                         ck = ck[..., -max_prior:, :]
                         cv = cv[..., -max_prior:, :]
             x, nk, nv = block(
-                x, rope=self.rope, cache_k=ck, cache_v=cv, cache_offset=cache_offset
+                x,
+                rope=self.rope,
+                cache_k=ck,
+                cache_v=cv,
+                cache_offset=cache_offset,
+                key_padding_mask=key_padding_mask,
             )
             # Defensive cap for non-incremental/future multi-token callers.
             if nk.size(2) > self.max_context:
@@ -969,6 +1038,7 @@ class TemporalCabtTransformer(nn.Module):
         previous_action_histories: Optional[
             Sequence[Sequence[Optional[SparseVector]]]
         ] = None,
+        matchup_routes: Optional[Union[Tensor, Sequence[int]]] = None,
     ) -> dict[str, Union[Tensor, Optional[TemporalKVCache]]]:
         """Evaluate variable-length realized histories.
 
@@ -1022,12 +1092,15 @@ class TemporalCabtTransformer(nn.Module):
             start += length
         state_vec = torch.stack(states, dim=0)
         spatial_memory = torch.stack(current_spatial, dim=0)
+        policy_value_state = self.matchup_policy_value_state(
+            state_vec, matchup_routes
+        )
         logits = self.decode_options(
-            options, spatial_memory, state_vec, n_options=n_options
+            options, spatial_memory, policy_value_state, n_options=n_options
         )
         out = {
             "policy_logits": logits,
-            "value": torch.tanh(self.value_head(state_vec)).squeeze(-1),
+            "value": torch.tanh(self.value_head(policy_value_state)).squeeze(-1),
             "state_vec": state_vec,
             "spatial_memory": spatial_memory,
             "kv_cache": None,
@@ -1190,6 +1263,7 @@ class TemporalCabtTransformer(nn.Module):
         append_cache: bool = False,
         n_options: Optional[Sequence[int]] = None,
         previous_action: Optional[SparseVector] = None,
+        matchup_routes: Optional[Union[Tensor, Sequence[int]]] = None,
     ) -> dict[str, Union[Tensor, Optional[TemporalKVCache]]]:
         """Evaluate one decision per batch row, optionally appending KV history.
 
@@ -1222,10 +1296,13 @@ class TemporalCabtTransformer(nn.Module):
         state_vec, new_cache = self.temporal_encode(
             cls, kv_cache, append=append_cache
         )
-        logits = self.decode_options(
-            options, spatial, state_vec, n_options=n_options
+        policy_value_state = self.matchup_policy_value_state(
+            state_vec, matchup_routes
         )
-        value = torch.tanh(self.value_head(state_vec)).squeeze(-1)
+        logits = self.decode_options(
+            options, spatial, policy_value_state, n_options=n_options
+        )
+        value = torch.tanh(self.value_head(policy_value_state)).squeeze(-1)
         out: dict[str, Union[Tensor, Optional[TemporalKVCache]]] = {
             "policy_logits": logits,
             "value": value,

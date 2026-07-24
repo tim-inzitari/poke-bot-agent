@@ -1,0 +1,100 @@
+{
+  "policy": {
+    "candidate_first_games_per_specialist": 125,
+    "candidate_second_games_per_specialist": 125,
+    "external_premium_archetype_supersession": {
+      "enabled": true,
+      "keep_triggering_frozen_specialist": true,
+      "preserve_historical_results": true,
+      "rules": [
+        {
+          "external_archetype_id": "lucario",
+          "remove_external_opponents": true,
+          "trigger_specialist_id": "lucario"
+        }
+      ],
+      "scope": "premium_holdout_external_opponents"
+    },
+    "holdout_replay_eligible": false,
+    "holdout_training_eligible": false,
+    "invariant": "Frozen specialists are inference-only public-mix opponents and additive S+ premium-gate opponents. Their evaluation games never enter any training or replay path.",
+    "official_holdout_eligible": false,
+    "premium_holdout_eligible": true,
+    "premium_holdout_games_per_specialist": 250,
+    "premium_holdout_tier": "S+",
+    "public_mix_inference_only": true,
+    "research_control_eligible": false
+  },
+  "schema": "poke_bot.frozen_specialist_registry/v1",
+  "specialists": [
+    {
+      "archetype_id": "alakazam",
+      "archetype_label": "Frozen Alakazam specialist",
+      "baseline_dir": "alakazam-owner-accepted-iter39",
+      "baseline_group": "specialists",
+      "checkpoint_digest": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+      "content_digest": "sha256:7e9942e3a60e31d5ee734e5f66bae818f2c28a14cd8d8122d4b11683e79af3bc",
+      "deck_file_checksum": "sha256:33f38523c965d5dd57eb806b51b4706fea476e4bfa96a1f314860f6413949b94",
+      "frozen": true,
+      "matchup_runtime_enabled": true,
+      "matchup_runtime_inference_only": true,
+      "matchup_tree_checksum": "sha256:a05714386477d16c0f12740dd8edfcdec9f4b2bcbfc5897ccd15596bbef875eb",
+      "opponent_id": "specialist-alakazam-owner-accepted-iter39",
+      "public_mix_eligible": true,
+      "registered_at_utc": "2026-07-23T15:00:00Z",
+      "research_eligible": false,
+      "source": "owner-accepted frozen Alakazam iteration 39 checkpoint",
+      "specialist_id": "alakazam"
+    },
+    {
+      "archetype_id": "hops-trevenant",
+      "archetype_label": "Frozen Hop's Trevenant specialist",
+      "baseline_dir": "hops-trevenant-gate-iter10-462f201f8de6",
+      "baseline_group": "specialists",
+      "checkpoint_digest": "sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1",
+      "content_digest": "sha256:fc382527039e41a26a87f9a2053bf1c2bd022f3709af6ab1e3afb54963bd46d4",
+      "frozen": true,
+      "matchup_tree_checksum": "sha256:0bbbd1075c0c2058e07be6723c2f2bb7902193ce3132613e70d354c132f75c3d",
+      "opponent_id": "specialist-hops-trevenant-gate-iter10-462f201f8de6",
+      "public_mix_eligible": true,
+      "registered_at_utc": "2026-07-23T22:49:39.407937+00:00",
+      "research_eligible": false,
+      "source": "explicit owner-accepted formal protocol gate at zero-indexed iteration 10 (eleven completed iterations)",
+      "specialist_id": "hops-trevenant"
+    },
+    {
+      "archetype_id": "starmie",
+      "archetype_label": "Frozen Mega Starmie ex specialist",
+      "baseline_dir": "starmie-gate-iter10-51ed1cc6ffe6",
+      "baseline_group": "specialists",
+      "checkpoint_digest": "sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8",
+      "content_digest": "sha256:927fc9724fc9ba8e9f3abeac3693350fd19b76ae7135c3d80999a9ce6402fa4f",
+      "frozen": true,
+      "matchup_tree_checksum": "sha256:0bbbd1075c0c2058e07be6723c2f2bb7902193ce3132613e70d354c132f75c3d",
+      "opponent_id": "specialist-starmie-gate-iter10-51ed1cc6ffe6",
+      "public_mix_eligible": true,
+      "registered_at_utc": "2026-07-24T04:17:16.238289+00:00",
+      "research_eligible": false,
+      "source": "exact protocol-gate passing Mega Starmie ex iteration 10 checkpoint 51ed1cc6ffe6",
+      "specialist_id": "starmie"
+    },
+    {
+      "archetype_id": "lucario",
+      "archetype_label": "Frozen Dragapult Dusknoir specialist",
+      "baseline_dir": "lucario-gate-iter10-ffa401242b2c",
+      "baseline_group": "specialists",
+      "checkpoint_digest": "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd",
+      "content_digest": "sha256:77b32a8f6efd6b7b5fbfe8091ef54d2a3ed0a34ab6bbe3b6da9e07880b7934ea",
+      "frozen": true,
+      "matchup_tree_checksum": "sha256:52a07567ce10d7bca2e309446c55635c4591c8f392268a8debc8b998e350d793",
+      "opponent_id": "specialist-lucario-gate-iter10-ffa401242b2c",
+      "public_mix_eligible": true,
+      "registered_at_utc": "2026-07-24T13:28:00.372726+00:00",
+      "research_eligible": false,
+      "source": "exact protocol-gate passing Dragapult Dusknoir iteration 10 checkpoint ffa401242b2c",
+      "specialist_id": "lucario"
+    }
+  ],
+  "updated_at_utc": "2026-07-24T13:28:00.372726+00:00",
+  "version": 4
+}

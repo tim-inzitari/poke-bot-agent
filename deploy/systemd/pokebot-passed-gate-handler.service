@@ -1,0 +1,24 @@
+[Unit]
+Description=Freeze exact Alakazam pass, queue two checkpoint-bound copies, and hand off
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime
+Environment=POKEBOT_MATCHUP_ADAPTER_BOUNDARY_RECEIPT=/home/inzi/poke-bot-agent/outputs/state/alakazam-matchup-runtime-iter26-v31.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/handle_passed_gate.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721 --contract /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime/ops/alakazam_gate_program_v1.json --marker-name SPECIALIST_GATE_PASSED.alakazam-lc55-v2 --minimum-completed-iteration 30 --registry-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models --family alakazam-protocol-gate-pass-v1 --display-name "Alakazam Exact Protocol Gate Champion" --representatives /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime/data/training_mixes/top_ladder_representatives.v1.json --archetype alakazam --submission-root /home/inzi/poke-bot-agent/outputs/submissions/alakazam-protocol-gate-pass-v1 --state /home/inzi/poke-bot-agent/outputs/state/alakazam-protocol-passed-gate-handler-v31.json --lock /home/inzi/.local/state/pokebot/alakazam-protocol-passed-gate-handler-v31.lock --competition pokemon-tcg-ai-battle --submission-count 2 --submission-mode queue_and_continue --submission-queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --kaggle /home/inzi/miniconda3/envs/poke-bot-agent/bin/kaggle --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --authorization /home/inzi/.config/pokebot/kaggle-submission-authorization.json --submission-receipts /home/inzi/.local/state/pokebot/kaggle-submission-attempts --training-service pokebot-pure-rl-alakazam.service --handoff-service pokebot-post-alakazam-gate-pipeline.service --continue-drop-in-source /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime/deploy/systemd/pokebot-pure-rl-alakazam.service.d/zz-continue-after-exact-gate.conf --continue-drop-in-target /home/inzi/.config/systemd/user/pokebot-pure-rl-alakazam.service.d/zz-continue-after-exact-gate.conf --poll-seconds 15 --upload-timeout-seconds 900
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=30s
+KillMode=control-group
+LimitNOFILE=4096
+MemoryHigh=8G
+MemoryMax=12G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/alakazam-passed-gate-handler.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/alakazam-passed-gate-handler.log
+
+[Install]
+WantedBy=default.target

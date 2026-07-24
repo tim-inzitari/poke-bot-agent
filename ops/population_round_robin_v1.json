@@ -1,0 +1,55 @@
+{
+  "schema": "poke_bot.population_round_robin_controller_contract/v1",
+  "paths": {
+    "readiness": "/home/inzi/poke-bot-agent/outputs/state/population-round-robin-ready-v1.json",
+    "state": "/home/inzi/poke-bot-agent/outputs/state/population-round-robin-state-v1.json",
+    "opponent_registry": "/home/inzi/poke-bot-agent/outputs/state/population-opponent-registry-v1.json",
+    "baseline_root": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/baselines",
+    "baseline_manifest": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/baselines/manifest.json",
+    "output_root": "/home/inzi/poke-bot-agent/outputs/pure_rl",
+    "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
+    "runtime_root": "/home/inzi/poke-bot-agent-deployments/population-v1-prep",
+    "active_gate_contract": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/alakazam_gate_program_v1.json",
+    "research_control_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/research_control_registry_v1.json",
+    "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json"
+  },
+  "schedule": {
+    "members": 22,
+    "rl_iterations_per_member_cycle": 5,
+    "expert_rehearsal_epochs_per_member_cycle": 5,
+    "games_per_rl_iteration": 8192,
+    "train_epochs_per_rl_iteration": 1,
+    "expert_rehearsal_every": 5
+  },
+  "training": {
+    "remote_worker_endpoints": "192.168.1.143:8765,bert.local:8766",
+    "train_games_per_batch": 240,
+    "train_max_decisions_per_batch": 8192,
+    "expert_rehearsal_batch_size": 12288,
+    "minimum_expert_decisions": 20000,
+    "research_control_games_per_iteration": 1000,
+    "heldout_games": 2000,
+    "artifact_history_iterations": 5,
+    "minimum_free_disk_gb": 100
+  },
+  "opponent_policy": {
+    "own_models_only": true,
+    "include_current_versions": true,
+    "include_selected_historical_versions": true,
+    "external_agents_training_eligible": false,
+    "official_agents_role": "research_only",
+    "premium_agents_role": "research_only"
+  },
+  "fleet_sync": [
+    {
+      "host": "elmo",
+      "baseline_root": "/mnt/Main/main/poke-bot-agent/baselines",
+      "container": "poke-bot-truenas-worker"
+    },
+    {
+      "host": "bert.local",
+      "baseline_root": "/Users/tsinzitari/workspace/poke-bot-agent/baselines",
+      "container": null
+    }
+  ]
+}

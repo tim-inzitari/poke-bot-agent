@@ -1,0 +1,57 @@
+{
+  "schema": "poke_bot.research_control_registry/v1",
+  "registry_id": "alakazam-research-controls",
+  "version": 1,
+  "updated_at_utc": "2026-07-21T00:00:00Z",
+  "controls": [
+    {
+      "opponent_id": "iono",
+      "content_digest": "sha256:6ba8e818b698774b6e437364e9457600eda950fbefb663d8e4ad39cdaf0371e2",
+      "source_gate_id": "legacy-original-four",
+      "source": "kiyotah/a-sample-rule-based-agent-iono-s-deck",
+      "archetype_id": "iono-bellibolt",
+      "archetype_label": "Iono's Bellibolt ex",
+      "gate_weight": 0.0,
+      "included_in_gate_pass": false,
+      "formal_eval": false,
+      "training_eligible": false
+    },
+    {
+      "opponent_id": "dragapult-ex",
+      "content_digest": "sha256:835dcbcc26366faa04d902db727620d4b12618b6a66d000dccb9c9b86e9d62a0",
+      "source_gate_id": "legacy-original-four",
+      "source": "kiyotah/a-sample-rule-based-agent-dragapult-ex-deck",
+      "archetype_id": "dragapult",
+      "archetype_label": "Dragapult ex",
+      "gate_weight": 0.0,
+      "included_in_gate_pass": false,
+      "formal_eval": false,
+      "training_eligible": false
+    },
+    {
+      "opponent_id": "mega-abomasnow-ex",
+      "content_digest": "sha256:57a9499b2bee493a830abaf5a3e19b8a73faea200faee87aeeb2864bab25c2fb",
+      "source_gate_id": "legacy-original-four",
+      "source": "kiyotah/a-sample-rule-based-agent-mega-abomasnow-ex-deck",
+      "archetype_id": "mega-abomasnow-ex",
+      "archetype_label": "Mega Abomasnow ex / Kyogre",
+      "gate_weight": 0.0,
+      "included_in_gate_pass": false,
+      "formal_eval": false,
+      "training_eligible": false
+    },
+    {
+      "opponent_id": "mega-lucario-ex",
+      "content_digest": "sha256:98f20936d430c6cc60f3eb1da8230392bf6dce8ecacf97773bda4db63f56376a",
+      "source_gate_id": "legacy-original-four",
+      "source": "kiyotah/a-sample-rule-based-agent-mega-lucario-ex-deck",
+      "archetype_id": "lucario",
+      "archetype_label": "Mega Lucario ex",
+      "gate_weight": 0.0,
+      "included_in_gate_pass": false,
+      "formal_eval": false,
+      "training_eligible": false
+    }
+  ],
+  "retirements": []
+}

@@ -105,6 +105,13 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
 
 
 def _status_path(shard: Path) -> Optional[Path]:
+    if str(os.environ.get("POKEBOT_REPLAY_STATUS_DISABLED", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return None
     if shard.parent.name != "shards":
         return None
     return shard.parent.parent / "replay_window.cache.status.json"
@@ -339,6 +346,65 @@ def validated_replay_cache_manifest(
         "manifest_path": str(manifest_path),
         "covered_bytes": covered_bytes,
     }
+
+
+def ensure_replay_cache_manifest(
+    shard: Path,
+    *,
+    verify_info_set: bool = False,
+    max_context: Optional[int] = None,
+) -> dict[str, Any]:
+    """Build and validate a cache without materializing its sequences in RAM.
+
+    Completed-collection crash recovery needs a lossless featurization proof
+    before it can publish a receipt.  ``dataset_from_shard`` also builds that
+    proof, but immediately loads every cached sequence; doing so before the
+    trainer has released its inference fleet creates avoidable memory pressure.
+    """
+
+    shard = Path(shard)
+    existing = validated_replay_cache_manifest(
+        shard,
+        verify_info_set=verify_info_set,
+        max_context=max_context,
+    )
+    if existing is not None:
+        return existing
+    max_ctx = int(
+        max_context if max_context is not None else config.MODEL.max_context
+    )
+    signature = _cache_signature(
+        shard,
+        verify_info_set=verify_info_set,
+        max_context=max_ctx,
+    )
+    cache_dir, _manifest_path = _cache_paths(shard, signature)
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+    threshold = max(
+        0, _env_int("PURE_RL_REPLAY_CACHE_PARALLEL_MIN_MIB", 64)
+    ) * 1024 * 1024
+    requested_workers = max(
+        1, min(16, _env_int("PURE_RL_REPLAY_FEATURIZE_WORKERS", 8))
+    )
+    workers = requested_workers if shard.stat().st_size >= threshold else 1
+    _build_parallel_cache(
+        shard,
+        cache_dir=cache_dir,
+        signature=signature,
+        verify_info_set=verify_info_set,
+        max_context=max_ctx,
+        workers=workers,
+    )
+    manifest = validated_replay_cache_manifest(
+        shard,
+        verify_info_set=verify_info_set,
+        max_context=max_ctx,
+    )
+    if manifest is None:
+        raise RuntimeError("new replay cache failed its reconciliation audit")
+    _prune_cache_run(cache_dir)
+    return manifest
 
 
 def _build_parallel_cache(

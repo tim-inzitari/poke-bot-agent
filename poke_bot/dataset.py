@@ -24,7 +24,10 @@ from . import alakazam_heuristics, config, features
 from .replay_import import assert_info_set, InfoSetViolation
 
 
-DATASET_CACHE_SCHEMA_VERSION = 4
+# v5 invalidates cached/sharded decisions built before official JSON enum-name
+# scalars (for example "IsFirst" / "Yes" / "Hand") were normalized to the
+# same feature rows as their IntEnum values.
+DATASET_CACHE_SCHEMA_VERSION = 5
 
 
 @dataclass
@@ -59,6 +62,14 @@ class DecisionSample:
     #: timestep when building causal history so no current-target leakage occurs.
     action_token: Optional[features.SparseVector] = None
     policy_stages: list[PolicyStage] = field(default_factory=list)
+    #: Offline-only oracle route attached by the package/full-deck audited
+    #: corpus preparer.  It may train an adapter but must never be an inference
+    #: feature.
+    matchup_adapter_oracle_route: int = -1
+    #: Runtime-candidate route derived only from the legally observable public
+    #: prefix.  This remains ``-1`` for unrecognized/ambiguous states and for
+    #: every route whose independent recognizer gate has not passed.
+    matchup_adapter_public_route: int = -1
 
 
 @dataclass
@@ -77,6 +88,11 @@ class GameSequence:
     policy_targets: Optional[list[Optional[list[float]]]] = None
     factorized_policy_targets: Optional[list[Optional[list[dict[str, Any]]]]] = None
     target_provenance: dict[str, Any] = field(default_factory=dict)
+    #: Offline-only, checksummed routing authorization.  This is deliberately a
+    #: plain mapping so it survives dataclass replacement, pickle feature shards,
+    #: and process boundaries without importing the activation module here.  It
+    #: is never embedded into board/action features or used by serving.
+    matchup_adapter_training_ticket: dict[str, Any] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.decisions)

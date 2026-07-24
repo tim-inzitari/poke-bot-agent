@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import copy
 import gc
+import hashlib
+import json
 import math
+import os
 import random
 import time
 from dataclasses import dataclass, field, replace
@@ -17,9 +20,11 @@ from typing import Any, Callable, Optional, Sequence, Union
 
 import torch
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 from tqdm.auto import tqdm
 
 from . import archetypes, checkpoint, config, device as device_mod, features
+from .aux_label_contract import validated_unique_card_ids
 from .blackwell_heads import (
     BLACKWELL_STRATEGY_HEAD_PREFIXES,
     lethal_target_from_aux,
@@ -29,6 +34,14 @@ from .blackwell_heads import (
 )
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .device_corpus import DEFAULT_MIN_FREE_GIB, DeviceResidentBootstrapCorpus
+from .matchup_adapters import HIDDEN_DIM as MATCHUP_ADAPTER_HIDDEN_DIM
+from .matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
+from .matchup_adapter_activation import (
+    ActivationReceipt,
+    adapter_training_ticket,
+    training_route_for_decision,
+    validate_adapter_training_authorization,
+)
 from .model import TemporalCabtTransformer, build_model
 
 # Distinct named belief + Blackwell strategy heads — warm-start may omit only
@@ -78,9 +91,25 @@ class TrainConfig:
     awr_freeze_baseline: bool = False
     #: Subtract from policy loss: ``entropy_bonus * H(π)`` (pure_rl only).
     entropy_bonus: float = 0.01
+    #: Shadow-study diagnostic: retain one epoch of scalar AWR weights so the
+    #: reported p50/p95 are exact global quantiles, not averaged batch
+    #: quantiles. Disabled in production to avoid unnecessary host objects.
+    capture_awr_weight_distribution: bool = False
     #: Temporal hot-start only: keep the new history state close to the copied
     #: stateless parent's normalized state during frozen-trunk calibration.
     history_identity_loss_weight: float = 0.0
+    #: Explicit oracle-routed bootstrap mode.  This freezes the complete base
+    #: model and optimizes only the dormant matchup adapter bank.
+    matchup_adapter_training: bool = False
+    #: Immutable post-iteration-15 boundary proof.  Adapter optimization is
+    #: impossible without a receipt pinned to the exact initialization ckpt.
+    matchup_adapter_activation_receipt: str = ""
+    #: Optional second, behavior-inert optimizer phase after each ordinary RL
+    #: fit. Only oracle-ticketed matchup rows participate; the base learner is
+    #: bit-frozen and the serialized/runtime adapter switch remains disabled.
+    dormant_matchup_adapter_epochs: int = 0
+    dormant_matchup_adapter_lr: float = 1e-4
+    dormant_matchup_adapter_activation_receipt: str = ""
 
     @classmethod
     def pure_rl_defaults(cls, **overrides: Any) -> "TrainConfig":
@@ -142,6 +171,7 @@ class BatchMetrics:
     n_opp_remainder_rows: int = 0
     n_lethal_threat_rows: int = 0
     n_prize_race_rows: int = 0
+    n_matchup_adapter_rows: int = 0
     # Backward-compatible pipeline signal consumed by pure_rl.aborts. It is
     # deliberately the raw mean absolute advantage, not a signed/whitened mean.
     mean_advantage: float = 0.0
@@ -158,6 +188,7 @@ class BatchMetrics:
     awr_weight_sq_sum: float = 0.0
     awr_weight_p50: float = 0.0
     awr_weight_p95: float = 0.0
+    awr_weight_max_observed: float = 0.0
     awr_weight_clip_frac: float = 0.0
     awr_effective_sample_size: float = 0.0
     awr_effective_sample_fraction: float = 0.0
@@ -197,10 +228,10 @@ def belief_card_vocab_from_state(state: dict[str, Any]) -> int:
     """Resolve the belief-card vocabulary for old or current checkpoints.
 
     Legacy policy checkpoints legitimately predate the opponent hand and
-    hidden-remainder heads. In that case the live card vocabulary used by
-    ``load_model_from_checkpoint`` is authoritative. A partially upgraded
-    checkpoint may provide either head, but any present tensor must be a valid
-    linear weight and the two output widths must agree.
+    hidden-remainder heads.  In that case the same live card vocabulary used
+    by :func:`load_model_from_checkpoint` is authoritative.  A partially
+    upgraded checkpoint may provide either head, but any present tensor must
+    be a valid linear weight and the two output widths must agree.
     """
 
     widths: dict[str, int] = {}
@@ -219,6 +250,387 @@ def belief_card_vocab_from_state(state: dict[str, Any]) -> int:
     return next(iter(widths.values()), int(features.card_vocab_size()))
 
 
+def expand_aux_head_to_current_registry(model: torch.nn.Module) -> bool:
+    """Expand a compatible historical archetype head by stable row identity."""
+
+    target_ids = list(archetypes.archetype_ids())
+    target_classes = len(target_ids) + 1
+    old = model.aux_head[-1]
+    if not isinstance(old, torch.nn.Linear):
+        raise TypeError("aux_head final module must be Linear")
+    if old.out_features == target_classes:
+        return False
+    compatible_orders = (
+        archetypes.CUMULATIVE_V4_AUX_ARCHETYPE_IDS,
+        archetypes.PINNED_CORE_AUX_ARCHETYPE_IDS,
+        archetypes.LEGACY_AUX_ARCHETYPE_IDS,
+    )
+    legacy = next(
+        (
+            list(order)
+            for order in compatible_orders
+            if old.out_features == len(order) + 1
+        ),
+        None,
+    )
+    if legacy is None:
+        raise RuntimeError(
+            f"cannot expand unexpected aux head with {old.out_features} classes"
+        )
+    new = torch.nn.Linear(
+        old.in_features,
+        target_classes,
+        bias=old.bias is not None,
+        device=old.weight.device,
+        dtype=old.weight.dtype,
+    )
+    with torch.no_grad():
+        for old_i, name in enumerate(legacy):
+            new_i = target_ids.index(name)
+            new.weight[new_i].copy_(old.weight[old_i])
+            if new.bias is not None and old.bias is not None:
+                new.bias[new_i].copy_(old.bias[old_i])
+        # Preserve the historical unknown/fallback row at the new final row.
+        new.weight[-1].copy_(old.weight[-1])
+        if new.bias is not None and old.bias is not None:
+            new.bias[-1].copy_(old.bias[-1])
+    model.aux_head[-1] = new
+    return True
+
+
+MATCHUP_ADAPTER_PARAMETER_PREFIX = "matchup_adapter_bank."
+
+
+def matchup_adapter_base_state(
+    model: TemporalCabtTransformer,
+) -> dict[str, torch.Tensor]:
+    """Clone all non-adapter model state for bit-exact isolation checks."""
+
+    return {
+        name: value.detach().clone()
+        for name, value in model.state_dict().items()
+        if not name.startswith(MATCHUP_ADAPTER_PARAMETER_PREFIX)
+    }
+
+
+def assert_matchup_adapter_parent_identity(
+    model: TemporalCabtTransformer,
+    *,
+    parent_checkpoint: Union[str, Path],
+) -> None:
+    """Prove every non-adapter tensor still equals the receipt-pinned parent."""
+
+    parent_payload = checkpoint.load_checkpoint(parent_checkpoint, map_location="cpu")
+    raw_parent = dict(parent_payload.get("model_state_dict") or {})
+    parent = {
+        name: value.detach().cpu()
+        for name, value in raw_parent.items()
+        if not name.startswith(MATCHUP_ADAPTER_PARAMETER_PREFIX)
+    }
+    current = {
+        name: value.detach().cpu()
+        for name, value in model.state_dict().items()
+        if not name.startswith(MATCHUP_ADAPTER_PARAMETER_PREFIX)
+    }
+    if parent.keys() != current.keys():
+        missing = sorted(parent.keys() - current.keys())
+        extra = sorted(current.keys() - parent.keys())
+        raise AssertionError(
+            "adapter checkpoint base keys differ from pinned parent: "
+            f"missing={missing[:4]} extra={extra[:4]}"
+        )
+    changed = [name for name in parent if not torch.equal(parent[name], current[name])]
+    if changed:
+        raise AssertionError(
+            "adapter checkpoint changed receipt-pinned base tensors: "
+            f"{changed[:5]}"
+        )
+
+
+def assert_matchup_adapter_training_contract(
+    model: TemporalCabtTransformer,
+    *,
+    optimizer: Optional[torch.optim.Optimizer] = None,
+    base_state: Optional[dict[str, torch.Tensor]] = None,
+) -> None:
+    """Assert frozen-base gradients, optimizer separation, and base identity."""
+
+    adapter_parameters = list(model.matchup_adapter_bank.parameters())
+    activation = getattr(model, "_matchup_adapter_activation_receipt", None)
+    if not isinstance(activation, ActivationReceipt):
+        raise AssertionError(
+            "matchup adapter training requires a validated iteration-15 "
+            "activation receipt"
+        )
+    adapter_ids = {id(parameter) for parameter in adapter_parameters}
+    base_parameters = [
+        parameter
+        for name, parameter in model.named_parameters()
+        if not name.startswith(MATCHUP_ADAPTER_PARAMETER_PREFIX)
+    ]
+    if any(parameter.requires_grad for parameter in base_parameters):
+        raise AssertionError("matchup adapter training requires a fully frozen base")
+    if any(parameter.grad is not None for parameter in base_parameters):
+        raise AssertionError("frozen base parameter received a gradient")
+    if not adapter_parameters or not all(
+        parameter.requires_grad for parameter in adapter_parameters
+    ):
+        raise AssertionError("all matchup adapter parameters must be trainable")
+
+    if optimizer is not None:
+        optimized = [
+            parameter
+            for group in optimizer.param_groups
+            for parameter in group["params"]
+        ]
+        optimized_ids = {id(parameter) for parameter in optimized}
+        if len(optimized) != len(adapter_parameters) or optimized_ids != adapter_ids:
+            raise AssertionError(
+                "matchup adapter optimizer must contain only the adapter bank"
+            )
+
+    if base_state is not None:
+        current = {
+            name: value
+            for name, value in model.state_dict().items()
+            if not name.startswith(MATCHUP_ADAPTER_PARAMETER_PREFIX)
+        }
+        if current.keys() != base_state.keys():
+            raise AssertionError("frozen base state keys changed during adapter training")
+        changed = [
+            name
+            for name, value in current.items()
+            if not torch.equal(value, base_state[name])
+        ]
+        if changed:
+            raise AssertionError(
+                f"frozen base state changed during adapter training: {changed[:5]}"
+            )
+
+
+def build_matchup_adapter_optimizer(
+    model: TemporalCabtTransformer,
+    *,
+    lr: float,
+    weight_decay: float,
+    activation_receipt: ActivationReceipt,
+) -> torch.optim.AdamW:
+    """Freeze the base and build an AdamW over only the matchup adapters."""
+
+    if int(model.d_model) != MATCHUP_ADAPTER_HIDDEN_DIM:
+        raise ValueError(
+            "matchup adapter training requires a 96-dimensional temporal state, "
+            f"got d_model={model.d_model}"
+        )
+    if not isinstance(activation_receipt, ActivationReceipt):
+        raise ValueError(
+            "matchup adapter optimizer requires a validated boundary receipt"
+        )
+    model._matchup_adapter_activation_receipt = activation_receipt
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+        parameter.grad = None
+    # Training uses an explicit per-call override.  Keep the serialized/runtime
+    # activation flag dormant so adapter fitting cannot silently activate it.
+    model.matchup_adapter_bank.enabled = False
+    model.cfg.matchup_adapters_enabled = False
+    model.matchup_adapter_bank.requires_grad_(True)
+    optimizer = torch.optim.AdamW(
+        model.matchup_adapter_bank.parameters(),
+        lr=float(lr),
+        weight_decay=float(weight_decay),
+    )
+    assert_matchup_adapter_training_contract(model, optimizer=optimizer)
+    return optimizer
+
+
+def load_append_only_matchup_adapter_optimizer_state(
+    optimizer: torch.optim.Optimizer,
+    prior_state: dict[str, Any],
+) -> int:
+    """Restore Adam state while appending newly materialized expert params.
+
+    Adapter routes are append-only and every expert contributes four tensors
+    in a fixed order.  PyTorch normally rejects an optimizer group whose saved
+    parameter count is smaller than the current group; this migration retains
+    every old moment bit-for-bit and leaves only appended routes without state
+    until their first routed gradient.
+    """
+
+    if len(optimizer.param_groups) != 1:
+        raise ValueError("matchup adapter optimizer must have one parameter group")
+    saved_groups = list(prior_state.get("param_groups") or [])
+    if len(saved_groups) != 1:
+        raise ValueError("saved matchup adapter optimizer must have one group")
+    current = optimizer.state_dict()
+    current_params = list(current["param_groups"][0]["params"])
+    saved_params = list(saved_groups[0].get("params") or [])
+    if (
+        not saved_params
+        or len(saved_params) > len(current_params)
+        or len(saved_params) % 4 != 0
+        or len(current_params) % 4 != 0
+        or len(saved_params) // 4 not in {7, 10, 15, 22}
+    ):
+        raise ValueError("saved adapter optimizer is not append-compatible")
+    saved_slots = dict(prior_state.get("state") or {})
+    unknown_slots = set(saved_slots) - set(saved_params)
+    if unknown_slots:
+        raise ValueError("saved adapter optimizer contains unknown parameter slots")
+    migrated_group = copy.deepcopy(saved_groups[0])
+    migrated_group["params"] = current_params
+    migrated_state = {
+        current_params[index]: _clone_optimizer_state(saved_slots[saved_id])
+        for index, saved_id in enumerate(saved_params)
+        if saved_id in saved_slots
+    }
+    optimizer.load_state_dict(
+        {"state": migrated_state, "param_groups": [migrated_group]}
+    )
+    return len(saved_params) // 4
+
+
+@dataclass
+class MatchupAdapterIsolationGuard:
+    """Per-step proof that routes absent from a batch remain untouched."""
+
+    active_routes: frozenset[int]
+    inactive_parameters: dict[str, torch.Tensor]
+    inactive_optimizer_state: dict[str, dict[str, Any]]
+
+
+def _clone_optimizer_state(value: Any) -> Any:
+    if isinstance(value, torch.Tensor):
+        return value.detach().clone()
+    if isinstance(value, dict):
+        return {key: _clone_optimizer_state(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_clone_optimizer_state(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_optimizer_state(item) for item in value)
+    return copy.deepcopy(value)
+
+
+def _optimizer_state_equal(left: Any, right: Any) -> bool:
+    if isinstance(left, torch.Tensor) or isinstance(right, torch.Tensor):
+        return (
+            isinstance(left, torch.Tensor)
+            and isinstance(right, torch.Tensor)
+            and torch.equal(left, right)
+        )
+    if isinstance(left, dict) or isinstance(right, dict):
+        return (
+            isinstance(left, dict)
+            and isinstance(right, dict)
+            and left.keys() == right.keys()
+            and all(_optimizer_state_equal(left[key], right[key]) for key in left)
+        )
+    if isinstance(left, (list, tuple)) or isinstance(right, (list, tuple)):
+        return (
+            type(left) is type(right)
+            and len(left) == len(right)
+            and all(_optimizer_state_equal(a, b) for a, b in zip(left, right))
+        )
+    return bool(left == right)
+
+
+def prepare_matchup_adapter_isolation_guard(
+    model: TemporalCabtTransformer,
+    optimizer: torch.optim.Optimizer,
+    sequences: Sequence[GameSequence],
+) -> MatchupAdapterIsolationGuard:
+    """Snapshot absent experts immediately before one adapter-only step."""
+
+    active_routes: set[int] = set()
+    for sequence in sequences:
+        for decision in sequence.decisions:
+            active_routes.add(training_route_for_decision(sequence, decision))
+    if not active_routes or any(
+        route < 0 or route >= len(EXPERT_IDS) for route in active_routes
+    ):
+        raise RuntimeError("adapter batch has no valid oracle-ticketed route")
+
+    inactive_parameters: dict[str, torch.Tensor] = {}
+    inactive_optimizer_state: dict[str, dict[str, Any]] = {}
+    for route, expert in enumerate(model.matchup_adapter_bank.experts):
+        if route in active_routes:
+            continue
+        for local_name, parameter in expert.named_parameters():
+            name = f"experts.{route}.{local_name}"
+            if parameter.grad is not None:
+                raise AssertionError(
+                    f"inactive adapter parameter retained a gradient before step: {name}"
+                )
+            inactive_parameters[name] = parameter.detach().clone()
+            inactive_optimizer_state[name] = _clone_optimizer_state(
+                optimizer.state.get(parameter, {})
+            )
+    return MatchupAdapterIsolationGuard(
+        active_routes=frozenset(active_routes),
+        inactive_parameters=inactive_parameters,
+        inactive_optimizer_state=inactive_optimizer_state,
+    )
+
+
+def prepare_matchup_adapter_route_isolation_guard(
+    model: TemporalCabtTransformer,
+    optimizer: torch.optim.Optimizer,
+    route: int,
+) -> MatchupAdapterIsolationGuard:
+    """Snapshot every expert except one constant resident-corpus route."""
+
+    if type(route) is not int or route < 0 or route >= len(EXPERT_IDS):
+        raise RuntimeError("resident adapter batch has no valid route")
+    inactive_parameters: dict[str, torch.Tensor] = {}
+    inactive_optimizer_state: dict[str, dict[str, Any]] = {}
+    for candidate, expert in enumerate(model.matchup_adapter_bank.experts):
+        if candidate == route:
+            continue
+        for local_name, parameter in expert.named_parameters():
+            name = f"experts.{candidate}.{local_name}"
+            if parameter.grad is not None:
+                raise AssertionError(
+                    f"inactive adapter parameter retained a gradient before step: {name}"
+                )
+            inactive_parameters[name] = parameter.detach().clone()
+            inactive_optimizer_state[name] = _clone_optimizer_state(
+                optimizer.state.get(parameter, {})
+            )
+    return MatchupAdapterIsolationGuard(
+        active_routes=frozenset({route}),
+        inactive_parameters=inactive_parameters,
+        inactive_optimizer_state=inactive_optimizer_state,
+    )
+
+
+def assert_matchup_adapter_isolation_guard(
+    model: TemporalCabtTransformer,
+    optimizer: torch.optim.Optimizer,
+    guard: MatchupAdapterIsolationGuard,
+    *,
+    after_step: bool,
+) -> None:
+    """Fail if an absent route receives a gradient, update, or Adam state."""
+
+    current = dict(model.matchup_adapter_bank.named_parameters())
+    for name, before in guard.inactive_parameters.items():
+        parameter = current[name]
+        if parameter.grad is not None:
+            raise AssertionError(
+                f"inactive adapter route received a gradient: {name}"
+            )
+        if not after_step:
+            continue
+        if not torch.equal(parameter.detach(), before):
+            raise AssertionError(f"inactive adapter route changed: {name}")
+        previous_state = guard.inactive_optimizer_state[name]
+        current_state = optimizer.state.get(parameter, {})
+        if not _optimizer_state_equal(previous_state, current_state):
+            raise AssertionError(
+                f"inactive adapter optimizer state changed: {name}"
+            )
+
+
 def masked_belief_card_bce(
     logits: torch.Tensor,
     multilabel: Optional[torch.Tensor],
@@ -234,25 +646,6 @@ def masked_belief_card_bce(
     return F.binary_cross_entropy_with_logits(logits, multilabel)
 
 
-def _card_ids_from_aux_field(value: Any) -> Optional[list[int]]:
-    if value is None:
-        return None
-    ids: list[int] = []
-    if isinstance(value, list):
-        for item in value:
-            if isinstance(item, dict) and item.get("id") is not None:
-                ids.append(int(item["id"]))
-            elif isinstance(item, int):
-                ids.append(int(item))
-            elif isinstance(item, list):
-                nested = _card_ids_from_aux_field(item)
-                if nested:
-                    ids.extend(nested)
-    elif isinstance(value, dict) and value.get("id") is not None:
-        ids.append(int(value["id"]))
-    return ids
-
-
 def belief_multihots_from_aux_labels(
     aux_labels: dict[str, Any],
     card_vocab: int,
@@ -264,18 +657,27 @@ def belief_multihots_from_aux_labels(
     Remainder = hand ∪ deck-order ∪ privileged prize dump when present.
     Either tensor may be ``None`` so the corresponding BCE term masks cleanly.
     """
-    hand_ids = _card_ids_from_aux_field(aux_labels.get("opp_hand"))
-    deck_ids = _card_ids_from_aux_field(aux_labels.get("opp_deck_order"))
-    prize_ids = _card_ids_from_aux_field(aux_labels.get("opp_prizes"))
-    exact_remainder_ids = _card_ids_from_aux_field(
-        aux_labels.get("opp_hidden_remainder")
+    hand_ids = validated_unique_card_ids(
+        aux_labels.get("opp_hand"), card_vocab, field_name="opp_hand"
+    )
+    deck_ids = validated_unique_card_ids(
+        aux_labels.get("opp_deck_order"),
+        card_vocab,
+        field_name="opp_deck_order",
+    )
+    prize_ids = validated_unique_card_ids(
+        aux_labels.get("opp_prizes"), card_vocab, field_name="opp_prizes"
+    )
+    exact_remainder_ids = validated_unique_card_ids(
+        aux_labels.get("opp_hidden_remainder"),
+        card_vocab,
+        field_name="opp_hidden_remainder",
     )
     hand_mh: Optional[torch.Tensor] = None
     if hand_ids is not None:
         hand_mh = torch.zeros(card_vocab, device=device)
         for card_id in hand_ids:
-            if 0 <= int(card_id) < card_vocab:
-                hand_mh[int(card_id)] = 1.0
+            hand_mh[int(card_id)] = 1.0
     rem_ids: Optional[list[int]] = None
     if exact_remainder_ids is not None:
         rem_ids = list(exact_remainder_ids)
@@ -288,8 +690,7 @@ def belief_multihots_from_aux_labels(
     if rem_ids is not None:
         rem_mh = torch.zeros(card_vocab, device=device)
         for card_id in rem_ids:
-            if 0 <= int(card_id) < card_vocab:
-                rem_mh[int(card_id)] = 1.0
+            rem_mh[int(card_id)] = 1.0
     return hand_mh, rem_mh
 
 
@@ -403,8 +804,11 @@ def batch_losses(
     entropy_bonus: float = 0.0,
     awr_baseline_cache: Optional[dict[tuple[int, int, int], float]] = None,
     awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
+    awr_weight_sink: Optional[list[float]] = None,
     prediction_sink: Optional[list[int]] = None,
     history_identity_weight: float = 0.0,
+    matchup_adapter_training: bool = False,
+    pack_temporal_games: bool = False,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Causal history forward over all valid decisions.
 
@@ -433,6 +837,8 @@ def batch_losses(
     """
     if float(alakazam_guide_weight) < 0.0:
         raise ValueError("Alakazam guide loss weight cannot be negative")
+    if matchup_adapter_training:
+        assert_matchup_adapter_training_contract(model)
     device = next(model.parameters()).device
     games = [s for s in seqs if s.decisions]
     if not games:
@@ -440,6 +846,50 @@ def batch_losses(
 
     all_boards = [d.board for g in games for d in g.decisions]
     spatial_all = model.encode_board(all_boards)
+    packed_game_states: list[torch.Tensor] | None = None
+    packed_identity_states: list[torch.Tensor] | None = None
+    if pack_temporal_games:
+        if not matchup_adapter_training:
+            raise ValueError(
+                "packed temporal games are currently authorized only for "
+                "isolated matchup-adapter fitting"
+            )
+        if model.decision_context != "history":
+            raise ValueError("packed temporal games require history context")
+        lengths = [len(game.decisions) for game in games]
+        previous_actions = [
+            action
+            for game in games
+            for action in (
+                [None]
+                + [decision.action_token for decision in game.decisions[:-1]]
+            )
+        ]
+        cls_all = model.pool_cls(spatial_all)
+        cls_all = cls_all + float(model.cfg.history_action_scale) * (
+            model.encode_previous_actions(previous_actions)
+        )
+        cls_by_game = list(cls_all.split(lengths))
+        padded_cls = pad_sequence(cls_by_game, batch_first=True)
+        length_tensor = torch.tensor(
+            lengths, device=device, dtype=torch.long
+        )
+        padding_mask = (
+            torch.arange(padded_cls.size(1), device=device).unsqueeze(0)
+            >= length_tensor.unsqueeze(1)
+        )
+        packed_states, _ = model.temporal_encode(
+            padded_cls,
+            append=False,
+            return_all=True,
+            key_padding_mask=padding_mask,
+        )
+        packed_game_states = [
+            packed_states[row, :length]
+            for row, length in enumerate(lengths)
+        ]
+        identity_all = model.temporal_norm(model.pool_cls(spatial_all)).detach()
+        packed_identity_states = list(identity_all.split(lengths))
     valid_spatial: list[torch.Tensor] = []
     valid_states: list[torch.Tensor] = []
     valid_identity_states: list[torch.Tensor] = []
@@ -452,11 +902,12 @@ def batch_losses(
     aux_rows: list[int] = []
     aux_labels: list[int] = []
     decision_aux: list[dict[str, Any]] = []
+    matchup_routes: list[int] = []
     guide_target_rows: list[int] = []
     guide_confidence_rows: list[float] = []
     use_alakazam_guide = float(alakazam_guide_weight) > 0.0
     spatial_offset = 0
-    for g in games:
+    for game_index, g in enumerate(games):
         val = float(g.value)
         pt = g.policy_targets
         factorized_pt = g.factorized_policy_targets
@@ -464,19 +915,23 @@ def batch_losses(
         game_spatial = spatial_all[spatial_offset : spatial_offset + length]
         spatial_offset += length
         if model.decision_context == "history":
-            previous_actions = [None] + [
-                decision.action_token for decision in g.decisions[:-1]
-            ]
-            cls = model.history_tokens(
-                game_spatial, previous_actions
-            ).unsqueeze(0)
-            game_states, _ = model.temporal_encode(
-                cls, append=False, return_all=True
-            )
-            game_states = game_states.squeeze(0)
-            game_identity_states = model.temporal_norm(
-                model.pool_cls(game_spatial)
-            ).detach()
+            if packed_game_states is not None and packed_identity_states is not None:
+                game_states = packed_game_states[game_index]
+                game_identity_states = packed_identity_states[game_index]
+            else:
+                previous_actions = [None] + [
+                    decision.action_token for decision in g.decisions[:-1]
+                ]
+                cls = model.history_tokens(
+                    game_spatial, previous_actions
+                ).unsqueeze(0)
+                game_states, _ = model.temporal_encode(
+                    cls, append=False, return_all=True
+                )
+                game_states = game_states.squeeze(0)
+                game_identity_states = model.temporal_norm(
+                    model.pool_cls(game_spatial)
+                ).detach()
         else:
             cls = model.pool_cls(game_spatial).unsqueeze(1)
             game_states, _ = model.temporal_encode(
@@ -486,6 +941,11 @@ def batch_losses(
             game_identity_states = game_states.detach()
         last_valid_row: Optional[int] = None
         for t, d in enumerate(g.decisions):
+            matchup_route = (
+                training_route_for_decision(g, d)
+                if matchup_adapter_training
+                else UNKNOWN_ROUTE
+            )
             stages = d.policy_stages or [
                 PolicyStage(
                     options=d.options,
@@ -501,6 +961,11 @@ def batch_losses(
                 else None
             )
             for stage_i, stage in enumerate(stages):
+                # Adapter fitting is state-masked.  Unknown/pre-trigger states
+                # are absent from the objective rather than merely producing a
+                # constant base loss that dilutes relevant gradients.
+                if matchup_adapter_training and matchup_route == UNKNOWN_ROUTE:
+                    continue
                 n_opt = stage.options.num_words
                 if n_opt <= 0:
                     continue
@@ -544,6 +1009,7 @@ def batch_losses(
                 value_targets.append(val)
                 awr_baseline_keys.append((id(g), t, stage_i))
                 decision_aux.append(dict(d.aux_labels or {}))
+                matchup_routes.append(matchup_route)
                 if use_alakazam_guide:
                     guide_target_rows.append(
                         int(getattr(stage, "guide_target_index", -1))
@@ -566,19 +1032,48 @@ def batch_losses(
     state_all = torch.stack(valid_states, dim=0)
     identity_state_all = torch.stack(valid_identity_states, dim=0)
     current_spatial = torch.stack(valid_spatial, dim=0)
+    policy_value_state = state_all
+    if matchup_adapter_training:
+        route_tensor = torch.tensor(
+            matchup_routes,
+            device=device,
+            dtype=torch.long,
+        )
+        policy_value_state = model.matchup_policy_value_state(
+            state_all,
+            route_tensor,
+            enabled=True,
+        )
     logits_all = model.decode_options(
         valid_options,
         current_spatial,
-        state_all,
+        policy_value_state,
         n_options=valid_n,
     )
-    value_pred = torch.tanh(model.value_head(state_all)).squeeze(-1)
-    belief = model.belief_aux_logits(state_all)
-    aux_logits_all = belief["aux_logits"]
-    opp_hand_logits_all = belief["opp_hand_logits"]
-    opp_remainder_logits_all = belief["opp_remainder_logits"]
-    lethal_logits_all = belief["lethal_threat_logits"]
-    prize_race_pred_all = belief["prize_race_pred"]
+    value_pred = torch.tanh(model.value_head(policy_value_state)).squeeze(-1)
+    need_belief_outputs = any(
+        float(weight) > 0.0
+        for weight in (
+            aux_weight,
+            opp_hand_weight,
+            opp_remainder_weight,
+            lethal_threat_weight,
+            prize_race_weight,
+        )
+    )
+    if need_belief_outputs:
+        belief = model.belief_aux_logits(state_all)
+        aux_logits_all = belief["aux_logits"]
+        opp_hand_logits_all = belief["opp_hand_logits"]
+        opp_remainder_logits_all = belief["opp_remainder_logits"]
+        lethal_logits_all = belief["lethal_threat_logits"]
+        prize_race_pred_all = belief["prize_race_pred"]
+    else:
+        aux_logits_all = None
+        opp_hand_logits_all = None
+        opp_remainder_logits_all = None
+        lethal_logits_all = None
+        prize_race_pred_all = None
     k = logits_all.size(0)
     max_n = logits_all.size(1)
 
@@ -612,6 +1107,7 @@ def batch_losses(
     awr_w_sq_sum = 0.0
     awr_w_p50 = 0.0
     awr_w_p95 = 0.0
+    awr_w_max = 0.0
     awr_clip_frac = 0.0
     awr_ess = 0.0
     awr_ess_frac = 0.0
@@ -688,6 +1184,9 @@ def batch_losses(
         sorted_w, _ = torch.sort(weights.detach().float())
         awr_w_p50 = float(sorted_w[int(0.50 * (k - 1))].item())
         awr_w_p95 = float(sorted_w[int(0.95 * (k - 1))].item())
+        awr_w_max = float(sorted_w[-1].item())
+        if awr_weight_sink is not None:
+            awr_weight_sink.extend(sorted_w.cpu().tolist())
         awr_clip_frac = float((raw_w >= wmax).float().mean().item())
     else:
         target_mat = torch.zeros(k, max_n, device=device, dtype=logits_all.dtype)
@@ -717,6 +1216,7 @@ def batch_losses(
 
     aux_loss = torch.zeros((), device=device)
     if aux_weight > 0 and aux_rows:
+        assert aux_logits_all is not None
         row_idx = torch.tensor(aux_rows, device=device, dtype=torch.long)
         aux_logits = aux_logits_all.index_select(0, row_idx)
         labels = torch.tensor(
@@ -732,10 +1232,17 @@ def batch_losses(
         aux_loss = F.cross_entropy(aux_logits, labels)
 
     # Masked card-head BCE from privileged aux labels (or explicit override).
-    card_vocab = int(getattr(model, "belief_card_vocab", opp_hand_logits_all.size(-1)))
     n_hand_rows = 0
     n_remainder_rows = 0
-    if opp_hand_multihot is None and opp_remainder_multihot is None:
+    if float(opp_hand_weight) <= 0.0 and float(opp_remainder_weight) <= 0.0:
+        opp_hand_loss = state_all.sum() * 0.0
+        opp_remainder_loss = state_all.sum() * 0.0
+    elif opp_hand_multihot is None and opp_remainder_multihot is None:
+        assert opp_hand_logits_all is not None
+        assert opp_remainder_logits_all is not None
+        card_vocab = int(
+            getattr(model, "belief_card_vocab", opp_hand_logits_all.size(-1))
+        )
         hand_rows: list[torch.Tensor] = []
         rem_rows: list[torch.Tensor] = []
         hand_idx: list[int] = []
@@ -773,6 +1280,8 @@ def batch_losses(
                 opp_remainder_logits_all, None
             )
     else:
+        assert opp_hand_logits_all is not None
+        assert opp_remainder_logits_all is not None
         hand_labels = opp_hand_multihot
         rem_labels = opp_remainder_multihot
         if hand_labels is not None and hand_labels.dim() == 1:
@@ -791,33 +1300,43 @@ def batch_losses(
     lethal_idx: list[int] = []
     race_rows: list[torch.Tensor] = []
     race_idx: list[int] = []
-    for i, aux in enumerate(decision_aux):
-        lethal = lethal_target_from_aux(aux)
-        if lethal is not None:
-            lethal_rows.append(float(lethal))
-            lethal_idx.append(i)
-        race = prize_race_target_from_aux(aux, device=device)
-        if race is not None:
-            race_rows.append(race)
-            race_idx.append(i)
-    if lethal_rows:
-        lethal_threat_loss = F.binary_cross_entropy_with_logits(
-            lethal_logits_all.index_select(
-                0, torch.tensor(lethal_idx, device=device, dtype=torch.long)
-            ),
-            torch.tensor(lethal_rows, device=device, dtype=lethal_logits_all.dtype),
-        )
+    if float(lethal_threat_weight) <= 0.0 and float(prize_race_weight) <= 0.0:
+        lethal_threat_loss = state_all.sum() * 0.0
+        prize_race_loss = state_all.sum() * 0.0
     else:
-        lethal_threat_loss = masked_bce_logit(lethal_logits_all, None)
-    if race_rows:
-        prize_race_loss = F.smooth_l1_loss(
-            prize_race_pred_all.index_select(
-                0, torch.tensor(race_idx, device=device, dtype=torch.long)
-            ),
-            torch.stack(race_rows, dim=0).to(dtype=prize_race_pred_all.dtype),
-        )
-    else:
-        prize_race_loss = masked_smooth_l1(prize_race_pred_all, None)
+        assert lethal_logits_all is not None
+        assert prize_race_pred_all is not None
+        for i, aux in enumerate(decision_aux):
+            lethal = lethal_target_from_aux(aux)
+            if lethal is not None:
+                lethal_rows.append(float(lethal))
+                lethal_idx.append(i)
+            race = prize_race_target_from_aux(aux, device=device)
+            if race is not None:
+                race_rows.append(race)
+                race_idx.append(i)
+        if lethal_rows:
+            lethal_threat_loss = F.binary_cross_entropy_with_logits(
+                lethal_logits_all.index_select(
+                    0, torch.tensor(lethal_idx, device=device, dtype=torch.long)
+                ),
+                torch.tensor(
+                    lethal_rows, device=device, dtype=lethal_logits_all.dtype
+                ),
+            )
+        else:
+            lethal_threat_loss = masked_bce_logit(lethal_logits_all, None)
+        if race_rows:
+            prize_race_loss = F.smooth_l1_loss(
+                prize_race_pred_all.index_select(
+                    0, torch.tensor(race_idx, device=device, dtype=torch.long)
+                ),
+                torch.stack(race_rows, dim=0).to(
+                    dtype=prize_race_pred_all.dtype
+                ),
+            )
+        else:
+            prize_race_loss = masked_smooth_l1(prize_race_pred_all, None)
 
     total = (
         p_loss
@@ -857,6 +1376,11 @@ def batch_losses(
         n_opp_remainder_rows=int(n_remainder_rows),
         n_lethal_threat_rows=len(lethal_rows),
         n_prize_race_rows=len(race_rows),
+        n_matchup_adapter_rows=(
+            sum(route != UNKNOWN_ROUTE for route in matchup_routes)
+            if matchup_adapter_training
+            else 0
+        ),
         mean_advantage=awr_mean_adv,
         raw_advantage_mean=raw_adv_mean,
         raw_advantage_std=raw_adv_std,
@@ -871,6 +1395,7 @@ def batch_losses(
         awr_weight_sq_sum=awr_w_sq_sum,
         awr_weight_p50=awr_w_p50,
         awr_weight_p95=awr_w_p95,
+        awr_weight_max_observed=awr_w_max,
         awr_weight_clip_frac=awr_clip_frac,
         awr_effective_sample_size=awr_ess,
         awr_effective_sample_fraction=awr_ess_frac,
@@ -975,6 +1500,7 @@ def device_temporal_batch_losses(
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     alakazam_guide_weight: float = 0.0,
+    matchup_adapter_route: int | None = None,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Hard-target full-game loss with every resident temporal target.
 
@@ -985,6 +1511,13 @@ def device_temporal_batch_losses(
     """
     if model.decision_context != "history":
         raise ValueError("temporal resident loss requires history context")
+    if matchup_adapter_route is not None:
+        if not (
+            type(matchup_adapter_route) is int
+            and 0 <= matchup_adapter_route < len(EXPERT_IDS)
+        ):
+            raise ValueError("invalid resident matchup-adapter route")
+        assert_matchup_adapter_training_contract(model)
     for name, weight in (
         ("aux", aux_weight),
         ("opp_hand", opp_hand_weight),
@@ -1062,22 +1595,36 @@ def device_temporal_batch_losses(
     )
     state = state_by_decision.index_select(0, sample_state_rows)
     sample_spatial = spatial.index_select(0, sample_state_rows)
+    policy_value_state = state
+    if matchup_adapter_route is not None:
+        policy_value_state = model.matchup_policy_value_state(
+            state,
+            torch.full(
+                (samples,),
+                matchup_adapter_route,
+                device=state.device,
+                dtype=torch.long,
+            ),
+            enabled=True,
+        )
     logits = model.decode_options_packed(
         options,
         sample_spatial,
-        state,
+        policy_value_state,
         n_options=counts,
         batch_size=samples,
     )
     total, metrics = _resident_hard_target_objective(
         model,
         logits,
-        state,
+        policy_value_state,
         target_idx,
         v_target,
         value_weight=value_weight,
         n_games=int(game_ids.numel()),
     )
+    if matchup_adapter_route is not None:
+        metrics.n_matchup_adapter_rows = metrics.n_decisions
     if not any(
         float(weight) > 0.0
         for weight in (
@@ -1506,6 +2053,7 @@ def device_exact_batch_losses(
         awr_weight_sq_sum=weight_sq_sum,
         awr_weight_p50=float(sorted_weights[int(0.50 * (k - 1))].item()),
         awr_weight_p95=float(sorted_weights[int(0.95 * (k - 1))].item()),
+        awr_weight_max_observed=float(sorted_weights[-1].item()),
         awr_weight_clip_frac=float((raw_weights >= weight_max).float().mean().item()),
         awr_effective_sample_size=effective_samples,
         awr_effective_sample_fraction=effective_samples / max(k, 1),
@@ -1541,6 +2089,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
     remainder_rows = sum(int(p.n_opp_remainder_rows) for p in parts)
     lethal_rows = sum(int(p.n_lethal_threat_rows) for p in parts)
     prize_rows = sum(int(p.n_prize_race_rows) for p in parts)
+    matchup_adapter_rows = sum(int(p.n_matchup_adapter_rows) for p in parts)
     guide_loss = (
         sum(
             float(p.alakazam_guide_loss) * int(p.n_alakazam_guide_rows)
@@ -1574,6 +2123,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         n_opp_remainder_rows=remainder_rows,
         n_lethal_threat_rows=lethal_rows,
         n_prize_race_rows=prize_rows,
+        n_matchup_adapter_rows=matchup_adapter_rows,
         mean_advantage=wavg("mean_advantage"),
         raw_advantage_mean=raw_mean,
         raw_advantage_std=math.sqrt(max(raw_mean_sq - raw_mean * raw_mean, 0.0)),
@@ -1590,11 +2140,28 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         awr_weight_sq_sum=weight_sq_sum,
         awr_weight_p50=wavg("awr_weight_p50"),
         awr_weight_p95=wavg("awr_weight_p95"),
+        awr_weight_max_observed=max(
+            float(p.awr_weight_max_observed) for p in parts
+        ),
         awr_weight_clip_frac=wavg("awr_weight_clip_frac"),
         awr_effective_sample_size=ess,
         awr_effective_sample_fraction=ess / nd,
         policy_selected_nll=wavg("policy_selected_nll"),
     )
+
+
+def _set_exact_awr_weight_quantiles(
+    metrics: BatchMetrics, values: Sequence[float]
+) -> BatchMetrics:
+    """Replace batch-aggregated AWR quantiles with exact epoch quantiles."""
+    if not values:
+        return metrics
+    ordered = sorted(float(value) for value in values)
+    last = len(ordered) - 1
+    metrics.awr_weight_p50 = ordered[int(0.50 * last)]
+    metrics.awr_weight_p95 = ordered[int(0.95 * last)]
+    metrics.awr_weight_max_observed = ordered[-1]
+    return metrics
 
 
 def split_dataset(
@@ -1714,6 +2281,181 @@ def _iter_game_batches(
     return batches
 
 
+def split_matchup_adapter_sequences(
+    sequences: Sequence[GameSequence],
+    *,
+    val_frac: float,
+    seed: int,
+) -> tuple[list[GameSequence], list[GameSequence]]:
+    """Episode-disjoint, route-stratified split for all oracle partitions."""
+
+    by_route: dict[int, dict[str, list[GameSequence]]] = {
+        route: {} for route in range(len(EXPERT_IDS))
+    }
+    episode_route: dict[str, int] = {}
+    for sequence in sequences:
+        if not sequence.decisions:
+            continue
+        route = training_route_for_decision(sequence, sequence.decisions[0])
+        if route == UNKNOWN_ROUTE:
+            raise RuntimeError("adapter split received an unknown oracle route")
+        if any(
+            training_route_for_decision(sequence, decision) != route
+            for decision in sequence.decisions
+        ):
+            raise RuntimeError("one adapter sequence contains multiple oracle routes")
+        episode_id = str(sequence.episode_id)
+        prior = episode_route.setdefault(episode_id, route)
+        if prior != route:
+            raise RuntimeError("one episode appears in multiple adapter routes")
+        by_route[route].setdefault(episode_id, []).append(sequence)
+
+    train_rows: list[GameSequence] = []
+    val_rows: list[GameSequence] = []
+    for route, archetype_id in enumerate(EXPERT_IDS):
+        groups = list(by_route[route].items())
+        if len(groups) < 2:
+            raise RuntimeError(
+                f"adapter route {archetype_id} needs at least two episodes"
+            )
+        random.Random(int(seed) + route * 100_003).shuffle(groups)
+        n_val = max(1, min(len(groups) - 1, round(len(groups) * float(val_frac))))
+        val_ids = {episode_id for episode_id, _rows in groups[:n_val]}
+        for episode_id, rows in groups:
+            (val_rows if episode_id in val_ids else train_rows).extend(rows)
+    return train_rows, val_rows
+
+
+def matchup_adapter_split_contract(
+    train_sequences: Sequence[GameSequence],
+    val_sequences: Sequence[GameSequence],
+) -> dict[str, Any]:
+    """Immutable per-route coverage and membership identity for checkpointing."""
+
+    corpus_digests: set[str] = set()
+    gate_digests: set[str] = set()
+    membership: list[dict[str, Any]] = []
+    route_rows: dict[str, dict[str, int]] = {
+        archetype_id: {
+            "train_sequences": 0,
+            "train_decisions": 0,
+            "val_sequences": 0,
+            "val_decisions": 0,
+        }
+        for archetype_id in EXPERT_IDS
+    }
+    split_episode_ids: dict[str, set[str]] = {"train": set(), "val": set()}
+    for split, sequences in (("train", train_sequences), ("val", val_sequences)):
+        for sequence in sequences:
+            ticket = adapter_training_ticket(sequence)
+            corpus_digests.add(ticket.corpus_manifest_digest)
+            gate_digests.add(ticket.gate_contract_digest)
+            route_rows[ticket.archetype_id][f"{split}_sequences"] += 1
+            route_rows[ticket.archetype_id][f"{split}_decisions"] += len(
+                sequence.decisions
+            )
+            split_episode_ids[split].add(str(sequence.episode_id))
+            membership.append(
+                {
+                    "split": split,
+                    "route": int(ticket.route),
+                    "archetype_id": ticket.archetype_id,
+                    "package_digest": ticket.package_digest,
+                    "episode_id": str(sequence.episode_id),
+                    "seat": int(sequence.seat),
+                    "decisions": len(sequence.decisions),
+                }
+            )
+    if split_episode_ids["train"] & split_episode_ids["val"]:
+        raise RuntimeError("adapter train/validation episode membership overlaps")
+    if len(corpus_digests) != 1 or len(gate_digests) != 1:
+        raise RuntimeError("adapter split combines different corpus/gate contracts")
+    missing = [
+        archetype_id
+        for archetype_id, row in route_rows.items()
+        if any(int(row[field]) <= 0 for field in row)
+    ]
+    if missing:
+        raise RuntimeError(
+            f"adapter split lacks train/validation coverage for {missing}"
+        )
+    membership.sort(
+        key=lambda row: (
+            row["split"],
+            row["route"],
+            row["episode_id"],
+            row["seat"],
+        )
+    )
+    membership_digest = "sha256:" + hashlib.sha256(
+        json.dumps(
+            membership,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return {
+        "schema": "poke_bot.matchup_adapter_training_split/v1",
+        "routing": "offline-oracle-package-and-full-deck-audited",
+        "runtime_router_separate": True,
+        "corpus_manifest_digest": next(iter(corpus_digests)),
+        "active_gate_contract_digest": next(iter(gate_digests)),
+        "membership_digest": membership_digest,
+        "per_route": route_rows,
+    }
+
+
+def build_matchup_adapter_training_contract(
+    train_sequences: Sequence[GameSequence],
+    val_sequences: Sequence[GameSequence],
+    *,
+    input_provenance: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind exact rows, source artifacts, routing order, and loss isolation.
+
+    Resume and dormant merge compare this mapping exactly.  A corpus rewrite,
+    active-gate change, route reorder, or train/validation membership change
+    therefore cannot silently continue an older optimizer.
+    """
+
+    inputs = copy.deepcopy(dict(input_provenance or {}))
+    if inputs.get("schema") != "poke_bot.matchup_adapter_input_provenance/v1":
+        raise ValueError("adapter training lacks exact input provenance")
+    required_digests = (
+        "source_jsonl_digest",
+        "corpus_manifest_file_digest",
+        "active_gate_contract_file_digest",
+        "implementation_digest",
+    )
+    for field_name in required_digests:
+        value = str(inputs.get(field_name) or "")
+        if not value.startswith("sha256:") or len(value) != 71:
+            raise ValueError(f"adapter input provenance lacks {field_name}")
+    split = matchup_adapter_split_contract(train_sequences, val_sequences)
+    return {
+        "schema": "poke_bot.matchup_adapter_training_contract/v1",
+        "routing": "offline-oracle-package-and-full-deck-audited",
+        "runtime_router_separate": True,
+        "runtime_enabled": False,
+        "optimizer_scope": "matchup_adapter_bank_only",
+        "loss_scope": ["policy", "value"],
+        "expert_ids": list(EXPERT_IDS),
+        "adapter_config": model_matchup_adapter_config(),
+        "corpus_manifest_digest": split["corpus_manifest_digest"],
+        "active_gate_contract_digest": split["active_gate_contract_digest"],
+        "split": split,
+        "inputs": inputs,
+    }
+
+
+def model_matchup_adapter_config() -> dict[str, Any]:
+    """Late import-free accessor used by immutable training metadata."""
+
+    from .matchup_adapters import MatchupAdapterBank
+
+    return MatchupAdapterBank.config_dict()
+
+
 @torch.no_grad()
 def evaluate(
     model: TemporalCabtTransformer,
@@ -1725,6 +2467,9 @@ def evaluate(
 ) -> BatchMetrics:
     model.eval()
     parts: list[BatchMetrics] = []
+    exact_awr_weights: Optional[list[float]] = (
+        [] if cfg.capture_awr_weight_distribution else None
+    )
     batches = _iter_game_batches(
         list(sequences),
         cfg.games_per_batch,
@@ -1753,12 +2498,16 @@ def evaluate(
                 awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
                 entropy_bonus=float(cfg.entropy_bonus),
                 awr_baseline_cache=awr_baseline_cache,
+                awr_weight_sink=exact_awr_weights,
                 history_identity_weight=float(
                     cfg.history_identity_loss_weight
                 ),
+                matchup_adapter_training=bool(cfg.matchup_adapter_training),
             )
         parts.append(m)
-    return _merge_metrics(parts)
+    return _set_exact_awr_weight_quantiles(
+        _merge_metrics(parts), exact_awr_weights or ()
+    )
 
 
 @torch.no_grad()
@@ -2141,12 +2890,19 @@ def train_bootstrap(
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
 
-    train_seqs, val_seqs = split_dataset(
-        dataset,
-        cfg.val_frac,
-        cfg.seed,
-        group_by_episode=bool(cfg.split_by_episode),
-    )
+    if cfg.matchup_adapter_training:
+        train_seqs, val_seqs = split_matchup_adapter_sequences(
+            dataset.sequences,
+            val_frac=cfg.val_frac,
+            seed=cfg.seed,
+        )
+    else:
+        train_seqs, val_seqs = split_dataset(
+            dataset,
+            cfg.val_frac,
+            cfg.seed,
+            group_by_episode=bool(cfg.split_by_episode),
+        )
     print(
         f"[train] device={device} games={len(dataset)} "
         f"train={len(train_seqs)} val={len(val_seqs)} decisions={dataset.n_decisions}",
@@ -2155,7 +2911,11 @@ def train_bootstrap(
 
     resume_path = checkpoint.resolve_resume_path(run_name, resume)
     init_path = Path(init_checkpoint).expanduser().resolve() if init_checkpoint else None
-    if resume_path is not None and init_path is not None:
+    if (
+        resume_path is not None
+        and init_path is not None
+        and not cfg.matchup_adapter_training
+    ):
         raise ValueError("init_checkpoint cannot be combined with a resumed run")
     if init_path is not None and not init_path.is_file():
         raise FileNotFoundError(f"initial checkpoint not found: {init_path}")
@@ -2179,29 +2939,123 @@ def train_bootstrap(
             f"truncated_sequences={train_truncated + val_truncated}",
             flush=True,
         )
+    adapter_training_contract: Optional[dict[str, Any]] = None
+    if cfg.matchup_adapter_training:
+        input_provenance = dict(
+            (checkpoint_extra or {}).get("matchup_adapter_input_provenance") or {}
+        )
+        adapter_training_contract = build_matchup_adapter_training_contract(
+            train_seqs,
+            val_seqs,
+            input_provenance=input_provenance,
+        )
     trainable_prefixes = tuple(
         str(value) for value in (trainable_parameter_prefixes or ())
     )
-    if trainable_prefixes:
-        for name, parameter in model.named_parameters():
-            parameter.requires_grad_(
-                any(name.startswith(prefix) for prefix in trainable_prefixes)
+    frozen_base_snapshot: Optional[dict[str, torch.Tensor]] = None
+    adapter_activation: Optional[ActivationReceipt] = None
+    adapter_parent_path: Optional[Path] = None
+    if cfg.matchup_adapter_training:
+        if trainable_prefixes:
+            raise ValueError(
+                "matchup adapter training cannot be combined with generic "
+                "trainable_parameter_prefixes"
             )
-    trainable_parameters = [
-        parameter for parameter in model.parameters() if parameter.requires_grad
-    ]
-    if not trainable_parameters:
-        raise ValueError("training freeze policy left no trainable parameters")
-    if trainable_prefixes:
+        if device_resident:
+            raise ValueError(
+                "matchup adapter training requires host GameSequence matchup labels"
+            )
+        if cfg.pure_rl:
+            raise ValueError("matchup adapter training is bootstrap-only")
+        nonzero_auxiliary = {
+            name: float(value)
+            for name, value in {
+                "aux": cfg.aux_loss_weight,
+                "opp_hand": cfg.opp_hand_loss_weight,
+                "opp_remainder": cfg.opp_remainder_loss_weight,
+                "guide": cfg.alakazam_guide_loss_weight,
+                "lethal": cfg.lethal_threat_loss_weight,
+                "prize": cfg.prize_race_loss_weight,
+                "history_identity": cfg.history_identity_loss_weight,
+            }.items()
+            if float(value) != 0.0
+        }
+        if nonzero_auxiliary:
+            raise ValueError(
+                "matchup adapter fitting permits policy/value losses only; "
+                f"nonzero auxiliary weights={nonzero_auxiliary}"
+            )
+        if source_path is None:
+            raise ValueError(
+                "matchup adapter fitting requires the pinned iteration-15 parent"
+            )
+        if resume_path is not None:
+            resume_payload = checkpoint.load_checkpoint(
+                resume_path, map_location="cpu"
+            )
+            resume_extra = dict(resume_payload.get("extra") or {})
+            raw_parent = str(
+                resume_extra.get("matchup_adapter_parent_checkpoint") or ""
+            )
+            if not raw_parent:
+                raise ValueError(
+                    "adapter resume checkpoint lacks its frozen parent identity"
+                )
+            adapter_parent_path = Path(raw_parent).expanduser().resolve()
+            if init_path is not None and init_path != adapter_parent_path:
+                raise ValueError(
+                    "adapter resume --init-checkpoint differs from its pinned parent"
+                )
+        else:
+            assert init_path is not None
+            adapter_parent_path = init_path
+        if not str(cfg.matchup_adapter_activation_receipt).strip():
+            raise ValueError(
+                "matchup adapter fitting requires an activation receipt"
+            )
+        adapter_activation = validate_adapter_training_authorization(
+            cfg.matchup_adapter_activation_receipt,
+            parent_checkpoint=adapter_parent_path,
+        )
+        optimizer = build_matchup_adapter_optimizer(
+            model,
+            lr=cfg.lr,
+            weight_decay=cfg.weight_decay,
+            activation_receipt=adapter_activation,
+        )
+        assert adapter_parent_path is not None
+        assert_matchup_adapter_parent_identity(
+            model,
+            parent_checkpoint=adapter_parent_path,
+        )
+        trainable_parameters = list(model.matchup_adapter_bank.parameters())
+        frozen_base_snapshot = matchup_adapter_base_state(model)
         print(
-            "[train] frozen-copy calibration trainable_prefixes="
-            f"{list(trainable_prefixes)} params="
-            f"{sum(parameter.numel() for parameter in trainable_parameters)}",
+            "[train] ground-truth matchup adapter mode base=frozen "
+            f"adapter_params={sum(p.numel() for p in trainable_parameters)}",
             flush=True,
         )
-    optimizer = torch.optim.AdamW(
-        trainable_parameters, lr=cfg.lr, weight_decay=cfg.weight_decay
-    )
+    else:
+        if trainable_prefixes:
+            for name, parameter in model.named_parameters():
+                parameter.requires_grad_(
+                    any(name.startswith(prefix) for prefix in trainable_prefixes)
+                )
+        trainable_parameters = [
+            parameter for parameter in model.parameters() if parameter.requires_grad
+        ]
+        if not trainable_parameters:
+            raise ValueError("training freeze policy left no trainable parameters")
+        if trainable_prefixes:
+            print(
+                "[train] frozen-copy calibration trainable_prefixes="
+                f"{list(trainable_prefixes)} params="
+                f"{sum(parameter.numel() for parameter in trainable_parameters)}",
+                flush=True,
+            )
+        optimizer = torch.optim.AdamW(
+            trainable_parameters, lr=cfg.lr, weight_decay=cfg.weight_decay
+        )
     # Blackwell throughput: allow TF32 matmuls and prefer bf16 autocast.
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -2229,6 +3083,26 @@ def train_bootstrap(
         print(f"[train] resuming from {resume_path}", flush=True)
         ckpt = checkpoint.load_checkpoint(resume_path, map_location=device)
         inherited_extra = dict(ckpt.get("extra") or {})
+        if cfg.matchup_adapter_training:
+            assert adapter_training_contract is not None
+            saved_contract = inherited_extra.get(
+                "matchup_adapter_training_contract"
+            )
+            if saved_contract != adapter_training_contract:
+                raise ValueError(
+                    "adapter resume corpus/gate/split/implementation contract drift"
+                )
+            assert adapter_activation is not None
+            if (
+                str(
+                    inherited_extra.get(
+                        "matchup_adapter_activation_receipt_digest"
+                    )
+                    or ""
+                )
+                != checkpoint.checkpoint_digest(adapter_activation.path)
+            ):
+                raise ValueError("adapter resume activation receipt identity drift")
         meta = checkpoint.apply_checkpoint(
             ckpt, model=model, optimizer=optimizer, scaler=scaler, scheduler=scheduler
         )
@@ -2311,7 +3185,23 @@ def train_bootstrap(
             amp_dtype=amp_dtype,
         )
 
+    latest_adapter_validation: dict[str, Any] = (
+        copy.deepcopy(
+            dict(
+                inherited_extra.get("matchup_adapter_per_route_validation") or {}
+            )
+        )
+        if cfg.matchup_adapter_training
+        else {}
+    )
+
     def build_ckpt() -> dict[str, Any]:
+        if cfg.matchup_adapter_training:
+            assert_matchup_adapter_training_contract(
+                model,
+                optimizer=optimizer,
+                base_state=frozen_base_snapshot,
+            )
         extra = dict(inherited_extra)
         extra.update(checkpoint_extra or {})
         extra.update(
@@ -2324,8 +3214,44 @@ def train_bootstrap(
                 "trainable_parameter_count": int(
                     sum(parameter.numel() for parameter in trainable_parameters)
                 ),
+                "matchup_adapter_training": bool(
+                    cfg.matchup_adapter_training
+                ),
+                "matchup_adapter_routing": (
+                    "offline-oracle-package-and-full-deck-audited"
+                    if cfg.matchup_adapter_training
+                    else None
+                ),
+                "matchup_adapters_runtime_enabled": bool(
+                    model.matchup_adapter_bank.enabled
+                ),
             }
         )
+        if cfg.matchup_adapter_training:
+            extra["matchup_adapter_config"] = (
+                model.matchup_adapter_bank.config_dict()
+            )
+            assert adapter_activation is not None
+            assert adapter_parent_path is not None
+            extra["matchup_adapter_activation_receipt"] = str(
+                adapter_activation.path
+            )
+            extra["matchup_adapter_activation_receipt_digest"] = (
+                checkpoint.checkpoint_digest(adapter_activation.path)
+            )
+            extra["matchup_adapter_parent_checkpoint"] = str(
+                adapter_parent_path
+            )
+            extra["matchup_adapter_parent_checkpoint_digest"] = (
+                adapter_activation.parent_checkpoint_digest
+            )
+            assert adapter_training_contract is not None
+            extra["matchup_adapter_training_contract"] = copy.deepcopy(
+                adapter_training_contract
+            )
+            extra["matchup_adapter_per_route_validation"] = copy.deepcopy(
+                latest_adapter_validation
+            )
         return checkpoint.build_checkpoint(
             model=model,
             optimizer=optimizer,
@@ -2356,7 +3282,14 @@ def train_bootstrap(
         )
         for epoch in epoch_bar:
             state.epoch = epoch
-            model.train()
+            if cfg.matchup_adapter_training:
+                # The frozen parent must emit the same deterministic states as
+                # serving.  Only the adapter bank is conceptually in training
+                # mode (it currently has no dropout/batch statistics).
+                model.eval()
+                model.matchup_adapter_bank.train()
+            else:
+                model.train()
             if resident_corpus is not None:
                 batches = resident_corpus.batches(
                     train=True,
@@ -2378,6 +3311,15 @@ def train_bootstrap(
             batch_bar = tqdm(batches, desc=f"train ep{epoch}", leave=False, unit="batch")
             for batch in batch_bar:
                 optimizer.zero_grad(set_to_none=True)
+                adapter_isolation_guard = (
+                    prepare_matchup_adapter_isolation_guard(
+                        model,
+                        optimizer,
+                        batch,
+                    )
+                    if cfg.matchup_adapter_training
+                    else None
+                )
                 with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                     if resident_corpus is not None:
                         total, bm = device_batch_losses(
@@ -2400,11 +3342,33 @@ def train_bootstrap(
                             history_identity_weight=float(
                                 cfg.history_identity_loss_weight
                             ),
+                            matchup_adapter_training=bool(
+                                cfg.matchup_adapter_training
+                            ),
                         )
                 if bm.n_decisions == 0:
                     continue
+                if cfg.matchup_adapter_training and bm.n_matchup_adapter_rows == 0:
+                    if total.requires_grad:
+                        raise AssertionError(
+                            "unsupported matchup rows must not touch adapters"
+                        )
+                    epoch_parts.append(bm)
+                    continue
 
                 scaler.scale(total).backward()
+                if cfg.matchup_adapter_training:
+                    assert_matchup_adapter_training_contract(
+                        model,
+                        optimizer=optimizer,
+                    )
+                    assert adapter_isolation_guard is not None
+                    assert_matchup_adapter_isolation_guard(
+                        model,
+                        optimizer,
+                        adapter_isolation_guard,
+                        after_step=False,
+                    )
                 if cfg.grad_clip > 0:
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(
@@ -2412,6 +3376,19 @@ def train_bootstrap(
                     )
                 scaler.step(optimizer)
                 scaler.update()
+                if cfg.matchup_adapter_training:
+                    assert_matchup_adapter_training_contract(
+                        model,
+                        optimizer=optimizer,
+                        base_state=frozen_base_snapshot,
+                    )
+                    assert adapter_isolation_guard is not None
+                    assert_matchup_adapter_isolation_guard(
+                        model,
+                        optimizer,
+                        adapter_isolation_guard,
+                        after_step=True,
+                    )
 
                 state.step += 1
                 epoch_parts.append(bm)
@@ -2481,6 +3458,38 @@ def train_bootstrap(
                 val_m = train_m
                 metric = train_m.total_loss
 
+            if cfg.matchup_adapter_training:
+                latest_adapter_validation.clear()
+                for route, archetype_id in enumerate(EXPERT_IDS):
+                    route_val = [
+                        sequence
+                        for sequence in val_seqs
+                        if int(adapter_training_ticket(sequence).route) == route
+                    ]
+                    if not route_val:
+                        raise RuntimeError(
+                            f"adapter route {archetype_id} lost validation coverage"
+                        )
+                    route_metrics = evaluate(
+                        model,
+                        route_val,
+                        cfg=cfg,
+                        desc=f"val {archetype_id} ep{epoch}",
+                    )
+                    if route_metrics.n_decisions <= 0:
+                        raise RuntimeError(
+                            f"adapter route {archetype_id} has no validation decisions"
+                        )
+                    latest_adapter_validation[archetype_id] = {
+                        "route": route,
+                        "n_games": int(route_metrics.n_games),
+                        "n_decisions": int(route_metrics.n_decisions),
+                        "total_loss": float(route_metrics.total_loss),
+                        "policy_loss": float(route_metrics.policy_loss),
+                        "value_loss": float(route_metrics.value_loss),
+                        "policy_acc": float(route_metrics.policy_acc),
+                    }
+
             scheduler.step()
             row = {
                 "epoch": epoch,
@@ -2490,6 +3499,10 @@ def train_bootstrap(
                 "lr": optimizer.param_groups[0]["lr"],
                 "t": time.time(),
             }
+            if cfg.matchup_adapter_training:
+                row["matchup_adapter_per_route_validation"] = copy.deepcopy(
+                    latest_adapter_validation
+                )
             state.history.append(row)
 
             is_best = metric < state.best_metric - 1e-5
@@ -2525,6 +3538,12 @@ def train_bootstrap(
                 break
     finally:
         mgr.uninstall_signal_flush()
+        if cfg.matchup_adapter_training:
+            assert_matchup_adapter_training_contract(
+                model,
+                optimizer=optimizer,
+                base_state=frozen_base_snapshot,
+            )
         # Final flush.
         try:
             mgr.save(build_ckpt(), is_best=False)
@@ -2564,6 +3583,9 @@ def supervised_rehearsal_step(
     lethal_threat_loss_weight: float = 0.0,
     prize_race_loss_weight: float = 0.0,
     alakazam_guide_loss_weight: float = 0.0,
+    output_archetype_id: Optional[str] = None,
+    output_model_id: Optional[str] = None,
+    extra_updates: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
 
@@ -2624,11 +3646,18 @@ def supervised_rehearsal_step(
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
     model = load_model_from_checkpoint(base_path, device=device)
+    aux_head_expanded = expand_aux_head_to_current_registry(model)
     warm_started_heads_before = tuple(
         getattr(model, "warm_started_belief_heads", ()) or ()
     )
+    # Dormant matchup adapters are architecture-present but must stay outside
+    # the ordinary learner optimizer.  This also keeps legacy/base optimizer
+    # param-group cardinality stable when a dormant bank is staged.
+    ordinary_trainable_parameters = [
+        parameter for parameter in model.parameters() if parameter.requires_grad
+    ]
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+        ordinary_trainable_parameters, lr=cfg.lr, weight_decay=cfg.weight_decay
     )
     use_amp = bool(cfg.amp and device.type == "cuda")
     amp_dtype = (
@@ -2640,12 +3669,17 @@ def supervised_rehearsal_step(
         "cuda", enabled=(use_amp and amp_dtype == torch.float16)
     )
     base_payload = checkpoint.load_checkpoint(base_path, map_location="cpu")
-    if warm_started_heads_before:
+    if warm_started_heads_before or aux_head_expanded:
         # ``load_model_from_checkpoint`` already restored every pre-existing
-        # tensor and deterministically initialized only allowed new heads. An
+        # tensor and deterministically initialized only allowed new heads.  An
         # optimizer snapshot from the legacy architecture cannot contain those
-        # parameters, so preserve counters/RNG and use fresh AdamW state.
-        meta = checkpoint.apply_checkpoint(base_payload, restore_rng=True)
+        # parameters, so restoring its param groups would either fail or attach
+        # moments to the wrong layout.  Preserve counters/RNG while starting a
+        # fresh AdamW state for this one warm-start rehearsal.
+        meta = checkpoint.apply_checkpoint(
+            base_payload,
+            restore_rng=True,
+        )
         optimizer_state_restored = False
     else:
         meta = checkpoint.apply_checkpoint(
@@ -2744,6 +3778,40 @@ def supervised_rehearsal_step(
                 loss=f"{metrics.total_loss:.3f}",
                 policy=f"{metrics.policy_loss:.3f}",
                 value=f"{metrics.value_loss:.3f}",
+                aux=(
+                    "off"
+                    if cfg.aux_loss_weight == 0
+                    else f"{metrics.aux_loss:.3f}/{metrics.n_archetype_rows}"
+                ),
+                hand=(
+                    "off"
+                    if cfg.opp_hand_loss_weight == 0
+                    else f"{metrics.opp_hand_loss:.3f}/{metrics.n_opp_hand_rows}"
+                ),
+                rem=(
+                    "off"
+                    if cfg.opp_remainder_loss_weight == 0
+                    else f"{metrics.opp_remainder_loss:.3f}/"
+                    f"{metrics.n_opp_remainder_rows}"
+                ),
+                lethal=(
+                    "off"
+                    if cfg.lethal_threat_loss_weight == 0
+                    else f"{metrics.lethal_threat_loss:.3f}/"
+                    f"{metrics.n_lethal_threat_rows}"
+                ),
+                prize=(
+                    "off"
+                    if cfg.prize_race_loss_weight == 0
+                    else f"{metrics.prize_race_loss:.3f}/"
+                    f"{metrics.n_prize_race_rows}"
+                ),
+                guide=(
+                    "off"
+                    if cfg.alakazam_guide_loss_weight == 0
+                    else f"{metrics.alakazam_guide_loss:.3f}/"
+                    f"{metrics.n_alakazam_guide_rows}"
+                ),
                 acc=f"{metrics.policy_acc:.2%}",
                 step=step,
             )
@@ -2771,8 +3839,8 @@ def supervised_rehearsal_step(
         for name in warm_started_heads_before
         if warm_head_loss_weights.get(name, 0.0) <= 0.0
     )
-    # Every positive-weight exact target has trained its head, so subsequent
-    # policy use must consume the learned outputs instead of the warm fallback.
+    # Fully covered positive-weight targets have now trained these heads, so
+    # serving may consume them instead of retaining the uniform warm fallback.
     model.warm_started_belief_heads = warm_started_heads_remaining
     inherited_extra = dict(base_payload.get("extra") or {})
     rehearsal_record = {
@@ -2788,6 +3856,7 @@ def supervised_rehearsal_step(
         "validation_metrics": val_metrics.__dict__,
         "elapsed_sec": float(time.time() - started),
         "optimizer_state_restored": bool(optimizer_state_restored),
+        "aux_head_expanded_to_current_registry": bool(aux_head_expanded),
         "warm_started_belief_heads_before": list(warm_started_heads_before),
         "warm_started_belief_heads_remaining": list(
             warm_started_heads_remaining
@@ -2812,6 +3881,8 @@ def supervised_rehearsal_step(
             "parent_digest": actual_parent_digest,
         }
     )
+    if extra_updates:
+        inherited_extra.update(dict(extra_updates))
     payload = checkpoint.build_checkpoint(
         model=model,
         optimizer=optimizer,
@@ -2824,8 +3895,16 @@ def supervised_rehearsal_step(
             "patience_left": max(1, int(epochs)),
             "best_metric": float(val_metrics.total_loss),
         },
-        archetype_id=str(base_payload.get("archetype_id") or "core"),
-        model_id=str(base_payload.get("model_id") or "pure_rl") + ".expert",
+        archetype_id=(
+            str(output_archetype_id)
+            if output_archetype_id is not None
+            else str(base_payload.get("archetype_id") or "core")
+        ),
+        model_id=(
+            str(output_model_id)
+            if output_model_id is not None
+            else str(base_payload.get("model_id") or "pure_rl") + ".expert"
+        ),
         model_config=model.cfg,
         extra=inherited_extra,
     )
@@ -2842,6 +3921,8 @@ def supervised_rehearsal_step(
         "train_metrics": train_metrics.__dict__,
         "validation_metrics": val_metrics.__dict__,
         "rehearsal": rehearsal_record,
+        "output_archetype_id": str(payload.get("archetype_id") or ""),
+        "output_model_id": str(payload.get("model_id") or ""),
     }
 
 
@@ -3030,6 +4111,245 @@ def _policy_argmax_predictions(
     return predictions
 
 
+def _train_dormant_matchup_adapter_phase(
+    model: TemporalCabtTransformer,
+    sequences: Sequence[GameSequence],
+    *,
+    cfg: TrainConfig,
+    base_rl_iteration: int,
+    target_rl_iteration: Optional[int] = None,
+    awr_baseline_cache: Optional[dict[tuple[int, int, int], float]],
+    seed: int,
+    prior_optimizer_state: Optional[dict[str, Any]] = None,
+    prior_fit: Optional[dict[str, Any]] = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Fit ticketed matchup residuals without changing ordinary RL behavior.
+
+    An immutable committed-boundary receipt authorizes the append-only feature.
+    The current learner must match that authorization. Runtime remains off
+    during fitting, and a per-batch guard proves absent experts receive neither
+    gradients nor Adam state/weight-decay updates.
+    """
+
+    epochs = int(cfg.dormant_matchup_adapter_epochs)
+    if epochs <= 0:
+        return {}, {}
+    if not cfg.pure_rl:
+        raise ValueError("dormant matchup adapter phase requires pure RL")
+    receipt_path = Path(
+        str(cfg.dormant_matchup_adapter_activation_receipt)
+    ).expanduser().resolve()
+    if not str(cfg.dormant_matchup_adapter_activation_receipt).strip():
+        raise ValueError("dormant matchup adapter phase requires an activation receipt")
+    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt_parent = Path(
+        str(receipt_payload.get("parent_checkpoint") or "")
+    ).expanduser().resolve()
+    activation = validate_adapter_training_authorization(
+        receipt_path,
+        parent_checkpoint=receipt_parent,
+        permit_post_boundary_use=True,
+    )
+    effective_iteration = (
+        int(target_rl_iteration)
+        if target_rl_iteration is not None
+        else int(base_rl_iteration) + 1
+    )
+    if effective_iteration < int(activation.first_eligible_iteration):
+        raise ValueError(
+            "dormant matchup adapter phase precedes its authorized boundary"
+        )
+
+    routed: list[GameSequence] = []
+    route_sequences = {expert_id: 0 for expert_id in EXPERT_IDS}
+    route_decisions = {expert_id: 0 for expert_id in EXPERT_IDS}
+    for sequence in sequences:
+        if not sequence.decisions or not sequence.matchup_adapter_training_ticket:
+            continue
+        ticket = adapter_training_ticket(sequence)
+        # Validate every decision now, before optimizer construction, so a
+        # malformed row cannot partially update an otherwise valid route.
+        for decision in sequence.decisions:
+            route = training_route_for_decision(sequence, decision)
+            if route != int(ticket.route):
+                raise RuntimeError("adapter ticket route changed within one sequence")
+        routed.append(sequence)
+        route_sequences[ticket.archetype_id] += 1
+        route_decisions[ticket.archetype_id] += len(sequence.decisions)
+    if not routed:
+        raise ValueError("dormant matchup adapter phase has no oracle-ticketed sequences")
+
+    base_state = matchup_adapter_base_state(model)
+    original_requires_grad = {
+        name: bool(parameter.requires_grad)
+        for name, parameter in model.named_parameters()
+    }
+    adapter_optimizer = build_matchup_adapter_optimizer(
+        model,
+        lr=float(cfg.dormant_matchup_adapter_lr),
+        weight_decay=float(cfg.weight_decay),
+        activation_receipt=activation,
+    )
+    optimizer_restored = False
+    if prior_optimizer_state:
+        try:
+            load_append_only_matchup_adapter_optimizer_state(
+                adapter_optimizer, copy.deepcopy(prior_optimizer_state)
+            )
+        except (KeyError, RuntimeError, ValueError) as exc:
+            raise ValueError(
+                "dormant matchup adapter optimizer state is incompatible"
+            ) from exc
+        for group in adapter_optimizer.param_groups:
+            group["lr"] = float(cfg.dormant_matchup_adapter_lr)
+            group["weight_decay"] = float(cfg.weight_decay)
+        optimizer_restored = True
+
+    step_count = 0
+    row_count = 0
+    last_metrics = BatchMetrics()
+    try:
+        model.train()
+        for epoch in range(epochs):
+            batches = _iter_game_batches(
+                routed,
+                max(1, int(cfg.games_per_batch)),
+                max(1, int(cfg.max_decisions_per_batch)),
+                shuffle=True,
+                seed=int(seed) + 104729,
+                epoch=epoch,
+            )
+            bar = tqdm(
+                batches,
+                desc=f"rl-adapters ep{epoch}",
+                leave=False,
+                unit="batch",
+            )
+            for batch in bar:
+                adapter_optimizer.zero_grad(set_to_none=True)
+                guard = prepare_matchup_adapter_isolation_guard(
+                    model, adapter_optimizer, batch
+                )
+                total, metrics = batch_losses(
+                    model,
+                    batch,
+                    value_weight=float(cfg.value_loss_weight),
+                    aux_weight=0.0,
+                    opp_hand_weight=0.0,
+                    opp_remainder_weight=0.0,
+                    alakazam_guide_weight=0.0,
+                    lethal_threat_weight=0.0,
+                    prize_race_weight=0.0,
+                    pure_rl=True,
+                    awr_beta=float(cfg.awr_beta),
+                    awr_weight_max=float(cfg.awr_weight_max),
+                    awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
+                    entropy_bonus=float(cfg.entropy_bonus),
+                    awr_baseline_cache=awr_baseline_cache,
+                    matchup_adapter_training=True,
+                )
+                if metrics.n_matchup_adapter_rows <= 0:
+                    raise RuntimeError("ticketed adapter batch produced zero routed rows")
+                if not torch.isfinite(total):
+                    raise FloatingPointError("non-finite dormant adapter loss")
+                total.backward()
+                assert_matchup_adapter_isolation_guard(
+                    model, adapter_optimizer, guard, after_step=False
+                )
+                torch.nn.utils.clip_grad_norm_(
+                    model.matchup_adapter_bank.parameters(), float(cfg.grad_clip)
+                )
+                adapter_optimizer.step()
+                assert_matchup_adapter_isolation_guard(
+                    model, adapter_optimizer, guard, after_step=True
+                )
+                assert_matchup_adapter_training_contract(
+                    model, optimizer=adapter_optimizer, base_state=base_state
+                )
+                step_count += 1
+                row_count += int(metrics.n_matchup_adapter_rows)
+                last_metrics = metrics
+                bar.set_postfix(
+                    loss=f"{metrics.total_loss:.3f}",
+                    rows=row_count,
+                )
+    finally:
+        # Persist trained weights as dormant state only. Restore the ordinary
+        # base parameter flags so its Adam optimizer remains a valid continuation
+        # checkpoint, while the adapter bank is explicitly frozen and disabled.
+        for name, parameter in model.named_parameters():
+            parameter.requires_grad_(original_requires_grad[name])
+            parameter.grad = None
+        model.matchup_adapter_bank.requires_grad_(False)
+        model.matchup_adapter_bank.enabled = False
+        model.cfg.matchup_adapters_enabled = False
+    assert matchup_adapter_base_state(model).keys() == base_state.keys()
+    changed_base = [
+        name
+        for name, value in matchup_adapter_base_state(model).items()
+        if not torch.equal(value, base_state[name])
+    ]
+    if changed_base:
+        raise AssertionError(f"dormant adapter phase changed base tensors: {changed_base[:5]}")
+
+    prior_fit = dict(prior_fit or {})
+    if prior_fit and prior_fit.get("schema") != "poke_bot.dormant_matchup_adapter_fit/v1":
+        raise ValueError("prior dormant matchup adapter fit has an invalid schema")
+    prior_route_sequences = {
+        expert_id: int((prior_fit.get("route_sequences") or {}).get(expert_id, 0))
+        for expert_id in EXPERT_IDS
+    }
+    prior_route_decisions = {
+        expert_id: int((prior_fit.get("route_decisions") or {}).get(expert_id, 0))
+        for expert_id in EXPERT_IDS
+    }
+    cumulative_route_sequences = {
+        expert_id: prior_route_sequences[expert_id] + route_sequences[expert_id]
+        for expert_id in EXPERT_IDS
+    }
+    cumulative_route_decisions = {
+        expert_id: prior_route_decisions[expert_id] + route_decisions[expert_id]
+        for expert_id in EXPERT_IDS
+    }
+    trained_archetype_ids = [
+        expert_id
+        for expert_id in EXPERT_IDS
+        if cumulative_route_decisions[expert_id] > 0
+    ]
+    dormant_archetype_ids = [
+        expert_id
+        for expert_id in EXPERT_IDS
+        if cumulative_route_decisions[expert_id] == 0
+    ]
+    fit = {
+        "schema": "poke_bot.dormant_matchup_adapter_fit/v1",
+        "runtime_enabled": False,
+        "base_frozen": True,
+        "optimizer_scope": "matchup_adapter_bank_only",
+        "activation_receipt": str(receipt_path),
+        "activation_receipt_digest": checkpoint.checkpoint_digest(receipt_path),
+        # These totals are cumulative because runtime activation must retain
+        # proof for routes learned in earlier rehearsal/RL phases.  The
+        # phase_* fields preserve an exact audit of this optimizer pass.
+        "epochs": int(prior_fit.get("epochs") or 0) + epochs,
+        "steps": int(prior_fit.get("steps") or 0) + step_count,
+        "rows": int(prior_fit.get("rows") or 0) + row_count,
+        "phase_epochs": epochs,
+        "phase_steps": step_count,
+        "phase_rows": row_count,
+        "optimizer_state_restored": optimizer_restored,
+        "route_sequences": cumulative_route_sequences,
+        "route_decisions": cumulative_route_decisions,
+        "phase_route_sequences": route_sequences,
+        "phase_route_decisions": route_decisions,
+        "trained_archetype_ids": trained_archetype_ids,
+        "dormant_no_example_archetype_ids": dormant_archetype_ids,
+        "zero_example_routes_remain_dormant": True,
+        "last_metrics": dict(last_metrics.__dict__),
+    }
+    return fit, copy.deepcopy(adapter_optimizer.state_dict())
+
+
 def rl_train_step(
     dataset: BootstrapDataset,
     *,
@@ -3070,6 +4390,20 @@ def rl_train_step(
     # not supply one.  A nullable lineage field is too easy to misinterpret.
     parent_digest = actual_parent_digest
     cfg = cfg or TrainConfig()
+    if int(cfg.dormant_matchup_adapter_epochs) < 0:
+        raise ValueError("dormant matchup adapter epochs cannot be negative")
+    if float(cfg.dormant_matchup_adapter_lr) <= 0.0:
+        raise ValueError("dormant matchup adapter learning rate must be positive")
+    if device_resident and int(cfg.dormant_matchup_adapter_epochs) > 0:
+        raise ValueError(
+            "dormant matchup adapter training requires retained ticketed game "
+            "sequences and is not compatible with the stateless resident corpus"
+        )
+    if device_resident and cfg.capture_awr_weight_distribution:
+        raise ValueError(
+            "exact shadow AWR weight quantiles currently require host-batched "
+            "temporal training"
+        )
     device = device or device_mod.training_device(
         prefer_name=config.HARDWARE.train_gpu_name, allow_cpu=False
     )
@@ -3085,8 +4419,15 @@ def rl_train_step(
         k: v.detach().cpu().clone() for k, v in model.state_dict().items()
     }
     model.train()
+    # Dormant matchup adapters are present in the architecture but frozen by
+    # default. Excluding them preserves the legacy learner optimizer's exact
+    # parameter-group cardinality/order and guarantees ordinary RL cannot train
+    # or weight-decay the staged bank.
+    ordinary_trainable_parameters = [
+        parameter for parameter in model.parameters() if parameter.requires_grad
+    ]
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+        ordinary_trainable_parameters, lr=cfg.lr, weight_decay=cfg.weight_decay
     )
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -3102,6 +4443,7 @@ def rl_train_step(
     base_epoch = 0
     base_rl_iteration = 0
     optimizer_state_restored = False
+    learner_ckpt: Optional[dict[str, Any]] = None
     if cfg.pure_rl:
         learner_ckpt = checkpoint.load_checkpoint(base_ckpt, map_location=device)
         base_step = int(learner_ckpt.get("step", 0))
@@ -3293,6 +4635,9 @@ def rl_train_step(
         model.train()
         epoch_started = time.monotonic()
         epoch_samples = 0
+        exact_epoch_awr_weights: Optional[list[float]] = (
+            [] if cfg.capture_awr_weight_distribution else None
+        )
         if resident_corpus is not None:
             batches: Sequence[Any] = resident_corpus.batches(
                 train=True,
@@ -3327,7 +4672,9 @@ def rl_train_step(
                 scaler.scale(total).backward()
                 if cfg.grad_clip > 0:
                     scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                torch.nn.utils.clip_grad_norm_(
+                    ordinary_trainable_parameters, cfg.grad_clip
+                )
                 scaler.step(optimizer)
                 scaler.update()
                 step += 1
@@ -3335,6 +4682,9 @@ def rl_train_step(
 
             def _train_chunk(work: list[GameSequence]) -> BatchMetrics:
                 optimizer.zero_grad(set_to_none=True)
+                chunk_awr_weights: Optional[list[float]] = (
+                    [] if exact_epoch_awr_weights is not None else None
+                )
                 with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
                     total, bm = batch_losses(
                         model,
@@ -3352,8 +4702,15 @@ def rl_train_step(
                         awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
                         entropy_bonus=float(cfg.entropy_bonus),
                         awr_baseline_cache=awr_baseline_cache,
+                        awr_weight_sink=chunk_awr_weights,
                     )
-                return _apply_update(total, bm)
+                applied = _apply_update(total, bm)
+                if (
+                    exact_epoch_awr_weights is not None
+                    and chunk_awr_weights is not None
+                ):
+                    exact_epoch_awr_weights.extend(chunk_awr_weights)
+                return applied
 
             def _clear_oom() -> None:
                 optimizer.zero_grad(set_to_none=True)
@@ -3449,7 +4806,9 @@ def rl_train_step(
                     acc=f"{visible.policy_acc:.2%}",
                     sps=f"{epoch_samples / max(time.monotonic() - epoch_started, 1e-6):.0f}",
                 )
-        last = _merge_metrics(parts)
+        last = _set_exact_awr_weight_quantiles(
+            _merge_metrics(parts), exact_epoch_awr_weights or ()
+        )
         last_epoch_optimizer_sps = epoch_samples / max(
             time.monotonic() - epoch_started, 1e-6
         )
@@ -3615,9 +4974,47 @@ def rl_train_step(
                 parent_predictions, candidate_predictions
             )
         ) / float(parent_rows)
+    prior_adapter_optimizer_state = None
+    prior_adapter_fit = None
+    if learner_ckpt is not None:
+        prior_adapter_optimizer_state = dict(
+            (learner_ckpt.get("extra") or {}).get(
+                "dormant_matchup_adapter_optimizer_state"
+            )
+            or {}
+        )
+        prior_adapter_fit = dict(
+            (learner_ckpt.get("extra") or {}).get(
+                "dormant_matchup_adapter_fit"
+            )
+            or {}
+        )
+    dormant_adapter_fit, dormant_adapter_optimizer_state = (
+        _train_dormant_matchup_adapter_phase(
+            model,
+            agreement_sequences,
+            cfg=cfg,
+            base_rl_iteration=base_rl_iteration,
+            target_rl_iteration=(
+                int(training_provenance["iteration"])
+                if training_provenance is not None
+                and training_provenance.get("iteration") is not None
+                else int(base_rl_iteration) + 1
+            ),
+            awr_baseline_cache=awr_baseline_cache,
+            seed=seed,
+            prior_optimizer_state=prior_adapter_optimizer_state,
+            prior_fit=prior_adapter_fit,
+        )
+        if int(cfg.dormant_matchup_adapter_epochs) > 0
+        else ({}, {})
+    )
     rl_metrics = dict(last.__dict__)
     rl_metrics["policy_prev_agreement"] = policy_prev_agreement
     rl_metrics["optimizer_samples_per_second"] = last_epoch_optimizer_sps
+    rl_metrics["awr_weight_quantiles_exact"] = bool(
+        cfg.capture_awr_weight_distribution
+    )
 
     delta_sq = 0.0
     base_sq = 0.0
@@ -3698,6 +5095,10 @@ def rl_train_step(
             "relative_update_norm_l2": relative_update_norm,
             "policy_prev_agreement": policy_prev_agreement,
             "policy_prev_agreement_rows": parent_rows,
+            "dormant_matchup_adapter_fit": dormant_adapter_fit,
+            "dormant_matchup_adapter_optimizer_state": (
+                dormant_adapter_optimizer_state
+            ),
         },
     )
     if output_path is not None:
@@ -3757,6 +5158,7 @@ def rl_train_step(
         "relative_update_norm_l2": relative_update_norm,
         "policy_prev_agreement": policy_prev_agreement,
         "policy_prev_agreement_rows": parent_rows,
+        "dormant_matchup_adapter_fit": dormant_adapter_fit,
     }
 
 
@@ -3784,6 +5186,11 @@ def load_model_from_checkpoint(
             f"checkpoint {path} has invalid model_config type {type(snap).__name__}"
         )
     else:
+        # The dormant bank was added after the first pure-RL checkpoints.  A
+        # missing flag is the legacy spelling of explicit ``False``; never let
+        # an ambient environment default turn a bankless checkpoint on.
+        snap = dict(snap)
+        snap.setdefault("matchup_adapters_enabled", False)
         known = set(config.ModelConfig.__dataclass_fields__)  # type: ignore[attr-defined]
         unknown = sorted(set(snap) - known)
         if unknown:
@@ -3835,6 +5242,11 @@ def load_model_from_checkpoint(
         decoder_vocab=decoder_vocab,
         belief_card_vocab=belief_card_vocab,
     )
+    checkpoint.validate_matchup_adapter_contract(
+        ckpt,
+        model=model,
+        source=path,
+    )
     incompatible = model.load_state_dict(state, strict=False)
     missing = list(getattr(incompatible, "missing_keys", []) or [])
     unexpected = list(getattr(incompatible, "unexpected_keys", []) or [])
@@ -3853,8 +5265,60 @@ def load_model_from_checkpoint(
         )
     warm = belief_head_names_from_state_keys(missing)
     model.warm_started_belief_heads = warm
+    extra = dict(ckpt.get("extra") or {})
+    dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
+    has_adapter_state = any(
+        name.startswith("matchup_adapter_bank.") for name in state
+    )
+    if dormant:
+        model.matchup_adapter_bank.dormant_provenance = dormant
+    elif not has_adapter_state:
+        # Legacy bankless checkpoints dynamically receive the constructor's
+        # frozen zero bank. Persist the immutable source identity in the next
+        # checkpoint without rewriting the parent commit or loop ledger.
+        dormant_provenance = {
+            "materialization": "legacy_bankless_dynamic_zero_init",
+            "parent_checkpoint": str(Path(path).expanduser().resolve()),
+            "parent_checkpoint_digest": checkpoint.checkpoint_digest(path),
+        }
+        raw_activation_receipt = os.environ.get(
+            "POKEBOT_MATCHUP_ADAPTER_BOUNDARY_RECEIPT", ""
+        ).strip()
+        if raw_activation_receipt:
+            # Startup also reconstructs the protected champion and held-out
+            # anchor, which can legitimately predate the boundary parent.  The
+            # receipt must still validate against its immutable learner, but a
+            # zero-output bank may be attached to any legacy bankless model for
+            # architecture compatibility.  Only the exact boundary parent is
+            # eligible to carry ``activation_parent_match=True`` into training.
+            activation_payload = json.loads(
+                Path(raw_activation_receipt).expanduser().read_text(
+                    encoding="utf-8"
+                )
+            )
+            activation_parent = Path(
+                str(activation_payload.get("parent_checkpoint") or "")
+            ).expanduser()
+            activation = validate_adapter_training_authorization(
+                raw_activation_receipt,
+                parent_checkpoint=activation_parent,
+            )
+            source_path = Path(path).expanduser().resolve()
+            dormant_provenance.update(
+                activation_receipt=str(activation.path),
+                activation_receipt_digest=checkpoint.checkpoint_digest(
+                    activation.path
+                ),
+                activation_completed_iteration=activation.completed_iteration,
+                activation_first_eligible_iteration=activation.first_eligible_iteration,
+                activation_parent_checkpoint=str(activation.parent_checkpoint),
+                activation_parent_checkpoint_digest=(
+                    activation.parent_checkpoint_digest
+                ),
+                activation_parent_match=(source_path == activation.parent_checkpoint),
+            )
+        model.matchup_adapter_bank.dormant_provenance = dormant_provenance
     if warm:
-        extra = dict(ckpt.get("extra") or {})
         extra["warm_start"] = True
         extra["warm_started_belief_heads"] = list(warm)
         extra["aux_heads_present"] = list(model.aux_heads_present)

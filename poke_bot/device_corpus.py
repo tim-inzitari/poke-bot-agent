@@ -16,23 +16,26 @@ import time
 from array import array
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Iterator, Protocol, Sequence
 
 import numpy as np
 import torch
 from tqdm.auto import tqdm
 
 from . import archetypes
+from .aux_label_contract import validated_unique_card_ids
+from .blackwell_heads import lethal_target_from_aux, prize_race_values_from_aux
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .features import SparseVector
+from .matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
 from .model import PackedSparse
 
 
 BOARD_WORDS = 24
 DEFAULT_MIN_FREE_GIB = 12.0
-# v2 keys the optional exact-card target layout. A v1 policy/value-only pack
-# must never be reused after all-head expert rehearsal is enabled.
-DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 2
+# v3 also guarantees every present exact-card/strategy target passed strict
+# validation. Older packs could preserve a malformed field as an all-zero row.
+DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 3
 
 DEVICE_CORPUS_REQUIRED_TENSOR_FIELDS = (
     "board_index",
@@ -81,28 +84,91 @@ DEVICE_CORPUS_SCALAR_FIELDS = (
 )
 
 
-def _card_ids(value: Any) -> list[int] | None:
-    """Flatten the exact-hidden card-id fields without importing train.py."""
-    if value is None:
-        return None
-    result: list[int] = []
-    if isinstance(value, list):
-        for item in value:
-            nested = _card_ids(item)
-            if nested:
-                result.extend(nested)
-    elif isinstance(value, dict) and value.get("id") is not None:
-        result.append(int(value["id"]))
-    elif isinstance(value, int):
-        result.append(int(value))
-    return result
+class SizedGameIterable(Protocol):
+    """The resident packer needs only stable iteration and a known game count."""
+
+    def __iter__(self) -> Iterator[GameSequence]: ...
+
+    def __len__(self) -> int: ...
 
 
-def _filtered_unique_card_ids(value: Any, card_vocab: int) -> list[int] | None:
-    raw = _card_ids(value)
-    if raw is None:
-        return None
-    return sorted({card_id for card_id in raw if 0 <= card_id < card_vocab})
+def _filtered_unique_card_ids(
+    value: Any,
+    card_vocab: int,
+    *,
+    field_name: str = "aux_card_ids",
+) -> list[int] | None:
+    """Compatibility wrapper; invalid IDs now fail instead of being dropped."""
+    return validated_unique_card_ids(
+        value,
+        card_vocab,
+        field_name=field_name,
+    )
+
+
+def _validated_exact_aux_targets(
+    aux: dict[str, Any],
+    card_vocab: int,
+) -> tuple[
+    list[int] | None,
+    bool,
+    list[int] | None,
+    bool,
+    float,
+    tuple[float, float],
+]:
+    """Build one decision's exact targets without silent coercion or masking."""
+    hand_raw = aux.get("opp_hand")
+    deck_raw = aux.get("opp_deck_order")
+    prizes_raw = aux.get("opp_prizes")
+    exact_remainder_raw = aux.get("opp_hidden_remainder")
+
+    hand_ids = _filtered_unique_card_ids(
+        hand_raw,
+        card_vocab,
+        field_name="opp_hand",
+    )
+    deck_ids = _filtered_unique_card_ids(
+        deck_raw,
+        card_vocab,
+        field_name="opp_deck_order",
+    )
+    prize_ids = _filtered_unique_card_ids(
+        prizes_raw,
+        card_vocab,
+        field_name="opp_prizes",
+    )
+    exact_remainder_ids = _filtered_unique_card_ids(
+        exact_remainder_raw,
+        card_vocab,
+        field_name="opp_hidden_remainder",
+    )
+    remainder_present = exact_remainder_raw is not None or any(
+        value is not None for value in (hand_raw, deck_raw, prizes_raw)
+    )
+    if exact_remainder_ids is not None:
+        remainder_ids: list[int] | None = exact_remainder_ids
+    elif remainder_present:
+        remainder_ids = sorted(
+            {
+                card_id
+                for source in (hand_ids, deck_ids, prize_ids)
+                for card_id in (source or ())
+            }
+        )
+    else:
+        remainder_ids = None
+
+    lethal = lethal_target_from_aux(aux)
+    race = prize_race_values_from_aux(aux)
+    return (
+        hand_ids,
+        hand_raw is not None,
+        remainder_ids,
+        remainder_present,
+        math.nan if lethal is None else lethal,
+        (math.nan, math.nan) if race is None else race,
+    )
 
 
 class _CSRBuilder:
@@ -399,17 +465,23 @@ class DeviceResidentBootstrapCorpus:
     @classmethod
     def from_splits(
         cls,
-        train: Sequence[GameSequence],
-        val: Sequence[GameSequence],
+        train: SizedGameIterable,
+        val: SizedGameIterable,
         *,
         device: torch.device,
         min_free_gib: float = DEFAULT_MIN_FREE_GIB,
         exact_card_vocab: int | None = None,
+        matchup_adapter_route: int | None = None,
     ) -> "DeviceResidentBootstrapCorpus":
         if exact_card_vocab is not None and (
             int(exact_card_vocab) <= 0 or int(exact_card_vocab) >= 2**15
         ):
             raise ValueError(f"unsupported belief card vocab: {exact_card_vocab}")
+        if matchup_adapter_route is not None and not (
+            type(matchup_adapter_route) is int
+            and 0 <= matchup_adapter_route < len(EXPERT_IDS)
+        ):
+            raise ValueError("invalid resident matchup-adapter route")
         started = time.monotonic()
         boards = _CSRBuilder()
         options = _CSRBuilder()
@@ -451,6 +523,21 @@ class DeviceResidentBootstrapCorpus:
                             target_index=decision.action_combo_index,
                         )
                     ]
+                    if matchup_adapter_route is not None:
+                        oracle_route = getattr(
+                            decision,
+                            "matchup_adapter_oracle_route",
+                            UNKNOWN_ROUTE,
+                        )
+                        if type(oracle_route) is not int or oracle_route not in (
+                            UNKNOWN_ROUTE,
+                            matchup_adapter_route,
+                        ):
+                            raise ValueError(
+                                "resident adapter decision contradicts its route"
+                            )
+                        if oracle_route != matchup_adapter_route:
+                            raw_stages = []
                     valid = []
                     for stage in raw_stages:
                         count = int(stage.options.num_words)
@@ -476,51 +563,27 @@ class DeviceResidentBootstrapCorpus:
                     decisions += 1
                     if exact_card_vocab is not None:
                         aux = dict(decision.aux_labels or {})
-                        hand_raw = aux.get("opp_hand")
-                        deck_raw = aux.get("opp_deck_order")
-                        prizes_raw = aux.get("opp_prizes")
-                        exact_remainder_raw = aux.get("opp_hidden_remainder")
-                        hand_ids = _filtered_unique_card_ids(
-                            hand_raw, int(exact_card_vocab)
+                        (
+                            hand_ids,
+                            has_hand,
+                            rem_ids,
+                            has_remainder,
+                            lethal,
+                            race,
+                        ) = _validated_exact_aux_targets(
+                            aux,
+                            int(exact_card_vocab),
                         )
-                        hand_present.append(1 if hand_raw is not None else 0)
+                        hand_present.append(1 if has_hand else 0)
                         if hand_ids:
                             hand_index.extend(hand_ids)
                         hand_offset.append(len(hand_index))
-
-                        rem_present = exact_remainder_raw is not None or any(
-                            value is not None
-                            for value in (hand_raw, deck_raw, prizes_raw)
-                        )
-                        rem_raw: list[int] = []
-                        remainder_sources = (
-                            (exact_remainder_raw,)
-                            if exact_remainder_raw is not None
-                            else (hand_raw, deck_raw, prizes_raw)
-                        )
-                        for value in remainder_sources:
-                            ids = _card_ids(value)
-                            if ids:
-                                rem_raw.extend(ids)
-                        rem_ids = _filtered_unique_card_ids(
-                            rem_raw, int(exact_card_vocab)
-                        )
-                        remainder_present.append(1 if rem_present else 0)
+                        remainder_present.append(1 if has_remainder else 0)
                         if rem_ids:
                             remainder_index.extend(rem_ids)
                         remainder_offset.append(len(remainder_index))
-
-                        lethal = aux.get("lethal_threat")
-                        lethal_target.append(
-                            float(lethal) if lethal is not None else math.nan
-                        )
-                        race = aux.get("prize_race")
-                        if isinstance(race, (list, tuple)) and len(race) >= 2:
-                            prize_race_target.extend(
-                                (float(race[0]), float(race[1]))
-                            )
-                        else:
-                            prize_race_target.extend((math.nan, math.nan))
+                        lethal_target.append(lethal)
+                        prize_race_target.extend(race)
                     for stage, count, target in valid:
                         if count >= 2**16 or target >= 2**16:
                             raise ValueError("option count/target exceeds uint16 capacity")
@@ -726,13 +789,17 @@ class DeviceResidentBootstrapCorpus:
                 guide_confidence, torch.float32, device
             ),
         )
-        del boards, options, actions, sample_board, option_word_start, n_options
-        del game_decision_offset, game_sample_offset
-        del target_index, value_target
-        del guide_target_index, guide_confidence
-        del hand_index, hand_offset, hand_present
-        del remainder_index, remainder_offset, remainder_present
-        del lethal_target, prize_race_target, sample_aux_class
+        # Clear closure cells explicitly. ``del`` makes Ruff treat references
+        # inside ``add_sequences`` as undefined, and ``exact_arrays`` otherwise
+        # keeps every supposedly deleted target buffer alive until return.
+        exact_arrays = ()
+        boards = options = actions = None
+        sample_board = game_decision_offset = game_sample_offset = None
+        option_word_start = n_options = target_index = value_target = None
+        guide_target_index = guide_confidence = None
+        hand_index = hand_offset = hand_present = None
+        remainder_index = remainder_offset = remainder_present = None
+        lethal_target = prize_race_target = sample_aux_class = None
         gc.collect()
         if device.type == "cuda":
             free, total = torch.cuda.mem_get_info(device)
@@ -824,42 +891,24 @@ class DeviceResidentBootstrapCorpus:
                 boards.add(decision.board)
                 decisions += 1
                 aux = dict(decision.aux_labels or {})
-                hand_raw = aux.get("opp_hand")
-                deck_raw = aux.get("opp_deck_order")
-                prizes_raw = aux.get("opp_prizes")
-                exact_remainder_raw = aux.get("opp_hidden_remainder")
-                hand_ids = _filtered_unique_card_ids(hand_raw, card_vocab)
-                hand_present.append(1 if hand_raw is not None else 0)
+                (
+                    hand_ids,
+                    has_hand,
+                    rem_ids,
+                    has_remainder,
+                    lethal,
+                    race,
+                ) = _validated_exact_aux_targets(aux, card_vocab)
+                hand_present.append(1 if has_hand else 0)
                 if hand_ids:
                     hand_index.extend(hand_ids)
                 hand_offset.append(len(hand_index))
-
-                rem_present = exact_remainder_raw is not None or any(
-                    value is not None for value in (hand_raw, deck_raw, prizes_raw)
-                )
-                rem_raw: list[int] = []
-                remainder_sources = (
-                    (exact_remainder_raw,)
-                    if exact_remainder_raw is not None
-                    else (hand_raw, deck_raw, prizes_raw)
-                )
-                for value in remainder_sources:
-                    ids = _card_ids(value)
-                    if ids:
-                        rem_raw.extend(ids)
-                rem_ids = _filtered_unique_card_ids(rem_raw, card_vocab)
-                remainder_present.append(1 if rem_present else 0)
+                remainder_present.append(1 if has_remainder else 0)
                 if rem_ids:
                     remainder_index.extend(rem_ids)
                 remainder_offset.append(len(remainder_index))
-
-                lethal = aux.get("lethal_threat")
-                lethal_target.append(float(lethal) if lethal is not None else math.nan)
-                race = aux.get("prize_race")
-                if isinstance(race, (list, tuple)) and len(race) >= 2:
-                    prize_race_target.extend((float(race[0]), float(race[1])))
-                else:
-                    prize_race_target.extend((math.nan, math.nan))
+                lethal_target.append(lethal)
+                prize_race_target.extend(race)
 
                 for stage, count, target in valid:
                     if count >= 2**16 or target >= 2**16:
@@ -1019,11 +1068,15 @@ class DeviceResidentBootstrapCorpus:
                 guide_confidence, torch.float32, device
             ),
         )
-        del boards, options, sample_board, option_word_start, n_options
-        del target_index, value_target, hand_index, hand_offset, hand_present
-        del remainder_index, remainder_offset, remainder_present
-        del lethal_target, prize_race_target, sample_aux_class
-        del guide_target_index, guide_confidence
+        # Release both local references and the aggregate tuple before checking
+        # post-pack device headroom. The nested packers capture these cells.
+        exact_arrays = ()
+        boards = options = sample_board = None
+        option_word_start = n_options = target_index = value_target = None
+        hand_index = hand_offset = hand_present = None
+        remainder_index = remainder_offset = remainder_present = None
+        lethal_target = prize_race_target = sample_aux_class = None
+        guide_target_index = guide_confidence = None
         gc.collect()
         if device.type == "cuda":
             free, total = torch.cuda.mem_get_info(device)

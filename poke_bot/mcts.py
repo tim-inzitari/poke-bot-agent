@@ -24,6 +24,7 @@ import torch
 
 from . import cg_env, config, features
 from .batched_infer import BatchedLeafServer, LeafPacket, forward_leaf_batch
+from .matchup_adapter_activation import ShadowMatchupAdapterRouter
 from .model import TemporalCabtTransformer
 from .search_targets import SearchTarget, build_search_target, select_by_visits
 
@@ -49,6 +50,7 @@ class Node:
     evaluated: bool = False
     network_evaluated: bool = False
     depth: int = 0
+    matchup_shadow_router: Optional[ShadowMatchupAdapterRouter] = None
 
     def __post_init__(self) -> None:
         if self.parent is not None:
@@ -211,6 +213,7 @@ class _PendingLeaf:
     child: Optional[Child]  # edge from parent; None for root expand
     search_state: object
     path_edges: list[Child]  # edges that received +1 virtual_loss
+    matchup_shadow_router: Optional[ShadowMatchupAdapterRouter] = None
 
 
 class MCTS:
@@ -227,6 +230,7 @@ class MCTS:
         leaf_batch_size: Optional[int] = None,
         leaf_backend=None,
         oracle_mode: bool = False,
+        matchup_shadow_router: Optional[ShadowMatchupAdapterRouter] = None,
     ):
         if not oracle_mode:
             raise ValueError(
@@ -260,6 +264,7 @@ class MCTS:
         else:
             self.leaf_eval = lambda pkts: forward_leaf_batch(self.model, pkts)
         self.leaf_backend = leaf_backend
+        self.matchup_shadow_router = matchup_shadow_router
 
     def _telemetry_mark(self):
         marker = getattr(self.leaf_eval, "telemetry_mark", None)
@@ -317,7 +322,16 @@ class MCTS:
     ) -> tuple[Optional[Node], Optional[_PendingLeaf]]:
         """Return (fully_resolved_node, pending_leaf). One of the two is set."""
         obs = search_state.observation
-        node = Node(state=search_state, parent=parent)
+        shadow_router = self._shadow_router_for_state(
+            parent,
+            obs,
+            root_seat=root_seat,
+        )
+        node = Node(
+            state=search_state,
+            parent=parent,
+            matchup_shadow_router=shadow_router,
+        )
         term = self._terminal_value(obs, root_seat)
         if term is not None:
             node.is_terminal = True
@@ -330,6 +344,7 @@ class MCTS:
             child=None,
             search_state=search_state,
             path_edges=list(path_edges),
+            matchup_shadow_router=shadow_router,
         )
 
     def _materialize_pending(
@@ -338,7 +353,11 @@ class MCTS:
         packet: LeafPacket,
     ) -> Node:
         parent = pending.parent
-        node = Node(state=pending.search_state, parent=parent)
+        node = Node(
+            state=pending.search_state,
+            parent=parent,
+            matchup_shadow_router=pending.matchup_shadow_router,
+        )
         self._apply_eval(node, packet.value, packet.priors, packet.combos)
         if pending.child is not None:
             pending.child.node = node
@@ -357,6 +376,48 @@ class MCTS:
         if current is not None:
             return int(current.yourIndex)
         return None
+
+    @staticmethod
+    def _observation_actor(obs: object) -> Optional[int]:
+        current = getattr(obs, "current", None)
+        if current is None and isinstance(obs, dict):
+            current = obs.get("current")
+        try:
+            actor = (
+                int(current.get("yourIndex", -1))
+                if isinstance(current, dict)
+                else int(current.yourIndex)
+            )
+        except (AttributeError, TypeError, ValueError):
+            return None
+        return actor if actor in (0, 1) else None
+
+    def _shadow_router_for_state(
+        self,
+        parent: Optional[Node],
+        obs: object,
+        *,
+        root_seat: int,
+    ) -> Optional[ShadowMatchupAdapterRouter]:
+        """Fork branch-local recognition state without exposing it to the net."""
+
+        source = (
+            parent.matchup_shadow_router
+            if parent is not None
+            else self.matchup_shadow_router
+        )
+        if source is None:
+            return None
+        branch = source.fork()
+        # The adapter belongs to the root agent. Opponent-actor observations
+        # invert ``yourIndex`` and would classify the wrong deck family.
+        if parent is not None and self._observation_actor(obs) == int(root_seat):
+            branch.observe(
+                obs,
+                scope="oracle_search_branch",
+                depth=parent.depth + 1,
+            )
+        return branch
 
     def _select_child(self, node: Node, root_seat: int) -> Child:
         best: Optional[Child] = None
@@ -519,7 +580,15 @@ class MCTS:
                     pending_buf.clear()
             else:
                 # Legacy one-leaf-at-a-time path.
-                root = Node(state=root_state, parent=None)
+                root = Node(
+                    state=root_state,
+                    parent=None,
+                    matchup_shadow_router=(
+                        self.matchup_shadow_router.fork()
+                        if self.matchup_shadow_router is not None
+                        else None
+                    ),
+                )
                 term = self._terminal_value(root_state.observation, root_seat)
                 if term is not None:
                     root.is_terminal = True
@@ -547,7 +616,15 @@ class MCTS:
                             child_state = cg_env.search_step(
                                 current.state.searchId, path_child.select
                             )
-                            child = Node(state=child_state, parent=current)
+                            child = Node(
+                                state=child_state,
+                                parent=current,
+                                matchup_shadow_router=self._shadow_router_for_state(
+                                    current,
+                                    child_state.observation,
+                                    root_seat=root_seat,
+                                ),
+                            )
                             term = self._terminal_value(
                                 child_state.observation, root_seat
                             )
@@ -627,6 +704,13 @@ class MCTS:
                     ),
                     "legal_combos_truncated": bool(
                         getattr(root_combos, "truncated", False)
+                    ),
+                    "matchup_adapter_shadow": (
+                        self.matchup_shadow_router.audit.snapshot(
+                            include_events=False
+                        )
+                        if self.matchup_shadow_router is not None
+                        else None
                     ),
                 },
             )

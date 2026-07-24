@@ -11,6 +11,7 @@ import pytest
 from poke_bot.pure_rl.artifact_retention import apply_artifact_retention
 from poke_bot.pure_rl.eval_public import (
     OFFICIAL_BASELINE_IDS,
+    active_gate_goal_rank,
     heldout_exploration_decision,
     heldout_goal_rank,
 )
@@ -129,6 +130,114 @@ def test_heldout_goal_rank_rejects_pooled_only_legacy_evidence() -> None:
     exact = _heldout_evidence({opponent_id: 0.20 for opponent_id in OFFICIAL_BASELINE_IDS})
     pooled_only = {"games": 1000, "win_rate": 0.90, "confidence_lower": 0.88}
     assert heldout_goal_rank(exact) > heldout_goal_rank(pooled_only)
+
+
+def _active_gate_contract() -> dict:
+    return {
+        "roster": [
+            {
+                "opponent_id": opponent_id,
+                "tier": "S" if index < 2 else "A",
+                "weight": 2.0 if index < 2 else 1.0,
+            }
+            for index, opponent_id in enumerate(OFFICIAL_BASELINE_IDS)
+        ],
+        "pass_criteria": {
+            "skill_weighted_win_rate": 0.50,
+            "skill_weighted_confidence_lower": 0.50,
+            "s_tier_mean_floor": 0.40,
+            "individual_opponent_floor": 0.25,
+        },
+    }
+
+
+def test_active_gate_rank_prefers_gate_progress_over_highest_weakest_matchup() -> None:
+    balanced_but_lower_weighted = _heldout_evidence(
+        {
+            "iono": 0.45,
+            "dragapult-ex": 0.45,
+            "mega-abomasnow-ex": 0.55,
+            "mega-lucario-ex": 0.55,
+        }
+    )
+    gate_aligned = _heldout_evidence(
+        {
+            "iono": 0.40,
+            "dragapult-ex": 0.50,
+            "mega-abomasnow-ex": 0.65,
+            "mega-lucario-ex": 0.65,
+        }
+    )
+    balanced_but_lower_weighted.update(
+        {"confidence_lower": 0.463, "audit": {"passed": True}}
+    )
+    gate_aligned.update(
+        {"confidence_lower": 0.497, "audit": {"passed": True}}
+    )
+
+    assert heldout_goal_rank(balanced_but_lower_weighted) > heldout_goal_rank(
+        gate_aligned
+    )
+    assert active_gate_goal_rank(
+        gate_aligned, active_gate=_active_gate_contract()
+    ) > active_gate_goal_rank(
+        balanced_but_lower_weighted, active_gate=_active_gate_contract()
+    )
+
+
+def _exact_gate_result(iteration: int, win_rate: float) -> dict:
+    return {
+        "iteration": iteration,
+        "gate_id": "strong-public-v1",
+        "skill_weighted_wr": win_rate,
+        "audit": {"passed": True},
+    }
+
+
+def test_exact_gate_regression_streak_counts_only_current_branch() -> None:
+    module = _load_train_pure_rl()
+    anchor = {"gate_id": "strong-public-v1", "win_rate": 0.4956}
+    history = [
+        {"iteration": 11, "raw_heldout_gate": _exact_gate_result(11, 0.4905)},
+        {"iteration": 12, "raw_heldout_gate": _exact_gate_result(12, 0.4800)},
+        {"iteration": 13, "raw_heldout_gate": _exact_gate_result(13, 0.4785)},
+    ]
+    report = module._exact_gate_regression_streak(
+        history=history,
+        current_gate_result=_exact_gate_result(14, 0.4800),
+        anchor_evidence=anchor,
+        regression_margin=0.01,
+    )
+    assert report["streak"] == 3
+    assert report["regressed_iterations"] == [14, 13, 12]
+
+    history[-1]["promotion"] = {
+        "continuous_learner": {
+            "reason": "exact_gate_regression_patience_exhausted"
+        }
+    }
+    fresh_branch = module._exact_gate_regression_streak(
+        history=history,
+        current_gate_result=_exact_gate_result(14, 0.4800),
+        anchor_evidence=anchor,
+        regression_margin=0.01,
+    )
+    assert fresh_branch["streak"] == 1
+    assert fresh_branch["regressed_iterations"] == [14]
+
+
+def test_exact_gate_regression_streak_resets_inside_noise_margin() -> None:
+    module = _load_train_pure_rl()
+    report = module._exact_gate_regression_streak(
+        history=[
+            {"iteration": 12, "raw_heldout_gate": _exact_gate_result(12, 0.47)}
+        ],
+        current_gate_result=_exact_gate_result(13, 0.486),
+        anchor_evidence={"gate_id": "strong-public-v1", "win_rate": 0.4956},
+        regression_margin=0.01,
+    )
+    assert report["streak"] == 0
+    assert report["reason"] == "within_anchor_margin"
 
 
 def test_exploratory_learner_keeps_broad_gain_with_one_game_weakest_noise() -> None:

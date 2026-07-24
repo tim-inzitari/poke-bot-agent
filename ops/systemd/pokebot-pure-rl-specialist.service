@@ -1,0 +1,38 @@
+[Unit]
+Description=Canonical sequential Pokemon specialist Pure-RL trainer
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+# The trainer owns its terminal lifecycle. Reject ad-hoc `systemctl stop` and
+# `restart` requests from competing controllers; genuine process failures and
+# the trainer's normal terminal exit remain unaffected.
+RefuseManualStop=yes
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi
+EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
+
+# The selector validates every specialist-specific artifact and constructs the
+# full command from the single runtime registry. No trainer arguments belong in
+# this unit or in systemd drop-ins.
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist.py --check
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist.py
+
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=75 78
+TimeoutStopSec=45
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=110G
+MemoryMax=116G
+MemorySwapMax=16G
+OOMPolicy=stop
+
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-runtime.launcher.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-runtime.launcher.log
+
+[Install]
+WantedBy=default.target

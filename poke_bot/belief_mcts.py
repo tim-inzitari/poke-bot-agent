@@ -34,6 +34,7 @@ from .blackwell_heads import (
     blackwell_strategy_heads_enabled,
     root_value_bias_from_lethal,
 )
+from .matchup_adapter_activation import ShadowMatchupAdapterRouter
 from .mcts import GameClock, MCTSResult
 from .model import TemporalCabtTransformer, card_prior_logits_or_uniform
 from .replay_import import assert_info_set as assert_public_info_set
@@ -178,6 +179,7 @@ class BeliefMCTS:
         particle_count: int = 16,
         max_depth: int = 256,
         max_context: Optional[int] = None,
+        matchup_shadow_router: Optional[ShadowMatchupAdapterRouter] = None,
     ) -> None:
         if not checkpoint_digest.startswith("sha256:"):
             raise ValueError("trusted search requires an immutable sha256 checkpoint")
@@ -216,6 +218,7 @@ class BeliefMCTS:
             else getattr(model, "max_context", config.MODEL.max_context)
         )
         self._simulator_version = simulator_version()
+        self.matchup_shadow_router = matchup_shadow_router
 
     def _telemetry_mark(self):
         marker = getattr(self.leaf_eval, "telemetry_mark", None)
@@ -667,6 +670,11 @@ class BeliefMCTS:
                 },
                 last_action={root_seat: None, 1 - root_seat: None},
             )
+            matchup_shadow_branch = (
+                self.matchup_shadow_router.fork()
+                if self.matchup_shadow_router is not None
+                else None
+            )
             nodes = [root]
             edges: list[BeliefEdge] = []
             current = root
@@ -726,6 +734,15 @@ class BeliefMCTS:
                     if terminal is not None:
                         value = terminal
                         break
+                    if (
+                        matchup_shadow_branch is not None
+                        and self._actor(search_state.observation) == root_seat
+                    ):
+                        matchup_shadow_branch.observe(
+                            search_state.observation,
+                            scope="belief_search_branch",
+                            depth=depth,
+                        )
                     self._record_observation(
                         search_state.observation,
                         root_seat=root_seat,
@@ -898,6 +915,11 @@ class BeliefMCTS:
                 else "complete_materialized"
             ),
             "factorized_stages": factorized_stages,
+            "matchup_adapter_shadow": (
+                self.matchup_shadow_router.audit.snapshot(include_events=False)
+                if self.matchup_shadow_router is not None
+                else None
+            ),
             **inference,
         }
         # Scope B (Blackwell Hammer): optional root-only value bias from lethal
@@ -975,4 +997,3 @@ class BeliefMCTS:
             "belief_config": self.posterior.config,
             "simulator_version": self._simulator_version,
         }
-

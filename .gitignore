@@ -100,6 +100,14 @@ baselines/decks/
 baselines/kernels/
 baselines/roster_extract_report.json
 baselines/*.tmp/
+# Frozen specialist checkpoints are protected runtime artifacts. Their
+# checksums and metadata belong in the registries; the model binaries do not.
+baselines/specialists/
+
+# Local synchronization staging and pre-change snapshots.
+.dashboard-sync-staging/
+scripts/dashboard_snapshot.py.before-*
+ops/specialist_runtime_registry_v1.json.pre-*
 
 # Local Kaggle inputs
 kaggle/input/

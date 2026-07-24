@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh next Pokemon specialist staging receipt
+
+[Timer]
+OnBootSec=5min
+OnActiveSec=1min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Persistent=true
+Unit=pokebot-next-specialist-prestage.service
+
+[Install]
+WantedBy=timers.target

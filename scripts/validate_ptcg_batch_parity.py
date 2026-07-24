@@ -9,6 +9,7 @@ from collections import Counter
 import ctypes
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +26,24 @@ def _load_deck(path: Path) -> list[int]:
     if len(cards) != 60:
         raise ValueError(f"deck must contain 60 cards, got {len(cards)}")
     return cards
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(4 * 1024 * 1024), b""):
+            digest.update(block)
+    return "sha256:" + digest.hexdigest()
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
 
 
 def _decode(serial: SerialData) -> dict:
@@ -125,16 +144,32 @@ def _first_diff(expected: object, actual: object, path: str = "$") -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lib", type=Path, required=True)
+    parser.add_argument(
+        "--reference-lib",
+        type=Path,
+        default=None,
+        help=(
+            "Optional seeded reference library. When supplied, compare the "
+            "candidate batch ABI against independent single-game transitions "
+            "from this library instead of the candidate itself."
+        ),
+    )
     parser.add_argument("--deck", type=Path, required=True)
     parser.add_argument("--num-envs", type=int, default=8)
     parser.add_argument("--max-steps", type=int, default=800)
     parser.add_argument("--seed", type=int, default=0x51A7E000)
+    parser.add_argument("--json-out", type=Path, default=None)
     args = parser.parse_args()
     if args.num_envs < 1 or args.max_steps < 1:
         parser.error("num-envs and max-steps must be positive")
 
     deck = _load_deck(args.deck)
     lib = load_batch_library(args.lib)
+    reference_lib = (
+        load_batch_library(args.reference_lib)
+        if args.reference_lib is not None
+        else lib
+    )
     reference_ptrs: list[int] = []
     reference_obs: list[dict] = []
     digest = hashlib.sha256()
@@ -150,7 +185,9 @@ def main() -> int:
 
         for spec in specs:
             cards = (ctypes.c_int * 120)(*(spec.deck0 + spec.deck1))
-            start = lib.BattleStartSeeded(cards, spec.seed & 0xFFFFFFFF)
+            start = reference_lib.BattleStartSeeded(
+                cards, spec.seed & 0xFFFFFFFF
+            )
             ptr = int(start.battlePtr or 0)
             if not ptr:
                 raise RuntimeError(
@@ -158,7 +195,7 @@ def main() -> int:
                     f"type={start.errorType}"
                 )
             reference_ptrs.append(ptr)
-            reference_obs.append(_decode(lib.GetBattleData(ptr)))
+            reference_obs.append(_decode(reference_lib.GetBattleData(ptr)))
 
         for i in range(args.num_envs):
             expected = _canonical(reference_obs[i])
@@ -172,6 +209,22 @@ def main() -> int:
             if all(_done(obs) for obs in reference_obs):
                 report = {
                     "ok": True,
+                    "candidate_library": str(args.lib.resolve()),
+                    "candidate_sha256": _sha256(args.lib),
+                    "reference_library": str(
+                        (args.reference_lib or args.lib).resolve()
+                    ),
+                    "reference_sha256": _sha256(
+                        args.reference_lib or args.lib
+                    ),
+                    "cross_library": args.reference_lib is not None,
+                    "public_transition_parity": True,
+                    "terminal_result_parity": True,
+                    "serialized_search_input_parity": (
+                        serialized_mismatches == 0
+                    ),
+                    "eligibility_scope": "training_collection_only",
+                    "submission_eligible": False,
                     "num_envs": args.num_envs,
                     "steps": step,
                     "decisions": decisions,
@@ -179,6 +232,8 @@ def main() -> int:
                     "serialized_diff_offsets": serialized_diff_offsets.most_common(20),
                     "transition_sha256": digest.hexdigest(),
                 }
+                if args.json_out is not None:
+                    _write_json(args.json_out, report)
                 print(json.dumps(report, sort_keys=True))
                 return 0
 
@@ -191,12 +246,18 @@ def main() -> int:
                     raise RuntimeError(f"env={i} live without legal action at step={step}")
                 actions[i] = action
                 values = (ctypes.c_int * len(action))(*action)
-                err = int(lib.Select(reference_ptrs[i], values, len(action)))
+                err = int(
+                    reference_lib.Select(
+                        reference_ptrs[i], values, len(action)
+                    )
+                )
                 if err:
                     raise RuntimeError(
                         f"individual Select failed env={i} step={step} err={err}"
                     )
-                reference_obs[i] = _decode(lib.GetBattleData(reference_ptrs[i]))
+                reference_obs[i] = _decode(
+                    reference_lib.GetBattleData(reference_ptrs[i])
+                )
                 decisions += 1
 
             batch_obs = batch.step_batch(actions)
@@ -229,7 +290,7 @@ def main() -> int:
     finally:
         batch.close()
         for ptr in reference_ptrs:
-            lib.BattleFinish(ptr)
+            reference_lib.BattleFinish(ptr)
 
 
 if __name__ == "__main__":

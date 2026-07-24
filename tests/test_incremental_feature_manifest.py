@@ -6,8 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from poke_bot.feature_shards import (
     COMPACT_MODE,
+    COMPACT_MODE_TEMPORAL_EXPERT,
     MANIFEST_FORMAT,
     SHARD_FORMAT,
     SHARD_FORMAT_VERSION,
@@ -90,3 +93,82 @@ def test_per_day_verification_cache_feeds_final_manifest(tmp_path: Path) -> None
     assert len(payload["shards"]) == 2
     assert payload["totals"]["records_kept"] == 198
     assert payload["totals"]["decisions_kept"] == 1000
+
+
+def test_authoritative_manifest_is_protected_only_with_complete_targets(
+    tmp_path: Path,
+) -> None:
+    staging = tmp_path / "authoritative"
+    staging.mkdir()
+    day = "2026-07-20"
+    _write_shard(staging, day)
+    sidecar = next(staging.glob("*.features.json"))
+    metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    metadata.update(
+        {
+            "compact_mode": COMPACT_MODE_TEMPORAL_EXPERT,
+            "required_archetype": "alakazam",
+            "max_context": 320,
+        }
+    )
+    decisions = int(metadata["stats"]["decisions_kept"])
+    required_targets = (
+        "temporal_action_rows",
+        "opponent_hand_rows",
+        "opponent_remainder_rows",
+        "opponent_private_prize_rows",
+        "lethal_threat_rows",
+        "prize_race_rows",
+    )
+    metadata["stats"]["target_coverage"] = {
+        name: decisions for name in required_targets
+    }
+    sidecar.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+
+    manifest = staging / "manifest.json"
+    extra = [
+        "--compact-mode",
+        COMPACT_MODE_TEMPORAL_EXPERT,
+        "--required-archetype",
+        "alakazam",
+        "--expected-max-context",
+        "320",
+        "--seal-protected",
+    ]
+    for target in required_targets:
+        extra.extend(["--require-target-coverage", target])
+    _assemble(staging, manifest, [day], *extra)
+
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    pointer = json.loads(
+        (staging / "PROTECTED_EXPERT_CORPUS.json").read_text(encoding="utf-8")
+    )
+    assert payload["selection"]["value"] == "alakazam"
+    assert payload["max_context"] == 320
+    assert payload["quality_gates"]["required_target_rows_complete"] is True
+    assert pointer["protected"] is True
+    assert pointer["manifest"] == "manifest.json"
+    assert pointer["manifest_sha256"] == "sha256:" + hashlib.sha256(
+        manifest.read_bytes()
+    ).hexdigest()
+
+    incomplete = tmp_path / "incomplete"
+    incomplete.mkdir()
+    _write_shard(incomplete, day)
+    bad_sidecar = next(incomplete.glob("*.features.json"))
+    bad = json.loads(bad_sidecar.read_text(encoding="utf-8"))
+    bad.update(
+        {
+            "compact_mode": COMPACT_MODE_TEMPORAL_EXPERT,
+            "required_archetype": "alakazam",
+            "max_context": 320,
+        }
+    )
+    bad["stats"]["target_coverage"] = {
+        name: decisions - int(name == "opponent_hand_rows")
+        for name in required_targets
+    }
+    bad_sidecar.write_text(json.dumps(bad) + "\n", encoding="utf-8")
+    with pytest.raises(subprocess.CalledProcessError):
+        _assemble(incomplete, incomplete / "manifest.json", [day], *extra)
+    assert not (incomplete / "PROTECTED_EXPERT_CORPUS.json").exists()

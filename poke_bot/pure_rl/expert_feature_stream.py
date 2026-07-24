@@ -40,6 +40,17 @@ def _sha256(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def _stat_identity(path: Path) -> tuple[int, int, int, int, int]:
+    stat = Path(path).stat()
+    return (
+        int(stat.st_dev),
+        int(stat.st_ino),
+        int(stat.st_size),
+        int(stat.st_mtime_ns),
+        int(stat.st_ctime_ns),
+    )
+
+
 @dataclass(frozen=True)
 class _VerifiedShard:
     path: Path
@@ -51,31 +62,24 @@ class _VerifiedShard:
     def verify(cls, path: Path, digest: str, records: int) -> "_VerifiedShard":
         path = Path(path).resolve()
         expected = str(digest)
+        expected_records = int(records)
+        if expected_records <= 0:
+            raise ValueError(f"feature shard has invalid record count: {path}")
+        before = _stat_identity(path)
         if _sha256(path) != expected:
             raise ValueError(f"feature shard digest mismatch: {path}")
-        stat = path.stat()
+        after = _stat_identity(path)
+        if after != before:
+            raise ValueError(f"feature shard changed during verification: {path}")
         return cls(
             path=path,
             digest=expected,
-            records=int(records),
-            stat_identity=(
-                int(stat.st_dev),
-                int(stat.st_ino),
-                int(stat.st_size),
-                int(stat.st_mtime_ns),
-                int(stat.st_ctime_ns),
-            ),
+            records=expected_records,
+            stat_identity=after,
         )
 
     def assert_unchanged(self) -> None:
-        stat = self.path.stat()
-        actual = (
-            int(stat.st_dev),
-            int(stat.st_ino),
-            int(stat.st_size),
-            int(stat.st_mtime_ns),
-            int(stat.st_ctime_ns),
-        )
+        actual = _stat_identity(self.path)
         if actual != self.stat_identity:
             raise ValueError(
                 f"checksummed feature shard changed after verification: {self.path}"
@@ -143,7 +147,10 @@ class EpisodeGroupedFeatureManifest:
         expected_compact_mode: Optional[str] = None,
     ) -> "EpisodeGroupedFeatureManifest":
         path = Path(manifest_path).expanduser().resolve()
-        actual_manifest_digest = _sha256(path)
+        manifest_bytes = path.read_bytes()
+        actual_manifest_digest = (
+            "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
+        )
         if actual_manifest_digest != str(expected_manifest_digest):
             raise ValueError(
                 "expert feature manifest digest mismatch: "
@@ -162,7 +169,7 @@ class EpisodeGroupedFeatureManifest:
         if context is not None and context <= 0:
             raise ValueError("expert max_context must be positive")
 
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(manifest_bytes)
         if payload.get("format") != MANIFEST_FORMAT:
             raise ValueError("invalid feature manifest format")
         if int(payload.get("format_version", -1)) != MANIFEST_FORMAT_VERSION:
@@ -209,15 +216,25 @@ class EpisodeGroupedFeatureManifest:
             )
 
         expected_records = sum(shard.records for shard in verified)
-        if expected_records and sequences != expected_records:
+        manifest_records = int(
+            (payload.get("totals") or {}).get("records_kept", -1)
+        )
+        if manifest_records != expected_records:
+            raise ValueError(
+                "feature manifest record total mismatch: "
+                f"totals={manifest_records} shards={expected_records}"
+            )
+        if sequences != expected_records:
             raise ValueError(
                 "feature manifest sequence count mismatch: "
                 f"expected={expected_records} loaded={sequences}"
             )
         expected_decisions = int(
-            (payload.get("totals") or {}).get("decisions_kept", 0)
+            (payload.get("totals") or {}).get("decisions_kept", -1)
         )
-        if expected_decisions and decisions != expected_decisions:
+        if expected_decisions <= 0:
+            raise ValueError("feature manifest has invalid decision total")
+        if decisions != expected_decisions:
             raise ValueError(
                 "feature manifest decision count mismatch: "
                 f"expected={expected_decisions} loaded={decisions}"
@@ -263,7 +280,8 @@ class EpisodeGroupedFeatureManifest:
                 yield index, sequence
                 index += 1
                 loaded += 1
-            if shard.records and loaded != shard.records:
+            shard.assert_unchanged()
+            if loaded != shard.records:
                 raise ValueError(
                     f"manifest count mismatch for {shard.path}: "
                     f"expected={shard.records} loaded={loaded}"

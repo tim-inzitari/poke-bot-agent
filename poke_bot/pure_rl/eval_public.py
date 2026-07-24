@@ -115,6 +115,90 @@ def heldout_goal_rank(
     )
 
 
+def active_gate_goal_rank(
+    evidence: dict[str, Any],
+    *,
+    active_gate: dict[str, Any],
+) -> tuple[float, ...]:
+    """Rank exact evidence by progress toward the active gate contract.
+
+    Generic held-out ranking intentionally prioritizes the weakest matchup.
+    The competition gate has a different, explicit objective: clear the
+    weighted point estimate and its confidence lower bound while preserving
+    the S-tier and individual-opponent floors.  Ranking checkpoints by the
+    normalized bottleneck across those four requirements keeps protected-best
+    selection aligned with the gate that can actually terminate training.
+    """
+    invalid = (0.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+    roster = active_gate.get("roster")
+    criteria = active_gate.get("pass_criteria")
+    per = evidence.get("per_opponent")
+    if not isinstance(roster, list) or not roster:
+        return invalid
+    if not isinstance(criteria, dict) or not isinstance(per, dict):
+        return invalid
+
+    rates: dict[str, float] = {}
+    weights: dict[str, float] = {}
+    s_tier_ids: list[str] = []
+    for entry in roster:
+        if not isinstance(entry, dict):
+            return invalid
+        opponent_id = str(entry.get("opponent_id") or "").strip()
+        bucket = per.get(opponent_id)
+        if not opponent_id or not isinstance(bucket, dict):
+            return invalid
+        try:
+            games = int(bucket.get("games", 0))
+            wins = float(bucket.get("wins", 0.0))
+            rate = float(bucket.get("win_rate", wins / games if games else -1.0))
+            weight = float(entry.get("weight", 1.0))
+        except (TypeError, ValueError, ZeroDivisionError):
+            return invalid
+        if games <= 0 or not 0.0 <= rate <= 1.0 or weight <= 0.0:
+            return invalid
+        rates[opponent_id] = rate
+        weights[opponent_id] = weight
+        if str(entry.get("tier") or "").strip().upper() == "S":
+            s_tier_ids.append(opponent_id)
+    if not s_tier_ids:
+        return invalid
+
+    total_weight = sum(weights.values())
+    weighted_wr = sum(rates[oid] * weights[oid] for oid in rates) / total_weight
+    confidence_lower = float(evidence.get("confidence_lower", -1.0))
+    s_tier_mean = sum(rates[oid] for oid in s_tier_ids) / len(s_tier_ids)
+    minimum_opponent_wr = min(rates.values())
+    targets = (
+        float(criteria.get("skill_weighted_win_rate", 0.0)),
+        float(criteria.get("skill_weighted_confidence_lower", 0.0)),
+        float(criteria.get("s_tier_mean_floor", 0.0)),
+        float(criteria.get("individual_opponent_floor", 0.0)),
+    )
+    values = (
+        weighted_wr,
+        confidence_lower,
+        s_tier_mean,
+        minimum_opponent_wr,
+    )
+
+    normalized: list[float] = []
+    for value, target in zip(values, targets):
+        normalized.append(1.0 if target <= 0.0 else min(value / target, 1.0))
+    audit = evidence.get("audit")
+    audit_ok = not isinstance(audit, dict) or bool(audit.get("passed"))
+    return (
+        1.0 if audit_ok else 0.0,
+        min(normalized),
+        sum(normalized) / len(normalized),
+        confidence_lower,
+        weighted_wr,
+        s_tier_mean,
+        minimum_opponent_wr,
+        float(evidence.get("games", -1)),
+    )
+
+
 def heldout_exploration_decision(
     candidate: dict[str, Any],
     anchor: dict[str, Any],

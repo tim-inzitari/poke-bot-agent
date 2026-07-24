@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from . import cg_env, config, features
+from .matchup_adapters import UNKNOWN_ROUTE
 from .model import TemporalCabtTransformer
 
 
@@ -92,6 +93,9 @@ class LeafPacket:
     value: float = 0.0
     priors: list[float] = field(default_factory=list)
     combos: list[list[int]] = field(default_factory=list)
+    # Public-prefix route candidate. The checkpoint-side adapter flag is the
+    # final gate; dormant checkpoints consume this as an exact no-op.
+    matchup_route: int = UNKNOWN_ROUTE
 
 
 @dataclass
@@ -110,6 +114,7 @@ class FeaturizedLeaves:
     previous_action_histories: Optional[
         list[list[Optional["features.SparseVector"]]]
     ] = None
+    matchup_routes: Optional[list[int]] = None
 
 
 def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
@@ -125,6 +130,7 @@ def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
     n_opts: list[int] = []
     seats: list[int] = []
     root_seats: list[int] = []
+    matchup_routes: list[int] = []
     histories: list[list["features.SparseVector"]] = []
     previous_action_histories: list[list[Optional["features.SparseVector"]]] = []
     for p in packets:
@@ -150,6 +156,10 @@ def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
             obs_obj.current.yourIndex if obs_obj.current is not None else p.root_seat
         )
         root_seats.append(p.root_seat)
+        route = p.matchup_route
+        if type(route) is not int or route < UNKNOWN_ROUTE:
+            raise ValueError("leaf matchup route must be an exact route integer")
+        matchup_routes.append(route)
     return FeaturizedLeaves(
         boards,
         opts,
@@ -159,6 +169,7 @@ def featurize_packets(packets: Sequence[LeafPacket]) -> FeaturizedLeaves:
         root_seats,
         histories,
         previous_action_histories,
+        matchup_routes,
     )
 
 
@@ -175,6 +186,7 @@ def _forward_chunk(
     previous_action_histories: Optional[
         list[list[Optional["features.SparseVector"]]]
     ] = None,
+    matchup_routes: Optional[list[int]] = None,
 ) -> list[tuple[float, list[float]]]:
     dev = next(model.parameters()).device
     use_ac = autocast_dtype is not None and dev.type == "cuda"
@@ -186,10 +198,24 @@ def _forward_chunk(
                 opts,
                 n_options=n_opts,
                 previous_action_histories=previous_action_histories,
+                matchup_routes=(
+                    matchup_routes
+                    if matchup_routes is not None
+                    else [UNKNOWN_ROUTE] * len(boards)
+                ),
             )
         else:
             out = model.forward(
-                boards, opts, kv_cache=None, append_cache=False, n_options=n_opts
+                boards,
+                opts,
+                kv_cache=None,
+                append_cache=False,
+                n_options=n_opts,
+                matchup_routes=(
+                    matchup_routes
+                    if matchup_routes is not None
+                    else [UNKNOWN_ROUTE] * len(boards)
+                ),
             )
     logits_all = out["policy_logits"]
     value_all = out["value"]
@@ -224,6 +250,7 @@ def forward_featurized(
     previous_action_histories: Optional[
         Sequence[Sequence[Optional["features.SparseVector"]]]
     ] = None,
+    matchup_routes: Optional[Sequence[int]] = None,
 ) -> list[tuple[float, list[float]]]:
     """GPU forward over pre-featurized leaves → ``[(value, priors), ...]``.
 
@@ -238,6 +265,9 @@ def forward_featurized(
     if not b:
         return []
     o, no, se, rs = list(opts), list(n_opts), list(seats), list(root_seats)
+    mr = list(matchup_routes) if matchup_routes is not None else None
+    if mr is not None and len(mr) != len(b):
+        raise ValueError("leaf matchup route count does not match batch size")
     try:
         hist = [list(h) for h in histories] if histories is not None else None
         return _forward_chunk(
@@ -254,6 +284,7 @@ def forward_featurized(
                 if previous_action_histories is not None
                 else None
             ),
+            matchup_routes=mr,
         )
     except Exception as exc:  # noqa: BLE001
         if not config.is_cuda_oom(exc) or len(b) <= 1:
@@ -273,6 +304,7 @@ def forward_featurized(
                 if previous_action_histories is not None
                 else None
             ),
+            matchup_routes=(mr[:mid] if mr is not None else None),
         )
         right = forward_featurized(
             model, b[mid:], o[mid:], no[mid:], se[mid:], rs[mid:],
@@ -283,6 +315,7 @@ def forward_featurized(
                 if previous_action_histories is not None
                 else None
             ),
+            matchup_routes=(mr[mid:] if mr is not None else None),
         )
         return left + right
 
@@ -310,6 +343,7 @@ def forward_leaf_batch(
         fl.root_seats,
         histories=fl.histories,
         previous_action_histories=fl.previous_action_histories,
+        matchup_routes=fl.matchup_routes,
     )
     results: list[LeafPacket] = []
     for i, p in enumerate(packets):
@@ -324,6 +358,7 @@ def forward_leaf_batch(
                 value=vp[i][0],
                 priors=vp[i][1],
                 combos=fl.combos[i],
+                matchup_route=p.matchup_route,
             )
         )
     return results
@@ -763,6 +798,7 @@ class RemoteLeafClient:
                 value=vp[i][0],
                 priors=vp[i][1],
                 combos=fl.combos[i],
+                matchup_route=p.matchup_route,
             )
             for i, p in enumerate(packets)
         ]
@@ -787,6 +823,26 @@ def remote_leaf_backend_from_worker():
         leaf_devices=_REMOTE.get("leaf_devices"),
         alive_evts=_REMOTE.get("alive_evts"),
     )
+
+
+def apply_runtime_matchup_adapter_contract(model) -> bool:
+    """Enable the activated adapter bank on any freshly loaded leaf model."""
+
+    if os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip().lower() not in {
+        "1", "true", "yes", "on"
+    }:
+        return False
+    from .public_matchup_router import load_runtime_public_matchup_tree
+
+    tree_path = os.environ.get("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", "").strip()
+    if not tree_path:
+        raise ValueError(
+            "runtime matchup adapters require POKEBOT_PUBLIC_MATCHUP_TREE_PATH"
+        )
+    load_runtime_public_matchup_tree(tree_path)
+    model.matchup_adapter_bank.enabled = True
+    model.matchup_adapter_bank.requires_grad_(False)
+    return True
 
 
 def run_leaf_server(
@@ -825,6 +881,7 @@ def run_leaf_server(
     device = torch.device(device_str)
     version = int(initial_version)
     current_digest = ""
+
     try:
         current_digest = checkpoint_digest(ckpt_path)
         if expected_digest is not None and current_digest != expected_digest:
@@ -833,6 +890,7 @@ def run_leaf_server(
                 f"got {current_digest}"
             )
         model = load_model_from_checkpoint(ckpt_path, device=device)
+        apply_runtime_matchup_adapter_contract(model)
         model.eval()
     except BaseException as exc:  # noqa: BLE001 - report startup failure to parent
         _status(
@@ -909,6 +967,7 @@ def run_leaf_server(
                                 candidate_model = load_model_from_checkpoint(
                                     path, device=device
                                 )
+                                apply_runtime_matchup_adapter_contract(candidate_model)
                                 candidate_model.eval()
                                 old_model = model
                                 model = candidate_model
@@ -988,6 +1047,7 @@ def run_leaf_server(
             n_opts: list[int] = []
             seats: list[int] = []
             root_seats: list[int] = []
+            matchup_routes: list[int] = []
             histories: list[list["features.SparseVector"]] = []
             previous_action_histories: list[
                 list[Optional["features.SparseVector"]]
@@ -1004,6 +1064,11 @@ def run_leaf_server(
                 n_opts.extend(fl.n_opts)
                 seats.extend(fl.seats)
                 root_seats.extend(fl.root_seats)
+                matchup_routes.extend(
+                    fl.matchup_routes
+                    if fl.matchup_routes is not None
+                    else [UNKNOWN_ROUTE] * len(fl.boards)
+                )
                 histories.extend(fl.histories or [[board] for board in fl.boards])
                 previous_action_histories.extend(
                     fl.previous_action_histories
@@ -1032,6 +1097,7 @@ def run_leaf_server(
                     autocast_dtype=ac_dtype,
                     histories=histories,
                     previous_action_histories=previous_action_histories,
+                    matchup_routes=matchup_routes,
                 )
                 error = None
             except BaseException as exc:  # noqa: BLE001 - route failure to every caller

@@ -79,6 +79,10 @@ def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
         card_embed_dim=_i("CARD_EMBED_DIM", 48),
         attack_embed_dim=_i("ATTACK_EMBED_DIM", 48),
         dense_card2vec=_dense_card2vec_flag(),
+        # Matchup adapters are a separately gated dormant architecture.  Pure
+        # RL must never activate them merely because a process inherited an
+        # ambient MATCHUP_ADAPTERS_ENABLED value.
+        matchup_adapters_enabled=False,
         dropout=_f("DROPOUT", 0.05),
     )
     for key, value in overrides.items():

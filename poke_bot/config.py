@@ -289,6 +289,9 @@ class ModelConfig:
     #: this ON via :func:`poke_bot.pure_rl.model_profile.pure_rl_model_config`.
     #: See :mod:`poke_bot.card2vec`. Architecture-incompatible with flat bags.
     dense_card2vec: bool = _env_bool("DENSE_CARD2VEC", False)
+    #: Dormant exact-match policy/value adapters.  Routing is never inferred;
+    #: the bootstrap-only training opt-in supplies ground-truth routes directly.
+    matchup_adapters_enabled: bool = _env_bool("MATCHUP_ADAPTERS_ENABLED", False)
     dropout: float = _env_float("DROPOUT", 0.1)
 
     @property

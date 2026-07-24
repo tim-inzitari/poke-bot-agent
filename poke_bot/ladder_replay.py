@@ -75,12 +75,21 @@ class LadderReplayClassifier:
         representatives: LadderDeckRepresentatives,
         *,
         card_csv: Optional[Path] = None,
+        additive_registered_ids: Sequence[str] = (),
     ) -> None:
         bound = representatives.bind(mix)
         self.mix = mix
         self.representatives = representatives
         self.active_ids = tuple(entry.bucket.deck_id for entry in bound)
         self._active = frozenset(self.active_ids)
+        additive = tuple(dict.fromkeys(str(value) for value in additive_registered_ids))
+        unknown_additive = sorted(set(additive) - set(archetypes.archetype_ids()))
+        if unknown_additive:
+            raise ValueError(
+                f"unregistered additive ladder archetypes: {unknown_additive}"
+            )
+        self.additive_registered_ids = additive
+        self._additive_registered = frozenset(additive)
 
         exact: dict[tuple[int, ...], str] = {}
         for entry in bound:
@@ -137,11 +146,13 @@ class LadderReplayClassifier:
         representatives_path: str | Path,
         *,
         card_csv: Optional[str | Path] = None,
+        additive_registered_ids: Sequence[str] = (),
     ) -> "LadderReplayClassifier":
         return cls(
             load_ladder_deck_mix(mix_path),
             load_ladder_deck_representatives(representatives_path),
             card_csv=Path(card_csv) if card_csv is not None else None,
+            additive_registered_ids=additive_registered_ids,
         )
 
     @property
@@ -152,6 +163,7 @@ class LadderReplayClassifier:
                 self.representatives.artifact_sha256
             ),
             "active_deck_ids": list(self.active_ids),
+            "additive_registered_ids": list(self.additive_registered_ids),
             "derived_ace_ids": {
                 key: list(value)
                 for key, value in sorted(self._derived_ace_ids.items())
@@ -167,7 +179,7 @@ class LadderReplayClassifier:
             return LadderReplayLabel(exact, "representative_exact")
 
         registered = archetypes.classify_deck(cards)
-        if registered in self._active:
+        if registered in self._active or registered in self._additive_registered:
             return LadderReplayLabel(registered, "registered_signature")
 
         present = set(cards)
@@ -185,4 +197,3 @@ class LadderReplayClassifier:
     ) -> tuple[list[Optional[list[int]]], list[LadderReplayLabel]]:
         decks = extract_setup_decks(payload)
         return decks, [self.classify_deck(deck) for deck in decks]
-

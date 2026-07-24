@@ -28,6 +28,27 @@ def load_iter_metrics(run_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _gate_cohort(row: dict[str, Any]) -> Optional[str]:
+    """Return the immutable gate identity represented by one metrics row.
+
+    A run may migrate from one held-out roster to another without resetting its
+    iteration counter.  Win rates from those contracts are not comparable, so
+    trend summaries must never select a historical best from a different gate.
+    """
+
+    extra = row.get("extra")
+    if not isinstance(extra, dict):
+        return None
+    for field in ("active_gate_result", "raw_heldout_gate"):
+        result = extra.get(field)
+        if not isinstance(result, dict):
+            continue
+        gate_id = str(result.get("gate_id") or "").strip()
+        if gate_id:
+            return gate_id
+    return None
+
+
 def wr_trend_line(
     run_dir: Path,
     *,
@@ -43,18 +64,25 @@ def wr_trend_line(
     if not known:
         return f"wr_trend: (iter 0..{rows[-1].get('iteration')} — no heldout_wr yet)"
 
-    tail = known[-max(1, int(last_n)):]
+    # Restrict the trend to the latest row's gate contract.  In particular,
+    # this prevents an old four-agent score from being presented as the best
+    # result for a later eight-agent gate merely because both live in the same
+    # run directory.
+    cohort = _gate_cohort(known[-1])
+    comparable = [row for row in known if _gate_cohort(row) == cohort]
+    tail = comparable[-max(1, int(last_n)):]
     steps = " -> ".join(
         f"{int(r.get('iteration', -1))}:{float(r.get('heldout_wr') or 0.0):.1%}"
         for r in tail
     )
-    best = max(known, key=lambda r: float(r.get("heldout_wr") or 0.0))
-    latest = known[-1]
+    best = max(comparable, key=lambda r: float(r.get("heldout_wr") or 0.0))
+    latest = comparable[-1]
     gate_bit = f" gate={float(gate_wr):.0%}" if gate_wr is not None else ""
     passed_bit = " GATE_PASSED" if latest.get("gate_passed") else ""
+    cohort_bit = f" cohort={cohort}" if cohort is not None else ""
     return (
         f"wr_trend[{steps}] "
         f"best={float(best.get('heldout_wr') or 0.0):.1%}@iter{best.get('iteration')} "
         f"latest_games={int(latest.get('heldout_games') or 0)}"
-        f"{gate_bit}{passed_bit}"
+        f"{gate_bit}{cohort_bit}{passed_bit}"
     )

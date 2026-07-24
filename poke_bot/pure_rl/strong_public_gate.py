@@ -1,12 +1,14 @@
-"""Exact strong-public Alakazam gate contract and aggregation.
+"""Exact strong-public specialist gate contract and aggregation.
 
-The eight public opponents are the active gate.  The original four baselines
-are a separately audited, zero-weight research control and can only contribute
-the explicit accepted-anchor non-regression guardrail.
+The established eight public opponents plus every frozen completed specialist
+are the active gate. Frozen specialists are S+ and count in the S-tier safety
+mean. The original four baselines are a separately audited, zero-weight
+research control.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import random
@@ -20,6 +22,74 @@ GATE_RESULT_SCHEMA = "poke_bot.public_agent_gate_result/v1"
 LEGACY_ORIGINAL_FOUR = frozenset(
     {"iono", "dragapult-ex", "mega-abomasnow-ex", "mega-lucario-ex"}
 )
+
+
+def materialize_fallback_gate_contract(
+    contract: dict[str, Any],
+    *,
+    completed_iteration: int,
+    prior_gate_passed: bool,
+) -> dict[str, Any] | None:
+    """Build the owner-authorized post-iteration fallback contract.
+
+    The primary gate remains authoritative through the named completed
+    iteration. The fallback is a distinct gate identity and changes only the
+    configured confidence-lower threshold. Returning ``None`` means the
+    primary gate still applies or already passed.
+    """
+
+    fallback = contract.get("fallback_transition")
+    if not isinstance(fallback, dict):
+        return None
+    activate_after = int(fallback.get("activate_after_completed_iteration", -1))
+    if int(completed_iteration) < activate_after or bool(prior_gate_passed):
+        return None
+    primary = contract.get("next_gate")
+    if not isinstance(primary, dict):
+        raise ValueError("fallback transition has no primary gate")
+    primary_id = str(primary.get("id") or "")
+    fallback_id = str(fallback.get("id") or "")
+    if (
+        not fallback_id
+        or fallback_id == primary_id
+        or str(fallback.get("prior_gate_id") or "") != primary_id
+        or fallback.get("only_if_prior_gate_unpassed") is not True
+    ):
+        raise ValueError("fallback gate identity/condition is invalid")
+    criteria = primary.get("pass_criteria")
+    if not isinstance(criteria, dict):
+        raise ValueError("primary gate criteria are missing")
+    prior_lower = float(criteria.get("skill_weighted_confidence_lower", -1.0))
+    expected_prior = float(fallback.get("prior_confidence_lower", -2.0))
+    next_lower = float(fallback.get("skill_weighted_confidence_lower", -1.0))
+    if (
+        abs(prior_lower - expected_prior) > 1e-12
+        or not 0.0 <= next_lower <= prior_lower
+    ):
+        raise ValueError("fallback confidence threshold is inconsistent")
+
+    derived = copy.deepcopy(contract)
+    gate = copy.deepcopy(primary)
+    gate["id"] = fallback_id
+    gate["label"] = str(fallback.get("label") or fallback_id)
+    gate["status"] = "queued"
+    gate["pass_criteria"]["skill_weighted_confidence_lower"] = next_lower
+    gate["activation"] = {
+        "schema": "poke_bot.iteration_gate_fallback_activation/v1",
+        "prior_gate_id": primary_id,
+        "activate_after_completed_iteration": activate_after,
+        "observed_completed_iteration": int(completed_iteration),
+        "prior_gate_passed": False,
+        "only_changed_criterion": "skill_weighted_confidence_lower",
+        "prior_confidence_lower": prior_lower,
+        "active_confidence_lower": next_lower,
+    }
+    derived["active_gate_id"] = fallback_id
+    derived["next_gate"] = gate
+    derived["derived_from_gate_id"] = primary_id
+    derived["activated_fallback_transition"] = copy.deepcopy(fallback)
+    derived.pop("fallback_transition", None)
+    return derived
 
 
 def load_active_gate_contract(path: Path) -> dict[str, Any]:
@@ -97,6 +167,28 @@ def load_active_gate_contract(path: Path) -> dict[str, Any]:
         or int(semantics.get("gate_games_total") or 0) != games_total
     ):
         raise ValueError("active_gate_semantics disagrees with the selected gate")
+    fallback = contract.get("fallback_transition")
+    if fallback is not None:
+        if not isinstance(fallback, dict):
+            raise ValueError("fallback_transition must be an object")
+        materialized = materialize_fallback_gate_contract(
+            contract,
+            completed_iteration=int(
+                fallback.get("activate_after_completed_iteration", -1)
+            ),
+            prior_gate_passed=False,
+        )
+        if materialized is None:
+            raise ValueError("fallback_transition cannot materialize at its boundary")
+        # Recursively validate the derived gate after removing the staging
+        # instruction, preventing an accidental infinite materialization loop.
+        temporary_gate = materialized["next_gate"]
+        if (
+            temporary_gate["evaluation"] != gate["evaluation"]
+            or temporary_gate["roster"] != roster
+            or temporary_gate["research_measurements"] != research
+        ):
+            raise ValueError("fallback gate changed evaluation membership")
     return contract
 
 
@@ -214,6 +306,24 @@ def _weighted_cluster_interval(
     return center, _quantile(samples, alpha), _quantile(samples, 1.0 - alpha)
 
 
+def _s_plus_floor_check(
+    roster: list[dict[str, Any]],
+    by_id: dict[str, dict[str, Any]],
+    criteria: dict[str, Any],
+) -> tuple[bool, list[str], float, int]:
+    floor = float(criteria.get("s_plus_individual_floor", 0.0))
+    allowance = int(criteria.get("s_plus_below_floor_allowance", 0))
+    if not 0.0 <= floor <= 1.0 or allowance < 0:
+        raise ValueError("invalid S+ matchup floor contract")
+    below = sorted(
+        str(row["opponent_id"])
+        for row in roster
+        if row.get("tier") == "S+"
+        and float(by_id[str(row["opponent_id"])]["wr"]) < floor
+    )
+    return len(below) <= allowance, below, floor, allowance
+
+
 def build_active_gate_result(
     *,
     contract: dict[str, Any],
@@ -255,13 +365,20 @@ def build_active_gate_result(
     else:
         weighted_wr = lower = upper = 0.0
     by_id = {str(row["opponent_id"]): row for row in matchups}
-    s_ids = [str(row["opponent_id"]) for row in roster if row.get("tier") == "S"]
+    s_ids = [
+        str(row["opponent_id"])
+        for row in roster
+        if row.get("tier") in {"S", "S+"}
+    ]
     s_mean = (
         statistics.fmean(float(by_id[key]["wr"]) for key in s_ids)
         if s_ids
         else weighted_wr
     )
     minimum_wr = min((float(row["wr"]) for row in matchups), default=0.0)
+    s_plus_ok, s_plus_below, s_plus_floor, s_plus_allowance = (
+        _s_plus_floor_check(roster, by_id, criteria)
+    )
     gate_audit_ok = bool(
         gate_audit.get("passed") is True
         and gate_audit.get("exact_distribution") is True
@@ -286,6 +403,8 @@ def build_active_gate_result(
         checks["individual_opponent_floor"] = minimum_wr >= float(
             criteria["individual_opponent_floor"]
         )
+    if "s_plus_individual_floor" in criteria:
+        checks["s_plus_matchup_floor_allowance"] = s_plus_ok
     seed_manifest = {
         "gate_seed": int(gate_seed),
         "gate_games": int(evaluation["games_total"]),
@@ -314,6 +433,10 @@ def build_active_gate_result(
         "bootstrap_resamples": int(bootstrap_resamples),
         "s_tier_mean": s_mean,
         "minimum_opponent_wr": minimum_wr,
+        "s_plus_individual_floor": s_plus_floor,
+        "s_plus_below_floor_allowance": s_plus_allowance,
+        "s_plus_below_floor_count": len(s_plus_below),
+        "s_plus_below_floor_opponent_ids": s_plus_below,
         "passed": all(checks.values()),
         "checks": checks,
         "matchups": matchups,
@@ -366,9 +489,16 @@ def build_strong_public_gate_result(
     else:
         weighted_wr = lower = upper = 0.0
     by_id = {str(row["opponent_id"]): row for row in matchups}
-    s_ids = [str(row["opponent_id"]) for row in roster if row.get("tier") == "S"]
+    s_ids = [
+        str(row["opponent_id"])
+        for row in roster
+        if row.get("tier") in {"S", "S+"}
+    ]
     s_mean = statistics.fmean(float(by_id[key]["wr"]) for key in s_ids)
     minimum_wr = min(float(row["wr"]) for row in matchups)
+    s_plus_ok, s_plus_below, s_plus_floor, s_plus_allowance = (
+        _s_plus_floor_check(roster, by_id, criteria)
+    )
     research_games = sum(int(row["games"]) for row in research_matchups)
     research_score = sum(
         float(row["wr"]) * int(row["games"]) for row in research_matchups
@@ -398,6 +528,7 @@ def build_strong_public_gate_result(
         "s_tier_mean_floor": s_mean >= float(criteria["s_tier_mean_floor"]),
         "individual_opponent_floor": minimum_wr
         >= float(criteria["individual_opponent_floor"]),
+        "s_plus_matchup_floor_allowance": s_plus_ok,
     }
     research_checks = {
         "research_control_audit": research_audit_ok,
@@ -429,6 +560,10 @@ def build_strong_public_gate_result(
         "bootstrap_resamples": int(bootstrap_resamples),
         "s_tier_mean": s_mean,
         "minimum_opponent_wr": minimum_wr,
+        "s_plus_individual_floor": s_plus_floor,
+        "s_plus_below_floor_allowance": s_plus_allowance,
+        "s_plus_below_floor_count": len(s_plus_below),
+        "s_plus_below_floor_opponent_ids": s_plus_below,
         "passed": all(checks.values()),
         "checks": checks,
         "research_checks": research_checks,

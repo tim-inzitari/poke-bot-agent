@@ -81,6 +81,49 @@ class ActionSpaceTooLarge(RuntimeError):
     """Complete ordered legal action space exceeds the safe decoder ceiling."""
 
 
+class FeatureContractError(ValueError):
+    """An observation or option cannot be represented without ambiguity."""
+
+
+def _exact_int(value, *, field: str) -> int:
+    """Convert enum/integer-like engine values without lossy coercion."""
+    if isinstance(value, bool):
+        raise FeatureContractError(f"{field} must be an integer, not bool")
+    try:
+        result = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise FeatureContractError(f"{field} is not an integer: {value!r}") from exc
+    try:
+        exact = bool(value == result)
+    except Exception:  # pragma: no cover - defensive for foreign scalar types
+        exact = False
+    if not exact:
+        raise FeatureContractError(f"{field} is not an exact integer: {value!r}")
+    return result
+
+
+def _enum_int(value, enum_type, *, field: str) -> int:
+    """Resolve either IntEnum values or official JSON enum-name strings.
+
+    The competition ``to_observation_class`` recursively creates dataclasses
+    but intentionally leaves enum scalar fields in their JSON form (for
+    example ``"IsFirst"``, ``"ToolCard"`` and ``"Hand"``).  Normalizing by
+    alphanumeric enum name keeps live integer observations and Kaggle visual
+    traces on the exact same feature rows.
+    """
+    if isinstance(value, str):
+        normalized = "".join(character for character in value if character.isalnum())
+        normalized = normalized.casefold()
+        for member in enum_type:
+            member_name = "".join(
+                character for character in member.name if character.isalnum()
+            ).casefold()
+            if normalized == member_name:
+                return int(member)
+        raise FeatureContractError(f"unsupported {field} name: {value!r}")
+    return _exact_int(value, field=field)
+
+
 def _selection_bounds(obs) -> tuple[object, int, int, int]:
     if isinstance(obs, dict):
         sel = obs.get("select") or {}
@@ -283,12 +326,18 @@ class SparseVector:
         self.pos: int = 0
 
     def add(self, index: int, value: Union[float, int, bool]) -> None:
+        index = _exact_int(index, field="sparse feature index")
+        if index < 0:
+            raise FeatureContractError(f"negative sparse feature index: {index}")
         value = float(value)
         if value != 0.0:
             self.index.append(self.pos + index)
             self.value.append(value)
 
     def add_pos(self, pos: int) -> None:
+        pos = _exact_int(pos, field="sparse feature width")
+        if pos < 0:
+            raise FeatureContractError(f"negative sparse feature width: {pos}")
         self.pos += pos
 
     def add_single(self, value: Union[float, int, bool]) -> None:
@@ -310,16 +359,65 @@ class SparseVector:
 # Encoder (spatial board) feature builders
 # ---------------------------------------------------------------------------
 
+def _validated_card_id(
+    card_id,
+    card_count: int,
+    *,
+    field: str,
+    allow_zero: bool = False,
+) -> int:
+    value = _exact_int(card_id, field=field)
+    lower = 0 if allow_zero else 1
+    if not lower <= value < int(card_count):
+        raise FeatureContractError(
+            f"{field} {value} is outside {lower}..{int(card_count) - 1}"
+        )
+    return value
+
+
+def _validated_attack_id(attack_id) -> int:
+    value = _exact_int(attack_id, field="option attackId")
+    count = attack_vocab_size()
+    if not 1 <= value < count:
+        raise FeatureContractError(
+            f"option attackId {value} is outside 1..{count - 1}"
+        )
+    return value
+
+
+def _validated_context(context) -> int:
+    value = _enum_int(context, cg_env.SelectContext, field="select context")
+    maximum = int(cg_env.SelectContext.RECOVER_SPECIAL_CONDITION)
+    if not 0 <= value <= maximum:
+        raise FeatureContractError(
+            f"select context {value} is outside the feature schema 0..{maximum}"
+        )
+    return value
+
 def _add_card(sv: SparseVector, card, card_count: int) -> None:
     if card is not None:
-        sv.add(card.id, 1)
+        sv.add(
+            _validated_card_id(
+                card.id,
+                card_count,
+                field="board card id",
+            ),
+            1,
+        )
     sv.add_pos(card_count)
 
 
 def _add_cards(sv: SparseVector, cards, value: float, card_count: int) -> None:
     if cards is not None:
         for card in cards:
-            sv.add(card.id, value)
+            sv.add(
+                _validated_card_id(
+                    card.id,
+                    card_count,
+                    field="board card id",
+                ),
+                value,
+            )
     sv.add_pos(card_count)
 
 
@@ -403,7 +501,14 @@ def build_board_tokens(obs, your_deck: list[int]) -> SparseVector:
     # Own deck pool (bag).
     sv.word_start()
     for cid in your_deck:
-        sv.add(cid, 0.25)
+        sv.add(
+            _validated_card_id(
+                cid,
+                cc,
+                field="own deck card id",
+            ),
+            0.25,
+        )
     sv.add_pos(cc)
 
     # Stadium.
@@ -427,22 +532,33 @@ def build_board_tokens(obs, your_deck: list[int]) -> SparseVector:
 def get_card(obs, area, index: int, player_index: int):
     """Resolve the Card/Pokemon referenced by (area, index, player_index)."""
     AreaType = cg_env.AreaType
+    player_index = _exact_int(player_index, field="option playerIndex")
+    if player_index not in (0, 1):
+        raise FeatureContractError(f"invalid option playerIndex: {player_index}")
+    index = _exact_int(index, field="option index")
+    if index < 0:
+        raise FeatureContractError(f"negative option index: {index}")
+    area_code = _enum_int(area, AreaType, field="option area")
+    if not 1 <= area_code < DECODER_BINDING_AREA_COUNT:
+        raise FeatureContractError(
+            f"option area is outside the feature schema: {area_code}"
+        )
     ps = obs.current.players[player_index]
-    if area == AreaType.DECK:
+    if area_code == int(AreaType.DECK):
         return obs.select.deck[index]
-    if area == AreaType.HAND:
+    if area_code == int(AreaType.HAND):
         return ps.hand[index]
-    if area == AreaType.DISCARD:
+    if area_code == int(AreaType.DISCARD):
         return ps.discard[index]
-    if area == AreaType.ACTIVE:
+    if area_code == int(AreaType.ACTIVE):
         return ps.active[index]
-    if area == AreaType.BENCH:
+    if area_code == int(AreaType.BENCH):
         return ps.bench[index]
-    if area == AreaType.PRIZE:
+    if area_code == int(AreaType.PRIZE):
         return ps.prize[index]
-    if area == AreaType.STADIUM:
+    if area_code == int(AreaType.STADIUM):
         return obs.current.stadium[index]
-    if area == AreaType.LOOKING:
+    if area_code == int(AreaType.LOOKING):
         return obs.current.looking[index]
     return None
 
@@ -454,15 +570,38 @@ def _decoder_card_offset() -> int:
 def _decoder_main(
     sv: SparseVector, feature_index: int, card, cc: int, weight: float = 1.0
 ) -> None:
+    feature_index = _exact_int(feature_index, field="decoder main feature")
+    if not 0 <= feature_index < DECODER_MAIN_FEATURE:
+        raise FeatureContractError(
+            f"invalid decoder main feature index: {feature_index}"
+        )
     if card is not None:
-        sv.add(_decoder_card_offset() + feature_index * cc + card.id, weight)
+        card_id = _validated_card_id(
+            card.id,
+            cc,
+            field="option card id",
+        )
+        sv.add(_decoder_card_offset() + feature_index * cc + card_id, weight)
 
 
 def _decoder_card_id(
-    sv: SparseVector, context, card_id: int, cc: int, weight: float = 1.0
+    sv: SparseVector,
+    context,
+    card_id: int,
+    cc: int,
+    weight: float = 1.0,
+    *,
+    allow_zero: bool = False,
 ) -> None:
+    context = _validated_context(context)
+    card_id = _validated_card_id(
+        card_id,
+        cc,
+        field="option card id",
+        allow_zero=allow_zero,
+    )
     sv.add(
-        _decoder_card_offset() + (DECODER_MAIN_FEATURE + int(context)) * cc + card_id,
+        _decoder_card_offset() + (DECODER_MAIN_FEATURE + context) * cc + card_id,
         weight,
     )
 
@@ -503,7 +642,11 @@ def _decoder_binding(
     else:
         raise ValueError(f"invalid option playerIndex: {player_index}")
 
-    area_code = 0 if area is None else int(area)
+    area_code = (
+        0
+        if area is None
+        else _enum_int(area, cg_env.AreaType, field="option area")
+    )
     if not 0 <= area_code < DECODER_BINDING_AREA_COUNT:
         raise ValueError(f"option area is outside the feature schema: {area_code}")
 
@@ -569,6 +712,7 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
     your_index = obs.current.yourIndex
     ps = obs.current.players[your_index]
     context = obs.select.context
+    _validated_context(context)
 
     sv = SparseVector()
     for action in action_combos:
@@ -576,25 +720,56 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
         if len(action) == 0:
             sv.add(0, 1)
             continue
-        for rank, i in enumerate(action):
+        action_indices = [
+            _exact_int(index, field="action option index") for index in action
+        ]
+        if len(action_indices) != len(set(action_indices)):
+            raise FeatureContractError(
+                f"action repeats an option index: {action_indices}"
+            )
+        if any(
+            index < 0 or index >= len(obs.select.option)
+            for index in action_indices
+        ):
+            raise FeatureContractError(
+                f"action option index is outside 0..{len(obs.select.option) - 1}: "
+                f"{action_indices}"
+            )
+        for rank, i in enumerate(action_indices):
             o = obs.select.option[i]
-            t = o.type
+            t = _enum_int(o.type, OptionType, field="option type")
             # A weighted positional code keeps ordered selections distinct
             # without changing checkpoint embedding-table dimensions.
             weight = float(rank + 1)
-            if t == OptionType.END:
+            if t == int(OptionType.END):
                 sv.add(1, weight)
-            elif t == OptionType.YES:
+            elif t == int(OptionType.YES):
                 sv.add(2, weight)
-            elif t == OptionType.NO:
+            elif t == int(OptionType.NO):
                 sv.add(3, weight)
-            elif t == OptionType.SPECIAL_CONDITION:
-                sv.add(4 + int(o.specialConditionType), weight)
-            elif t == OptionType.NUMBER:
-                sv.add(9 + min(o.number, 4), weight)
-            elif t == OptionType.ATTACK:
-                sv.add(DECODER_ATTACK_OFFSET + o.attackId, weight)
-            elif t == OptionType.PLAY:
+            elif t == int(OptionType.SPECIAL_CONDITION):
+                condition = _enum_int(
+                    o.specialConditionType,
+                    cg_env.SpecialConditionType,
+                    field="option specialConditionType",
+                )
+                if not 0 <= condition < 5:
+                    raise FeatureContractError(
+                        "option specialConditionType is outside the feature "
+                        f"schema: {condition}"
+                    )
+                sv.add(4 + condition, weight)
+            elif t == int(OptionType.NUMBER):
+                number = _exact_int(o.number, field="option number")
+                if number < 0:
+                    raise FeatureContractError(f"negative option number: {number}")
+                sv.add(9 + min(number, 4), weight)
+            elif t == int(OptionType.ATTACK):
+                sv.add(
+                    DECODER_ATTACK_OFFSET + _validated_attack_id(o.attackId),
+                    weight,
+                )
+            elif t == int(OptionType.PLAY):
                 _decoder_main(sv, 0, ps.hand[o.index], cc, weight)
                 _decoder_binding(
                     sv,
@@ -605,8 +780,14 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.ATTACH:
-                _decoder_main(sv, 1, get_card(obs, o.area, o.index, your_index), cc, weight)
+            elif t == int(OptionType.ATTACH):
+                _decoder_main(
+                    sv,
+                    1,
+                    get_card(obs, o.area, o.index, your_index),
+                    cc,
+                    weight,
+                )
                 _decoder_main(
                     sv,
                     2,
@@ -632,8 +813,14 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.EVOLVE:
-                _decoder_main(sv, 3, get_card(obs, o.area, o.index, your_index), cc, weight)
+            elif t == int(OptionType.EVOLVE):
+                _decoder_main(
+                    sv,
+                    3,
+                    get_card(obs, o.area, o.index, your_index),
+                    cc,
+                    weight,
+                )
                 _decoder_main(
                     sv,
                     4,
@@ -659,8 +846,14 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.ABILITY:
-                _decoder_main(sv, 5, get_card(obs, o.area, o.index, your_index), cc, weight)
+            elif t == int(OptionType.ABILITY):
+                _decoder_main(
+                    sv,
+                    5,
+                    get_card(obs, o.area, o.index, your_index),
+                    cc,
+                    weight,
+                )
                 _decoder_binding(
                     sv,
                     DECODER_BINDING_SOURCE,
@@ -670,8 +863,14 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.DISCARD:
-                _decoder_main(sv, 6, get_card(obs, o.area, o.index, your_index), cc, weight)
+            elif t == int(OptionType.DISCARD):
+                _decoder_main(
+                    sv,
+                    6,
+                    get_card(obs, o.area, o.index, your_index),
+                    cc,
+                    weight,
+                )
                 _decoder_binding(
                     sv,
                     DECODER_BINDING_SOURCE,
@@ -681,7 +880,7 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.RETREAT:
+            elif t == int(OptionType.RETREAT):
                 _decoder_main(sv, 7, ps.active[0], cc, weight)
                 _decoder_binding(
                     sv,
@@ -692,7 +891,7 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.CARD:
+            elif t == int(OptionType.CARD):
                 _decoder_card(
                     sv,
                     context,
@@ -709,7 +908,7 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.TOOL_CARD:
+            elif t == int(OptionType.TOOL_CARD):
                 card = get_card(obs, o.area, o.index, o.playerIndex)
                 _decoder_card(sv, context, card.tools[o.toolIndex], cc, weight)
                 _decoder_binding(
@@ -730,7 +929,7 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t in (OptionType.ENERGY_CARD, OptionType.ENERGY):
+            elif t in (int(OptionType.ENERGY_CARD), int(OptionType.ENERGY)):
                 card = get_card(obs, o.area, o.index, o.playerIndex)
                 _decoder_card(sv, context, card.energyCards[o.energyIndex], cc, weight)
                 _decoder_binding(
@@ -751,14 +950,27 @@ def build_option_tokens(obs, action_combos: list[list[int]]) -> SparseVector:
                     your_index=your_index,
                     weight=weight,
                 )
-            elif t == OptionType.SKILL:
-                _decoder_card_id(sv, context, o.cardId, cc, weight)
+            elif t == int(OptionType.SKILL):
+                # Official API reserves cardId=0 for special-condition skills.
+                _decoder_card_id(
+                    sv,
+                    context,
+                    o.cardId,
+                    cc,
+                    weight,
+                    allow_zero=True,
+                )
                 _decoder_binding_if_present(
                     sv,
                     DECODER_BINDING_SOURCE,
                     o,
                     your_index=your_index,
                     weight=weight,
+                )
+            else:
+                raise FeatureContractError(
+                    f"unsupported option type {o.type!r}; "
+                    "feature schema must be updated"
                 )
     return sv
 

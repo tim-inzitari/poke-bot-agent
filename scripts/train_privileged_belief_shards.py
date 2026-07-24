@@ -32,7 +32,11 @@ from tqdm.auto import tqdm
 
 from poke_bot import archetypes, checkpoint
 from poke_bot.dataset import BootstrapDataset, GameSequence
-from poke_bot.train import batch_losses, load_model_from_checkpoint
+from poke_bot.train import (
+    batch_losses,
+    expand_aux_head_to_current_registry,
+    load_model_from_checkpoint,
+)
 
 
 HEAD_PREFIXES: tuple[str, ...] = (
@@ -140,37 +144,7 @@ def _tensor_digest(model: nn.Module, *, heads: bool) -> str:
 
 
 def _expand_aux_head(model: nn.Module) -> bool:
-    target_ids = list(archetypes.archetype_ids())
-    target_classes = len(target_ids) + 1
-    old = model.aux_head[-1]
-    if not isinstance(old, nn.Linear):
-        raise TypeError("aux_head final module must be Linear")
-    if old.out_features == target_classes:
-        return False
-    legacy = list(archetypes.LEGACY_AUX_ARCHETYPE_IDS)
-    if old.out_features != len(legacy) + 1:
-        raise RuntimeError(
-            f"cannot expand unexpected aux head with {old.out_features} classes"
-        )
-    new = nn.Linear(
-        old.in_features,
-        target_classes,
-        bias=old.bias is not None,
-        device=old.weight.device,
-        dtype=old.weight.dtype,
-    )
-    with torch.no_grad():
-        for old_i, name in enumerate(legacy):
-            new_i = target_ids.index(name)
-            new.weight[new_i].copy_(old.weight[old_i])
-            if new.bias is not None and old.bias is not None:
-                new.bias[new_i].copy_(old.bias[old_i])
-        # Preserve the old untrained/fallback unknown row at the new final row.
-        new.weight[-1].copy_(old.weight[-1])
-        if new.bias is not None and old.bias is not None:
-            new.bias[-1].copy_(old.bias[-1])
-    model.aux_head[-1] = new
-    return True
+    return expand_aux_head_to_current_registry(model)
 
 
 def _manifest_shards(path: Path) -> tuple[dict[str, Any], list[Path]]:

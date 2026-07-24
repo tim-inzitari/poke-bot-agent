@@ -288,7 +288,7 @@ def main() -> int:
                 gate["pass_criteria"]["accepted_official_holdout_non_regression"]
             ),
             opponent_ids=research_ids,
-            stage_label="heldout:original_four_research",
+            stage_label="measure:research_controls",
         )
         result = build_strong_public_gate_result(
             contract=contract,

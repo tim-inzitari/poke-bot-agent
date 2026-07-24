@@ -14,6 +14,7 @@ import torch
 import torch.nn.functional as F
 
 from poke_bot import checkpoint, config, features
+from poke_bot.aux_label_contract import AuxLabelContractError
 from poke_bot.features import SparseVector
 from poke_bot.model import (
     build_model,
@@ -22,10 +23,34 @@ from poke_bot.model import (
 from poke_bot.train import (
     BELIEF_AUX_HEAD_KEY_PREFIXES,
     batch_losses,
+    belief_card_vocab_from_state,
+    belief_multihots_from_aux_labels,
     is_allowed_missing_belief_head_key,
     load_model_from_checkpoint,
     masked_belief_card_bce,
 )
+
+
+def test_belief_vocab_resolution_supports_legacy_and_partial_heads() -> None:
+    live_vocab = features.card_vocab_size()
+    assert belief_card_vocab_from_state({}) == live_vocab
+    assert belief_card_vocab_from_state(
+        {"opp_hand_head.weight": torch.zeros(17, 8)}
+    ) == 17
+    assert belief_card_vocab_from_state(
+        {"opp_remainder_head.weight": torch.zeros(19, 8)}
+    ) == 19
+    with pytest.raises(ValueError, match="vocabularies disagree"):
+        belief_card_vocab_from_state(
+            {
+                "opp_hand_head.weight": torch.zeros(17, 8),
+                "opp_remainder_head.weight": torch.zeros(19, 8),
+            }
+        )
+    with pytest.raises(ValueError, match="rank-2"):
+        belief_card_vocab_from_state(
+            {"opp_hand_head.weight": torch.zeros(17)}
+        )
 
 
 def _tiny_cfg() -> config.ModelConfig:
@@ -212,6 +237,40 @@ def test_uniform_fallback_and_masked_bce() -> None:
     loss = masked_belief_card_bce(logits, labels)
     assert loss.ndim == 0
     assert float(loss.detach()) > 0.0
+
+
+def test_exact_card_labels_preserve_empty_and_reject_silent_oov() -> None:
+    hand, remainder = belief_multihots_from_aux_labels(
+        {"opp_hand": []},
+        card_vocab=8,
+        device=torch.device("cpu"),
+    )
+    assert hand is not None and remainder is not None
+    assert float(hand.sum()) == 0.0
+    assert float(remainder.sum()) == 0.0
+
+    absent_hand, absent_remainder = belief_multihots_from_aux_labels(
+        {},
+        card_vocab=8,
+        device=torch.device("cpu"),
+    )
+    assert absent_hand is None and absent_remainder is None
+
+    malformed = (
+        [0],
+        [8],
+        [None],
+        ["3"],
+        [{"name": "missing-id"}],
+        [{"id": True}],
+    )
+    for value in malformed:
+        with pytest.raises(AuxLabelContractError):
+            belief_multihots_from_aux_labels(
+                {"opp_hand": value},
+                card_vocab=8,
+                device=torch.device("cpu"),
+            )
 
 
 def test_batch_losses_accepts_masked_belief_heads_without_labels() -> None:

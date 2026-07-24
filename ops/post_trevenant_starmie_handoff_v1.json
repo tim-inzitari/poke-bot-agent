@@ -1,0 +1,68 @@
+{
+  "schema": "poke_bot.sequential_specialist_handoff_contract/v1",
+  "source_specialist": {
+    "id": "hops-trevenant",
+    "run_dir": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_hops_trevenant_temporal1_8k_v2_20260723",
+    "training_service": "pokebot-pure-rl-trevenant-staged.service",
+    "gate_contract": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/alakazam_gate_program_v1.json",
+    "gate_marker_name": "SPECIALIST_GATE_PASSED.hops-trevenant-splus-v1",
+    "minimum_completed_iteration": 5,
+    "matchup_runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/trevenant-public-matchup-tree-iter5-v1.json",
+    "passed_family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/hops-trevenant-protocol-gate-pass-v1",
+    "handler_state": "/home/inzi/poke-bot-agent/outputs/state/hops-trevenant-passed-gate-handler-v1.json"
+  },
+  "shared_core": {
+    "family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_distilled_from_alakazam_v1",
+    "checkpoint_checksum": "sha256:ae2e1bbd973f5ef3aed581c784238069757cc3be0a8aa0dfd4c8ac18b5421b74"
+  },
+  "next_specialist": {
+    "id": "starmie",
+    "expert_corpus": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/starmie-v2/PROTECTED_EXPERT_CORPUS.json",
+    "family_name": "starmie_expert_bootstrap_from_distilled_core_v1",
+    "ready": "/home/inzi/poke-bot-agent/outputs/state/starmie-expert-bootstrap-ready-v1.json",
+    "run_name": "starmie_expert_bootstrap_from_core_v1_20260723",
+    "run_dir": "/home/inzi/poke-bot-agent/outputs/bootstrap/starmie-expert-bootstrap-from-core-v1",
+    "cpu_pack_root": "/home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/starmie-expert-bootstrap-v1",
+    "activation_receipt": "/home/inzi/poke-bot-agent/outputs/state/starmie-specialist-rl-activation-v1.json",
+    "training_service": "pokebot-pure-rl-starmie-staged.service",
+    "gate_contract": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/alakazam_gate_program_v1.json",
+    "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json"
+  },
+  "gate_materialization": {
+    "archetype_label": "Hop's Trevenant",
+    "base_gate_contract": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/alakazam_gate_program_v1.json",
+    "base_frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json",
+    "baseline_root": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/baselines",
+    "baseline_manifest": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/baselines/manifest.json",
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/hops-trevenant-splus-gate-materialization-v1.json",
+    "fleet_sync": [
+      {
+        "host": "elmo",
+        "baseline_root": "/mnt/Main/main/poke-bot-agent/baselines",
+        "container": "poke-bot-truenas-worker"
+      },
+      {
+        "host": "bert.local",
+        "baseline_root": "/Users/tsinzitari/workspace/poke-bot-agent/baselines",
+        "container": null
+      }
+    ]
+  },
+  "training": {
+    "supervised_epochs": 25,
+    "patience_diagnostic_only": 5,
+    "minimum_decisions": 100000,
+    "requested_decisions_per_batch": 12288
+  },
+  "submission_policy": {
+    "required_copies": 1,
+    "completion_blocks_handoff": false,
+    "queue_order": "oldest_first"
+  },
+  "paths": {
+    "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
+    "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
+    "state": "/home/inzi/poke-bot-agent/outputs/state/post-trevenant-starmie-handoff-v1.json",
+    "lock": "/home/inzi/.local/state/pokebot/post-trevenant-starmie-handoff-v1.lock"
+  }
+}

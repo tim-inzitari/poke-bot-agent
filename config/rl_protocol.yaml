@@ -1,0 +1,439 @@
+# Authoritative machine-readable numerical RL protocol.
+schema_version: poke_bot.rl_protocol/v2
+human_protocol: docs/RL_TRAINING_PROTOCOL.md
+mutable_state: state/specialists.yaml
+
+allowed_phases:
+  - core_derivation
+  - specialist_bootstrap
+  - specialist_baseline_rl
+  - specialist_gate_evaluation
+  - population_round_robin
+  - complete
+
+shared_core_derivation:
+  source_specialist: alakazam
+  keep_source_specialist_active_through_completed_iteration: 30
+  allow_transition_before_completed_iteration: false
+  source_requires_both_established_gates: true
+  source_selection: strongest_validated_checkpoint_at_or_before_iteration_30
+  lc55_preferred: true
+  lc50_fallback_allowed_only_after_completed_iteration: 30
+  transfer_initialization:
+    preserve_exact:
+      - card_and_state_embeddings
+      - spatial_encoder
+      - temporal_encoder
+      - option_decoder
+      - shared_policy_head
+      - shared_value_head
+      - deck_agnostic_auxiliary_heads
+    reset_exact:
+      - matchup_adapter_tensors
+      - specialist_optimizer_state
+      - specialist_scaler_state
+      - specialist_scheduler_state
+      - specialist_rng_state
+      - specialist_training_counters
+      - specialist_only_metadata
+    matchup_adapters_zero_output: true
+    matchup_runtime_enabled: false
+    matchup_training_enabled: false
+    tensor_preservation_audit_required: true
+  supervised_distillation:
+    source: protected_balanced_multi_archetype_top_ladder_replays
+    max_epochs: 25
+    early_stop_patience: 5
+    early_stop_min_delta: 0.0001
+    minimum_decisions: 500000
+    requested_decisions_per_batch: 12288
+    episode_disjoint_validation: true
+    alakazam_guide_loss_weight: 0.0
+    train_policy: true
+    train_value: true
+    train_archetype_auxiliary: true
+    train_opponent_belief: true
+    train_lethal_threat: true
+    train_prize_race: true
+    matchup_adapter_state_must_remain_bit_identical: true
+  freeze_best_validation_checkpoint: true
+  specialist_hot_start_uses_frozen_core: true
+
+shared_core_refresh:
+  enabled: true
+  first_refresh_boundary: after_starmie_training_complete
+  refresh_before_every_later_specialist: true
+  output_version_increments_at_each_specialist_boundary: true
+  teacher_population: all_checksum_verified_frozen_specialists
+  newly_passing_specialist_must_be_in_next_core: true
+  next_specialist_hot_start_requires_latest_accepted_core: true
+  applies_to_starmie: false
+  first_refreshed_core_version: 2
+  immutable_teacher_specialists:
+    - hops-trevenant
+    - starmie
+  direct_checkpoint_tensor_sources_exclude: []
+  alakazam_role_after_starmie: frozen_teacher_and_evaluation_opponent
+  teacher_use: inference_only
+  teacher_gradients_allowed: false
+  teacher_optimizer_steps_allowed: false
+  teacher_checkpoint_replacement_allowed: false
+  initialization_core_version: 1
+  distillation:
+    source: protected_balanced_multi_archetype_top_ladder_replays
+    max_epochs: 25
+    early_stop_patience: 5
+    early_stop_min_delta: 0.0001
+    minimum_decisions: 500000
+    requested_decisions_per_batch: 12288
+    episode_disjoint_validation: true
+    balance_teacher_contributions_as_evenly_as_integer_counts_permit: true
+    train_policy: true
+    train_value: true
+    train_archetype_auxiliary: true
+    train_opponent_belief: true
+    train_lethal_threat: true
+    train_prize_race: true
+    matchup_adapter_state_must_remain_bit_identical: true
+  acceptance:
+    protected_checkpoint_required: true
+    checksum_required: true
+    reproducibility_receipt_required: true
+    balanced_corpus_identity_required: true
+    all_teacher_identities_required: true
+    neutral_zero_output_matchup_adapters_required: true
+    regression_evaluation_against_each_teacher_required: true
+    established_gate_thresholds_only: true
+    gameplay_regression:
+      games_per_teacher: 80
+      per_teacher_minimum_raw_win_rate: 0.35
+      aggregate_minimum_raw_win_rate: 0.40
+      confidence_level: 0.90
+      confidence_intervals_diagnostic_only: true
+      training_eligible: false
+      replay_eligible: false
+      authoritative_source: >-
+        owner directive 2026-07-24; canonicalized at
+        config/rl_protocol.yaml#/shared_core_refresh/acceptance/gameplay_regression
+    specialist_gate_thresholds_unchanged: true
+  next_specialist_handoff:
+    refresh_core_before_bootstrap: true
+    fixed_historical_core_reuse_for_later_specialists: false
+    refreshed_core_required_before_bootstrap: true
+    fail_closed_if_refresh_not_validated: true
+    select_next_unfinished_specialist_after_meta_refresh: true
+    hot_start_from_refreshed_core: true
+    pre_stage_while_active_specialist_trains: true
+    pre_stage_is_read_only_to_live_training: true
+    pre_stage_may_build_derived_cpu_tensor_pack: true
+    pre_stage_may_not_update_selector_or_runtime_registry: true
+    pre_stage_may_not_control_training_services: true
+    pre_stage_receipt_schema: poke_bot.next_specialist_prestage/v1
+    boundary_only_steps:
+      - freeze_and_register_passing_specialist
+      - distill_and_validate_cumulative_core
+      - run_exact_25_epoch_specialist_bootstrap
+      - materialize_checksum_bound_s_plus_gate
+      - atomically_update_selector_and_start_managed_service
+
+specialist_training:
+  concurrency: 1
+  selection_order:
+    active_specialist_is_non_preemptible: true
+    candidates: unfinished_without_passing_frozen_checkpoint
+    primary_sort: existing_specialist_model_artifact_absent_first
+    secondary_sort: public_ladder_meta_inclusion_share_descending
+    tie_break: stable_target_registry_order
+    null_share_sort: last_within_model_availability_group
+    artifact_availability_does_not_imply_protocol_validity: true
+    recorded_overlap_deferral_allowed: true
+    recorded_operator_priority_prefix_allowed: true
+    overlap_deferral_removes_target: false
+    refresh_before_specialist_handoff: true
+    reorder_started_specialist: false
+    meta_share_changes_gate_thresholds: false
+    meta_share_training_eligible: false
+    authoritative_runtime_values: state/specialists.yaml#/training_priority
+  hot_start_from_shared_core: true
+  generate_archetype_head: true
+  generate_game_plan_heads: true
+  generate_matchup_heads: true
+  matchup_heads:
+    required_for_every_specialist: true
+    runtime_enabled_by_default_at_specialist_launch: true
+    runtime_off_allowed_as_normal_launch_state: false
+    automatic_launch_contract_inheritance_required: true
+    applies_from_specialist: starmie
+    applies_to_all_future_specialists: true
+    canonical_roster_required_in_every_checkpoint: true
+    canonical_roster_source: state/matchup_adapter_roster_v4.json#/expert_ids
+    active_specialist_route_required: true
+    mirror_self_play_route_required: true
+    zero_observation_route_remains_materialized: true
+    zero_weight_route_remains_routable: true
+    maximum_active_routes_per_decision: 1
+    causal_observable_state_only: true
+    opponent_package_identity_allowed: false
+    hidden_or_future_information_allowed: false
+    relevant_matchup_sequences_only: true
+    unknown_route_falls_back_to_base_policy: true
+    freeze_with_owning_specialist: true
+    deployment_preflight:
+      behavior: fail_closed_before_training
+      checkpoint_roster_must_exactly_match_canonical: true
+      active_specialist_must_be_in_roster: true
+      causal_runtime_must_be_enabled: true
+      validated_router_receipt_required: true
+      local_and_remote_contract_checksums_must_match: true
+    first_self_play_collection_assertion:
+      runtime_audit_required: true
+      active_specialist_mirror_route_minimum_activations: 1
+      failure_behavior: preserve_collection_stop_before_next_iteration
+    staged_roster_migration:
+      source: state/matchup_adapter_roster_v5.json
+      status: planned_not_active
+      activation_boundary: next_safe_specialist_handoff
+      preserve_v4_physical_rows: true
+      renumber_existing_rows: false
+      retired_rows_are_disabled_tombstones: true
+      retired_rows_receive_routing: false
+      retired_rows_receive_gradients: false
+      retired_rows_count_as_required_specialists: false
+      append_routes:
+        - team-rockets-spidops
+      logical_route_aliases:
+        thwackey: festival-lead
+      retire_routes:
+        - cornerstone-ogerpon
+        - lopunny
+        - gardevoir
+        - ns-zoroark
+        - raging-bolt
+      required_active_route_count_after_activation: 18
+      physical_checkpoint_row_count_after_activation: 23
+    dashboard:
+      list_complete_canonical_roster: true
+      show_zero_observation_routes: true
+      distinguish_materialized_runtime_enabled_and_observed: true
+      materialized_route_does_not_imply_observed_activation: true
+  bootstrap:
+    source: relevant_expert_top_ladder_replays
+    supervised_epochs: 25
+  schedule:
+    rl_epochs_per_cycle: 5
+    expert_rehearsal_epochs_per_cycle: 5
+  gate_window:
+    minimum_completed_iteration: 5
+    ceiling_completed_iteration: 15
+    hard_pause_after_each_eligible_iteration_seconds: 30
+    next_collection_must_wait_for_pause_completion: true
+    terminal_pass_stops_before_next_collection: true
+    competition_confidence_lower: 0.50
+    pass_before_minimum_can_be_recorded_but_cannot_transition: true
+    ceiling_behavior: freeze_submit_and_continue_without_false_pass
+    ceiling_acceptance_is_not_a_measured_gate_pass: true
+    ceiling_acceptance_counts_as_training_complete: true
+    ceiling_checkpoint_must_be_exact: true
+    ceiling_failed_gate_results_must_be_preserved: true
+    ceiling_checkpoint_public_mix_inference_only_eligible: true
+    ceiling_submission_uses_normal_quota_queue: true
+    ceiling_submission_completion_blocks_next_specialist: false
+  active_specialist_only_updates: true
+  checkpoint_identity:
+    archetype_id_must_equal_active_specialist: true
+    model_id_must_contain_active_run_name: true
+    inherited_source_specialist_label_allowed: false
+    mismatch_behavior: fail_closed_before_publication
+  completed_specialist_freeze:
+    gradients: false
+    optimizer_steps: false
+    replay_updates: false
+    rehearsal_updates: false
+    parameter_changes: false
+    checkpoint_replacements: false
+    inference_only_public_mix_opponent: true
+    preserve_own_checksum_pinned_matchup_router: true
+    frozen_router_runtime_enabled_for_inference: true
+    frozen_router_optimizer_updates: false
+    frozen_router_identity_separate_from_active_learner: true
+    unfreeze_before_all_specialists_pass: false
+
+baseline_phase_iteration:
+  new_training_games: 8192
+  public_mix_games: 7168
+  active_specialist_self_play_games: 1024
+  current_minimum_games: 8192
+  permanent_ceiling: 15
+  expansion:
+    allowed_when_opponent_head_or_game_plan_coverage_is_too_sparse: true
+    requires_explicit_recorded_config_change: true
+    public_mix_fraction: 0.875
+    active_specialist_self_play_fraction: 0.125
+    research_or_holdout_games_may_count_toward_training_total: false
+  allocation:
+    opponents: even_as_integer_counts_permit
+    archetypes: even_as_integer_counts_permit
+    policy_heads: even_as_integer_counts_permit
+    game_plans: even_as_integer_counts_permit
+    going_first_second: even_as_integer_counts_permit
+
+research_evaluations:
+  training_eligible: false
+  permitted_uses:
+    - public_gate
+    - competition_gate
+    - checkpoint_comparison
+    - regression_detection
+    - drift_detection
+  prohibited_destinations:
+    - training_datasets
+    - replay_buffers
+    - rehearsal_data
+    - model_update_paths
+  official:
+    agents: 4
+    games_total: 1000
+    games_per_agent: 250
+    going_first_per_agent: 125
+    going_second_per_agent: 125
+    evaluation_required: true
+    specialist_progression_gate: true
+    specialist_progression_status: measured_gate_required
+    blocks_specialist_progression: true
+    preserve_measured_results_for_regression_and_drift: true
+    gate_threshold:
+      accepted_official_holdout_non_regression: 0.50
+    authoritative_threshold_source: ops/alakazam_gate_program_v1.json#/next_gate/pass_criteria/accepted_official_holdout_non_regression
+  premium_competition:
+    base_agents: 8
+    frozen_specialists_added: all_registered_completed_specialists
+    current_frozen_specialists: 1
+    current_agents: 9
+    base_games_total: 2000
+    current_games_total: 2250
+    games_total_formula: 2000_plus_250_per_frozen_specialist
+    games_per_agent: 250
+    going_first_per_agent: 125
+    going_second_per_agent: 125
+    frozen_specialist_tier: S+
+    s_tier_floor_includes_s_plus: true
+    external_archetype_supersession:
+      - trigger_specialist_id: lucario
+        trigger_status: frozen_and_registered
+        external_archetype_id: lucario
+        scope: premium_holdout_external_opponents
+        remove_external_opponents: true
+        keep_triggering_frozen_specialist_as_s_plus: true
+        preserve_historical_results: true
+        affects_official_research_controls: false
+    gate_threshold:
+      skill_weighted_win_rate: 0.50
+      skill_weighted_confidence_lower: 0.50
+      confidence_level: 0.90
+      s_tier_mean_floor: 0.40
+      # Operator-authorized threshold for evaluations after Lucario iteration
+      # 9. The completed iteration-9 decision remains pinned to 0.25.
+      individual_opponent_floor: 0.15
+      s_plus_individual_floor: 0.30
+      s_plus_below_floor_allowance: 2
+      audit_must_pass: true
+    threshold_transition:
+      effective_after_completed_specialist: lucario
+      effective_after_completed_iteration: 9
+      applies_to_lucario_iteration_10: true
+      current_active_specialist: lucario
+      completed_iteration_9_individual_opponent_floor: 0.25
+      completed_iteration_9_decision_unchanged: true
+      future_individual_opponent_floor: 0.15
+      future_s_plus_individual_floor: 0.30
+      future_s_plus_below_floor_allowance: 2
+      authorized_at_utc: 2026-07-24T12:00:00Z
+      authorization: operator-directed future-gate change
+    authoritative_threshold_source: config/rl_protocol.yaml#/research_evaluations/premium_competition/gate_threshold
+  current_all_holdouts_games_total: 3250
+  all_holdouts_games_total_formula: 3000_plus_250_per_frozen_specialist
+  use_established_thresholds_only: true
+  allow_threshold_weakening: false
+
+specialist_pass_transition:
+  requires_both_gates: true
+  requires_official_evaluation_completion: true
+  official_evaluation_progression_status: measured_gate_required
+  requires_measured_premium_gate: true
+  freeze_exact_checkpoint: true
+  register_checksum: true
+  record_reproducibility_metadata: true
+  record_complete_holdouts: true
+  kaggle_policy_ref: "#/kaggle"
+  add_to_public_mix_as_inference_only: true
+  begin_next_unfinished_immediately: true
+  iteration_floor: 5
+  iteration_ceiling: 15
+  ceiling_transition:
+    allowed: true
+    status: ceiling_accepted
+    measured_gate_passed: false
+    select: exact_ceiling_checkpoint
+    preserve_failed_gate_results: true
+    freeze_and_register: true
+    submit_required_kaggle_copies_or_queue: true
+    add_to_public_mix_as_inference_only: true
+    begin_next_unfinished_immediately: true
+    counts_as_training_complete: true
+
+kaggle:
+  daily_submission_limit: 5
+  minimum_hours_between_submissions: 4
+  required_copies_per_passing_specialist: 1
+  identical_passing_checkpoint_required: true
+  clearly_labeled_copies_required: true
+  record_submission_ids_timestamps_and_scores: true
+  submission_completion_blocks_next_specialist: false
+  submission_completion_blocks_all_specialists_baseline_passing: false
+  submission_completion_blocks_population_phase: false
+  quota_exhaustion_behavior: queue_and_continue
+  pending_queue_order: oldest_first
+  spacing_wait_behavior: leave_pending_and_continue_training
+  next_eligible_time_source: latest_reconciled_kaggle_submission
+  retry_while_quota_exhausted: false
+  process_queue_without_interrupting_training: true
+  delayed_copy_checkpoint_policy: original_frozen_passing_checkpoint_only
+  retrain_or_refreeze_for_delayed_submission: false
+  preupload_identity_validation:
+    fail_closed: true
+    validate_at_build_time: true
+    validate_again_immediately_before_upload: true
+    specialist_archetype_must_match_checkpoint: true
+    model_bytes_must_match_frozen_checkpoint_checksum: true
+    deck_must_have_exactly_60_cards: true
+    deck_must_match_run_measurement_contract: true
+    immutable_queue_identity_fields:
+      - specialist_id
+      - checkpoint_checksum
+      - deck_file_checksum
+      - deck_cards_checksum
+      - representatives_checksum
+      - matchup_tree_checksum
+
+population_phase:
+  starts_after_all_specialists_pass: true
+  unfreeze_population: true
+  local_round_robin_self_play: true
+  include_current_versions: true
+  include_selected_historical_versions: true
+  rl_epochs_per_cycle: 5
+  expert_rehearsal_epochs_per_cycle: 5
+  external_agents_research_only: true
+  external_agents_training_eligible: false
+
+# Resolved only from repository evidence; null is mandatory when unverified.
+shared_core_checkpoint: null
+public_gate_threshold: 0.50
+public_gate_progression_status: measured_gate_required
+public_gate_threshold_source: ops/alakazam_gate_program_v1.json#/next_gate/pass_criteria/accepted_official_holdout_non_regression
+public_regression_reference_threshold: 0.50
+public_regression_reference_threshold_source: ops/alakazam_gate_program_v1.json#/next_gate/pass_criteria/accepted_official_holdout_non_regression
+competition_gate_threshold: 0.50
+competition_gate_threshold_source: ops/alakazam_gate_program_v1.json#/fallback_transition/skill_weighted_confidence_lower
+competition_gate_fallback_threshold: null
+competition_gate_fallback_threshold_source: null

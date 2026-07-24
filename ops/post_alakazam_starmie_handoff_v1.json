@@ -1,0 +1,77 @@
+{
+  "schema": "poke_bot.post_alakazam_specialist_handoff_contract/v2",
+  "deployment_mode": "exact_pass_gated_automatic_handoff",
+  "production_mutation_policy": "forbidden_before_immutable_activation_receipt",
+  "automatic_next_specialist_start_after_activation_receipt": true,
+  "next_specialist_id": "hops-trevenant",
+  "required_kaggle_copies": 2,
+  "submission_completion_blocks_handoff": false,
+  "gate_marker_name": "SPECIALIST_GATE_PASSED",
+  "phases": [
+    "preflight_verified",
+    "elmo_archive_verified",
+    "protected_corpora_verified",
+    "distilled_core_frozen",
+    "next_specialist_bootstrap_frozen",
+    "next_specialist_rl_armed",
+    "next_specialist_rl_started"
+  ],
+  "scripts": {
+    "archive": "scripts/archive_passed_system_to_elmo.py",
+    "core_distillation": "scripts/run_passed_alakazam_core_distillation.py",
+    "starmie_bootstrap": "scripts/run_specialist_expert_bootstrap.py"
+  },
+  "families": {
+    "distilled_core": "deck_agnostic_core_distilled_from_alakazam_v1",
+    "starmie_bootstrap": "hops-trevenant_expert_bootstrap_from_distilled_core_v1"
+  },
+  "services": {
+    "passed_alakazam_rl": "pokebot-pure-rl-alakazam.service",
+    "starmie_rl": "pokebot-pure-rl-trevenant-staged.service"
+  },
+  "archive": {
+    "destination_host": "elmo",
+    "destination_root": "/mnt/Main/main/poke-model-archive"
+  },
+  "training": {
+    "core": {
+      "run_name": "passed_alakazam_protocol_balanced_core_distillation_v1_20260722",
+      "epochs": 25,
+      "patience": 5,
+      "min_decisions": 500000,
+      "batch_size": 12288
+    },
+    "starmie": {
+      "run_name": "hops_trevenant_expert_bootstrap_from_core_v1_20260722",
+      "epochs": 25,
+      "patience": 5,
+      "min_decisions": 20000,
+      "batch_size": 12288
+    }
+  },
+  "paths": {
+    "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
+    "source_root": "/home/inzi/poke-bot-agent",
+    "handler_state": "/home/inzi/poke-bot-agent/outputs/state/alakazam-protocol-passed-gate-handler-v31.json",
+    "passed_family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/alakazam-protocol-gate-pass-v1",
+    "source_run_dir": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721",
+    "gate_contract": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime/ops/alakazam_gate_program_v1.json",
+    "submission_root": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-protocol-gate-pass-v1",
+    "source_deployment_root": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime",
+    "engine": "/home/inzi/poke-bot-agent/outputs/engines/libcg_hidden_inzi_v1.so",
+    "archive_staging_root": "/home/inzi/poke-bot-agent/outputs/archive-staging",
+    "archive_receipt": "/home/inzi/poke-bot-agent/outputs/state/alakazam-protocol-passed-system-elmo-archive.json",
+    "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
+    "core_corpus": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/core-balanced-v2/PROTECTED_CORE_CORPUS.json",
+    "core_ready": "/home/inzi/poke-bot-agent/outputs/state/passed-alakazam-protocol-core-distillation-ready.json",
+    "core_run_dir": "/home/inzi/poke-bot-agent/outputs/bootstrap/passed-alakazam-protocol-balanced-core-distillation-v1",
+    "core_cpu_pack_root": "/home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/passed-alakazam-protocol-balanced-core-v1",
+    "starmie_corpus": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/hops-trevenant-v2/PROTECTED_EXPERT_CORPUS.json",
+    "starmie_ready": "/home/inzi/poke-bot-agent/outputs/state/hops-trevenant-expert-bootstrap-ready-v1.json",
+    "starmie_run_dir": "/home/inzi/poke-bot-agent/outputs/bootstrap/hops-trevenant-expert-bootstrap-from-core-v1",
+    "starmie_cpu_pack_root": "/home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/hops-trevenant-expert-bootstrap-v1",
+    "activation_receipt": "/home/inzi/poke-bot-agent/outputs/state/hops-trevenant-specialist-rl-activation-v1.json",
+    "state": "/home/inzi/poke-bot-agent/outputs/state/post-alakazam-specialist-handoff-v2.json",
+    "lock": "/home/inzi/.local/state/pokebot/post-alakazam-specialist-handoff-v2.lock"
+  }
+}

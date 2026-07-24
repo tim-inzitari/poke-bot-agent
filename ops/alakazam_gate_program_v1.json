@@ -1,246 +1,291 @@
 {
-  "schema": "poke_bot.competition_gate_program/v1",
-  "updated_at_utc": "2026-07-21T17:52:37Z",
-  "active_gate_id": "alakazam-strong-public-roster-v1",
-  "active_gate_semantics": {
-    "gate_roster_size": 8,
-    "games_per_opponent": 250,
-    "gate_games_total": 2000,
-    "original_four_role": "research_control_only",
-    "original_four_gate_weight": 0.0,
-    "invariant": "The active gate is the eight-agent strong-public roster. The original four baselines are exact research controls only and must never populate or decide the active gate."
-  },
   "accepted_gate": {
-    "id": "alakazam-baseline-gate-d02df",
-    "label": "Accepted Alakazam baseline gate",
-    "status": "accepted",
     "checkpoint_digest": "sha256:d02df2aefb96b02ff7d957031f5f4ff46643cfc6c9b5cbfd0f989bacfc06234e",
     "checkpoint_registry": "/home/inzi/poke-bot-model-registry/alakazam_baseline_gate/manifest.json",
     "decision_basis": "Owner accepted the exact pooled result because Iono is a diagnostic baseline and is not representative of the live ladder.",
     "exact_holdout": {
-      "games": 1000,
-      "win_rate": 0.555,
+      "audit_required": true,
+      "both_seats_required": true,
       "confidence_level": 0.9,
       "confidence_lower": 0.524045536126136,
       "confidence_upper": 0.5855335050293611,
-      "audit_required": true,
-      "both_seats_required": true,
-      "greedy_required": true
+      "games": 1000,
+      "greedy_required": true,
+      "win_rate": 0.555
     },
+    "id": "alakazam-baseline-gate-d02df",
+    "label": "Accepted Alakazam baseline gate",
     "raw_legacy_gate": {
       "passed": false,
       "reason": "per_opponent_floor",
       "waived_matchup": "iono",
       "waiver_scope": "accepted baseline milestone only; exact matchup remains visible as a diagnostic"
     },
+    "status": "accepted",
     "submission_bundle_sha256": "sha256:4231f62f4e83d6b4925c9986e23b3491f4a571bf0ef6d533ac0919ed2a86e855",
     "submissions": [
       {
-        "ref": 54883303,
+        "authorization": "owner-approved primary",
         "label": "Alakazham passes baseline gate",
-        "status": "complete",
         "public_score": 430.2,
-        "authorization": "owner-approved primary"
+        "ref": 54883303,
+        "status": "complete"
       },
       {
-        "ref": 54883408,
+        "authorization": "owner-approved duplicate",
         "label": "Duplicate submit of alakazam baseline for variance and parity",
-        "status": "complete",
         "public_score": 689.7,
-        "authorization": "owner-approved duplicate"
+        "ref": 54883408,
+        "status": "complete"
       },
       {
-        "ref": 54883731,
-        "label": "Duplicate submit of alakazam baseline for variance and parity",
-        "status": "complete",
-        "public_score": 542.1,
         "authorization": "unauthorized overlapping-retry incident",
-        "incident": "A hidden first upload remained active after a second retry was launched. Submission tooling is now fail-closed behind a consumed-before-upload one-shot authorization."
+        "incident": "A hidden first upload remained active after a second retry was launched. Submission tooling is now fail-closed behind a consumed-before-upload one-shot authorization.",
+        "label": "Duplicate submit of alakazam baseline for variance and parity",
+        "public_score": 542.1,
+        "ref": 54883731,
+        "status": "complete"
       }
     ]
   },
+  "active_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r4",
+  "active_gate_semantics": {
+    "base_premium_agents": 3,
+    "frozen_specialist_agents": 4,
+    "frozen_specialist_tier": "S+",
+    "games_per_opponent": 250,
+    "gate_games_total": 1750,
+    "gate_roster_size": 7,
+    "historical_superseded_results_preserved": true,
+    "invariant": "The active gate is the established eight-agent strong-public roster plus every frozen completed specialist as S+. Each receives exactly 250 greedy games split 125/125 by seat. The original four baselines remain exact research controls only.",
+    "original_base_premium_agents": 8,
+    "original_four_gate_weight": 0.0,
+    "original_four_role": "research_control_only",
+    "superseded_external_premium_archetypes": [
+      "lucario"
+    ],
+    "superseded_external_premium_opponent_ids": [
+      "aman-crustle-fighting",
+      "makthanithin-1084-5",
+      "penguin-public-scores-915",
+      "yaminh-ai-challenge",
+      "yaroslav-lucario-v2-crustle"
+    ]
+  },
+  "fallback_transition": {
+    "activate_after_completed_iteration": 24,
+    "id": "specialist-strong-public-roster-lc50-at-iter25-v1+frozen-specialists-r4",
+    "label": "Strong public-agent gate (50% lower-confidence bound from iteration 25)",
+    "only_if_prior_gate_unpassed": true,
+    "prior_confidence_lower": 0.55,
+    "prior_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r4",
+    "skill_weighted_confidence_lower": 0.5,
+    "status": "staged",
+    "unchanged_requirements": [
+      "3 active external premium agents after configured archetype supersession plus all frozen S+ specialists",
+      "1750 exact greedy games with 4 frozen specialist(s)",
+      "250 games per opponent",
+      "125 games in each seat per opponent",
+      "skill-weighted win rate >= 0.50",
+      "S-tier mean >= 0.40",
+      "every opponent >= 0.15",
+      "accepted official holdout non-regression >= 0.50",
+      "audit must pass"
+    ]
+  },
   "next_gate": {
-    "id": "alakazam-strong-public-roster-v1",
-    "label": "Strong public-agent gate",
-    "status": "queued",
-    "purpose": "Demonstrate that one exact neural checkpoint beats a competition-relevant, package-deduplicated public-agent roster.",
     "candidate_source": "current exact heldout champion at the evaluation boundary",
+    "diagnostic_definition": "Sampled temperature-policy training trajectories. Useful for direction only; never a gate result.",
+    "diagnostic_pointer": "/home/inzi/poke-bot-agent/outputs/state/public_mix_live_wr.json",
     "evaluation": {
-      "mode": "greedy",
-      "games_total": 2000,
-      "games_per_opponent": 250,
-      "seat0_games_per_opponent": 125,
-      "seat1_games_per_opponent": 125,
-      "minimum_games_per_opponent": 250,
       "all_matchups_must_complete": true,
-      "partial_results_gate_eligible": false,
-      "sequential_early_stop": false,
+      "checkpoint_digest_required": true,
+      "confidence_level": 0.9,
+      "confidence_method": "matched-seat cluster nonparametric bootstrap",
       "fixed_seed_manifest_required": true,
       "formal_eval_disjoint_from_training": true,
-      "checkpoint_digest_required": true,
+      "games_per_opponent": 250,
+      "games_total": 1750,
+      "minimum_games_per_opponent": 250,
+      "mode": "greedy",
       "package_digest_deduplicated": true,
-      "confidence_method": "matched-seat cluster nonparametric bootstrap",
-      "confidence_level": 0.9
+      "partial_results_gate_eligible": false,
+      "seat0_games_per_opponent": 125,
+      "seat1_games_per_opponent": 125,
+      "sequential_early_stop": false
     },
-    "pass_criteria": {
-      "skill_weighted_win_rate": 0.5,
-      "skill_weighted_confidence_lower": 0.5,
-      "s_tier_mean_floor": 0.4,
-      "individual_opponent_floor": 0.25,
-      "accepted_official_holdout_non_regression": 0.5,
-      "audit_must_pass": true
-    },
+    "exact_result_pointer": "/home/inzi/poke-bot-agent/outputs/state/specialist_strong_public_plus_frozen_r4_result.json",
+    "excluded_aliases": [
+      {
+        "canonical_opponent_id": "pilkwang-meta-20260708",
+        "opponent_id": "pilkwang-lucario-alakazam",
+        "reason": "identical package content digest; excluded to prevent double weighting"
+      }
+    ],
+    "id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r4",
+    "label": "Strong public-agent gate + frozen S+ specialists (55% lower-confidence bound)",
     "milestones": [
       {
-        "win_rate": 0.25,
-        "label": "learning signal"
+        "label": "learning signal",
+        "win_rate": 0.25
       },
       {
-        "win_rate": 0.4,
-        "label": "competitive"
+        "label": "competitive",
+        "win_rate": 0.4
       },
       {
-        "win_rate": 0.5,
-        "label": "gate target"
+        "label": "lower-confidence gate target",
+        "win_rate": 0.55
+      }
+    ],
+    "pass_criteria": {
+      "accepted_official_holdout_non_regression": 0.5,
+      "audit_must_pass": true,
+      "individual_opponent_floor": 0.15,
+      "s_plus_below_floor_allowance": 2,
+      "s_plus_individual_floor": 0.3,
+      "s_tier_mean_floor": 0.4,
+      "skill_weighted_confidence_lower": 0.55,
+      "skill_weighted_win_rate": 0.5
+    },
+    "purpose": "Demonstrate that one exact neural checkpoint beats a competition-relevant, package-deduplicated public-agent roster.",
+    "research_measurements": [
+      {
+        "archetype_id": "iono-bellibolt",
+        "archetype_label": "Iono\u2019s Bellibolt ex",
+        "diagnostic_only": true,
+        "games": 250,
+        "gate_weight": 0.0,
+        "included_in_gate_pass": false,
+        "label": "Original baseline research control \u00b7 Iono",
+        "opponent_id": "iono",
+        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail.",
+        "seat0_games": 125,
+        "seat1_games": 125
+      },
+      {
+        "archetype_id": "dragapult",
+        "archetype_label": "Dragapult ex",
+        "diagnostic_only": true,
+        "games": 250,
+        "gate_weight": 0.0,
+        "included_in_gate_pass": false,
+        "label": "Original baseline research control \u00b7 Dragapult ex",
+        "opponent_id": "dragapult-ex",
+        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail.",
+        "seat0_games": 125,
+        "seat1_games": 125
+      },
+      {
+        "archetype_id": "mega-abomasnow-ex",
+        "archetype_label": "Mega Abomasnow ex / Kyogre",
+        "diagnostic_only": true,
+        "games": 250,
+        "gate_weight": 0.0,
+        "included_in_gate_pass": false,
+        "label": "Original baseline research control \u00b7 Mega Abomasnow ex",
+        "opponent_id": "mega-abomasnow-ex",
+        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail.",
+        "seat0_games": 125,
+        "seat1_games": 125
+      },
+      {
+        "archetype_id": "lucario",
+        "archetype_label": "Mega Lucario ex",
+        "diagnostic_only": true,
+        "games": 250,
+        "gate_weight": 0.0,
+        "included_in_gate_pass": false,
+        "label": "Original baseline research control \u00b7 Mega Lucario ex",
+        "opponent_id": "mega-lucario-ex",
+        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail.",
+        "seat0_games": 125,
+        "seat1_games": 125
       }
     ],
     "roster": [
       {
-        "opponent_id": "pilkwang-meta-20260708",
         "archetype_id": "crustle",
         "archetype_label": "Crustle / Great Tusk",
-        "tier": "S",
-        "weight": 2.0,
         "content_digest": "sha256:7120bc67415e06c1cf69d64574f1a41545fd4c2fd084a029d77c5e43a357957f",
-        "source": "pilkwang/pok-mon-tcg-ai-battle-meta-snapshot-08-july"
-      },
-      {
-        "opponent_id": "yaminh-ai-challenge",
-        "archetype_id": "lucario",
-        "archetype_label": "Mega Lucario ex",
+        "opponent_id": "pilkwang-meta-20260708",
+        "source": "pilkwang/pok-mon-tcg-ai-battle-meta-snapshot-08-july",
         "tier": "S",
-        "weight": 2.0,
-        "content_digest": "sha256:9013cbd06dbc730961544a1bf49202f7b1c80b940d3de7940e29ad554c9bbefb",
-        "source": "yaminh/the-pokemon-company-ai-challenge"
+        "weight": 2.0
       },
       {
-        "opponent_id": "aman-crustle-fighting",
-        "archetype_id": "lucario",
-        "archetype_label": "Mega Lucario ex",
-        "tier": "S",
-        "weight": 2.0,
-        "content_digest": "sha256:96bc2bf6e6c957b2d2d6af383787d14f6850ad299d8cb92f19ce157f0f98900f",
-        "source": "aman5153684/a-crustle-aware-fighting-agent"
-      },
-      {
-        "opponent_id": "penguin-public-scores-915",
-        "archetype_id": "lucario",
-        "archetype_label": "Mega Lucario ex",
-        "tier": "A",
-        "weight": 1.0,
-        "content_digest": "sha256:04e495a8b21c5fc8f40fc0f2f8853e89e60e777a92cd63444a3da8e76d66aee9",
-        "source": "penguin069/public-scores-915"
-      },
-      {
-        "opponent_id": "archaludon-ex",
         "archetype_id": "archaludon-ex",
         "archetype_label": "Archaludon ex / Cinderace",
-        "tier": "A",
-        "weight": 1.0,
         "content_digest": "sha256:b5421d03b3c0f7860f7ad13da8b92f73e7eb689f4508e89208474385bd9a8cbe",
-        "source": "masamikobayashi/a-sample-archaludon-75-wr-vs-my-1300-starmie"
-      },
-      {
-        "opponent_id": "yaroslav-lucario-v2-crustle",
-        "archetype_id": "lucario",
-        "archetype_label": "Mega Lucario ex",
+        "opponent_id": "archaludon-ex",
+        "source": "masamikobayashi/a-sample-archaludon-75-wr-vs-my-1300-starmie",
         "tier": "A",
-        "weight": 1.0,
-        "content_digest": "sha256:2738a2e4394155b0122eeaa68cec9bbe0cc7dbb4b79f5d055827778444b68bb3",
-        "source": "yaroslavkholmirzayev/mega-lucario-v2-crustle-aware-best-submit"
+        "weight": 1.0
       },
       {
-        "opponent_id": "makthanithin-1084-5",
-        "archetype_id": "lucario",
-        "archetype_label": "Mega Lucario ex",
-        "tier": "A",
-        "weight": 1.0,
-        "content_digest": "sha256:b10a7c2c3cb8662a1fa1f3f13867cd0b842993c7ae9217a025cad606faa7e98f",
-        "source": "makthanithin/pokemon-tcg-ai-battle-1084-5-baseline"
-      },
-      {
-        "opponent_id": "lucifer19-battlecore",
         "archetype_id": "archaludon-ex",
         "archetype_label": "Archaludon ex / Cinderace",
-        "tier": "A",
-        "weight": 1.0,
         "content_digest": "sha256:31a1d7453a80379b41797902fb973d4a41c0538decc0005aef444bbca8b3a336",
-        "source": "lucifer19/battlecore-compact-agent"
-      }
-    ],
-    "excluded_aliases": [
-      {
-        "opponent_id": "pilkwang-lucario-alakazam",
-        "canonical_opponent_id": "pilkwang-meta-20260708",
-        "reason": "identical package content digest; excluded to prevent double weighting"
-      }
-    ],
-    "research_measurements": [
-      {
-        "opponent_id": "iono",
-        "archetype_id": "iono-bellibolt",
-        "archetype_label": "Iono’s Bellibolt ex",
-        "label": "Original baseline research control · Iono",
-        "games": 250,
-        "seat0_games": 125,
-        "seat1_games": 125,
-        "gate_weight": 0.0,
-        "diagnostic_only": true,
-        "included_in_gate_pass": false,
-        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail."
+        "opponent_id": "lucifer19-battlecore",
+        "source": "lucifer19/battlecore-compact-agent",
+        "tier": "A",
+        "weight": 1.0
       },
       {
-        "opponent_id": "dragapult-ex",
-        "archetype_id": "dragapult",
-        "archetype_label": "Dragapult ex",
-        "label": "Original baseline research control · Dragapult ex",
-        "games": 250,
-        "seat0_games": 125,
-        "seat1_games": 125,
-        "gate_weight": 0.0,
-        "diagnostic_only": true,
-        "included_in_gate_pass": false,
-        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail."
+        "archetype_id": "alakazam",
+        "archetype_label": "Frozen Alakazam specialist",
+        "content_digest": "sha256:7e9942e3a60e31d5ee734e5f66bae818f2c28a14cd8d8122d4b11683e79af3bc",
+        "frozen_checkpoint_digest": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-alakazam-owner-accepted-iter39",
+        "source": "owner-accepted frozen Alakazam iteration 39 checkpoint",
+        "tier": "S+",
+        "weight": 2.0
       },
       {
-        "opponent_id": "mega-abomasnow-ex",
-        "archetype_id": "mega-abomasnow-ex",
-        "archetype_label": "Mega Abomasnow ex / Kyogre",
-        "label": "Original baseline research control · Mega Abomasnow ex",
-        "games": 250,
-        "seat0_games": 125,
-        "seat1_games": 125,
-        "gate_weight": 0.0,
-        "diagnostic_only": true,
-        "included_in_gate_pass": false,
-        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail."
+        "archetype_id": "hops-trevenant",
+        "archetype_label": "Frozen Hop's Trevenant specialist",
+        "content_digest": "sha256:fc382527039e41a26a87f9a2053bf1c2bd022f3709af6ab1e3afb54963bd46d4",
+        "frozen_checkpoint_digest": "sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-hops-trevenant-gate-iter10-462f201f8de6",
+        "source": "explicit owner-accepted formal protocol gate at zero-indexed iteration 10 (eleven completed iterations)",
+        "tier": "S+",
+        "weight": 2.0
       },
       {
-        "opponent_id": "mega-lucario-ex",
+        "archetype_id": "starmie",
+        "archetype_label": "Frozen Mega Starmie ex specialist",
+        "content_digest": "sha256:927fc9724fc9ba8e9f3abeac3693350fd19b76ae7135c3d80999a9ce6402fa4f",
+        "frozen_checkpoint_digest": "sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-starmie-gate-iter10-51ed1cc6ffe6",
+        "source": "exact protocol-gate passing Mega Starmie ex iteration 10 checkpoint 51ed1cc6ffe6",
+        "tier": "S+",
+        "weight": 2.0
+      },
+      {
         "archetype_id": "lucario",
-        "archetype_label": "Mega Lucario ex",
-        "label": "Original baseline research control · Mega Lucario ex",
-        "games": 250,
-        "seat0_games": 125,
-        "seat1_games": 125,
-        "gate_weight": 0.0,
-        "diagnostic_only": true,
-        "included_in_gate_pass": false,
-        "purpose": "Large-sample longitudinal measurement for owner research; never changes strong-public gate pass/fail."
+        "archetype_label": "Frozen Dragapult Dusknoir specialist",
+        "content_digest": "sha256:77b32a8f6efd6b7b5fbfe8091ef54d2a3ed0a34ab6bbe3b6da9e07880b7934ea",
+        "frozen_checkpoint_digest": "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-lucario-gate-iter10-ffa401242b2c",
+        "source": "exact protocol-gate passing Dragapult Dusknoir iteration 10 checkpoint ffa401242b2c",
+        "tier": "S+",
+        "weight": 2.0
       }
     ],
-    "exact_result_pointer": "/home/inzi/poke-bot-agent/outputs/state/alakazam_strong_public_gate_result.json",
-    "diagnostic_pointer": "/home/inzi/poke-bot-agent/outputs/state/public_mix_live_wr.json",
-    "diagnostic_definition": "Sampled temperature-policy training trajectories. Useful for direction only; never a gate result."
-  }
+    "status": "queued",
+    "threshold_transition": {
+      "applies_to_lucario_iteration_10": true,
+      "effective_after_completed_iteration": 9,
+      "effective_after_completed_specialist": "lucario",
+      "individual_opponent_floor": 0.15,
+      "s_plus_below_floor_allowance": 2,
+      "s_plus_individual_floor": 0.3
+    }
+  },
+  "schema": "poke_bot.competition_gate_program/v1",
+  "updated_at_utc": "2026-07-24T13:28:00.372726+00:00"
 }

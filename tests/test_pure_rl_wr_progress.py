@@ -54,11 +54,12 @@ def test_tqdm_set_wr_puts_readout_on_postfix() -> None:
         mininterval=60.0,
     )
     try:
+        assert prog._bar.ncols >= 160
         assert "wr" not in prog._postfix(sps="0")
         prog.set_wr(0.42, 50, target=0.70)
         pf = prog._postfix(sps="0")
         assert "wr" in pf
-        assert "42.0%" in pf["wr"]
+        assert "42.00%" in pf["wr"]
         assert "50g" in pf["wr"]
         assert "70%" in pf["wr"]
     finally:
@@ -115,7 +116,7 @@ def test_consume_results_live_wr_gate_tracks_running_winrate() -> None:
     # win, win, loss counted (3 games); forfeit excluded from the WR readout.
     assert prog.wr is not None
     assert "3g" in prog.wr
-    assert "66.7%" in prog.wr
+    assert "66.67%" in prog.wr
 
 
 def test_consume_results_without_live_wr_gate_leaves_wr_unset() -> None:
@@ -147,7 +148,14 @@ def test_consume_results_without_live_wr_gate_leaves_wr_unset() -> None:
     assert prog.wr is None
 
 
-def _write_iter_metrics(run_dir: Path, iteration: int, heldout_wr, games=200, gate_passed=False):
+def _write_iter_metrics(
+    run_dir: Path,
+    iteration: int,
+    heldout_wr,
+    games=200,
+    gate_passed=False,
+    gate_id=None,
+):
     metrics_dir = run_dir / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -155,6 +163,11 @@ def _write_iter_metrics(run_dir: Path, iteration: int, heldout_wr, games=200, ga
         "heldout_wr": heldout_wr,
         "heldout_games": games,
         "gate_passed": gate_passed,
+        "extra": (
+            {"active_gate_result": {"gate_id": gate_id}}
+            if gate_id is not None
+            else {}
+        ),
     }
     (metrics_dir / f"iter_{iteration:05d}.json").write_text(json.dumps(payload), encoding="utf-8")
 
@@ -181,6 +194,23 @@ def test_wr_trend_line_handles_missing_metrics(tmp_path: Path) -> None:
 
     line = wr_trend_line(tmp_path / "no_such_run")
     assert "no iter metrics yet" in line
+
+
+def test_wr_trend_line_does_not_mix_gate_contracts(tmp_path: Path) -> None:
+    sys.path.insert(0, str(ROOT))
+    from poke_bot.pure_rl.wr_trend import wr_trend_line
+
+    run_dir = tmp_path / "migrated_gate_run"
+    _write_iter_metrics(run_dir, 0, 0.71, games=1000, gate_id="old-four")
+    _write_iter_metrics(run_dir, 1, 0.44, games=2000, gate_id="new-eight")
+    _write_iter_metrics(run_dir, 2, 0.46, games=2000, gate_id="new-eight")
+
+    line = wr_trend_line(run_dir, gate_wr=0.50)
+    assert "0:71.0%" not in line
+    assert "1:44.0%" in line
+    assert "2:46.0%" in line
+    assert "best=46.0%@iter2" in line
+    assert "cohort=new-eight" in line
 
 
 if __name__ == "__main__":

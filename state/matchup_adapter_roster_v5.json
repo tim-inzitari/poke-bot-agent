@@ -1,0 +1,86 @@
+{
+  "schema": "poke_bot.matchup_adapter_roster_stage/v2",
+  "status": "planned_not_active",
+  "predecessor": "state/matchup_adapter_roster_v4.json",
+  "activation_policy": "validated_router_and_checkpoint_migration_at_next_safe_specialist_boundary",
+  "runtime_enabled": false,
+  "physical_checkpoint_rows": 23,
+  "required_active_routes": 18,
+  "compatibility": {
+    "preserve_all_v4_tensor_rows": true,
+    "renumber_existing_rows": false,
+    "removed_routes_are_disabled_tombstones": true,
+    "tombstones_receive_routing": false,
+    "tombstones_receive_gradients": false,
+    "tombstones_count_as_required_specialists": false,
+    "new_routes_append_only": true
+  },
+  "retired_route_ids": [
+    "cornerstone-ogerpon",
+    "lopunny",
+    "gardevoir",
+    "ns-zoroark",
+    "raging-bolt"
+  ],
+  "logical_route_aliases": {
+    "thwackey": "festival-lead"
+  },
+  "appended_route_ids": [
+    "team-rockets-spidops"
+  ],
+  "active_expert_ids": [
+    "crustle",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "rockets-mewtwo",
+    "starmie",
+    "hammer-pult",
+    "alakazam",
+    "lucario",
+    "archaludon-ex",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "dudunsparce",
+    "hops-trevenant",
+    "walrein",
+    "dragapult-dusknoir",
+    "dragapult-blaziken",
+    "thwackey",
+    "team-rockets-spidops"
+  ],
+  "physical_row_ids": [
+    "crustle",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "cornerstone-ogerpon",
+    "rockets-mewtwo",
+    "starmie",
+    "hammer-pult",
+    "alakazam",
+    "lucario",
+    "archaludon-ex",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "dudunsparce",
+    "hops-trevenant",
+    "walrein",
+    "dragapult-dusknoir",
+    "dragapult-blaziken",
+    "lopunny",
+    "gardevoir",
+    "ns-zoroark",
+    "raging-bolt",
+    "festival-lead",
+    "team-rockets-spidops"
+  ],
+  "required_validation_before_activation": {
+    "causal_router_class_order_matches_physical_rows": true,
+    "retired_routes_are_unreachable": true,
+    "thwackey_alias_uses_the_compatible_festival_lead_tensor_row": true,
+    "spidops_route_has_verified_visible_card_signatures": true,
+    "legacy_frozen_checkpoints_load_without_row_shift": true,
+    "new_spidops_row_initializes_to_zero_output": true,
+    "unrelated_routes_receive_no_gradient": true,
+    "fleet_checksum_parity": true
+  }
+}

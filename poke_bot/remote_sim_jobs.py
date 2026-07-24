@@ -13,6 +13,8 @@ cleanly under spawn.
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -20,6 +22,7 @@ from typing import Any
 
 _RR = None
 _MODULE_NAME = "train_round_robin_remote"
+_CONTROLLER_MATCHUP_RUNTIME_KEY = "_controller_matchup_runtime"
 
 
 def _repo_root() -> Path:
@@ -46,14 +49,114 @@ def load_round_robin_module():
     return _RR
 
 
+def _bind_controller_matchup_runtime(job: dict[str, Any]) -> None:
+    """Reassert the controller-owned routing contract before every remote job.
+
+    WorkerPool children are intentionally recycled.  They can also execute
+    frozen specialist opponents whose submission packages use the same
+    process-global environment variables as the active candidate.  Binding
+    from the server-injected contract at each job boundary prevents either
+    lifecycle from carrying an opponent's tree into the next candidate game.
+    The server overwrites this reserved field, so clients cannot select a tree.
+    """
+
+    if _CONTROLLER_MATCHUP_RUNTIME_KEY not in job:
+        # Compatibility for direct unit tests and non-server callers.
+        return
+    runtime = job.get(_CONTROLLER_MATCHUP_RUNTIME_KEY)
+    if runtime is None:
+        os.environ.pop("POKEBOT_MATCHUP_ADAPTER_RUNTIME", None)
+        os.environ.pop("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", None)
+        os.environ.pop("POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE", None)
+        return
+    if not isinstance(runtime, dict):
+        raise ValueError("controller matchup runtime contract must be an object")
+    tree_path = Path(str(runtime.get("tree") or "")).expanduser().resolve()
+    expected_digest = str(runtime.get("tree_digest") or "")
+    expected_ids = sorted(
+        str(value) for value in runtime.get("accepted_archetype_ids") or ()
+    )
+    if not tree_path.is_file() or not expected_digest or not expected_ids:
+        raise ValueError("controller matchup runtime contract is incomplete")
+    raw = tree_path.read_bytes()
+    actual_digest = f"sha256:{hashlib.sha256(raw).hexdigest()}"
+    if actual_digest != expected_digest:
+        raise ValueError(
+            "controller matchup runtime tree digest changed: "
+            f"expected={expected_digest} actual={actual_digest}"
+        )
+    payload = json.loads(raw)
+    actual_ids = sorted(
+        str(value)
+        for value in dict(payload.get("runtime_contract") or {}).get(
+            "accepted_archetype_ids", ()
+        )
+    )
+    if actual_ids != expected_ids:
+        raise ValueError(
+            "controller matchup runtime accepted-route roster changed"
+        )
+    os.environ["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
+    os.environ["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(tree_path)
+    os.environ["POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE"] = "runtime"
+
+
 def remote_play_job(job: dict[str, Any]) -> dict[str, Any]:
     """Whole-game collection job (importable; safe to ``Pool.apply``)."""
+    _bind_controller_matchup_runtime(job)
     return load_round_robin_module()._worker_play(job)
 
 
 def remote_promotion_job(job: dict[str, Any]) -> dict[str, Any]:
     """Promotion evaluation job (importable; safe to ``Pool.apply``)."""
+    _bind_controller_matchup_runtime(job)
     return load_round_robin_module()._worker_promotion(job)
+
+
+def remote_matchup_runtime_probe(_job: dict[str, Any]) -> dict[str, Any]:
+    """Report the routing identity actually inherited by one pool child.
+
+    Controller hello metadata lives in the parent process.  A hot marker
+    update can therefore make hello look current while long-lived simulator
+    children still use the prior tree.  This probe crosses the process-pool
+    boundary so the trainer can fail before collecting a mixed-routing shard.
+    """
+
+    _bind_controller_matchup_runtime(_job)
+
+    runtime_enabled = os.environ.get(
+        "POKEBOT_MATCHUP_ADAPTER_RUNTIME", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    tree_path = Path(
+        os.environ.get("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", "")
+    ).expanduser()
+    if not runtime_enabled or not tree_path.is_file():
+        return {
+            "runtime_probe": {
+                "runtime_enabled": runtime_enabled,
+                "tree": str(tree_path),
+                "tree_digest": None,
+                "accepted_archetype_ids": [],
+            },
+            "error": None,
+        }
+    payload = json.loads(tree_path.read_text(encoding="utf-8"))
+    accepted = sorted(
+        str(value)
+        for value in dict(payload.get("runtime_contract") or {}).get(
+            "accepted_archetype_ids", ()
+        )
+    )
+    digest = hashlib.sha256(tree_path.read_bytes()).hexdigest()
+    return {
+        "runtime_probe": {
+            "runtime_enabled": True,
+            "tree": str(tree_path.resolve()),
+            "tree_digest": f"sha256:{digest}",
+            "accepted_archetype_ids": accepted,
+        },
+        "error": None,
+    }
 
 
 def remote_self_play_multi_job(batch: dict[str, Any]) -> list[dict[str, Any]]:
@@ -69,6 +172,7 @@ def remote_self_play_multi_job(batch: dict[str, Any]) -> list[dict[str, Any]]:
     jobs = list(batch.get("jobs") or [])
     if not jobs:
         return []
+    _bind_controller_matchup_runtime(jobs[0])
     if len(jobs) == 1:
         return [remote_self_play_job(jobs[0])]
     return run_self_play_multi(jobs)
@@ -84,6 +188,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
     GPU leaves for same-checkpoint games (``gpu-leaf-both``); recent-self
     opponents stay CPU-local on the opp seat (``gpu-leaf-us-only``).
     """
+    _bind_controller_matchup_runtime(job)
     # Exact hidden-zone targets require the explicit private training engine.
     # Route even a single game through the multi-handle adapter when that ABI
     # is configured; hosts using the official engine continue normally and
@@ -129,6 +234,8 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             "record_jsons": None,
             "error": None,
             "self_play": True,
+            "matchup_runtime_audit": None,
+            "opponent_matchup_runtime_audit": None,
         }
         r.update(over)
         return r
@@ -240,31 +347,36 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             if had_alarm:
                 signal.alarm(0)
         wall_s = time.perf_counter() - t0
-        if result.get("failed_seat") is not None:
+        terminal_policy_failure = result.get("failed_seat") is not None
+        terminal_failure_error = None
+        if terminal_policy_failure:
             failed = int(result["failed_seat"])
-            if failed == our_seat:
+            from poke_bot.pure_rl.multi_env_self_play import (
+                terminal_policy_failure_outcome,
+            )
+
+            winner, value = terminal_policy_failure_outcome(
+                failed_seat=failed, our_seat=our_seat
+            )
+            terminal_failure_error = str(
+                result.get("error") or "policy action failure"
+            )
+        else:
+            if result.get("incomplete"):
                 return _base(
-                    our_failed=True,
-                    winner=1 - our_seat,
-                    value=-1.0,
+                    resource_error=True,
+                    game_timeout=True,
                     steps=int(result.get("steps", 0)),
-                    error=str(result.get("error")),
+                    error="incomplete",
                 )
-            return _base(
-                winner=our_seat,
-                value=1.0,
-                steps=int(result.get("steps", 0)),
-                error=f"opp-failed: {result.get('error')}",
+            winner = int(result["winner"])
+            value = (
+                0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
             )
-        if result.get("incomplete"):
-            return _base(
-                resource_error=True,
-                game_timeout=True,
-                steps=int(result.get("steps", 0)),
-                error="incomplete",
-            )
-        winner = int(result["winner"])
-        value = 0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
+        matchup_runtime_audit = us_agent.matchup_adapter_shadow_snapshot()
+        opponent_matchup_runtime_audit = (
+            them_agent.matchup_adapter_shadow_snapshot()
+        )
         record = None
         records = []
         if job.get("training_eligible", True) and us_agent.targets:
@@ -274,7 +386,7 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
                 our_deck=deck,
                 our_seat=our_seat,
                 value=value,
-                opp_id=str(job.get("opp_archetype") or opp_id),
+                opp_id=opp_id,
                 archetype=str(job.get("archetype") or "core"),
                 seed=seed,
                 target_provenance={
@@ -282,7 +394,17 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
                     "pure_rl": True,
                     "self_play": True,
                     "soft_policy_targets": False,
+                    "terminal_policy_failure": terminal_policy_failure,
+                    "terminal_failed_seat": (
+                        int(result["failed_seat"])
+                        if terminal_policy_failure
+                        else None
+                    ),
+                    "matchup_runtime_audit": matchup_runtime_audit,
                 },
+                opp_archetype=(
+                    str(job.get("opp_archetype") or "") or None
+                ),
             )
             if record is not None:
                 records.append(record)
@@ -308,7 +430,17 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
                     "self_play": True,
                     "same_policy_second_seat": True,
                     "soft_policy_targets": False,
+                    "terminal_policy_failure": terminal_policy_failure,
+                    "terminal_failed_seat": (
+                        int(result["failed_seat"])
+                        if terminal_policy_failure
+                        else None
+                    ),
+                    "matchup_runtime_audit": opponent_matchup_runtime_audit,
                 },
+                opp_archetype=(
+                    str(job.get("archetype") or "") or None
+                ),
             )
             if opp_record is not None:
                 records.append(opp_record)
@@ -329,13 +461,21 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             "self_play": True,
             "leaf_remote": bool(plan.use_leaf_for_us or plan.use_leaf_for_them),
             "leaf_self_play_mode": plan.mode,
+            "matchup_runtime_audit": matchup_runtime_audit,
+            "opponent_matchup_runtime_audit": opponent_matchup_runtime_audit,
+            "policy_terminal_failure": terminal_policy_failure,
+            "failed_seat": (
+                int(result["failed_seat"])
+                if terminal_policy_failure
+                else None
+            ),
             "record_json": (
                 json.dumps(record, separators=(",", ":")) if record else None
             ),
             "record_jsons": [
                 json.dumps(row, separators=(",", ":")) for row in records
             ],
-            "error": None,
+            "error": terminal_failure_error,
         }
     except BaseException as exc:  # noqa: BLE001
         return _base(our_failed=True, error=f"{type(exc).__name__}: {exc}")

@@ -141,6 +141,67 @@ for _id, _name, _slug_all in _CORE_LADDER_GENERIC:
         )
     )
 
+# Exact auxiliary-head row order used by the deck-agnostic checkpoints made
+# immediately before the post-snapshot ladder families below were registered.
+# Keep this immutable: expansion maps rows by name and only appends capacity.
+PINNED_CORE_AUX_ARCHETYPE_IDS: tuple[str, ...] = tuple(ARCHETYPES)
+
+# Exact auxiliary-head row order embedded in the accepted cumulative-v4
+# deck-agnostic core (sha256:07f035f8e8093900c47409edab6f20e72cb23f14466737cae213cbee58101ea9).
+# This lineage added three ladder families and reordered the bank independently
+# of the registry declaration order. Keep it immutable so warm starts copy
+# semantic rows by name and move only the old final ``unknown`` row.
+CUMULATIVE_V4_AUX_ARCHETYPE_IDS: tuple[str, ...] = (
+    "crustle",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "cornerstone-ogerpon",
+    "rockets-mewtwo",
+    "starmie",
+    "hammer-pult",
+    "alakazam",
+    "lucario",
+    "archaludon-ex",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "dudunsparce",
+    "hops-trevenant",
+    "walrein",
+    "dragapult-dusknoir",
+    "dragapult-blaziken",
+    "lopunny",
+    "gardevoir",
+    "ns-zoroark",
+    "raging-bolt",
+    "festival-lead",
+)
+
+# Additive post-snapshot families discovered by later ladder windows.  These
+# append after every pre-existing auxiliary class so checkpoint row indices
+# stay stable.  They are not inserted into CORE_LADDER_ARCHETYPE_IDS until a
+# separately checksummed ladder-mix artifact promotes them.
+_ADDITIVE_LADDER_GENERIC: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("dudunsparce", "Dudunsparce", ("dudunsparce",)),
+    ("hops-trevenant", "Hop's Trevenant", ("hop", "trevenant")),
+    ("walrein", "Walrein", ("walrein",)),
+    ("thwackey", "Thwackey", ("thwackey",)),
+    (
+        "team-rockets-spidops",
+        "Team Rocket's Spidops",
+        ("team", "rocket", "spidops"),
+    ),
+)
+
+for _id, _name, _slug_all in _ADDITIVE_LADDER_GENERIC:
+    register(
+        Archetype(
+            id=_id,
+            name=_name,
+            description="Additive ladder family discovered after the pinned core snapshot.",
+            slug_all=_slug_all,
+        )
+    )
+
 CORE_LADDER_ARCHETYPE_IDS: tuple[str, ...] = (
     "alakazam",
     "crustle",
@@ -202,6 +263,15 @@ def classify_deck(card_ids: Iterable[int]) -> str:
         if has_line(c, DUDUNSPARCE_LINE):
             return "dragapult-dudunsparce"
         return "dragapult"
+    # Main-attacker signatures for additive post-snapshot families. Check the
+    # distinctive attacker before Dudunsparce because some lists use the
+    # Dunsparce line as a support engine.
+    if c.get(879, 0) > 0:
+        return "hops-trevenant"
+    if c.get(943, 0) > 0:
+        return "walrein"
+    if c.get(306, 0) > 0 or c.get(997, 0) > 0:
+        return "dudunsparce"
     return UNKNOWN
 
 

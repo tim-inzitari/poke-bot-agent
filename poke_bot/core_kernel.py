@@ -35,7 +35,7 @@ import hashlib
 import random
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional, Sequence, Union
 
@@ -43,7 +43,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from . import archetypes, checkpoint, config, device as device_mod, features, paths
+from . import archetypes, checkpoint, config, device as device_mod, paths
 from . import dataset as dataset_mod
 from .dataset import GameSequence
 from .model import TemporalCabtTransformer, build_model

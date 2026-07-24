@@ -14,6 +14,9 @@ from . import cg_env, config, features
 from .batched_infer import LeafPacket, RemoteLeafCancelled
 from .belief import EmpiricalDeckPosterior, PublicBeliefHistory
 from .belief_mcts import BeliefMCTS, factorize_visit_policy
+from .matchup_adapter_activation import ShadowMatchupAdapterRouter
+from .matchup_adapters import UNKNOWN_ROUTE
+from .public_matchup_router import RuntimePublicMatchupRouter
 from .mcts import GameClock, MCTS, MCTSResult
 from .model import TemporalCabtTransformer, TemporalKVCache
 
@@ -77,6 +80,53 @@ def _fail_closed_legal(obs_dict: dict, preferred: list[int], rng: random.Random)
     return rng.sample(range(n), k)
 
 
+def _enum_token(value: object) -> str:
+    """Normalize competition JSON enums without depending on one cg version."""
+    if hasattr(value, "name"):
+        value = getattr(value, "name")
+    return "".join(character for character in str(value).lower() if character.isalnum())
+
+
+def forced_go_first_action(obs_dict: dict) -> Optional[list[int]]:
+    """Return the legal ``Yes`` choice for the explicit turn-order prompt.
+
+    The competition has represented enums as both integers and strings across
+    tools (``41``/``IsFirst`` and ``1``/``Yes``).  A recognized turn-order
+    prompt fails closed if it does not contain exactly selectable ``Yes``
+    semantics; it must never silently fall through to a learned or random
+    choice that could elect to go second.
+    """
+
+    select = obs_dict.get("select") if isinstance(obs_dict, dict) else None
+    if not isinstance(select, dict):
+        return None
+    raw_context = select.get("context")
+    try:
+        is_first = int(raw_context) == 41
+    except (TypeError, ValueError):
+        is_first = _enum_token(raw_context) == "isfirst"
+    if not is_first:
+        return None
+    options = select.get("option") or []
+    yes_indices: list[int] = []
+    for index, option in enumerate(options):
+        raw_type = option.get("type") if isinstance(option, dict) else getattr(option, "type", None)
+        try:
+            is_yes = int(raw_type) == 1
+        except (TypeError, ValueError):
+            is_yes = _enum_token(raw_type) == "yes"
+        if is_yes:
+            yes_indices.append(index)
+    lo = int(select.get("minCount", 0) or 0)
+    hi = min(int(select.get("maxCount", 0) or 0), len(options))
+    if len(yes_indices) != 1 or not (lo <= 1 <= hi):
+        raise RuntimeError(
+            "IsFirst prompt does not expose one legal Yes option; refusing "
+            "to choose turn order ambiguously"
+        )
+    return [yes_indices[0]]
+
+
 @dataclass
 class PolicyAgent:
     """NN agent: greedy argmax or timed MCTS."""
@@ -125,7 +175,20 @@ class PolicyAgent:
     _kv_cache: Optional[TemporalKVCache] = None
     _previous_action_token: Optional[features.SparseVector] = None
     _fail_closed_logged: bool = False
+    _matchup_shadow_failed_logged: bool = False
     belief_history: PublicBeliefHistory = field(default_factory=PublicBeliefHistory)
+    #: Behavior-inert public-prefix audit. Recognized routes are traced per game
+    #: and per search branch, but every model invocation remains explicitly -1.
+    matchup_adapter_shadow: bool = True
+    #: Activated public-tree routing is opt-in and never inferred from a deck
+    #: label. The immutable tree artifact is supplied by the deployment.
+    matchup_adapter_runtime: bool = False
+    matchup_adapter_tree_path: Optional[str] = None
+    _matchup_adapter_shadow_router: ShadowMatchupAdapterRouter = field(
+        default_factory=ShadowMatchupAdapterRouter,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if int(self.expected_search_decisions) < 1:
@@ -137,6 +200,27 @@ class PolicyAgent:
                 self.device = torch.device("cpu")
         if self.model is not None:
             self.model.eval()
+        env_runtime = os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip()
+        if env_runtime:
+            self.matchup_adapter_runtime = env_runtime.lower() in {
+                "1", "true", "yes", "on"
+            }
+        if self.matchup_adapter_runtime:
+            tree_path = (
+                self.matchup_adapter_tree_path
+                or os.environ.get("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", "").strip()
+            )
+            if not tree_path:
+                raise ValueError(
+                    "runtime matchup adapters require an activated public tree"
+                )
+            self.matchup_adapter_tree_path = str(tree_path)
+            self._matchup_adapter_shadow_router = (
+                RuntimePublicMatchupRouter.from_path(tree_path)
+            )
+            if self.model is not None:
+                self.model.matchup_adapter_bank.enabled = True
+                self.model.matchup_adapter_bank.requires_grad_(False)
         if self.use_mcts and not (self.oracle_mode or self.belief_mcts):
             raise ValueError(
                 "single-world MCTS is oracle-only; use trusted belief_mcts "
@@ -190,14 +274,31 @@ class PolicyAgent:
         self.last_result = None
         self.fail_closed_count = 0
         self._fail_closed_logged = False
+        self._matchup_shadow_failed_logged = False
         self.belief_history = PublicBeliefHistory()
+        self._matchup_adapter_shadow_router.reset_for_new_game()
+
+    def matchup_adapter_shadow_snapshot(self) -> dict[str, Any]:
+        """Return the current shadow or activated causal route audit."""
+
+        router = self._matchup_adapter_shadow_router
+        if isinstance(router, RuntimePublicMatchupRouter):
+            return router.snapshot()
+        return router.audit.snapshot()
+
+    def _matchup_model_route(self) -> int:
+        """Return a causal public route; checkpoint config remains final gate."""
+
+        if not (self.matchup_adapter_shadow or self.matchup_adapter_runtime):
+            return UNKNOWN_ROUTE
+        return self._matchup_adapter_shadow_router.candidate_model_route
 
     def _history_context_limit(self) -> int:
         """Resolve the checkpoint/job-specific history window.
 
         Remote GPU-leaf agents intentionally have ``model=None``. Their job's
         immutable ``model_max_context`` override must therefore win over the
-        process-global default, especially for full-game temporal checkpoints.
+        process-global default, especially for game-bounded temporal checkpoints.
         """
         limit = (
             int(self.max_context_override)
@@ -212,6 +313,41 @@ class PolicyAgent:
 
     @torch.no_grad()
     def greedy_select(self, obs_dict: dict) -> list[int]:
+        go_first = forced_go_first_action(obs_dict)
+        if go_first is not None:
+            # Preserve the setup decision in temporal history when the feature
+            # contract is available, but the explicit go-first choice itself
+            # must survive any optional telemetry/feature failure.
+            try:
+                features.assert_info_set(obs_dict)
+                board = features.build_board_tokens(obs_dict, self.deck)
+                self.board_history.append(board)
+                self.previous_action_history.append(self._previous_action_token)
+                max_context = self._history_context_limit()
+                self.board_history = self.board_history[-max_context:]
+                self.previous_action_history = self.previous_action_history[-max_context:]
+                self._previous_action_token = features.build_option_tokens(
+                    obs_dict, [go_first]
+                )
+                if self.collect_targets:
+                    self.targets.append(
+                        {
+                            "observation": obs_dict,
+                            "action": list(go_first),
+                            "action_combos": [list(go_first)],
+                            "policy": [1.0],
+                            "value": None,
+                            "visits": None,
+                            "diagnostics": {
+                                "target_source": "forced_go_first_contract",
+                                "trusted": True,
+                                "history_length": len(self.board_history),
+                            },
+                        }
+                    )
+            except Exception:
+                pass
+            return go_first
         features.assert_info_set(obs_dict)
         board = features.build_board_tokens(obs_dict, self.deck)
         self.board_history.append(board)
@@ -232,6 +368,7 @@ class PolicyAgent:
         def score(candidates: list[list[int]]) -> list[float]:
             nonlocal cached_state, cached_spatial
             options = features.build_option_tokens(obs_dict, candidates)
+            matchup_route = self._matchup_model_route()
             if self.leaf_backend is not None:
                 packet = LeafPacket(
                     obs=obs_dict,
@@ -240,6 +377,7 @@ class PolicyAgent:
                     history_boards=list(self.board_history),
                     history_previous_actions=list(self.previous_action_history),
                     action_combos_override=[list(c) for c in candidates],
+                    matchup_route=matchup_route,
                 )
                 out = self.leaf_backend([packet])[0]
                 if out.combos != candidates or len(out.priors) != len(candidates):
@@ -261,6 +399,7 @@ class PolicyAgent:
                         append_cache=True,
                         n_options=[len(candidates)],
                         previous_action=self._previous_action_token,
+                        matchup_routes=[matchup_route],
                     )
                     self._kv_cache = model_out["kv_cache"]
                 elif self.model.decision_context == "history":
@@ -269,6 +408,7 @@ class PolicyAgent:
                         [options],
                         n_options=[len(candidates)],
                         previous_action_histories=[self.previous_action_history],
+                        matchup_routes=[matchup_route],
                     )
                 else:
                     model_out = self.model.forward(
@@ -276,8 +416,11 @@ class PolicyAgent:
                         options,
                         append_cache=False,
                         n_options=[len(candidates)],
+                        matchup_routes=[matchup_route],
                     )
-                cached_state = model_out["state_vec"]
+                cached_state = self.model.matchup_policy_value_state(
+                    model_out["state_vec"], [matchup_route]
+                )
                 cached_spatial = model_out["spatial_memory"]
                 logits = model_out["policy_logits"][0, : len(candidates)]
             else:
@@ -361,6 +504,12 @@ class PolicyAgent:
             opponent_deck_guess=self.opponent_deck,
             leaf_backend=self.leaf_backend,
             oracle_mode=True,
+            matchup_shadow_router=(
+                self._matchup_adapter_shadow_router.fork()
+                if self.matchup_adapter_shadow
+                else None
+            ),
+            matchup_model_route=self._matchup_model_route(),
         )
         result = engine.search(
             obs_dict,
@@ -418,6 +567,12 @@ class PolicyAgent:
             rng=self.rng,
             min_trusted_sims=128,
             max_context=max_context,
+            matchup_shadow_router=(
+                self._matchup_adapter_shadow_router.fork()
+                if self.matchup_adapter_shadow
+                else None
+            ),
+            matchup_model_route=self._matchup_model_route(),
         )
         result = engine.search(
             obs_dict,
@@ -474,6 +629,27 @@ class PolicyAgent:
         """Competition-style agent entry: deck when select is None."""
         if obs_dict is None or obs_dict.get("select") is None:
             return list(self.deck)
+        if self.matchup_adapter_shadow or self.matchup_adapter_runtime:
+            # The recognizer reads only causal public board/discard evidence.
+            # Shadow failures are inert; activated routing is strict so a bad
+            # artifact can never silently alter formal gameplay.
+            try:
+                self._matchup_adapter_shadow_router.observe(
+                    obs_dict,
+                    scope="game_root",
+                    depth=len(self.board_history),
+                )
+            except Exception as exc:
+                if self.matchup_adapter_runtime:
+                    raise
+                if not self._matchup_shadow_failed_logged:
+                    self._matchup_shadow_failed_logged = True
+                    print(
+                        f"[PolicyAgent] matchup-adapter shadow audit failed closed: "
+                        f"{type(exc).__name__}: {exc}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
         try:
             if self.use_mcts:
                 action = self.mcts_select(obs_dict)

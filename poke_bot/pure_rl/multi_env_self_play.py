@@ -83,6 +83,19 @@ def process_worker_count(sim_workers: int, multi_env_per_worker: int) -> int:
     return max(1, n // m)
 
 
+def terminal_policy_failure_outcome(
+    *, failed_seat: int, our_seat: int
+) -> tuple[int, float]:
+    """Score an action-selection failure as a terminal self-play outcome."""
+
+    failed = int(failed_seat)
+    ours = int(our_seat)
+    if failed not in (0, 1) or ours not in (0, 1):
+        raise ValueError("self-play seats must be 0 or 1")
+    winner = 1 - failed
+    return winner, (1.0 if winner == ours else -1.0)
+
+
 def chunk_jobs(jobs: Sequence[Any], chunk_size: int) -> list[list[Any]]:
     """Split jobs into batches of ``chunk_size`` (last batch may be shorter)."""
     size = max(1, int(chunk_size))
@@ -325,67 +338,45 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             them_agent = agents1[i] if our_seat == 0 else agents0[i]
             assert us_agent is not None
             assert them_agent is not None
-            if failed_seat[i] is not None:
+            terminal_policy_failure = failed_seat[i] is not None
+            terminal_failure_error = None
+            if terminal_policy_failure:
                 failed = int(failed_seat[i])
-                if failed == our_seat:
-                    results.append(
-                        _base(
-                            job,
-                            our_failed=True,
-                            winner=1 - our_seat,
-                            value=-1.0,
-                            steps=steps[i],
-                            error=errors[i],
-                            wall_s=wall_s,
-                            leaf_remote=bool(
-                                plan.use_leaf_for_us or plan.use_leaf_for_them
-                            ),
-                            leaf_self_play_mode=plan.mode,
-                            multi_env_batch=n,
-                        )
-                    )
-                else:
-                    results.append(
-                        _base(
-                            job,
-                            winner=our_seat,
-                            value=1.0,
-                            steps=steps[i],
-                            error=f"opp-failed: {errors[i]}",
-                            wall_s=wall_s,
-                            leaf_remote=bool(
-                                plan.use_leaf_for_us or plan.use_leaf_for_them
-                            ),
-                            leaf_self_play_mode=plan.mode,
-                            multi_env_batch=n,
-                        )
-                    )
-                continue
-
-            obs = obs_list[i] or {}
-            cur = obs.get("current") or {}
-            result_code = cur.get("result", -1)
-            incomplete = int(result_code) == -1
-            if incomplete:
-                results.append(
-                    _base(
-                        job,
-                        resource_error=True,
-                        game_timeout=True,
-                        steps=steps[i],
-                        error="incomplete",
-                        wall_s=wall_s,
-                        leaf_remote=bool(
-                            plan.use_leaf_for_us or plan.use_leaf_for_them
-                        ),
-                        leaf_self_play_mode=plan.mode,
-                        multi_env_batch=n,
-                    )
+                winner, value = terminal_policy_failure_outcome(
+                    failed_seat=failed, our_seat=our_seat
                 )
-                continue
+                terminal_failure_error = str(errors[i] or "policy action failure")
+            else:
+                obs = obs_list[i] or {}
+                cur = obs.get("current") or {}
+                result_code = cur.get("result", -1)
+                incomplete = int(result_code) == -1
+                if incomplete:
+                    results.append(
+                        _base(
+                            job,
+                            resource_error=True,
+                            game_timeout=True,
+                            steps=steps[i],
+                            error="incomplete",
+                            wall_s=wall_s,
+                            leaf_remote=bool(
+                                plan.use_leaf_for_us or plan.use_leaf_for_them
+                            ),
+                            leaf_self_play_mode=plan.mode,
+                            multi_env_batch=n,
+                        )
+                    )
+                    continue
 
-            winner = int(result_code)
-            value = 0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
+                winner = int(result_code)
+                value = (
+                    0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
+                )
+            matchup_runtime_audit = us_agent.matchup_adapter_shadow_snapshot()
+            opponent_matchup_runtime_audit = (
+                them_agent.matchup_adapter_shadow_snapshot()
+            )
             record = None
             records = []
             if job.get("training_eligible", True) and us_agent.targets:
@@ -394,11 +385,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     our_deck=list(job["our_deck"]),
                     our_seat=our_seat,
                     value=value,
-                    opp_id=str(
-                        job.get("opp_archetype")
-                        or job.get("opponent_id")
-                        or "self"
-                    ),
+                    opp_id=str(job.get("opponent_id") or "self"),
                     archetype=str(job.get("archetype") or "core"),
                     seed=int(job["seed"]),
                     target_provenance={
@@ -407,7 +394,17 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "self_play": True,
                         "soft_policy_targets": False,
                         "multi_env": True,
+                        "terminal_policy_failure": terminal_policy_failure,
+                        "terminal_failed_seat": (
+                            int(failed_seat[i])
+                            if terminal_policy_failure
+                            else None
+                        ),
+                        "matchup_runtime_audit": matchup_runtime_audit,
                     },
+                    opp_archetype=(
+                        str(job.get("opp_archetype") or "") or None
+                    ),
                 )
                 if record is not None:
                     records.append(record)
@@ -426,9 +423,7 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     our_deck=opp_deck,
                     our_seat=1 - our_seat,
                     value=opp_value,
-                    opp_id=str(
-                        job.get("archetype") or f"self:{Path(us).name}"
-                    ),
+                    opp_id=f"self:{Path(us).name}",
                     archetype=str(
                         job.get("opp_archetype")
                         or job.get("archetype")
@@ -442,7 +437,17 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "same_policy_second_seat": True,
                         "soft_policy_targets": False,
                         "multi_env": True,
+                        "terminal_policy_failure": terminal_policy_failure,
+                        "terminal_failed_seat": (
+                            int(failed_seat[i])
+                            if terminal_policy_failure
+                            else None
+                        ),
+                        "matchup_runtime_audit": opponent_matchup_runtime_audit,
                     },
+                    opp_archetype=(
+                        str(job.get("archetype") or "") or None
+                    ),
                 )
                 if opp_record is not None:
                     records.append(opp_record)
@@ -468,13 +473,21 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         plan.use_leaf_for_us or plan.use_leaf_for_them
                     ),
                     "leaf_self_play_mode": plan.mode,
+                    "matchup_runtime_audit": matchup_runtime_audit,
+                    "opponent_matchup_runtime_audit": (
+                        opponent_matchup_runtime_audit
+                    ),
+                    "policy_terminal_failure": terminal_policy_failure,
+                    "failed_seat": (
+                        int(failed_seat[i]) if terminal_policy_failure else None
+                    ),
                     "record_json": (
                         json.dumps(record, separators=(",", ":")) if record else None
                     ),
                     "record_jsons": [
                         json.dumps(row, separators=(",", ":")) for row in records
                     ],
-                    "error": None,
+                    "error": terminal_failure_error,
                 }
             )
         return results

@@ -16,6 +16,7 @@ explicitly set.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import pickle
@@ -57,8 +58,16 @@ def _env_truthy(name: str) -> bool:
 _TRAIN_ROOT = Path("/home/inzi/poke-bot-agent")
 _BERT_ROOT = Path("/Users/tsinzitari/workspace/poke-bot-agent")
 _ELMO_HOSTS = frozenset({"192.168.1.143", "truenas.local", "truenas"})
-_BERT_HOSTS = frozenset({"192.168.1.157", "bert.local", "bert"})
+_BERT_HOSTS = frozenset(
+    {"192.168.1.157", "192.168.1.158", "bert.local", "bert"}
+)
 _BERT_SSH = os.environ.get("POKEBOT_BERT_SSH", "tsinzitari@bert.local")
+_ELMO_STAGE_LOCK = threading.RLock()
+_ELMO_STAGE_CACHE: dict[tuple[str, str, str], str] = {}
+_BERT_STAGE_LOCK = threading.RLock()
+_BERT_STAGE_CACHE: dict[tuple[str, str], str] = {}
+_MATCHUP_RUNTIME_MARKER_NAME = "matchup-runtime-activation.json"
+_MATCHUP_RUNTIME_MARKER_SCHEMA = "poke_bot.remote_matchup_runtime_activation/v1"
 
 # Remote demand contract (max ≫ default; scheduler grows into max):
 #   Elmo default 20 / max 40; Bert default 10 / max 20.
@@ -817,7 +826,13 @@ def digest_addressed_basename(src: Path, digest: Optional[str] = None) -> str:
 def _gvfs_safe_copy(src: Path, dest: Path) -> None:
     """Copy bytes onto gvfs SMB/SFTP (os.replace often fails with Errno 95)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    local_tmp = Path(f"/tmp/pokebot_remote_stage_{os.getpid()}_{src.name}")
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f"pokebot_remote_stage_{os.getpid()}_",
+        suffix=src.suffix,
+        dir="/tmp",
+    )
+    os.close(descriptor)
+    local_tmp = Path(temporary)
     try:
         shutil.copy2(src, local_tmp)
         with open(local_tmp, "rb") as src_f, open(dest, "wb") as dst_f:
@@ -830,9 +845,158 @@ def _gvfs_safe_copy(src: Path, dest: Path) -> None:
                 local_tmp.unlink()
 
 
-def _rsync_to_bert(src: Path, remote_native: Path) -> None:
-    """Stage ``src`` to bert via BatchMode SSH + rsync (preferred for large .pt)."""
+def _bert_remote_digest(remote_native: Path) -> Optional[str]:
+    """Return Bert's SHA-256 for one staged file, or ``None`` when absent."""
+
+    command = (
+        f"test -f {shlex.quote(remote_native.as_posix())} && "
+        f"shasum -a 256 -- {shlex.quote(remote_native.as_posix())}"
+    )
+    result = subprocess.run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            _BERT_SSH,
+            command,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    token = (result.stdout.strip().split() or [""])[0].lower()
+    if len(token) != 64 or any(ch not in "0123456789abcdef" for ch in token):
+        return None
+    return "sha256:" + token
+
+
+def _matchup_runtime_companions() -> tuple[Path, bytes] | None:
+    """Return the canonical routing tree and strict remote activation marker.
+
+    Remote checkpoints are content-addressed and can live in a different
+    directory from the worker's startup checkpoint.  The worker intentionally
+    requires the marker and tree beside every reloaded checkpoint, so staging
+    the checkpoint without these files makes a safe runtime reload fail.
+    """
+
+    if not _env_truthy("POKEBOT_MATCHUP_ADAPTER_RUNTIME"):
+        return None
+    tree = Path(
+        os.environ.get("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", "")
+    ).expanduser()
+    if not tree.is_file():
+        raise RemoteJobsError(
+            "matchup runtime staging requires a readable canonical tree"
+        )
+    raw = tree.read_bytes()
+    try:
+        tree_payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RemoteJobsError(
+            f"matchup runtime tree is invalid JSON: {tree}"
+        ) from exc
+    runtime = dict(tree_payload.get("runtime_contract") or {})
+    accepted = sorted(
+        str(value) for value in runtime.get("accepted_archetype_ids") or ()
+    )
+    if not (
+        accepted
+        and runtime.get("one_route_per_decision") is True
+        and runtime.get("unknown_route_exact_bypass") is True
+        and int(runtime.get("consecutive_required") or 0) >= 1
+    ):
+        raise RemoteJobsError(
+            "matchup runtime tree lacks its enabled routing contract"
+        )
+    payload = {
+        "schema": _MATCHUP_RUNTIME_MARKER_SCHEMA,
+        "runtime_enabled": True,
+        "tree_file": tree.name,
+        "tree_digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "accepted_archetype_ids": accepted,
+        "continuous_reevaluation": True,
+        "one_route_per_decision": True,
+        "zero_materialized_adapters_allowed": bool(
+            runtime.get("zero_materialized_adapters_allowed")
+        ),
+    }
+    marker = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+    return tree, marker
+
+
+def _stage_bert_runtime_companions(remote_dir: Path) -> None:
+    companions = _matchup_runtime_companions()
+    if companions is None:
+        return
+    tree, marker = companions
+    tree_digest = "sha256:" + hashlib.sha256(tree.read_bytes()).hexdigest()
+    tree_remote = remote_dir / tree.name
+    if _bert_remote_digest(tree_remote) != tree_digest:
+        _rsync_to_bert(tree, tree_remote, digest=tree_digest)
+
+    descriptor, temporary = tempfile.mkstemp(
+        prefix="pokebot-matchup-runtime-marker-",
+        suffix=".json",
+        dir="/tmp",
+    )
+    marker_path = Path(temporary)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(marker)
+            stream.flush()
+            os.fsync(stream.fileno())
+        marker_digest = "sha256:" + hashlib.sha256(marker).hexdigest()
+        marker_remote = remote_dir / _MATCHUP_RUNTIME_MARKER_NAME
+        if _bert_remote_digest(marker_remote) != marker_digest:
+            _rsync_to_bert(marker_path, marker_remote, digest=marker_digest)
+    finally:
+        marker_path.unlink(missing_ok=True)
+
+
+def _stage_elmo_runtime_companions(checkpoint_dir: Path) -> None:
+    companions = _matchup_runtime_companions()
+    if companions is None:
+        return
+    tree, marker = companions
+    tree_dest = checkpoint_dir / tree.name
+    tree_digest = "sha256:" + hashlib.sha256(tree.read_bytes()).hexdigest()
+    if (
+        not tree_dest.is_file()
+        or "sha256:" + hashlib.sha256(tree_dest.read_bytes()).hexdigest()
+        != tree_digest
+    ):
+        _gvfs_safe_copy(tree, tree_dest)
+
+    marker_dest = checkpoint_dir / _MATCHUP_RUNTIME_MARKER_NAME
+    if not marker_dest.is_file() or marker_dest.read_bytes() != marker:
+        descriptor, temporary = tempfile.mkstemp(
+            prefix="pokebot-matchup-runtime-marker-",
+            suffix=".json",
+            dir="/tmp",
+        )
+        marker_path = Path(temporary)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(marker)
+                stream.flush()
+                os.fsync(stream.fileno())
+            _gvfs_safe_copy(marker_path, marker_dest)
+        finally:
+            marker_path.unlink(missing_ok=True)
+
+
+def _rsync_to_bert(src: Path, remote_native: Path, *, digest: str) -> None:
+    """Atomically stage and checksum ``src`` on Bert via BatchMode rsync."""
     remote_dir = remote_native.parent.as_posix()
+    remote_partial = remote_native.with_name(
+        remote_native.name + f".partial.{os.getpid()}"
+    )
     ssh_base = [
         "ssh",
         "-o",
@@ -863,7 +1027,7 @@ def _rsync_to_bert(src: Path, remote_native: Path) -> None:
             "ssh -o BatchMode=yes -o ConnectTimeout=10 "
             "-o StrictHostKeyChecking=accept-new",
             str(src),
-            f"{_BERT_SSH}:{remote_native.as_posix()}",
+            f"{_BERT_SSH}:{remote_partial.as_posix()}",
         ],
         capture_output=True,
         text=True,
@@ -871,8 +1035,28 @@ def _rsync_to_bert(src: Path, remote_native: Path) -> None:
     )
     if rsync.returncode != 0:
         raise RemoteJobsError(
-            f"bert rsync failed ({src.name} -> {_BERT_SSH}:{remote_native}): "
+            f"bert rsync failed ({src.name} -> {_BERT_SSH}:{remote_partial}): "
             f"{rsync.stderr.strip() or rsync.stdout.strip() or rsync.returncode}"
+        )
+    expected = str(digest).split(":", 1)[-1].lower()
+    publish = subprocess.run(
+        [
+            *ssh_base,
+            "set -e; "
+            f"actual=$(shasum -a 256 -- {shlex.quote(remote_partial.as_posix())} | "
+            "awk '{print $1}'); "
+            f"test \"$actual\" = {shlex.quote(expected)}; "
+            f"mv -f -- {shlex.quote(remote_partial.as_posix())} "
+            f"{shlex.quote(remote_native.as_posix())}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if publish.returncode != 0:
+        raise RemoteJobsError(
+            f"bert checkpoint checksum/publish failed ({remote_native}): "
+            f"{publish.stderr.strip() or publish.stdout.strip() or publish.returncode}"
         )
 
 
@@ -886,28 +1070,49 @@ def _stage_bert_checkpoint(src: Path) -> str:
         raise RemoteJobsError(
             f"bert path remap requires path under {_TRAIN_ROOT}, got {src}"
         ) from exc
-    remote_native = _BERT_ROOT / rel
-    sftp_root = _bert_sftp_root()
-    if sftp_root is not None:
-        dest = sftp_root / rel
-        if not _needs_stage(src, dest):
-            return str(remote_native)
-    # Prefer BatchMode SSH+rsync for large digest .pt; gvfs SFTP as fallback.
-    try:
-        _rsync_to_bert(src, remote_native)
-        return str(remote_native)
-    except RemoteJobsError as rsync_exc:
-        if sftp_root is None:
-            raise
-        dest = sftp_root / rel
+    from .checkpoint import checkpoint_digest
+
+    digest = checkpoint_digest(src)
+    remote_native = (_BERT_ROOT / rel).with_name(
+        digest_addressed_basename(src, digest=digest)
+    )
+    cache_key = (str(src), digest)
+    # Hundreds of remote request threads may prepare the same heldout job at
+    # once.  The old per-job mapping launched one rsync per thread, creating a
+    # process/memory storm.  Serialize the rare content-addressed publish and
+    # cache it for the lifetime of this trainer process.
+    with _BERT_STAGE_LOCK:
+        cached = _BERT_STAGE_CACHE.get(cache_key)
+        if cached is not None:
+            _stage_bert_runtime_companions(remote_native.parent)
+            return cached
+        if _bert_remote_digest(remote_native) == digest:
+            _stage_bert_runtime_companions(remote_native.parent)
+            result = str(remote_native)
+            _BERT_STAGE_CACHE[cache_key] = result
+            return result
+        sftp_root = _bert_sftp_root()
         try:
-            _gvfs_safe_copy(src, dest)
-        except OSError as copy_exc:
-            raise RemoteJobsError(
-                f"bert stage failed via rsync ({rsync_exc}) and gvfs SFTP "
-                f"({copy_exc})"
-            ) from copy_exc
-        return str(remote_native)
+            _rsync_to_bert(src, remote_native, digest=digest)
+        except RemoteJobsError as rsync_exc:
+            if sftp_root is None:
+                raise
+            dest = sftp_root / remote_native.relative_to(_BERT_ROOT)
+            try:
+                _gvfs_safe_copy(src, dest)
+            except OSError as copy_exc:
+                raise RemoteJobsError(
+                    f"bert stage failed via rsync ({rsync_exc}) and gvfs SFTP "
+                    f"({copy_exc})"
+                ) from copy_exc
+            if checkpoint_digest(dest) != digest:
+                raise RemoteJobsError("bert gvfs checkpoint digest mismatch")
+        if _bert_remote_digest(remote_native) != digest and sftp_root is None:
+            raise RemoteJobsError("bert checkpoint publish did not verify")
+        _stage_bert_runtime_companions(remote_native.parent)
+        result = str(remote_native)
+        _BERT_STAGE_CACHE[cache_key] = result
+        return result
 
 
 def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
@@ -933,11 +1138,31 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
         if not src.is_file():
             raise RemoteJobsError(f"local checkpoint missing for stage: {src}")
         # Digest-addressed basename: pins/reloads stay valid across iters/runs.
-        dest_name = digest_addressed_basename(src)
+        from .checkpoint import checkpoint_digest
+
+        digest = checkpoint_digest(src)
+        dest_name = digest_addressed_basename(src, digest=digest)
         dest = smb / dest_name
-        if _needs_stage(src, dest):
-            _gvfs_safe_copy(src, dest)
-        return f"/workspace/checkpoint/{dest_name}"
+        cache_key = (str(src), digest, str(smb))
+        with _ELMO_STAGE_LOCK:
+            cached = _ELMO_STAGE_CACHE.get(cache_key)
+            if cached is not None:
+                _stage_elmo_runtime_companions(smb)
+                return cached
+            destination_valid = False
+            if dest.is_file() and dest.stat().st_size == src.stat().st_size:
+                try:
+                    destination_valid = checkpoint_digest(dest) == digest
+                except OSError:
+                    destination_valid = False
+            if not destination_valid:
+                _gvfs_safe_copy(src, dest)
+            if checkpoint_digest(dest) != digest:
+                raise RemoteJobsError("Elmo gvfs checkpoint digest mismatch")
+            _stage_elmo_runtime_companions(smb)
+            result = f"/workspace/checkpoint/{dest_name}"
+            _ELMO_STAGE_CACHE[cache_key] = result
+            return result
     if host_l in _BERT_HOSTS:
         return _stage_bert_checkpoint(src)
     return str(src)
@@ -1146,6 +1371,10 @@ class RemoteWorkerInfo:
     max_workers: int = 0
     #: Steady-state advertise hint from remote (optional).
     default_workers: int = 0
+    #: Digest-verified runtime-router contract advertised by the worker. ``None``
+    #: means the worker started without an adjacent activation marker and must
+    #: not receive games when production matchup routing is required.
+    matchup_runtime: Optional[dict[str, Any]] = None
 
 
 def _env_float(name: str, default: float) -> float:
@@ -1242,6 +1471,11 @@ class RemoteJobClient:
             capabilities=capabilities,
             max_workers=max_workers,
             default_workers=default_workers,
+            matchup_runtime=(
+                copy.deepcopy(reply.get("matchup_runtime"))
+                if isinstance(reply.get("matchup_runtime"), dict)
+                else None
+            ),
         )
         return self.info
 
@@ -1467,6 +1701,16 @@ class RemoteJobClient:
         reply = self._control_call({"type": "unpin", "digest": digest})
         if reply.get("type") != "unpin_ok" or not reply.get("ok", False):
             raise RemoteJobsError(f"unpin failed: {reply!r}")
+        return reply
+
+    def request_rotation(self, reason: str) -> dict[str, Any]:
+        """Request a clean supervised restart at a drained iteration boundary."""
+
+        reply = self._control_call(
+            {"type": "rotate", "reason": str(reason)}
+        )
+        if reply.get("type") != "rotate_ok" or not reply.get("ok", False):
+            raise RemoteJobsError(f"controlled rotation failed: {reply!r}")
         return reply
 
 
@@ -2586,6 +2830,17 @@ def iter_scheduled_additive_results(
             errors.append(exc)
             _put_thread_result(out_q, producer_stop, ("err", exc))
         finally:
+            # Each emitter exclusively owns its request socket.  Close it as
+            # soon as that emitter exits, especially after a remote restart
+            # or protocol failure.  Deferring all closes to the outer
+            # generator cleanup leaves dead sockets in CLOSE-WAIT while other
+            # emitters are still draining; a large queued wave can otherwise
+            # consume the worker's entire connection limit and lock health /
+            # refill probes out of the control plane.
+            try:
+                client.close()
+            except Exception:
+                pass
             before, after = _account_remote_slot_exit(ep)
             if retiring:
                 print(

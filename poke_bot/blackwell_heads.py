@@ -18,6 +18,7 @@ Heads read info-set ``state_vec`` only. They are **never** written into
 
 from __future__ import annotations
 
+import math
 import os
 from typing import Any, Optional, Sequence
 
@@ -179,7 +180,46 @@ def lethal_target_from_aux(aux: dict[str, Any]) -> Optional[float]:
     raw = aux.get("lethal_threat")
     if raw is None:
         return None
-    return float(raw)
+    if isinstance(raw, bool):
+        raise ValueError("lethal_threat must be a numeric probability, not bool")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid lethal_threat target: {raw!r}") from exc
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ValueError(
+            f"lethal_threat target must be finite and in [0, 1]: {raw!r}"
+        )
+    return value
+
+
+def prize_race_values_from_aux(
+    aux: dict[str, Any],
+) -> Optional[tuple[float, float]]:
+    """Validate and return the normalized own/opponent prize targets."""
+    raw = aux.get("prize_race")
+    if raw is None:
+        return None
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        raise ValueError("prize_race target must contain exactly two values")
+    values: list[float] = []
+    for index, item in enumerate(raw):
+        if isinstance(item, bool):
+            raise ValueError(f"prize_race[{index}] must not be bool")
+        try:
+            value = float(item)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"invalid prize_race[{index}] target: {item!r}"
+            ) from exc
+        # Prize-manipulation effects can legally produce more than the normal
+        # six starting prizes, so normalized targets may exceed 1.0.
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(
+                f"prize_race[{index}] must be finite and nonnegative: {item!r}"
+            )
+        values.append(value)
+    return values[0], values[1]
 
 
 def prize_race_target_from_aux(
@@ -187,16 +227,10 @@ def prize_race_target_from_aux(
     *,
     device: torch.device,
 ) -> Optional[torch.Tensor]:
-    raw = aux.get("prize_race")
-    if raw is None:
+    values = prize_race_values_from_aux(aux)
+    if values is None:
         return None
-    if isinstance(raw, (list, tuple)) and len(raw) >= 2:
-        return torch.tensor(
-            [float(raw[0]), float(raw[1])],
-            device=device,
-            dtype=torch.float32,
-        )
-    return None
+    return torch.tensor(values, device=device, dtype=torch.float32)
 
 
 def masked_bce_logit(

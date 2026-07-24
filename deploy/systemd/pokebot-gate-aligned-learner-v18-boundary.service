@@ -1,0 +1,17 @@
+[Unit]
+Description=Install gate-aligned learner v18 after Alakazam iteration 14
+Wants=pokebot-pure-rl-alakazam.service
+After=pokebot-pure-rl-alakazam.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/apply_gate_aligned_learner_at_boundary.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721 --after-iteration 14 --unit pokebot-pure-rl-alakazam.service --staged-root /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v18-gate-aligned-learner --migration-dropin /home/inzi/poke-bot-agent/outputs/state/gate-aligned-learner-v18/zzz-gate-aligned-learner-v18.conf --active-dropin /home/inzi/.config/systemd/user/pokebot-pure-rl-alakazam.service.d/zzzz-gate-aligned-learner-v18.conf --migration-reason gate-aligned-exact-regression-rollback-v18 --engine /home/inzi/poke-bot-agent/outputs/engines/libcg_hidden_inzi_v1.so --source-sha256 8df4b304625367980583173749afbac43b14dd1cce72f0f3046a60805afca68f --eval-sha256 39021c42ea268d6f3f8f4c5568bf760abdebab563c9da2ce8b67796206602b1c --dropin-sha256 ab37061c328b59e87caac2bfafcb0112dbb4cd1b12521f5476e5e4dac3f35c54 --engine-sha256 923cb0705bab303d0d2025da3647233c35fa4ce324e763816038d1e6fda10387 --status /home/inzi/poke-bot-agent/outputs/state/gate-aligned-learner-v18/status.json --poll-seconds 0.10
+Restart=on-failure
+RestartSec=15
+MemoryMax=1G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/gate-aligned-learner-v18-boundary.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/gate-aligned-learner-v18-boundary.log
+
+[Install]
+WantedBy=default.target

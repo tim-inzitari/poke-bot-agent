@@ -286,7 +286,11 @@ class SnapshotCache:
         curriculum_active = bool(curriculum.get("active"))
         collecting = bool(
             curriculum_active
-            and (stage.startswith("collect:") or stage in {"heldout", "promotion"})
+            and (
+                stage.startswith("collect:")
+                or stage.startswith("heldout")
+                or stage == "promotion"
+            )
         )
         training = bool(curriculum_active and stage.startswith("train"))
         remote_phase_active = bool(
@@ -628,7 +632,11 @@ class SnapshotCache:
                     )
                 else:
                     worker["allocation_state"] = "READY · waiting for scheduler work"
-            elif curriculum_active and stage in {"collect:public_mix", "heldout", "promotion"}:
+            elif curriculum_active and (
+                stage == "collect:public_mix"
+                or stage.startswith("heldout")
+                or stage == "promotion"
+            ):
                 worker["allocation_state"] = "ALLOCATION COMPLETE · local-only phase"
             else:
                 worker["allocation_state"] = "READY · next self-play allocation"
@@ -648,7 +656,11 @@ class SnapshotCache:
                     density = remote_density
                     self.decision_density[run_name] = remote_density
         local_only_phase = bool(
-            stage in {"collect:public_mix", "heldout", "promotion"}
+            (
+                stage == "collect:public_mix"
+                or stage.startswith("heldout")
+                or stage == "promotion"
+            )
             and not remote_phase_active
         )
         if collecting and local_only_phase and total_gps is not None:

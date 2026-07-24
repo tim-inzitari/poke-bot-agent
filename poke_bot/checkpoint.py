@@ -25,6 +25,7 @@ from typing import Any, Callable, Optional, Union
 import torch
 
 from . import config, paths
+from .matchup_adapters import ZERO_DORMANT_CHECKPOINT_SCHEMA
 
 PathLike = Union[str, Path]
 
@@ -41,6 +42,58 @@ def _config_snapshot(obj: Any) -> Any:
     if isinstance(obj, dict):
         return dict(obj)
     return obj
+
+
+def _matchup_adapter_bank(model: torch.nn.Module) -> Any:
+    for module in model.modules():
+        adapter_bank = getattr(module, "matchup_adapter_bank", None)
+        if adapter_bank is not None:
+            return adapter_bank
+    return None
+
+
+def validate_matchup_adapter_contract(
+    ckpt: dict[str, Any],
+    *,
+    model: torch.nn.Module,
+    source: Any = "checkpoint",
+) -> None:
+    """Fail closed when adapter weights lack their pinned route contract."""
+
+    state = ckpt.get("model_state_dict")
+    has_adapter_state = isinstance(state, dict) and any(
+        "matchup_adapter_bank." in key for key in state
+    )
+    extra = ckpt.get("extra")
+    saved_config = (
+        extra.get("matchup_adapter_config")
+        if isinstance(extra, dict)
+        else None
+    )
+    if has_adapter_state and saved_config is None:
+        raise ValueError(
+            f"checkpoint {source} has matchup adapter state but is missing "
+            "the matchup adapter routing contract"
+        )
+
+    adapter_bank = _matchup_adapter_bank(model)
+    if saved_config is not None and adapter_bank is not None:
+        current = adapter_bank.config_dict()
+        legacy_v1 = getattr(adapter_bank, "legacy_config_dict_v1", lambda: None)()
+        legacy_v2 = getattr(adapter_bank, "legacy_config_dict_v2", lambda: None)()
+        if saved_config not in (current, legacy_v1, legacy_v2):
+            raise ValueError(
+                f"checkpoint {source} matchup adapter routing contract mismatch"
+            )
+        if saved_config in (legacy_v1, legacy_v2):
+            extra_payload = extra if isinstance(extra, dict) else {}
+            if (
+                extra_payload.get("matchup_adapters_runtime_enabled") is not False
+                or extra_payload.get("matchup_adapter_training_enabled") is not False
+            ):
+                raise ValueError(
+                    f"checkpoint {source} cannot expand an active legacy adapter bank"
+                )
 
 
 def atomic_torch_save(obj: Any, path: PathLike) -> Path:
@@ -213,8 +266,9 @@ def build_checkpoint(
 
     model_snapshot = _config_snapshot(model_config or config.MODEL)
     search_snapshot = _config_snapshot(config.SEARCH)
+    model_state = model.state_dict()
     ckpt: dict[str, Any] = {
-        "model_state_dict": model.state_dict(),
+        "model_state_dict": model_state,
         "step": int(step),
         "epoch": int(epoch),
         "rl_iteration": int(rl_iteration),
@@ -252,8 +306,123 @@ def build_checkpoint(
         ckpt["scaler_state_dict"] = scaler.state_dict()
     if scheduler is not None:
         ckpt["scheduler_state_dict"] = scheduler.state_dict()
-    if extra:
-        ckpt["extra"] = dict(extra)
+    extra_payload = dict(extra or {})
+    adapter_bank = _matchup_adapter_bank(model)
+    if adapter_bank is not None and any(
+        "matchup_adapter_bank." in key for key in model_state
+    ):
+        expected_adapter_config = adapter_bank.config_dict()
+        supplied_adapter_config = extra_payload.get("matchup_adapter_config")
+        legacy_adapter_config = getattr(
+            adapter_bank, "legacy_config_dict_v1", lambda: None
+        )()
+        if (
+            supplied_adapter_config is not None
+            and supplied_adapter_config != expected_adapter_config
+            and supplied_adapter_config != legacy_adapter_config
+        ):
+            raise ValueError(
+                "checkpoint matchup adapter routing contract mismatch"
+            )
+        if supplied_adapter_config == legacy_adapter_config and (
+            extra_payload.get("matchup_adapters_runtime_enabled") is not False
+            or extra_payload.get("matchup_adapter_training_enabled") is not False
+        ):
+            raise ValueError("active legacy adapter bank cannot expand during save")
+        extra_payload["matchup_adapter_config"] = expected_adapter_config
+        runtime_enabled = bool(getattr(adapter_bank, "enabled", False))
+        adapter_parameters = list(adapter_bank.parameters())
+        training_enabled = any(
+            bool(parameter.requires_grad) for parameter in adapter_parameters
+        )
+        adapter_parameter_ids = {id(parameter) for parameter in adapter_parameters}
+        optimizer_parameter_ids = (
+            {
+                id(parameter)
+                for group in optimizer.param_groups
+                for parameter in group.get("params", ())
+            }
+            if optimizer is not None
+            else set()
+        )
+        optimizer_included = bool(adapter_parameter_ids & optimizer_parameter_ids)
+        up_tensors = [
+            value
+            for name, value in adapter_bank.state_dict().items()
+            if name.endswith("up.weight") or name.endswith("up.bias")
+        ]
+        zero_output = bool(
+            up_tensors
+            and all(
+                int(value.detach().count_nonzero().item()) == 0
+                for value in up_tensors
+            )
+        )
+        extra_payload["matchup_adapters_runtime_enabled"] = runtime_enabled
+        extra_payload["matchup_adapter_training_enabled"] = training_enabled
+        extra_payload["matchup_adapter_optimizer_included"] = optimizer_included
+        if not runtime_enabled and not training_enabled:
+            if optimizer_included:
+                raise ValueError(
+                    "frozen matchup adapters leaked into the ordinary optimizer"
+                )
+            if not zero_output and extra_payload.get("pure_rl") is True:
+                fit = dict(
+                    extra_payload.get("dormant_matchup_adapter_fit") or {}
+                )
+                optimizer_state = dict(
+                    extra_payload.get(
+                        "dormant_matchup_adapter_optimizer_state"
+                    )
+                    or {}
+                )
+                route_rows = dict(fit.get("route_decisions") or {})
+                if not (
+                    fit.get("schema")
+                    == "poke_bot.dormant_matchup_adapter_fit/v1"
+                    and fit.get("runtime_enabled") is False
+                    and fit.get("base_frozen") is True
+                    and fit.get("optimizer_scope")
+                    == "matchup_adapter_bank_only"
+                    and int(fit.get("epochs", 0)) > 0
+                    and int(fit.get("steps", 0)) > 0
+                    and int(fit.get("rows", 0)) > 0
+                    and sum(int(value) for value in route_rows.values()) > 0
+                    and optimizer_state
+                ):
+                    raise ValueError(
+                        "ordinary pure-RL checkpoint cannot persist non-zero "
+                        "dormant adapters without a complete "
+                        "isolated fit receipt and continuation optimizer state"
+                    )
+            inherited_dormant = dict(
+                extra_payload.get("dormant_matchup_adapter_bank") or {}
+            )
+            provenance = dict(
+                getattr(adapter_bank, "dormant_provenance", {}) or {}
+            )
+            extra_payload["dormant_matchup_adapter_bank"] = {
+                **inherited_dormant,
+                **provenance,
+                "schema": (
+                    "poke_bot.trained_dormant_matchup_adapter/v1"
+                    if not zero_output
+                    else ZERO_DORMANT_CHECKPOINT_SCHEMA
+                ),
+                "runtime_enabled": False,
+                "training_enabled": False,
+                "optimizer_imported": False,
+                "optimizer_present": optimizer is not None,
+                "optimizer_included": False,
+                "frozen": True,
+                "zero_output": zero_output,
+                "parameter_count": sum(
+                    int(parameter.numel()) for parameter in adapter_parameters
+                ),
+                "adapter_config": expected_adapter_config,
+            }
+    if extra_payload:
+        ckpt["extra"] = extra_payload
     return ckpt
 
 
@@ -338,6 +507,7 @@ def apply_checkpoint(
 ) -> dict[str, Any]:
     """Load weights / optim / scaler / RNG from ``ckpt`` into live objects."""
     if model is not None and "model_state_dict" in ckpt:
+        validate_matchup_adapter_contract(ckpt, model=model)
         model.load_state_dict(ckpt["model_state_dict"], strict=strict)
     if optimizer is not None and "optimizer_state_dict" in ckpt:
         optimizer.load_state_dict(ckpt["optimizer_state_dict"])

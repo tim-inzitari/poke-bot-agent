@@ -13,6 +13,7 @@ box / container.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -48,6 +49,8 @@ REMOTE_WORKER_PLANNED_ROTATION_EXIT_CODE = 75
 REMOTE_WORKER_WATCHDOG_EXIT_CODE = 70
 REMOTE_ACTIVE_CHECKPOINT_FILE_ENV = "POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE"
 REMOTE_CHECKPOINT_ROOT_ENV = "POKEBOT_REMOTE_CHECKPOINT_ROOT"
+MATCHUP_RUNTIME_MARKER = "matchup-runtime-activation.json"
+MATCHUP_RUNTIME_MARKER_SCHEMA = "poke_bot.remote_matchup_runtime_activation/v1"
 
 
 def _raw_sha256_digest(path: Path) -> str:
@@ -57,6 +60,93 @@ def _raw_sha256_digest(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return f"sha256:{digest.hexdigest()}"
+
+
+def _activate_matchup_runtime_from_marker(checkpoint_path: Path) -> Optional[dict]:
+    """Enable routing only from an explicit, digest-verified deployment marker."""
+
+    marker = checkpoint_path.parent / MATCHUP_RUNTIME_MARKER
+    if not marker.is_file():
+        return None
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"matchup runtime marker is unreadable: {marker}: {exc}") from exc
+    required_keys = {
+        "schema",
+        "runtime_enabled",
+        "tree_file",
+        "tree_digest",
+        "accepted_archetype_ids",
+        "continuous_reevaluation",
+        "one_route_per_decision",
+    }
+    if set(payload) != required_keys or not (
+        payload.get("schema") == MATCHUP_RUNTIME_MARKER_SCHEMA
+        and payload.get("runtime_enabled") is True
+        and payload.get("continuous_reevaluation") is True
+        and payload.get("one_route_per_decision") is True
+    ):
+        raise ValueError("matchup runtime marker contract is invalid")
+    tree_file = str(payload.get("tree_file") or "")
+    tree_path = (checkpoint_path.parent / tree_file).resolve()
+    try:
+        tree_path.relative_to(checkpoint_path.parent.resolve())
+    except ValueError as exc:
+        raise ValueError("matchup runtime tree escapes the checkpoint directory") from exc
+    expected_tree_digest = str(payload.get("tree_digest") or "")
+    if not tree_path.is_file() or _raw_sha256_digest(tree_path) != expected_tree_digest:
+        raise ValueError("matchup runtime tree digest does not match its marker")
+
+    from poke_bot import checkpoint as checkpoint_mod
+    from poke_bot.public_matchup_router import PublicMatchupDecisionTree
+
+    tree = PublicMatchupDecisionTree.from_path(tree_path, require_runtime_enabled=True)
+    accepted = sorted(tree.runtime_accepted_archetype_ids)
+    if accepted != sorted(str(value) for value in payload["accepted_archetype_ids"]):
+        raise ValueError("matchup runtime marker accepted-route roster changed")
+    saved = checkpoint_mod.load_checkpoint(checkpoint_path, map_location="cpu")
+    fit = dict((saved.get("extra") or {}).get("dormant_matchup_adapter_fit") or {})
+    route_decisions = {
+        str(key): int(value) for key, value in (fit.get("route_decisions") or {}).items()
+    }
+    if not (
+        fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
+        and accepted
+        and all(route_decisions.get(archetype_id, 0) > 0 for archetype_id in accepted)
+    ):
+        raise ValueError("active checkpoint does not contain every accepted adapter")
+    os.environ["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
+    os.environ["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(tree_path)
+    os.environ["POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE"] = "runtime"
+    return {
+        "marker": str(marker),
+        "marker_digest": _raw_sha256_digest(marker),
+        "tree": str(tree_path),
+        "tree_digest": tree.digest,
+        "checkpoint_digest": checkpoint_mod.checkpoint_digest(checkpoint_path),
+        "accepted_archetype_ids": accepted,
+        "continuous_reevaluation": True,
+        "one_route_per_decision": True,
+        "unknown_route_exact_bypass": True,
+        "consecutive_required": int(tree.runtime_consecutive_required),
+    }
+
+
+def _reload_matchup_runtime_contract(
+    checkpoint_path: Path,
+    current_runtime: Optional[dict],
+) -> Optional[dict]:
+    """Validate the runtime proof for new weights before a resident reload."""
+
+    if current_runtime is None:
+        return None
+    pending = _activate_matchup_runtime_from_marker(checkpoint_path)
+    if pending is None:
+        raise ValueError(
+            "matchup runtime reload lost its explicit activation marker"
+        )
+    return pending
 
 
 def _persist_active_checkpoint(
@@ -910,6 +1000,22 @@ def main(argv: Optional[list[str]] = None) -> int:
             file=sys.stderr,
         )
         return 78
+    try:
+        matchup_runtime = _activate_matchup_runtime_from_marker(ckpt)
+    except (OSError, ValueError) as exc:
+        print(
+            "[remote-worker] ERROR: matchup runtime activation failed closed: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 78
+    if matchup_runtime is not None:
+        print(
+            "[remote-worker] matchup runtime ENABLED "
+            f"routes={len(matchup_runtime['accepted_archetype_ids'])} "
+            f"tree={matchup_runtime['tree_digest'][:19]}…",
+            flush=True,
+        )
     n_workers = max(1, int(args.workers))
     n_servers = max(1, min(int(args.leaf_servers), n_workers))
     leaf_gpu = str(args.leaf_gpu)
@@ -1176,6 +1282,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "shutdown_exit_code": 0,
         "leaf_expect": leaf_expect,
         "pins": pins,
+        "matchup_runtime": matchup_runtime,
     }
     reload_drain_timeout_s = max(
         1.0,
@@ -1338,6 +1445,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             "uptime_s": time.time() - state["started_at"],
             "job_kinds": list(REMOTE_JOB_KINDS),
             "capabilities": list(REMOTE_WORKER_CAPABILITIES),
+            "matchup_runtime": copy.deepcopy(state.get("matchup_runtime")),
         }
 
     def hello() -> dict[str, Any]:
@@ -1376,6 +1484,22 @@ def main(argv: Optional[list[str]] = None) -> int:
                         "ok": False,
                         "error": f"checkpoint preflight failed: {type(exc).__name__}: {exc}",
                     }
+                pending_matchup_runtime = None
+                if state.get("matchup_runtime") is not None:
+                    try:
+                        pending_matchup_runtime = _reload_matchup_runtime_contract(
+                            Path(path),
+                            state.get("matchup_runtime"),
+                        )
+                    except (OSError, ValueError) as exc:
+                        return {
+                            "type": "reload_ok",
+                            "ok": False,
+                            "error": (
+                                "matchup runtime reload preflight failed: "
+                                f"{type(exc).__name__}: {exc}"
+                            ),
+                        }
                 if requested_digest is not None and actual != requested_digest:
                     return {
                         "type": "reload_ok",
@@ -1493,6 +1617,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                 state["digest"] = actual
                 state["version"] = new_version
                 state["checkpoint"] = path
+                # The activation marker/tree are deployment-scoped, but the
+                # checkpoint identity and cumulative per-route evidence are
+                # weight-scoped. Refresh the advertised contract atomically
+                # with the successful leaf reload so hello can never report
+                # the previous checkpoint's runtime proof.
+                if state.get("matchup_runtime") is not None:
+                    state["matchup_runtime"] = pending_matchup_runtime
                 # Publish to long-lived workers BEFORE returning so the next job
                 # cannot observe server version N while still expecting N-1.
                 _publish_expect(primary=actual, version=new_version)

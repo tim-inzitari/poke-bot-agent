@@ -28,10 +28,12 @@ if str(ROOT) not in sys.path:
 from poke_bot.dataset import DATASET_CACHE_SCHEMA_VERSION
 from poke_bot.feature_shards import (
     COMPACT_MODE,
+    COMPACT_MODE_TEMPORAL_EXPERT,
     MANIFEST_FORMAT,
     MANIFEST_FORMAT_VERSION,
     SHARD_FORMAT,
     SHARD_FORMAT_VERSION,
+    _target_coverage,
     iter_feature_shard,
 )
 from poke_bot.features import FEATURE_SCHEMA_VERSION
@@ -185,7 +187,7 @@ def filter_feature_shard(
         "format_version": SHARD_FORMAT_VERSION,
         "dataset_schema": DATASET_CACHE_SCHEMA_VERSION,
         "feature_schema": FEATURE_SCHEMA_VERSION,
-        "compact_mode": COMPACT_MODE,
+        "compact_mode": str(source_header.get("compact_mode") or COMPACT_MODE),
         "source_feature_shard": source.name,
         "source_sha256": actual_source_digest,
         "source_dates": list(source_header.get("source_dates") or []),
@@ -193,6 +195,7 @@ def filter_feature_shard(
         "selection": "sequence.archetype == selection_archetype",
         "selection_archetype": requested,
     }
+    coverage: Counter[str] = Counter()
     try:
         with partial.open("xb") as stream:
             pickle.dump(header, stream, protocol=pickle.HIGHEST_PROTOCOL)
@@ -204,6 +207,8 @@ def filter_feature_shard(
                     raise ValueError(
                         f"selected sequence failed info-set guard: {sequence.episode_id}"
                     )
+                sequence_coverage = _target_coverage(sequence)
+                coverage.update(sequence_coverage)
                 pickle.dump(sequence, stream, protocol=pickle.HIGHEST_PROTOCOL)
                 kept += 1
                 decisions += len(sequence)
@@ -221,7 +226,8 @@ def filter_feature_shard(
                 "policy_targets_truncated": 0,
                 "dataset_schema": DATASET_CACHE_SCHEMA_VERSION,
                 "feature_schema": FEATURE_SCHEMA_VERSION,
-                "compact_mode": COMPACT_MODE,
+                "compact_mode": header["compact_mode"],
+                "target_coverage": dict(sorted(coverage.items())),
                 "source_records_scanned": scanned,
                 "source_records_excluded": scanned - kept,
                 "seat_counts": dict(sorted(seats.items())),
@@ -298,6 +304,13 @@ def filter_manifest(
         with ProcessPoolExecutor(max_workers=min(int(workers), len(jobs))) as pool:
             filtered = list(pool.map(_filter_one, jobs))
     filtered.sort(key=lambda row: tuple(row.get("source_dates") or ()))
+    compact_modes = {str(row.get("compact_mode") or COMPACT_MODE) for row in filtered}
+    if len(compact_modes) != 1:
+        raise ValueError(f"filtered shards mix compact modes: {sorted(compact_modes)}")
+    compact_mode = next(iter(compact_modes))
+    target_coverage: Counter[str] = Counter()
+    for row in filtered:
+        target_coverage.update(dict((row.get("stats") or {}).get("target_coverage") or {}))
     totals = {
         "bytes": sum(int(row["bytes"]) for row in filtered),
         "records_kept": sum(int(row["stats"]["records_kept"]) for row in filtered),
@@ -306,15 +319,28 @@ def filter_manifest(
         "source_records_scanned": sum(
             int(row["stats"]["source_records_scanned"]) for row in filtered
         ),
+        "target_coverage": dict(sorted(target_coverage.items())),
     }
     if totals["records_kept"] <= 0 or totals["decisions_kept"] <= 0:
         raise ValueError("filtered manifest would be empty")
+    temporal_actions_complete = (
+        compact_mode != COMPACT_MODE_TEMPORAL_EXPERT
+        or int(target_coverage.get("temporal_action_rows", 0))
+        == int(totals["decisions_kept"])
+    )
+    if not temporal_actions_complete:
+        raise ValueError(
+            "temporal expert manifest is missing previous-action tokens: "
+            f"actions={int(target_coverage.get('temporal_action_rows', 0))} "
+            f"decisions={int(totals['decisions_kept'])}"
+        )
     manifest = {
         "format": MANIFEST_FORMAT,
         "format_version": MANIFEST_FORMAT_VERSION,
         "date_start": payload.get("date_start"),
         "date_end": payload.get("date_end"),
         "dates": list(payload.get("dates") or []),
+        "compact_mode": compact_mode,
         "selection": {
             "field": "GameSequence.archetype",
             "operator": "exact_casefold",
@@ -330,6 +356,8 @@ def filter_manifest(
             "nonempty": True,
             "checksummed": True,
             "acting_seat_archetype_exact": True,
+            "temporal_action_tokens_complete": temporal_actions_complete,
+            "hidden_targets_are_aux_only": True,
         },
     }
     output_manifest = output_dir / "manifest.json"

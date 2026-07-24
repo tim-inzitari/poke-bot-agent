@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from poke_bot.feature_shards import (
     MANIFEST_FORMAT_VERSION,
     SHARD_FORMAT,
     SHARD_FORMAT_VERSION,
+    SUPPORTED_COMPACT_MODES,
 )
 
 
@@ -104,6 +106,33 @@ def main() -> int:
         help="Cache post-transfer shard digests for the final manifest pass.",
     )
     parser.add_argument("--min-free-gib", type=float, default=25.0)
+    parser.add_argument(
+        "--compact-mode",
+        choices=sorted(SUPPORTED_COMPACT_MODES),
+        default=COMPACT_MODE,
+    )
+    parser.add_argument(
+        "--required-archetype",
+        default="",
+        help="Require every shard to contain only this acting-seat archetype.",
+    )
+    parser.add_argument(
+        "--expected-max-context",
+        type=int,
+        default=None,
+        help="Require the exact temporal context recorded by every shard.",
+    )
+    parser.add_argument(
+        "--require-target-coverage",
+        action="append",
+        default=[],
+        help="Require this target counter to equal decisions_kept (repeatable).",
+    )
+    parser.add_argument(
+        "--seal-protected",
+        action="store_true",
+        help="Write an immutable PROTECTED_EXPERT_CORPUS.json beside the manifest.",
+    )
     args = parser.parse_args()
 
     staging = args.staging_dir.resolve()
@@ -125,16 +154,43 @@ def main() -> int:
     verified_dir = args.verified_dir.resolve() if args.verified_dir else None
     if verified_dir is not None:
         verified_dir.mkdir(parents=True, exist_ok=True)
+    required_archetype = str(args.required_archetype).strip().casefold()
+    required_targets = tuple(str(value).strip() for value in args.require_target_coverage)
+    if len(required_targets) != len(set(required_targets)) or any(
+        not value for value in required_targets
+    ):
+        raise SystemExit("--require-target-coverage values must be unique/nonempty")
+    if args.expected_max_context is not None and int(args.expected_max_context) <= 0:
+        raise SystemExit("--expected-max-context must be positive")
+    if args.seal_protected and not required_archetype:
+        raise SystemExit("--seal-protected requires --required-archetype")
     rows: list[dict] = []
     actual_dates: list[str] = []
+    target_coverage: Counter[str] = Counter()
     for sidecar in sorted(staging.glob("*.features.json")):
         metadata = json.loads(sidecar.read_text(encoding="utf-8"))
         if metadata.get("format") != SHARD_FORMAT:
             raise SystemExit(f"invalid shard format in {sidecar}")
         if int(metadata.get("format_version", -1)) != SHARD_FORMAT_VERSION:
             raise SystemExit(f"invalid shard version in {sidecar}")
-        if metadata.get("compact_mode") != COMPACT_MODE:
+        if metadata.get("compact_mode") != args.compact_mode:
             raise SystemExit(f"invalid compact mode in {sidecar}")
+        if required_archetype and str(
+            metadata.get("required_archetype") or ""
+        ).strip().casefold() != required_archetype:
+            raise SystemExit(
+                f"acting-seat archetype mismatch in {sidecar}: "
+                f"expected={required_archetype!r} "
+                f"actual={metadata.get('required_archetype')!r}"
+            )
+        if args.expected_max_context is not None and int(
+            metadata.get("max_context", -1)
+        ) != int(args.expected_max_context):
+            raise SystemExit(
+                f"max-context mismatch in {sidecar}: "
+                f"expected={int(args.expected_max_context)} "
+                f"actual={metadata.get('max_context')!r}"
+            )
         shard = staging / str(metadata.get("path") or "")
         if not shard.is_file():
             raise SystemExit(f"missing shard for {sidecar}: {shard}")
@@ -157,6 +213,7 @@ def main() -> int:
             raise SystemExit(
                 f"usable-record gate failed for {shard}: kept={kept} total={total}"
             )
+        target_coverage.update(dict(stats.get("target_coverage") or {}))
         rows.append(
             {
                 "path": shard.name,
@@ -175,12 +232,31 @@ def main() -> int:
     if not rows:
         raise SystemExit("no feature shard sidecars found")
     rows.sort(key=lambda row: min(row["source_dates"]))
+    total_decisions = sum(
+        int(row["stats"].get("decisions_kept", 0)) for row in rows
+    )
+    incomplete_targets = {
+        name: int(target_coverage.get(name, 0))
+        for name in required_targets
+        if int(target_coverage.get(name, 0)) != total_decisions
+    }
+    if incomplete_targets:
+        raise SystemExit(
+            "required target coverage is incomplete: "
+            f"decisions={total_decisions} coverage={incomplete_targets}"
+        )
     payload = {
         "format": MANIFEST_FORMAT,
         "format_version": MANIFEST_FORMAT_VERSION,
         "date_start": min(actual_dates),
         "date_end": max(actual_dates),
         "dates": sorted(actual_dates),
+        "compact_mode": args.compact_mode,
+        "max_context": (
+            int(args.expected_max_context)
+            if args.expected_max_context is not None
+            else None
+        ),
         "shards": rows,
         "totals": {
             "bytes": sum(int(row["bytes"]) for row in rows),
@@ -190,13 +266,55 @@ def main() -> int:
             "records_kept": sum(
                 int(row["stats"].get("records_kept", 0)) for row in rows
             ),
-            "decisions_kept": sum(
-                int(row["stats"].get("decisions_kept", 0)) for row in rows
-            ),
+            "decisions_kept": total_decisions,
+            "target_coverage": dict(sorted(target_coverage.items())),
         },
     }
+    if required_archetype:
+        payload["selection"] = {
+            "field": "GameSequence.archetype",
+            "operator": "exact_casefold",
+            "value": required_archetype,
+            "seat_semantics": "acting_seat_only",
+        }
+        payload["quality_gates"] = {
+            "passed": True,
+            "nonempty": total_decisions > 0,
+            "checksummed": True,
+            "acting_seat_archetype_exact": True,
+            "max_context_exact": args.expected_max_context is not None,
+            "required_target_rows_complete": not incomplete_targets,
+            "required_target_names": list(required_targets),
+            "hidden_targets_are_aux_only": True,
+        }
     out = args.out.resolve()
-    _atomic_json(out, payload)
+    if args.seal_protected and out.parent != staging:
+        raise SystemExit("a protected manifest must be written inside --staging-dir")
+    if args.seal_protected and out.exists():
+        if json.loads(out.read_text(encoding="utf-8")) != payload:
+            raise SystemExit(f"protected manifest already differs: {out}")
+    else:
+        _atomic_json(out, payload)
+    if args.seal_protected:
+        pointer = {
+            "schema": "poke_bot.pinned_expert_corpus/v1",
+            "protected": True,
+            "manifest": out.name,
+            "manifest_sha256": _sha256(out),
+            "selection": payload["selection"],
+            "totals": {
+                "bytes": int(payload["totals"]["bytes"]),
+                "records_kept": int(payload["totals"]["records_kept"]),
+                "decisions_kept": int(payload["totals"]["decisions_kept"]),
+            },
+        }
+        pointer_path = out.parent / "PROTECTED_EXPERT_CORPUS.json"
+        if pointer_path.exists():
+            if json.loads(pointer_path.read_text(encoding="utf-8")) != pointer:
+                raise SystemExit(f"protected pointer already differs: {pointer_path}")
+        else:
+            _atomic_json(pointer_path, pointer)
+        print(f"protected_pointer={pointer_path}", flush=True)
     print(json.dumps(payload["totals"], sort_keys=True), flush=True)
     print(f"manifest={out}", flush=True)
     return 0
