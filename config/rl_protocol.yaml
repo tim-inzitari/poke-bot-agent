@@ -138,6 +138,67 @@ shared_core_refresh:
 
 specialist_training:
   concurrency: 1
+  expert_corpus:
+    source_window_unit: calendar_day
+    source_window_days: 20
+    window_selection: latest_available_fully_validated_daily_sources
+    filter_after_source_window_selection: true
+    filter_to_active_specialist_archetype: true
+    expand_window_to_reach_sample_target: false
+    reuse_filtered_corpus_for_different_specialist: false
+    require_checksum_validated_archive_per_day: true
+    require_checksum_validated_feature_shard_per_day: true
+    require_all_source_days_in_protected_receipt: true
+    retain_zero_match_days_in_provenance: true
+    record_matching_games_and_decisions_per_day: true
+    dashboard_source_day_slots: 20
+    dashboard_show_all_source_days: true
+    dashboard_present_requires_validated_archive_and_feature: true
+    zero_matching_games_counts_as_present: true
+    missing_source_day_counts_as_present: false
+    historical_zero_match_fallback:
+      allowed: true
+      prerequisite_latest20_receipt_complete: true
+      trigger_metric: aggregate_matching_games_across_latest20
+      trigger_exact_value: 0
+      prohibited_when_latest20_matching_games_greater_than: 0
+      low_decision_count_does_not_authorize_fallback: true
+      sources: older_checksum_validated_archive_and_feature_shards
+      expands_or_replaces_latest20_window: false
+      separate_immutable_receipt_required: true
+      required_label: historical_zero_match_fallback
+      may_be_described_as_latest20: false
+      receipt_requires_latest20_zero_match_proof: true
+      receipt_requires_active_archetype: true
+      receipt_requires_every_fallback_date_and_checksum: true
+      receipt_requires_per_day_matching_games_and_decisions: true
+      receipt_requires_aggregate_matching_games_and_decisions: true
+      dashboard_show_separately_from_latest20_dates: true
+      search_order: null
+      shard_limit: null
+      stopping_rule: null
+    refresh_before_bootstrap: true
+    refresh_before_rehearsal_when_new_validated_day_available: true
+    running_update_remains_bound_to_pinned_corpus: true
+    refresh_activation_boundary: next_safe_bootstrap_or_rehearsal
+    archive_refresh:
+      index_poll_interval_seconds: 3600
+      rolling_window_days: 20
+      kaggle_ingress_host: bert
+      kaggle_ingress_interface: wifi
+      kaggle_ingress_device: en1
+      elmo_transfer_interface: bert_ethernet
+      elmo_transfer_source_address: 192.168.1.158
+      archive_host: elmo
+      reuse_checksum_valid_elmo_archives: true
+      atomic_receipt_required: true
+      delete_bert_archive_after_elmo_checksum_commit: true
+      persistent_replay_archives_on_bert: 0
+      replay_archives_may_traverse_inzi: false
+      running_training_may_be_modified: false
+    authoritative_source: >-
+      owner design decision 2026-07-24; canonicalized at
+      config/rl_protocol.yaml#/specialist_training/expert_corpus
   selection_order:
     active_specialist_is_non_preemptible: true
     candidates: unfinished_without_passing_frozen_checkpoint
@@ -166,7 +227,15 @@ specialist_training:
     applies_from_specialist: starmie
     applies_to_all_future_specialists: true
     canonical_roster_required_in_every_checkpoint: true
-    canonical_roster_source: state/matchup_adapter_roster_v4.json#/expert_ids
+    canonical_roster_source: state/matchup_adapter_roster.json#/expert_ids
+    checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+    adapter_count:
+      derivation: length_of_canonical_roster_expert_ids
+      hard_coded_total_allowed: false
+    parameter_expectation:
+      derivation: canonical_adapter_count_times_instantiated_per_head_parameter_count
+      per_head_architecture_source: checkpoint_declared_matchup_adapter_config
+      hard_coded_total_allowed: false
     active_specialist_route_required: true
     mirror_self_play_route_required: true
     zero_observation_route_remains_materialized: true
@@ -189,16 +258,14 @@ specialist_training:
       runtime_audit_required: true
       active_specialist_mirror_route_minimum_activations: 1
       failure_behavior: preserve_collection_stop_before_next_iteration
-    staged_roster_migration:
-      source: state/matchup_adapter_roster_v5.json
-      status: planned_not_active
-      activation_boundary: next_safe_specialist_handoff
-      preserve_v4_physical_rows: true
-      renumber_existing_rows: false
-      retired_rows_are_disabled_tombstones: true
-      retired_rows_receive_routing: false
-      retired_rows_receive_gradients: false
-      retired_rows_count_as_required_specialists: false
+    canonical_roster_migration:
+      source: state/matchup_adapter_roster.json
+      status: deployed
+      checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+      preserve_v4_physical_rows: false
+      retained_rows_preserve_weights_by_route_identity: true
+      retired_rows_are_deleted: true
+      migrated_adapter_optimizer_state_is_discarded: true
       append_routes:
         - team-rockets-spidops
       logical_route_aliases:
@@ -210,7 +277,7 @@ specialist_training:
         - ns-zoroark
         - raging-bolt
       required_active_route_count_after_activation: 18
-      physical_checkpoint_row_count_after_activation: 23
+      physical_checkpoint_row_count_after_activation: 18
     dashboard:
       list_complete_canonical_roster: true
       show_zero_observation_routes: true
@@ -307,10 +374,10 @@ research_evaluations:
   premium_competition:
     base_agents: 8
     frozen_specialists_added: all_registered_completed_specialists
-    current_frozen_specialists: 1
-    current_agents: 9
+    current_frozen_specialists: 4
+    current_agents: 12
     base_games_total: 2000
-    current_games_total: 2250
+    current_games_total: 3000
     games_total_formula: 2000_plus_250_per_frozen_specialist
     games_per_agent: 250
     going_first_per_agent: 125
@@ -341,7 +408,7 @@ research_evaluations:
       effective_after_completed_specialist: lucario
       effective_after_completed_iteration: 9
       applies_to_lucario_iteration_10: true
-      current_active_specialist: lucario
+      current_active_specialist: dragapult-dusknoir
       completed_iteration_9_individual_opponent_floor: 0.25
       completed_iteration_9_decision_unchanged: true
       future_individual_opponent_floor: 0.15
@@ -350,7 +417,7 @@ research_evaluations:
       authorized_at_utc: 2026-07-24T12:00:00Z
       authorization: operator-directed future-gate change
     authoritative_threshold_source: config/rl_protocol.yaml#/research_evaluations/premium_competition/gate_threshold
-  current_all_holdouts_games_total: 3250
+  current_all_holdouts_games_total: 4000
   all_holdouts_games_total_formula: 3000_plus_250_per_frozen_specialist
   use_established_thresholds_only: true
   allow_threshold_weakening: false

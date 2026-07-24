@@ -130,6 +130,63 @@ For each specialist:
    epochs, run exactly 5 expert-replay rehearsal epochs.
 6. Permit updates only to the active specialist.
 
+### Active-specialist expert corpus
+
+Every newly built bootstrap or rehearsal corpus uses the latest 20 available
+calendar days from the authoritative daily episode index, inclusive of the
+newest fully validated day. After all 20 daily sources have been checksum
+validated, filter their combined replay population to the current active
+archetype. The 20-day source window is fixed before filtering; it must not be
+shortened to only the dates on which that archetype appeared, expanded
+backward to obtain a preferred sample count, or reused for a different active
+archetype without rebuilding and re-pinning the filtered corpus.
+
+The protected corpus receipt must identify all 20 calendar dates and the
+archive/feature checksum for every date, including dates that contribute zero
+matching games after archetype filtering. It must separately record per-day
+matching-game and decision counts plus the aggregate filtered totals. The
+dashboard must display all 20 source dates. A date may be shown as present only
+when its daily source and derived feature shard are validated; zero matching
+games is a valid present date and is not the same as a missing date.
+
+Only one narrow historical fallback is permitted. First complete and receipt
+the latest-20 window exactly as above. If, and only if, filtering those 20 days
+to the active archetype produces exactly zero matching games in aggregate, the
+builder may search older checksum-validated archive and feature shards for
+that archetype. One or more matching games in the latest-20 window prohibits
+fallback, regardless of whether the resulting decision count is considered
+small.
+
+Historical fallback never expands or replaces the latest-20 window. It must
+produce a separate immutable receipt that records the latest-20 zero-match
+proof, every older source date and checksum used, per-day and aggregate
+matching-game and decision counts, and the active archetype. Its corpus and
+monitoring status must be labeled `historical_zero_match_fallback`; neither
+the artifact nor its dates may be called `latest20`. The dashboard continues
+to display all 20 latest source dates, including their zero counts, and shows
+fallback provenance separately. Unknown fallback search order, shard limit,
+and stopping rule remain unset until explicitly authorized; they must not be
+invented by an implementation.
+
+Before bootstrap, and before a scheduled rehearsal when a newer fully
+validated daily source is available, rebuild and checksum-pin the 20-day
+archetype-filtered corpus. An already-running update remains bound to its exact
+protected corpus; corpus refreshes take effect only at the next safe
+bootstrap/rehearsal boundary and never rewrite historical receipts.
+
+Poll the authoritative Kaggle episode index hourly so a newly published daily
+dataset is incorporated without waiting for a manual handoff. Bert is the
+exclusive Kaggle ingress host and must use its Wi-Fi default route. Each
+missing daily archive is validated on Bert, transferred to Elmo over Bert's
+Ethernet source address, checksum-validated on Elmo, and committed through an
+atomic latest-20 receipt. Bert must delete its temporary replay ZIP only after
+the committed Elmo receipt records the identical checksum. Inzi receives only
+the small receipt; replay archives do not traverse Inzi's constrained link.
+Existing checksum-valid Elmo archives are reused instead of downloaded again.
+The rolling archive refresh never changes an already-running training update;
+derived specialist features activate only at the safe boundary described
+above.
+
 Every specialist has a completed-iteration floor of 5 and a
 completed-iteration ceiling of 15. A measured gate pass may transition at
 iterations 5 through 15 inclusive. If the specialist reaches iteration 15
@@ -227,32 +284,42 @@ be described as absent. This does not mean that every route contributes to
 every decision. At each decision, the causal router selects at most one route,
 and unknown or insufficient evidence uses the exact base-policy bypass.
 
-### Staged v5 specialist and matchup-roster migration
+### Canonical v5 specialist and matchup roster
 
-At the next safe specialist handoff, replace the required v4 target roster
-with the v5 logical roster in `state/matchup_adapter_roster_v5.json`. Retire
-Raging Bolt, Gardevoir, N's Zoroark, Lopunny, and Cornerstone Ogerpon from
-specialist selection and matchup routing. Rename the Festival Lead logical
-target to Thwackey, matching the source deck's label, while retaining its
-compatible physical adapter row. Append Team Rocket's Spidops as a distinct
-future specialist and matchup route.
+The deployed authoritative roster is
+`state/matchup_adapter_roster.json#/expert_ids`. Its checkpoint format is
+`poke-bot-matchup-adapter-bank-v5-roster18`. It contains exactly the 18
+logical routes named by that source. Raging Bolt, Gardevoir, N's Zoroark,
+Lopunny, and Cornerstone Ogerpon are retired: they are absent from active
+specialist selection, active planning records, current checkpoint rows, and
+runtime routing. Historical v4 artifacts and receipts may still name them,
+but only as explicitly historical lineage.
 
-Existing v4 tensor rows are an immutable checkpoint-compatibility contract.
-The five retired rows therefore remain as disabled physical tombstones: they
-are never selected, routed, trained, or counted toward specialist completion,
-and they receive no gradients. No existing row may be deleted or renumbered.
-The existing `festival-lead` tensor row is exposed logically as `thwackey`;
-this is a same-deck alias, not a new or reset tensor. The Team Rocket's Spidops
-row is append-only and begins as an exact zero-output adapter. The v5 roster
-may become active only after a causal router with the matching 23-row physical
-class order passes validation, all legacy frozen checkpoints load without row
-shifts, and fleet checksums agree.
+The v4 `festival-lead` route was migrated by route identity to the canonical
+`thwackey` route. Team Rocket's Spidops was appended as an exact zero-output
+route. Retained route tensors were required to remain byte-identical by route
+identity, retired rows were deleted, the appended row was required to be
+exactly zero, and adapter optimizer state was discarded during the
+non-prefix-compatible migration. The migrated active checkpoint, causal
+router, authorization receipt, and fleet copies must share their recorded
+checksums.
+
+Head-count and parameter checks must never encode a copied total. The adapter
+count is derived from the length of the canonical `expert_ids` list. The
+parameter expectation is derived as:
+
+`canonical adapter count × parameters in one adapter head as instantiated by
+the checkpoint's declared per-head architecture`.
+
+Tests and monitoring must derive both factors from those authoritative
+structures. A roster change or per-head architecture change therefore updates
+the expectation without editing a hard-coded total.
 
 After the current cumulative-core boundary, the explicit unfinished priority
 prefix is Dragapult/Dusknoir, Dudunsparce, Marnie's Grimmsnarl ex, Cynthia's
 Garchomp ex, Team Rocket's Mewtwo ex, Thwackey, and Team Rocket's Spidops.
 Hammer-Pult then returns at its actual meta priority without the
-existing-artifact priority penalty. Remaining unfinished v5 targets then
+existing-artifact priority penalty. Remaining unfinished canonical targets then
 return to the established normal ordering.
 
 The active specialist's own matchup route is mandatory for mirror self-play.
@@ -348,7 +415,7 @@ machine-readable value remains null and gate passage is impossible.
 
 The stage-2 competition gate uses a skill-weighted 90% confidence-lower-bound
 threshold of 0.50 for every specialist. A specialist may record earlier
-research results, but it cannot complete or transition before its iteration-10
+research results, but it cannot complete or transition before its iteration-5
 commit. The exact 250-game-per-opponent allocation, base eight-agent roster
 plus every frozen specialist, both-seat balance, weighted-win-rate floor,
 S-tier floor, individual-opponent floor, official non-regression requirement,
@@ -371,7 +438,7 @@ materialize 0.15 before training starts.
 ## 5. Passing a specialist and asynchronous Kaggle submission
 
 When a specialist passes both the official-four gate and the measured premium
-gate after the iteration-10 floor:
+gate at or after the iteration-5 floor:
 
 1. Freeze and register the exact passing checkpoint and checksum.
 2. Record all reproducibility metadata and complete holdout results.

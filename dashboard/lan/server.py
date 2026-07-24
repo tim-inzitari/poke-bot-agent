@@ -20,6 +20,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "index.html"
 REMOTE_SNAPSHOT = "/home/inzi/poke-bot-agent-deployments/state-core-v1/scripts/dashboard_snapshot.py"
+REMOTE_PYTHON = "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python"
 LOCAL_SNAPSHOT = ROOT / "fleet_host_snapshot.py"
 RATE_STATE = ROOT / "fleet_rate_state.json"
 UI_VERSION_TOKEN = b"__DASHBOARD_UI_VERSION__"
@@ -981,6 +982,432 @@ class SnapshotCache:
         curriculum["scheduler_queues"] = queues
         value["scheduler_queues"] = queues
 
+    @staticmethod
+    def _annotate_source_integrity(value: dict[str, Any]) -> None:
+        """Publish one run-bound truth registry for every visible panel."""
+
+        now = float(value.get("dashboard_sampled_at") or time.time())
+        curriculum = value.get("curriculum") or {}
+        service = value.get("service") or {}
+        protocol = value.get("specialist_protocol") or {}
+        model = value.get("model") or {}
+        structure = model.get("checkpoint_structure") or {}
+        expert = value.get("expert_refresh") or {}
+        queues = value.get("scheduler_queues") or {}
+        fleet = value.get("fleet") or {}
+        stage = str(curriculum.get("stage") or "")
+        collecting = bool(
+            curriculum.get("active")
+            and (
+                stage.startswith("collect:")
+                or stage.startswith("heldout")
+                or stage == "promotion"
+            )
+        )
+        runtime_specialist = str(
+            protocol.get("runtime_active_specialist") or ""
+        )
+        canonical_specialist = str(
+            protocol.get("canonical_active_specialist") or ""
+        )
+        service_active = bool(
+            service.get("active") and int(service.get("pid") or 0) > 0
+        )
+        expert_days = [
+            row
+            for row in (expert.get("days") or [])
+            if isinstance(row, dict) and str(row.get("day") or row.get("date") or "")
+        ]
+        expert_archive_current = bool(
+            expert.get("available") is True
+            and expert.get("archive_window_ready") is True
+            and (
+                (
+                    int(expert.get("total_days") or 0) == 20
+                    and len(expert_days) == 20
+                )
+                or (
+                    expert.get("complete") is True
+                    and expert.get("assembled_manifest_ready") is True
+                    and expert.get("filtered_corpus_ready") is True
+                )
+            )
+        )
+        protocol_specialists = protocol.get("specialists")
+        protocol_roster_current = True
+        protocol_frozen_pool_current = True
+        protocol_model_roster_current = True
+        if isinstance(protocol_specialists, list):
+            specialist_ids = [
+                str(row.get("id") or "")
+                for row in protocol_specialists
+                if isinstance(row, dict)
+            ]
+            required_target_count = protocol.get("required_target_count")
+            active_record_ids = {
+                str(row.get("id") or "")
+                for row in protocol_specialists
+                if isinstance(row, dict) and row.get("active") is True
+            }
+            protocol_roster_current = bool(
+                specialist_ids
+                and all(specialist_ids)
+                and len(set(specialist_ids)) == len(specialist_ids)
+                and (
+                    not isinstance(required_target_count, int)
+                    or len(specialist_ids) == required_target_count
+                )
+                and active_record_ids == {canonical_specialist}
+            )
+            frozen_state_ids = {
+                str(row.get("id") or "")
+                for row in protocol_specialists
+                if isinstance(row, dict)
+                and (
+                    row.get("frozen") is True
+                    or row.get("public_mix_eligible") is True
+                )
+            }
+            frozen_runtime_ids = {
+                str(row.get("specialist_id") or "")
+                for row in (protocol.get("frozen_inference_opponents") or [])
+                if isinstance(row, dict)
+            }
+            protocol_frozen_pool_current = frozen_state_ids == frozen_runtime_ids
+            model_adapter_count = structure.get("adapter_expert_count")
+            if isinstance(required_target_count, int) and isinstance(
+                model_adapter_count, int
+            ):
+                protocol_model_roster_current = (
+                    model_adapter_count == required_target_count
+                )
+        # The protocol card describes the canonical specialist state, which
+        # remains current while production is stopped.  A live process adds a
+        # stronger reconciliation requirement: its selected specialist must
+        # match the canonical pointer.  Do not make a stopped controller erase
+        # an otherwise valid, parseable canonical protocol.
+        protocol_identity_current = bool(
+            protocol.get("available") is True
+            and protocol.get("canonical_pointer_stale") is not True
+            and canonical_specialist
+            and protocol_roster_current
+            and protocol_frozen_pool_current
+            and protocol_model_roster_current
+            and (
+                not service_active
+                or (
+                    runtime_specialist
+                    and runtime_specialist == canonical_specialist
+                )
+            )
+        )
+        rows: dict[str, dict[str, Any]] = {
+            "stage": {
+                "required": True,
+                "current": bool(
+                    service_active
+                    and int(service.get("restart_count") or 0) >= 0
+                ),
+                "identity": service.get("name"),
+                "source": "systemd user cgroup",
+            },
+            "progress": {
+                "required": True,
+                "current": bool(
+                    curriculum.get("active")
+                    and curriculum.get("source_current") is True
+                    and str(curriculum.get("run") or "")
+                ),
+                "identity": (
+                    f"{curriculum.get('run') or 'unknown'}:"
+                    f"{curriculum.get('iteration')}:{stage}"
+                ),
+                "source": curriculum.get("progress_status_source")
+                or curriculum.get("progress_source"),
+            },
+            "model": {
+                "required": True,
+                "current": bool(
+                    structure.get("verified") is True
+                    and structure.get("checkpoint")
+                    == model.get("active_checkpoint")
+                    and structure.get("checkpoint_digest")
+                    == model.get("active_checkpoint_digest")
+                ),
+                "identity": model.get("active_checkpoint_digest"),
+                "source": structure.get("checkpoint"),
+            },
+            "protocol": {
+                "required": True,
+                "current": protocol_identity_current,
+                "identity": runtime_specialist or canonical_specialist,
+                "source": protocol.get("source"),
+                "checks": {
+                    "canonical_pointer": bool(
+                        canonical_specialist
+                        and protocol.get("canonical_pointer_stale") is not True
+                    ),
+                    "specialist_roster": protocol_roster_current,
+                    "frozen_pool": protocol_frozen_pool_current,
+                    "model_roster": protocol_model_roster_current,
+                    "live_runtime_identity": bool(
+                        not service_active
+                        or (
+                            runtime_specialist
+                            and runtime_specialist == canonical_specialist
+                        )
+                    ),
+                },
+            },
+            "latest10": {
+                "required": True,
+                "current": bool(
+                    expert_archive_current
+                    and expert.get("authoritative_for_active_run") is True
+                ),
+                "identity": (
+                    f"{expert.get('window_start')}..{expert.get('window_end')}"
+                ),
+                "source": expert.get("source"),
+                "checks": {
+                    "archive_window": expert_archive_current,
+                    "active_run_identity": (
+                        expert.get("authoritative_for_active_run") is True
+                    ),
+                    "filtered_corpus_ready": (
+                        expert.get("filtered_corpus_ready") is True
+                    ),
+                },
+            },
+            "scheduler": {
+                "required": collecting,
+                "current": bool(
+                    not collecting
+                    or (
+                        queues.get("available") is True
+                        and isinstance(queues.get("updated_at"), (int, float))
+                        and now - float(queues["updated_at"]) <= 15.0
+                    )
+                ),
+                "identity": stage,
+                "source": queues.get("source"),
+            },
+        }
+        # Cards that intentionally project the same authoritative object still
+        # receive their own contract row. This keeps settings/reordering from
+        # hiding whether a particular visible card is current.
+        progress_current = rows["progress"]["current"]
+        progress_source = rows["progress"]["source"]
+        model_current = rows["model"]["current"]
+        model_source = rows["model"]["source"]
+        protocol_current = rows["protocol"]["current"]
+        expert_current = rows["latest10"]["current"]
+        training = value.get("training") or {}
+        bootstrap = value.get("bootstrap") or {}
+        transition = value.get("transition") or {}
+        handoff = value.get("specialist_handoff") or {}
+        baseline = value.get("baseline_eval") or {}
+        gate = (
+            (curriculum.get("gate_program") or {}).get("next_gate")
+            or {}
+        )
+        replay = curriculum.get("replay_window") or {}
+        rows.update(
+            {
+                "bootstrap": {
+                    "required": True,
+                    "current": bool(
+                        progress_current
+                        and bootstrap.get("compatibility_alias") is True
+                        and bootstrap.get("alias_of") == "training"
+                        and bootstrap.get("phase") == training.get("phase")
+                    ),
+                    "identity": (
+                        f"{curriculum.get('iteration')}:{stage}"
+                    ),
+                    "source": progress_source,
+                },
+                "throughput": {
+                    "required": True,
+                    "current": progress_current,
+                    "identity": f"{curriculum.get('iteration')}:{stage}",
+                    "source": progress_source,
+                },
+                "blackwell": {
+                    "required": True,
+                    "current": bool(value.get("gpus")),
+                    "identity": "inzi:gpu1",
+                    "source": "live nvidia-smi device telemetry",
+                },
+                "outcomes": {
+                    "required": True,
+                    "current": bool(
+                        curriculum.get("last_committed_iteration") is not None
+                        or curriculum.get("last_completed_iteration") is not None
+                    ),
+                    "identity": curriculum.get("last_committed_iteration")
+                    if curriculum.get("last_committed_iteration") is not None
+                    else curriculum.get("last_completed_iteration"),
+                    "source": curriculum.get("commit_source")
+                    or curriculum.get("latest_commit_source")
+                    or curriculum.get("heldout_source"),
+                },
+                "adapterfleet": {
+                    "required": False,
+                    "current": bool(
+                        model_current
+                        and (
+                            not (value.get("matchup_pipeline") or {}).get(
+                                "adapter_fit", {}
+                            ).get("active")
+                        )
+                    ),
+                    "identity": model.get("active_checkpoint_digest"),
+                    "source": model_source,
+                },
+                "replay": {
+                    "required": bool(
+                        stage.startswith("train:preparing")
+                        or replay.get("active")
+                    ),
+                    "current": bool(
+                        not (
+                            stage.startswith("train:preparing")
+                            or replay.get("active")
+                        )
+                        or replay.get("available") is True
+                    ),
+                    "identity": curriculum.get("iteration"),
+                    "source": replay.get("source"),
+                },
+                "baseline": {
+                    "required": False,
+                    "current": bool(
+                        not baseline
+                        or baseline.get("historical") is True
+                    ),
+                    "identity": baseline.get("checkpoint"),
+                    "source": baseline.get("source"),
+                },
+                "nextgate": {
+                    "required": True,
+                    "current": bool(
+                        gate.get("available") is True
+                        or gate.get("contract_valid") is True
+                    ),
+                    "identity": gate.get("checkpoint_digest")
+                    or model.get("active_checkpoint_digest"),
+                    "source": gate.get("contract_source")
+                    or (curriculum.get("gate_program") or {}).get("source"),
+                },
+                "curriculum": {
+                    "required": True,
+                    "current": progress_current,
+                    "identity": f"{curriculum.get('run')}:{stage}",
+                    "source": progress_source,
+                },
+                "pure": {
+                    "required": True,
+                    "current": progress_current,
+                    "identity": curriculum.get("run"),
+                    "source": progress_source,
+                },
+                "command": {
+                    "required": False,
+                    "current": bool(service.get("command")),
+                    "identity": service.get("pid"),
+                    "source": "systemd user cgroup",
+                },
+                "raw": {
+                    "required": False,
+                    "current": True,
+                    "identity": value.get("observed_at"),
+                    "source": "complete /api/status snapshot",
+                },
+                "handoff": {
+                    "required": bool(handoff.get("active")),
+                    "current": bool(
+                        not handoff.get("active")
+                        or (
+                            handoff.get("source_specialist_id")
+                            == protocol.get("active_specialist")
+                        )
+                    ),
+                    "identity": handoff.get("source_specialist_id"),
+                    "source": handoff.get("source"),
+                },
+                "transition": {
+                    "required": bool(transition.get("active")),
+                    "current": bool(
+                        transition.get("active")
+                        or transition.get("historical") is True
+                    ),
+                    "identity": transition.get("phase"),
+                    "source": transition.get("source"),
+                },
+            }
+        )
+        for host_key in ("inzi", "elmo", "bert"):
+            host = fleet.get(host_key) or {}
+            worker = host.get("worker") or {}
+            required = bool(
+                host_key == "inzi"
+                or (
+                    curriculum.get("active")
+                    and host.get("production_active") is not False
+                )
+            )
+            rows[f"fleet_{host_key}"] = {
+                "required": required,
+                "current": bool(
+                    host.get("reachable") is not False
+                    and (
+                        host_key == "inzi"
+                        or not required
+                        or (
+                            worker.get("active") is True
+                            and worker.get("health_current") is not False
+                        )
+                    )
+                ),
+                "identity": worker.get("command") or host.get("name"),
+                "source": worker.get("rate_source")
+                or host.get("telemetry_source")
+                or "live host snapshot",
+            }
+        rows["hardware"] = {
+            "required": True,
+            "current": bool(
+                rows["fleet_inzi"]["current"]
+                and rows["fleet_elmo"]["current"]
+                and rows["fleet_bert"]["current"]
+            ),
+            "identity": "inzi+elmo+bert",
+            "source": "per-host live snapshots",
+        }
+        rows["fleet"] = dict(rows["hardware"])
+        required_rows = [
+            row for row in rows.values() if row.get("required") is True
+        ]
+        failed = [
+            key
+            for key, row in rows.items()
+            if row.get("required") is True and row.get("current") is not True
+        ]
+        value["source_integrity"] = {
+            "schema": "poke_bot.dashboard_source_integrity/v1",
+            "current": not failed,
+            "required_current": len(required_rows) - len(failed),
+            "required_total": len(required_rows),
+            "failed": failed,
+            "rows": rows,
+            "observed_at": now,
+            "definition": (
+                "Every live panel resolves from a run-bound authoritative source; "
+                "historical fallbacks cannot satisfy a current-source check."
+            ),
+        }
+
     def _annotate_replay_progress(self, value: dict[str, Any]) -> None:
         """Promote replay-window loading into the canonical Curriculum bar."""
         curriculum = value.get("curriculum") or {}
@@ -1069,6 +1496,7 @@ class SnapshotCache:
             "-o",
             "ControlPath=/tmp/pokebot-dashboard-ssh",
             "inzi@192.168.1.151",
+            REMOTE_PYTHON,
             REMOTE_SNAPSHOT,
         ]
         try:
@@ -1148,6 +1576,7 @@ class SnapshotCache:
             value["network_latency"] = self._refresh_network_latency()
             value["dashboard_host"] = socket.gethostname()
             value["dashboard_sampled_at"] = time.time()
+            self._annotate_source_integrity(value)
         except Exception as exc:  # keep the last good payload visible
             with self.lock:
                 value = dict(self.value)

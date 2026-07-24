@@ -114,6 +114,7 @@ def split_manifest(
     archetypes: list[str] | tuple[str, ...],
     minimum_decisions: int = 100_000,
     progress_every: int = 1_000,
+    expected_source_days: int | None = None,
 ) -> Path:
     source_manifest = Path(source_manifest).expanduser().resolve()
     output_root = Path(output_root).expanduser().resolve()
@@ -131,11 +132,27 @@ def split_manifest(
         or int(progress_every) < 0
     ):
         raise RuntimeError("mixed expert manifest or target list is invalid")
+    source_dates = tuple(str(value) for value in source.get("dates") or ())
+    if expected_source_days is not None:
+        if int(expected_source_days) <= 0:
+            raise RuntimeError("expected source-day count must be positive")
+        if len(source_dates) != int(expected_source_days):
+            raise RuntimeError(
+                "expert source window is not the required calendar-day count: "
+                f"expected={int(expected_source_days)} actual={len(source_dates)}"
+            )
+        if len(set(source_dates)) != len(source_dates):
+            raise RuntimeError("expert source window contains duplicate dates")
     identity = {
         "source_manifest": str(source_manifest),
         "source_manifest_sha256": sha256(source_manifest),
         "archetypes": list(targets),
         "minimum_decisions": int(minimum_decisions),
+        "expected_source_days": (
+            int(expected_source_days)
+            if expected_source_days is not None
+            else None
+        ),
     }
     ready_path = output_root / "SPECIALIST_CORPORA_READY.json"
     if ready_path.is_file():
@@ -156,6 +173,9 @@ def split_manifest(
     shard_rows: dict[str, list[dict[str, Any]]] = {
         target: [] for target in targets
     }
+    source_day_rows: dict[str, list[dict[str, Any]]] = {
+        target: [] for target in targets
+    }
     try:
         for source_row in source["shards"]:
             source_path = (
@@ -167,6 +187,24 @@ def split_manifest(
             ):
                 raise RuntimeError(f"source shard identity changed: {source_path}")
             source_header = _header(source_path)
+            shard_source_dates = tuple(
+                str(value) for value in source_header.get("source_dates") or ()
+            )
+            if expected_source_days is not None and len(shard_source_dates) != 1:
+                raise RuntimeError(
+                    "the canonical 20-day corpus requires one source feature "
+                    f"shard per calendar day: {source_path}"
+                )
+            source_archive_digest = str(
+                source_header.get("source_archive_sha256") or ""
+            )
+            if expected_source_days is not None and not source_archive_digest.startswith(
+                "sha256:"
+            ):
+                raise RuntimeError(
+                    "the canonical 20-day corpus requires a checksum-pinned "
+                    f"source archive for every day: {source_path}"
+                )
             source_stem = (
                 source_path.name[: -len(".features")]
                 if source_path.name.endswith(".features")
@@ -313,6 +351,29 @@ def split_manifest(
                     total["coverage"].update(current["coverage"])
                     total["seats"].update(current["seats"])
                     total["opponents"].update(current["opponents"])
+                for target in targets:
+                    current = shard_stats[target]
+                    for source_day in shard_source_dates:
+                        source_day_rows[target].append(
+                            {
+                                "date": source_day,
+                                "source_feature_path": str(source_path),
+                                "source_feature_sha256": str(source_row["sha256"]),
+                                "source_feature_validated": True,
+                                "source_archive_path": source_header.get(
+                                    "source_archive"
+                                ),
+                                "source_archive_sha256": (
+                                    source_archive_digest or None
+                                ),
+                                "source_archive_validated": bool(
+                                    source_archive_digest.startswith("sha256:")
+                                ),
+                                "matching_games": int(current["records"]),
+                                "matching_decisions": int(current["decisions"]),
+                                "filtered_feature_present": int(current["records"]) > 0,
+                            }
+                        )
             finally:
                 for stream in streams.values():
                     if not stream.closed:
@@ -372,6 +433,17 @@ def split_manifest(
                 },
                 "source_manifest": str(source_manifest),
                 "source_manifest_sha256": identity["source_manifest_sha256"],
+                "source_window": {
+                    "unit": "calendar_day",
+                    "selection": "latest_available_fully_validated_daily_sources",
+                    "days": len(source_dates),
+                    "dates": list(source_dates),
+                    "filter_applied_after_window_selection": True,
+                    "filter_archetype": target,
+                },
+                "source_days": sorted(
+                    source_day_rows[target], key=lambda row: row["date"]
+                ),
                 "shards": shard_rows[target],
                 "totals": {
                     "bytes": sum(int(row["bytes"]) for row in shard_rows[target]),
@@ -436,6 +508,15 @@ def main() -> int:
     parser.add_argument("--archetype", action="append", required=True)
     parser.add_argument("--minimum-decisions", type=int, default=100_000)
     parser.add_argument("--progress-every", type=int, default=1_000)
+    parser.add_argument(
+        "--expected-source-days",
+        type=int,
+        default=20,
+        help=(
+            "Require exactly this many calendar-day source shards before "
+            "archetype filtering (default: 20)."
+        ),
+    )
     args = parser.parse_args()
     ready = split_manifest(
         args.source_manifest,
@@ -443,6 +524,7 @@ def main() -> int:
         archetypes=args.archetype,
         minimum_decisions=int(args.minimum_decisions),
         progress_every=int(args.progress_every),
+        expected_source_days=int(args.expected_source_days),
     )
     print(ready.read_text(encoding="utf-8"), flush=True)
     return 0

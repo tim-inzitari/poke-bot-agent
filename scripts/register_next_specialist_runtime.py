@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
+from poke_bot.matchup_adapters import EXPERT_IDS
 
 
 AUTH_SCHEMA = "poke_bot.matchup_adapter_specialist_bootstrap_authorization/v1"
@@ -105,8 +106,8 @@ def register(
         or int((pointer.get("totals") or {}).get("decisions_kept") or 0)
         < int(minimum_decisions)
         or tree.get("runtime_enabled") is not True
-        or len(targets) != 22
-        or len(set(targets)) != 22
+        or targets != EXPERT_IDS
+        or len(set(targets)) != len(EXPERT_IDS)
         or specialist_id not in targets
         or specialist_id not in accepted
         or (tree.get("runtime_contract") or {}).get("one_route_per_decision")

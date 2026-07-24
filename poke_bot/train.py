@@ -448,13 +448,12 @@ def load_append_only_matchup_adapter_optimizer_state(
     optimizer: torch.optim.Optimizer,
     prior_state: dict[str, Any],
 ) -> int:
-    """Restore Adam state while appending newly materialized expert params.
+    """Restore Adam state only for the exact current adapter roster.
 
-    Adapter routes are append-only and every expert contributes four tensors
-    in a fixed order.  PyTorch normally rejects an optimizer group whose saved
-    parameter count is smaller than the current group; this migration retains
-    every old moment bit-for-bit and leaves only appended routes without state
-    until their first routed gradient.
+    The canonical v5 roster is not append-compatible with historical banks:
+    rows were deleted and renamed. Historical optimizer state is deliberately
+    discarded by the explicit checkpoint migration. Exact v5 resumes preserve
+    every moment bit-for-bit.
     """
 
     if len(optimizer.param_groups) != 1:
@@ -467,12 +466,12 @@ def load_append_only_matchup_adapter_optimizer_state(
     saved_params = list(saved_groups[0].get("params") or [])
     if (
         not saved_params
-        or len(saved_params) > len(current_params)
+        or len(saved_params) != len(current_params)
         or len(saved_params) % 4 != 0
         or len(current_params) % 4 != 0
-        or len(saved_params) // 4 not in {7, 10, 15, 22}
+        or len(saved_params) // 4 != len(EXPERT_IDS)
     ):
-        raise ValueError("saved adapter optimizer is not append-compatible")
+        raise ValueError("saved adapter optimizer does not match canonical roster")
     saved_slots = dict(prior_state.get("state") or {})
     unknown_slots = set(saved_slots) - set(saved_params)
     if unknown_slots:

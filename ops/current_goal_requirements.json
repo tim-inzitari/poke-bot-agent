@@ -1,0 +1,184 @@
+{
+  "schema": "poke_bot.goal_requirements/v1",
+  "status": "authoritative_resume_contract",
+  "created_at_utc": "2026-07-24T19:34:28Z",
+  "purpose": "Authoritative replacement requirements for the stale saved goal. Runtime selectors and immutable receipts remain authoritative for execution; this contract prevents a resumed controller from reverting to stale Starmie or 19-specialist assumptions.",
+  "authoritative_sources": {
+    "human_protocol": "docs/RL_TRAINING_PROTOCOL.md",
+    "numerical_protocol": "config/rl_protocol.yaml",
+    "mutable_program_state": "state/specialists.yaml",
+    "canonical_roster": "state/matchup_adapter_roster.json#/expert_ids",
+    "runtime_registry": "ops/specialist_runtime_registry_v1.json",
+    "frozen_registry": "ops/frozen_specialist_registry_v1.json",
+    "live_selector": "/home/inzi/.config/pokebot/specialist_runtime.env#POKEBOT_ACTIVE_SPECIALIST",
+    "cycle_contract": "ops/specialist_cycle_handoff_v1.json",
+    "transition_graph": "ops/specialist_transition_graph.json",
+    "latest_expert_receipt": "/home/inzi/poke-bot-agent/outputs/state/expert-latest20-current.json",
+    "kaggle_queue": "/home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json",
+    "v5_frozen_derivative_receipt": "/home/inzi/poke-bot-agent/outputs/state/frozen-specialist-roster18-v5-pool.json"
+  },
+  "verified_snapshot": {
+    "verified_at_utc": "2026-07-24T19:24:00Z",
+    "phase": "sequential_specialist_baseline_rl",
+    "canonical_specialist_count": 18,
+    "active_specialist": "dragapult-dusknoir",
+    "active_run": {
+      "service": "pokebot-pure-rl-trevenant-staged.service",
+      "run_name": "pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723",
+      "service_state": "active_running",
+      "manual_stop_protection": true,
+      "iteration": 2,
+      "last_observed_stage": "public_mix_complete",
+      "last_observed_progress": "7168/7168"
+    },
+    "completed_frozen_specialists": [
+      "alakazam",
+      "hops-trevenant",
+      "starmie",
+      "lucario"
+    ],
+    "completed_frozen_count": 4,
+    "remaining_including_active": 14,
+    "remaining_after_active": 13,
+    "population_phase_ready": false,
+    "frozen_v5_derivatives": {
+      "status": "materialized_and_fleet_validated_for_inference",
+      "count": 4,
+      "source_passing_checkpoints_unchanged": true,
+      "inference_only": true,
+      "kaggle_submission_eligible": false,
+      "kaggle_submissions_created": 0
+    },
+    "latest_expert_window": {
+      "status": "ready",
+      "window_start": "2026-07-04",
+      "window_end": "2026-07-23",
+      "days": 20,
+      "all_dates_represented": true,
+      "ingress_host": "bert",
+      "ingress_interface": "wifi",
+      "archive_host": "elmo",
+      "bert_archive_retention_after_elmo_commit": 0,
+      "activation_boundary": "next_safe_bootstrap_or_rehearsal"
+    },
+    "specialist_iteration_bounds": {
+      "minimum_completed_iteration": 5,
+      "ceiling_completed_iteration": 15
+    },
+    "baseline_training_budget": {
+      "total_games": 8192,
+      "public_mix_games": 7168,
+      "active_specialist_self_play_games": 1024
+    },
+    "gate_contract": {
+      "official_games": 1000,
+      "official_gate_threshold": 0.5,
+      "premium_base_games": 2000,
+      "games_per_premium_or_frozen_specialist_opponent": 250,
+      "skill_weighted_win_rate": 0.5,
+      "skill_weighted_confidence_lower": 0.5,
+      "confidence_level": 0.9,
+      "s_tier_mean_floor": 0.4,
+      "individual_opponent_floor": 0.15,
+      "s_plus_individual_floor": 0.3,
+      "s_plus_below_floor_allowance": 2,
+      "both_gates_required_for_measured_pass": true,
+      "ceiling_acceptance_must_not_be_called_a_measured_pass": true
+    },
+    "kaggle_submission_policy": {
+      "required_copies_per_training_complete_specialist": 1,
+      "daily_limit": 5,
+      "minimum_hours_between_submissions": 4,
+      "queue_order": "oldest_first",
+      "quota_exhaustion_behavior": "queue_and_continue",
+      "submission_completion_blocks_specialist_training": false,
+      "submission_completion_blocks_population_phase": false
+    },
+    "transition_orchestration": {
+      "implementation": "small_durable_task_graph_wrapping_existing_idempotent_handoff",
+      "staging_status": "deployed",
+      "specialist_agnostic": true,
+      "persistent_journal": true,
+      "checksum_invalidation": true,
+      "active_training_boundary_guard": true,
+      "kaggle_queue_nonblocking": true
+    }
+  },
+  "preserve_accomplishments": [
+    "Preserve the four original exact passing or owner-accepted frozen checkpoints and their historical gate and submission evidence without replacement.",
+    "Preserve the four roster-18 V5 derivatives as immutable internal inference-only packages; never treat them as new passing checkpoints and never submit them to Kaggle.",
+    "Preserve the active Dragapult/Dusknoir run, its committed checkpoints, replay data, iteration journal, matchup-router evidence, and current service ownership.",
+    "Preserve the canonical 18-specialist roster, current priority ordering, removed-route decisions, and V5 checkpoint format.",
+    "Preserve the hourly latest-20 archive policy: Kaggle ingress on Bert Wi-Fi, checksum transfer to Elmo over Bert Ethernet, atomic Elmo receipt, then deletion of Bert's temporary archive.",
+    "Preserve the nonblocking oldest-first Kaggle queue and original-checkpoint identity for every delayed submission."
+  ],
+  "next_actions": [
+    {
+      "order": 1,
+      "action": "Continue the currently selected specialist without restarting or preempting its active managed training service.",
+      "boundary": "live_now"
+    },
+    {
+      "order": 2,
+      "action": "While training continues, finish and test the read-only pre-stage and specialist-agnostic transition task graph without changing live selectors, services, models, or gates.",
+      "boundary": "background_staging"
+    },
+    {
+      "order": 3,
+      "action": "Before the next rehearsal or bootstrap boundary, derive the active-archetype corpus from the atomically committed latest-20 receipt and checksum-pin all 20 daily sources; never relabel the active run's older bound corpus.",
+      "boundary": "next_safe_data_boundary"
+    },
+    {
+      "order": 4,
+      "action": "At specialist completion, freeze and register the exact qualifying or ceiling-accepted checkpoint, enqueue its required Kaggle copy without blocking, refresh and validate the cumulative core from all frozen teachers, perform the exact 25-epoch expert bootstrap, materialize the checksum-bound gate, and atomically select the next unfinished specialist.",
+      "boundary": "managed_specialist_handoff"
+    },
+    {
+      "order": 5,
+      "action": "Repeat the same data-driven handoff for every unfinished canonical roster entry, then transition to population round-robin only after all 18 specialists are training-complete.",
+      "boundary": "program_loop"
+    }
+  ],
+  "non_regression_invariants": [
+    "The active specialist is read from exactly one selector key and is never inferred from a service name, run-directory version, dashboard label, or saved goal prose.",
+    "The required roster is read only from the canonical expert_ids list; counts, matchup rows, and parameter expectations are derived from its length.",
+    "The transition graph and its node payloads contain no specialist, deck, checkpoint-version, deployment-version, date-window, or run-name literals.",
+    "Specialist-specific assets live in the runtime registry or immutable receipts, not in service files, task-graph nodes, or launcher branches.",
+    "An active trainer blocks transition execution. Pre-staging is read-only and may never mutate the selector, runtime registry, model, gate, or service state.",
+    "No interactive SSH, Codex, terminal, editor, or user session may be terminated or treated as stale.",
+    "Only the active specialist may receive gradients, optimizer steps, replay updates, rehearsal updates, or checkpoint publication.",
+    "Completed specialists and original passing checkpoints remain immutable; V5 derivatives are inference-only compatibility artifacts.",
+    "Every later specialist hot-starts from the latest checksum-accepted cumulative core, never a fixed historical core.",
+    "Bootstrap remains exactly 25 supervised epochs. Baseline RL remains 8192 new games per iteration with a 7168/1024 split and 5-RL/5-rehearsal cadence.",
+    "Research evaluations never enter any training, replay, rehearsal, or update path, and established gate thresholds may not be silently changed.",
+    "The active iteration floor and ceiling are 5 and 15 completed iterations for every specialist. Historical bounds remain evidence only.",
+    "Kaggle quota or spacing never blocks the next specialist or population transition, and delayed submissions always reference the original frozen checkpoint.",
+    "A daily expert refresh never changes an in-progress update; a new receipt activates only at a safe bootstrap or rehearsal boundary.",
+    "Bert deletes a downloaded daily archive only after Elmo commits the identical checksum; Inzi never carries the large replay archive.",
+    "No dashboard or planning file is allowed to override runtime state."
+  ],
+  "safe_resume_preconditions": [
+    "Treat replacement_goal_objective in this contract as authoritative whenever the product goal record still exposes stale Starmie or 19-remaining prose.",
+    "Confirm the live selector still names the same active specialist as the managed trainer and the trainer is either healthy or at a committed recoverable boundary.",
+    "Confirm the four completed originals and their V5 inference derivatives retain the recorded checksums and frozen/inference-only rules.",
+    "Validate the protocol YAML, mutable-state YAML, canonical roster JSON, cycle contract JSON, and transition graph JSON.",
+    "Run the transition-graph, selector, pre-stage, sequential-handoff, cycle-handoff, and post-core-handoff regression tests.",
+    "Confirm transition dry-run/status performs no actions while active training remains running.",
+    "Resolve or explicitly quarantine stale planning metadata that says the active run is stopped, the V5 roster migration is pending, or a fixed historical core is current; live runtime evidence wins until planning state is safely synchronized.",
+    "Confirm the latest cumulative-core pointer exists and checksum-resolves to the latest accepted core before any future specialist bootstrap.",
+    "Confirm the cycle handoff's stable latest-20 corpus pointer exists before the next specialist bootstrap; until materialization finishes, the missing pointer must fail closed rather than fall back to the historical 28-day corpus.",
+    "Do not resume if any precondition would require interrupting the current training iteration."
+  ],
+  "known_unresolved_facts": [
+    "The eight missing latest-20 daily feature shards are being materialized on Elmo; the stable Inzi corpus pointer intentionally remains absent until the checksum-complete active-specialist corpus is ready.",
+    "The repository frozen registry is historical and does not itself contain all four V5 derivatives; the immutable V5 derivative receipt is the verified compatibility source.",
+    "The product goal record may continue to display its stale paused text until the client completes cancellation; this contract and AGENTS.md override that prose for any resumed controller."
+  ],
+  "completion_definition": {
+    "baseline_specialist_program": "All 18 canonical specialists are training-complete under the protocol, with exact immutable checkpoints registered, complete gate evidence preserved, and required Kaggle copies accepted or persistently queued against the original checkpoints.",
+    "population_transition": "Pending Kaggle work does not block transition. After all specialists are training-complete, unfreeze the population and begin local round-robin self-play against current and selected historical internal models.",
+    "population_training": "Continue the 5-RL-epoch/5-expert-rehearsal-epoch cadence. Public, official, premium, and other external agents are research-only and never provide population-training games.",
+    "goal_complete": "The sequential specialist program has completed, the population round-robin service is running from checksum-registered internal models with external agents excluded from training, persistent queues and receipts are healthy, and no unresolved invariant violation remains."
+  },
+  "replacement_goal_objective": "Preserve and continue the live Dragapult/Dusknoir specialist run while completing the canonical 18-specialist program through a specialist-agnostic, receipt-backed transition task graph: keep Alakazam, Hop's Trevenant, Starmie, and Lucario frozen; use the one-source-of-truth selector and roster; maintain exact 25-epoch bootstrap, 5-to-15 iteration bounds, 8192-game 7168/1024 baseline iterations, 5-RL/5-rehearsal cadence, established gates, V5 matchup routing, daily Bert-Wi-Fi-to-Elmo latest-20 expert refresh, cumulative-core refresh from all frozen teachers, and nonblocking Kaggle submission queue; never interrupt active training or mutate completed specialists; after all 18 specialists are training-complete, begin internal population round-robin self-play with external agents research-only."
+}

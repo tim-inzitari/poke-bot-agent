@@ -1,0 +1,24 @@
+[Unit]
+Description=Resume-safe Pokemon specialist transition task graph (staged)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime
+EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/specialist_transition_graph.json
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/specialist_cycle_handoff_v1.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_specialist_transition_graph.py --graph ops/specialist_transition_graph.json --cycle-contract ops/specialist_cycle_handoff_v1.json --state /home/inzi/poke-bot-agent/outputs/state/specialist-transition-graph.json
+TimeoutStartSec=36h
+TimeoutStopSec=90
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-transition-graph.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-transition-graph.log

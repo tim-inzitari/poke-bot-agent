@@ -79,7 +79,7 @@ def test_router_fails_closed_on_malformed_observations() -> None:
         assert public_matchup_from_observation(obs) is None
 
 
-def test_exported_tree_has_exact_22_route_positions_and_separate_abstention(
+def test_exported_tree_has_exact_canonical_route_positions_and_separate_abstention(
     tmp_path,
 ) -> None:
     width = len(EXPERT_IDS) + 1
@@ -115,7 +115,7 @@ def test_exported_tree_has_exact_22_route_positions_and_separate_abstention(
         path, require_runtime_enabled=False
     )
 
-    assert len(tree.targets) == 22
+    assert len(tree.targets) == len(EXPERT_IDS) == 18
     assert tree.predict_card_ids([]).route == UNKNOWN_ROUTE
     prediction = tree.predict_card_ids([42])
     assert prediction.route == 0
@@ -213,3 +213,5 @@ def test_runtime_router_starts_dormant_and_continuously_corrects_route() -> None
             "to_route": UNKNOWN_ROUTE,
         },
     ]
+    assert router.audit is router
+    assert router.audit.snapshot(include_events=False)["route_transitions"] == []

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import time
+from datetime import date, timedelta
 from pathlib import Path
 import plistlib
 import re
@@ -63,6 +64,122 @@ from scripts.dashboard_snapshot import (
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_curriculum_worker_reads_effective_environment_file_topology(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment_file = tmp_path / "specialist_runtime.env"
+    environment_file.write_text(
+        "\n".join(
+            (
+                "PURE_RL_SIM_WORKERS=128",
+                "PURE_RL_LEAF_GPU0_REPLICAS=10",
+                "PURE_RL_LEAF_GPU1_REPLICAS=24",
+                "POKEBOT_MULTI_ENV_PER_WORKER=4",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_unit_values",
+        lambda *_args, **_kwargs: {
+            "MainPID": "123",
+            "ControlGroup": "/user.slice/test.service",
+            "MemoryCurrent": "1024",
+            "TasksCurrent": "8",
+            "Environment": "",
+            "EnvironmentFiles": f"{environment_file} (ignore_errors=no)",
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_cgroup_pids",
+        lambda _group: {123},
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_process_environment",
+        lambda _pid: {},
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "process_rows",
+        lambda: {123: (1, 12.0, 2048, "trainer --run current")},
+    )
+
+    worker = dashboard_snapshot_module.curriculum_worker_state(
+        ["production.service"],
+        [123],
+    )
+
+    assert worker["workers"] == 128
+    assert worker["multi_env_per_worker"] == 4
+    assert worker["leaf_gpu0_replicas"] == 10
+    assert worker["leaf_gpu1_replicas"] == 24
+    assert worker["leaf_servers"] == 34
+    assert (
+        worker["topology_source"]
+        == "active managed trainer effective environment"
+    )
+
+
+def test_gpu0_assignment_uses_active_managed_trainer_leaf_topology() -> None:
+    gpus = [
+        {"index": 0, "name": "NVIDIA GeForce RTX 3080 Ti"},
+        {"index": 1, "name": "NVIDIA RTX PRO 5000 Blackwell"},
+    ]
+    curriculum = {
+        "active": True,
+        "worker": {
+            "leaf_gpu0_replicas": 10,
+            "leaf_gpu1_replicas": 24,
+            "topology_source": "active managed trainer effective environment",
+        },
+    }
+
+    dashboard_snapshot_module.annotate_gpu_production_assignments(
+        gpus,
+        curriculum,
+        {"active": False},
+    )
+
+    assert gpus[0]["production_active"] is True
+    assert gpus[0]["production_leaf_replicas"] == 10
+    assert gpus[0]["assignment"] == "PRODUCTION · 10 policy leaf replicas"
+    assert (
+        gpus[0]["assignment_source"]
+        == "active managed trainer effective environment"
+    )
+    assert gpus[1]["production_active"] is True
+    assert gpus[1]["production_leaf_replicas"] == 24
+    assert gpus[1]["assignment"] == "PRODUCTION · policy leaves + trainer"
+
+
+def test_gpu0_assignment_is_out_of_fleet_only_with_zero_effective_replicas() -> None:
+    gpus = [{"index": 0, "name": "NVIDIA GeForce RTX 3080 Ti"}]
+
+    dashboard_snapshot_module.annotate_gpu_production_assignments(
+        gpus,
+        {
+            "active": True,
+            "worker": {
+                "leaf_gpu0_replicas": 0,
+                "topology_source": "active managed trainer effective environment",
+            },
+        },
+        {"active": False},
+    )
+
+    assert gpus[0]["production_active"] is False
+    assert gpus[0]["production_leaf_replicas"] == 0
+    assert (
+        gpus[0]["assignment"]
+        == "OUT OF FLEET · no active trainer leaf replicas"
+    )
 
 
 def test_frozen_specialist_label_cannot_cross_contaminate_archetypes() -> None:
@@ -1225,18 +1342,18 @@ def test_specialist_protocol_state_validates_roster_and_restart(
         {
             "schema": "poke_bot.population_round_robin_state/v1",
             "status": "training",
-            "member_count": 22,
+            "member_count": 2,
             "population_cycle": 4,
-            "active_member_index": 7,
-            "active_specialist_id": "starmie",
+            "active_member_index": 1,
+            "active_specialist_id": "hammer-pult",
             "members": [
                 {
                     "specialist_id": f"specialist-{index:02d}",
-                    "cycles_completed": 1 if index < 7 else 0,
-                    "rl_epochs_completed": 5 if index < 7 else 0,
-                    "rehearsal_epochs_completed": 5 if index < 7 else 0,
+                    "cycles_completed": 1 if index < 1 else 0,
+                    "rl_epochs_completed": 5 if index < 1 else 0,
+                    "rehearsal_epochs_completed": 5 if index < 1 else 0,
                 }
-                for index in range(22)
+                for index in range(2)
             ],
         },
     )
@@ -1254,10 +1371,10 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     runtime = population_overlay["population_training"]["runtime"]
     assert population_overlay["population_training"]["status"] == "training"
     assert population_overlay["population_training"]["enabled"] is True
-    assert runtime["active_specialist_id"] == "starmie"
-    assert runtime["completed_member_cycles"] == 7
-    assert runtime["rl_epochs_completed"] == 35
-    assert runtime["rehearsal_epochs_completed"] == 35
+    assert runtime["active_specialist_id"] == "hammer-pult"
+    assert runtime["completed_member_cycles"] == 1
+    assert runtime["rl_epochs_completed"] == 5
+    assert runtime["rehearsal_epochs_completed"] == 5
 
     runtime_state = specialist_protocol_state(
         path,
@@ -2946,7 +3063,10 @@ def test_stale_scheduler_startup_zero_does_not_hide_live_inzi_gps() -> None:
 
 def test_bert_launchd_has_descriptor_budget_for_four_x_socket_queue() -> None:
     root = Path(__file__).resolve().parents[1]
-    with (root / ".staging/com.pokebot.remote-worker-8766.plist").open("rb") as fh:
+    plist_path = root / ".staging/com.pokebot.remote-worker-8766.plist"
+    if not plist_path.is_file():
+        pytest.skip("host-only Bert LaunchAgent staging artifact is unavailable")
+    with plist_path.open("rb") as fh:
         plist = plistlib.load(fh)
     assert plist["EnvironmentVariables"]["POKEBOT_REMOTE_MAX_CONNECTIONS"] == "150"
     assert plist["SoftResourceLimits"]["NumberOfFiles"] >= 1024
@@ -3053,6 +3173,7 @@ def test_live_model_footer_contract_includes_every_parameterized_head() -> None:
     }
     assert all(row["enabled"] for row in model["heads"].values())
     assert model["training_targets"]["alakazam_guide"]["parameterized_head"] is False
+    assert model["training_targets"]["current_deck_guide"]["parameterized_head"] is False
     assert model["seed_checkpoint"] == "/tmp/alakazam.pt"
 
 
@@ -3350,6 +3471,166 @@ def test_live_model_footer_accepts_checksum_pinned_specialist_runtime(
     assert adapter["runtime_enabled"] is True
     assert adapter["expert_ids"] == expert_ids
     assert adapter["isolated_adapter_updates_enabled"] is True
+
+
+def test_live_model_footer_uses_committed_checkpoint_over_stale_ten_route_marker(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "iter_00001.pt"
+    checkpoint.write_bytes(b"immutable-current-checkpoint")
+    digest = "sha256:" + hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    expert_ids = [f"route-{index:02d}" for index in range(22)]
+    stale = tmp_path / "stale-dormant.json"
+    _write_json(
+        stale,
+        {
+            "schema": "poke_bot.dormant_model_modules/v1",
+            "modules": [
+                {
+                    "id": "old-ten-route-marker",
+                    "present_in_active_checkpoint": True,
+                    "runtime_enabled": False,
+                    "parameter_count": 16_400,
+                    "expert_count": 10,
+                }
+            ],
+        },
+    )
+    loop = {
+        "learner": {"path": str(checkpoint), "digest": digest},
+        "dormant_matchup_adapter_fit": {
+            "trained_archetype_ids": expert_ids[:7],
+            "route_decisions": {
+                route: (100 if route in expert_ids[:7] else 0)
+                for route in expert_ids
+            },
+        },
+    }
+    runtime_collection = {
+        "available": True,
+        "checkpoint_digest": digest,
+        "iteration": 1,
+        "combined": {
+            "games": 8192,
+            "audited_games": 8192,
+            "all_games_audited": True,
+            "all_runtime_enabled": True,
+            "contract_clean": True,
+            "accepted_roster_counts": {"|".join(expert_ids): 8192},
+        },
+        "enforcement": {"required": True, "passed": True},
+    }
+    structure = {
+        "verified": True,
+        "checkpoint": str(checkpoint),
+        "checkpoint_digest": digest,
+        "model_parameters": 1_637_910,
+        "state_tensor_elements": 1_959_991,
+        "adapter_parameters": 36_080,
+        "adapter_expert_count": 22,
+        "adapter_expert_ids": expert_ids,
+        "source": "test committed checkpoint",
+    }
+
+    model = learner_model_state(
+        {
+            "design_contract": {
+                "learner": {
+                    "profile": {"d_model": 96, "temporal_layers": 1},
+                    "dormant_matchup_adapter": {"epochs": 1},
+                }
+            }
+        },
+        loop,
+        runtime_collection=runtime_collection,
+        checkpoint_structure=structure,
+        dormant_modules_path=stale,
+        staged_adapter_roster_path=tmp_path / "absent-roster.json",
+        matchup_runtime_ready_path=tmp_path / "absent-ready.json",
+        matchup_runtime_boundary_path=tmp_path / "absent-boundary.json",
+        specialist_runtime_registry_path=tmp_path / "absent-registry.json",
+    )
+
+    assert model["trainable_parameters"] == 1_637_910
+    assert model["parameter_breakdown"]["current_non_active"] == 36_080
+    assert model["parameter_breakdown"]["optimizer_active_current"] == 1_601_830
+    assert model["checkpoint_structure"]["state_tensor_elements"] == 1_959_991
+    assert model["matchup_adapter_runtime"]["enabled"] is True
+    assert model["matchup_adapter_runtime"]["expert_ids"] == expert_ids
+    assert model["dormant_modules"][0]["expert_count"] == 22
+    assert model["dormant_modules"][0]["expert_ids"] == expert_ids
+
+
+def test_live_model_footer_accepts_checksum_pinned_descendant_of_clean_collection(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "iter_00001.pt"
+    checkpoint.write_bytes(b"descendant-checkpoint")
+    digest = "sha256:" + hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    prior_digest = "sha256:" + "a" * 64
+    expert_ids = [f"route-{index:02d}" for index in range(22)]
+    trained_ids = expert_ids[:7]
+    loop = {
+        "learner": {"path": str(checkpoint), "digest": digest},
+        "dormant_matchup_adapter_fit": {
+            "schema": "poke_bot.dormant_matchup_adapter_fit/v1",
+            "base_frozen": True,
+            "optimizer_scope": "matchup_adapter_bank_only",
+            "checkpoint_path": str(checkpoint),
+            "checkpoint_digest": digest,
+            "steps": 158,
+            "rows": 1_341_398,
+            "trained_archetype_ids": trained_ids,
+            "route_decisions": {
+                route: (100 if route in trained_ids else 0)
+                for route in expert_ids
+            },
+        },
+    }
+    runtime_collection = {
+        "available": True,
+        "checkpoint_digest": prior_digest,
+        "iteration": 1,
+        "combined": {
+            "games": 8192,
+            "audited_games": 8192,
+            "all_games_audited": True,
+            "all_runtime_enabled": True,
+            "contract_clean": True,
+            "accepted_roster_counts": {"|".join(expert_ids): 8192},
+        },
+        "enforcement": {"required": True, "passed": True},
+    }
+    structure = {
+        "verified": True,
+        "checkpoint": str(checkpoint),
+        "checkpoint_digest": digest,
+        "model_parameters": 1_637_910,
+        "state_tensor_elements": 1_959_991,
+        "adapter_parameters": 36_080,
+        "adapter_expert_count": 22,
+        "adapter_expert_ids": expert_ids,
+        "source": "test committed checkpoint",
+    }
+
+    model = learner_model_state(
+        {"design_contract": {"learner": {"profile": {}}}},
+        loop,
+        runtime_collection=runtime_collection,
+        checkpoint_structure=structure,
+        dormant_modules_path=tmp_path / "absent-dormant.json",
+        staged_adapter_roster_path=tmp_path / "absent-roster.json",
+        matchup_runtime_ready_path=tmp_path / "absent-ready.json",
+        matchup_runtime_boundary_path=tmp_path / "absent-boundary.json",
+        specialist_runtime_registry_path=tmp_path / "absent-registry.json",
+    )
+
+    runtime = model["matchup_adapter_runtime"]
+    assert runtime["enabled"] is True
+    assert runtime["expert_count"] == 22
+    assert runtime["checkpoint_descendant_chain_verified"] is True
+    assert runtime["live_collection_verified"] is False
+    assert model["parameter_breakdown"]["current_non_active"] == 36_080
 
 
 def test_live_model_footer_promotes_exact_v31_runtime_receipts_over_stale_shadow(
@@ -3856,8 +4137,8 @@ def test_model_panel_labels_current_and_staged_profiles_separately() -> None:
     assert 'id="model-adapter-status"' in html
     assert "Matchup adapter parameters" in html
     assert "MATCHUP ADAPTER BANK (history remains active)" in html
-    assert "OFF · DEPLOYED DORMANT" in html
-    assert "ROUTER ACTIVE · ZERO OUTPUT" in html
+    assert "DEPLOYED DORMANT · RUNTIME OFF" in html
+    assert "ROUTER ACTIVE · OUTPUT DORMANT" in html
     assert "TRAINED SHADOW · RUNTIME OFF" in html
     assert "RUNTIME ON · RECEIPT VERIFIED" in html
     assert "continuous per-decision re-evaluation ON" in html
@@ -3974,8 +4255,10 @@ def test_expert_panel_separates_refresh_tune_up_and_one_time_bootstrap() -> None
     assert "periodic correction only · not the one-time bootstrap" in html
     assert "d.expert_refresh&&d.expert_refresh.available" in html
     assert "prep.active&&!curriculumActive&&!c.run" in html
-    assert "0 / 20 · 0 / 20" in html
-    assert "Current parallel work" in html
+    assert "Active-run expert replay corpus" in html
+    assert "Validated calendar-day sources" in html
+    assert "selected games / optimizer decisions" in html
+    assert "Active specialist selection" in html
 
 
 def test_expert_refresh_reports_all_twenty_days(tmp_path: Path, monkeypatch) -> None:
@@ -4005,6 +4288,11 @@ def test_expert_refresh_reports_all_twenty_days(tmp_path: Path, monkeypatch) -> 
         },
     )
     monkeypatch.setattr(dashboard_snapshot_module, "EXPERT20_ROOT", root)
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "EXPERT20_CURRENT_RECEIPT",
+        root / "current.json",
+    )
     monkeypatch.setattr(
         dashboard_snapshot_module, "EXPERT20_REFRESH_STATUS", root / "refresh.status.json"
     )
@@ -4305,9 +4593,10 @@ def test_collection_games_can_still_use_preheartbeat_unassigned_estimate() -> No
 
 def test_elmo_has_bounded_task_headroom_for_constant_refill() -> None:
     root = Path(__file__).resolve().parents[1]
-    compose = (
-        root / ".staging/elmo-docker-compose.production.yml"
-    ).read_text(encoding="utf-8")
+    compose_path = root / ".staging/elmo-docker-compose.production.yml"
+    if not compose_path.is_file():
+        pytest.skip("host-only Elmo Compose staging artifact is unavailable")
+    compose = compose_path.read_text(encoding="utf-8")
     assert 'POKEBOT_REMOTE_MAX_CONNECTIONS: "420"' in compose
     assert re.search(r"^\s*pids_limit:\s*1536\s*$", compose, re.MULTILINE)
     assert re.search(r"^\s*mem_limit:\s*64g\s*$", compose, re.MULTILINE)
@@ -4358,6 +4647,7 @@ def test_completed_trevenant_handoff_is_not_current_during_starmie() -> None:
             historical,
             active_specialist="starmie",
             program_progress={"remaining_after_active": 19},
+            next_specialist="lucario",
         )
     )
 
@@ -4365,6 +4655,690 @@ def test_completed_trevenant_handoff_is_not_current_during_starmie() -> None:
     assert result["label"] == "Starmie → next unfinished specialist"
     assert "19 specialists remain" in result["latest_line"]
     assert result["historical_source_suppressed"] is True
+    assert result["source_specialist_id"] == "starmie"
+    assert result["next_specialist_id"] == "lucario"
+    assert result["historical_source_specialist_id"] is None
+
+
+def test_dashboard_source_integrity_covers_every_visible_card() -> None:
+    payload = {
+        "observed_at": time.time(),
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 123,
+            "restart_count": 0,
+            "name": "production.service",
+            "command": "trainer --run run-a",
+        },
+        "training": {"phase": "heldout"},
+        "bootstrap": {
+            "phase": "heldout",
+            "compatibility_alias": True,
+            "alias_of": "training",
+        },
+        "transition": {"active": False, "historical": True},
+        "specialist_handoff": {"active": False},
+        "baseline_eval": {"historical": True},
+        "expert_refresh": {
+            "available": True,
+            "complete": True,
+            "authoritative_for_active_run": True,
+            "archive_window_ready": True,
+            "assembled_manifest_ready": True,
+            "filtered_corpus_ready": True,
+            "window_start": "2026-07-02",
+            "window_end": "2026-07-21",
+            "source": "/expert/status.json",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "runtime_active_specialist": "dragapult-dusknoir",
+            "canonical_active_specialist": "dragapult-dusknoir",
+            "active_specialist": "dragapult-dusknoir",
+            "source": "/state/specialists.yaml",
+        },
+        "curriculum": {
+            "active": True,
+            "source_current": True,
+            "run": "run-a",
+            "iteration": 1,
+            "stage": "heldout:strong_public_gate",
+            "progress_status_source": "/run/progress.status",
+            "last_completed_iteration": 0,
+            "heldout_source": "/run/commit.json",
+            "gate_program": {
+                "source": "/config/gate.json",
+                "next_gate": {
+                    "available": True,
+                    "contract_valid": True,
+                    "contract_source": "/config/gate.json",
+                },
+            },
+        },
+        "model": {
+            "active_checkpoint": "/run/iter_00000.pt",
+            "active_checkpoint_digest": "sha256:" + "a" * 64,
+            "checkpoint_structure": {
+                "verified": True,
+                "checkpoint": "/run/iter_00000.pt",
+                "checkpoint_digest": "sha256:" + "a" * 64,
+            },
+        },
+        "gpus": [{"index": 1}],
+        "scheduler_queues": {
+            "available": True,
+            "updated_at": time.time(),
+            "source": "/run/queues.json",
+        },
+        "fleet": {
+            key: {
+                "reachable": True,
+                "production_active": True,
+                "name": key,
+                "worker": {
+                    "active": True,
+                    "health_current": True,
+                    "command": f"{key}-worker",
+                    "rate_source": f"/{key}/rate.json",
+                },
+            }
+            for key in ("inzi", "elmo", "bert")
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    visible_cards = {
+        "stage",
+        "bootstrap",
+        "throughput",
+        "blackwell",
+        "outcomes",
+        "latest10",
+        "progress",
+        "adapterfleet",
+        "replay",
+        "baseline",
+        "nextgate",
+        "protocol",
+        "hardware",
+        "pure",
+        "fleet",
+        "scheduler",
+        "curriculum",
+        "model",
+        "command",
+        "raw",
+    }
+    assert visible_cards.issubset(integrity["rows"])
+    assert integrity["current"] is True
+    payload["model"]["checkpoint_structure"]["checkpoint_digest"] = (
+        "sha256:" + "b" * 64
+    )
+    SnapshotCache._annotate_source_integrity(payload)
+    assert payload["source_integrity"]["current"] is False
+    assert "model" in payload["source_integrity"]["failed"]
+
+
+def test_dashboard_source_integrity_keeps_canonical_protocol_current_while_stopped() -> None:
+    payload = {
+        "observed_at": time.time(),
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": False,
+            "active_state": "failed",
+            "sub_state": "failed",
+            "pid": 0,
+            "restart_count": 3,
+            "name": "production.service",
+            "command": "trainer --run run-a",
+        },
+        "training": {"phase": "collect:public_mix"},
+        "bootstrap": {
+            "phase": "collect:public_mix",
+            "compatibility_alias": True,
+            "alias_of": "training",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": False,
+            "runtime_active_specialist": None,
+            "canonical_active_specialist": "dragapult-dusknoir",
+            "active_specialist": "dragapult-dusknoir",
+            "source": "/state/specialists.yaml",
+        },
+        "curriculum": {
+            "active": False,
+            "source_current": True,
+            "run": "run-a",
+            "iteration": 2,
+            "stage": "collect:public_mix",
+            "progress_status_source": "/run/progress.status",
+            "last_completed_iteration": 1,
+            "gate_program": {
+                "next_gate": {
+                    "available": True,
+                    "contract_valid": True,
+                    "contract_source": "/config/gate.json",
+                }
+            },
+        },
+        "model": {
+            "active_checkpoint": "/run/iter_00001.pt",
+            "active_checkpoint_digest": "sha256:" + "a" * 64,
+            "checkpoint_structure": {
+                "verified": True,
+                "checkpoint": "/run/iter_00001.pt",
+                "checkpoint_digest": "sha256:" + "a" * 64,
+            },
+        },
+        "expert_refresh": {
+            "available": True,
+            "complete": True,
+            "authoritative_for_active_run": True,
+            "archive_window_ready": True,
+            "assembled_manifest_ready": True,
+            "filtered_corpus_ready": True,
+        },
+        "gpus": [{"index": 1}],
+        "fleet": {
+            "inzi": {"reachable": True, "worker": {"active": False}},
+            "elmo": {"reachable": True, "worker": {"active": True}},
+            "bert": {"reachable": True, "worker": {"active": True}},
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    assert integrity["rows"]["protocol"]["current"] is True
+    assert "protocol" not in integrity["failed"]
+    # Operational cards remain honestly red; canonical protocol availability
+    # does not pretend that a failed production controller is running.
+    assert integrity["rows"]["stage"]["current"] is False
+    assert integrity["rows"]["progress"]["current"] is False
+    assert integrity["rows"]["bootstrap"]["current"] is False
+    assert integrity["rows"]["throughput"]["current"] is False
+    assert integrity["rows"]["curriculum"]["current"] is False
+    assert integrity["rows"]["pure"]["current"] is False
+
+
+def test_dashboard_source_integrity_rejects_live_protocol_specialist_mismatch() -> None:
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 456,
+            "restart_count": 0,
+            "name": "production.service",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": False,
+            "runtime_active_specialist": "starmie",
+            "canonical_active_specialist": "dragapult-dusknoir",
+            "source": "/state/specialists.yaml",
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    assert payload["source_integrity"]["rows"]["protocol"]["current"] is False
+    assert "protocol" in payload["source_integrity"]["failed"]
+
+
+def test_dashboard_latest20_archive_is_current_while_filtered_corpus_builds() -> None:
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {"active": True, "pid": 10, "restart_count": 0},
+        "specialist_protocol": {
+            "available": True,
+            "runtime_active_specialist": "dragapult-dusknoir",
+            "canonical_active_specialist": "dragapult-dusknoir",
+            "source": "/state/specialists.yaml",
+        },
+        "curriculum": {
+            "active": True,
+            "source_current": True,
+            "run": "run-a",
+            "iteration": 2,
+            "stage": "train:baseline",
+            "progress_status_source": "/run/progress.status",
+        },
+        "model": {},
+        "expert_refresh": {
+            "available": True,
+            "complete": False,
+            "authoritative_for_active_run": True,
+            "archive_window_ready": True,
+            "assembled_manifest_ready": False,
+            "filtered_corpus_ready": False,
+            "window_start": "2026-07-04",
+            "window_end": "2026-07-23",
+            "total_days": 20,
+            "days": [
+                {"day": f"2026-07-{day:02d}", "stage": "source_ready_unfiltered"}
+                for day in range(4, 24)
+            ],
+            "source": "/state/expert-latest20-current.json",
+        },
+        "fleet": {},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    latest = payload["source_integrity"]["rows"]["latest10"]
+    assert latest["current"] is True
+    assert latest["checks"]["archive_window"] is True
+    assert latest["checks"]["filtered_corpus_ready"] is False
+    assert "latest10" not in payload["source_integrity"]["failed"]
+
+
+def test_dashboard_source_integrity_rejects_canonical_frozen_pool_drift() -> None:
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": False,
+            "pid": 0,
+            "restart_count": 0,
+            "name": "production.service",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": False,
+            "canonical_active_specialist": "dragapult-dusknoir",
+            "required_target_count": 2,
+            "specialists": [
+                {
+                    "id": "alakazam",
+                    "active": False,
+                    "frozen": False,
+                    "public_mix_eligible": False,
+                },
+                {
+                    "id": "dragapult-dusknoir",
+                    "active": True,
+                    "frozen": False,
+                    "public_mix_eligible": False,
+                },
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": "alakazam", "inference_only": True}
+            ],
+            "source": "/state/specialists.yaml",
+        },
+        "model": {
+            "checkpoint_structure": {
+                "adapter_expert_count": 2,
+            },
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    protocol_row = payload["source_integrity"]["rows"]["protocol"]
+    assert protocol_row["current"] is False
+    assert protocol_row["checks"]["specialist_roster"] is True
+    assert protocol_row["checks"]["model_roster"] is True
+    assert protocol_row["checks"]["frozen_pool"] is False
+
+
+def test_dashboard_uses_training_environment_for_checkpoint_snapshot() -> None:
+    server_source = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/server.py"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        'REMOTE_PYTHON = "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python"'
+        in server_source
+    )
+    assert (
+        '"inzi@192.168.1.151",\n'
+        "            REMOTE_PYTHON,\n"
+        "            REMOTE_SNAPSHOT,"
+    ) in server_source
+
+
+def test_active_expert_card_uses_run_pinned_specialist_corpus(
+    tmp_path: Path,
+) -> None:
+    corpus_dir = (
+        tmp_path
+        / "expert-evidence28-20260626-20260723"
+        / "specialist-corpora-v2"
+        / "dragapult-dusknoir"
+    )
+    corpus_dir.mkdir(parents=True)
+    shard = corpus_dir / "day.features"
+    shard.write_bytes(b"feature-data")
+    manifest = corpus_dir / "manifest.json"
+    manifest_payload = {
+        "format": "pokebot-bootstrap-feature-manifest",
+        "date_start": "2026-06-26",
+        "date_end": "2026-06-26",
+        "dates": ["2026-06-26"],
+        "selection": {"value": "dragapult-dusknoir"},
+        "quality_gates": {"passed": True},
+        "shards": [
+            {
+                "path": shard.name,
+                "bytes": shard.stat().st_size,
+                "sha256": "sha256:" + hashlib.sha256(shard.read_bytes()).hexdigest(),
+                "source_dates": ["2026-06-26"],
+                "stats": {"records_kept": 168, "decisions_kept": 10_946},
+            }
+        ],
+        "totals": {"records_kept": 168, "decisions_kept": 10_946},
+    }
+    _write_json(manifest, manifest_payload)
+    manifest_digest = "sha256:" + hashlib.sha256(manifest.read_bytes()).hexdigest()
+    protected = corpus_dir / "PROTECTED_EXPERT_CORPUS.json"
+    _write_json(
+        protected,
+        {
+            "schema": "poke_bot.pinned_expert_corpus/v1",
+            "protected": True,
+            "manifest": manifest.name,
+            "manifest_sha256": manifest_digest,
+        },
+    )
+
+    result = dashboard_snapshot_module.active_expert_corpus_state(
+        {
+            "expert_rehearsal": {
+                "manifest": str(protected),
+                "active": False,
+                "state": "scheduled",
+            }
+        },
+        {
+            "source": "/old/refresh.status.json",
+            "window_start": "2026-07-02",
+            "window_end": "2026-07-21",
+            "complete": True,
+        },
+    )
+
+    assert result["authoritative_for_active_run"] is True
+    assert result["complete"] is False
+    assert result["specialist_id"] == "dragapult-dusknoir"
+    assert result["records_kept"] == 168
+    assert result["decisions_kept"] == 10_946
+    assert result["source_day_contract_satisfied"] is False
+    assert result["total_days"] == 20
+    assert len(result["days"]) == 20
+    assert result["window_start"] == "2026-07-02"
+    assert result["window_end"] == "2026-07-21"
+    assert all(
+        row["active_specialist_filter_receipt"] is False
+        for row in result["days"]
+    )
+    assert all(
+        row["specialist_id"] == "dragapult-dusknoir"
+        and row["matching_status"] == "filter_receipt_missing"
+        for row in result["days"]
+    )
+    assert result["historical_fallback"]["used"] is False
+    assert result["historical_fallback"]["not_latest20"] is True
+    assert result["evidence_window_end"] == "2026-07-23"
+    assert result["archive_refresh_history"]["superseded_by"] == (
+        "active_run_pinned_expert_corpus"
+    )
+
+
+def test_active_expert_card_preserves_all_20_calendar_days_after_filtering(
+    tmp_path: Path,
+) -> None:
+    corpus_dir = tmp_path / "latest20" / "dragapult-dusknoir"
+    corpus_dir.mkdir(parents=True)
+    shard = corpus_dir / "matching.features"
+    shard.write_bytes(b"filtered-feature-data")
+    days = [f"2026-07-{day:02d}" for day in range(2, 22)]
+    manifest = corpus_dir / "manifest.json"
+    manifest_payload = {
+        "format": "pokebot-bootstrap-feature-manifest",
+        "date_start": days[0],
+        "date_end": days[-1],
+        "dates": days,
+        "selection": {"value": "dragapult-dusknoir"},
+        "source_window": {
+            "unit": "calendar_day",
+            "selection": "latest_available_fully_validated_daily_sources",
+            "days": 20,
+            "dates": days,
+            "filter_applied_after_window_selection": True,
+            "filter_archetype": "dragapult-dusknoir",
+        },
+        "source_days": [
+            {
+                "date": day,
+                "source_feature_sha256": "sha256:" + "a" * 64,
+                "source_feature_validated": True,
+                "source_archive_sha256": "sha256:" + "b" * 64,
+                "source_archive_validated": True,
+                "matching_games": 1 if index == 0 else 0,
+                "matching_decisions": 8 if index == 0 else 0,
+                "filtered_feature_present": index == 0,
+            }
+            for index, day in enumerate(days)
+        ],
+        "quality_gates": {"passed": True},
+        "shards": [
+            {
+                "path": shard.name,
+                "bytes": shard.stat().st_size,
+                "sha256": "sha256:" + hashlib.sha256(shard.read_bytes()).hexdigest(),
+                "source_dates": [days[0]],
+                "stats": {"records_kept": 1, "decisions_kept": 8},
+            }
+        ],
+        "totals": {"records_kept": 1, "decisions_kept": 8},
+    }
+    _write_json(manifest, manifest_payload)
+    protected = corpus_dir / "PROTECTED_EXPERT_CORPUS.json"
+    _write_json(
+        protected,
+        {
+            "schema": "poke_bot.pinned_expert_corpus/v1",
+            "protected": True,
+            "manifest": manifest.name,
+            "manifest_sha256": (
+                "sha256:" + hashlib.sha256(manifest.read_bytes()).hexdigest()
+            ),
+        },
+    )
+
+    result = dashboard_snapshot_module.active_expert_corpus_state(
+        {
+            "expert_rehearsal": {
+                "manifest": str(protected),
+                "active": False,
+                "state": "scheduled",
+            }
+        },
+        {},
+    )
+
+    assert result["complete"] is True
+    assert result["source_day_contract_satisfied"] is True
+    assert result["total_days"] == 20
+    assert result["feature_ready_days"] == 20
+    assert len(result["days"]) == 20
+    assert sum(row["zero_match_present"] for row in result["days"]) == 19
+    assert result["latest20"]["dates"] == days
+    assert result["latest20"]["matching_games"] == 1
+    assert result["latest20"]["all_zero_matches"] is False
+    assert result["days"][0]["matching_status"] == "matches_present"
+    assert all(
+        row["matching_status"] == "zero_matches"
+        for row in result["days"][1:]
+    )
+    assert result["historical_fallback"]["used"] is False
+
+
+def test_active_expert_card_separates_receipted_all_zero_historical_fallback(
+    tmp_path: Path,
+) -> None:
+    corpus_dir = tmp_path / "latest20" / "team-rockets-spidops"
+    corpus_dir.mkdir(parents=True)
+    fallback_shard = corpus_dir / "historical-fallback.features"
+    fallback_shard.write_bytes(b"checksum-bound-historical-features")
+    fallback_receipt = corpus_dir / "historical-fallback.receipt.json"
+    _write_json(
+        fallback_receipt,
+        {
+            "schema": "poke_bot.historical_expert_fallback/v1",
+            "records_kept": 12,
+            "decisions_kept": 640,
+        },
+    )
+    days = [
+        (date(2026, 7, 2) + timedelta(days=offset)).isoformat()
+        for offset in range(20)
+    ]
+    manifest = corpus_dir / "manifest.json"
+    manifest_payload = {
+        "format": "pokebot-bootstrap-feature-manifest",
+        "date_start": days[0],
+        "date_end": days[-1],
+        "dates": days,
+        "selection": {"value": "team-rockets-spidops"},
+        "source_window": {
+            "unit": "calendar_day",
+            "selection": "latest_available_fully_validated_daily_sources",
+            "days": 20,
+            "dates": days,
+            "filter_applied_after_window_selection": True,
+            "filter_archetype": "team-rockets-spidops",
+        },
+        "source_days": [
+            {
+                "date": day,
+                "source_feature_sha256": "sha256:" + "a" * 64,
+                "source_feature_validated": True,
+                "source_archive_sha256": "sha256:" + "b" * 64,
+                "source_archive_validated": True,
+                "matching_games": 0,
+                "matching_decisions": 0,
+                "filtered_feature_present": False,
+            }
+            for day in days
+        ],
+        "historical_fallback": {
+            "used": True,
+            "reason": "latest20_all_zero_matches",
+            "receipt": fallback_receipt.name,
+            "receipt_sha256": (
+                "sha256:"
+                + hashlib.sha256(fallback_receipt.read_bytes()).hexdigest()
+            ),
+        },
+        "quality_gates": {"passed": True},
+        "shards": [
+            {
+                "path": fallback_shard.name,
+                "bytes": fallback_shard.stat().st_size,
+                "sha256": (
+                    "sha256:"
+                    + hashlib.sha256(fallback_shard.read_bytes()).hexdigest()
+                ),
+                "source_dates": ["historical"],
+                "stats": {"records_kept": 12, "decisions_kept": 640},
+            }
+        ],
+        "totals": {"records_kept": 12, "decisions_kept": 640},
+    }
+    _write_json(manifest, manifest_payload)
+    protected = corpus_dir / "PROTECTED_EXPERT_CORPUS.json"
+    _write_json(
+        protected,
+        {
+            "schema": "poke_bot.pinned_expert_corpus/v1",
+            "protected": True,
+            "manifest": manifest.name,
+            "manifest_sha256": (
+                "sha256:" + hashlib.sha256(manifest.read_bytes()).hexdigest()
+            ),
+        },
+    )
+
+    result = dashboard_snapshot_module.active_expert_corpus_state(
+        {
+            "expert_rehearsal": {
+                "manifest": str(protected),
+                "active": False,
+                "state": "scheduled",
+            }
+        },
+        {},
+    )
+
+    assert result["complete"] is True
+    assert result["total_days"] == 20
+    assert result["latest20"]["label"] == "Latest 20 calendar days"
+    assert result["latest20"]["dates"] == days
+    assert result["latest20"]["matching_games"] == 0
+    assert result["latest20"]["all_zero_matches"] is True
+    assert all(row["zero_match_present"] is True for row in result["days"])
+    fallback = result["historical_fallback"]
+    assert fallback["used"] is True
+    assert fallback["not_latest20"] is True
+    assert fallback["label"] == (
+        "Historical checksum-receipted fallback · not latest20"
+    )
+    assert fallback["records_kept"] == 12
+    assert fallback["decisions_kept"] == 640
+    assert "HISTORICAL FALLBACK USED (not latest20)" in result["latest_line"]
+
+
+def test_active_expert_card_rejects_historical_fallback_when_latest20_is_nonzero(
+    tmp_path: Path,
+) -> None:
+    receipt = tmp_path / "fallback.json"
+    _write_json(receipt, {"records_kept": 10, "decisions_kept": 100})
+    protected = tmp_path / "PROTECTED_EXPERT_CORPUS.json"
+    manifest = {
+        "historical_fallback": {
+            "used": True,
+            "reason": "latest20_all_zero_matches",
+            "receipt": receipt.name,
+            "receipt_sha256": (
+                "sha256:" + hashlib.sha256(receipt.read_bytes()).hexdigest()
+            ),
+        }
+    }
+
+    fallback = (
+        dashboard_snapshot_module._checksum_receipted_historical_fallback(
+            protected,
+            {},
+            manifest,
+            latest20_all_zero=False,
+        )
+    )
+
+    assert fallback["available"] is True
+    assert fallback["used"] is False
+    assert fallback["not_latest20"] is True
+    assert "requires 20 validated zero-match" in fallback["rejection_reason"]
+
+
+def test_model_card_derives_deployed_adapter_version_from_checkpoint() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert "ACTIVE '+esc(adapterVersion)+' SLOT" in html
+    assert "physical '+adapterVersion+' slots from active checkpoint" in html
+    assert "stable roster and checkpoint agree" in html
+    assert "adapterSlotCount" in html
+    snapshot_source = (
+        Path(__file__).resolve().parents[1] / "scripts/dashboard_snapshot.py"
+    ).read_text(encoding="utf-8")
+    assert "checkpoint_is_canonical_roster" in snapshot_source
+    assert "CANONICAL_MATCHUP_ADAPTER_ROSTER" in snapshot_source
 
 
 def test_live_post_starmie_handoff_reports_remaining_program(
@@ -4373,6 +5347,8 @@ def test_live_post_starmie_handoff_reports_remaining_program(
 ) -> None:
     state = tmp_path / "post-starmie.json"
     log = tmp_path / "post-starmie.log"
+    roster = tmp_path / "matchup-adapter-roster.json"
+    frozen_registry = tmp_path / "frozen-specialists.json"
     state.write_text(
         json.dumps(
             {
@@ -4387,11 +5363,30 @@ def test_live_post_starmie_handoff_reports_remaining_program(
         "[01:00<01:00, 275.50game/s]\n",
         encoding="utf-8",
     )
+    roster.write_text(
+        json.dumps(
+            {
+                "required_specialist_count": 18,
+                "expert_ids": [f"specialist-{index}" for index in range(18)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    frozen_registry.write_text(
+        json.dumps({"specialists": []}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         dashboard_snapshot_module, "POST_STARMIE_HANDOFF_STATE", state
     )
     monkeypatch.setattr(
         dashboard_snapshot_module, "POST_STARMIE_HANDOFF_LOG", log
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "CANONICAL_MATCHUP_ADAPTER_ROSTER", roster
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "FROZEN_SPECIALIST_REGISTRY", frozen_registry
     )
     monkeypatch.setattr(
         dashboard_snapshot_module,
@@ -4648,7 +5643,7 @@ def test_dashboard_exposes_rare_route_boundary_preparation() -> None:
 
     assert "rare_route_preparation" in html
     assert "RARE-ROUTE EXPANSION" in html
-    assert "live Starmie unchanged" in html
+    assert "active specialist unchanged" in html
     snapshot_source = (
         Path(__file__).resolve().parents[1] / "scripts/dashboard_snapshot.py"
     ).read_text(encoding="utf-8")

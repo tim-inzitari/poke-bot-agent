@@ -11,7 +11,7 @@
 # not change or block that status.
 schema_version: poke_bot.specialist_state/v1
 protocol_schema_version: poke_bot.rl_protocol/v2
-last_verified_at_utc: 2026-07-24T14:10:02Z
+last_verified_at_utc: 2026-07-24T19:34:28Z
 verification_scope:
   repository: /Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you
   runtime_repository: /home/inzi/poke-bot-agent
@@ -41,27 +41,33 @@ current:
   phase: specialist_training
   active_specialist: dragapult-dusknoir
   program_progress:
-    required_specialists_total: 22
+    required_specialists_total: 18
     completed_frozen: 4
     completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario]
     active_specialists: 1
     active_specialist_ids: [dragapult-dusknoir]
-    remaining_after_active: 17
+    remaining_after_active: 13
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Continue the active Dragapult/Dusknoir baseline RL run from committed
-    iteration 0 through its established gate or iteration ceiling. Preserve
-    all four completed specialists frozen and inference-only.
+    Continue the live Dragapult/Dusknoir baseline RL iteration 2 through its
+    established gate or iteration ceiling without restarting the managed
+    trainer. Preserve all four completed specialists frozen and inference-only.
   active_run:
     service: pokebot-pure-rl-trevenant-staged.service
     run_name: pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723
     path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723
-    status: active
-    last_completed_iteration: 0
-    next_iteration: 1
-    learner_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
-    learner_checksum: sha256:455fd0d3bfa440351e3b5f69de279f1ed2822c1eb5fc32009648527111a23d02
+    status: active_running_iteration_2
+    last_completed_iteration: 1
+    next_iteration: 2
+    learner_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00001_roster18.pt
+    learner_checksum: sha256:4f56ffb864d425c1651480372124537cffcf4ca983de2cd136b04f164d1526fd
+    checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+    matchup_tree: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-public-matchup-tree-roster18-v1.json
+    matchup_tree_checksum: sha256:033264ab10a51fe093ad2b64f5def3a8e22d869c42b978ee86d2ff7d01ea0328
+    matchup_authorization: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-matchup-adapter-authorization-roster18-v1.json
+    matchup_authorization_checksum: sha256:b03b8dcd8daeb3a60cdf6d77110c2af48cdff957a40c7b508bf6e4d04ac75970
+    migration_receipt: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-roster18-migration-v1.json
     games_per_iteration: 8192
     public_mix_games: 7168
     self_play_games: 1024
@@ -247,11 +253,17 @@ current:
   note: This file does not start, stop, or reconfigure the observed run.
 
 target_registry:
-  authoritative_source: poke_bot/archetypes.py#ARCHETYPES
-  required_target_count: 22
+  authoritative_source: state/matchup_adapter_roster.json#/expert_ids
+  required_target_count: 18
   policy: >-
-    Every registered archetype is retained as a required additive target until
-    an authoritative roster artifact explicitly narrows the protocol.
+    The 18 logical archetypes in the stable canonical expert_ids list are the
+    required specialist program. Retired v4 archetypes are absent from active
+    planning and checkpoint rows; references below may remain only as clearly
+    historical artifact lineage.
+  checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+  adapter_count_derivation: length_of_authoritative_expert_ids
+  parameter_expectation_derivation: canonical_adapter_count_times_instantiated_per_head_parameter_count
+  hard_coded_adapter_parameter_total_allowed: false
   pinned_core_roster_count: 17
   pinned_core_roster_source: poke_bot/archetypes.py#CORE_LADDER_ARCHETYPE_IDS
 
@@ -293,6 +305,8 @@ training_priority:
     - marnie-s-grimmsnarl-ex
     - garchomp
     - rockets-mewtwo
+    - thwackey
+    - team-rockets-spidops
     - hammer-pult
     - dragapult-blaziken
     - dragapult-dudunsparce
@@ -300,23 +314,13 @@ training_priority:
     - walrein
     - crustle
     - archaludon-ex
-    # These targets remain required while staged_v5_transition is
-    # planned_not_active. Retire them only through the validated v5 activation
-    # boundary; omitting them early makes the canonical unfinished roster
-    # internally inconsistent and blocks deterministic handoff selection.
-    - cornerstone-ogerpon
-    - lopunny
-    - gardevoir
-    - ns-zoroark
-    - raging-bolt
-    - festival-lead
-  staged_v5_transition:
-    status: planned_not_active
-    activation_boundary: next_safe_specialist_handoff
-    roster: state/matchup_adapter_roster_v5.json
-    required_target_count_after_activation: 18
-    physical_matchup_rows_after_activation: 23
-    preserve_v4_rows_as_disabled_tombstones: true
+  canonical_v5_runtime:
+    status: deployed
+    roster: state/matchup_adapter_roster.json
+    checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+    required_target_count: 18
+    physical_matchup_rows: 18
+    preserve_v4_rows_as_disabled_tombstones: false
     retire_from_selection_and_routing:
       - raging-bolt
       - gardevoir
@@ -352,12 +356,11 @@ training_priority:
       Festival Lead Ability plus four Festival Grounds. Expose the existing
       compatible festival-lead physical adapter row as the logical Thwackey
       specialist/header; do not create a duplicate tensor row.
-    activation_requirements:
-      - validated causal 23-row router
-      - exact zero-output initialization for the appended Spidops row
-      - retired routes proven unreachable and gradient-free
-      - legacy frozen checkpoints load without any existing row renumbering
-      - local and remote fleet checksum parity
+    migration_validation:
+      appended_spidops_exact_zero_output: true
+      retired_routes_absent_from_active_checkpoint: true
+      retained_route_tensors_byte_identical_by_route_identity: true
+      local_and_remote_fleet_checksum_parity: verified
   rows:
     - {id: dudunsparce, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dudunsparce, share: 0.21312803889789303, appearances: 263, mapping: exact}
     - {id: marnie-s-grimmsnarl-ex, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Marnie's Grimmsnarl ex", share: 0.0024311183144246355, appearances: 3, mapping: canonical_name}
@@ -370,15 +373,70 @@ training_priority:
     - {id: walrein, existing_model_artifact: false, availability_group: missing_model, source_archetype: Walrein, share: 0.018638573743922204, appearances: 23, mapping: exact}
     - {id: crustle, existing_model_artifact: false, availability_group: missing_model, source_archetype: Crustle, share: 0.008103727714748784, appearances: 10, mapping: exact}
     - {id: archaludon-ex, existing_model_artifact: false, availability_group: missing_model, source_archetype: Archaludon ex, share: 0.0, appearances: 0, mapping: exact}
-    - {id: cornerstone-ogerpon, existing_model_artifact: false, availability_group: missing_model, source_archetype: Cornerstone Mask Ogerpon ex, share: 0.0, appearances: 0, mapping: canonical_name}
-    - {id: lopunny, existing_model_artifact: false, availability_group: missing_model, source_archetype: Mega Lopunny ex, share: 0.0, appearances: 0, mapping: canonical_name}
-    - {id: gardevoir, existing_model_artifact: false, availability_group: missing_model, source_archetype: Mega Gardevoir ex, share: 0.0, appearances: 0, mapping: canonical_name}
-    - {id: ns-zoroark, existing_model_artifact: false, availability_group: missing_model, source_archetype: "N’s Zoroark ex", share: 0.0, appearances: 0, mapping: canonical_name}
-    - {id: raging-bolt, existing_model_artifact: false, availability_group: missing_model, source_archetype: Raging Bolt ex, share: 0.0, appearances: 0, mapping: canonical_name}
-    - {id: festival-lead, existing_model_artifact: false, availability_group: missing_model, source_archetype: null, share: null, appearances: null, mapping: unresolved}
+    - {id: thwackey, existing_model_artifact: false, availability_group: missing_model, source_archetype: null, share: null, appearances: null, mapping: unresolved}
+    - {id: team-rockets-spidops, existing_model_artifact: false, availability_group: missing_model, source_archetype: null, share: null, appearances: null, mapping: unresolved}
 
 expert_corpus_archive:
-  status: validated_partial_coverage
+  canonical_policy:
+    status: active_for_future_corpus_builds
+    source_window_unit: calendar_day
+    source_window_days: 20
+    source_window_selection: latest_available_fully_validated_daily_sources
+    filter_after_window_selection: true
+    filter_to: active_specialist_archetype
+    retain_all_20_source_days_in_receipt_and_dashboard: true
+    zero_matching_games_is_present_when_source_and_features_validate: true
+    missing_source_or_feature_is_not_present: true
+    historical_zero_match_fallback:
+      allowed_only_after_complete_latest20_receipt: true
+      trigger: aggregate_latest20_matching_games_exactly_zero
+      any_latest20_matching_game_prohibits_fallback: true
+      low_decision_count_does_not_authorize_fallback: true
+      older_sources_must_have_validated_archive_and_feature_checksums: true
+      expands_or_replaces_latest20_window: false
+      required_label: historical_zero_match_fallback
+      separate_immutable_receipt_required: true
+      latest20_zero_match_proof_required: true
+      fallback_dates_checksums_and_counts_required: true
+      dashboard_display_separate_from_all_20_latest_dates: true
+      search_order: null
+      shard_limit: null
+      stopping_rule: null
+      current_bound_corpus_eligibility: unknown
+      current_fallback_receipt: null
+    refresh_boundary: next_safe_bootstrap_or_rehearsal
+    current_bound_corpus_must_not_be_relabelled_or_rewritten: true
+    authoritative_config: config/rl_protocol.yaml#/specialist_training/expert_corpus
+    archive_refresh:
+      status: active
+      scheduler_host: bert
+      scheduler: com.pokebot.expert-latest20-refresh
+      index_poll_interval_seconds: 3600
+      kaggle_ingress: {host: bert, interface: wifi, device: en1}
+      elmo_transfer:
+        interface: bert_ethernet
+        source_address: 192.168.1.158
+      archive_host: elmo
+      elmo_current_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20/current.json
+      inzi_receipt_mirror: /home/inzi/poke-bot-agent/outputs/state/expert-latest20-current.json
+      current_window: {start: 2026-07-04, end: 2026-07-23, days: 20}
+      current_receipt_status: ready
+      validated_archives: 20
+      persistent_replay_archives_on_bert: 0
+      cleanup_condition: exact_elmo_checksum_committed
+      last_verified: 2026-07-24
+    note: >-
+      This is 20 calendar days selected before archetype filtering, not 20
+      matching games and not 20 days on which the archetype appeared. Historical
+      fallback is permitted only after a separately receipted aggregate
+      latest-20 result of exactly zero matching games and must never be labeled
+      latest20.
+  status: historical_v4_validated_partial_coverage
+  active_planning_roster_eligible: false
+  lineage_note: >-
+    Counts and archetype names in this archived receipt predate the canonical
+    roster18 migration. They are preserved as immutable corpus lineage and do
+    not add retired archetypes to the active target registry.
   source_manifest: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-20260702-20260721/core-balanced-v2/manifest.json
   source_manifest_checksum: sha256:4c1406dd3a467402733722dad1a03d9964f7283e0cd6ef97eaf5cf593b780080
   source_window: {start: 2026-07-02, end: 2026-07-21, days: 20}
@@ -420,7 +478,8 @@ expert_corpus_archive:
     Insufficient and unavailable rows require additive expert data; they must
     never be treated as bootstrap-ready.
   latest_additive_generation:
-    status: ready
+    status: historical_v4_ready
+    active_planning_roster_eligible: false
     source_window: {start: 2026-06-26, end: 2026-07-23, days: 28}
     corpus_root: /home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v2
     minimum_bootstrap_decisions: 20000
@@ -528,8 +587,12 @@ heads_and_datasets:
     game_plan_policy_heads_required: true
     matchup_policy_heads_required: true
     matchup_routing:
-      canonical_roster_source: state/matchup_adapter_roster_v4.json#/expert_ids
-      canonical_adapter_count: 22
+      canonical_roster_source: state/matchup_adapter_roster.json#/expert_ids
+      checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+      adapter_count_derivation: length_of_canonical_roster_source
+      per_head_parameter_count_source: checkpoint_declared_matchup_adapter_config
+      total_parameter_expectation: adapter_count_times_instantiated_per_head_parameter_count
+      hard_coded_parameter_total_allowed: false
       complete_roster_required_in_every_checkpoint: true
       active_specialist_route_required: true
       mirror_self_play_route_required: true
@@ -552,9 +615,10 @@ heads_and_datasets:
       frozen_router_checkpoint_and_tree_must_be_checksum_pinned: true
       dashboard_lists_zero_observation_routes: true
       dashboard_distinguishes_materialized_enabled_and_observed: true
-      staged_router_candidate:
+      historical_v4_router_candidate:
         version: 37
-        status: validated_inactive
+        status: superseded_historical_lineage
+        active_planning_eligible: false
         runtime_enabled: false
         source_window_start: 2026-06-26
         source_window_end: 2026-07-23
@@ -829,23 +893,31 @@ specialists:
       archetype_policy: present
       game_plan_policies: present
       matchup_policies: active_ticket_isolated_updates
+      matchup_adapter_schema:
+        checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+        roster_source: state/matchup_adapter_roster.json#/expert_ids
+        adapter_count_derivation: length_of_roster_source
+        per_head_parameter_count_source: checkpoint_declared_matchup_adapter_config
+        total_parameter_expectation: adapter_count_times_instantiated_per_head_parameter_count
+        hard_coded_total_allowed: false
     datasets:
       expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v2/dragapult-dusknoir/PROTECTED_EXPERT_CORPUS.json
       expert_manifest_checksum: sha256:216a99e807302f4485a684bbe6ea2cb63ed970a42b4953ce7f8df87423996305
       expert_decisions: 10946
     counters:
       bootstrap_epochs_completed: 25
-      rl_iterations_completed: 1
-      rl_epochs_completed: 1
+      rl_iterations_completed: 2
+      rl_epochs_completed: 2
       rehearsal_epochs_completed: 0
-      last_completed_iteration: 0
-      next_iteration: 1
+      last_completed_iteration: 1
+      next_iteration: 2
     checkpoints:
       bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir_expert_bootstrap_from_core_v4/model.pt
       bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir_expert_bootstrap_from_core_v4/model.pt
       bootstrap_checksum: sha256:6df0dae20c8cfa98b71a4b688eba2a7ff26e85bf52ce4b43b1a4b6bfe25ff933
-      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
-      latest_checksum: sha256:455fd0d3bfa440351e3b5f69de279f1ed2822c1eb5fc32009648527111a23d02
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00001_roster18.pt
+      latest_checksum: sha256:4f56ffb864d425c1651480372124537cffcf4ca983de2cd136b04f164d1526fd
+      format: poke-bot-matchup-adapter-bank-v5-roster18
       passing: null
       passing_checksum: null
     holdouts: {official: null, premium: null}
@@ -1078,19 +1150,6 @@ specialists:
     public_mix_eligible: false
     kaggle_submissions: []
 
-  - id: cornerstone-ogerpon
-    name: Cornerstone Ogerpon
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
-
   - id: rockets-mewtwo
     name: Team Rocket's Mewtwo ex
     status: unstarted
@@ -1115,6 +1174,8 @@ specialists:
       shared_auxiliary_heads: trained_in_exact_25_epoch_bootstrap
       matchup_policies:
         adapter_count: 22
+        checkpoint_format: historical_v4_pre_roster18
+        active_roster_expectation: derived_from_state_matchup_adapter_roster_json
         status: full_roster_materialized_rl_training
         runtime_enabled: true
     datasets:
@@ -1185,19 +1246,6 @@ specialists:
     public_mix_eligible: false
     kaggle_submissions: []
 
-  - id: lopunny
-    name: Lopunny
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
-
   - id: lucario
     name: Lucario
     status: passed_frozen
@@ -1209,6 +1257,8 @@ specialists:
       shared_auxiliary_heads: trained_in_exact_25_epoch_bootstrap
       matchup_policies:
         adapter_count: 22
+        checkpoint_format: historical_v4_pre_roster18
+        active_roster_expectation: derived_from_state_matchup_adapter_roster_json
         status: full_roster_materialized_rl_training
         runtime_enabled: true
     datasets:
@@ -1284,8 +1334,8 @@ specialists:
     kaggle_submissions:
       - {copy_number: 1, label: "lucario exact gate iter 10 copy 1/1 ffa401242b2c", checkpoint_checksum: "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd", status: accepted, queued_at: "2026-07-24T13:28:00.355124Z", submitted_at: "2026-07-24T13:33:57.223000Z", submission_id: 54952269, returned_score: 600.0, failure_reason: null, retry_count: 1}
 
-  - id: gardevoir
-    name: Gardevoir
+  - id: thwackey
+    name: Thwackey
     status: unstarted
     active: false
     heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
@@ -1297,34 +1347,8 @@ specialists:
     public_mix_eligible: false
     kaggle_submissions: []
 
-  - id: ns-zoroark
-    name: N's Zoroark
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
-
-  - id: raging-bolt
-    name: Raging Bolt
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
-
-  - id: festival-lead
-    name: Festival Lead
+  - id: team-rockets-spidops
+    name: Team Rocket's Spidops
     status: unstarted
     active: false
     heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
@@ -1360,16 +1384,17 @@ specialists:
       shared_auxiliary_heads: trained_in_exact_25_epoch_bootstrap
       matchup_policies:
         adapter_count: 22
-        canonical_adapter_count_required: 22
+        checkpoint_format: historical_v4_pre_roster18
+        active_roster_expectation: derived_from_state_matchup_adapter_roster_json
         status: frozen_trained_runtime_inference_only
         runtime_enabled: true
         active_specialist_route_present: true
         active_specialist_route: hops-trevenant
-        staged_roster: state/matchup_adapter_roster_v4.json
-        staged_roster_adapter_count: 22
+        historical_roster: state/matchup_adapter_roster_v4.json
+        historical_roster_adapter_count: 22
         policy: >-
-          The live checkpoint already materializes the exact canonical 22-route
-          bank. At the next safe committed boundary, enable the validated
+          This frozen checkpoint materialized the historical 22-route bank.
+          At its original safe committed boundary, enable the validated
           causal runtime and require the first self-play collection audit to
           record at least one hops-trevenant mirror activation before another
           iteration may start.
@@ -1520,25 +1545,17 @@ kaggle_submission_state:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     garchomp:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
-    cornerstone-ogerpon:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     rockets-mewtwo:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     starmie:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     archaludon-ex:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
-    lopunny:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     lucario:
       - {copy_number: 1, label: "lucario exact gate iter 10 copy 1/1 ffa401242b2c", checkpoint_checksum: "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd", status: accepted, queued_at: "2026-07-24T13:28:00.355124Z", submitted_at: "2026-07-24T13:33:57.223000Z", submission_id: 54952269, returned_score: 600.0, failure_reason: null, retry_count: 1}
-    gardevoir:
+    thwackey:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
-    ns-zoroark:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
-    raging-bolt:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
-    festival-lead:
+    team-rockets-spidops:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     dudunsparce:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
@@ -1557,8 +1574,13 @@ population_training:
   rehearsal_epochs_completed: 0
 
 unresolved_facts:
+  - The metadata fields `status` and `runtime_enabled` inside state/matchup_adapter_roster.json still describe the pre-deployment migration state even though the receipt-backed roster18 checkpoint, router, authorization, and fleet deployment are verified; that source metadata requires a separate authorized correction.
+  - Dragapult/Dusknoir remains bound to its historical 28-day expert artifact. It must not be relabeled as the canonical latest-20-calendar-day corpus; rebuild and checksum-pin the compliant active-archetype filter at the next safe rehearsal boundary.
+  - No complete latest-20 Dragapult/Dusknoir receipt currently proves its aggregate matching-game count, so eligibility for the historical zero-match fallback is unknown and no fallback is authorized.
+  - Frozen pre-roster18 specialist packages preserve their verified historical 22-row checkpoint lineage. Whether every inference package has its own verified roster18 migration receipt is not established by these three planning files.
   - Alakazam has not passed the complete measured fallback pipeline; the contained owner-waiver artifact and submission are audit evidence only and do not confer protocol passing status.
   - Timestamps for the three historical accepted-baseline Kaggle submissions are absent from the repository gate registry.
   - Aggregate RL-epoch and rehearsal-epoch counters are not authoritative in loop_state.json and remain null.
-  - Rocket's Mewtwo and Festival Lead have no unambiguous row in the pinned PTCG Ladder Meta strategies snapshot; their shares remain null and sort last.
+  - Team Rocket's Mewtwo and Thwackey have no unambiguous row in the pinned PTCG Ladder Meta strategies snapshot; their shares remain null and sort last.
+  - Team Rocket's Spidops also has no verified row in the pinned PTCG Ladder Meta strategies snapshot; its share remains null and sorts last.
   - Hammer Pult has an 18-epoch historical bootstrap; it is audit-only and the specialist is explicitly marked restart_required for a fresh 25-epoch protocol bootstrap.

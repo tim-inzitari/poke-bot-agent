@@ -46,9 +46,9 @@ EXPERT_IDS_V3: tuple[str, ...] = EXPERT_IDS_V2 + (
     "hops-trevenant",
     "walrein",
 )
-# One append-only, zero-output route for every canonical specialist.  Routes
-# with no verified examples remain materialized but dormant and untrained.
-EXPERT_IDS: tuple[str, ...] = EXPERT_IDS_V3 + (
+# Historical v4 route order. This remains available only for explicit,
+# checksum-audited checkpoint migration; it is not a live routing roster.
+LEGACY_EXPERT_IDS_V4: tuple[str, ...] = EXPERT_IDS_V3 + (
     "dragapult-dusknoir",
     "dragapult-blaziken",
     "lopunny",
@@ -58,9 +58,6 @@ EXPERT_IDS: tuple[str, ...] = EXPERT_IDS_V3 + (
     "festival-lead",
 )
 
-# The v4 rows remain an immutable checkpoint-compatibility contract.  The
-# following routes are retired from future specialist selection and routing,
-# but their tensor slots must not be deleted or renumbered in frozen models.
 RETIRED_EXPERT_IDS_V5: frozenset[str] = frozenset(
     {
         "cornerstone-ogerpon",
@@ -71,25 +68,41 @@ RETIRED_EXPERT_IDS_V5: frozenset[str] = frozenset(
     }
 )
 
-# Staged v5 logical roster.  Activation requires a separately validated
-# 23-output causal router and happens only at a safe specialist boundary.
-# Existing row indexes stay fixed; Team Rocket's Spidops is append-only.
-STAGED_EXPERT_IDS_V5: tuple[str, ...] = EXPERT_IDS + (
+# Stable canonical v5 roster. The five retired rows are physically absent,
+# Festival Lead's retained weights are addressed as Thwackey, and Spidops is a
+# new exact-zero row. Frozen v4 checkpoints remain immutable and load only
+# through the explicit identity-preserving migration tool.
+EXPERT_IDS: tuple[str, ...] = (
+    "crustle",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "rockets-mewtwo",
+    "starmie",
+    "hammer-pult",
+    "alakazam",
+    "lucario",
+    "archaludon-ex",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "dudunsparce",
+    "hops-trevenant",
+    "walrein",
+    "dragapult-dusknoir",
+    "dragapult-blaziken",
+    "thwackey",
     "team-rockets-spidops",
 )
+STAGED_EXPERT_IDS_V5: tuple[str, ...] = EXPERT_IDS
+ACTIVE_EXPERT_IDS_V5: tuple[str, ...] = EXPERT_IDS
 LOGICAL_EXPERT_ALIASES_V5: Mapping[str, str] = MappingProxyType(
     {"festival-lead": "thwackey"}
-)
-ACTIVE_EXPERT_IDS_V5: tuple[str, ...] = tuple(
-    LOGICAL_EXPERT_ALIASES_V5.get(expert_id, expert_id)
-    for expert_id in STAGED_EXPERT_IDS_V5
-    if expert_id not in RETIRED_EXPERT_IDS_V5
 )
 EXPERT_ID_TO_ROUTE: Mapping[str, int] = MappingProxyType(
     {expert_id: route for route, expert_id in enumerate(EXPERT_IDS)}
 )
 
-ADAPTER_CHECKPOINT_FORMAT = "alakazam-matchup-adapter-bank-v4"
+ADAPTER_CHECKPOINT_FORMAT = "poke-bot-matchup-adapter-bank-v5-roster18"
+V4_ADAPTER_CHECKPOINT_FORMAT = "alakazam-matchup-adapter-bank-v4"
 V3_ADAPTER_CHECKPOINT_FORMAT = "alakazam-matchup-adapter-bank-v3"
 V2_ADAPTER_CHECKPOINT_FORMAT = "alakazam-matchup-adapter-bank-v2"
 LEGACY_ADAPTER_CHECKPOINT_FORMAT = "alakazam-matchup-adapter-bank-v1"
@@ -221,6 +234,16 @@ class MatchupAdapterBank(nn.Module):
             "expert_ids": list(EXPERT_IDS_V3),
         }
 
+    @staticmethod
+    def legacy_config_dict_v4() -> dict[str, Any]:
+        """Return the historical 22-route contract for migration audits."""
+
+        return {
+            **MatchupAdapterBank.config_dict(),
+            "format": V4_ADAPTER_CHECKPOINT_FORMAT,
+            "expert_ids": list(LEGACY_EXPERT_IDS_V4),
+        }
+
     def _load_from_state_dict(
         self,
         state_dict,
@@ -242,34 +265,10 @@ class MatchupAdapterBank(nn.Module):
         if not has_adapter_state:
             for key, value in self.state_dict().items():
                 state_dict[prefix + key] = value.detach().clone()
-        else:
-            # Exact v1 -> v2 append-only migration. Existing routes retain
-            # their indices and values; only newly appended experts receive
-            # their constructor's zero-output initialization. Any other
-            # partial bank remains a strict-load failure.
-            local = self.state_dict()
-            present = {
-                key.removeprefix(prefix)
-                for key in state_dict
-                if key.startswith(prefix)
-            }
-            legacy_prefixes = (
-                len(LEGACY_EXPERT_IDS_V1),
-                len(EXPERT_IDS_V2),
-                len(EXPERT_IDS_V3),
-            )
-            compatible = any(
-                present
-                == {
-                    key
-                    for key in local
-                    if int(key.split(".")[1]) < prefix_len
-                }
-                for prefix_len in legacy_prefixes
-            )
-            if compatible:
-                for key, value in local.items():
-                    state_dict.setdefault(prefix + key, value.detach().clone())
+        # A partially present bank is intentionally not expanded. The v5
+        # roster deletes and renames rows, so index-prefix migration would
+        # silently attach trained weights to the wrong archetype. Historical
+        # banks must pass through the checksum-audited identity migration tool.
         super()._load_from_state_dict(
             state_dict,
             prefix,

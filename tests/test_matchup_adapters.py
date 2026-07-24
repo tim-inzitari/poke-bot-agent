@@ -204,7 +204,6 @@ def test_adapter_architecture_initialization_and_exact_routes() -> None:
         "crustle",
         "marnie-s-grimmsnarl-ex",
         "garchomp",
-        "cornerstone-ogerpon",
         "rockets-mewtwo",
         "starmie",
         "hammer-pult",
@@ -218,18 +217,20 @@ def test_adapter_architecture_initialization_and_exact_routes() -> None:
         "walrein",
         "dragapult-dusknoir",
         "dragapult-blaziken",
-        "lopunny",
-        "gardevoir",
-        "ns-zoroark",
-        "raging-bolt",
-        "festival-lead",
+        "thwackey",
+        "team-rockets-spidops",
     )
-    assert len(bank.experts) == 22
+    assert len(bank.experts) == 18
     assert [
         sum(parameter.numel() for parameter in expert.parameters())
         for expert in bank.experts
-    ] == [1_640] * 22
-    assert sum(parameter.numel() for parameter in bank.parameters()) == 36_080
+    ] == [1_640] * len(EXPERT_IDS)
+    parameters_per_head = sum(
+        parameter.numel() for parameter in bank.experts[0].parameters()
+    )
+    assert sum(parameter.numel() for parameter in bank.parameters()) == (
+        len(EXPERT_IDS) * parameters_per_head
+    )
     for expert in bank.experts:
         assert expert.down.in_features == 96
         assert expert.down.out_features == 8
@@ -264,13 +265,13 @@ def test_adapter_architecture_initialization_and_exact_routes() -> None:
     # The specialist's mirror and the two current strong-public archetypes
     # each own a distinct appended expert.  Keep these explicit so a future
     # registry cleanup cannot silently collapse Lucario into a generic route.
-    assert route_for_archetype("alakazam") == 7
-    assert route_for_archetype("lucario") == 8
-    assert archetype_for_route(8) == "lucario"
-    assert route_for_archetype("archaludon-ex") == 9
+    assert route_for_archetype("alakazam") == 6
+    assert route_for_archetype("lucario") == 7
+    assert archetype_for_route(7) == "lucario"
+    assert route_for_archetype("archaludon-ex") == 8
 
 
-def test_v1_bank_expands_append_only_with_zero_output_new_routes() -> None:
+def test_v1_bank_requires_explicit_identity_migration() -> None:
     source = MatchupAdapterBank()
     legacy_state = {
         name: value.detach().clone()
@@ -281,21 +282,11 @@ def test_v1_bank_expands_append_only_with_zero_output_new_routes() -> None:
         legacy_state["experts.0.up.bias"].fill_(0.25)
 
     expanded = MatchupAdapterBank()
-    expanded.load_state_dict(legacy_state, strict=True)
-
-    assert torch.equal(
-        expanded.state_dict()["experts.0.up.bias"],
-        legacy_state["experts.0.up.bias"],
-    )
-    for route in range(7, len(EXPERT_IDS)):
-        assert torch.count_nonzero(expanded.experts[route].up.weight).item() == 0
-        assert torch.count_nonzero(expanded.experts[route].up.bias).item() == 0
-    assert MatchupAdapterBank.legacy_config_dict_v1()["expert_ids"] == list(
-        EXPERT_IDS[:7]
-    )
+    with pytest.raises(RuntimeError, match="Missing key"):
+        expanded.load_state_dict(legacy_state, strict=True)
 
 
-def test_v2_bank_expands_append_only_without_changing_trained_routes() -> None:
+def test_v2_bank_requires_explicit_identity_migration() -> None:
     source = MatchupAdapterBank()
     legacy_state = {
         name: value.detach().clone()
@@ -306,19 +297,11 @@ def test_v2_bank_expands_append_only_without_changing_trained_routes() -> None:
         legacy_state["experts.7.up.bias"].fill_(0.375)
 
     expanded = MatchupAdapterBank()
-    expanded.load_state_dict(legacy_state, strict=True)
-
-    for name, value in legacy_state.items():
-        assert torch.equal(expanded.state_dict()[name], value), name
-    for route in range(10, len(EXPERT_IDS)):
-        assert torch.count_nonzero(expanded.experts[route].up.weight).item() == 0
-        assert torch.count_nonzero(expanded.experts[route].up.bias).item() == 0
-    assert MatchupAdapterBank.legacy_config_dict_v2()["expert_ids"] == list(
-        EXPERT_IDS[:10]
-    )
+    with pytest.raises(RuntimeError, match="Missing key"):
+        expanded.load_state_dict(legacy_state, strict=True)
 
 
-def test_v3_bank_expands_to_canonical_roster_without_changing_trained_routes() -> None:
+def test_v3_bank_requires_explicit_identity_migration() -> None:
     source = MatchupAdapterBank()
     legacy_state = {
         name: value.detach().clone()
@@ -329,16 +312,8 @@ def test_v3_bank_expands_to_canonical_roster_without_changing_trained_routes() -
         legacy_state["experts.14.up.bias"].fill_(0.5)
 
     expanded = MatchupAdapterBank()
-    expanded.load_state_dict(legacy_state, strict=True)
-
-    for name, value in legacy_state.items():
-        assert torch.equal(expanded.state_dict()[name], value), name
-    for route in range(15, len(EXPERT_IDS)):
-        assert torch.count_nonzero(expanded.experts[route].up.weight).item() == 0
-        assert torch.count_nonzero(expanded.experts[route].up.bias).item() == 0
-    assert MatchupAdapterBank.legacy_config_dict_v3()["expert_ids"] == list(
-        EXPERT_IDS[:15]
-    )
+    with pytest.raises(RuntimeError, match="Missing key"):
+        expanded.load_state_dict(legacy_state, strict=True)
 
 
 def test_bank_disabled_unknown_and_zero_initialized_paths_are_exact_noops() -> None:
@@ -872,7 +847,11 @@ def test_bankless_parent_dynamically_persists_frozen_zero_bank_next_checkpoint(
     assert dormant["optimizer_imported"] is False
     assert dormant["frozen"] is True
     assert dormant["zero_output"] is True
-    assert dormant["parameter_count"] == 36_080
+    parameters_per_head = sum(
+        parameter.numel()
+        for parameter in loaded.matchup_adapter_bank.experts[0].parameters()
+    )
+    assert dormant["parameter_count"] == len(EXPERT_IDS) * parameters_per_head
     assert any(
         name.startswith("matchup_adapter_bank.")
         for name in saved["model_state_dict"]
@@ -1627,7 +1606,7 @@ def test_resident_adapter_route_matches_object_loss_and_gradients() -> None:
             )
 
 
-def test_append_only_optimizer_restore_preserves_v2_moments() -> None:
+def test_optimizer_restore_preserves_exact_canonical_moments() -> None:
     source = _model().train()
     source_optimizer = build_matchup_adapter_optimizer(
         source,
@@ -1639,13 +1618,8 @@ def test_append_only_optimizer_restore_preserves_v2_moments() -> None:
         parameter.grad = torch.ones_like(parameter)
     source_optimizer.step()
     full = source_optimizer.state_dict()
-    first_ten_parameter_ids = list(full["param_groups"][0]["params"][:40])
+    canonical_parameter_ids = list(full["param_groups"][0]["params"])
     v2 = copy.deepcopy(full)
-    v2["param_groups"][0]["params"] = first_ten_parameter_ids
-    v2["state"] = {
-        key: value for key, value in v2["state"].items()
-        if key in first_ten_parameter_ids
-    }
 
     target = _model().train()
     target_optimizer = build_matchup_adapter_optimizer(
@@ -1659,10 +1633,10 @@ def test_append_only_optimizer_restore_preserves_v2_moments() -> None:
     )
     migrated = target_optimizer.state_dict()
 
-    assert restored_experts == 10
-    assert len(migrated["param_groups"][0]["params"]) == 88
-    assert len(migrated["state"]) == 40
-    for index, old_id in enumerate(first_ten_parameter_ids):
+    assert restored_experts == len(EXPERT_IDS)
+    assert len(migrated["param_groups"][0]["params"]) == 4 * len(EXPERT_IDS)
+    assert len(migrated["state"]) == 4 * len(EXPERT_IDS)
+    for index, old_id in enumerate(canonical_parameter_ids):
         new_id = migrated["param_groups"][0]["params"][index]
         assert torch.equal(
             migrated["state"][new_id]["exp_avg"],

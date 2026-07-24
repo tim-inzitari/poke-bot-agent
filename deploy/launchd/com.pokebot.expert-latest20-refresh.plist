@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pokebot.expert-latest20-refresh</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/tsinzitari/workspace/poke-bot-agent/scripts/refresh_expert_latest20_bert.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/tsinzitari/workspace/poke-bot-agent</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/tsinzitari/poke-expert-refresh/refresh.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tsinzitari/poke-expert-refresh/refresh.log</string>
+</dict>
+</plist>

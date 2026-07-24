@@ -79,6 +79,71 @@ def _path(section: dict[str, Any], key: str) -> Path:
     return Path(raw).expanduser().resolve()
 
 
+def _accepted_core(family: Path, ready_path: Path) -> dict[str, Any]:
+    ready = _read(ready_path)
+    core = verify_frozen_model(family)
+    if (
+        ready.get("status") != "ready"
+        or ready.get("gameplay_regression_passed") is not True
+        or ready.get("checkpoint_digest") != core.get("checkpoint_digest")
+    ):
+        raise RuntimeError("shared core is not accepted")
+    return {
+        **core,
+        "ready": str(ready_path),
+        "ready_digest": sha256(ready_path),
+        "version": int(ready.get("version") or len(ready.get("teacher_checkpoint_digests") or ())),
+    }
+
+
+def _resolve_current_core(section: dict[str, Any]) -> dict[str, Any]:
+    """Use the latest accepted cumulative core, falling back only for bootstrap."""
+
+    pointer_raw = str(section.get("latest_pointer") or "").strip()
+    if pointer_raw:
+        pointer_path = Path(pointer_raw).expanduser().resolve()
+        if pointer_path.is_file():
+            pointer = _read(pointer_path)
+            family = _path(pointer, "family")
+            ready_path = _path(pointer, "ready")
+            core = _accepted_core(family, ready_path)
+            if (
+                pointer.get("schema")
+                != "poke_bot.latest_cumulative_core_pointer/v1"
+                or pointer.get("checkpoint_digest") != core["checkpoint_digest"]
+                or pointer.get("ready_digest") != core["ready_digest"]
+            ):
+                raise RuntimeError("latest cumulative core pointer changed")
+            return core
+    return _accepted_core(
+        _path(section, "family"),
+        _path(section, "ready"),
+    )
+
+
+def _publish_latest_core_pointer(
+    path: Path,
+    *,
+    family: Path,
+    ready_path: Path,
+    previous_digest: str,
+) -> dict[str, Any]:
+    core = _accepted_core(family, ready_path)
+    payload = {
+        "schema": "poke_bot.latest_cumulative_core_pointer/v1",
+        "family": str(family),
+        "ready": str(ready_path),
+        "ready_digest": core["ready_digest"],
+        "checkpoint_digest": core["checkpoint_digest"],
+        "version": int(core["version"]),
+        "previous_checkpoint_digest": previous_digest,
+    }
+    if path.is_file() and _read(path) == payload:
+        return payload
+    _atomic(path, payload)
+    return payload
+
+
 def _active_specialist(runtime: dict[str, Any]) -> str:
     selector = _path(runtime, "selector_env")
     rows = [
@@ -98,19 +163,18 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
     expected = int(
         ((state.get("target_registry") or {}).get("required_target_count") or 0)
     )
-    rows = [
-        dict(row)
-        for row in (state.get("specialists") or [])
-        if isinstance(row, dict)
-    ]
-    identifiers = {str(row.get("id") or "") for row in rows}
+    roster_path = state_path.parent / "matchup_adapter_roster.json"
+    roster = _read(roster_path)
+    identifiers = {
+        str(value) for value in (roster.get("expert_ids") or []) if str(value)
+    }
     if (
-        expected != 22
-        or len(rows) != 22
-        or len(identifiers) != 22
+        expected != len(identifiers)
+        or int(roster.get("required_specialist_count") or 0) != len(identifiers)
+        or int(roster.get("physical_checkpoint_rows") or 0) != len(identifiers)
         or "" in identifiers
     ):
-        raise RuntimeError("canonical 22-specialist roster changed")
+        raise RuntimeError("canonical specialist roster changed")
     return identifiers
 
 
@@ -118,15 +182,15 @@ def population_transition_ready(
     completed_ids: set[str],
     required_ids: set[str],
 ) -> bool:
-    """Require the exact canonical 22 before population training can start."""
+    """Require the exact canonical roster before population training can start."""
 
-    if len(required_ids) != 22:
-        raise RuntimeError("population transition requires canonical 22 roster")
+    if not required_ids:
+        raise RuntimeError("population transition requires canonical roster")
     if not completed_ids.issubset(required_ids):
         raise RuntimeError(
             "frozen registry contains specialists outside canonical roster"
         )
-    return len(completed_ids) == 22 and completed_ids == required_ids
+    return completed_ids == required_ids
 
 
 def _start_population_handoff(runtime: dict[str, Any]) -> None:
@@ -473,14 +537,7 @@ def run(contract_path: Path) -> int:
         frozen_registry = _read(frozen_registry_path)
         validate_frozen_predecessor_registry(source_evidence, frozen_registry)
         core_section = dict(contract["shared_core"])
-        ready = _read(_path(core_section, "ready"))
-        core = verify_frozen_model(_path(core_section, "family"))
-        if (
-            ready.get("status") != "ready"
-            or ready.get("gameplay_regression_passed") is not True
-            or ready.get("checkpoint_digest") != core.get("checkpoint_digest")
-        ):
-            raise RuntimeError("shared core v2 is not accepted")
+        core = _resolve_current_core(core_section)
         frozen_registry = _read(frozen_registry_path)
         validate_frozen_predecessor_registry(
             source_evidence,
@@ -524,6 +581,15 @@ def run(contract_path: Path) -> int:
         else:
             _atomic(generated_path, cumulative)
         run_core_refresh_handoff(generated_path)
+        pointer_raw = str(core_section.get("latest_pointer") or "").strip()
+        if not pointer_raw:
+            raise RuntimeError("latest cumulative core pointer is not configured")
+        _publish_latest_core_pointer(
+            Path(pointer_raw).expanduser().resolve(),
+            family=_path(dict(cumulative["core_refresh"]), "family"),
+            ready_path=_path(dict(cumulative["core_refresh"]), "ready_receipt"),
+            previous_digest=str(core["checkpoint_digest"]),
+        )
     return 0
 
 

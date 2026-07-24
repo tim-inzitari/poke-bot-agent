@@ -66,6 +66,7 @@ DASHBOARD_ITERATION_TIMER = ROOT / "outputs/state/dashboard_iteration_timer.json
 MODEL_PROFILE_REGISTRY = ROOT / "outputs/state/pure_rl_model_profiles.json"
 DORMANT_MODEL_MODULES = ROOT / "outputs/state/alakazam_dormant_model_modules_v1.json"
 STAGED_MATCHUP_ADAPTER_ROSTER = ROOT / "state/matchup_adapter_roster_v4.json"
+CANONICAL_MATCHUP_ADAPTER_ROSTER = ROOT / "state/matchup_adapter_roster.json"
 MATCHUP_RUNTIME_PRODUCTION_READY = (
     ROOT / "outputs/state/matchup-runtime-v31-production-ready.json"
 )
@@ -122,6 +123,9 @@ STARMIE_PASSED_GATE_HANDLER_STATE = (
     ROOT / "outputs/state/starmie-passed-gate-handler-v1.json"
 )
 EXPERT20_ROOT = ROOT / "data/bootstrap/expert-latest20-20260702-20260721"
+EXPERT20_CURRENT_RECEIPT = (
+    ROOT / "outputs/state/expert-latest20-current.json"
+)
 EXPERT20_REFRESH_STATUS = EXPERT20_ROOT / "refresh.status.json"
 EXPERT20_INZI_STATUS = EXPERT20_ROOT / "inzi.features.status.json"
 EXPERT20_INZI_FINAL_STATUS = EXPERT20_ROOT / "inzi-final.features.status.json"
@@ -260,7 +264,7 @@ def _unit_values(name: str, *, user: bool = False) -> dict[str, str]:
         [
             "show",
             name,
-            "--property=MainPID,ControlGroup,MemoryCurrent,TasksCurrent,Environment",
+            "--property=MainPID,ControlGroup,MemoryCurrent,TasksCurrent,Environment,EnvironmentFiles",
         ]
     )
     values: dict[str, str] = {}
@@ -281,6 +285,69 @@ def _environment_values(raw: str) -> dict[str, str]:
         key, sep, value = token.partition("=")
         if sep:
             values[key] = value
+    return values
+
+
+def _environment_file_values(raw: str) -> dict[str, str]:
+    """Read the literal EnvironmentFile paths reported by systemd.
+
+    ``systemctl show`` appends metadata such as ``(ignore_errors=no)`` after
+    every path.  The files are managed unit inputs, not guessed dashboard
+    configuration, and provide the effective topology when ``Environment=`` is
+    empty.  The live process environment is applied after this fallback.
+    """
+
+    values: dict[str, str] = {}
+    try:
+        tokens = shlex.split(raw)
+    except ValueError:
+        tokens = raw.split()
+    for token in tokens:
+        if token.startswith("(") or not token.startswith("/"):
+            continue
+        path = Path(token)
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            continue
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("export "):
+                stripped = stripped[7:].lstrip()
+            key, sep, value = stripped.partition("=")
+            if not sep or not key.strip():
+                continue
+            raw_value = value.strip()
+            try:
+                decoded = shlex.split(raw_value, comments=True)
+            except ValueError:
+                decoded = []
+            values[key.strip()] = (
+                decoded[0] if len(decoded) == 1 else raw_value.strip("'\"")
+            )
+    return values
+
+
+def _process_environment(pid: int) -> dict[str, str]:
+    """Return the running managed controller's effective environment."""
+
+    if pid <= 0:
+        return {}
+    try:
+        entries = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
+    except OSError:
+        return {}
+    values: dict[str, str] = {}
+    for entry in entries:
+        key, sep, value = entry.partition(b"=")
+        if not sep:
+            continue
+        try:
+            values[key.decode("utf-8")] = value.decode("utf-8")
+        except UnicodeError:
+            continue
     return values
 
 
@@ -313,7 +380,15 @@ def curriculum_worker_state(
         selected.update(_cgroup_pids(values.get("ControlGroup", "")))
         memory_current += as_number(values.get("MemoryCurrent", "")) or 0
         tasks_current += as_number(values.get("TasksCurrent", "")) or 0
+        environment.update(
+            _environment_file_values(values.get("EnvironmentFiles", ""))
+        )
         environment.update(_environment_values(values.get("Environment", "")))
+        environment.update(
+            _process_environment(
+                as_number(values.get("MainPID", "")) or 0
+            )
+        )
 
     # Older/non-systemd test environments may not expose cgroup.procs. Fall
     # back to a complete descendant closure from the unit MainPID(s).
@@ -390,6 +465,11 @@ def curriculum_worker_state(
         "command": command or ", ".join(active_units),
         "optimizer_runtime": optimizer_runtime,
         "source": "systemd-user-cgroup",
+        "topology_source": (
+            "active managed trainer effective environment"
+            if environment
+            else "managed service process topology"
+        ),
     }
 
 
@@ -892,7 +972,15 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
     completed_count = frozen_count + int(
         cycle_active and source_id not in frozen_ids
     )
-    remaining_count = max(0, 22 - completed_count)
+    canonical_roster = read_json(CANONICAL_MATCHUP_ADAPTER_ROSTER)
+    required_specialist_count = int(
+        canonical_roster.get("required_specialist_count") or 0
+    )
+    if required_specialist_count <= 0:
+        required_specialist_count = len(
+            canonical_roster.get("expert_ids") or []
+        )
+    remaining_count = max(0, required_specialist_count - completed_count)
     selected = dict(state.get("selected_specialist") or {})
     next_specialist_id = str(
         selected.get("specialist_id") or selected.get("id") or ""
@@ -1036,7 +1124,10 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
                 "next unfinished specialist"
             )
             if cycle_active
-            else "Starmie frozen → shared core v2 → specialist 4 of 22"
+            else (
+                "Starmie frozen → shared core v2 → specialist "
+                f"{completed_count + 1} of {required_specialist_count}"
+            )
         ),
         "pid": service.get("pid"),
         "memory_bytes": service.get("memory_bytes"),
@@ -1077,6 +1168,7 @@ def reconcile_current_specialist_handoff(
     *,
     active_specialist: str,
     program_progress: dict[str, Any] | None = None,
+    next_specialist: str | None = None,
 ) -> dict[str, Any]:
     """Do not present a successful historical handoff as the current one."""
 
@@ -1086,6 +1178,8 @@ def reconcile_current_specialist_handoff(
     progress = dict(program_progress or {})
     remaining = int(progress.get("remaining_after_active") or 0)
     label_name = active_specialist.replace("-", " ").title() or "Active specialist"
+    historical_source = handoff.get("source_specialist_id")
+    historical_next = handoff.get("next_specialist_id")
     return {
         **handoff,
         "available": True,
@@ -1104,6 +1198,12 @@ def reconcile_current_specialist_handoff(
         "epochs_target": None,
         "rate": None,
         "rate_unit": None,
+        "completed_specialists": int(progress.get("completed_frozen") or 0),
+        "remaining_specialists_after_active": remaining,
+        "source_specialist_id": active_specialist or None,
+        "next_specialist_id": str(next_specialist or "").strip() or None,
+        "historical_source_specialist_id": historical_source,
+        "historical_next_specialist_id": historical_next,
         "historical_source_suppressed": True,
     }
 
@@ -1230,6 +1330,685 @@ def checkpoint_parameter_telemetry(log_path: Path) -> dict[str, Any]:
         "trainable_parameters": count,
         "checkpoint": latest.group(2),
         "source": str(log_path),
+    }
+
+
+def checkpoint_structure_telemetry(
+    checkpoint_path: Path | str,
+    checkpoint_digest: str,
+    *,
+    cache_path: Path | None = None,
+) -> dict[str, Any]:
+    """Inspect the committed checkpoint instead of inferring its shape from logs.
+
+    A startup log describes the seed as it existed at load time.  Specialist
+    handoffs can subsequently materialize a wider adapter bank, so that log is
+    not authoritative for the active committed learner.  Cache the small
+    structural summary by immutable digest and file identity; the checkpoint is
+    loaded only once per newly committed learner.
+    """
+
+    path = Path(checkpoint_path) if str(checkpoint_path or "") else Path()
+    expected_digest = str(checkpoint_digest or "")
+    if (
+        not path.is_file()
+        or not _is_sha256_digest(expected_digest)
+    ):
+        return {
+            "available": False,
+            "verified": False,
+            "reason": "committed checkpoint path or digest unavailable",
+            "checkpoint": str(path) if str(checkpoint_path or "") else None,
+            "checkpoint_digest": expected_digest or None,
+        }
+    cache_path = cache_path or (
+        ROOT / "outputs/state/dashboard-checkpoint-structure-cache.json"
+    )
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        return {
+            "available": False,
+            "verified": False,
+            "reason": f"checkpoint stat failed: {exc}",
+            "checkpoint": str(path),
+            "checkpoint_digest": expected_digest,
+        }
+    cache = read_json(cache_path)
+    if (
+        cache.get("schema") == "poke_bot.dashboard_checkpoint_structure/v1"
+        and cache.get("checkpoint") == str(path)
+        and cache.get("checkpoint_digest") == expected_digest
+        and int(cache.get("size_bytes") or -1) == int(stat.st_size)
+        and int(cache.get("mtime_ns") or -1) == int(stat.st_mtime_ns)
+        and cache.get("verified") is True
+    ):
+        return cache
+
+    actual_digest = _file_sha256(path)
+    if actual_digest != expected_digest:
+        return {
+            "schema": "poke_bot.dashboard_checkpoint_structure/v1",
+            "available": True,
+            "verified": False,
+            "reason": "checkpoint digest does not match immutable commit",
+            "checkpoint": str(path),
+            "checkpoint_digest": expected_digest,
+            "actual_digest": actual_digest,
+            "size_bytes": int(stat.st_size),
+            "mtime_ns": int(stat.st_mtime_ns),
+        }
+    try:
+        import torch
+
+        payload = torch.load(
+            path,
+            map_location="cpu",
+            weights_only=False,
+            mmap=True,
+        )
+        if not isinstance(payload, dict):
+            raise TypeError("checkpoint payload is not a mapping")
+        state_dict = payload.get("model_state_dict")
+        if not isinstance(state_dict, dict):
+            raise TypeError("checkpoint model_state_dict is unavailable")
+        extra = payload.get("extra")
+        extra = dict(extra) if isinstance(extra, dict) else {}
+        adapter_config = extra.get("matchup_adapter_config")
+        if not isinstance(adapter_config, dict):
+            dormant_bank = extra.get("dormant_matchup_adapter_bank")
+            dormant_bank = (
+                dormant_bank if isinstance(dormant_bank, dict) else {}
+            )
+            adapter_config = dormant_bank.get("adapter_config")
+        adapter_config = (
+            dict(adapter_config) if isinstance(adapter_config, dict) else {}
+        )
+        expert_ids = [
+            str(value)
+            for value in (adapter_config.get("expert_ids") or [])
+            if str(value)
+        ]
+        adapter_keys = {
+            str(key): value
+            for key, value in state_dict.items()
+            if str(key).startswith("matchup_adapter_bank.experts.")
+            and hasattr(value, "numel")
+        }
+        expert_indexes = {
+            int(parts[2])
+            for key in adapter_keys
+            for parts in [key.split(".")]
+            if len(parts) > 3 and parts[2].isdigit()
+        }
+        adapter_parameters = sum(
+            int(value.numel()) for value in adapter_keys.values()
+        )
+        expert_count = (
+            max(expert_indexes) + 1 if expert_indexes else 0
+        )
+        model_parameters = int(extra.get("param_count") or 0)
+        state_tensor_elements = sum(
+            int(value.numel())
+            for value in state_dict.values()
+            if hasattr(value, "numel")
+        )
+        structure_valid = bool(
+            model_parameters > 0
+            and expert_count == len(expert_ids)
+            and expert_count > 0
+            and adapter_parameters > 0
+            and len(expert_ids) == len(set(expert_ids))
+        )
+        result = {
+            "schema": "poke_bot.dashboard_checkpoint_structure/v1",
+            "available": True,
+            "verified": structure_valid,
+            "reason": (
+                None
+                if structure_valid
+                else "checkpoint adapter tensors and embedded route registry disagree"
+            ),
+            "checkpoint": str(path),
+            "checkpoint_digest": expected_digest,
+            "size_bytes": int(stat.st_size),
+            "mtime_ns": int(stat.st_mtime_ns),
+            "model_parameters": model_parameters or None,
+            "state_tensor_elements": state_tensor_elements,
+            "adapter_parameters": adapter_parameters,
+            "adapter_expert_count": expert_count,
+            "adapter_expert_ids": expert_ids,
+            "model_config": dict(payload.get("model_config") or {}),
+            "runtime_enabled_at_save": bool(
+                extra.get("matchup_adapters_runtime_enabled")
+            ),
+            "ordinary_optimizer_included_at_save": bool(
+                extra.get("matchup_adapter_optimizer_included")
+            ),
+            "rl_iteration": payload.get("rl_iteration"),
+            "saved_at": payload.get("saved_at"),
+            "source": "active committed checkpoint payload + tensor structure",
+        }
+    except Exception as exc:
+        return {
+            "schema": "poke_bot.dashboard_checkpoint_structure/v1",
+            "available": True,
+            "verified": False,
+            "reason": f"checkpoint inspection failed: {type(exc).__name__}: {exc}",
+            "checkpoint": str(path),
+            "checkpoint_digest": expected_digest,
+            "size_bytes": int(stat.st_size),
+            "mtime_ns": int(stat.st_mtime_ns),
+        }
+
+    if result.get("verified") is True:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = cache_path.with_suffix(
+                cache_path.suffix + f".{os.getpid()}.tmp"
+            )
+            temporary.write_text(
+                json.dumps(result, separators=(",", ":"), default=str),
+                encoding="utf-8",
+            )
+            os.replace(temporary, cache_path)
+        except OSError:
+            pass
+    return result
+
+
+def _exact_calendar_dates(
+    values: list[Any] | tuple[Any, ...],
+    *,
+    count: int = 20,
+) -> list[str]:
+    """Return an exact contiguous calendar window or an empty list."""
+
+    raw = [str(value) for value in values if str(value)]
+    if len(raw) != count or len(set(raw)) != count:
+        return []
+    try:
+        parsed = [date.fromisoformat(value) for value in raw]
+    except ValueError:
+        return []
+    ordered = sorted(parsed)
+    if any(
+        right - left != timedelta(days=1)
+        for left, right in zip(ordered, ordered[1:])
+    ):
+        return []
+    return [value.isoformat() for value in ordered]
+
+
+def _latest20_window_dates(
+    source_window: dict[str, Any],
+    manifest_dates: list[str],
+    archive_refresh: dict[str, Any],
+) -> list[str]:
+    """Resolve exactly 20 primary calendar slots without using fallback data."""
+
+    source_dates = _exact_calendar_dates(
+        list(source_window.get("dates") or [])
+    )
+    if source_dates:
+        return source_dates
+    manifest_window = _exact_calendar_dates(manifest_dates)
+    if manifest_window:
+        return manifest_window
+    refresh_days = [
+        str(row.get("day") or row.get("date") or "")
+        for row in (archive_refresh.get("days") or [])
+        if isinstance(row, dict)
+    ]
+    refresh_window = _exact_calendar_dates(refresh_days)
+    if refresh_window:
+        return refresh_window
+    try:
+        start = date.fromisoformat(str(archive_refresh.get("window_start") or ""))
+        end = date.fromisoformat(str(archive_refresh.get("window_end") or ""))
+    except ValueError:
+        return []
+    if end - start != timedelta(days=19):
+        return []
+    return [(start + timedelta(days=offset)).isoformat() for offset in range(20)]
+
+
+def _checksum_receipted_historical_fallback(
+    protected_path: Path,
+    protected: dict[str, Any],
+    manifest: dict[str, Any],
+    *,
+    latest20_all_zero: bool,
+) -> dict[str, Any]:
+    """Validate a separately receipted historical corpus fallback."""
+
+    raw = (
+        manifest.get("historical_fallback")
+        if isinstance(manifest.get("historical_fallback"), dict)
+        else protected.get("historical_fallback")
+        if isinstance(protected.get("historical_fallback"), dict)
+        else {}
+    )
+    if not raw:
+        return {
+            "available": False,
+            "used": False,
+            "label": "Historical fallback · none",
+            "not_latest20": True,
+        }
+    receipt_name = str(raw.get("receipt") or raw.get("path") or "").strip()
+    receipt_path = (
+        protected_path.parent / receipt_name if receipt_name else Path()
+    )
+    expected_digest = str(
+        raw.get("receipt_sha256") or raw.get("sha256") or ""
+    )
+    receipt_valid = bool(
+        receipt_name
+        and receipt_path.is_file()
+        and _is_sha256_digest(expected_digest)
+        and _file_sha256(receipt_path) == expected_digest
+    )
+    reason = str(raw.get("reason") or "")
+    requested = raw.get("used") is True
+    allowed = bool(
+        requested
+        and latest20_all_zero
+        and reason
+        in {
+            "latest20_all_zero_matches",
+            "all_latest20_days_zero_matches",
+        }
+        and receipt_valid
+    )
+    receipt = read_json(receipt_path) if receipt_valid else {}
+    return {
+        "available": receipt_valid,
+        "used": allowed,
+        "requested": requested,
+        "label": (
+            "Historical checksum-receipted fallback · not latest20"
+            if receipt_valid
+            else "Historical fallback · receipt invalid"
+        ),
+        "not_latest20": True,
+        "reason": reason or None,
+        "receipt": str(receipt_path) if receipt_name else None,
+        "receipt_checksum": expected_digest or None,
+        "records_kept": int(
+            receipt.get("records_kept")
+            or (receipt.get("totals") or {}).get("records_kept")
+            or 0
+        ),
+        "decisions_kept": int(
+            receipt.get("decisions_kept")
+            or (receipt.get("totals") or {}).get("decisions_kept")
+            or 0
+        ),
+        "rejection_reason": (
+            None
+            if allowed or not requested
+            else "historical fallback requires 20 validated zero-match primary days"
+            if not latest20_all_zero
+            else "historical fallback checksum receipt is invalid"
+            if not receipt_valid
+            else "historical fallback reason is not allowed"
+        ),
+    }
+
+
+def active_expert_corpus_state(
+    curriculum: dict[str, Any],
+    archive_refresh: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve the expert card from the protected corpus pinned by this run."""
+
+    rehearsal = curriculum.get("expert_rehearsal") or {}
+    protected_text = str(rehearsal.get("manifest") or "").strip()
+    protected_path = Path(protected_text) if protected_text else Path()
+    protected = read_json(protected_path)
+    manifest_name = str(protected.get("manifest") or "").strip()
+    manifest_path = (
+        protected_path.parent / manifest_name
+        if protected_text and manifest_name
+        else Path()
+    )
+    manifest = read_json(manifest_path)
+    expected_manifest_digest = str(protected.get("manifest_sha256") or "")
+    manifest_digest_valid = bool(
+        manifest_path.is_file()
+        and _is_sha256_digest(expected_manifest_digest)
+        and _file_sha256(manifest_path) == expected_manifest_digest
+    )
+    if not protected_text or not manifest:
+        return {
+            **archive_refresh,
+            "authoritative_for_active_run": False,
+            "reason": "active run has no readable pinned expert corpus",
+        }
+    shards = (
+        manifest.get("shards")
+        if isinstance(manifest.get("shards"), list)
+        else []
+    )
+    source_window = (
+        manifest.get("source_window")
+        if isinstance(manifest.get("source_window"), dict)
+        else {}
+    )
+    source_days = (
+        manifest.get("source_days")
+        if isinstance(manifest.get("source_days"), list)
+        else []
+    )
+    dates = [str(value) for value in manifest.get("dates") or [] if str(value)]
+    day_rows: list[dict[str, Any]] = []
+    ready_shards = 0
+    for shard in shards:
+        if not isinstance(shard, dict):
+            continue
+        shard_path = protected_path.parent / str(shard.get("path") or "")
+        expected_bytes = int(shard.get("bytes") or 0)
+        shard_ready = bool(
+            shard_path.is_file()
+            and expected_bytes > 0
+            and shard_path.stat().st_size == expected_bytes
+            and _is_sha256_digest(str(shard.get("sha256") or ""))
+        )
+        ready_shards += int(shard_ready)
+        stats = shard.get("stats") if isinstance(shard.get("stats"), dict) else {}
+        shard_dates = [
+            str(value) for value in shard.get("source_dates") or [] if str(value)
+        ]
+        day_rows.append(
+            {
+                "day": shard_dates[0] if shard_dates else "unknown",
+                "host": "Inzi",
+                "stage": "feature_ready" if shard_ready else "missing",
+                "percent": 100.0 if shard_ready else 0.0,
+                "archive_bytes": expected_bytes or None,
+                "feature_records": int(stats.get("records_kept") or 0),
+                "feature_decisions": int(stats.get("decisions_kept") or 0),
+                "partial_bytes": None,
+                "progress_estimated": False,
+                "service": {"active": False},
+            }
+        )
+    ready_filtered_shards = ready_shards
+    latest20_dates = _latest20_window_dates(
+        source_window,
+        dates,
+        archive_refresh,
+    )
+    source_day_by_date = {
+        str(row.get("date") or ""): row
+        for row in source_days
+        if isinstance(row, dict) and str(row.get("date") or "")
+    }
+    archive_day_by_date = {
+        str(row.get("day") or row.get("date") or ""): row
+        for row in (archive_refresh.get("days") or [])
+        if isinstance(row, dict)
+        and str(row.get("day") or row.get("date") or "")
+    }
+    active_filter_archetype = str(
+        source_window.get("filter_archetype")
+        or (
+            (manifest.get("selection") or {}).get("value")
+            if isinstance(manifest.get("selection"), dict)
+            else ""
+        )
+        or "active specialist"
+    )
+    source_day_contract = bool(
+        latest20_dates
+        and int(source_window.get("days") or 0) == 20
+        and str(source_window.get("unit") or "") == "calendar_day"
+        and source_window.get("filter_applied_after_window_selection") is True
+        and set(source_day_by_date) == set(latest20_dates)
+    )
+    if latest20_dates:
+        day_rows = []
+        ready_shards = 0
+        for day_value in latest20_dates:
+            row = source_day_by_date.get(day_value)
+            archive_row = archive_day_by_date.get(day_value) or {}
+            row = row if isinstance(row, dict) else {}
+            present = bool(
+                row.get("source_feature_validated") is True
+                and row.get("source_archive_validated") is True
+                and _is_sha256_digest(
+                    str(row.get("source_feature_sha256") or "")
+                )
+                and _is_sha256_digest(
+                    str(row.get("source_archive_sha256") or "")
+                )
+            )
+            ready_shards += int(present)
+            matching_games = (
+                int(row.get("matching_games") or 0)
+                if row and row.get("matching_games") is not None
+                else None
+            )
+            matching_decisions = (
+                int(row.get("matching_decisions") or 0)
+                if row and row.get("matching_decisions") is not None
+                else None
+            )
+            archive_present = bool(
+                archive_row.get("stage")
+                in {"feature_ready", "ready", "complete"}
+                or archive_row.get("percent") == 100.0
+            )
+            day_rows.append(
+                {
+                    "day": day_value,
+                    "host": "source receipt" if row else "latest20 source window",
+                    "stage": (
+                        "feature_ready"
+                        if present
+                        else "source_ready_unfiltered"
+                        if archive_present
+                        else "missing"
+                    ),
+                    "percent": 100.0 if present else 0.0,
+                    "archive_bytes": None,
+                    "feature_records": matching_games,
+                    "feature_decisions": matching_decisions,
+                    "matching_games": matching_games,
+                    "matching_decisions": matching_decisions,
+                    "zero_match_present": bool(
+                        present and matching_games == 0
+                    ),
+                    "specialist_id": active_filter_archetype,
+                    "matching_status": (
+                        "zero_matches"
+                        if present and matching_games == 0
+                        else "matches_present"
+                        if present and isinstance(matching_games, int)
+                        else "filter_receipt_missing"
+                    ),
+                    "active_specialist_filter_receipt": bool(row),
+                    "present": present,
+                    "partial_bytes": None,
+                    "progress_estimated": False,
+                    "service": {"active": False},
+                }
+            )
+    quality = (
+        manifest.get("quality_gates")
+        if isinstance(manifest.get("quality_gates"), dict)
+        else {}
+    )
+    totals = (
+        manifest.get("totals")
+        if isinstance(manifest.get("totals"), dict)
+        else {}
+    )
+    selection = (
+        manifest.get("selection")
+        if isinstance(manifest.get("selection"), dict)
+        else {}
+    )
+    filtered_shards_complete = bool(
+        protected.get("schema") == "poke_bot.pinned_expert_corpus/v1"
+        and protected.get("protected") is True
+        and manifest_digest_valid
+        and quality.get("passed") is True
+        and shards
+    )
+    complete = bool(
+        filtered_shards_complete
+        and ready_filtered_shards == len(shards)
+    )
+    if source_day_contract:
+        required_source_days = int(source_window.get("days") or 0)
+        complete = bool(
+            filtered_shards_complete
+            and required_source_days == 20
+            and len(day_rows) == required_source_days
+            and ready_shards == required_source_days
+        )
+    else:
+        complete = False
+    evidence_start = None
+    evidence_end = None
+    evidence_match = re.search(
+        r"expert-evidence\d+-(\d{8})-(\d{8})",
+        protected_text,
+    )
+    if evidence_match:
+        evidence_start = (
+            f"{evidence_match.group(1)[:4]}-"
+            f"{evidence_match.group(1)[4:6]}-"
+            f"{evidence_match.group(1)[6:]}"
+        )
+        evidence_end = (
+            f"{evidence_match.group(2)[:4]}-"
+            f"{evidence_match.group(2)[4:6]}-"
+            f"{evidence_match.group(2)[6:]}"
+        )
+    records = int(totals.get("records_kept") or 0)
+    decisions = int(totals.get("decisions_kept") or 0)
+    specialist = str(selection.get("value") or "active specialist")
+    latest20_all_zero = bool(
+        source_day_contract
+        and ready_shards == 20
+        and all(row.get("matching_games") == 0 for row in day_rows)
+    )
+    historical_fallback = _checksum_receipted_historical_fallback(
+        protected_path,
+        protected,
+        manifest,
+        latest20_all_zero=latest20_all_zero,
+    )
+    archive_window_ready = bool(
+        archive_refresh.get("available") is True
+        and archive_refresh.get("archive_window_ready") is True
+        and int(archive_refresh.get("total_days") or 0) == 20
+        and len(archive_refresh.get("days") or ()) == 20
+    )
+    archive_ready_days = (
+        20
+        if archive_window_ready
+        else int(archive_refresh.get("archive_ready_days") or 0)
+    )
+    return {
+        "available": True,
+        "active": bool(rehearsal.get("active")),
+        "complete": complete,
+        "archive_window_ready": archive_window_ready,
+        "host": "Inzi",
+        "stage": "rehearsal_active" if rehearsal.get("active") else "ready",
+        "phase": str(rehearsal.get("state") or "scheduled"),
+        "window_start": latest20_dates[0] if latest20_dates else None,
+        "window_end": latest20_dates[-1] if latest20_dates else None,
+        "evidence_window_start": evidence_start,
+        "evidence_window_end": evidence_end,
+        "current_day": None,
+        "current": ready_shards,
+        "total": len(day_rows),
+        "progress_estimated": False,
+        "completed_days": ready_shards,
+        "archive_ready_days": archive_ready_days,
+        "feature_ready_days": ready_shards,
+        "local_feature_ready_days": ready_shards,
+        "total_days": len(day_rows),
+        "percent": (
+            100.0 * ready_shards / len(day_rows)
+            if day_rows
+            else 0.0
+        ),
+        "day_percent": None,
+        "days": day_rows,
+        "latest_line": (
+            f"ACTIVE RUN · {specialist} protected expert corpus · "
+            f"{records:,} selected games · {decisions:,} decisions · "
+            f"{ready_shards}/"
+            f"{len(day_rows)} latest20 checksum-pinned source days ready"
+            + (
+                " · HISTORICAL FALLBACK USED (not latest20)"
+                if historical_fallback.get("used") is True
+                else ""
+            )
+        ),
+        "reason": (
+            None
+            if complete
+            else "active-specialist filtered corpus preparation pending"
+            if archive_window_ready
+            else "active protected corpus validation failed"
+        ),
+        "assembled_manifest_ready": manifest_digest_valid,
+        "filtered_corpus_ready": complete,
+        "source": str(protected_path),
+        "manifest_source": str(manifest_path),
+        "manifest_digest": expected_manifest_digest or None,
+        "specialist_id": specialist,
+        "records_kept": records,
+        "decisions_kept": decisions,
+        "quality_gates": quality,
+        "source_window": source_window,
+        "source_day_contract": source_day_contract,
+        "source_day_contract_satisfied": bool(
+            source_day_contract
+            and int(source_window.get("days") or 0) == 20
+            and len(day_rows) == 20
+            and ready_shards == 20
+        ),
+        "latest20": {
+            "label": "Latest 20 calendar days",
+            "not_fallback": True,
+            "dates": latest20_dates,
+            "days": day_rows,
+            "matching_games": sum(
+                int(row.get("matching_games") or 0) for row in day_rows
+            ),
+            "matching_decisions": sum(
+                int(row.get("matching_decisions") or 0) for row in day_rows
+            ),
+            "all_zero_matches": latest20_all_zero,
+            "complete": bool(
+                source_day_contract and ready_shards == 20
+            ),
+        },
+        "historical_fallback": historical_fallback,
+        "rehearsal": rehearsal,
+        "authoritative_for_active_run": True,
+        "archive_refresh_history": {
+            "source": archive_refresh.get("source"),
+            "window_start": archive_refresh.get("window_start"),
+            "window_end": archive_refresh.get("window_end"),
+            "complete": archive_refresh.get("complete"),
+            "superseded_by": "active_run_pinned_expert_corpus",
+        },
+        "updated_at": (
+            manifest_path.stat().st_mtime if manifest_path.is_file() else None
+        ),
+        "metric_definition": (
+            "Exact filtered replay records and decisions from the protected "
+            "expert corpus pinned by the active run."
+        ),
     }
 
 
@@ -2418,6 +3197,7 @@ def learner_model_state(
     runtime_optimizer: dict[str, Any] | None = None,
     runtime_parameter_contract: dict[str, Any] | None = None,
     runtime_collection: dict[str, Any] | None = None,
+    checkpoint_structure: dict[str, Any] | None = None,
     dormant_modules_path: Path = DORMANT_MODEL_MODULES,
     staged_adapter_roster_path: Path = STAGED_MATCHUP_ADAPTER_ROSTER,
     matchup_runtime_ready_path: Path = MATCHUP_RUNTIME_PRODUCTION_READY,
@@ -2434,6 +3214,38 @@ def learner_model_state(
     design_contract = manifest.get("design_contract") or {}
     learner = design_contract.get("learner") or {}
     expert = design_contract.get("expert_rehearsal") or {}
+    selected_environment = (
+        manifest.get("selected_environment")
+        if isinstance(manifest.get("selected_environment"), dict)
+        else {}
+    )
+    active_specialist = str(
+        manifest.get("specialist_archetype")
+        or selected_environment.get("POKEBOT_ACTIVE_SPECIALIST")
+        or selected_environment.get("POKEBOT_PRIMARY_ARCHETYPE")
+        or ""
+    ).strip().casefold()
+    generic_guide_enabled = bool(
+        learner.get("current_deck_guide_targets_enabled")
+    )
+    legacy_alakazam_guide_enabled = bool(
+        learner.get("alakazam_guide_targets_enabled")
+    )
+    guide_archetype = str(
+        learner.get("current_deck_guide_archetype")
+        or ("alakazam" if legacy_alakazam_guide_enabled else "")
+    ).strip().casefold()
+    guide_loss_weight = (
+        as_float(learner.get("current_deck_guide_loss_weight"))
+        if generic_guide_enabled
+        else as_float(learner.get("alakazam_guide_loss_weight"))
+    ) or 0.0
+    current_deck_guide_enabled = bool(
+        (generic_guide_enabled or legacy_alakazam_guide_enabled)
+        and guide_loss_weight > 0.0
+        and guide_archetype
+        and guide_archetype == active_specialist
+    )
     profile = learner.get("profile") if isinstance(learner.get("profile"), dict) else {}
     loop = loop if isinstance(loop, dict) else {}
     runtime_optimizer = (
@@ -2521,6 +3333,34 @@ def learner_model_state(
     active_checkpoint = loop.get("learner")
     if not isinstance(active_checkpoint, dict):
         active_checkpoint = {}
+    checkpoint_structure = (
+        checkpoint_structure
+        if isinstance(checkpoint_structure, dict)
+        else checkpoint_structure_telemetry(
+            str(active_checkpoint.get("path") or ""),
+            str(active_checkpoint.get("digest") or ""),
+        )
+    )
+    checkpoint_structure_valid = bool(
+        checkpoint_structure.get("verified") is True
+        and checkpoint_structure.get("checkpoint")
+        == str(active_checkpoint.get("path") or "")
+        and checkpoint_structure.get("checkpoint_digest")
+        == str(active_checkpoint.get("digest") or "")
+    )
+    if checkpoint_structure_valid:
+        checkpoint_parameter_count = int(
+            checkpoint_structure.get("model_parameters") or 0
+        )
+        if checkpoint_parameter_count > 0:
+            parameter_count = checkpoint_parameter_count
+            parameter_source = "active committed checkpoint structure"
+            runtime_parameter_contract = {
+                **runtime_parameter_contract,
+                "trainable_parameters": checkpoint_parameter_count,
+                "checkpoint": str(active_checkpoint.get("path") or ""),
+                "source": str(checkpoint_structure.get("source") or ""),
+            }
 
     def weighted_head(weight_key: str, *, outputs: int | None = None) -> dict[str, Any]:
         weight = as_float(learner.get(weight_key)) or 0.0
@@ -2876,18 +3716,84 @@ def learner_model_state(
         and collection_enforcement.get("passed") is True
         and collection_roster_ids == set(accepted_ids)
     )
+    checkpoint_expert_ids = [
+        str(value)
+        for value in (
+            checkpoint_structure.get("adapter_expert_ids") or []
+        )
+    ]
+    checkpoint_proves_runtime = bool(
+        checkpoint_structure_valid
+        and checkpoint_expert_ids
+        and len(checkpoint_expert_ids)
+        == int(checkpoint_structure.get("adapter_expert_count") or 0)
+        and collection_roster_ids == set(checkpoint_expert_ids)
+        and runtime_collection.get("available") is True
+        and str(runtime_collection.get("checkpoint_digest") or "")
+        == active_digest
+        and collection_combined.get("all_games_audited") is True
+        and collection_combined.get("all_runtime_enabled") is True
+        and collection_combined.get("contract_clean") is True
+        and int(collection_combined.get("audited_games") or 0)
+        == int(collection_combined.get("games") or -1)
+        and int(collection_combined.get("games") or 0) > 0
+        and collection_enforcement.get("required") is True
+        and collection_enforcement.get("passed") is True
+    )
+    checkpoint_descendant_proves_runtime = bool(
+        checkpoint_structure_valid
+        and checkpoint_expert_ids
+        and len(checkpoint_expert_ids)
+        == int(checkpoint_structure.get("adapter_expert_count") or 0)
+        and collection_roster_ids == set(checkpoint_expert_ids)
+        and runtime_collection.get("available") is True
+        and collection_combined.get("all_games_audited") is True
+        and collection_combined.get("all_runtime_enabled") is True
+        and collection_combined.get("contract_clean") is True
+        and int(collection_combined.get("audited_games") or 0)
+        == int(collection_combined.get("games") or -1)
+        and int(collection_combined.get("games") or 0) > 0
+        and collection_enforcement.get("required") is True
+        and collection_enforcement.get("passed") is True
+        and active_fit.get("schema")
+        == "poke_bot.dormant_matchup_adapter_fit/v1"
+        and active_fit.get("base_frozen") is True
+        and active_fit.get("optimizer_scope") == "matchup_adapter_bank_only"
+        and str(active_fit.get("checkpoint_path") or "") == active_path
+        and str(active_fit.get("checkpoint_digest") or "") == active_digest
+        and int(active_fit.get("steps") or 0) > 0
+        and int(active_fit.get("rows") or 0) > 0
+        and set(active_fit_trained_ids).issubset(set(checkpoint_expert_ids))
+    )
+    if checkpoint_proves_runtime or checkpoint_descendant_proves_runtime:
+        # The current immutable checkpoint plus its committed collection audit
+        # (or its checksum-pinned descendant fit plus the immediately prior
+        # clean collection audit) is the live source of truth. Historical
+        # activation receipts remain useful lineage evidence, but they must
+        # not make a later specialist fall back to a stale ten-route marker.
+        staged_ids = checkpoint_expert_ids
+        accepted_ids = checkpoint_expert_ids
     runtime_adapter_valid = bool(
-        runtime_origin_valid
-        and (
-            active_is_origin
-            or active_is_receipted_descendant
-            or collection_proves_runtime
+        checkpoint_proves_runtime
+        or checkpoint_descendant_proves_runtime
+        or (
+            runtime_origin_valid
+            and (
+                active_is_origin
+                or active_is_receipted_descendant
+                or collection_proves_runtime
+            )
         )
     )
     matchup_adapter_runtime: dict[str, Any] = {}
     if runtime_adapter_valid:
         runtime_adapter_parameters = int(
-            staged_adapter_roster.get("parameter_count") or 0
+            (
+                checkpoint_structure.get("adapter_parameters")
+                if checkpoint_structure_valid
+                else staged_adapter_roster.get("parameter_count")
+            )
+            or 0
         )
         evidence_checkpoint = str(
             runtime_parameter_contract.get("checkpoint") or ""
@@ -2905,7 +3811,13 @@ def learner_model_state(
                 "source": str(matchup_runtime_ready_path),
             }
         effective_fit = (
-            active_fit if active_is_receipted_descendant else adapter_fit
+            active_fit
+            if (
+                active_is_receipted_descendant
+                or checkpoint_proves_runtime
+                or checkpoint_descendant_proves_runtime
+            )
+            else adapter_fit
         )
         trained_ids = [
             str(value)
@@ -2967,13 +3879,18 @@ def learner_model_state(
             "enabled": True,
             "iteration": int(
                 runtime_collection.get("iteration")
-                if collection_proves_runtime
+                if (
+                    collection_proves_runtime
+                    or checkpoint_proves_runtime
+                    or checkpoint_descendant_proves_runtime
+                )
                 else runtime_ready.get("iteration")
                 or 0
             ),
             "checkpoint": active_path,
             "checkpoint_digest": active_digest,
             "expert_count": len(staged_ids),
+            "expert_ids": staged_ids,
             "trained_count": len(trained_ids),
             "accepted_runtime_count": len(accepted_ids),
             "accepted_archetype_ids": accepted_ids,
@@ -2981,8 +3898,142 @@ def learner_model_state(
             "one_route_per_decision": True,
             "unknown_route_exact_bypass": True,
             "live_collection_verified": collection_proves_runtime,
+            "checkpoint_descendant_chain_verified": (
+                checkpoint_descendant_proves_runtime
+            ),
             "production_ready_receipt": str(matchup_runtime_ready_path),
             "boundary_receipt": str(matchup_runtime_boundary_path),
+            "checkpoint_structure_verified": checkpoint_structure_valid,
+            "checkpoint_structure_source": checkpoint_structure.get("source"),
+        }
+    # The immutable checkpoint structure and stable roster supersede historical
+    # ten-head/v4 dashboard marker files.  Derive the displayed bank from those
+    # two sources so roster changes never require another hard-coded dashboard
+    # parameter total or version-specific status record.
+    canonical_adapter_roster = read_json(CANONICAL_MATCHUP_ADAPTER_ROSTER)
+    canonical_adapter_ids = [
+        str(value)
+        for value in (canonical_adapter_roster.get("expert_ids") or [])
+        if str(value)
+    ]
+    checkpoint_is_canonical_roster = bool(
+        checkpoint_structure_valid
+        and canonical_adapter_roster.get("schema")
+        == "poke_bot.matchup_adapter_roster/v1"
+        and canonical_adapter_ids
+        and canonical_adapter_ids == checkpoint_expert_ids
+        and len(canonical_adapter_ids)
+        == int(checkpoint_structure.get("adapter_expert_count") or 0)
+        and int(checkpoint_structure.get("adapter_parameters") or 0) > 0
+    )
+    if checkpoint_is_canonical_roster:
+        effective_fit = (
+            active_fit
+            if isinstance(active_fit, dict)
+            and str(active_fit.get("checkpoint_digest") or "") == active_digest
+            else {}
+        )
+        route_sequences = {
+            specialist_id: int(
+                dict(effective_fit.get("route_sequences") or {}).get(
+                    specialist_id, 0
+                )
+            )
+            for specialist_id in canonical_adapter_ids
+        }
+        route_decisions = {
+            specialist_id: int(
+                dict(effective_fit.get("route_decisions") or {}).get(
+                    specialist_id, 0
+                )
+            )
+            for specialist_id in canonical_adapter_ids
+        }
+        trained_ids = [
+            specialist_id
+            for specialist_id in canonical_adapter_ids
+            if route_sequences[specialist_id] > 0
+            or route_decisions[specialist_id] > 0
+        ]
+        adapter_parameters = int(
+            checkpoint_structure.get("adapter_parameters") or 0
+        )
+        adapter_runtime_enabled = matchup_adapter_runtime.get("enabled") is True
+        adapter_epochs = int(
+            runtime_optimizer.get("dormant_matchup_adapter_epochs")
+            or ((learner.get("dormant_matchup_adapter") or {}).get("epochs") or 0)
+            or specialist_row.get("matchup_adapter_epochs_per_rl_iteration")
+            or 0
+        )
+        dormant_modules = [
+            {
+                "id": "matchup_adapter_bank_v5_roster18",
+                "format": "poke-bot-matchup-adapter-bank-v5-roster18",
+                "label": (
+                    f"{len(canonical_adapter_ids)}-position causal matchup "
+                    "residual adapter bank"
+                ),
+                "status": (
+                    "deployed_runtime"
+                    if adapter_runtime_enabled
+                    else "deployed_dormant"
+                ),
+                "present_in_active_checkpoint": True,
+                "runtime_enabled": adapter_runtime_enabled,
+                "optimizer_active": False,
+                "ordinary_optimizer_included": False,
+                "isolated_adapter_updates_enabled": adapter_epochs > 0,
+                "isolated_adapter_epochs_per_rl_iteration": adapter_epochs,
+                "isolated_adapter_learning_rate": as_float(
+                    runtime_optimizer.get("dormant_matchup_adapter_lr")
+                ),
+                "zero_output": not bool(trained_ids),
+                "partially_trained": bool(trained_ids),
+                "trained_shadow": bool(trained_ids),
+                "fit_receipt_valid": bool(effective_fit),
+                "parameter_count": adapter_parameters,
+                "expert_count": len(canonical_adapter_ids),
+                "hidden_dim": 96,
+                "bottleneck_dim": 8,
+                "residual_scale": 0.25,
+                "architecture": (
+                    f"{len(canonical_adapter_ids)} × 96→8→96 residual MLP"
+                ),
+                "expert_ids": canonical_adapter_ids,
+                "trained_archetype_ids": trained_ids,
+                "accepted_runtime_archetype_ids": list(
+                    matchup_adapter_runtime.get("accepted_archetype_ids") or []
+                ),
+                "zero_example_archetype_ids": [
+                    specialist_id
+                    for specialist_id in canonical_adapter_ids
+                    if specialist_id not in trained_ids
+                ],
+                "route_sequences": route_sequences,
+                "route_decisions": route_decisions,
+                "router_shadow_active": not adapter_runtime_enabled,
+                "router_model_application_enabled": adapter_runtime_enabled,
+                "router_mode": (
+                    "causal_public_prefix_runtime"
+                    if adapter_runtime_enabled
+                    else "causal_public_prefix_shadow"
+                ),
+                "continuous_reevaluation": True,
+                "one_route_per_decision": True,
+                "unknown_route_exact_bypass": True,
+                "checkpoint_digest": active_digest,
+                "roster_source": str(CANONICAL_MATCHUP_ADAPTER_ROSTER),
+            }
+        ]
+        staged_adapter_roster = {
+            **canonical_adapter_roster,
+            "status": "deployed_current",
+            "checkpoint_format": "poke-bot-matchup-adapter-bank-v5-roster18",
+            "runtime_enabled": adapter_runtime_enabled,
+            "expert_count": len(canonical_adapter_ids),
+            "parameter_count": adapter_parameters,
+            "mutually_exclusive_route_per_decision": True,
+            "unknown_route_exact_bypass": True,
         }
     staged_non_active_parameters = sum(
         int(row.get("parameter_count") or 0) for row in dormant_modules
@@ -3037,6 +4088,7 @@ def learner_model_state(
         "parameter_source": parameter_source,
         "parameter_evidence_checkpoint": runtime_parameter_contract.get("checkpoint"),
         "parameter_evidence_source": runtime_parameter_contract.get("source"),
+        "checkpoint_structure": checkpoint_structure,
         "parameter_breakdown": parameter_breakdown,
         "dormant_modules": dormant_modules,
         "matchup_adapter_roster_stage": (
@@ -3112,9 +4164,18 @@ def learner_model_state(
             "prize_race": weighted_head("prize_race_loss_weight", outputs=2),
         },
         "training_targets": {
+            "current_deck_guide": {
+                "enabled": current_deck_guide_enabled,
+                "status": "active" if current_deck_guide_enabled else "absent",
+                "active_specialist": active_specialist or None,
+                "guide_archetype": guide_archetype or None,
+                "loss_weight": guide_loss_weight if current_deck_guide_enabled else 0.0,
+                "shared_head": "policy",
+                "parameterized_head": False,
+            },
             "alakazam_guide": {
-                "enabled": bool(learner.get("alakazam_guide_targets_enabled"))
-                and (as_float(learner.get("alakazam_guide_loss_weight")) or 0.0) > 0.0,
+                "enabled": current_deck_guide_enabled
+                and guide_archetype == "alakazam",
                 "loss_weight": as_float(learner.get("alakazam_guide_loss_weight")) or 0.0,
                 "shared_head": "policy",
                 "parameterized_head": False,
@@ -7517,6 +8578,60 @@ def reconcile_canonical_router_candidate(
 
 def expert_refresh_state() -> dict[str, Any]:
     """Report the authoritative split-host 20-day expert refresh."""
+    current = read_json(EXPERT20_CURRENT_RECEIPT)
+    if (
+        current.get("schema") == "poke_bot.expert_latest20_receipt/v1"
+        and current.get("status") == "ready"
+        and int(current.get("days") or 0) == 20
+        and len(current.get("archives") or ()) == 20
+    ):
+        rows = [
+            {
+                "day": str(row.get("date") or ""),
+                "date": str(row.get("date") or ""),
+                "host": "Elmo",
+                "stage": "ready",
+                "percent": 100.0,
+                "archive_bytes": int(row.get("bytes") or 0),
+                "episodes": int(row.get("episode_count") or 0),
+                "sha256": row.get("sha256"),
+                "service": {"active": False},
+            }
+            for row in current.get("archives") or ()
+            if row.get("validated") is True
+        ]
+        dates = _exact_calendar_dates(
+            [str(row.get("day") or "") for row in rows]
+        )
+        if len(rows) == 20 and len(dates) == 20:
+            return {
+                "available": True,
+                "active": False,
+                "complete": True,
+                "archive_window_ready": True,
+                "host": "Bert Wi-Fi → Elmo Ethernet",
+                "stage": "ready",
+                "phase": "archive_window_ready",
+                "window_start": dates[0],
+                "window_end": dates[-1],
+                "completed_days": 20,
+                "archive_ready_days": 20,
+                "feature_ready_days": 0,
+                "total_days": 20,
+                "percent": 100.0,
+                "days": rows,
+                "latest_line": (
+                    f"Latest 20 daily archives ready · {dates[0]} through "
+                    f"{dates[-1]} · Bert Wi-Fi ingress → Elmo archive"
+                ),
+                "source": str(EXPERT20_CURRENT_RECEIPT),
+                "updated_at": current.get("committed_at"),
+                "ingress": current.get("ingress"),
+                "metric_definition": (
+                    "archive readiness from the atomic latest-20 receipt; "
+                    "specialist filtering is reported separately"
+                ),
+            }
     refresh = read_json(EXPERT20_REFRESH_STATUS)
     inzi = read_json(EXPERT20_INZI_STATUS)
     inzi_final = read_json(EXPERT20_INZI_FINAL_STATUS)
@@ -8290,6 +9405,60 @@ def specialist_protocol_state(
             "reason": "canonical specialist state schema mismatch",
             "source": str(source),
         }
+    canonical_roster_path = source.parent / "matchup_adapter_roster.json"
+    canonical_roster = read_json(canonical_roster_path)
+    canonical_roster_present = canonical_roster_path.is_file()
+    canonical_ids: list[str] = []
+    if canonical_roster_present:
+        canonical_ids = [
+            str(value)
+            for value in (canonical_roster.get("expert_ids") or [])
+            if str(value)
+        ]
+        if (
+            canonical_roster.get("schema") != "poke_bot.matchup_adapter_roster/v1"
+            or len(canonical_ids) != len(set(canonical_ids))
+            or len(canonical_ids)
+            != int(canonical_roster.get("required_specialist_count") or 0)
+        ):
+            return {
+                "available": False,
+                "reason": "stable canonical matchup roster is invalid",
+                "source": str(canonical_roster_path),
+            }
+        specialist_records = {
+            str(row.get("id") or ""): dict(row)
+            for row in specialists
+            if isinstance(row, dict) and str(row.get("id") or "")
+        }
+        # Festival Lead is the historical physical identity of the canonical
+        # Thwackey row. Preserve any verified progress while exposing only the
+        # stable canonical ID. Spidops and any later additions begin unstarted.
+        if (
+            "thwackey" not in specialist_records
+            and "festival-lead" in specialist_records
+        ):
+            specialist_records["thwackey"] = {
+                **specialist_records["festival-lead"],
+                "id": "thwackey",
+                "name": "Thwackey",
+            }
+        display_names = dict(canonical_roster.get("canonical_display_names") or {})
+        specialists = [
+            specialist_records.get(
+                specialist_id,
+                {
+                    "id": specialist_id,
+                    "name": str(display_names.get(specialist_id) or specialist_id),
+                    "status": "unstarted",
+                    "active": False,
+                    "frozen": False,
+                    "public_mix_eligible": False,
+                    "counters": {},
+                },
+            )
+            for specialist_id in canonical_ids
+        ]
     active_run = current.get("active_run")
     active_run = active_run if isinstance(active_run, dict) else {}
     canonical_live_execution = active_specialist_commit_overlay(active_run)
@@ -8409,12 +9578,65 @@ def specialist_protocol_state(
         status_counts[status] = status_counts.get(status, 0) + 1
     priority = payload.get("training_priority")
     priority = priority if isinstance(priority, dict) else {}
+    canonical_priority = (
+        [
+            str(value)
+            for value in (canonical_roster.get("specialist_priority") or [])
+            if str(value)
+        ]
+        if canonical_roster_present
+        else [
+            canonical_active_id,
+            *[
+                str(value)
+                for value in (
+                    priority.get("ordered_unfinished_ids_after_active") or []
+                )
+                if str(value)
+            ],
+        ]
+    )
     ordered_priority = [
-        str(value) for value in priority.get("ordered_unfinished_ids_after_active") or []
+        specialist_id
+        for specialist_id in canonical_priority
+        if specialist_id != canonical_active_id
+        and specialist_id in ids
+        and str(
+            next(
+                row["status"]
+                for row in rows
+                if str(row["id"]) == specialist_id
+            )
+        )
+        not in {"passed_frozen", "population_training"}
     ]
     raw_priority_rows = priority.get("rows") or []
     if not isinstance(raw_priority_rows, list):
         raw_priority_rows = []
+    raw_priority_by_id = {
+        str(row.get("id") or ""): dict(row)
+        for row in raw_priority_rows
+        if isinstance(row, dict) and str(row.get("id") or "")
+    }
+    if "thwackey" not in raw_priority_by_id and "festival-lead" in raw_priority_by_id:
+        raw_priority_by_id["thwackey"] = {
+            **raw_priority_by_id["festival-lead"],
+            "id": "thwackey",
+        }
+    raw_priority_rows = [
+        raw_priority_by_id.get(
+            specialist_id,
+            {
+                "id": specialist_id,
+                "share": None,
+                "source_archetype": None,
+                "mapping": "canonical_roster",
+                "existing_model_artifact": False,
+                "availability_group": "missing_model",
+            },
+        )
+        for specialist_id in ordered_priority
+    ]
     priority_by_id: dict[str, dict[str, Any]] = {}
     for rank, raw in enumerate(raw_priority_rows, start=1):
         if not isinstance(raw, dict):
@@ -8695,13 +9917,11 @@ def specialist_protocol_state(
             and str(row.get("specialist_id") or "")
         }
     )
-    # The production overlay is valid only for the canonical 22-row program.
-    # Unit fixtures and any mismatched registry/state pair must not import
-    # unrelated host-global frozen evidence into a different roster.
-    if (
-        expected_count != 22
-        or not set(frozen_program_ids).issubset(set(ids))
-    ):
+    # The immutable registry may overlay only specialists present in the
+    # currently loaded stable roster.  The roster cardinality is intentionally
+    # dynamic; tying this evidence to an old literal count made every completed
+    # specialist disappear when the canonical roster changed.
+    if not set(frozen_program_ids).issubset(set(ids)):
         frozen_program_ids = []
     starmie_handler = read_json(STARMIE_PASSED_GATE_HANDLER_STATE)
     starmie_frozen = dict(starmie_handler.get("frozen_model") or {})
@@ -8709,7 +9929,7 @@ def specialist_protocol_state(
         str(starmie_frozen.get("model_path") or "/nonexistent")
     )
     if (
-        expected_count == 22
+        "starmie" in ids
         and str(starmie_handler.get("phase") or "")
         in {"model_frozen", "submission_queued", "complete_handoff_started"}
         and _is_sha256_digest(starmie_frozen.get("checkpoint_digest"))
@@ -8751,7 +9971,7 @@ def specialist_protocol_state(
             f"{live_program_progress['remaining_after_active']} remain after it. "
             "Freeze and register it only after both gates pass, then begin the "
             "next unfinished specialist. Population training remains blocked "
-            "until all 22 specialists are frozen."
+            f"until all {expected_count} specialists are frozen."
         )
     population_runtime: dict[str, Any] = {}
     if POPULATION_ROUND_ROBIN_STATE.is_file():
@@ -8764,9 +9984,9 @@ def specialist_protocol_state(
                 isinstance(candidate, dict)
                 and candidate.get("schema")
                 == "poke_bot.population_round_robin_state/v1"
-                and int(candidate.get("member_count") or 0) == 22
+                and int(candidate.get("member_count") or 0) == expected_count
                 and isinstance(members, list)
-                and len(members) == 22
+                and len(members) == expected_count
             ):
                 unit = unit_state(POPULATION_ROUND_ROBIN_SERVICE, user=True)
                 population_runtime = {
@@ -8868,6 +10088,9 @@ def specialist_protocol_state(
             ),
             "primary_sort": "missing specialist model first",
             "handoff_override": dict(priority.get("handoff_override") or {}),
+            "staged_v5_transition": dict(
+                priority.get("staged_v5_transition") or {}
+            ),
             "source": priority_source,
         },
         "switching": {
@@ -9023,6 +10246,49 @@ def specialist_protocol_state(
     }
 
 
+def annotate_gpu_production_assignments(
+    gpus: list[dict[str, Any]],
+    curriculum: dict[str, Any],
+    specialist_handoff: dict[str, Any],
+) -> None:
+    """Bind GPU labels to the active managed trainer's effective topology."""
+
+    worker = (
+        curriculum.get("worker")
+        if isinstance(curriculum.get("worker"), dict)
+        else {}
+    )
+    curriculum_active = curriculum.get("active") is True
+    topology_source = str(
+        worker.get("topology_source")
+        or "active managed trainer effective environment"
+    )
+    gpu0_replicas = int(worker.get("leaf_gpu0_replicas") or 0)
+    gpu1_replicas = int(worker.get("leaf_gpu1_replicas") or 0)
+    for gpu in gpus:
+        index = int(gpu.get("index") or 0)
+        if index == 0 and curriculum_active:
+            gpu["production_active"] = gpu0_replicas > 0
+            gpu["assignment"] = (
+                f"PRODUCTION · {gpu0_replicas} policy leaf replicas"
+                if gpu0_replicas > 0
+                else "OUT OF FLEET · no active trainer leaf replicas"
+            )
+            gpu["assignment_source"] = topology_source
+            gpu["production_leaf_replicas"] = gpu0_replicas
+        elif index == 1 and (
+            curriculum_active or specialist_handoff.get("active")
+        ):
+            gpu["production_active"] = True
+            gpu["assignment"] = (
+                "PRODUCTION · core/specialist trainer"
+                if specialist_handoff.get("active")
+                else "PRODUCTION · policy leaves + trainer"
+            )
+            gpu["assignment_source"] = topology_source
+            gpu["production_leaf_replicas"] = gpu1_replicas
+
+
 def main() -> None:
     # Elmo is an independent host. Fetch its three views concurrently so a
     # slow SSH handshake cannot serialize into the outer Bert→Inzi timeout.
@@ -9084,6 +10350,12 @@ def main() -> None:
             )
             else {}
         ),
+        next_specialist=(
+            (
+                specialist_protocol.get("training_priority") or {}
+            ).get("ordered_unfinished_ids_after_active")
+            or [None]
+        )[0],
     )
     specialist_protocol = reconcile_protocol_with_active_handoff(
         specialist_protocol,
@@ -9093,27 +10365,13 @@ def main() -> None:
         matchup_pipeline,
         specialist_protocol,
     )
-    curriculum_worker = curriculum.get("worker") or {}
-    for gpu in gpus:
-        index = int(gpu.get("index") or 0)
-        if (
-            index == 0
-            and curriculum.get("active")
-            and int(curriculum_worker.get("leaf_gpu0_replicas") or 0) == 0
-        ):
-            gpu["production_active"] = False
-            gpu["assignment"] = "OUT OF FLEET · CUDA simulator testing"
-        elif index == 1 and (
-            curriculum.get("active") or specialist_handoff.get("active")
-        ):
-            gpu["production_active"] = True
-            gpu["assignment"] = (
-                "PRODUCTION · core/specialist trainer"
-                if specialist_handoff.get("active")
-                else "PRODUCTION · policy leaves + trainer"
-            )
+    annotate_gpu_production_assignments(gpus, curriculum, specialist_handoff)
     training = authoritative_training_state(
         curriculum, transition, specialist_handoff
+    )
+    expert_refresh = active_expert_corpus_state(
+        curriculum,
+        expert_refresh,
     )
     switching = specialist_protocol.get("switching") or {}
     frozen_runtime_rows = (
@@ -9130,6 +10388,51 @@ def main() -> None:
         "frozen_inference_opponents": frozen_runtime_rows,
     }
     baseline_eval = baseline_eval_state()
+    # Retain compatibility payloads for old dashboard clients, but label every
+    # superseded or aliased view so it cannot masquerade as current evidence.
+    training_alias = {
+        **training,
+        "compatibility_alias": True,
+        "alias_of": "training",
+    }
+    if expert_refresh.get("available") is True:
+        latest10 = {
+            **latest10,
+            "historical": True,
+            "active": False,
+            "superseded_by": "expert_refresh",
+        }
+    if baseline_eval.get("available") is True:
+        baseline_eval = {
+            **baseline_eval,
+            "historical": True,
+            "active": False,
+            "superseded_by": "curriculum.latest_committed_research_controls",
+        }
+    if transition.get("active") is not True:
+        transition = {
+            **transition,
+            "historical": True,
+            "superseded_by": "specialist_protocol",
+        }
+    live_adapter_runtime = (
+        (curriculum.get("model_contract") or {}).get("matchup_adapter_runtime")
+        or {}
+    )
+    if live_adapter_runtime.get("enabled") is True:
+        historical_fit = matchup_pipeline.get("adapter_fit") or {}
+        if historical_fit:
+            matchup_pipeline = {
+                **matchup_pipeline,
+                "adapter_fit": {
+                    **historical_fit,
+                    "historical": True,
+                    "active": False,
+                    "superseded_by": (
+                        "curriculum.model_contract.matchup_adapter_runtime"
+                    ),
+                },
+            }
     print(
         json.dumps(
             {
@@ -9139,7 +10442,7 @@ def main() -> None:
                 "service": service,
                 "transition": transition,
                 "training": training,
-                "bootstrap": training,
+                "bootstrap": training_alias,
                 "baseline_eval": baseline_eval,
                 "latest10": latest10,
                 "expert_refresh": expert_refresh,
@@ -9181,6 +10484,12 @@ def main() -> None:
                     "run": curriculum.get("run"),
                     "matchup_pipeline": matchup_pipeline,
                     "runtime_identity": model_runtime_identity,
+                    "canonical_matchup_transition": (
+                        (
+                            specialist_protocol.get("training_priority") or {}
+                        ).get("staged_v5_transition")
+                        or {}
+                    ),
                 },
                 "pure_rl_status": (
                     curriculum.get("progress", {}).get("line", "")

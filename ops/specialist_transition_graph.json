@@ -1,0 +1,42 @@
+{
+  "schema": "poke_bot.specialist_transition_graph/v1",
+  "graph_id": "canonical-specialist-transition",
+  "description": "Resume-safe orchestration around the existing checksum-validated specialist handoff.",
+  "policies": {
+    "active_training_must_be_stopped": true,
+    "fail_closed": true,
+    "kaggle_submission_queue_blocks_transition": false,
+    "shell_commands_in_graph_allowed": false
+  },
+  "service_allowlist": {
+    "source": "cycle_contract",
+    "references": [
+      "runtime.training_service",
+      "runtime.handoff_service",
+      "runtime.population_handoff_service",
+      "runtime.population_training_service",
+      "runtime.gate_handler_service"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "contract_preflight",
+      "action": "validate_cycle_contract",
+      "depends_on": []
+    },
+    {
+      "id": "training_boundary",
+      "action": "assert_active_training_stopped",
+      "depends_on": [
+        "contract_preflight"
+      ]
+    },
+    {
+      "id": "specialist_transition",
+      "action": "execute_existing_idempotent_handoff",
+      "depends_on": [
+        "training_boundary"
+      ]
+    }
+  ]
+}

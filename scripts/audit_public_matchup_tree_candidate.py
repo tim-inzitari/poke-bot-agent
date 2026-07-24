@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from poke_bot.matchup_adapters import EXPERT_IDS
 
 SCHEMA = "poke_bot.public_matchup_tree_candidate_audit/v1"
 
@@ -34,11 +35,12 @@ def audit(
     if (
         payload.get("schema") != "poke_bot.public_matchup_decision_tree/v1"
         or payload.get("runtime_enabled") is not False
-        or len(targets) != 22
-        or len(set(targets)) != 22
+        or targets != EXPERT_IDS
+        or len(set(targets)) != len(EXPERT_IDS)
         or contract.get("probability_columns")
         != "expanded_to_canonical_class_indexes"
-        or int(contract.get("canonical_class_count") or 0) != 23
+        or int(contract.get("canonical_class_count") or 0)
+        != len(EXPERT_IDS) + 1
     ):
         raise RuntimeError("inactive canonical calibration contract failed")
 

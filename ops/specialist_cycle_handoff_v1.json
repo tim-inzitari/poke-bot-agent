@@ -3,6 +3,7 @@
   "shared_core": {
     "family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_distilled_from_hops_trevenant_and_starmie_v2_epoch20_gatepass",
     "ready": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-trevenant-starmie-v2-epoch20-ready.json",
+    "latest_pointer": "/home/inzi/poke-bot-agent/outputs/state/latest-cumulative-core.json",
     "frozen_family_overrides": {
       "alakazam": "alakazam-owner-accepted-iter39-v1"
     }
@@ -10,7 +11,8 @@
   "core_refresh_template": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/post_starmie_core_v2_handoff_v1.json",
   "selection": {
     "state": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/state/specialists.yaml",
-    "corpus_root": "/home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v3-full-head",
+    "corpus_root": "/home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20",
+    "corpus_source_receipt": "/home/inzi/poke-bot-agent/outputs/state/expert-latest20-current.json",
     "minimum_decisions": 20000,
     "minimum_decisions_by_specialist": {
       "dragapult-dusknoir": 10000,
@@ -66,9 +68,9 @@
     "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
     "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
     "runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/trevenant-public-matchup-tree-iter5-v1.json",
-    "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v37.inactive.json",
-    "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v37.audit.json",
-    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-v38-ready.json",
+    "inactive_tree_candidate": null,
+    "candidate_audit": null,
+    "future_assets_receipt": null,
     "runtime_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/specialist_runtime_registry_v1.json",
     "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json",
     "selector_env": "/home/inzi/.config/pokebot/specialist_runtime.env",

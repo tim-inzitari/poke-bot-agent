@@ -15,6 +15,7 @@ from typing import Any
 from poke_bot.pure_rl.holdout_supersession import (
     superseded_external_archetypes,
 )
+from poke_bot.matchup_adapters import EXPERT_IDS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,8 +100,8 @@ def _resolve(
     }
     if (
         tree.get("runtime_enabled") is not True
-        or len(targets) != 22
-        or len(set(targets)) != 22
+        or targets != EXPERT_IDS
+        or len(set(targets)) != len(EXPERT_IDS)
         or selected not in targets
         or selected not in accepted
         or runtime.get("one_route_per_decision") is not True
@@ -149,7 +150,8 @@ def _resolve(
         or adapter_tensor_routes != set(range(len(targets)))
     ):
         raise RuntimeError(
-            f"specialist {selected!r} checkpoint lacks the canonical 22-route bank"
+            f"specialist {selected!r} checkpoint lacks the canonical "
+            f"{len(EXPERT_IDS)}-route bank"
         )
     for field in (
         "run_name",
@@ -285,6 +287,45 @@ def _build_command(
     )
     if minimum_terminal_iteration < 0 or iteration_ceiling < minimum_terminal_iteration:
         raise RuntimeError("invalid specialist iteration window")
+    run_root = (
+        runtime_root
+        / "outputs"
+        / "pure_rl"
+        / Path(str(row["run_name"])).name
+    )
+    loop_state_path = run_root / "loop_state.json"
+    initial_checkpoint_args = [
+        "--initial-learner-checkpoint",
+        str(checkpoint),
+    ]
+    if loop_state_path.is_file():
+        try:
+            loop_state = json.loads(loop_state_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError, TypeError) as exc:
+            raise RuntimeError(
+                f"existing specialist loop state failed to parse: {loop_state_path}"
+            ) from exc
+        learner = (
+            dict(loop_state.get("learner") or {})
+            if isinstance(loop_state, dict)
+            else {}
+        )
+        learner_path = Path(str(learner.get("path") or "")).expanduser()
+        learner_digest = str(learner.get("digest") or "").removeprefix("sha256:")
+        if (
+            not isinstance(loop_state, dict)
+            or int(loop_state.get("next_iteration") or -1) < 0
+            or not learner_path.is_file()
+            or len(learner_digest) != 64
+            or _sha256(learner_path) != learner_digest
+        ):
+            raise RuntimeError(
+                f"existing specialist loop state is not resumable: {loop_state_path}"
+            )
+        # This option establishes a new run's immutable seed lineage. Passing
+        # a later checkpoint here during resume conflicts with that lineage;
+        # the checksum-validated loop state is authoritative instead.
+        initial_checkpoint_args = []
     command = [
         python,
         "-u",
@@ -299,8 +340,7 @@ def _build_command(
         "--",
         "--specialist-archetype",
         specialist_id,
-        "--initial-learner-checkpoint",
-        str(checkpoint),
+        *initial_checkpoint_args,
         "--active-gate-contract",
         str(active_gate),
         "--research-control-registry",

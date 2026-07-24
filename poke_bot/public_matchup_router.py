@@ -124,7 +124,7 @@ class PublicMatchupDecisionTree:
     """Dependency-free evaluator for a checksummed exported sklearn tree.
 
     The evaluator consumes only cumulative public opponent card IDs.  Loading
-    is fail-closed: the artifact's 22 route positions must exactly match the
+    is fail-closed: the artifact's canonical route positions must exactly match the
     append-only adapter bank.  ``unknown`` remains a separate abstention class.
     """
 
@@ -301,6 +301,17 @@ class RuntimePublicMatchupRouter:
     def candidate_model_route(self) -> int:
         return int(self._model_route)
 
+    @property
+    def audit(self) -> "RuntimePublicMatchupRouter":
+        """Expose the snapshot interface shared with the shadow router.
+
+        Search diagnostics historically call ``router.audit.snapshot(...)``.
+        The activated runtime router owns its audit counters directly, so it
+        safely serves as its own read-only audit view.
+        """
+
+        return self
+
     def observe(self, observation: Any, **_: Any) -> PublicTreePrediction:
         self._observations += 1
         self._public_card_ids.update(visible_opponent_card_ids(observation))
@@ -344,7 +355,7 @@ class RuntimePublicMatchupRouter:
         # Branch telemetry is intentionally independent; route state is copied.
         return clone
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(self, *, include_events: bool = True) -> dict[str, Any]:
         accepted_routes = {
             str(archetype_id): int(self.tree.targets.index(archetype_id))
             for archetype_id in sorted(
@@ -367,7 +378,11 @@ class RuntimePublicMatchupRouter:
             "observations": int(self._observations),
             "recognized_observations": int(self._recognized_observations),
             "route_transition_count": len(self._route_transitions),
-            "route_transitions": [dict(row) for row in self._route_transitions],
+            "route_transitions": (
+                [dict(row) for row in self._route_transitions]
+                if include_events
+                else []
+            ),
             "route_transitions_truncated": len(self._route_transitions) >= 32,
             "accepted_archetype_ids": sorted(
                 self.tree.runtime_accepted_archetype_ids

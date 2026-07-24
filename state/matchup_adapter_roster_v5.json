@@ -1,6 +1,7 @@
 {
   "schema": "poke_bot.matchup_adapter_roster_stage/v2",
-  "status": "planned_not_active",
+  "status": "superseded_by_stable_canonical_roster",
+  "superseded_by": "state/matchup_adapter_roster.json",
   "predecessor": "state/matchup_adapter_roster_v4.json",
   "activation_policy": "validated_router_and_checkpoint_migration_at_next_safe_specialist_boundary",
   "runtime_enabled": false,

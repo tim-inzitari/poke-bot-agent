@@ -76,6 +76,15 @@ def main() -> int:
         "--representatives", type=Path, default=DEFAULT_REPRESENTATIVES
     )
     parser.add_argument("--card-csv", type=Path, default=None)
+    parser.add_argument(
+        "--additive-archetype",
+        action="append",
+        default=[],
+        help=(
+            "Explicit registered family allowed in addition to the pinned "
+            "ladder mix (repeatable; intended for '*' census windows)."
+        ),
+    )
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--max-in-flight", type=int, default=16)
     parser.add_argument("--max-context", type=int, default=config.MODEL.max_context)
@@ -86,6 +95,11 @@ def main() -> int:
     requested = str(args.archetype).strip().casefold()
     if not requested:
         raise SystemExit("--archetype cannot be empty")
+    additive = tuple(dict.fromkeys(str(value).strip().casefold() for value in args.additive_archetype))
+    if any(not value for value in additive):
+        raise SystemExit("--additive-archetype values cannot be empty")
+    if additive and requested != ALL_RECOGNIZED_ARCHETYPES:
+        raise SystemExit("--additive-archetype is only valid with --archetype '*'")
     slug = "all-recognized" if requested == ALL_RECOGNIZED_ARCHETYPES else requested
     days = _dates(args.start, args.end)
     archive_dir = args.archive_dir.resolve()
@@ -105,6 +119,7 @@ def main() -> int:
             args.mix,
             args.representatives,
             card_csv=args.card_csv or paths.en_card_data_path(),
+            additive_registered_ids=additive,
         )
         started = time.time()
         completed: list[dict[str, Any]] = []
@@ -115,6 +130,7 @@ def main() -> int:
             "started_at": started,
             "updated_at": started,
             "required_archetype": requested,
+            "additive_registered_ids": list(additive),
             "date_window": {"start": days[0], "end": days[-1], "days": len(days)},
             "completed": completed,
         }

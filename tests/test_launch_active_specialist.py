@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from poke_bot.matchup_adapters import EXPERT_IDS
 from scripts.launch_active_specialist import (
     _build_command,
     _load_registry,
@@ -20,12 +21,12 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
     (root / "ops").mkdir()
     checkpoint = tmp_path / "model.pt"
     expert = tmp_path / "expert.json"
-    routes = ["trevenant", *[f"route-{index}" for index in range(21)]]
+    routes = list(EXPERT_IDS)
     torch.save(
         {
             "model_state_dict": {
                 f"matchup_adapter_bank.experts.{index}.up.weight": torch.zeros(1)
-                for index in range(22)
+                for index in range(len(EXPERT_IDS))
             },
             "extra": {"matchup_adapter_config": {"expert_ids": routes}},
         },
@@ -39,7 +40,7 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
                 "runtime_enabled": True,
                 "targets": routes,
                 "runtime_contract": {
-                    "accepted_archetype_ids": ["trevenant"],
+                    "accepted_archetype_ids": ["dragapult-dusknoir"],
                     "one_route_per_decision": True,
                     "unknown_route_exact_bypass": True,
                 },
@@ -129,10 +130,10 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
             "auto",
         ],
         "specialists": {
-            "trevenant": {
+            "dragapult-dusknoir": {
                 "status": status,
                 "reason": "not bootstrapped",
-                "run_name": "run-trevenant",
+                "run_name": "run-dragapult-dusknoir",
                 "log": str(tmp_path / "run.log"),
                 "initial_checkpoint": str(checkpoint),
                 "initial_checkpoint_sha256": _sha256(checkpoint),
@@ -148,9 +149,9 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
                 "matchup_adapter_authorization": str(authorization),
                 "matchup_adapter_authorization_sha256": _sha256(authorization),
                 "matchup_adapter_epochs_per_rl_iteration": 1,
-                "measurement_decks": "trevenant",
+                "measurement_decks": "dragapult-dusknoir",
                 "guide_loss_weight": 0.0,
-                "terminal_gate_marker": "SPECIALIST_GATE_PASSED.trevenant-v1",
+                "terminal_gate_marker": "SPECIALIST_GATE_PASSED.dragapult-dusknoir-v1",
             }
         },
     }
@@ -162,11 +163,11 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
 def test_ready_specialist_resolves_one_complete_command(tmp_path: Path) -> None:
     registry = _load_registry(_fixture(tmp_path))
     row, checkpoint, expert, runtime_tree, authorization = _resolve(
-        registry, "trevenant"
+        registry, "dragapult-dusknoir"
     )
     command = _build_command(
         registry,
-        "trevenant",
+        "dragapult-dusknoir",
         row,
         checkpoint,
         expert,
@@ -174,7 +175,7 @@ def test_ready_specialist_resolves_one_complete_command(tmp_path: Path) -> None:
         authorization,
     )
     assert command.count("--specialist-archetype") == 1
-    assert command[command.index("--specialist-archetype") + 1] == "trevenant"
+    assert command[command.index("--specialist-archetype") + 1] == "dragapult-dusknoir"
     assert command[command.index("--minimum-terminal-iteration") + 1] == "5"
     assert command[command.index("--iterations") + 1] == "16"
     assert command[command.index("--terminal-active-gate-id") + 1] == (
@@ -192,11 +193,11 @@ def test_future_specialist_uses_registry_floor_and_ceiling(tmp_path: Path) -> No
     registry["minimum_terminal_iteration"] = 5
     registry["iteration_ceiling"] = 15
     row, checkpoint, expert, runtime_tree, authorization = _resolve(
-        registry, "trevenant"
+        registry, "dragapult-dusknoir"
     )
     command = _build_command(
         registry,
-        "trevenant",
+        "dragapult-dusknoir",
         row,
         checkpoint,
         expert,
@@ -210,17 +211,17 @@ def test_future_specialist_uses_registry_floor_and_ceiling(tmp_path: Path) -> No
 def test_not_ready_specialist_fails_closed(tmp_path: Path) -> None:
     registry = _load_registry(_fixture(tmp_path, status="not_ready"))
     with pytest.raises(RuntimeError, match="not ready"):
-        _resolve(registry, "trevenant")
+        _resolve(registry, "dragapult-dusknoir")
 
 
 def test_registered_digest_mismatch_fails_closed(tmp_path: Path) -> None:
     registry_path = _fixture(tmp_path)
     payload = json.loads(registry_path.read_text(encoding="utf-8"))
-    payload["specialists"]["trevenant"]["initial_checkpoint_sha256"] = "0" * 64
+    payload["specialists"]["dragapult-dusknoir"]["initial_checkpoint_sha256"] = "0" * 64
     registry_path.write_text(json.dumps(payload), encoding="utf-8")
     registry = _load_registry(registry_path)
     with pytest.raises(RuntimeError, match="digest mismatch"):
-        _resolve(registry, "trevenant")
+        _resolve(registry, "dragapult-dusknoir")
 
 
 def test_gate_missing_frozen_predecessor_fails_closed(tmp_path: Path) -> None:
@@ -231,12 +232,12 @@ def test_gate_missing_frozen_predecessor_fails_closed(tmp_path: Path) -> None:
     gate["next_gate"]["evaluation"]["games_total"] = 2000
     gate_path.write_text(json.dumps(gate), encoding="utf-8")
     row, checkpoint, expert, runtime_tree, authorization = _resolve(
-        registry, "trevenant"
+        registry, "dragapult-dusknoir"
     )
     with pytest.raises(RuntimeError, match="S\\+ gate/registry"):
         _build_command(
             registry,
-            "trevenant",
+            "dragapult-dusknoir",
             row,
             checkpoint,
             expert,
@@ -275,11 +276,11 @@ def test_gate_total_scales_with_every_frozen_predecessor(tmp_path: Path) -> None
     )
     gate_path.write_text(json.dumps(gate), encoding="utf-8")
     row, checkpoint, expert, runtime_tree, authorization = _resolve(
-        registry, "trevenant"
+        registry, "dragapult-dusknoir"
     )
     command = _build_command(
         registry,
-        "trevenant",
+        "dragapult-dusknoir",
         row,
         checkpoint,
         expert,

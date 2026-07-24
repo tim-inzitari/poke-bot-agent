@@ -76,6 +76,18 @@ def test_many_specialist_corpora_are_built_in_one_source_scan(
         manifest_payload = json.loads(
             (root / target / "manifest.json").read_text(encoding="utf-8")
         )
+        assert manifest_payload["source_window"] == {
+            "unit": "calendar_day",
+            "selection": "latest_available_fully_validated_daily_sources",
+            "days": 1,
+            "dates": ["2026-07-18"],
+            "filter_applied_after_window_selection": True,
+            "filter_archetype": target,
+        }
+        assert len(manifest_payload["source_days"]) == 1
+        assert manifest_payload["source_days"][0]["date"] == "2026-07-18"
+        assert manifest_payload["source_days"][0]["source_feature_validated"] is True
+        assert manifest_payload["source_days"][0]["matching_games"] == expected
         rows = list(
             iter_feature_shard(
                 root / target / manifest_payload["shards"][0]["path"]

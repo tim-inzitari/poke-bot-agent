@@ -75,14 +75,13 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "pokebot-population-round-robin.service"
     )
     assert contract["selection"]["corpus_root"].endswith(
-        "expert-evidence28-20260626-20260723/specialist-corpora-v3-full-head"
+        "data/bootstrap/current-specialist-latest20"
     )
-    assert contract["runtime"]["inactive_tree_candidate"].endswith(
-        "public-matchup-tree-calibration-v37.inactive.json"
+    assert contract["selection"]["corpus_source_receipt"].endswith(
+        "outputs/state/expert-latest20-current.json"
     )
-    assert contract["runtime"]["candidate_audit"].endswith(
-        "public-matchup-tree-calibration-v37.audit.json"
-    )
+    assert contract["runtime"]["inactive_tree_candidate"] is None
+    assert contract["runtime"]["candidate_audit"] is None
     assert contract["selection"]["minimum_decisions_by_specialist"] == {
         "dragapult-dusknoir": 10000,
         "dudunsparce": 2000,
@@ -278,23 +277,23 @@ def test_each_future_specialist_gets_a_new_cumulative_core(
 
 def test_required_specialist_ids_is_exact_canonical_roster() -> None:
     identifiers = _required_specialist_ids(ROOT / "state/specialists.yaml")
-    assert len(identifiers) == 22
+    assert len(identifiers) == 18
     assert "starmie" in identifiers
     assert "hops-trevenant" in identifiers
 
 
-def test_starmie_pass_still_leaves_nineteen_before_population() -> None:
+def test_starmie_pass_still_leaves_unfinished_roster_before_population() -> None:
     required = _required_specialist_ids(ROOT / "state/specialists.yaml")
     completed_after_starmie = {
         "alakazam",
         "hops-trevenant",
         "starmie",
     }
-    assert len(required - completed_after_starmie) == 19
+    assert len(required - completed_after_starmie) == 15
     assert not population_transition_ready(completed_after_starmie, required)
 
 
-def test_population_requires_all_twenty_two_specialists() -> None:
+def test_population_requires_every_canonical_specialist() -> None:
     required = _required_specialist_ids(ROOT / "state/specialists.yaml")
     assert population_transition_ready(set(required), required)
     assert not population_transition_ready(

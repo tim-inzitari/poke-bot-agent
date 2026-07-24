@@ -12,7 +12,13 @@ from typing import Any, Mapping
 import torch
 
 from . import checkpoint
-from .matchup_adapters import MatchupAdapterBank, ZERO_DORMANT_CHECKPOINT_SCHEMA
+from .matchup_adapters import (
+    EXPERT_IDS,
+    LEGACY_EXPERT_IDS_V4,
+    RETIRED_EXPERT_IDS_V5,
+    MatchupAdapterBank,
+    ZERO_DORMANT_CHECKPOINT_SCHEMA,
+)
 
 
 FLEET_ROLES = ("inzi", "elmo", "bert", "submission")
@@ -32,6 +38,46 @@ LOADER_RUNTIME_FILES = (
     "poke_bot/dormant_adapter_compat.py",
 )
 COMPATIBILITY_SCHEMA = "poke_bot.dormant_adapter_loader_compatibility/v1"
+ROSTER_MIGRATION_SCHEMA = "poke_bot.matchup_adapter_roster_migration/v1"
+
+
+def _valid_v4_to_v5_optimizer_reset_migration(
+    extra: Mapping[str, Any],
+    *,
+    saved_config: Any,
+    fit: Mapping[str, Any],
+) -> bool:
+    """Accept the one audited migration that intentionally resets moments.
+
+    Deleting and renaming adapter rows makes the v4 optimizer slots unsafe to
+    import.  The migration is therefore valid only for the exact current
+    architecture and exact historical source roster, with an explicit source
+    checksum and identity-preservation receipt.  All other trained banks keep
+    requiring their continuation optimizer state.
+    """
+
+    migration = dict(extra.get("roster_migration") or {})
+    source_digest = str(migration.get("source_checkpoint_digest") or "")
+    return bool(
+        saved_config == MatchupAdapterBank(enabled=False).config_dict()
+        and migration.get("schema") == ROSTER_MIGRATION_SCHEMA
+        and tuple(migration.get("source_expert_ids") or ())
+        == LEGACY_EXPERT_IDS_V4
+        and tuple(migration.get("target_expert_ids") or ()) == EXPERT_IDS
+        and set(migration.get("removed_expert_ids") or ())
+        == set(RETIRED_EXPERT_IDS_V5)
+        and migration.get("renamed_expert_ids")
+        == {"festival-lead": "thwackey"}
+        and migration.get("zero_initialized_expert_ids")
+        == ["team-rockets-spidops"]
+        and migration.get("retained_rows_byte_identical") is True
+        and source_digest.startswith("sha256:")
+        and len(source_digest) == len("sha256:") + 64
+        and all(value in "0123456789abcdef" for value in source_digest[7:])
+        and fit.get("roster_migration") == "v4_22_to_canonical_v5_18"
+        and fit.get("optimizer_state_restored") is False
+        and not extra.get("dormant_matchup_adapter_optimizer_state")
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -87,9 +133,24 @@ def validate_zero_dormant_checkpoint(
     )
     saved_config = extra.get("matchup_adapter_config")
     saved_expert_count = len(dict(saved_config or {}).get("expert_ids") or [])
-    expected_parameter_count = saved_expert_count * 1_640
+    expected_state = expected_bank.state_dict()
+    if saved_config in legacy_configs:
+        expected_state = {
+            name: value
+            for name, value in expected_state.items()
+            if int(name.split(".")[1]) < saved_expert_count
+        }
+    expected_parameter_count = sum(value.numel() for value in expected_state.values())
     trained = dormant.get("schema") == "poke_bot.trained_dormant_matchup_adapter/v1"
     fit = dict(extra.get("dormant_matchup_adapter_fit") or {})
+    continuation_optimizer_present = bool(
+        extra.get("dormant_matchup_adapter_optimizer_state")
+    )
+    audited_optimizer_reset = _valid_v4_to_v5_optimizer_reset_migration(
+        extra,
+        saved_config=saved_config,
+        fit=fit,
+    )
     trained_contract_ok = bool(
         allow_trained
         and trained
@@ -101,7 +162,7 @@ def validate_zero_dormant_checkpoint(
         and fit.get("optimizer_scope") == "matchup_adapter_bank_only"
         and int(fit.get("steps", 0)) > 0
         and int(fit.get("rows", 0)) > 0
-        and bool(extra.get("dormant_matchup_adapter_optimizer_state"))
+        and (continuation_optimizer_present or audited_optimizer_reset)
     )
     zero_contract_ok = bool(
         dormant.get("schema") == ZERO_DORMANT_CHECKPOINT_SCHEMA
@@ -132,13 +193,7 @@ def validate_zero_dormant_checkpoint(
         for name, value in state.items()
         if name.startswith("matchup_adapter_bank.")
     }
-    expected = expected_bank.state_dict()
-    if saved_config in legacy_configs:
-        expected = {
-            name: value
-            for name, value in expected.items()
-            if int(name.split(".")[1]) < saved_expert_count
-        }
+    expected = expected_state
     if actual.keys() != expected.keys():
         raise RuntimeError("checkpoint has incomplete or unknown adapter tensors")
     for name, value in actual.items():

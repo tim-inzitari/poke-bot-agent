@@ -79,21 +79,10 @@ def validate_matchup_adapter_contract(
     adapter_bank = _matchup_adapter_bank(model)
     if saved_config is not None and adapter_bank is not None:
         current = adapter_bank.config_dict()
-        legacy_v1 = getattr(adapter_bank, "legacy_config_dict_v1", lambda: None)()
-        legacy_v2 = getattr(adapter_bank, "legacy_config_dict_v2", lambda: None)()
-        if saved_config not in (current, legacy_v1, legacy_v2):
+        if saved_config != current:
             raise ValueError(
                 f"checkpoint {source} matchup adapter routing contract mismatch"
             )
-        if saved_config in (legacy_v1, legacy_v2):
-            extra_payload = extra if isinstance(extra, dict) else {}
-            if (
-                extra_payload.get("matchup_adapters_runtime_enabled") is not False
-                or extra_payload.get("matchup_adapter_training_enabled") is not False
-            ):
-                raise ValueError(
-                    f"checkpoint {source} cannot expand an active legacy adapter bank"
-                )
 
 
 def atomic_torch_save(obj: Any, path: PathLike) -> Path:
@@ -313,22 +302,13 @@ def build_checkpoint(
     ):
         expected_adapter_config = adapter_bank.config_dict()
         supplied_adapter_config = extra_payload.get("matchup_adapter_config")
-        legacy_adapter_config = getattr(
-            adapter_bank, "legacy_config_dict_v1", lambda: None
-        )()
         if (
             supplied_adapter_config is not None
             and supplied_adapter_config != expected_adapter_config
-            and supplied_adapter_config != legacy_adapter_config
         ):
             raise ValueError(
                 "checkpoint matchup adapter routing contract mismatch"
             )
-        if supplied_adapter_config == legacy_adapter_config and (
-            extra_payload.get("matchup_adapters_runtime_enabled") is not False
-            or extra_payload.get("matchup_adapter_training_enabled") is not False
-        ):
-            raise ValueError("active legacy adapter bank cannot expand during save")
         extra_payload["matchup_adapter_config"] = expected_adapter_config
         runtime_enabled = bool(getattr(adapter_bank, "enabled", False))
         adapter_parameters = list(adapter_bank.parameters())

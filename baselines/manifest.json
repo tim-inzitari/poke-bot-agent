@@ -187,25 +187,32 @@
       "source": "yaroslavkholmirzayev/mega-lucario-v2-crustle-aware-best-submit"
     },
     {
-      "dir": "alakazam-owner-accepted-iter39",
+      "dir": "alakazam-owner-accepted-iter39-roster18-v5",
       "group": "specialists",
-      "id": "specialist-alakazam-owner-accepted-iter39",
-      "name": "Frozen Alakazam Specialist \u00b7 Iteration 39",
-      "source": "owner-accepted frozen Alakazam iteration 39 checkpoint"
+      "id": "specialist-alakazam-owner-accepted-iter39-roster18-v5",
+      "name": "Frozen Alakazam specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea"
     },
     {
-      "dir": "hops-trevenant-gate-iter10-462f201f8de6",
+      "dir": "hops-trevenant-gate-iter10-462f201f8de6-roster18-v5",
       "group": "specialists",
-      "id": "specialist-hops-trevenant-gate-iter10-462f201f8de6",
-      "name": "Frozen Hop's Trevenant Specialist \u00b7 Iteration 10",
-      "source": "explicit owner-accepted formal protocol gate at zero-indexed iteration 10 (eleven completed iterations)"
+      "id": "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5",
+      "name": "Frozen Hop's Trevenant specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1"
     },
     {
-      "dir": "starmie-gate-iter10-51ed1cc6ffe6",
+      "dir": "starmie-gate-iter10-51ed1cc6ffe6-roster18-v5",
       "group": "specialists",
-      "id": "specialist-starmie-gate-iter10-51ed1cc6ffe6",
-      "name": "Frozen Mega Starmie ex Specialist \u00b7 Iteration 10",
-      "source": "exact protocol-gate passing Mega Starmie ex iteration 10 checkpoint 51ed1cc6ffe6"
+      "id": "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5",
+      "name": "Frozen Mega Starmie ex specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8"
+    },
+    {
+      "dir": "lucario-gate-iter10-ffa401242b2c-roster18-v5",
+      "group": "specialists",
+      "id": "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5",
+      "name": "Frozen Dragapult Dusknoir specialist \u00b7 roster v5",
+      "source": "internal inference-only roster-v5 derivative of sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd"
     }
   ],
   "excluded_broken": [

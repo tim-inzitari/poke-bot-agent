@@ -53,6 +53,11 @@ def _path(section: dict[str, Any], key: str) -> Path:
     return Path(raw).expanduser().resolve()
 
 
+def _optional_path(section: dict[str, Any], key: str) -> Path | None:
+    raw = str(section.get(key) or "").strip()
+    return Path(raw).expanduser().resolve() if raw else None
+
+
 def _command(argv: list[str]) -> None:
     result = subprocess.run(argv, check=False)
     if result.returncode:
@@ -382,11 +387,13 @@ def _generated_contract(
     gate = dict(contract["gate_materialization"])
     runtime = dict(contract["runtime"])
     if assets is None:
+        candidate_tree = _optional_path(runtime, "inactive_tree_candidate")
+        candidate_audit = _optional_path(runtime, "candidate_audit")
         assets = {
             "source": "contract_defaults",
             "corpus_root": _path(dict(contract["next_specialist"]), "corpus_root"),
-            "candidate_tree": _path(runtime, "inactive_tree_candidate"),
-            "candidate_audit": _path(runtime, "candidate_audit"),
+            "candidate_tree": candidate_tree,
+            "candidate_audit": candidate_audit,
             "promotion_receipt": None,
         }
     specialist_id = str(selected["specialist_id"])
@@ -583,6 +590,21 @@ def _validated_prestage(
     payload = Path(str(pack.get("payload") or ""))
     manifest = Path(str(pack.get("manifest") or ""))
     pointer = Path(str(selected["pointer"])).resolve()
+    candidate_tree = assets.get("candidate_tree")
+    candidate_audit = assets.get("candidate_audit")
+    runtime_assets_match = (
+        True
+        if candidate_tree is None and candidate_audit is None
+        else (
+            candidate_tree is not None
+            and candidate_audit is not None
+            and runtime.get("candidate_tree_sha256")
+            == sha256(Path(candidate_tree))
+            and runtime.get("candidate_audit_sha256")
+            == sha256(Path(candidate_audit))
+            and runtime.get("selected_route_accepted") is True
+        )
+    )
     if (
         receipt.get("schema") != "poke_bot.next_specialist_prestage/v1"
         or receipt.get("status") != "ready"
@@ -592,11 +614,7 @@ def _validated_prestage(
         != str(contract["trigger"]["specialist_id"])
         or corpus.get("pointer") != str(pointer)
         or corpus.get("pointer_sha256") != sha256(pointer)
-        or runtime.get("candidate_tree_sha256")
-        != sha256(Path(assets["candidate_tree"]))
-        or runtime.get("candidate_audit_sha256")
-        != sha256(Path(assets["candidate_audit"]))
-        or runtime.get("selected_route_accepted") is not True
+        or not runtime_assets_match
         or representative.get("ready") is not True
         or pack.get("status") != "ready"
         or not str(pack.get("root") or "").strip()
@@ -714,17 +732,37 @@ def run(contract_path: Path) -> int:
 
         next_config = dict(contract["next_specialist"])
         promotion_raw = str(runtime.get("future_assets_receipt") or "").strip()
-        assets = resolve_specialist_assets(
-            default_corpus_root=_path(next_config, "corpus_root"),
-            default_candidate_tree=_path(runtime, "inactive_tree_candidate"),
-            default_candidate_audit=_path(runtime, "candidate_audit"),
-            promotion_receipt=(
-                Path(promotion_raw).expanduser().resolve()
-                if promotion_raw
-                else None
-            ),
+        default_tree = _optional_path(runtime, "inactive_tree_candidate")
+        default_audit = _optional_path(runtime, "candidate_audit")
+        promotion_receipt = (
+            Path(promotion_raw).expanduser().resolve()
+            if promotion_raw
+            else None
         )
-        candidate_audit = _read(Path(assets["candidate_audit"]))
+        if default_tree is None or default_audit is None:
+            if promotion_receipt is not None:
+                raise RuntimeError(
+                    "future asset promotion requires default candidate assets"
+                )
+            assets = {
+                "source": "current_runtime_tree",
+                "corpus_root": _path(next_config, "corpus_root"),
+                "candidate_tree": None,
+                "candidate_audit": None,
+                "promotion_receipt": None,
+            }
+        else:
+            assets = resolve_specialist_assets(
+                default_corpus_root=_path(next_config, "corpus_root"),
+                default_candidate_tree=default_tree,
+                default_candidate_audit=default_audit,
+                promotion_receipt=promotion_receipt,
+            )
+        candidate_audit = (
+            _read(Path(assets["candidate_audit"]))
+            if assets.get("candidate_audit") is not None
+            else {}
+        )
         if candidate_audit:
             if (
                 candidate_audit.get("schema")

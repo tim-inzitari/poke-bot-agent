@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import csv
+import json
+import zipfile
+from datetime import date, timedelta
+from pathlib import Path
+
+import pytest
+
+from scripts.finalize_expert_latest20_elmo import commit, prepare
+
+
+def _index(path: Path, *, days: int = 20) -> list[str]:
+    values = [
+        (date(2026, 7, 4) + timedelta(days=offset)).isoformat()
+        for offset in range(days)
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=("date", "daily_dataset_slug", "episode_count"),
+        )
+        writer.writeheader()
+        for value in values:
+            writer.writerow(
+                {
+                    "date": value,
+                    "daily_dataset_slug": (
+                        f"pokemon-tcg-ai-battle-episodes-{value}"
+                    ),
+                    "episode_count": 1,
+                }
+            )
+    return values
+
+
+def _archive(path: Path, day: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(f"{day}/episode.json", "{}")
+
+
+def test_prepare_reuses_valid_archives_and_reports_only_missing(tmp_path: Path):
+    index = tmp_path / "manifest.csv"
+    days = _index(index)
+    reuse = tmp_path / "reuse"
+    archive_root = tmp_path / "archive"
+    for day in days[:-1]:
+        _archive(
+            reuse / f"pokemon-tcg-ai-battle-episodes-{day}.zip", day
+        )
+
+    result = prepare(
+        index, archive_root=archive_root, reuse_roots=[reuse]
+    )
+
+    assert [row["date"] for row in result["missing"]] == [days[-1]]
+    assert len(list(archive_root.glob("*.zip"))) == 19
+
+
+def test_commit_writes_exact_atomic_latest20_receipts(tmp_path: Path):
+    index = tmp_path / "manifest.csv"
+    days = _index(index)
+    archive_root = tmp_path / "archive"
+    for day in days:
+        _archive(
+            archive_root / f"pokemon-tcg-ai-battle-episodes-{day}.zip",
+            day,
+        )
+    receipt_root = tmp_path / "receipts"
+
+    result = commit(
+        index, archive_root=archive_root, receipt_root=receipt_root
+    )
+
+    current = json.loads(
+        (receipt_root / "current.json").read_text(encoding="utf-8")
+    )
+    assert result["window_start"] == days[0]
+    assert result["window_end"] == days[-1]
+    assert result["days"] == 20
+    assert len(result["archives"]) == 20
+    assert all(row["validated"] for row in result["archives"])
+    assert current["status"] == "ready"
+    assert Path(current["versioned_receipt"]).is_file()
+
+
+def test_prepare_rejects_nonconsecutive_calendar_window(tmp_path: Path):
+    index = tmp_path / "manifest.csv"
+    _index(index)
+    rows = list(csv.DictReader(index.open(encoding="utf-8")))
+    rows[-1]["date"] = "2026-07-25"
+    with index.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+
+    with pytest.raises(RuntimeError, match="consecutive calendar"):
+        prepare(index, archive_root=tmp_path / "archive", reuse_roots=[])

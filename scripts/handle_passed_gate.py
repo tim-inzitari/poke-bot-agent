@@ -35,6 +35,7 @@ from poke_bot.pure_rl.model_registry import (
     sha256,
     verify_frozen_model,
 )
+from poke_bot.matchup_adapters import EXPERT_IDS
 from poke_bot.pure_rl.strong_public_gate import (
     GATE_PROGRAM_SCHEMA,
     GATE_RESULT_SCHEMA,
@@ -564,8 +565,8 @@ def build_submission_bundle(
         if (
             not matchup_tree.is_file()
             or tree.get("runtime_enabled") is not True
-            or len(targets) != 22
-            or len(set(targets)) != 22
+            or tuple(targets) != EXPERT_IDS
+            or len(set(targets)) != len(EXPERT_IDS)
             or expected_archetype not in targets
             or expected_archetype not in accepted
             or runtime.get("one_route_per_decision") is not True

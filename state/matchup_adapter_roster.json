@@ -1,0 +1,94 @@
+{
+  "schema": "poke_bot.matchup_adapter_roster/v1",
+  "revision": 5,
+  "status": "canonical_runtime_deployed",
+  "runtime_enabled": true,
+  "activation_policy": "receipt_validated_v5_runtime_active",
+  "required_specialist_count": 18,
+  "physical_checkpoint_rows": 18,
+  "expert_ids": [
+    "crustle",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "rockets-mewtwo",
+    "starmie",
+    "hammer-pult",
+    "alakazam",
+    "lucario",
+    "archaludon-ex",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "dudunsparce",
+    "hops-trevenant",
+    "walrein",
+    "dragapult-dusknoir",
+    "dragapult-blaziken",
+    "thwackey",
+    "team-rockets-spidops"
+  ],
+  "specialist_priority": [
+    "dragapult-dusknoir",
+    "dudunsparce",
+    "marnie-s-grimmsnarl-ex",
+    "garchomp",
+    "rockets-mewtwo",
+    "thwackey",
+    "team-rockets-spidops",
+    "hammer-pult",
+    "dragapult-blaziken",
+    "dragapult-dudunsparce",
+    "dragapult",
+    "walrein",
+    "crustle",
+    "archaludon-ex"
+  ],
+  "canonical_display_names": {
+    "marnie-s-grimmsnarl-ex": "Marnie's Grimmsnarl ex",
+    "garchomp": "Cynthia's Garchomp ex",
+    "rockets-mewtwo": "Team Rocket's Mewtwo ex",
+    "thwackey": "Thwackey",
+    "team-rockets-spidops": "Team Rocket's Spidops"
+  },
+  "migration_from_v4": {
+    "source_expert_ids": [
+      "crustle",
+      "marnie-s-grimmsnarl-ex",
+      "garchomp",
+      "cornerstone-ogerpon",
+      "rockets-mewtwo",
+      "starmie",
+      "hammer-pult",
+      "alakazam",
+      "lucario",
+      "archaludon-ex",
+      "dragapult-dudunsparce",
+      "dragapult",
+      "dudunsparce",
+      "hops-trevenant",
+      "walrein",
+      "dragapult-dusknoir",
+      "dragapult-blaziken",
+      "lopunny",
+      "gardevoir",
+      "ns-zoroark",
+      "raging-bolt",
+      "festival-lead"
+    ],
+    "remove_expert_ids": [
+      "cornerstone-ogerpon",
+      "lopunny",
+      "gardevoir",
+      "ns-zoroark",
+      "raging-bolt"
+    ],
+    "rename_expert_ids": {
+      "festival-lead": "thwackey"
+    },
+    "append_zero_output_expert_ids": [
+      "team-rockets-spidops"
+    ],
+    "retained_rows_must_be_byte_identical": true,
+    "removed_rows_must_be_absent": true,
+    "new_rows_must_be_exact_zero_output": true
+  }
+}
