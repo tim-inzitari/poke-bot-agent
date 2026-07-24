@@ -1,0 +1,20 @@
+{
+	admin 127.0.0.1:2019
+}
+
+{$POKEBOT_DASHBOARD_DOMAIN:dashboard.invalid} {
+	# LAN and Tailscale clients may use the public hostname without a prompt.
+	# Direct access to :8780 remains unchanged as well.
+	@external not remote_ip private_ranges 100.64.0.0/10
+	basic_auth @external {
+		access $2a$14$N1DzYH8urcegHTEAvwDNMOrX1fYe1/VbECAYKahEGoDfIJEBWOF7O
+	}
+
+	header {
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	reverse_proxy 127.0.0.1:8780
+}

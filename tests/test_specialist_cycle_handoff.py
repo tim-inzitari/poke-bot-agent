@@ -75,7 +75,7 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "pokebot-population-round-robin.service"
     )
     assert contract["selection"]["corpus_root"].endswith(
-        "expert-evidence28-20260626-20260723/specialist-corpora-v2"
+        "expert-evidence28-20260626-20260723/specialist-corpora-v3-full-head"
     )
     assert contract["runtime"]["inactive_tree_candidate"].endswith(
         "public-matchup-tree-calibration-v37.inactive.json"
@@ -84,10 +84,12 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "public-matchup-tree-calibration-v37.audit.json"
     )
     assert contract["selection"]["minimum_decisions_by_specialist"] == {
-        "dragapult-dusknoir": 10000
+        "dragapult-dusknoir": 10000,
+        "dudunsparce": 2000,
     }
     assert contract["selection"]["strict_priority_prefix"] == [
-        "dragapult-dusknoir"
+        "dragapult-dusknoir",
+        "dudunsparce",
     ]
 
 
@@ -100,6 +102,7 @@ def test_lucario_runtime_row_exposes_exact_threshold_transition() -> None:
     lucario = registry["specialists"]["lucario"]
 
     assert lucario["status"] == "ready"
+    assert lucario["minimum_terminal_iteration"] == 10
     assert lucario["pass_handler"]["threshold_transition_receipt"] == (
         "/home/inzi/poke-bot-agent/outputs/state/"
         "lucario-gate-floor15-transition-v1.json"

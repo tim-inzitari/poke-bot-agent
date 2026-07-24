@@ -10,13 +10,15 @@
   "core_refresh_template": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/post_starmie_core_v2_handoff_v1.json",
   "selection": {
     "state": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/state/specialists.yaml",
-    "corpus_root": "/home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v2",
+    "corpus_root": "/home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v3-full-head",
     "minimum_decisions": 20000,
     "minimum_decisions_by_specialist": {
-      "dragapult-dusknoir": 10000
+      "dragapult-dusknoir": 10000,
+      "dudunsparce": 2000
     },
     "strict_priority_prefix": [
-      "dragapult-dusknoir"
+      "dragapult-dusknoir",
+      "dudunsparce"
     ]
   },
   "prestage": {
@@ -66,7 +68,7 @@
     "runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/trevenant-public-matchup-tree-iter5-v1.json",
     "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v37.inactive.json",
     "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v37.audit.json",
-    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-v37-ready.json",
+    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-v38-ready.json",
     "runtime_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/specialist_runtime_registry_v1.json",
     "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json",
     "selector_env": "/home/inzi/.config/pokebot/specialist_runtime.env",

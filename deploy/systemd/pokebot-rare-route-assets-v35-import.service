@@ -1,0 +1,28 @@
+[Unit]
+Description=Import audited all-22 router and additive expert corpora from Elmo
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime
+ExecStartPre=/bin/sh -c 'while ! /usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 elmo "sudo -n test -s /mnt/Main/main/poke-bot-agent/archive/rare-route-expert-history-20260626-20260701/specialists-v1/SPECIALIST_CORPORA_READY.json && sudo -n test -s /mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-v35/public-matchup-tree.audit.json"; do /usr/bin/sleep 60; done'
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/promote_rare_route_assets_from_elmo.py --remote-root /mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-v35 --require-all-targets --source-corpus-root /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/specialist-corpora-v1 --output-corpus-root /home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v2 --tree-output /home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v35.inactive.json --audit-output /home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-v35.audit.json --receipt /home/inzi/poke-bot-agent/outputs/state/rare-route-assets-v35-ready.json --stage-root /home/inzi/poke-bot-agent/outputs/staging/rare-route-assets-v35 --repository /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=48h
+TimeoutStopSec=90
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=32G
+MemoryMax=48G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/rare-route-assets-v35-import.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/rare-route-assets-v35-import.log
+
+[Install]
+WantedBy=default.target

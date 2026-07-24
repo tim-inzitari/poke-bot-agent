@@ -125,7 +125,12 @@ def test_all22_v35_assets_are_imported_only_for_specialist_boundaries() -> None:
     ):
         contract = json.loads(Path(contract_path).read_text())
         receipt = contract["runtime"]["future_assets_receipt"]
-        assert receipt.endswith("/rare-route-assets-v37-ready.json")
+        expected = (
+            "/rare-route-assets-v38-ready.json"
+            if contract_path == "ops/specialist_cycle_handoff_v1.json"
+            else "/rare-route-assets-v37-ready.json"
+        )
+        assert receipt.endswith(expected)
 
 
 def test_router_only_promotion_cannot_claim_or_replace_rare_corpora() -> None:

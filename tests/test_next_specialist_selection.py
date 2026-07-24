@@ -177,19 +177,19 @@ def test_specialist_minimum_override_selects_strict_priority(
 ) -> None:
     state = _state(tmp_path / "state.yaml")
     corpora = tmp_path / "corpora"
-    _corpus(corpora, "dudunsparce", 10_946)
+    _corpus(corpora, "dudunsparce", 2_448)
     _corpus(corpora, "lucario", 25_000)
 
     result = select(
         state_path=state,
         corpus_root=corpora,
         minimum_decisions=20_000,
-        minimum_decisions_by_specialist={"dudunsparce": 10_000},
+        minimum_decisions_by_specialist={"dudunsparce": 2_000},
         strict_priority_prefix=["dudunsparce"],
     )
 
     assert result["selected"]["specialist_id"] == "dudunsparce"
-    assert result["selected"]["minimum_decisions"] == 10_000
+    assert result["selected"]["minimum_decisions"] == 2_000
 
 
 def test_strict_priority_cannot_silently_fall_through(
@@ -197,7 +197,7 @@ def test_strict_priority_cannot_silently_fall_through(
 ) -> None:
     state = _state(tmp_path / "state.yaml")
     corpora = tmp_path / "corpora"
-    _corpus(corpora, "dudunsparce", 9_999)
+    _corpus(corpora, "dudunsparce", 1_999)
     _corpus(corpora, "lucario", 25_000)
 
     try:
@@ -205,7 +205,7 @@ def test_strict_priority_cannot_silently_fall_through(
             state_path=state,
             corpus_root=corpora,
             minimum_decisions=20_000,
-            minimum_decisions_by_specialist={"dudunsparce": 10_000},
+            minimum_decisions_by_specialist={"dudunsparce": 2_000},
             strict_priority_prefix=["dudunsparce"],
         )
     except RuntimeError as error:

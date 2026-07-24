@@ -38,52 +38,47 @@ allowed_status_values:
     - accepted_with_waiver
 
 current:
-  phase: specialist_core_refresh_handoff
-  active_specialist: null
+  phase: specialist_training
+  active_specialist: dragapult-dusknoir
   program_progress:
     required_specialists_total: 22
     completed_frozen: 4
     completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario]
-    active_specialists: 0
-    active_specialist_ids: []
-    remaining_after_active: 18
+    active_specialists: 1
+    active_specialist_ids: [dragapult-dusknoir]
+    remaining_after_active: 17
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Rebuild the protected cumulative core from all four checksum-verified
-    frozen specialists (Alakazam, Hop's Trevenant, Starmie, and Lucario), then
-    select the next unfinished specialist, run its exact 25-epoch expert
-    bootstrap, and launch baseline RL. Eighteen specialists remain.
+    Continue the active Dragapult/Dusknoir baseline RL run from committed
+    iteration 0 through its established gate or iteration ceiling. Preserve
+    all four completed specialists frozen and inference-only.
   active_run:
     service: pokebot-pure-rl-trevenant-staged.service
-    run_name: pure_rl_lucario_temporal1_8k_v1_20260723
-    path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_lucario_temporal1_8k_v1_20260723
-    status: completed_passed_frozen_handoff_in_progress
-    last_completed_iteration: 10
-    next_iteration: null
-    learner_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_lucario_temporal1_8k_v1_20260723/checkpoints/iter_00010.pt
-    learner_checksum: sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd
+    run_name: pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723
+    path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723
+    status: active
+    last_completed_iteration: 0
+    next_iteration: 1
+    learner_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
+    learner_checksum: sha256:455fd0d3bfa440351e3b5f69de279f1ed2822c1eb5fc32009648527111a23d02
     games_per_iteration: 8192
     public_mix_games: 7168
     self_play_games: 1024
     official_research_games: 1000
-    premium_gate_games: 2750
-    total_evaluation_games: 3750
+    premium_gate_games: 1750
+    total_evaluation_games: 2750
     frozen_specialist_registry: /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json
-    terminal_active_gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r3+individual-floor15-r1
-    terminal_gate_marker: SPECIALIST_GATE_PASSED.lucario-splus-v1
+    terminal_active_gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r4
+    terminal_gate_marker: SPECIALIST_GATE_PASSED.dragapult-dusknoir-splus-v1
     minimum_terminal_iteration: 5
-    iteration_ceiling: 10
+    iteration_ceiling: 15
     ceiling_behavior: freeze_submit_and_continue_without_false_pass
     gate_handler_service: pokebot-specialist-passed-gate-handler.service
-    gate_handler_state: /home/inzi/poke-bot-agent/outputs/state/lucario-passed-gate-handler-v1.json
-    kaggle_submission:
-      status: accepted
-      submission_id: 54952269
-      submitted_at: "2026-07-24T13:33:57.223000Z"
-      returned_score: 600.0
-    threshold_transition_receipt: /home/inzi/poke-bot-agent/outputs/state/lucario-gate-floor15-transition-v1.json
-    frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/lucario-protocol-gate-pass-v1
+    gate_handler_state: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-passed-gate-handler-v1.json
+    kaggle_submission: null
+    threshold_transition_receipt: null
+    frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir-protocol-gate-pass-v1
     specialist_cycle_handoff_service: pokebot-specialist-cycle-handoff.service
     specialist_cycle_handoff_state: /home/inzi/poke-bot-agent/outputs/state/post-lucario-cumulative-core-handoff.json
     premature_specialist_quarantine:
@@ -129,9 +124,10 @@ current:
       authoritative_marker_present: false
       starmie_live_precondition_result: correctly_rejected
     remote_matchup_runtime_transition: >-
-      Lucario is the sole active specialist. Frozen Alakazam, frozen Hop's
-      Trevenant, and frozen Starmie are inference-only opponents; none receives
-      gradients, optimizer steps, replay updates, or checkpoint replacement.
+      Dragapult/Dusknoir is the sole active specialist. Frozen Alakazam,
+      frozen Hop's Trevenant, frozen Starmie, and frozen Lucario are
+      inference-only opponents; none receives gradients, optimizer steps,
+      replay updates, or checkpoint replacement.
   observed_run:
     path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721
     last_completed_iteration: 39
@@ -293,7 +289,6 @@ training_priority:
   # "Dragapult ex" row; the shared percentage is group-level, not an assertion
   # that each variant independently owns that fraction of the field.
   ordered_unfinished_ids_after_active:
-    - dragapult-dusknoir
     - dudunsparce
     - marnie-s-grimmsnarl-ex
     - garchomp
@@ -365,23 +360,22 @@ training_priority:
       - local and remote fleet checksum parity
   rows:
     - {id: dudunsparce, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dudunsparce, share: 0.21312803889789303, appearances: 263, mapping: exact}
-    - {id: dragapult-dusknoir, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family}
+    - {id: marnie-s-grimmsnarl-ex, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Marnie's Grimmsnarl ex", share: 0.0024311183144246355, appearances: 3, mapping: canonical_name}
+    - {id: garchomp, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Cynthia's Garchomp ex", share: 0.004862236628849271, appearances: 6, mapping: canonical_name}
+    - {id: rockets-mewtwo, existing_model_artifact: false, availability_group: missing_model, source_archetype: null, share: null, appearances: null, mapping: unresolved}
+    - {id: hammer-pult, existing_model_artifact: true, availability_group: missing_model_priority_equivalent, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family, priority_override: no_existing_artifact_penalty}
     - {id: dragapult-blaziken, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family}
     - {id: dragapult-dudunsparce, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family}
     - {id: dragapult, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: canonical_name}
     - {id: walrein, existing_model_artifact: false, availability_group: missing_model, source_archetype: Walrein, share: 0.018638573743922204, appearances: 23, mapping: exact}
     - {id: crustle, existing_model_artifact: false, availability_group: missing_model, source_archetype: Crustle, share: 0.008103727714748784, appearances: 10, mapping: exact}
-    - {id: garchomp, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Cynthia's Garchomp ex", share: 0.004862236628849271, appearances: 6, mapping: canonical_name}
-    - {id: marnie-s-grimmsnarl-ex, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Marnie's Grimmsnarl ex", share: 0.0024311183144246355, appearances: 3, mapping: canonical_name}
-    - {id: cornerstone-ogerpon, existing_model_artifact: false, availability_group: missing_model, source_archetype: Cornerstone Mask Ogerpon ex, share: 0.0, appearances: 0, mapping: canonical_name}
     - {id: archaludon-ex, existing_model_artifact: false, availability_group: missing_model, source_archetype: Archaludon ex, share: 0.0, appearances: 0, mapping: exact}
+    - {id: cornerstone-ogerpon, existing_model_artifact: false, availability_group: missing_model, source_archetype: Cornerstone Mask Ogerpon ex, share: 0.0, appearances: 0, mapping: canonical_name}
     - {id: lopunny, existing_model_artifact: false, availability_group: missing_model, source_archetype: Mega Lopunny ex, share: 0.0, appearances: 0, mapping: canonical_name}
     - {id: gardevoir, existing_model_artifact: false, availability_group: missing_model, source_archetype: Mega Gardevoir ex, share: 0.0, appearances: 0, mapping: canonical_name}
     - {id: ns-zoroark, existing_model_artifact: false, availability_group: missing_model, source_archetype: "N’s Zoroark ex", share: 0.0, appearances: 0, mapping: canonical_name}
     - {id: raging-bolt, existing_model_artifact: false, availability_group: missing_model, source_archetype: Raging Bolt ex, share: 0.0, appearances: 0, mapping: canonical_name}
-    - {id: rockets-mewtwo, existing_model_artifact: false, availability_group: missing_model, source_archetype: null, share: null, appearances: null, mapping: unresolved}
     - {id: festival-lead, existing_model_artifact: false, availability_group: missing_model, source_archetype: null, share: null, appearances: null, mapping: unresolved}
-    - {id: hammer-pult, existing_model_artifact: true, availability_group: missing_model_priority_equivalent, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family, priority_override: no_existing_artifact_penalty}
 
 expert_corpus_archive:
   status: validated_partial_coverage
@@ -828,12 +822,32 @@ specialists:
 
   - id: dragapult-dusknoir
     name: Dragapult Dusknoir
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
+    status: rl_training
+    active: true
+    heads:
+      status: active_multihead_runtime
+      archetype_policy: present
+      game_plan_policies: present
+      matchup_policies: active_ticket_isolated_updates
+    datasets:
+      expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-evidence28-20260626-20260723/specialist-corpora-v2/dragapult-dusknoir/PROTECTED_EXPERT_CORPUS.json
+      expert_manifest_checksum: sha256:216a99e807302f4485a684bbe6ea2cb63ed970a42b4953ce7f8df87423996305
+      expert_decisions: 10946
+    counters:
+      bootstrap_epochs_completed: 25
+      rl_iterations_completed: 1
+      rl_epochs_completed: 1
+      rehearsal_epochs_completed: 0
+      last_completed_iteration: 0
+      next_iteration: 1
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir_expert_bootstrap_from_core_v4/model.pt
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir_expert_bootstrap_from_core_v4/model.pt
+      bootstrap_checksum: sha256:6df0dae20c8cfa98b71a4b688eba2a7ff26e85bf52ce4b43b1a4b6bfe25ff933
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
+      latest_checksum: sha256:455fd0d3bfa440351e3b5f69de279f1ed2822c1eb5fc32009648527111a23d02
+      passing: null
+      passing_checksum: null
     holdouts: {official: null, premium: null}
     frozen: false
     public_mix_eligible: false
