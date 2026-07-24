@@ -2,7 +2,7 @@
 	admin 127.0.0.1:2019
 }
 
-{$POKEBOT_DASHBOARD_DOMAIN:dashboard.invalid} {
+mc.tsinzitari.com {
 	# LAN and Tailscale clients may use the public hostname without a prompt.
 	# Direct access to :8780 remains unchanged as well.
 	@external not remote_ip private_ranges 100.64.0.0/10

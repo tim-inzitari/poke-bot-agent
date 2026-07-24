@@ -13,10 +13,10 @@ dashboard process itself on port `8780`.
 The password is represented only by a bcrypt hash in `Caddyfile`; the plaintext
 password is not stored in the repository.
 
-Set the actual GoDaddy subdomain in a private environment file:
+The active GoDaddy subdomain is:
 
 ```text
-POKEBOT_DASHBOARD_DOMAIN=app.yourdomain.com
+POKEBOT_DASHBOARD_DOMAIN=mc.tsinzitari.com
 ```
 
 Validate before enabling the service:
