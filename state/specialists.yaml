@@ -2880,11 +2880,11 @@ specialists:
           day_parallelism: 4
           workers_per_day: 3
           maximum_worker_processes: 12
-          current_dates: [2026-06-30, 2026-07-01, 2026-07-02, 2026-07-03]
-          completed_days: 4
-          records: 571
-          decisions: 38553
-          guide_rows: 4306
+          current_dates: [2026-07-08, 2026-07-09, 2026-07-10, 2026-07-11]
+          completed_days: 12
+          records: 1530
+          decisions: 107000
+          guide_rows: 11488
         first_clean_batch_validation:
           status: passed
           dates: [2026-06-26, 2026-06-27, 2026-06-28, 2026-06-29]
@@ -2894,6 +2894,14 @@ specialists:
           guide_rows: 4306
           zero_guide_row_days: 0
           stale_teacher_same_dates_guide_rows: 0
+        stale_teacher_rebuild_comparison:
+          status: root_cause_confirmed
+          dates: {start: 2026-06-26, end: 2026-07-07, days: 12}
+          exact_records_in_each_build: 1530
+          exact_decisions_in_each_build: 107000
+          stale_teacher_guide_rows: 0
+          corrected_teacher_guide_rows: 11488
+          changed_input: teacher_deck_identity_gate
         preserved_failed_launches:
           - {service: pokebot-spidops-full32-guide-v1.service, reason: dependency_download_validation_failed}
           - {service: pokebot-spidops-full32-guide-v2.service, reason: direct_entrypoint_on_noexec_home_mount}
