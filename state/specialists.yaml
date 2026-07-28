@@ -2877,22 +2877,31 @@ specialists:
 
   - id: thwackey
     name: Thwackey
-    status: rl_training
+    status: passed_frozen
     active: true
-    heads: {status: bootstrap_trained_runtime_active, archetype_policy: trained, game_plan_policies: trained}
+    heads: {status: terminal_fused_runtime_frozen, archetype_policy: trained, game_plan_policies: trained}
     datasets: {expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/thwackey/PROTECTED_EXPERT_CORPUS.json}
-    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: 0}
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 6, rl_epochs_completed: 6, rehearsal_epochs_completed: 5, last_completed_iteration: 5, next_iteration: null}
     checkpoints:
       bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey_expert_bootstrap_from_core_v9/model.pt
       bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey_expert_bootstrap_from_core_v9/model.pt
       bootstrap_checksum: sha256:825200cbcf3c96afa6aa28a1b20d274313149cb539fa8deb7bd3661a4a80fbc9
-      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_thwackey_temporal1_8k_v1_20260723/checkpoints/seed.pt
-      passing: null
-      passing_checksum: null
-    holdouts: {official: null, premium: null}
-    frozen: false
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_thwackey_temporal1_8k_v1_20260723/checkpoints/iter_00005.pt
+      latest_checksum: sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce
+      passing: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_thwackey_temporal1_8k_v1_20260723/checkpoints/iter_00005.pt
+      passing_checksum: sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce
+      frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey-protocol-gate-pass-v1
+    holdouts:
+      official: {iteration: 5, games: 1000, win_rate: 0.681, audit_passed: true, training_eligible: false, diagnostic_only: true}
+      premium: {iteration: 5, games: 3000, win_rate: 0.5496363636363637, confidence_lower: 0.5363636363636364, s_tier_mean: 0.5846, audit_passed: true, passed: true, gate_id: specialist-strong-public-roster-lc50-at-iter5-v1+frozen-specialists-r9}
+    terminal_lineage_validation: state/thwackey_successor_terminal_lineage_validation_v1.json
+    terminal_lineage_validation_checksum: sha256:af44b5dc4e3d3c404c10e091c7f396df11a15404079e0131c83a2236d4f232c7
+    passed_gate_handler_receipt: /home/inzi/poke-bot-agent/outputs/state/thwackey-passed-gate-handler-v1.json
+    passed_gate_handler_receipt_checksum: sha256:6f699b7dfe0ac1dca88946a9e725defae2d42ee22274e1b374a251a9dec3a5cc
+    frozen: true
     public_mix_eligible: false
-    kaggle_submissions: []
+    kaggle_submissions:
+      - {copy_number: 1, label: "thwackey exact gate iter 5 copy 1/1 0435f335fde6", checkpoint_checksum: "sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce", status: accepted, submitted_at: "2026-07-28T19:16:39.130000Z", submission_id: 55063273, returned_score: 630.8}
 
   - id: team-rockets-spidops
     name: Team Rocket's Spidops

@@ -1,0 +1,56 @@
+{
+  "schema": "poke_bot.successor_terminal_lineage_validation/v1",
+  "status": "verified_and_consumed",
+  "created_at_utc": "2026-07-28T19:15:47.718217+00:00",
+  "specialist_id": "thwackey",
+  "run": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_thwackey_temporal1_8k_v1_20260723",
+  "terminal_iteration": 5,
+  "terminal_learner": {
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_thwackey_temporal1_8k_v1_20260723/checkpoints/iter_00005.pt",
+    "sha256": "sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce"
+  },
+  "root_cause": {
+    "summary": "The handler compared the terminal commit's effective migrated design fingerprint to the immutable manifest's initial fingerprint instead of validating the append-only migration chain.",
+    "manifest_initial_fingerprint": "sha256:73efb7b9f1afdab85f9ce8c38f566c118340a8caa1636b6c5f3cf5897eb14564",
+    "effective_terminal_fingerprint": "sha256:e53d316e08ffc9cfc34cfc84375d6f8d6a33c1b838615448cdf00b5dea3b881d",
+    "learner_mismatch": false,
+    "terminal_commit_mismatch": false,
+    "fleet_publication_mismatch": false
+  },
+  "repair": {
+    "commit": "6444731ccb9b0f8bca0a1472af5f2a10d2af5ecb",
+    "handler": "scripts/handle_passed_gate.py",
+    "handler_sha256": "sha256:56ab0a34eda250eb41f33d8d998dc599a7d39306966e415f2b5a82571f52776d",
+    "validation": [
+      "manifest design contract canonical digest",
+      "ordered append-only migration receipt chain",
+      "migration receipt path identity",
+      "state and commit migration ledgers",
+      "effective terminal design fingerprint",
+      "terminal learner identity",
+      "fleet publication identity"
+    ],
+    "fail_closed_on_corrupt_or_incomplete_chain": true
+  },
+  "verification": {
+    "focused_handler_tests_passed": 17,
+    "broader_spidops_and_transition_tests_passed": 90,
+    "live_probe_ready": true,
+    "live_probe_reason": "verified successor fused descendant via thwackey-specialist-rl-activation-v9.json and iter_00005.json",
+    "managed_handler_service": "pokebot-specialist-passed-gate-handler.service",
+    "managed_handler_result": "success",
+    "handler_receipt": "/home/inzi/poke-bot-agent/outputs/state/thwackey-passed-gate-handler-v1.json",
+    "handler_receipt_sha256": "sha256:6f699b7dfe0ac1dca88946a9e725defae2d42ee22274e1b374a251a9dec3a5cc"
+  },
+  "outcome": {
+    "frozen_checkpoint_family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey-protocol-gate-pass-v1",
+    "submission_bundle_sha256": "sha256:632969186ffbd5b4b9a67a70e86729f053f3c0e74da7868f2733104b301e0d9c",
+    "kaggle_copy_count": 1,
+    "kaggle_submission_id": 55063273,
+    "kaggle_status": "COMPLETE",
+    "kaggle_score": 630.8,
+    "handoff_started": true,
+    "active_selector_changed": false,
+    "interactive_session_modified": false
+  }
+}
