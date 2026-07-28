@@ -831,6 +831,7 @@
   "non_regression_invariants": [
     "The active specialist is read from exactly one selector key and is never inferred from a service name, run-directory version, dashboard label, or saved goal prose.",
     "Training preflight, terminal gate handling, stable operator checks, and transition validation resolve specialist_runtime_registry_v1.json from POKEBOT_SPECIALIST_RUNTIME_ROOT; independently mutable registry copies may not become runtime truth.",
+    "Successor selection and prestage read the mutable specialist projection only from /home/inzi/poke-bot-agent/state/specialists.yaml; deployment-directory copies are never selection authority.",
     "The gate-handler CLI bootstraps its runtime import path and must resolve the identical validated command from the managed service and from an arbitrary operator working directory.",
     "The logical required roster is read only from active_expert_ids; V6 physical matchup rows and parameter expectations are derived from fixed slot_capacity and the instantiated per-slot architecture.",
     "The transition graph and its node payloads contain no specialist, deck, checkpoint-version, deployment-version, date-window, or run-name literals.",
