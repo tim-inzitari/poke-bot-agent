@@ -2922,6 +2922,15 @@ specialists:
         july_24_catalog_impact_audit_checksum: sha256:c16efc43198a670038701c2f7da94cb3e05310896a54f86c0735293eff078ba2
         public_deck_guide_identity_validation: state/spidops_public_deck_guide_identity_validation_v1.json
         public_deck_guide_identity_validation_checksum: sha256:861102cb7f89e1556d3349287e5b6cfeed49cf422cd50a1e4553eb944191c3d1
+        inactive_handoff_deployment:
+          root: /home/inzi/poke-bot-agent-deployments/core-behavior-repair-v1
+          teacher_module_checksum: sha256:bc0f5f797f11318de77f5297bdeea23dbe1d8314072144dddf1eb2ad6d060f96
+          guide_contract_checksum: sha256:f15238ee480f1002411e2c6d45e6c613331b160da467ffb300406653aea47019
+          expert_writeup_checksum: sha256:0c2e1036e5cdc7a29457f19e5af06a07f355f7fa351d9bf08c81d5c2a8b9b686
+          one_mewtwo_canary_accepted: true
+          two_mewtwo_canary_accepted: true
+          three_mewtwo_canary_rejected: true
+          active_runtime_modified: false
         active_training_modified: false
     counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
     checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
