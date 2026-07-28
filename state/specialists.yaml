@@ -11,7 +11,7 @@
 # not change or block that status.
 schema_version: poke_bot.specialist_state/v1
 protocol_schema_version: poke_bot.rl_protocol/v2
-last_verified_at_utc: 2026-07-28T16:15:57Z
+last_verified_at_utc: 2026-07-28T20:58:41Z
 verification_scope:
   repository: /Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you
   runtime_repository: /home/inzi/poke-bot-agent
@@ -54,12 +54,12 @@ current:
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Continue Team Rocket's Spidops specialist RL from its exact 25-epoch
-    accepted-core-v9 bootstrap. The selector, managed trainer, full 16,650-game
-    public corpus, guide, route, representative, and terminal-handler preflight
-    are checksum-aligned. Preserve rejected cumulative core v10 as immutable
-    diagnostic evidence and prepare the next successor without interrupting
-    healthy Spidops training.
+    Continue Team Rocket's Spidops specialist RL from its committed iteration-0
+    heldout champion. The exact 8,192-game collection, one-epoch update, premium
+    holdout, research controls, and next-collection publication are receipt
+    backed; iteration 1 is collecting automatically. Preserve rejected
+    cumulative core v10 as immutable diagnostic evidence and keep Hammer-Pult
+    one-ahead without interrupting healthy Spidops training.
   next_successor_prestage:
     specialist_id: hammer-pult
     status: ready
@@ -3063,20 +3063,56 @@ specialists:
           three_mewtwo_canary_rejected: true
           active_runtime_modified: false
         active_training_modified: false
-    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, last_completed_iteration: -1, next_iteration: 0}
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 1, rl_epochs_completed: 1, rehearsal_epochs_completed: 0, last_completed_iteration: 0, next_iteration: 1}
     checkpoints:
       bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
       bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
       bootstrap_checksum: sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338
-      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
-      latest_checksum: sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
+      latest_checksum: sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3
+      heldout_champion: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
+      heldout_champion_checksum: sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3
       passing: null
       passing_checksum: null
     activation_receipt: /home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-specialist-rl-activation-v9.json
     activation_receipt_checksum: sha256:94c99e97a8fa15d2f9b204b24064e795e1a73732613a86d41b22fcb833a98c8b
     transition_boundary_receipt: state/spidops_activation_boundary_v1.json
     transition_boundary_receipt_checksum: sha256:e623208e98f949f4a04898554547a667375a5c09ee382f6794a1f87587871025
-    holdouts: {official: null, premium: null}
+    first_collection:
+      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/collection_receipts/iter_00000.json
+      receipt_checksum: sha256:8edaec72310a4e08db4b04a77b52e8edd6a1d5ec9eb5b4e4ea09afdbcf3ecb70
+      parent_checkpoint_checksum: sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338
+      requested_games: 8192
+      games: 8192
+      self_play_games: 1024
+      public_mix_games: 7168
+      decisions: 543236
+      usable_game_fraction: 1.0
+      strict_remote_execution: true
+      remote_self_play_completions: {"192.168.1.143:8765": 412, "192.168.1.158:8766": 104}
+      local_fallback_count: 0
+      required_mirror_archetype: team-rockets-spidops
+      mirror_route_observations: 79454
+      all_enforcement_assertions_passed: true
+      shard_checksum: sha256:bd077be061d98b9af89edaacc9959a8a08869fdd5de412e0587c7dd5a4df1193
+    latest_iteration_commit:
+      iteration: 0
+      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00000.json
+      receipt_checksum: sha256:ef96f0834b31101d3a4f93292854a833471e48e4ac142a98e821a5cda6909139
+      committed_at_utc: 2026-07-28T20:57:47.668808+00:00
+      candidate_checkpoint_checksum: sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3
+      promotion_games: 80
+      promotion_win_rate: 1.0
+      promotion_passed: true
+      heldout_champion_updated: true
+      learner_carried: true
+      next_collection_local_ok: true
+      next_collection_remote_ok: true
+    iteration_boundary_receipt: state/spidops_iteration0_boundary_v1.json
+    iteration_boundary_receipt_checksum: sha256:90815eacaa4c9be227721a70ed5f50639ca92a4cea3805db45d7378ff230436e
+    holdouts:
+      official: {iteration: 0, games: 1000, win_rate: 0.409, audit_passed: true, training_eligible: false, replay_eligible: false, diagnostic_only: true}
+      premium: {iteration: 0, games: 3250, win_rate: 0.5078333333333334, confidence_lower: 0.495325, confidence_upper: 0.5208333333333334, audit_passed: true, passed: false, gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r10}
     frozen: false
     public_mix_eligible: false
     kaggle_submissions: []

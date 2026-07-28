@@ -1,7 +1,7 @@
 {
   "schema": "poke_bot.goal_requirements/v1",
   "status": "compatibility_projection",
-  "created_at_utc": "2026-07-28T19:21:43Z",
+  "created_at_utc": "2026-07-28T20:58:41Z",
   "purpose": "Compatibility projection for older controllers. GOAL.md is the authoritative adaptive goal gateway. Runtime selectors and immutable receipts remain authoritative for execution facts.",
   "authoritative_sources": {
     "goal_gateway": "GOAL.md",
@@ -46,6 +46,11 @@
       "activation_receipt_sha256": "sha256:94c99e97a8fa15d2f9b204b24064e795e1a73732613a86d41b22fcb833a98c8b",
       "local_boundary_receipt": "state/spidops_activation_boundary_v1.json",
       "local_boundary_receipt_sha256": "sha256:e623208e98f949f4a04898554547a667375a5c09ee382f6794a1f87587871025",
+      "latest_committed_iteration": 0,
+      "latest_checkpoint_digest": "sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3",
+      "latest_iteration_receipt": "state/spidops_iteration0_boundary_v1.json",
+      "latest_iteration_receipt_sha256": "sha256:90815eacaa4c9be227721a70ed5f50639ca92a4cea3805db45d7378ff230436e",
+      "next_iteration": 1,
       "hammer_pult_selected": false
     }
   },
@@ -627,7 +632,7 @@
     }
   },
   "verified_snapshot": {
-    "verified_at_utc": "2026-07-28T20:20:38Z",
+    "verified_at_utc": "2026-07-28T20:58:41Z",
     "phase": "specialist_rl_training",
     "canonical_specialist_count": 18,
     "active_specialist": "team-rockets-spidops",
@@ -639,9 +644,20 @@
       "selector": "/home/inzi/.config/pokebot/specialist_runtime.env",
       "selector_value": "team-rockets-spidops",
       "source_specialist": "team-rockets-spidops",
-      "source_specialist_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt",
-      "source_specialist_checkpoint_digest": "sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338",
-      "current_stage": "iteration_0_collection",
+      "source_specialist_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt",
+      "source_specialist_checkpoint_digest": "sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3",
+      "current_stage": "iteration_1_collection",
+      "last_completed_iteration": 0,
+      "next_iteration": 1,
+      "first_collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/collection_receipts/iter_00000.json",
+      "first_collection_receipt_sha256": "sha256:8edaec72310a4e08db4b04a77b52e8edd6a1d5ec9eb5b4e4ea09afdbcf3ecb70",
+      "latest_iteration_commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00000.json",
+      "latest_iteration_commit_sha256": "sha256:ef96f0834b31101d3a4f93292854a833471e48e4ac142a98e821a5cda6909139",
+      "latest_premium_gate_games": 3250,
+      "latest_premium_gate_win_rate": 0.5078333333333334,
+      "latest_premium_gate_passed": false,
+      "latest_research_control_games": 1000,
+      "latest_research_control_win_rate": 0.409,
       "decision_fusion_runtime_enabled": true,
       "required_fused_head_count": 17
     },
@@ -727,8 +743,8 @@
     },
     "current_deck_guides": {
       "required_for_every_new_specialist": true,
-      "prepared_next_specialist": "team-rockets-spidops",
-      "prepared_contract": "config/deck_guides/team-rockets-spidops.yaml",
+      "prepared_next_specialist": "hammer-pult",
+      "prepared_contract": "config/deck_guides/hammer-pult.yaml",
       "expert_writeup": {
         "maximum_words": 10000,
         "how_to_play_is_primary": true,

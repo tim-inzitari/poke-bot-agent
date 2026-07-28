@@ -1,0 +1,75 @@
+{
+  "schema": "poke_bot.spidops_iteration_boundary/v1",
+  "status": "iteration_committed",
+  "verified_at_utc": "2026-07-28T20:58:41Z",
+  "specialist_id": "team-rockets-spidops",
+  "iteration": 0,
+  "selector_value": "team-rockets-spidops",
+  "managed_service": {
+    "name": "pokebot-pure-rl-trevenant-staged.service",
+    "scope": "user",
+    "active_state": "active",
+    "sub_state": "running"
+  },
+  "collection": {
+    "receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/collection_receipts/iter_00000.json",
+    "receipt_sha256": "sha256:8edaec72310a4e08db4b04a77b52e8edd6a1d5ec9eb5b4e4ea09afdbcf3ecb70",
+    "parent_checkpoint_digest": "sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338",
+    "requested_games": 8192,
+    "games": 8192,
+    "self_play_games": 1024,
+    "public_mix_games": 7168,
+    "decisions": 543236,
+    "usable_game_fraction": 1.0,
+    "strict_remote_execution": true,
+    "remote_self_play_completions": {
+      "192.168.1.143:8765": 412,
+      "192.168.1.158:8766": 104
+    },
+    "local_fallback_count": 0,
+    "required_mirror_archetype": "team-rockets-spidops",
+    "mirror_route_observations": 79454,
+    "all_enforcement_assertions_passed": true,
+    "shard_digest": "sha256:bd077be061d98b9af89edaacc9959a8a08869fdd5de412e0587c7dd5a4df1193"
+  },
+  "update": {
+    "epochs": 1,
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt",
+    "checkpoint_digest": "sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3",
+    "metrics": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/metrics/iter_00000.json",
+    "metrics_sha256": "sha256:f5a95a756a7669d8816370dea5f3dda234de0720fcafbd516161b0ead9f8c4dc",
+    "validation_loss": 2.389,
+    "policy_accuracy": 0.7551943331793711,
+    "promotion_games": 80,
+    "promotion_win_rate": 1.0,
+    "promotion_passed": true,
+    "learner_carried": true,
+    "heldout_champion_updated": true
+  },
+  "evaluation": {
+    "premium_games": 3250,
+    "premium_win_rate": 0.5078333333333334,
+    "premium_confidence_lower": 0.495325,
+    "premium_confidence_upper": 0.5208333333333334,
+    "premium_audit_passed": true,
+    "stage_gate_passed": false,
+    "stage_gate_reason": "active_gate_criteria_failed",
+    "research_control_games": 1000,
+    "research_control_win_rate": 0.409,
+    "research_training_eligible": false,
+    "research_replay_eligible": false,
+    "research_replay_records_written": 0
+  },
+  "commit": {
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00000.json",
+    "sha256": "sha256:ef96f0834b31101d3a4f93292854a833471e48e4ac142a98e821a5cda6909139",
+    "committed_at_utc": "2026-07-28T20:57:47.668808+00:00",
+    "last_completed_iteration": 0,
+    "next_iteration": 1,
+    "local_next_collection_publish_ok": true,
+    "remote_next_collection_publish_ok": true
+  },
+  "next_iteration_collection_started": true,
+  "hammer_pult_remains_one_ahead_only": true,
+  "interactive_sessions_modified": false
+}
