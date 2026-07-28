@@ -10,6 +10,7 @@ that otherwise delays the 25-epoch bootstrap at the specialist boundary.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -17,6 +18,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -28,13 +31,23 @@ from poke_bot.pure_rl.expert_rehearsal import (
 )
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.resolve_specialist_assets import resolve_specialist_assets
+from scripts.launch_active_specialist_gate_handler import (
+    build_prestage_command,
+)
 from scripts.run_specialist_cycle_handoff import (
     _active_specialist,
     _path,
     _read,
 )
-from scripts.run_starmie_expert_bootstrap import TARGETS
-from scripts.select_next_specialist import select as select_next_specialist
+from scripts.run_starmie_expert_bootstrap import (
+    TARGETS,
+    _manifest_expanded_targets,
+    load_expanded_head_contract,
+)
+from scripts.select_next_specialist import (
+    select as select_next_specialist,
+    validate_corpus_source_contract,
+)
 
 
 SCHEMA = "poke_bot.next_specialist_prestage/v1"
@@ -58,12 +71,270 @@ def _atomic(path: Path, value: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _stable_receipt_identity(value: dict[str, Any]) -> str:
+    """Return the immutable identity of a pre-stage result.
+
+    Timer reruns may change only observation-time/cache telemetry. They must
+    not replace an already-ready receipt with the same checksum-bound inputs.
+    """
+
+    stable = copy.deepcopy(value)
+    stable.pop("created_at_utc", None)
+    cpu_pack = dict(stable.get("cpu_pack") or {})
+    cpu_pack.pop("cache_hit", None)
+    cpu_pack.pop("elapsed_sec", None)
+    stable["cpu_pack"] = cpu_pack
+    return _canonical_digest(stable)
+
+
+def _optional_path(value: Any) -> Path | None:
+    raw = str(value or "").strip()
+    return Path(raw).expanduser().resolve() if raw else None
+
+
+def _deck_guide_contract(
+    root: Path,
+    specialist_id: str,
+    *,
+    corpus_pointer: Path,
+    corpus_manifest: Path,
+) -> dict[str, Any]:
+    """Validate the successor's researched, specialist-bound guide contract."""
+    path = root / "config" / "deck_guides" / f"{specialist_id}.yaml"
+    if not path.is_file():
+        return {
+            "status": "missing",
+            "specialist_id": specialist_id,
+            "path": str(path),
+            "sha256": None,
+            "reason": "current_deck_guide_contract_missing",
+        }
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise RuntimeError("current-deck guide contract is not a mapping")
+    if (
+        raw.get("schema_version") != "poke_bot.current_deck_guide/v1"
+        or raw.get("specialist_id") != specialist_id
+        or not isinstance(raw.get("strategy_sources"), list)
+        or len(raw["strategy_sources"]) < 1
+        or any(
+            not str(row.get("url") or "").startswith("https://")
+            or not row.get("reviewed_at_utc")
+            for row in raw["strategy_sources"]
+            if isinstance(row, dict)
+        )
+    ):
+        raise RuntimeError("current-deck guide contract identity changed")
+    validation = dict(raw.get("validation") or {})
+    writeup = dict(raw.get("expert_writeup") or {})
+    writeup_path_raw = str(writeup.get("path") or "")
+    writeup_path = root / writeup_path_raw
+    writeup_exists = bool(writeup_path_raw and writeup_path.is_file())
+    writeup_text = (
+        writeup_path.read_text(encoding="utf-8") if writeup_exists else ""
+    )
+    writeup_words = len(writeup_text.split())
+    writeup_checksum = sha256(writeup_path) if writeup_exists else None
+    expected_writeup_checksum = str(writeup.get("sha256") or "")
+    writeup_ready = bool(
+        writeup_exists
+        and writeup.get("guide_identity") == specialist_id
+        and writeup.get("cites_same_strategy_source_set") is True
+        and writeup.get("maximum_words") == 10000
+        and writeup.get("word_count") == writeup_words
+        and 0 < writeup_words <= 10000
+        and expected_writeup_checksum == writeup_checksum
+    )
+    implementation_ready = bool(
+        validation.get("unit_tests_passed")
+        and validation.get("scorer_canary_passed")
+        and writeup_ready
+    )
+    declared_guide_rows = validation.get(
+        "guide_rows_in_filtered_expert_corpus"
+    )
+    manifest = _read(corpus_manifest)
+    manifest_totals = dict(manifest.get("totals") or {})
+    manifest_coverage = dict(manifest_totals.get("target_coverage") or {})
+    selected_guide_rows = manifest_coverage.get("guide_rows")
+    ready_path = corpus_pointer.parent / "CURRENT_DECK_GUIDE_CORPUS_READY.json"
+    ready = _read(ready_path) if ready_path.is_file() else {}
+    corpus_binding_ready = bool(
+        ready.get("schema") == "poke_bot.current_deck_guide_corpus_ready/v1"
+        and ready.get("status") == "ready"
+        and ready.get("specialist_id") == specialist_id
+        and ready.get("guide_version") == raw.get("guide_version")
+        and ready.get("manifest_sha256") == sha256(corpus_manifest)
+        and ready.get("protected_pointer_sha256") == sha256(corpus_pointer)
+        and int(ready.get("decisions") or 0)
+        == int(manifest_totals.get("decisions_kept") or 0)
+        and int(ready.get("guide_rows") or 0)
+        == int(selected_guide_rows or 0)
+        and int(selected_guide_rows or 0) > 0
+        and (
+            declared_guide_rows is None
+            or (
+                isinstance(declared_guide_rows, int)
+                and declared_guide_rows == int(selected_guide_rows)
+            )
+        )
+    )
+    targets_ready = bool(corpus_binding_ready)
+    return {
+        "status": "ready" if implementation_ready and targets_ready else "staged",
+        "specialist_id": specialist_id,
+        "path": str(path),
+        "sha256": sha256(path),
+        "guide_version": raw.get("guide_version"),
+        "teacher_module": raw.get("teacher_module"),
+        "strategy_source_count": len(raw["strategy_sources"]),
+        "expert_writeup": {
+            "path": str(writeup_path),
+            "sha256": writeup_checksum,
+            "word_count": writeup_words,
+            "maximum_words": 10000,
+            "ready": writeup_ready,
+        },
+        "implementation_ready": implementation_ready,
+        # The sealed corpus receipt and manifest are authoritative for the
+        # post-featurization count.  A researched guide contract may
+        # intentionally leave its pre-featurization estimate null; a concrete
+        # declared count, when present, must still match exactly.
+        "filtered_expert_corpus_guide_rows": (
+            int(selected_guide_rows)
+            if corpus_binding_ready
+            else declared_guide_rows
+        ),
+        "declared_filtered_expert_corpus_guide_rows": declared_guide_rows,
+        "selected_expert_corpus_guide_rows": selected_guide_rows,
+        "corpus_ready_receipt": str(ready_path),
+        "corpus_ready_receipt_sha256": (
+            sha256(ready_path) if ready_path.is_file() else None
+        ),
+        "corpus_binding_ready": corpus_binding_ready,
+        "targets_ready": targets_ready,
+        "reason": (
+            None
+            if implementation_ready and targets_ready
+            else (
+                "current_deck_guide_corpus_binding_not_ready"
+                if implementation_ready
+                else "current_deck_guide_implementation_not_validated"
+            )
+        ),
+    }
+
+
+def _active_runtime_tree(
+    runtime: dict[str, Any],
+    *,
+    active_id: str,
+) -> tuple[Path, Path]:
+    """Resolve the live matchup tree from the canonical specialist registry."""
+
+    registry_path = _path(runtime, "runtime_registry")
+    registry = _read(registry_path)
+    row = dict((registry.get("specialists") or {}).get(active_id) or {})
+    if row.get("status") != "ready":
+        raise RuntimeError("active specialist runtime row is not ready")
+    raw_tree = str(row.get("matchup_runtime_tree") or "").strip()
+    expected_digest = str(
+        row.get("matchup_runtime_tree_sha256") or ""
+    ).removeprefix("sha256:")
+    if not raw_tree or not expected_digest:
+        raise RuntimeError(
+            "active specialist runtime tree identity is incomplete"
+        )
+    tree_path = Path(raw_tree).expanduser().resolve()
+    if not tree_path.is_file():
+        raise RuntimeError("active specialist runtime tree is missing")
+    if sha256(tree_path).removeprefix("sha256:") != expected_digest:
+        raise RuntimeError("active specialist runtime tree checksum changed")
+    tree = _read(tree_path)
+    if (
+        tree.get("schema") != "poke_bot.public_matchup_decision_tree/v1"
+        or tree.get("runtime_enabled") is not True
+        or (tree.get("runtime_contract") or {}).get("schema")
+        != "poke_bot.public_matchup_tree_runtime_activation/v1"
+    ):
+        raise RuntimeError("active specialist runtime tree contract changed")
+    return tree_path, registry_path
+
+
+def _blocked_selection_receipt(
+    *,
+    output: Path,
+    contract_path: Path,
+    active_id: str,
+    completed_ids: set[str],
+    assets: dict[str, Any],
+    reason: str,
+    blocker: str = "protocol_valid_expert_corpus_not_ready",
+) -> dict[str, Any]:
+    receipt = {
+        "schema": SCHEMA,
+        "status": "blocked",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "contract": str(contract_path),
+        "contract_sha256": sha256(contract_path),
+        "active_specialist": active_id,
+        "completed_specialist_ids": sorted(completed_ids),
+        "selected_specialist": None,
+        "selection": None,
+        "selection_identity_sha256": None,
+        "expert_corpus": None,
+        "runtime_assets": {
+            "source": assets["source"],
+            "candidate_tree": (
+                str(assets["candidate_tree"])
+                if assets.get("candidate_tree") is not None
+                else None
+            ),
+            "candidate_audit": (
+                str(assets["candidate_audit"])
+                if assets.get("candidate_audit") is not None
+                else None
+            ),
+        },
+        "representative": None,
+        "cpu_pack": {
+            "status": "not_built",
+            "reason": blocker,
+        },
+        "boundary_only_steps": [
+            "freeze_and_register_passing_specialist",
+            "distill_and_validate_cumulative_core",
+            "run_exact_25_epoch_specialist_bootstrap",
+            "materialize_checksum_bound_s_plus_gate",
+            "atomically_update_selector_and_start_managed_service",
+        ],
+        "live_training_modified": False,
+        "blockers": [blocker],
+        "blocker_detail": reason,
+    }
+    _atomic(output, receipt)
+    return receipt
+
+
 def _representative(
     registry_path: Path,
     specialist_id: str,
+    *,
+    logical_aliases: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     registry = _read(registry_path)
-    row = dict((registry.get("decks") or {}).get(specialist_id) or {})
+    decks = dict(registry.get("decks") or {})
+    candidate_ids = [specialist_id]
+    candidate_ids.extend(
+        physical_id
+        for physical_id, logical_id in (logical_aliases or {}).items()
+        if logical_id == specialist_id
+    )
+    resolved_id = next(
+        (candidate_id for candidate_id in candidate_ids if candidate_id in decks),
+        specialist_id,
+    )
+    row = dict(decks.get(resolved_id) or {})
     cards = list(row.get("card_ids") or ())
     ready = (
         registry.get("schema") == "poke_bot.specialist_deck_representatives/v1"
@@ -74,6 +345,8 @@ def _representative(
         "ready": ready,
         "registry": str(registry_path),
         "registry_sha256": sha256(registry_path),
+        "logical_specialist_id": specialist_id,
+        "resolved_deck_id": resolved_id if ready else None,
         "card_count": len(cards),
         "cards_sha256": (
             _canonical_digest(sorted(cards)) if ready else None
@@ -87,6 +360,7 @@ def _resolve_representative(
     ladder_registry_path: Path,
     specialist_registry_path: Path,
     specialist_id: str,
+    logical_aliases: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     from poke_bot.ladder_deck_mix import (
         load_ladder_deck_mix,
@@ -99,10 +373,18 @@ def _resolve_representative(
         representatives = load_ladder_deck_representatives(
             ladder_registry_path
         )
+        candidate_ids = {
+            specialist_id,
+            *(
+                physical_id
+                for physical_id, logical_id in (logical_aliases or {}).items()
+                if logical_id == specialist_id
+            ),
+        }
         matches = [
             row
             for row in representatives.bind(mix)
-            if row.bucket.deck_id == specialist_id
+            if row.bucket.deck_id in candidate_ids
         ]
     except (OSError, RuntimeError, TypeError, ValueError):
         matches = []
@@ -113,11 +395,17 @@ def _resolve_representative(
             "catalog": "top_ladder",
             "registry": str(ladder_registry_path),
             "registry_sha256": sha256(ladder_registry_path),
+            "logical_specialist_id": specialist_id,
+            "resolved_deck_id": matches[0].bucket.deck_id,
             "card_count": len(cards),
             "cards_sha256": _canonical_digest(sorted(cards)),
             "reason": None,
         }
-    result = _representative(specialist_registry_path, specialist_id)
+    result = _representative(
+        specialist_registry_path,
+        specialist_id,
+        logical_aliases=logical_aliases,
+    )
     result["catalog"] = "specialist_fallback"
     return result
 
@@ -127,6 +415,9 @@ def _build_cpu_pack(
     corpus_identity: Any,
     core_family: Path,
     cpu_pack_root: Path,
+    pack_workers: int,
+    memory_reserve_gib: float,
+    disk_reserve_gib: float,
 ) -> dict[str, Any]:
     # The packed feature tensors depend on corpus/split/layout/vocabulary, not
     # on model weights. The current accepted core therefore supplies the exact
@@ -150,6 +441,9 @@ def _build_cpu_pack(
             seed=20260722,
             max_context=320,
             belief_card_vocab=vocab,
+            pack_workers=int(pack_workers),
+            pack_memory_reserve_gib=float(memory_reserve_gib),
+            pack_disk_reserve_gib=float(disk_reserve_gib),
         )
         info = dict(cache.pack_info or {})
     finally:
@@ -165,6 +459,9 @@ def _build_cpu_pack(
         "manifest_sha256": sha256(manifest),
         "payload_sha256": sha256(payload_path),
         "belief_card_vocab": int(vocab),
+        "requested_workers": int(pack_workers),
+        "memory_reserve_gib": float(memory_reserve_gib),
+        "disk_reserve_gib": float(disk_reserve_gib),
     }
 
 
@@ -194,47 +491,98 @@ def prepare(
         if row.get("frozen") is True
     }
     promotion_raw = str(runtime.get("future_assets_receipt") or "").strip()
-    assets = resolve_specialist_assets(
-        default_corpus_root=_path(selection_config, "corpus_root"),
-        default_candidate_tree=_path(runtime, "inactive_tree_candidate"),
-        default_candidate_audit=_path(runtime, "candidate_audit"),
-        promotion_receipt=(
-            Path(promotion_raw).expanduser().resolve()
-            if promotion_raw
-            else None
-        ),
+    promotion_receipt = (
+        Path(promotion_raw).expanduser().resolve()
+        if promotion_raw
+        else None
     )
-    audit_path = Path(assets["candidate_audit"])
-    tree_path = Path(assets["candidate_tree"])
-    audit = _read(audit_path)
-    if (
-        audit.get("schema")
-        != "poke_bot.public_matchup_tree_candidate_audit/v1"
-        or audit.get("runtime_enabled") is not False
-        or audit.get("artifact_sha256") != sha256(tree_path)
-        or float(audit.get("minimum_precision") or 0.0) != 0.93
-        or int(audit.get("minimum_weighted_support") or 0) != 10_000
-    ):
-        raise RuntimeError("pre-stage runtime tree candidate audit changed")
-    routable_ids = {
-        str(value) for value in audit.get("accepted_specialist_ids") or ()
-    }
-    selection = select_next_specialist(
-        state_path=_path(selection_config, "state"),
-        corpus_root=Path(assets["corpus_root"]),
-        minimum_decisions=int(selection_config["minimum_decisions"]),
-        minimum_decisions_by_specialist=dict(
-            selection_config.get("minimum_decisions_by_specialist", {})
-        ),
-        strict_priority_prefix=list(
-            selection_config.get("strict_priority_prefix", [])
-        ),
-        completed_ids=completed_ids,
-        active_id=active_id,
-        routable_ids=routable_ids,
-    )
+    default_tree = _optional_path(runtime.get("inactive_tree_candidate"))
+    default_audit = _optional_path(runtime.get("candidate_audit"))
+    if default_tree is None or default_audit is None:
+        if promotion_receipt is not None:
+            raise RuntimeError(
+                "future asset promotion requires default candidate assets"
+            )
+        tree_path, registry_path = _active_runtime_tree(
+            runtime,
+            active_id=active_id,
+        )
+        audit_path = None
+        assets = {
+            "source": "current_runtime_tree",
+            "corpus_root": _path(selection_config, "corpus_root"),
+            "candidate_tree": tree_path,
+            "candidate_audit": None,
+            "promotion_receipt": None,
+            "runtime_registry": registry_path,
+        }
+        routable_ids = {
+            str(value)
+            for value in (
+                _read(tree_path).get("runtime_contract") or {}
+            ).get("accepted_archetype_ids", ())
+        }
+    else:
+        assets = resolve_specialist_assets(
+            default_corpus_root=_path(selection_config, "corpus_root"),
+            default_candidate_tree=default_tree,
+            default_candidate_audit=default_audit,
+            promotion_receipt=promotion_receipt,
+            promotion_scope=str(
+                runtime.get("future_assets_scope") or "full_bundle"
+            ),
+        )
+        audit_path = Path(assets["candidate_audit"])
+        tree_path = Path(assets["candidate_tree"])
+        audit = _read(audit_path)
+        if (
+            audit.get("schema")
+            != "poke_bot.public_matchup_tree_candidate_audit/v1"
+            or audit.get("runtime_enabled") is not False
+            or audit.get("artifact_sha256") != sha256(tree_path)
+            or float(audit.get("minimum_precision") or 0.0) != 0.93
+            or int(audit.get("minimum_weighted_support") or 0) != 10_000
+        ):
+            raise RuntimeError("pre-stage runtime tree candidate audit changed")
+        routable_ids = {
+            str(value) for value in audit.get("accepted_specialist_ids") or ()
+        }
+    try:
+        selection = select_next_specialist(
+            state_path=_path(selection_config, "state"),
+            corpus_root=Path(assets["corpus_root"]),
+            minimum_decisions=int(selection_config["minimum_decisions"]),
+            minimum_decisions_by_specialist=dict(
+                selection_config.get("minimum_decisions_by_specialist", {})
+            ),
+            strict_priority_prefix=list(
+                selection_config.get("strict_priority_prefix", [])
+            ),
+            completed_ids=completed_ids,
+            active_id=active_id,
+            routable_ids=routable_ids,
+        )
+    except RuntimeError as exc:
+        if str(exc) != (
+            "no unfinished specialist currently has a protocol-valid corpus"
+        ):
+            raise
+        return _blocked_selection_receipt(
+            output=output,
+            contract_path=contract_path,
+            active_id=active_id,
+            completed_ids=completed_ids,
+            assets=assets,
+            reason=str(exc),
+        )
     selected = dict(selection["selected"])
     specialist_id = str(selected["specialist_id"])
+    source_contract = validate_corpus_source_contract(
+        Path(str(selected["pointer"])),
+        specialist_id=specialist_id,
+    )
+    if source_contract != selected.get("source_contract"):
+        raise RuntimeError("selected expert corpus source identity changed")
     required_targets = tuple(
         str(value)
         for value in prestage.get("required_target_coverage", TARGETS)
@@ -248,10 +596,106 @@ def prepare(
         required_max_context=320,
         required_target_coverage=required_targets,
     )
+    expanded_targets = None
+    expanded_identity = None
+    expanded_config = (
+        (contract.get("training") or {}).get("expanded_heads")
+        if isinstance(contract.get("training"), dict)
+        else None
+    )
+    if isinstance(expanded_config, dict):
+        _expanded_raw, expanded_identity = load_expanded_head_contract(
+            contract_path.parents[1] / "config/rl_protocol.yaml"
+        )
+        try:
+            expanded_targets = _manifest_expanded_targets(
+                Path(identity.path),
+                decisions=int(identity.decisions),
+            )
+        except RuntimeError as exc:
+            return _blocked_selection_receipt(
+                output=output,
+                contract_path=contract_path,
+                active_id=active_id,
+                completed_ids=completed_ids,
+                assets=assets,
+                reason=str(exc),
+                blocker="expanded_strategic_corpus_not_ready",
+            )
+        if (
+            expanded_config.get("architecture_schema")
+            != expanded_identity["architecture_schema"]
+            or expanded_config.get("target_schema")
+            != expanded_identity["target_schema"]
+            or prestage.get("required_expanded_target_schema")
+            != expanded_identity["target_schema"]
+            or prestage.get("required_expanded_target_digest")
+            != expanded_identity["target_schema_digest"]
+        ):
+            raise RuntimeError(
+                "pre-stage expanded-head contract changed"
+            )
+    matchup_v6 = dict(runtime.get("matchup_v6") or {})
+    roster_raw = str(matchup_v6.get("registry") or "").strip()
+    logical_aliases = (
+        {
+            str(physical): str(logical)
+            for physical, logical in dict(
+                _read(Path(roster_raw).expanduser().resolve()).get(
+                    "logical_aliases"
+                )
+                or {}
+            ).items()
+        }
+        if roster_raw
+        else {}
+    )
     representative = _resolve_representative(
         ladder_registry_path=_path(prestage, "ladder_representatives"),
         specialist_registry_path=_path(prestage, "representatives"),
         specialist_id=specialist_id,
+        logical_aliases=logical_aliases,
+    )
+    terminal_preflight_input = {
+        "schema": SCHEMA,
+        "selected_specialist": specialist_id,
+        "runtime_assets": {
+            "candidate_tree": str(tree_path),
+            "candidate_tree_sha256": sha256(tree_path),
+            "selected_route_accepted": specialist_id in routable_ids,
+        },
+        "representative": representative,
+    }
+    try:
+        terminal_command = build_prestage_command(
+            _read(_path(runtime, "runtime_registry")),
+            terminal_preflight_input,
+            contract,
+        )
+        terminal_preflight = {
+            "status": "ready",
+            "specialist_id": specialist_id,
+            "run_name": (
+                f"pure_rl_{specialist_id}_temporal1_8k_v1_20260723"
+            ),
+            "terminal_gate_marker": (
+                f"SPECIALIST_GATE_PASSED.{specialist_id}-splus-v1"
+            ),
+            "command_sha256": _canonical_digest(terminal_command),
+            "validated_before_bootstrap": True,
+        }
+    except (OSError, RuntimeError, ValueError) as exc:
+        terminal_preflight = {
+            "status": "blocked",
+            "specialist_id": specialist_id,
+            "reason": str(exc),
+            "validated_before_bootstrap": False,
+        }
+    deck_guide = _deck_guide_contract(
+        contract_path.parents[1],
+        specialist_id,
+        corpus_pointer=Path(str(selected["pointer"])),
+        corpus_manifest=Path(identity.path),
     )
     cpu_pack_root = (
         _path(prestage, "cpu_pack_root") / specialist_id
@@ -261,17 +705,37 @@ def prepare(
         "root": str(cpu_pack_root),
         "reason": "run_with_build_cpu_pack_on_staging_host",
     }
-    if build_cpu_pack:
+    if build_cpu_pack and deck_guide["status"] == "ready":
         cpu_pack = _build_cpu_pack(
             corpus_identity=identity,
             core_family=_path(dict(contract["shared_core"]), "family"),
             cpu_pack_root=cpu_pack_root,
+            pack_workers=int(prestage.get("cpu_pack_workers", 1)),
+            memory_reserve_gib=float(
+                prestage.get("cpu_pack_memory_reserve_gib", 12.0)
+            ),
+            disk_reserve_gib=float(
+                prestage.get("cpu_pack_disk_reserve_gib", 16.0)
+            ),
         )
+    elif build_cpu_pack:
+        cpu_pack = {
+            "status": "deferred",
+            "root": str(cpu_pack_root),
+            "reason": "current_deck_guide_must_be_ready_before_cpu_pack",
+        }
     blockers = []
     if not representative["ready"]:
         blockers.append(str(representative["reason"]))
-    if cpu_pack.get("status") != "ready":
+    if (
+        cpu_pack.get("status") != "ready"
+        and deck_guide["status"] == "ready"
+    ):
         blockers.append("expert_cpu_pack_not_built")
+    if deck_guide["status"] != "ready":
+        blockers.append(str(deck_guide["reason"]))
+    if terminal_preflight["status"] != "ready":
+        blockers.append("terminal_handler_preflight_failed")
     receipt = {
         "schema": SCHEMA,
         "status": "ready" if not blockers else "blocked",
@@ -287,17 +751,38 @@ def prepare(
             **identity.as_dict(),
             "pointer": str(selected["pointer"]),
             "pointer_sha256": sha256(Path(str(selected["pointer"]))),
+            "source_contract": source_contract,
             "required_target_coverage": list(required_targets),
+            **(
+                {
+                    "expanded_strategic_targets": expanded_targets,
+                    "expanded_target_schema_digest": (
+                        expanded_identity["target_schema_digest"]
+                    ),
+                    "expanded_schedule_digest": (
+                        expanded_identity["schedule_digest"]
+                    ),
+                }
+                if expanded_targets is not None
+                and expanded_identity is not None
+                else {}
+            ),
         },
         "runtime_assets": {
             "source": assets["source"],
             "candidate_tree": str(tree_path),
             "candidate_tree_sha256": sha256(tree_path),
-            "candidate_audit": str(audit_path),
-            "candidate_audit_sha256": sha256(audit_path),
+            "candidate_audit": (
+                str(audit_path) if audit_path is not None else None
+            ),
+            "candidate_audit_sha256": (
+                sha256(audit_path) if audit_path is not None else None
+            ),
             "selected_route_accepted": specialist_id in routable_ids,
         },
+        "terminal_preflight": terminal_preflight,
         "representative": representative,
+        "current_deck_guide": deck_guide,
         "cpu_pack": cpu_pack,
         "boundary_only_steps": [
             "freeze_and_register_passing_specialist",
@@ -309,6 +794,15 @@ def prepare(
         "live_training_modified": False,
         "blockers": blockers,
     }
+    if output.is_file() and receipt["status"] == "ready":
+        existing = _read(output)
+        if (
+            existing.get("schema") == SCHEMA
+            and existing.get("status") == "ready"
+            and _stable_receipt_identity(existing)
+            == _stable_receipt_identity(receipt)
+        ):
+            return existing
     _atomic(output, receipt)
     return receipt
 

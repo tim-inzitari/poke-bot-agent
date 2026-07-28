@@ -39,6 +39,77 @@ def default_registry() -> Path:
     return root / "ops/specialist_runtime_registry_v1.json"
 
 
+def build_prestage_command(
+    registry: dict[str, Any],
+    receipt: dict[str, Any],
+    cycle_contract: dict[str, Any],
+) -> list[str]:
+    """Validate the deterministic terminal path before bootstrap exists."""
+
+    specialist_id = str(receipt.get("selected_specialist") or "").strip()
+    assets = dict(receipt.get("runtime_assets") or {})
+    representative = dict(receipt.get("representative") or {})
+    runtime = dict(cycle_contract.get("runtime") or {})
+    tree = Path(str(assets.get("candidate_tree") or "")).expanduser().resolve()
+    expected_tree_digest = str(
+        assets.get("candidate_tree_sha256") or ""
+    ).removeprefix("sha256:")
+    actual_tree_digest = (
+        hashlib.sha256(tree.read_bytes()).hexdigest()
+        if tree.is_file()
+        else ""
+    )
+    handoff_service = str(runtime.get("handoff_service") or "").strip()
+    if (
+        receipt.get("schema") != "poke_bot.next_specialist_prestage/v1"
+        or not specialist_id
+        or representative.get("ready") is not True
+        or representative.get("logical_specialist_id") != specialist_id
+        or assets.get("selected_route_accepted") is not True
+        or not expected_tree_digest
+        or actual_tree_digest != expected_tree_digest
+        or not handoff_service.startswith("pokebot-")
+        or not handoff_service.endswith(".service")
+    ):
+        raise RuntimeError("prestage terminal-handler inputs are incomplete")
+    candidate = {
+        "status": "ready",
+        "run_name": (
+            f"pure_rl_{specialist_id}_temporal1_8k_v1_20260723"
+        ),
+        "terminal_gate_marker": (
+            f"SPECIALIST_GATE_PASSED.{specialist_id}-splus-v1"
+        ),
+        "matchup_runtime_tree": str(tree),
+        "pass_handler": {
+            "family": f"{specialist_id}-protocol-gate-pass-v1",
+            "display_name": (
+                f"{specialist_id} Exact Protocol Gate Champion"
+            ),
+            "submission_root": (
+                "/home/inzi/poke-bot-agent/outputs/submissions/"
+                f"{specialist_id}-protocol-gate-pass-v1"
+            ),
+            "state": (
+                "/home/inzi/poke-bot-agent/outputs/state/"
+                f"{specialist_id}-passed-gate-handler-v1.json"
+            ),
+            "lock": (
+                "/home/inzi/.local/state/pokebot/"
+                f"{specialist_id}-passed-gate-handler-v1.lock"
+            ),
+            "handoff_service": handoff_service,
+        },
+    }
+    candidate_registry = dict(registry)
+    specialists = dict(candidate_registry.get("specialists") or {})
+    if specialist_id in specialists and specialists[specialist_id] != candidate:
+        raise RuntimeError("prestage candidate conflicts with runtime registry")
+    specialists[specialist_id] = candidate
+    candidate_registry["specialists"] = specialists
+    return build_command(candidate_registry, specialist_id)
+
+
 def _required_text(row: dict[str, Any], field: str) -> str:
     value = str(row.get(field) or "").strip()
     if not value:

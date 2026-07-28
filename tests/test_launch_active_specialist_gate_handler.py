@@ -12,6 +12,7 @@ import pytest
 from scripts.launch_active_specialist_gate_handler import (
     ROOT,
     build_command,
+    build_prestage_command,
     default_registry,
 )
 
@@ -45,6 +46,75 @@ def test_default_registry_follows_canonical_runtime_root(
     monkeypatch.delenv("POKEBOT_SPECIALIST_RUNTIME_ROOT")
     assert default_registry() == (
         ROOT / "ops/specialist_runtime_registry_v1.json"
+    )
+
+
+def test_prestage_command_validates_terminal_path_before_bootstrap(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    (runtime / "ops").mkdir(parents=True)
+    (runtime / "scripts").mkdir()
+    (runtime / "data/training_mixes").mkdir(parents=True)
+    for relative in (
+        "scripts/handle.py",
+        "ops/gate.json",
+        "data/training_mixes/representatives.json",
+    ):
+        (runtime / relative).write_text("{}", encoding="utf-8")
+    _write_submission_contract_inputs(runtime)
+    _write_representatives(runtime)
+    tree = tmp_path / "tree.json"
+    tree.write_text("{}", encoding="utf-8")
+    registry = {
+        "runtime_root": str(runtime),
+        "python": "/usr/bin/python3",
+        "active_gate_contract": "ops/gate.json",
+        "minimum_terminal_iteration": 5,
+        "iteration_ceiling": 15,
+        "pass_handler": {
+            "launcher": "scripts/handle.py",
+            "registry_root": "/models",
+            "representatives": "data/training_mixes/representatives.json",
+            "competition": "competition",
+            "submission_count": 1,
+            "submission_mode": "queue_and_continue",
+            "submission_queue": "/state/queue.json",
+            "kaggle": "/bin/kaggle",
+            "authorization": "/config/authorization.json",
+            "submission_receipts": "/state/receipts",
+            "training_service": "trainer.service",
+            "continue_drop_in_source": "ops/gate.json",
+            "continue_drop_in_target": "/config/unused.conf",
+        },
+        "specialists": {},
+    }
+    receipt = {
+        "schema": "poke_bot.next_specialist_prestage/v1",
+        "selected_specialist": "example",
+        "representative": {
+            "ready": True,
+            "logical_specialist_id": "example",
+        },
+        "runtime_assets": {
+            "candidate_tree": str(tree),
+            "candidate_tree_sha256": (
+                "sha256:" + hashlib.sha256(tree.read_bytes()).hexdigest()
+            ),
+            "selected_route_accepted": True,
+        },
+    }
+    command = build_prestage_command(
+        registry,
+        receipt,
+        {"runtime": {"handoff_service": "pokebot-next.service"}},
+    )
+    assert command[command.index("--archetype") + 1] == "example"
+    assert command[command.index("--run-dir") + 1].endswith(
+        "/pure_rl_example_temporal1_8k_v1_20260723"
+    )
+    assert command[command.index("--handoff-service") + 1] == (
+        "pokebot-next.service"
     )
 
 

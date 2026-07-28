@@ -4,7 +4,7 @@ After=pokebot-pure-rl-trevenant-staged.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/specialist-handoff-current
 ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/prestage_next_specialist.py --contract ops/specialist_cycle_handoff_v1.json --build-cpu-pack
 Nice=15
 IOSchedulingClass=idle
@@ -13,4 +13,3 @@ CPUQuota=400%
 MemoryHigh=16G
 MemoryMax=28G
 NoNewPrivileges=yes
-

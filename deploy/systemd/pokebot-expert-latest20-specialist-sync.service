@@ -1,0 +1,20 @@
+[Unit]
+Description=Promote checksum-ready latest-20 specialist corpora from Elmo
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+OnSuccess=pokebot-next-specialist-prestage.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/sync_latest20_specialist_corpora_from_elmo.py
+TimeoutStartSec=36h
+TimeoutStopSec=30
+KillMode=control-group
+MemoryHigh=2G
+MemoryMax=4G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/expert-latest20-specialist-sync.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/expert-latest20-specialist-sync.log

@@ -28,13 +28,34 @@ ALAKAZAM_BOOTSTRAP_SERVICE = "pokebot-pure-rl-alakazam-bootstrap.service"
 ALAKAZAM_SPECIALIST_SERVICE = "pokebot-pure-rl-alakazam.service"
 STRONG_PUBLIC_GATE_SERVICE = "pokebot-alakazam-strong-public-gate.service"
 ROOT = Path("/home/inzi/poke-bot-agent")
+
+
+def _selected_specialist_runtime_root(
+    selector: Path = Path("/home/inzi/.config/pokebot/specialist_runtime.env"),
+    fallback: Path = Path(
+        "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current"
+    ),
+) -> Path:
+    """Resolve the same runtime root as the managed trainer selector."""
+
+    try:
+        for raw_line in selector.read_text(encoding="utf-8").splitlines():
+            key, separator, value = raw_line.partition("=")
+            if (
+                separator
+                and key.strip() == "POKEBOT_SPECIALIST_RUNTIME_ROOT"
+                and value.strip()
+            ):
+                return Path(value.strip()).expanduser()
+    except OSError:
+        pass
+    return fallback
+
+
 SPECIALIST_RUNTIME_ROOT = Path(
     os.environ.get(
         "POKEBOT_SPECIALIST_RUNTIME_ROOT",
-        (
-            "/home/inzi/poke-bot-agent-deployments/"
-            "pure-rl-resident-v41-specialist-matchup-runtime"
-        ),
+        str(_selected_specialist_runtime_root()),
     )
 )
 BOOTSTRAP_LOG = ROOT / "outputs/logs/bootstrap.log"
@@ -79,7 +100,12 @@ RESEARCH_CONTROL_REGISTRY = ROOT / "ops/research_control_registry_v1.json"
 RESEARCH_CONTROL_REGISTRY_LATEST = (
     ROOT / "outputs/state/research_control_registry_latest.json"
 )
-SPECIALIST_PROTOCOL_STATE = SPECIALIST_RUNTIME_ROOT / "state/specialists.yaml"
+SPECIALIST_PROTOCOL_STATE = Path(
+    os.environ.get(
+        "POKEBOT_SPECIALIST_PROTOCOL_STATE",
+        str(SPECIALIST_RUNTIME_ROOT / "state/specialists.yaml"),
+    )
+)
 NEXT_SPECIALIST_PRESTAGE_STATE = (
     ROOT / "outputs/state/next-specialist-prestage-v1.json"
 )
@@ -87,6 +113,28 @@ POPULATION_ROUND_ROBIN_STATE = (
     ROOT / "outputs/state/population-round-robin-state-v1.json"
 )
 POPULATION_ROUND_ROBIN_SERVICE = "pokebot-population-round-robin.service"
+LATEST20_SPECIALIST_SYNC_SERVICE = (
+    "pokebot-expert-latest20-specialist-sync.service"
+)
+LATEST20_SPECIALIST_CURRENT = (
+    ROOT / "data/bootstrap/current-specialist-latest20"
+)
+LATEST20_SPECIALIST_SYNC_STATE = (
+    ROOT / "outputs/state/expert-latest20-specialist-sync.json"
+)
+V6_STRATEGIC_SPECIALIST_SYNC_SERVICE = (
+    "pokebot-v6-strategic-corpus-sync.service"
+)
+V6_STRATEGIC_SPECIALIST_CURRENT = (
+    ROOT / "data/bootstrap/current-specialist-latest20-v6-strategic"
+)
+V6_STRATEGIC_SPECIALIST_SYNC_STATE = (
+    ROOT / "outputs/state/expert-latest20-v6-strategic-sync.json"
+)
+V6_STRATEGIC_TARGET_SCHEMA = "poke_bot.expanded_strategic_targets/v2"
+V6_STRATEGIC_TARGET_DIGEST = (
+    "sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f"
+)
 SPECIALIST_RUNTIME_REGISTRY = (
     SPECIALIST_RUNTIME_ROOT / "ops/specialist_runtime_registry_v1.json"
 )
@@ -117,7 +165,10 @@ POST_STARMIE_HANDOFF_LOG = (
 )
 SPECIALIST_CYCLE_HANDOFF_SERVICE = "pokebot-specialist-cycle-handoff.service"
 SPECIALIST_CYCLE_HANDOFF_LOG = (
-    ROOT / "outputs/logs/specialist-cycle-handoff.log"
+    ROOT / "outputs/logs/specialist-transition-graph.log"
+)
+SPECIALIST_TRANSITION_GRAPH_STATE = (
+    ROOT / "outputs/state/specialist-transition-graph.json"
 )
 STARMIE_PASSED_GATE_HANDLER_STATE = (
     ROOT / "outputs/state/starmie-passed-gate-handler-v1.json"
@@ -135,6 +186,14 @@ EXPERT20_ASSEMBLED_MANIFEST = (
     EXPERT20_FEATURE_DIR / "all-recognized-latest20.manifest.json"
 )
 EXPERT20_ALAKAZAM_CORPUS = EXPERT20_ROOT / "alakazam/PROTECTED_EXPERT_CORPUS.json"
+EXPERT20_ELMO_DAILY_STATUS_GLOB = (
+    "/mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/"
+    "daily/roster18-v5/status/*.json"
+)
+EXPERT20_V6_STRATEGIC_ELMO_DAILY_STATUS_GLOB = (
+    "/mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/"
+    "daily/roster18-v6-strategic/status/*.json"
+)
 STRONG_PUBLIC_GATE_PROGRESS = (
     ROOT / "outputs/logs/alakazam_strong_public_gate.progress.status"
 )
@@ -156,6 +215,43 @@ FROZEN_SPECIALIST_DISPLAY_NAMES = {
     "lucario": "Mega Lucario ex",
     "dragapult-dusknoir": "Dragapult Dusknoir",
 }
+EXPANDED_HEAD_CONTRACT_SCHEMA = "poke_bot.expanded_head_training/v1"
+EXPANDED_HEAD_MODULES = {
+    "action_q": "action_q_head",
+    "action_type": "action_type_head",
+    "action_target": "action_target_head",
+    "action_resource": "action_resource_head",
+    "action_utility": "action_utility_head",
+    "tactical_outcome": "tactical_outcome_head",
+    "opponent_response": "opponent_response_head",
+    "resource_forecast": "resource_forecast_head",
+    "game_phase": "game_phase_head",
+    "outcome_distribution": "outcome_distribution_head",
+    "remaining_turns": "remaining_turns_head",
+}
+EXPANDED_HEAD_IDS_BY_MODULE = {
+    module: head_id for head_id, module in EXPANDED_HEAD_MODULES.items()
+}
+DECISION_FUSION_SCHEMA = "poke_bot.causal_decision_fusion/v1"
+DECISION_FUSION_REQUIRED_HEADS = (
+    "value",
+    "archetype",
+    "opponent_hand",
+    "opponent_remainder",
+    "lethal_threat",
+    "prize_race",
+    "action_q",
+    "action_type",
+    "action_target",
+    "action_resource",
+    "action_utility",
+    "tactical_outcomes",
+    "opponent_response",
+    "resource_forecast",
+    "game_phase",
+    "outcome_distribution",
+    "remaining_turns",
+)
 
 
 def reconcile_frozen_specialist_label(row: dict[str, Any]) -> dict[str, Any]:
@@ -234,6 +330,565 @@ def _file_sha256_matches(path: Path, expected: object) -> bool:
     return actual.removeprefix("sha256:") == str(expected or "").removeprefix(
         "sha256:"
     )
+
+
+def _expanded_head_id(value: object) -> str | None:
+    """Normalize checkpoint-contract names without guessing unknown modules."""
+
+    raw = str(value or "").strip()
+    if raw in EXPANDED_HEAD_MODULES:
+        return raw
+    return EXPANDED_HEAD_IDS_BY_MODULE.get(raw)
+
+
+def _expanded_head_set(value: object) -> tuple[set[str], set[str]]:
+    """Return recognized and unknown head identifiers from a contract field."""
+
+    if isinstance(value, dict):
+        raw_values = [
+            key
+            for key, enabled in value.items()
+            if enabled is not False and enabled is not None
+        ]
+    elif isinstance(value, (list, tuple, set)):
+        raw_values = list(value)
+    elif value in (None, ""):
+        raw_values = []
+    else:
+        raw_values = [value]
+    recognized: set[str] = set()
+    unknown: set[str] = set()
+    for raw in raw_values:
+        head_id = _expanded_head_id(raw)
+        if head_id is None:
+            unknown.add(str(raw))
+        else:
+            recognized.add(head_id)
+    return recognized, unknown
+
+
+def _head_number(
+    sources: list[dict[str, Any]],
+    head_id: str,
+    *fields: str,
+) -> float | None:
+    """Read one per-head metric from nested or flat receipt mappings."""
+
+    module = EXPANDED_HEAD_MODULES[head_id]
+    aliases = (head_id, module)
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        for field in fields:
+            number = as_float(source.get(field))
+            if number is not None:
+                return number
+        for alias in aliases:
+            nested = source.get(alias)
+            if isinstance(nested, dict):
+                for field in fields:
+                    number = as_float(nested.get(field))
+                    if number is not None:
+                        return number
+            elif fields:
+                number = as_float(nested)
+                if number is not None:
+                    return number
+        for alias in aliases:
+            for field in fields:
+                for key in (f"{alias}_{field}", f"{field}_{alias}"):
+                    number = as_float(source.get(key))
+                    if number is not None:
+                        return number
+    return None
+
+
+def _expanded_head_checkpoint_contract(
+    state_dict: dict[str, Any],
+    extra: dict[str, Any],
+) -> dict[str, Any]:
+    """Audit expanded-head metadata against the exact checkpoint tensors.
+
+    Absence is a valid legacy-V5 state. Once any expanded-head tensor or
+    metadata exists, the contract becomes mandatory and every declaration is
+    checked fail-closed.
+    """
+
+    tensor_inventory: dict[str, dict[str, Any]] = {}
+    for head_id, module in EXPANDED_HEAD_MODULES.items():
+        tensors = {
+            str(key): value
+            for key, value in state_dict.items()
+            if str(key).startswith(module + ".") and hasattr(value, "numel")
+        }
+        if not tensors:
+            continue
+        tensor_inventory[head_id] = {
+            "module": module,
+            "tensor_count": len(tensors),
+            "parameter_count": sum(int(value.numel()) for value in tensors.values()),
+            "tensor_shapes": {
+                key: list(getattr(value, "shape", ())) for key, value in tensors.items()
+            },
+        }
+    actual = set(tensor_inventory)
+    raw = extra.get("expanded_head_training")
+    contract = dict(raw) if isinstance(raw, dict) else {}
+    if not contract:
+        return {
+            "schema": EXPANDED_HEAD_CONTRACT_SCHEMA,
+            "available": False,
+            "verified": not actual,
+            "legacy_v5": not actual,
+            "reason": (
+                "legacy checkpoint has no expanded strategic heads"
+                if not actual
+                else "expanded-head tensors exist without required metadata"
+            ),
+            "actual_tensor_heads": sorted(actual),
+            "heads": [
+                {
+                    "id": head_id,
+                    **tensor_inventory[head_id],
+                    "present": True,
+                    "trained": False,
+                    "gradient_enabled": False,
+                    "runtime_enabled": False,
+                    "contract_valid": False,
+                }
+                for head_id in sorted(actual)
+            ],
+        }
+
+    declared_value = contract.get(
+        "architecture_present_heads",
+        contract.get("present_heads"),
+    )
+    if declared_value is None and isinstance(contract.get("heads"), dict):
+        declared_value = {
+            name: row.get("present", True) if isinstance(row, dict) else True
+            for name, row in dict(contract["heads"]).items()
+        }
+    declared, unknown_declared = _expanded_head_set(declared_value)
+    trained, unknown_trained = _expanded_head_set(contract.get("trained_heads"))
+    gradient, unknown_gradient = _expanded_head_set(
+        contract.get("gradient_enabled_heads")
+    )
+    runtime, unknown_runtime = _expanded_head_set(
+        contract.get("runtime_enabled_heads")
+    )
+    head_rows = dict(contract.get("heads") or {})
+    unknown_head_rows: set[str] = set()
+    for raw_name, row in head_rows.items():
+        if not isinstance(row, dict):
+            continue
+        head_id = _expanded_head_id(raw_name)
+        if head_id is None:
+            unknown_head_rows.add(str(raw_name))
+            continue
+        if row.get("trained") is True:
+            trained.add(head_id)
+        if row.get("gradient_enabled") is True:
+            gradient.add(head_id)
+        if row.get("runtime_enabled") is True:
+            runtime.add(head_id)
+
+    missing_tensors = declared - actual
+    undeclared_tensors = actual - declared
+    invalid_subsets = {
+        "trained_without_tensor": sorted(trained - actual),
+        "gradient_without_tensor": sorted(gradient - actual),
+        "runtime_without_tensor": sorted(runtime - actual),
+    }
+    unknown = sorted(
+        unknown_declared
+        | unknown_trained
+        | unknown_gradient
+        | unknown_runtime
+        | unknown_head_rows
+    )
+    schema_valid = contract.get("schema") == EXPANDED_HEAD_CONTRACT_SCHEMA
+    declaration_present = declared_value is not None
+    verified = bool(
+        schema_valid
+        and declaration_present
+        and not missing_tensors
+        and not undeclared_tensors
+        and not unknown
+        and not any(invalid_subsets.values())
+    )
+    failures: list[str] = []
+    if not schema_valid:
+        failures.append("unsupported expanded-head contract schema")
+    if not declaration_present:
+        failures.append("architecture-present head declaration is absent")
+    if missing_tensors:
+        failures.append("declared heads lack checkpoint tensors")
+    if undeclared_tensors:
+        failures.append("checkpoint tensors are absent from head declaration")
+    if unknown:
+        failures.append("contract names unknown expanded heads")
+    if any(invalid_subsets.values()):
+        failures.append("trained/gradient/runtime sets are not tensor-backed")
+
+    loss_weights = dict(contract.get("loss_weights") or {})
+    train_metrics = dict(contract.get("train_metrics") or {})
+    validation_metrics = dict(contract.get("validation_metrics") or {})
+    coverage_metrics = dict(contract.get("coverage") or {})
+    result_heads: list[dict[str, Any]] = []
+    for head_id in sorted(actual | declared):
+        module = EXPANDED_HEAD_MODULES[head_id]
+        raw_row = head_rows.get(head_id, head_rows.get(module, {}))
+        row = dict(raw_row) if isinstance(raw_row, dict) else {}
+        labeled_rows = _head_number(
+            [row, coverage_metrics],
+            head_id,
+            "labeled_rows",
+            "label_rows",
+            "rows",
+        )
+        masked_rows = _head_number(
+            [row, coverage_metrics],
+            head_id,
+            "masked_rows",
+            "mask_rows",
+        )
+        total_rows = _head_number(
+            [row, coverage_metrics],
+            head_id,
+            "total_rows",
+        )
+        if total_rows is None and labeled_rows is not None and masked_rows is not None:
+            total_rows = labeled_rows + masked_rows
+        coverage = _head_number(
+            [row, coverage_metrics],
+            head_id,
+            "coverage",
+            "coverage_fraction",
+        )
+        if coverage is None and labeled_rows is not None and total_rows:
+            coverage = labeled_rows / total_rows
+        inventory = tensor_inventory.get(
+            head_id,
+            {
+                "module": module,
+                "tensor_count": 0,
+                "parameter_count": 0,
+                "tensor_shapes": {},
+            },
+        )
+        result_heads.append(
+            {
+                "id": head_id,
+                **inventory,
+                "present": head_id in actual,
+                "declared_present": head_id in declared,
+                "trained": head_id in trained,
+                "gradient_enabled": head_id in gradient,
+                "runtime_enabled": head_id in runtime,
+                "loss_weight": _head_number(
+                    [row, loss_weights], head_id, "weight", "loss_weight"
+                )
+                or 0.0,
+                "train_loss": _head_number(
+                    [row, train_metrics], head_id, "loss", "train_loss"
+                ),
+                "validation_loss": _head_number(
+                    [row, validation_metrics], head_id, "loss", "validation_loss"
+                ),
+                "labeled_rows": (
+                    int(labeled_rows) if labeled_rows is not None else None
+                ),
+                "masked_rows": (
+                    int(masked_rows) if masked_rows is not None else None
+                ),
+                "total_rows": int(total_rows) if total_rows is not None else None,
+                "coverage": coverage,
+                "contract_valid": verified,
+            }
+        )
+    return {
+        "schema": EXPANDED_HEAD_CONTRACT_SCHEMA,
+        "available": True,
+        "verified": verified,
+        "legacy_v5": False,
+        "reason": None if verified else "; ".join(failures),
+        "contract_schema": contract.get("schema"),
+        "contract_digest": _canonical_json_digest(contract),
+        "target_schema_version": contract.get("target_schema_version"),
+        "target_schema_digest": contract.get("target_schema_digest"),
+        "schedule_version": contract.get("schedule_version"),
+        "schedule_digest": contract.get("schedule_digest"),
+        "stage": contract.get("stage"),
+        "epoch": contract.get("epoch"),
+        "epochs_total": contract.get("epochs_total"),
+        "actual_tensor_heads": sorted(actual),
+        "declared_present_heads": sorted(declared),
+        "trained_heads": sorted(trained),
+        "gradient_enabled_heads": sorted(gradient),
+        "runtime_enabled_heads": sorted(runtime),
+        "missing_tensor_heads": sorted(missing_tensors),
+        "undeclared_tensor_heads": sorted(undeclared_tensors),
+        "unknown_declared_heads": unknown,
+        **invalid_subsets,
+        "heads": result_heads,
+    }
+
+
+def _decision_fusion_checkpoint_contract(
+    state_dict: dict[str, Any],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Prove all-head decision use from the exact committed checkpoint.
+
+    Architecture presence, training-warmup, and runtime activation are distinct
+    states.  The dashboard must never translate a staged or training-only
+    fusion into a serving claim.
+    """
+
+    model_config = dict(payload.get("model_config") or {})
+    provenance = dict(payload.get("provenance") or {})
+    declared = dict(provenance.get("decision_fusion") or {})
+    tensors = {
+        str(key): value
+        for key, value in state_dict.items()
+        if str(key).startswith("decision_fusion.")
+        and hasattr(value, "numel")
+    }
+    architecture_enabled = model_config.get("decision_fusion_enabled") is True
+    runtime_enabled = (
+        model_config.get("decision_fusion_runtime_enabled") is True
+    )
+    required = list(declared.get("required_heads") or [])
+    tensor_parameters = sum(int(value.numel()) for value in tensors.values())
+    final_weight = tensors.get("decision_fusion.residual.2.weight")
+    final_nonzero = bool(
+        final_weight is not None
+        and hasattr(final_weight, "count_nonzero")
+        and int(final_weight.count_nonzero().item()) > 0
+    )
+    available = bool(architecture_enabled or tensors or declared)
+    if not available:
+        return {
+            "schema": DECISION_FUSION_SCHEMA,
+            "available": False,
+            "verified": True,
+            "phase": "not_materialized",
+            "runtime_enabled": False,
+            "training_enabled": False,
+            "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
+            "required_head_count": len(DECISION_FUSION_REQUIRED_HEADS),
+            "reason": "decision fusion is not present in this checkpoint",
+        }
+    verified = bool(
+        architecture_enabled
+        and tensors
+        and declared.get("schema") == DECISION_FUSION_SCHEMA
+        and required == list(DECISION_FUSION_REQUIRED_HEADS)
+        and bool(declared.get("runtime_enabled")) == runtime_enabled
+        and tensor_parameters > 0
+    )
+    phase = (
+        "runtime_active"
+        if verified and runtime_enabled
+        else "training_warmup"
+        if verified
+        else "contract_mismatch"
+    )
+    return {
+        "schema": DECISION_FUSION_SCHEMA,
+        "available": True,
+        "verified": verified,
+        "phase": phase,
+        "runtime_enabled": runtime_enabled if verified else False,
+        "training_enabled": bool(verified),
+        "serving_eligible": bool(verified and runtime_enabled),
+        "required_heads": required,
+        "required_head_count": len(required),
+        "expected_required_head_count": len(DECISION_FUSION_REQUIRED_HEADS),
+        "all_required_heads_declared": (
+            required == list(DECISION_FUSION_REQUIRED_HEADS)
+        ),
+        "tensor_count": len(tensors),
+        "parameter_count": tensor_parameters,
+        "trained_nonzero": final_nonzero,
+        "matchup_adapter_behavior": "causal_route_gated",
+        "absent_deck_guide_behavior": "exact_bypass",
+        "reason": (
+            None
+            if verified
+            else "checkpoint fusion tensors, model config, and provenance disagree"
+        ),
+    }
+
+
+def _successor_decision_fusion_activation(
+    *,
+    state_root: Path,
+    specialist_id: str,
+    checkpoint_digest: str,
+    run_dir: Path | None = None,
+    design_fingerprint: str = "",
+    initial_checkpoint_digest: str = "",
+) -> dict[str, Any]:
+    """Find a checksum-bound successor handoff that authorizes fused actions.
+
+    The original Dudunsparce migration writes its activation into the run's
+    loop state.  A generated successor is different: it starts from an
+    immutable, already-fused bootstrap and its authorization is recorded by
+    the sequential handoff receipt.  Treating only the former shape as valid
+    made the dashboard report a false fail-closed regression even while the
+    selector and checkpoint were correctly executing the fused policy.
+    """
+
+    specialist_id = str(specialist_id or "").strip().casefold()
+    checkpoint_digest = str(checkpoint_digest or "").strip()
+    if (
+        not specialist_id
+        or not checkpoint_digest.startswith("sha256:")
+        or not state_root.is_dir()
+    ):
+        return {}
+    candidates = sorted(
+        state_root.glob(
+            f"{specialist_id}-specialist-rl-activation-v*.json"
+        ),
+        key=lambda path: path.stat().st_mtime_ns,
+        reverse=True,
+    )
+    for path in candidates:
+        receipt = read_json(path)
+        identity = dict(receipt.get("identity") or {})
+        bootstrap = dict(identity.get("next_specialist_bootstrap") or {})
+        fusion = dict(bootstrap.get("decision_fusion") or {})
+        registration = dict(identity.get("runtime_registration") or {})
+        runtime_row = dict(registration.get("runtime_row") or {})
+        runtime_fusion = dict(runtime_row.get("decision_fusion") or {})
+        row_digest = "sha256:" + str(
+            runtime_row.get("initial_checkpoint_sha256") or ""
+        ).removeprefix("sha256:")
+        receipt_valid = bool(
+            receipt.get("schema") == "poke_bot.specialist_rl_activation/v2"
+            and receipt.get("status") == "ready"
+            and bootstrap.get("specialist_id") == specialist_id
+            and registration.get("specialist_id") == specialist_id
+            and row_digest == bootstrap.get("checkpoint_digest")
+            and fusion.get("schema") == DECISION_FUSION_SCHEMA
+            and fusion.get("runtime_enabled") is True
+            and fusion.get("required_heads")
+            == list(DECISION_FUSION_REQUIRED_HEADS)
+            and runtime_fusion.get("schema") == DECISION_FUSION_SCHEMA
+            and runtime_fusion.get("required") is True
+            and runtime_fusion.get("runtime_enabled") is True
+            and runtime_fusion.get("required_heads")
+            == list(DECISION_FUSION_REQUIRED_HEADS)
+        )
+        if not receipt_valid:
+            continue
+        bootstrap_digest = str(bootstrap.get("checkpoint_digest") or "")
+        activation_scope = "successor_bootstrap"
+        lineage_commit: Path | None = None
+        if bootstrap_digest != checkpoint_digest:
+            # A specialist's first immutable activation receipt binds its
+            # bootstrap.  Every subsequently committed learner is a new
+            # checksum, so exact-bootstrap-only matching falsely reports a
+            # regression after the first successful iteration.  Accept a
+            # descendant only when the run manifest binds the same bootstrap
+            # and design fingerprint and an immutable completed commit binds
+            # that fingerprint to the exact active learner checksum.
+            if not (
+                run_dir is not None
+                and run_dir.is_dir()
+                and design_fingerprint.startswith("sha256:")
+                and initial_checkpoint_digest == bootstrap_digest
+            ):
+                continue
+            for commit_path in sorted(
+                (run_dir / "commits").glob("iter_*.json"),
+                key=lambda candidate: candidate.stat().st_mtime_ns,
+                reverse=True,
+            ):
+                commit = read_json(commit_path)
+                if commit.get("design_fingerprint") != design_fingerprint:
+                    continue
+                # Current commit schema keeps the complete boundary record in
+                # history[0], while the compact fixture and older schemas put
+                # it at the top level.  Both are immutable receipt shapes.
+                boundary_rows = [commit]
+                boundary_rows.extend(
+                    row
+                    for row in (commit.get("history") or [])
+                    if isinstance(row, dict)
+                )
+                for boundary in boundary_rows:
+                    learner_after = dict(
+                        boundary.get("learner_after") or {}
+                    )
+                    candidate = dict(boundary.get("candidate") or {})
+                    publish = dict(
+                        boundary.get("next_collection_publish") or {}
+                    )
+                    if not (
+                        boundary.get("completed") is True
+                        and learner_after.get("digest") == checkpoint_digest
+                        and candidate.get("digest") == checkpoint_digest
+                        and publish.get("digest") == checkpoint_digest
+                        and publish.get("local_ok") is True
+                        and str(
+                            (
+                                boundary.get("learner_before") or {}
+                            ).get("digest")
+                            or ""
+                        ).startswith("sha256:")
+                    ):
+                        continue
+                    lineage_commit = commit_path
+                    activation_scope = "successor_committed_descendant"
+                    break
+                if lineage_commit is not None:
+                    break
+            if lineage_commit is None:
+                continue
+        return {
+            "schema": "poke_bot.successor_decision_fusion_activation/v1",
+            "specialist_id": specialist_id,
+            "checkpoint_digest": checkpoint_digest,
+            "bootstrap_checkpoint_digest": bootstrap_digest,
+            "runtime_enabled": True,
+            "training_action_eligible": True,
+            # Terminal freeze/serving still requires this child's own exact
+            # premium and official gate receipt.
+            "terminal_serving_eligible": False,
+            "receipt": str(path),
+            "receipt_digest": _file_sha256(path),
+            "activation_scope": activation_scope,
+            "lineage_commit": (
+                str(lineage_commit) if lineage_commit is not None else None
+            ),
+            "lineage_commit_digest": (
+                _file_sha256(lineage_commit)
+                if lineage_commit is not None
+                else None
+            ),
+        }
+    return {}
+
+
+def _initial_learner_checkpoint_digest(
+    learner: dict[str, Any],
+    manifest: dict[str, Any],
+) -> str:
+    """Resolve the handoff bootstrap identity before the run-local seed copy."""
+
+    for candidate in (
+        learner.get("initial_checkpoint"),
+        manifest.get("initial_learner_checkpoint"),
+    ):
+        if isinstance(candidate, dict):
+            digest = str(candidate.get("digest") or "")
+            if digest.startswith("sha256:"):
+                return digest
+    return str(manifest.get("checkpoint_digest") or "")
 
 
 def process_rows() -> dict[int, tuple[int, float, int, str]]:
@@ -879,9 +1534,47 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
         (
             cycle_service.get("active")
             or str(cycle_service.get("active_state") or "") == "activating"
+            or str(cycle_service.get("sub_state") or "") == "auto-restart"
         )
-        and int(cycle_service.get("pid") or 0) > 0
     )
+    transition_graph_path = SPECIALIST_TRANSITION_GRAPH_STATE
+    try:
+        transition_graph_path.relative_to(ROOT)
+    except ValueError:
+        # Tests and alternate runtime roots may override ROOT without
+        # rebuilding every derived constant. Do not leak a real host's
+        # transition receipt into that isolated projection.
+        transition_graph_path = (
+            ROOT / "outputs/state/specialist-transition-graph.json"
+        )
+    transition_graph = read_json(transition_graph_path)
+    transition_rows = [
+        dict(row)
+        for row in (transition_graph.get("transitions") or {}).values()
+        if isinstance(row, dict)
+    ]
+
+    def transition_activity(row: dict[str, Any]) -> str:
+        timestamps: list[str] = []
+        for receipt in (row.get("receipts") or {}).values():
+            if not isinstance(receipt, dict):
+                continue
+            for key in ("completed_at", "failed_at", "started_at", "updated_at"):
+                value = str(receipt.get(key) or "").strip()
+                if value:
+                    timestamps.append(value)
+        return max(timestamps, default="")
+
+    # Atomic JSON is key-sorted, so digest-map insertion order is not
+    # chronological. Bind live telemetry to the newest receipt instead.
+    current_transition = (
+        max(transition_rows, key=transition_activity)
+        if transition_rows
+        else {}
+    )
+    transition_source_id = str(
+        current_transition.get("active_specialist") or ""
+    ).strip()
     cycle_states = sorted(
         (
             path
@@ -893,9 +1586,29 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
-    if cycle_active and cycle_states:
+    matching_cycle_states = (
+        [
+            path
+            for path in cycle_states
+            if (
+                str(
+                    (read_json(path).get("source") or {}).get("specialist_id")
+                    or ""
+                ).strip()
+                == transition_source_id
+            )
+        ]
+        if transition_source_id
+        else cycle_states
+    )
+    cycle_current = bool(current_transition and matching_cycle_states)
+    if (cycle_active or cycle_current) and matching_cycle_states:
         service = cycle_service
-        state_path = cycle_states[0]
+        state_path = matching_cycle_states[0]
+        log_path = SPECIALIST_CYCLE_HANDOFF_LOG
+    elif cycle_active and current_transition:
+        service = cycle_service
+        state_path = transition_graph_path
         log_path = SPECIALIST_CYCLE_HANDOFF_LOG
     else:
         service = unit_state(POST_STARMIE_HANDOFF_SERVICE, user=True)
@@ -908,15 +1621,17 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
     lines = [line.strip() for line in raw_tail.splitlines() if line.strip()]
     latest_line = lines[-1] if lines else None
     active = bool(
-        (
-            service.get("active")
-            or str(service.get("active_state") or "") == "activating"
-        )
-        and int(service.get("pid") or 0) > 0
+        service.get("active")
+        or str(service.get("active_state") or "") == "activating"
+        or str(service.get("sub_state") or "") == "auto-restart"
     )
     phase = str(state.get("phase") or "waiting_for_starmie_gate")
     source = dict(state.get("source") or {})
-    source_id = str(source.get("specialist_id") or "").strip()
+    source_id = str(
+        source.get("specialist_id")
+        or current_transition.get("active_specialist")
+        or ""
+    ).strip()
     if not source_id:
         matched = re.match(r"post-(.+)-core-v\d+-handoff\.json", state_path.name)
         source_id = matched.group(1) if matched else "starmie"
@@ -981,10 +1696,30 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
             canonical_roster.get("expert_ids") or []
         )
     remaining_count = max(0, required_specialist_count - completed_count)
-    selected = dict(state.get("selected_specialist") or {})
+    selected_value = state.get("selected_specialist")
+    selected = (
+        dict(selected_value)
+        if isinstance(selected_value, dict)
+        else {"id": str(selected_value or "")}
+    )
     next_specialist_id = str(
         selected.get("specialist_id") or selected.get("id") or ""
     ).strip()
+    prestage = read_json(NEXT_SPECIALIST_PRESTAGE_STATE)
+    prestage_selected_value = prestage.get("selected_specialist")
+    prestage_selected = (
+        dict(prestage_selected_value)
+        if isinstance(prestage_selected_value, dict)
+        else {"id": str(prestage_selected_value or "")}
+    )
+    next_specialist_id = (
+        next_specialist_id
+        or str(
+            prestage_selected.get("specialist_id")
+            or prestage_selected.get("id")
+            or ""
+        ).strip()
+    )
     stage = phase
     current: int | None = None
     total: int | None = None
@@ -993,6 +1728,75 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
     epochs_target: int | None = None
     rate: float | None = None
     rate_unit: str | None = None
+    v6_sync = read_json(V6_STRATEGIC_SPECIALIST_SYNC_STATE)
+    v6_sync_status = str(v6_sync.get("status") or "")
+    v6_syncing = bool(
+        cycle_active
+        and not V6_STRATEGIC_SPECIALIST_CURRENT.exists()
+        and v6_sync_status.startswith("syncing")
+    )
+    core_regression = dict(state.get("core_gameplay_regression") or {})
+    core_regression_results = [
+        dict(row)
+        for row in (core_regression.get("results") or [])
+        if isinstance(row, dict)
+    ]
+    core_regression_criteria = dict(core_regression.get("criteria") or {})
+    core_regression_threshold = float(
+        core_regression_criteria.get("per_teacher_raw_win_rate_minimum")
+        or 0.0
+    )
+    failed_core_teachers = [
+        {
+            "specialist_id": str(row.get("specialist_id") or ""),
+            "games": int((row.get("report") or {}).get("games") or 0),
+            "win_rate": float((row.get("report") or {}).get("wr") or 0.0),
+        }
+        for row in core_regression_results
+        if float((row.get("report") or {}).get("wr") or 0.0)
+        < core_regression_threshold
+    ]
+    core_regression_failed = bool(
+        phase == "core_gameplay_regression_complete"
+        and core_regression.get("schema")
+        == "poke_bot.multi_teacher_core_gameplay_regression/v1"
+        and core_regression.get("passed") is False
+        and core_regression_criteria.get("all_reports_valid") is True
+    )
+    if v6_syncing:
+        phase = "waiting_for_v6_corpus_sync"
+        stage = "atomic_checksum_sync_to_inzi"
+        current = int(v6_sync.get("copied_bytes") or 0)
+        total = int(v6_sync.get("source_bytes") or 0)
+        percent = float(v6_sync.get("percent") or 0.0)
+        rate = float(v6_sync.get("bandwidth_limit_kib_per_second") or 0.0)
+        rate_unit = "KiB/s"
+        latest_line = (
+            "Frozen source checkpoint is safe; checksum-bound V6 corpus sync "
+            f"is {percent:.1f}% complete before the next specialist handoff."
+        )
+    elif core_regression_failed:
+        phase = "core_gameplay_regression_failed"
+        stage = "deck_agnostic_cumulative_core_gate_failed"
+        current = sum(
+            int((row.get("report") or {}).get("games") or 0)
+            for row in core_regression_results
+        )
+        total = current
+        percent = 100.0
+        aggregate = float(
+            core_regression_criteria.get("aggregate_raw_win_rate") or 0.0
+        )
+        failed_summary = ", ".join(
+            f"{row['specialist_id']} {100.0 * row['win_rate']:.2f}%"
+            for row in failed_core_teachers
+        ) or "unknown matchup"
+        latest_line = (
+            "Cumulative core gameplay gate failed closed: "
+            f"aggregate {100.0 * aggregate:.2f}%; below "
+            f"{100.0 * core_regression_threshold:.2f}% raw floor: "
+            f"{failed_summary}. No successor bootstrap was started."
+        )
 
     pack_line = next(
         (
@@ -1041,7 +1845,9 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
         if train_line
         else None
     )
-    if train_match:
+    if v6_syncing or core_regression_failed:
+        pass
+    elif train_match:
         if phase == "next_specialist_selected":
             stage = (
                 "next_specialist_expert_bootstrap_training"
@@ -1111,6 +1917,23 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
             f"next specialist. {remaining_count} specialists remain."
         )
 
+    generated_handoff_value = str(
+        (cumulative_contract.get("next_specialist") or {}).get(
+            "generated_handoff_contract"
+        )
+        or ""
+    ).strip()
+    generated_handoff = (
+        read_json(Path(generated_handoff_value).expanduser().resolve())
+        if generated_handoff_value
+        else {}
+    )
+    staged_expanded_heads = staged_expanded_head_training_state(
+        state,
+        generated_handoff,
+        cumulative_core_contract=cumulative_contract,
+    )
+
     return {
         "available": bool(
             state or service.get("load_state") == "loaded"
@@ -1160,6 +1983,30 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
         "population_transition_ready": False,
         "source_specialist_id": source_id,
         "next_specialist_id": next_specialist_id or None,
+        "staged_expanded_head_training": staged_expanded_heads,
+        "terminal_failure": core_regression_failed,
+        "core_gameplay_regression": (
+            {
+                "passed": False,
+                "aggregate_raw_win_rate": float(
+                    core_regression_criteria.get("aggregate_raw_win_rate")
+                    or 0.0
+                ),
+                "aggregate_raw_win_rate_minimum": float(
+                    core_regression_criteria.get(
+                        "aggregate_raw_win_rate_minimum"
+                    )
+                    or 0.0
+                ),
+                "per_teacher_raw_win_rate_minimum": (
+                    core_regression_threshold
+                ),
+                "games": current,
+                "failed_teachers": failed_core_teachers,
+            }
+            if core_regression_failed
+            else None
+        ),
     }
 
 
@@ -1173,8 +2020,25 @@ def reconcile_current_specialist_handoff(
     """Do not present a successful historical handoff as the current one."""
 
     active_specialist = str(active_specialist or "").strip().lower()
-    if handoff.get("active") is True or active_specialist == "hops-trevenant":
-        return handoff
+    if (
+        handoff.get("active") is True
+        or handoff.get("terminal_failure") is True
+        or active_specialist == "hops-trevenant"
+    ):
+        result = dict(handoff)
+        if not result.get("next_specialist_id"):
+            result["next_specialist_id"] = (
+                str(next_specialist or "").strip() or None
+            )
+        if "completed_specialists" not in result:
+            result["completed_specialists"] = int(
+                result.get("completed_specialists_after_starmie") or 0
+            )
+        if "remaining_specialists_after_active" not in result:
+            result["remaining_specialists_after_active"] = int(
+                result.get("remaining_specialists_after_starmie") or 0
+            )
+        return result
     progress = dict(program_progress or {})
     remaining = int(progress.get("remaining_after_active") or 0)
     label_name = active_specialist.replace("-", " ").title() or "Active specialist"
@@ -1247,6 +2111,9 @@ def reconcile_protocol_with_active_handoff(
         or reconciled_progress.get("completed_frozen")
         or 0
     )
+    required_total = int(
+        reconciled_progress.get("required_specialists_total") or 0
+    )
     if completed:
         completed_ids = [
             str(value)
@@ -1260,7 +2127,12 @@ def reconcile_protocol_with_active_handoff(
             {
                 "completed_frozen": completed,
                 "completed_specialist_ids": completed_ids,
-                "remaining_after_active": max(0, 22 - completed),
+                "remaining_after_active": max(
+                    0,
+                    required_total
+                    - completed
+                    - int(specialist_bootstrap),
+                ),
                 "active_specialists": int(specialist_bootstrap),
                 "active_specialist_ids": (
                     [next_specialist_id]
@@ -1376,7 +2248,7 @@ def checkpoint_structure_telemetry(
         }
     cache = read_json(cache_path)
     if (
-        cache.get("schema") == "poke_bot.dashboard_checkpoint_structure/v1"
+        cache.get("schema") == "poke_bot.dashboard_checkpoint_structure/v4"
         and cache.get("checkpoint") == str(path)
         and cache.get("checkpoint_digest") == expected_digest
         and int(cache.get("size_bytes") or -1) == int(stat.st_size)
@@ -1388,7 +2260,7 @@ def checkpoint_structure_telemetry(
     actual_digest = _file_sha256(path)
     if actual_digest != expected_digest:
         return {
-            "schema": "poke_bot.dashboard_checkpoint_structure/v1",
+            "schema": "poke_bot.dashboard_checkpoint_structure/v4",
             "available": True,
             "verified": False,
             "reason": "checkpoint digest does not match immutable commit",
@@ -1447,33 +2319,62 @@ def checkpoint_structure_telemetry(
         expert_count = (
             max(expert_indexes) + 1 if expert_indexes else 0
         )
-        model_parameters = int(extra.get("param_count") or 0)
+        cached_parameter_count = int(extra.get("param_count") or 0)
         state_tensor_elements = sum(
             int(value.numel())
             for value in state_dict.values()
             if hasattr(value, "numel")
         )
+        # The state dictionary is the executable model.  ``extra.param_count``
+        # is only a historical display cache and can describe the pre-adapter
+        # seed after a boundary materializes additional heads or adapter rows.
+        # Reporting that cache made the dashboard regress to an older, smaller
+        # parameter count even though the committed checkpoint was wider.
+        model_parameters = state_tensor_elements
+        expanded_head_training = _expanded_head_checkpoint_contract(
+            state_dict,
+            extra,
+        )
+        decision_fusion = _decision_fusion_checkpoint_contract(
+            state_dict,
+            payload,
+        )
+        # ``extra.param_count`` is a display cache, not checkpoint identity.
+        # Immutable bootstrap-family freezing may omit it while preserving the
+        # complete model state, adapter registry, and all executable tensors.
+        # Do not turn that optional cache miss into a structural regression.
         structure_valid = bool(
-            model_parameters > 0
-            and expert_count == len(expert_ids)
+            expert_count == len(expert_ids)
             and expert_count > 0
             and adapter_parameters > 0
             and len(expert_ids) == len(set(expert_ids))
+            and expanded_head_training.get("verified") is True
+            and decision_fusion.get("verified") is True
         )
         result = {
-            "schema": "poke_bot.dashboard_checkpoint_structure/v1",
+            "schema": "poke_bot.dashboard_checkpoint_structure/v4",
             "available": True,
             "verified": structure_valid,
             "reason": (
                 None
                 if structure_valid
-                else "checkpoint adapter tensors and embedded route registry disagree"
+                else (
+                    expanded_head_training.get("reason")
+                    if expanded_head_training.get("verified") is not True
+                    else decision_fusion.get("reason")
+                    if decision_fusion.get("verified") is not True
+                    else "checkpoint adapter tensors and embedded route registry disagree"
+                )
             ),
             "checkpoint": str(path),
             "checkpoint_digest": expected_digest,
             "size_bytes": int(stat.st_size),
             "mtime_ns": int(stat.st_mtime_ns),
             "model_parameters": model_parameters or None,
+            "cached_parameter_count": cached_parameter_count or None,
+            "cached_parameter_count_matches_state": bool(
+                cached_parameter_count == state_tensor_elements
+            ),
             "state_tensor_elements": state_tensor_elements,
             "adapter_parameters": adapter_parameters,
             "adapter_expert_count": expert_count,
@@ -1485,13 +2386,15 @@ def checkpoint_structure_telemetry(
             "ordinary_optimizer_included_at_save": bool(
                 extra.get("matchup_adapter_optimizer_included")
             ),
+            "expanded_head_training": expanded_head_training,
+            "decision_fusion": decision_fusion,
             "rl_iteration": payload.get("rl_iteration"),
             "saved_at": payload.get("saved_at"),
             "source": "active committed checkpoint payload + tensor structure",
         }
     except Exception as exc:
         return {
-            "schema": "poke_bot.dashboard_checkpoint_structure/v1",
+            "schema": "poke_bot.dashboard_checkpoint_structure/v4",
             "available": True,
             "verified": False,
             "reason": f"checkpoint inspection failed: {type(exc).__name__}: {exc}",
@@ -1515,6 +2418,198 @@ def checkpoint_structure_telemetry(
         except OSError:
             pass
     return result
+
+
+def staged_expanded_head_training_state(
+    handoff_state: dict[str, Any],
+    handoff_contract: dict[str, Any],
+    *,
+    cumulative_core_contract: dict[str, Any] | None = None,
+    cache_path: Path | None = None,
+) -> dict[str, Any]:
+    """Resolve transition heads without confusing them with live runtime.
+
+    Prefer the actively checkpointed cumulative-core refresh when present.
+    Otherwise, a generated handoff contract may describe a future schedule,
+    but only a checksum-matched immutable bootstrap checkpoint can prove
+    tensors, losses, or training coverage.
+    """
+
+    core_contract = (
+        dict(cumulative_core_contract)
+        if isinstance(cumulative_core_contract, dict)
+        else {}
+    )
+    core_refresh = dict(core_contract.get("core_refresh") or {})
+    core_run_dir_value = str(core_refresh.get("run_dir") or "").strip()
+    core_run_state_path = (
+        Path(core_run_dir_value).expanduser().resolve() / "state.json"
+        if core_run_dir_value
+        else None
+    )
+    core_run_state = (
+        read_json(core_run_state_path)
+        if core_run_state_path is not None
+        else {}
+    )
+    core_history = [
+        dict(row)
+        for row in (core_run_state.get("history") or [])
+        if isinstance(row, dict)
+    ]
+    bootstrap = dict(handoff_state.get("next_specialist_bootstrap") or {})
+    target = dict(handoff_contract.get("next_specialist") or {})
+    specialist_id = str(
+        bootstrap.get("specialist_id") or target.get("id") or ""
+    ).strip()
+    run_state: dict[str, Any] = {}
+    run_dir_value = str(target.get("run_dir") or "").strip()
+    if run_dir_value:
+        run_state = read_json(
+            Path(run_dir_value).expanduser().resolve() / "state.json"
+        )
+    history = [
+        dict(row)
+        for row in (run_state.get("history") or [])
+        if isinstance(row, dict)
+    ]
+    target_selected = bool(
+        specialist_id
+        and str(handoff_state.get("phase") or "")
+        in {
+            "next_specialist_selected",
+            "next_specialist_started",
+        }
+    )
+    if core_history and not target_selected:
+        latest_core = core_history[-1]
+        core_checkpoint = str(latest_core.get("checkpoint") or "").strip()
+        core_digest = str(
+            latest_core.get("checkpoint_digest") or ""
+        ).strip()
+        if core_checkpoint and _is_sha256_digest(core_digest):
+            expanded = dict(
+                latest_core.get("expanded_head_training") or {}
+            )
+            checkpoint_verified = _file_sha256_matches(
+                Path(core_checkpoint).expanduser().resolve(),
+                core_digest,
+            )
+            heads = dict(expanded.get("heads") or {})
+            declared_heads = [
+                str(value)
+                for value in (
+                    expanded.get("architecture_present_heads") or []
+                )
+                if str(value)
+            ]
+            metadata_verified = bool(
+                expanded.get("schema") == EXPANDED_HEAD_CONTRACT_SCHEMA
+                and declared_heads
+                and set(declared_heads) == set(heads)
+                and all(
+                    isinstance(heads.get(head_id), dict)
+                    and heads[head_id].get("present") is True
+                    for head_id in declared_heads
+                )
+            )
+            verified = bool(checkpoint_verified and metadata_verified)
+            return {
+                **expanded,
+                "available": True,
+                "verified": verified,
+                "reason": (
+                    None
+                    if verified
+                    else (
+                        "active core checkpoint checksum mismatch"
+                        if not checkpoint_verified
+                        else "active core expanded-head metadata is incomplete"
+                    )
+                ),
+                "scope": "active_cumulative_core_refresh",
+                "specialist_id": "deck-agnostic-core",
+                "checkpoint": core_checkpoint,
+                "checkpoint_digest": core_digest,
+                "checkpoint_pending": False,
+                "epoch": latest_core.get("epoch"),
+                "epochs_target": core_refresh.get("max_epochs"),
+                "source": str(core_run_state_path),
+            }
+
+    checkpoint_path = ""
+    checkpoint_digest = str(bootstrap.get("checkpoint_digest") or "")
+    ready_path: Path | None = None
+    ready_value = str(bootstrap.get("ready") or target.get("ready") or "").strip()
+    if ready_value:
+        ready_path = Path(ready_value).expanduser().resolve()
+        expected_ready_digest = str(bootstrap.get("ready_sha256") or "")
+        ready = (
+            read_json(ready_path)
+            if (
+                not expected_ready_digest
+                or _file_sha256_matches(ready_path, expected_ready_digest)
+            )
+            else {}
+        )
+        checkpoint_path = str(ready.get("checkpoint") or "")
+        checkpoint_digest = str(
+            ready.get("checkpoint_digest") or checkpoint_digest
+        )
+
+    if history:
+        latest = history[-1]
+        checkpoint_path = str(latest.get("checkpoint") or checkpoint_path)
+        checkpoint_digest = str(
+            latest.get("checkpoint_digest") or checkpoint_digest
+        )
+
+    training_contract = (
+        dict(handoff_contract.get("training") or {})
+        if isinstance(handoff_contract.get("training"), dict)
+        else {}
+    )
+    schedule = dict(
+        training_contract.get("expanded_head_training")
+        or training_contract.get("expanded_heads")
+        or {}
+    )
+    if not checkpoint_path or not _is_sha256_digest(checkpoint_digest):
+        return {
+            "schema": EXPANDED_HEAD_CONTRACT_SCHEMA,
+            "available": bool(schedule),
+            "verified": False,
+            "checkpoint_pending": True,
+            "scope": "staged_next_specialist",
+            "specialist_id": specialist_id or None,
+            "reason": (
+                "staged head schedule exists; checksum-bound bootstrap checkpoint pending"
+                if schedule
+                else "no staged expanded-head checkpoint"
+            ),
+            "schedule": schedule,
+            "heads": [],
+        }
+    structure = checkpoint_structure_telemetry(
+        checkpoint_path,
+        checkpoint_digest,
+        cache_path=cache_path
+        or (ROOT / "outputs/state/dashboard-staged-head-structure-cache.json"),
+    )
+    expanded = dict(structure.get("expanded_head_training") or {})
+    return {
+        **expanded,
+        "scope": "staged_next_specialist",
+        "specialist_id": specialist_id or None,
+        "checkpoint": checkpoint_path,
+        "checkpoint_digest": checkpoint_digest,
+        "checkpoint_pending": False,
+        "source": (
+            str(ready_path)
+            if ready_path is not None
+            else str(Path(run_dir_value) / "state.json")
+        ),
+    }
 
 
 def _exact_calendar_dates(
@@ -1797,21 +2892,39 @@ def active_expert_corpus_state(
             )
             archive_present = bool(
                 archive_row.get("stage")
-                in {"feature_ready", "ready", "complete"}
+                in {"archive_ready", "feature_ready", "ready", "complete"}
                 or archive_row.get("percent") == 100.0
+            )
+            archive_featurizing = bool(
+                archive_row.get("stage") == "featurizing"
+                and (archive_row.get("service") or {}).get("active") is True
             )
             day_rows.append(
                 {
                     "day": day_value,
-                    "host": "source receipt" if row else "latest20 source window",
+                    "host": (
+                        "source receipt"
+                        if row
+                        else str(archive_row.get("host") or "")
+                        if archive_featurizing
+                        else "latest20 source window"
+                    ),
                     "stage": (
                         "feature_ready"
                         if present
+                        else "featurizing"
+                        if archive_featurizing
                         else "source_ready_unfiltered"
                         if archive_present
                         else "missing"
                     ),
-                    "percent": 100.0 if present else 0.0,
+                    "percent": (
+                        100.0
+                        if present
+                        else float(archive_row.get("percent") or 0.0)
+                        if archive_featurizing
+                        else 0.0
+                    ),
                     "archive_bytes": None,
                     "feature_records": matching_games,
                     "feature_decisions": matching_decisions,
@@ -1831,8 +2944,8 @@ def active_expert_corpus_state(
                     "active_specialist_filter_receipt": bool(row),
                     "present": present,
                     "partial_bytes": None,
-                    "progress_estimated": False,
-                    "service": {"active": False},
+                    "progress_estimated": archive_featurizing,
+                    "service": {"active": archive_featurizing},
                 }
             )
     quality = (
@@ -1913,39 +3026,115 @@ def active_expert_corpus_state(
         if archive_window_ready
         else int(archive_refresh.get("archive_ready_days") or 0)
     )
+    refresh_day_rows = [
+        {
+            **dict(row),
+            "binding_status": "staged_for_next_safe_boundary",
+        }
+        for row in (archive_refresh.get("days") or [])
+        if isinstance(row, dict)
+    ]
+    display_refresh = bool(
+        not source_day_contract
+        and archive_window_ready
+        and len(refresh_day_rows) == 20
+        and int(archive_refresh.get("feature_ready_days") or 0) == 20
+    )
+    display_rows = refresh_day_rows if display_refresh else day_rows
+    display_ready_days = (
+        int(archive_refresh.get("feature_ready_days") or 0)
+        if display_refresh
+        else ready_shards
+    )
+    display_complete = (
+        bool(archive_refresh.get("complete"))
+        if display_refresh
+        else complete
+    )
+    expanded_v6 = (
+        dict(archive_refresh.get("expanded_v6") or {})
+        if isinstance(archive_refresh.get("expanded_v6"), dict)
+        else {}
+    )
     return {
         "available": True,
-        "active": bool(rehearsal.get("active")),
-        "complete": complete,
+        "active": bool(
+            rehearsal.get("active") or archive_refresh.get("active")
+        ),
+        "complete": display_complete,
         "archive_window_ready": archive_window_ready,
-        "host": "Inzi",
-        "stage": "rehearsal_active" if rehearsal.get("active") else "ready",
-        "phase": str(rehearsal.get("state") or "scheduled"),
+        "host": (
+            "Inzi"
+            if rehearsal.get("active")
+            else str(archive_refresh.get("host") or "Inzi")
+        ),
+        "stage": (
+            "rehearsal_active"
+            if rehearsal.get("active")
+            else str(archive_refresh.get("stage") or "preparing_filtered_corpus")
+            if display_refresh
+            else "preparing_filtered_corpus"
+            if archive_refresh.get("active")
+            else "ready"
+        ),
+        "phase": (
+            str(rehearsal.get("state") or "scheduled")
+            if rehearsal.get("active")
+            else str(archive_refresh.get("phase") or "latest20_refresh")
+            if display_refresh or archive_refresh.get("active")
+            else "scheduled"
+        ),
         "window_start": latest20_dates[0] if latest20_dates else None,
         "window_end": latest20_dates[-1] if latest20_dates else None,
         "evidence_window_start": evidence_start,
         "evidence_window_end": evidence_end,
         "current_day": None,
-        "current": ready_shards,
-        "total": len(day_rows),
+        "current": display_ready_days,
+        "total": len(display_rows),
         "progress_estimated": False,
-        "completed_days": ready_shards,
+        "completed_days": display_ready_days,
         "archive_ready_days": archive_ready_days,
-        "feature_ready_days": ready_shards,
-        "local_feature_ready_days": ready_shards,
-        "total_days": len(day_rows),
+        "feature_ready_days": display_ready_days,
+        "local_feature_ready_days": (
+            int(archive_refresh.get("local_feature_ready_days") or 0)
+            if display_refresh
+            else ready_shards
+        ),
+        "total_days": len(display_rows),
         "percent": (
-            100.0 * ready_shards / len(day_rows)
+            float(archive_refresh.get("percent") or 0.0)
+            if display_refresh
+            else 100.0 * ready_shards / len(day_rows)
             if day_rows
             else 0.0
         ),
         "day_percent": None,
-        "days": day_rows,
+        "days": display_rows,
         "latest_line": (
             f"ACTIVE RUN · {specialist} protected expert corpus · "
-            f"{records:,} selected games · {decisions:,} decisions · "
-            f"{ready_shards}/"
-            f"{len(day_rows)} latest20 checksum-pinned source days ready"
+            f"{records:,} selected games · {decisions:,} decisions"
+            + (
+                " · immutable run binding retained until the next safe "
+                "rehearsal/bootstrap boundary"
+                if display_refresh
+                else f" · {ready_shards}/{len(day_rows)} latest20 "
+                "checksum-pinned source days ready"
+            )
+            + (
+                " · "
+                + str(
+                    archive_refresh.get("latest_line")
+                    or "Elmo daily feature materialization active"
+                )
+                if archive_refresh.get("active")
+                else ""
+            )
+            + (
+                " · " + str(expanded_v6.get("latest_line"))
+                if expanded_v6.get("available") is True
+                and expanded_v6.get("latest_line")
+                else ""
+            )
             + (
                 " · HISTORICAL FALLBACK USED (not latest20)"
                 if historical_fallback.get("used") is True
@@ -1954,13 +3143,18 @@ def active_expert_corpus_state(
         ),
         "reason": (
             None
-            if complete
+            if display_complete
+            else (
+                "latest20 specialist corpus checksum sync active; the current "
+                "run remains pinned to its immutable expert corpus"
+            )
+            if display_refresh
             else "active-specialist filtered corpus preparation pending"
             if archive_window_ready
             else "active protected corpus validation failed"
         ),
         "assembled_manifest_ready": manifest_digest_valid,
-        "filtered_corpus_ready": complete,
+        "filtered_corpus_ready": display_complete,
         "source": str(protected_path),
         "manifest_source": str(manifest_path),
         "manifest_digest": expected_manifest_digest or None,
@@ -1995,6 +3189,15 @@ def active_expert_corpus_state(
         "historical_fallback": historical_fallback,
         "rehearsal": rehearsal,
         "authoritative_for_active_run": True,
+        "active_bound_corpus": {
+            "source": str(protected_path),
+            "manifest_source": str(manifest_path),
+            "records_kept": records,
+            "decisions_kept": decisions,
+            "source_day_contract": source_day_contract,
+            "latest20_ready_days": ready_shards,
+            "immutable_until_safe_boundary": True,
+        },
         "archive_refresh_history": {
             "source": archive_refresh.get("source"),
             "window_start": archive_refresh.get("window_start"),
@@ -2002,6 +3205,7 @@ def active_expert_corpus_state(
             "complete": archive_refresh.get("complete"),
             "superseded_by": "active_run_pinned_expert_corpus",
         },
+        "next_boundary_expanded_corpus": expanded_v6,
         "updated_at": (
             manifest_path.stat().st_mtime if manifest_path.is_file() else None
         ),
@@ -2627,7 +3831,13 @@ def committed_official_heldout_state(
     audit_games = int(audit.get("valid_games") or 0)
     gate_games = int(gate.get("games") or 0)
     evidence_wr = as_float(evidence.get("win_rate"))
-    gate_wr = as_float(gate.get("win_rate"))
+    # ``poke_bot.public_agent_gate_result/v1`` stores the aggregate as
+    # ``skill_weighted_wr``.  Earlier loop-state rows used ``win_rate``.
+    gate_wr = as_float(
+        gate.get("win_rate")
+        if gate.get("win_rate") is not None
+        else gate.get("skill_weighted_wr")
+    )
     audit_passed = audit.get("passed") is True
     reconciled = bool(
         audit_passed
@@ -2643,6 +3853,24 @@ def committed_official_heldout_state(
 
     audit_matchups = audit.get("per_opponent")
     gate_matchups = gate.get("per_opponent")
+    # Gate-result schema v1 stores matchup evidence as a list whose rate field
+    # is ``wr``.  Normalize that immutable schema to the legacy mapping shape
+    # before the existing audit reconciliation and dashboard projection.
+    if not isinstance(gate_matchups, dict):
+        matchup_rows = gate.get("matchups")
+        if isinstance(matchup_rows, list):
+            gate_matchups = {
+                str(row.get("opponent_id") or ""): {
+                    **row,
+                    "win_rate": (
+                        row.get("win_rate")
+                        if row.get("win_rate") is not None
+                        else row.get("wr")
+                    ),
+                }
+                for row in matchup_rows
+                if isinstance(row, dict) and str(row.get("opponent_id") or "")
+            }
     if not isinstance(audit_matchups, dict) or not isinstance(gate_matchups, dict):
         return {"available": False, "reason": "heldout matchup evidence is missing"}
     matchups: list[dict[str, Any]] = []
@@ -2907,6 +4135,145 @@ def latest_committed_official_heldout_state(
             "updated_at": source.stat().st_mtime,
         }
     return {"available": False, "reason": "no committed exact holdout attempt"}
+
+
+def latest_committed_formal_holdout_state(
+    loop: dict[str, Any],
+    run_dir: Path | None,
+    *,
+    global_iteration_offset: int = 0,
+) -> dict[str, Any]:
+    """Return the newest immutable, fully audited active-gate holdout.
+
+    Formal premium holdouts and the four-agent research controls are separate
+    measurement programs.  A formal result remains displayable when it fails
+    performance thresholds; only its distribution/audit must pass.
+    """
+
+    if run_dir is None:
+        return {"available": False, "reason": "run directory is unavailable"}
+    heldout_identity = (
+        loop.get("heldout_champion")
+        if isinstance(loop.get("heldout_champion"), dict)
+        else {}
+    )
+    heldout_digest = str(heldout_identity.get("digest") or "")
+    for history_row in reversed(loop.get("history") or []):
+        if not isinstance(history_row, dict) or history_row.get("completed") is not True:
+            continue
+        iteration = history_row.get("iteration")
+        candidate = history_row.get("candidate")
+        gate = history_row.get("active_gate_result")
+        if not isinstance(gate, dict):
+            gate = history_row.get("raw_heldout_gate")
+        audit = history_row.get("heldout_audit")
+        if not isinstance(audit, dict) and isinstance(gate, dict):
+            audit = gate.get("audit")
+        if (
+            not isinstance(iteration, int)
+            or not isinstance(candidate, dict)
+            or not isinstance(gate, dict)
+            or not isinstance(audit, dict)
+        ):
+            continue
+        source = run_dir / "commits" / f"iter_{iteration:05d}.json"
+        if not source.is_file():
+            continue
+        digest = str(candidate.get("digest") or "")
+        rows = gate.get("matchups")
+        audit_rows = audit.get("per_opponent")
+        gate_games = int(gate.get("games") or 0)
+        if (
+            not _is_sha256_digest(digest)
+            or audit.get("passed") is not True
+            or audit.get("exact_distribution") is not True
+            or audit.get("exact_weights") is not True
+            or audit.get("greedy_required") is not True
+            or str(audit.get("checkpoint_digest") or "") != digest
+            or int(audit.get("valid_games") or 0) != gate_games
+            or gate_games <= 0
+            or not isinstance(rows, list)
+            or not rows
+            or not isinstance(audit_rows, dict)
+        ):
+            continue
+        row_ids = [str(row.get("opponent_id") or "") for row in rows]
+        if not all(row_ids) or len(row_ids) != len(set(row_ids)):
+            continue
+        if set(row_ids) != set(audit_rows):
+            continue
+        matchups: list[dict[str, Any]] = []
+        valid = True
+        for row in rows:
+            opponent_id = str(row.get("opponent_id") or "")
+            audit_row = audit_rows.get(opponent_id)
+            games = int(row.get("games") or 0)
+            seat0 = int(row.get("seat0") or 0)
+            seat1 = int(row.get("seat1") or 0)
+            wr = as_float(row.get("wr"))
+            if wr is None:
+                wr = as_float(row.get("win_rate"))
+            if (
+                not isinstance(audit_row, dict)
+                or games <= 0
+                or int(audit_row.get("games") or 0) != games
+                or int(audit_row.get("seat0") or 0) != seat0
+                or int(audit_row.get("seat1") or 0) != seat1
+                or seat0 + seat1 != games
+                or wr is None
+            ):
+                valid = False
+                break
+            matchups.append(
+                {
+                    "opponent_id": opponent_id,
+                    "games": games,
+                    "wr": wr,
+                    "wins": as_float(row.get("wins")),
+                    "draws": as_float(row.get("draws")),
+                    "losses": as_float(row.get("losses")),
+                    "seat0": seat0,
+                    "seat1": seat1,
+                }
+            )
+        if not valid or sum(int(row["games"]) for row in matchups) != gate_games:
+            continue
+        learner_after = (
+            history_row.get("learner_after")
+            if isinstance(history_row.get("learner_after"), dict)
+            else {}
+        )
+        return {
+            "available": True,
+            "kind": "latest_committed_formal_holdout",
+            "valid": True,
+            "passed": gate.get("passed") is True,
+            "reason": gate.get("pipeline_gate_reason") or gate.get("reason"),
+            "games": gate_games,
+            "wr": as_float(gate.get("skill_weighted_wr"))
+            if as_float(gate.get("skill_weighted_wr")) is not None
+            else as_float(gate.get("win_rate")),
+            "lower": as_float(gate.get("confidence_lower")),
+            "upper": as_float(gate.get("confidence_upper")),
+            "iteration": iteration + int(global_iteration_offset),
+            "lineage_iteration": iteration,
+            "checkpoint": candidate.get("path"),
+            "checkpoint_digest": digest,
+            "matchups": matchups,
+            "opponent_count": len(matchups),
+            "audit_passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "greedy_required": True,
+            "matchup_runtime": dict(audit.get("matchup_runtime") or {}),
+            "protected_champion": digest == heldout_digest,
+            "heldout_champion_updated": history_row.get("heldout_champion_updated")
+            is True,
+            "learner_retained": str(learner_after.get("digest") or "") == digest,
+            "source": str(source),
+            "updated_at": source.stat().st_mtime,
+        }
+    return {"available": False, "reason": "no committed exact formal holdout attempt"}
 
 
 def matchup_runtime_collection_state(
@@ -3203,6 +4570,7 @@ def learner_model_state(
     matchup_runtime_ready_path: Path = MATCHUP_RUNTIME_PRODUCTION_READY,
     matchup_runtime_boundary_path: Path = MATCHUP_RUNTIME_BOUNDARY,
     specialist_runtime_registry_path: Path = SPECIALIST_RUNTIME_REGISTRY,
+    specialist_activation_state_root: Path = ROOT / "outputs/state",
 ) -> dict[str, Any]:
     """Describe the exact live model plus explicitly non-live staged profiles.
 
@@ -3341,12 +4709,15 @@ def learner_model_state(
             str(active_checkpoint.get("digest") or ""),
         )
     )
-    checkpoint_structure_valid = bool(
-        checkpoint_structure.get("verified") is True
-        and checkpoint_structure.get("checkpoint")
+    checkpoint_structure_identity_current = bool(
+        checkpoint_structure.get("checkpoint")
         == str(active_checkpoint.get("path") or "")
         and checkpoint_structure.get("checkpoint_digest")
         == str(active_checkpoint.get("digest") or "")
+    )
+    checkpoint_structure_valid = bool(
+        checkpoint_structure.get("verified") is True
+        and checkpoint_structure_identity_current
     )
     if checkpoint_structure_valid:
         checkpoint_parameter_count = int(
@@ -4078,6 +5449,227 @@ def learner_model_state(
         ),
         "source": str(dormant_modules_path),
     }
+    # Keep the deployed V5 checkpoint contract and the staged V6 registry
+    # separate.  CANONICAL_MATCHUP_ADAPTER_ROSTER belongs to the immutable
+    # runtime deployment; the state-core copy beside specialists.yaml is the
+    # authoritative planning registry for a pending safe-boundary migration.
+    # Reading V6 from the runtime file made the staged panel disappear whenever
+    # the healthy trainer correctly remained on V5.
+    v6_roster_path = SPECIALIST_PROTOCOL_STATE.parent / (
+        "matchup_adapter_roster.json"
+    )
+    v6_roster = read_json(v6_roster_path)
+    v6_slots = list(v6_roster.get("slots") or [])
+    v6_stage_valid = bool(
+        v6_roster.get("schema")
+        == "poke_bot.matchup_adapter_roster/v1"
+        and v6_roster.get("slot_schema")
+        == "poke_bot.matchup_adapter_slot_registry/v1"
+        and v6_roster.get("checkpoint_format")
+        == "poke-bot-matchup-adapter-bank-v6"
+        and int(v6_roster.get("slot_capacity") or 0) == 64
+        and len(v6_slots) == 64
+        and [int(row.get("slot", -1)) for row in v6_slots] == list(range(64))
+    )
+    matchup_adapter_v6 = (
+        {
+            "status": v6_roster.get("status"),
+            "checkpoint_format": v6_roster.get(
+                "checkpoint_format"
+            ),
+            "registry_revision": v6_roster.get("revision"),
+            "registry_digest": _canonical_json_digest(v6_roster),
+            "physical_slot_capacity": 64,
+            "logical_active_count": sum(
+                row.get("status") in {"active", "dormant"}
+                for row in v6_slots
+            ),
+            "unused_count": sum(
+                row.get("status") == "unused" for row in v6_slots
+            ),
+            "retired_count": sum(
+                row.get("status") == "retired" for row in v6_slots
+            ),
+            "live_selector_changed": False,
+            "activation_boundary": v6_roster.get(
+                "activation_policy"
+            ),
+            "source": str(v6_roster_path),
+        }
+        if v6_stage_valid
+        else {}
+    )
+    expanded_head_training = (
+        dict(checkpoint_structure.get("expanded_head_training") or {})
+        if checkpoint_structure_identity_current
+        else {
+            "schema": EXPANDED_HEAD_CONTRACT_SCHEMA,
+            "available": False,
+            "verified": False,
+            "legacy_v5": False,
+            "reason": "expanded-head telemetry is not bound to the active checkpoint",
+            "heads": [],
+        }
+    )
+    checkpoint_fusion = (
+        dict(checkpoint_structure.get("decision_fusion") or {})
+        if checkpoint_structure_identity_current
+        else {
+            "schema": DECISION_FUSION_SCHEMA,
+            "available": False,
+            "verified": False,
+            "phase": "telemetry_unbound",
+            "runtime_enabled": False,
+            "training_enabled": False,
+            "reason": "decision-fusion telemetry is not bound to the active checkpoint",
+        }
+    )
+    loop_fusion = dict(loop.get("decision_fusion_activation") or {})
+    active_digest = str(active_checkpoint.get("digest") or "")
+    loop_fusion_bound = bool(
+        loop_fusion.get("learner_digest") == active_digest
+        and str(loop_fusion.get("schema") or "").startswith(
+            "poke_bot.causal_decision_fusion_"
+        )
+    )
+    successor_fusion = _successor_decision_fusion_activation(
+        state_root=specialist_activation_state_root,
+        specialist_id=specialist_id,
+        checkpoint_digest=active_digest,
+        run_dir=(
+            ROOT / "outputs/pure_rl" / run_name
+            if run_name
+            else None
+        ),
+        design_fingerprint=str(manifest.get("design_fingerprint") or ""),
+        initial_checkpoint_digest=_initial_learner_checkpoint_digest(
+            learner,
+            manifest,
+        ),
+    )
+    successor_fusion_bound = bool(
+        successor_fusion.get("runtime_enabled") is True
+        and successor_fusion.get("training_action_eligible") is True
+    )
+    activation_bound = bool(loop_fusion_bound or successor_fusion_bound)
+    decision_fusion = {
+        **checkpoint_fusion,
+        "checkpoint_digest": active_digest or None,
+        "loop_activation_bound": loop_fusion_bound,
+        "successor_activation_bound": successor_fusion_bound,
+        "activation_bound": activation_bound,
+        "activation_scope": (
+            "loop_boundary"
+            if loop_fusion_bound
+            else successor_fusion.get("activation_scope")
+            if successor_fusion_bound
+            else None
+        ),
+        "activation_receipt": (
+            loop_fusion.get("receipt")
+            if loop_fusion_bound
+            else successor_fusion.get("receipt")
+            if successor_fusion_bound
+            else None
+        ),
+        "boundary_next_iteration": (
+            loop_fusion.get("boundary_next_iteration")
+            if loop_fusion_bound
+            else None
+        ),
+        "terminal_serving_eligible": (
+            loop_fusion.get("serving_eligible")
+            if loop_fusion_bound
+            else successor_fusion.get("terminal_serving_eligible")
+            if successor_fusion_bound
+            else False
+        ),
+    }
+    if checkpoint_fusion.get("runtime_enabled") is True and not (
+        (
+            loop_fusion_bound
+            and loop_fusion.get("runtime_enabled") is True
+        )
+        or successor_fusion_bound
+    ):
+        decision_fusion.update(
+            verified=False,
+            serving_eligible=False,
+            phase="activation_receipt_mismatch",
+            reason=(
+                "runtime-enabled checkpoint lacks its checksum-bound loop "
+                "activation receipt"
+            ),
+        )
+    elif (
+        checkpoint_fusion.get("runtime_enabled") is True
+        and successor_fusion_bound
+    ):
+        decision_fusion.update(
+            verified=True,
+            serving_eligible=True,
+            phase="runtime_active_successor",
+            reason=(
+                "checksum-bound successor bootstrap activation verified; "
+                "terminal freeze still requires this child's exact gates"
+            ),
+        )
+    base_heads: dict[str, dict[str, Any]] = {
+        "policy": {"enabled": True},
+        "value": {"enabled": True},
+        "archetype": weighted_head("archetype_aux_loss_weight", outputs=20),
+        "opponent_hand": weighted_head("opp_hand_loss_weight", outputs=1268),
+        "opponent_remainder": weighted_head(
+            "opp_remainder_loss_weight", outputs=1268
+        ),
+        "lethal_threat": weighted_head("lethal_threat_loss_weight", outputs=1),
+        "prize_race": weighted_head("prize_race_loss_weight", outputs=2),
+    }
+    expanded_heads: dict[str, dict[str, Any]] = {}
+    fusion_required_heads = {
+        str(value)
+        for value in (decision_fusion.get("required_heads") or ())
+        if str(value)
+    }
+    fusion_decision_path_active = bool(
+        decision_fusion.get("verified") is True
+        and decision_fusion.get("runtime_enabled") is True
+        and decision_fusion.get("serving_eligible") is True
+        and decision_fusion.get("activation_bound") is True
+    )
+    for raw_row in expanded_head_training.get("heads") or []:
+        if not isinstance(raw_row, dict):
+            continue
+        head_id = _expanded_head_id(raw_row.get("id"))
+        if head_id is None:
+            continue
+        expanded_heads[head_id] = {
+            **dict(raw_row),
+            "expanded": True,
+            "enabled": bool(
+                raw_row.get("present") is True
+                and raw_row.get("contract_valid") is True
+            ),
+            "used_in_decisions": bool(
+                fusion_decision_path_active
+                and (
+                    head_id in fusion_required_heads
+                    or (
+                        head_id == "tactical_outcome"
+                        and "tactical_outcomes" in fusion_required_heads
+                    )
+                )
+            ),
+            "scope": "active_committed_checkpoint",
+        }
+    for head_id, row in base_heads.items():
+        row["used_in_decisions"] = bool(
+            head_id == "policy"
+            or (
+                fusion_decision_path_active
+                and head_id in fusion_required_heads
+            )
+        )
     return {
         "implementation": "TemporalCabtTransformer",
         "architecture": architecture,
@@ -4097,6 +5689,7 @@ def learner_model_state(
             else staged_adapter_roster if staged_adapter_valid else {}
         ),
         "matchup_adapter_runtime": matchup_adapter_runtime,
+        "matchup_adapter_v6": matchup_adapter_v6,
         "active_checkpoint": active_checkpoint.get("path"),
         "active_checkpoint_digest": active_checkpoint.get("digest"),
         "training_schedule": {
@@ -4152,17 +5745,9 @@ def learner_model_state(
             ),
         },
         "planned_profile": planned_profile,
-        "heads": {
-            "policy": {"enabled": True},
-            "value": {"enabled": True},
-            "archetype": weighted_head("archetype_aux_loss_weight", outputs=20),
-            "opponent_hand": weighted_head("opp_hand_loss_weight", outputs=1268),
-            "opponent_remainder": weighted_head(
-                "opp_remainder_loss_weight", outputs=1268
-            ),
-            "lethal_threat": weighted_head("lethal_threat_loss_weight", outputs=1),
-            "prize_race": weighted_head("prize_race_loss_weight", outputs=2),
-        },
+        "heads": {**base_heads, **expanded_heads},
+        "expanded_head_training": expanded_head_training,
+        "decision_fusion": decision_fusion,
         "training_targets": {
             "current_deck_guide": {
                 "enabled": current_deck_guide_enabled,
@@ -4930,6 +6515,7 @@ def competition_gate_program_state(
     registry_path: Path = PROTECTED_BASELINE_GATE,
     exact_result_override: dict[str, Any] | None = None,
     exact_result_source: Path | None = None,
+    completed_iteration: int | None = None,
 ) -> dict[str, Any]:
     """Reconcile the accepted gate and the next public-agent gate fail-closed.
 
@@ -5053,6 +6639,39 @@ def competition_gate_program_state(
         if isinstance(next_contract.get("pass_criteria"), dict)
         else {}
     )
+    fallback = (
+        contract.get("fallback_transition")
+        if isinstance(contract.get("fallback_transition"), dict)
+        else {}
+    )
+    fallback_activate_after = int(
+        fallback.get("activate_after_completed_iteration", -1)
+    )
+    observed_result = (
+        exact_result_override
+        if isinstance(exact_result_override, dict)
+        else {}
+    )
+    prior_gate_passed = bool(
+        observed_result.get("gate_id") == next_contract.get("id")
+        and observed_result.get("passed") is True
+    )
+    fallback_active = bool(
+        isinstance(completed_iteration, int)
+        and completed_iteration >= fallback_activate_after >= 0
+        and fallback.get("only_if_prior_gate_unpassed") is True
+        and str(fallback.get("prior_gate_id") or "")
+        == str(next_contract.get("id") or "")
+        and str(fallback.get("id") or "")
+        and not prior_gate_passed
+    )
+    effective_pass_criteria = dict(pass_criteria)
+    effective_gate_id = str(next_contract.get("id") or "")
+    if fallback_active:
+        effective_gate_id = str(fallback["id"])
+        effective_pass_criteria["skill_weighted_confidence_lower"] = float(
+            fallback["skill_weighted_confidence_lower"]
+        )
     roster_ids = [str(row.get("opponent_id") or "") for row in roster]
     content_digests = [str(row.get("content_digest") or "") for row in roster]
     research_measurements = [
@@ -5280,6 +6899,34 @@ def competition_gate_program_state(
         "candidate_source": next_contract.get("candidate_source"),
         "evaluation": evaluation,
         "pass_criteria": pass_criteria,
+        "effective_gate_id": effective_gate_id,
+        "effective_pass_criteria": effective_pass_criteria,
+        "fallback_active": fallback_active,
+        "threshold_transition": (
+            {
+                "status": "active",
+                "prior_gate_id": next_contract.get("id"),
+                "effective_gate_id": effective_gate_id,
+                "activate_after_completed_iteration": fallback_activate_after,
+                "observed_completed_iteration": completed_iteration,
+                "only_changed_criterion": (
+                    "skill_weighted_confidence_lower"
+                ),
+                "prior_confidence_lower": pass_criteria.get(
+                    "skill_weighted_confidence_lower"
+                ),
+                "effective_confidence_lower": effective_pass_criteria.get(
+                    "skill_weighted_confidence_lower"
+                ),
+            }
+            if fallback_active
+            else {
+                "status": "staged" if fallback else "absent",
+                "activate_after_completed_iteration": (
+                    fallback_activate_after if fallback else None
+                ),
+            }
+        ),
         "milestones": next_contract.get("milestones") or [],
         "roster": roster,
         "excluded_aliases": next_contract.get("excluded_aliases") or [],
@@ -7503,6 +9150,11 @@ def curriculum_state() -> dict[str, Any]:
         run_dir,
         global_iteration_offset=global_iteration_offset,
     )
+    latest_formal_holdout = latest_committed_formal_holdout_state(
+        loop,
+        run_dir,
+        global_iteration_offset=global_iteration_offset,
+    )
     matchup_runtime = matchup_runtime_collection_state(run_dir)
     run_name = (
         active_run_name
@@ -7697,6 +9349,11 @@ def curriculum_state() -> dict[str, Any]:
         # helper above returns that pointer only after an exact commit match.
         exact_result_override=committed_gate_result,
         exact_result_source=committed_gate_source,
+        completed_iteration=(
+            int(loop["last_completed_iteration"])
+            if isinstance(loop.get("last_completed_iteration"), int)
+            else None
+        ),
     )
     if isinstance(gate_program.get("next_gate"), dict):
         active_gate = gate_program["next_gate"]
@@ -7920,6 +9577,7 @@ def curriculum_state() -> dict[str, Any]:
         ),
         "official_heldout": official_heldout,
         "latest_official_heldout": latest_official_heldout,
+        "latest_formal_holdout": latest_formal_holdout,
         "matchup_runtime": matchup_runtime,
         "gate_passed": gate_passed,
         "promotion_wr": promotion.get("wr"),
@@ -8001,6 +9659,48 @@ def elmo_state() -> dict[str, Any]:
             "role": "simulator",
             "error": "telemetry unavailable",
         }
+
+
+def current_deck_guide_prestage_state() -> dict[str, Any]:
+    """Read checksum-backed guide-preparation progress from Elmo."""
+
+    raw = run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=3",
+            "-o",
+            "ControlMaster=auto",
+            "-o",
+            "ControlPersist=60",
+            "-o",
+            "ControlPath=/tmp/pokebot-dashboard-guide-prestage-ssh",
+            "elmo",
+            "python3",
+            "/home/admin/pokebot-expert-guide-src-v1/scripts/"
+            "current_deck_guide_prestage_snapshot.py",
+        ],
+        timeout=6,
+    )
+    try:
+        payload = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        payload = {}
+    if (
+        isinstance(payload, dict)
+        and payload.get("schema")
+        == "poke_bot.current_deck_guide_prestage_snapshot/v1"
+    ):
+        return payload
+    return {
+        "schema": "poke_bot.current_deck_guide_prestage_snapshot/v1",
+        "available": False,
+        "observed_at": time.time(),
+        "active": None,
+        "windows": [],
+    }
 
 
 def matchup_pipeline_state() -> dict[str, Any]:
@@ -8576,6 +10276,200 @@ def reconcile_canonical_router_candidate(
     return pipeline
 
 
+def _elmo_latest20_daily_materialization(
+    status_glob: str = EXPERT20_ELMO_DAILY_STATUS_GLOB,
+) -> dict[str, dict[str, Any]]:
+    """Read the current per-day Elmo build statuses in one bounded SSH call."""
+
+    raw = run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=3",
+            "-o",
+            "ControlMaster=auto",
+            "-o",
+            "ControlPersist=60",
+            "-o",
+            "ControlPath=/tmp/pokebot-dashboard-expert-daily-ssh",
+            "elmo",
+            "cat",
+            status_glob,
+        ],
+        timeout=6,
+    )
+    decoder = json.JSONDecoder()
+    offset = 0
+    statuses: dict[str, dict[str, Any]] = {}
+    while offset < len(raw):
+        while offset < len(raw) and raw[offset].isspace():
+            offset += 1
+        if offset >= len(raw):
+            break
+        try:
+            payload, offset = decoder.raw_decode(raw, offset)
+        except json.JSONDecodeError:
+            break
+        if not isinstance(payload, dict):
+            continue
+        window = (
+            payload.get("date_window")
+            if isinstance(payload.get("date_window"), dict)
+            else {}
+        )
+        day_value = str(
+            payload.get("current_date")
+            or window.get("start")
+            or (
+                (payload.get("completed") or [{}])[0].get("date")
+                if isinstance(payload.get("completed"), list)
+                and payload.get("completed")
+                and isinstance(payload["completed"][0], dict)
+                else ""
+            )
+        )
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day_value):
+            statuses[day_value] = payload
+    return statuses
+
+
+def v6_strategic_corpus_state(
+    dates: list[str],
+) -> dict[str, Any]:
+    """Report the separate V6 strategic-label corpus without masking V5 truth."""
+
+    if len(dates) != 20:
+        return {
+            "available": False,
+            "active": False,
+            "complete": False,
+            "reason": "exact latest-20 archive window is unavailable",
+        }
+    sync = read_json(V6_STRATEGIC_SPECIALIST_SYNC_STATE)
+    sync_dates = _exact_calendar_dates(
+        [str(value) for value in sync.get("dates") or ()]
+    )
+    sync_current = bool(
+        sync.get("schema") == "poke_bot.latest20_specialist_sync/v1"
+        and sync.get("status") in {"syncing", "incomplete", "ready"}
+        and sync_dates == dates
+        and int(sync.get("specialist_count") or 0) == 18
+        and sync.get("expanded_target_schema")
+        == V6_STRATEGIC_TARGET_SCHEMA
+        and sync.get("expanded_target_digest")
+        == V6_STRATEGIC_TARGET_DIGEST
+    )
+    service_active = (
+        run(
+            [
+                "systemctl",
+                "--user",
+                "is-active",
+                V6_STRATEGIC_SPECIALIST_SYNC_SERVICE,
+            ],
+            timeout=4,
+        ).strip()
+        in {"active", "activating"}
+    )
+    pointer_ready = bool(
+        sync_current
+        and sync.get("status") == "ready"
+        and V6_STRATEGIC_SPECIALIST_CURRENT.is_symlink()
+        and V6_STRATEGIC_SPECIALIST_CURRENT.resolve().is_dir()
+    )
+    daily_status = (
+        {}
+        if pointer_ready
+        else _elmo_latest20_daily_materialization(
+            EXPERT20_V6_STRATEGIC_ELMO_DAILY_STATUS_GLOB
+        )
+    )
+    running_days = {
+        day
+        for day, status in daily_status.items()
+        if day in dates and status.get("state") == "running"
+    }
+    ready_days = {
+        day
+        for day, status in daily_status.items()
+        if day in dates
+        and status.get("state") == "complete"
+        and len(status.get("completed") or ()) == 1
+    }
+    failed_days = {
+        day
+        for day, status in daily_status.items()
+        if day in dates and status.get("state") == "failed"
+    }
+    if pointer_ready:
+        ready_days = set(dates)
+        running_days = set()
+        failed_days = set()
+    source_bytes = int(sync.get("source_bytes") or 0)
+    copied_bytes = min(source_bytes, int(sync.get("copied_bytes") or 0))
+    sync_percent = (
+        100.0 * copied_bytes / source_bytes
+        if sync_current and source_bytes > 0
+        else None
+    )
+    daily_complete = len(ready_days) == 20 and not failed_days
+    phase = (
+        "ready"
+        if pointer_ready
+        else "atomic_checksum_sync_to_inzi"
+        if sync_current
+        else "specialist_corpus_finalization"
+        if daily_complete
+        else "parallel_daily_materialization"
+        if running_days
+        else "daily_feature_failure"
+        if failed_days
+        else "waiting_for_daily_materialization"
+    )
+    percent = (
+        100.0
+        if pointer_ready
+        else 75.0 + 0.25 * float(sync_percent or 0.0)
+        if sync_current
+        else 50.0 + 25.0 * len(ready_days) / 20.0
+    )
+    return {
+        "available": bool(
+            service_active or sync_current or daily_status or pointer_ready
+        ),
+        "active": bool(service_active and not pointer_ready),
+        "complete": pointer_ready,
+        "phase": phase,
+        "stage": phase,
+        "target_schema": V6_STRATEGIC_TARGET_SCHEMA,
+        "target_digest": V6_STRATEGIC_TARGET_DIGEST,
+        "window_start": dates[0],
+        "window_end": dates[-1],
+        "completed_days": len(ready_days),
+        "running_days": len(running_days),
+        "failed_days": len(failed_days),
+        "total_days": 20,
+        "percent": percent,
+        "sync_status": sync.get("status") if sync_current else None,
+        "sync_percent": sync_percent,
+        "atomic_pointer_ready": pointer_ready,
+        "current_pointer": str(V6_STRATEGIC_SPECIALIST_CURRENT),
+        "sync_receipt": str(V6_STRATEGIC_SPECIALIST_SYNC_STATE),
+        "latest_line": (
+            "NEXT BOUNDARY V6 STRATEGIC CORPUS · "
+            f"{len(ready_days)}/20 daily feature shards ready · "
+            f"{len(running_days)} running · {phase.replace('_', ' ')}"
+            + (
+                f" · sync {sync_percent:.1f}%"
+                if sync_percent is not None
+                else ""
+            )
+        ),
+    }
+
+
 def expert_refresh_state() -> dict[str, Any]:
     """Report the authoritative split-host 20-day expert refresh."""
     current = read_json(EXPERT20_CURRENT_RECEIPT)
@@ -8604,25 +10498,233 @@ def expert_refresh_state() -> dict[str, Any]:
             [str(row.get("day") or "") for row in rows]
         )
         if len(rows) == 20 and len(dates) == 20:
+            specialist_sync = read_json(LATEST20_SPECIALIST_SYNC_STATE)
+            specialist_sync_dates = _exact_calendar_dates(
+                [
+                    str(value)
+                    for value in specialist_sync.get("dates") or ()
+                ]
+            )
+            specialist_sync_current = bool(
+                specialist_sync.get("schema")
+                == "poke_bot.latest20_specialist_sync/v1"
+                and specialist_sync.get("status")
+                in {"syncing", "incomplete", "ready"}
+                and specialist_sync_dates == dates
+                and int(specialist_sync.get("specialist_count") or 0) == 18
+                and int(specialist_sync.get("source_bytes") or 0) > 0
+            )
+            daily_status = (
+                {}
+                if specialist_sync_current
+                and specialist_sync.get("status") == "ready"
+                else _elmo_latest20_daily_materialization()
+            )
+            running_days = {
+                day_value
+                for day_value, status in daily_status.items()
+                if status.get("state") == "running"
+            }
+            ready_days = {
+                day_value
+                for day_value, status in daily_status.items()
+                if status.get("state") == "complete"
+                and len(status.get("completed") or ()) == 1
+            }
+            failed_days = {
+                day_value
+                for day_value, status in daily_status.items()
+                if status.get("state") == "failed"
+            }
+            # The sync state is written only after the finalizer's canonical
+            # 20-date/18-specialist receipt has validated. It supersedes
+            # disposable per-day worker statuses once finalization completes.
+            if specialist_sync_current:
+                ready_days = set(dates)
+                running_days = set()
+                failed_days = set()
+            strategic_v6 = v6_strategic_corpus_state(dates)
+            if daily_status or specialist_sync_current:
+                rows_by_day = {
+                    str(row.get("day") or ""): dict(row) for row in rows
+                }
+                rows = []
+                for day_value in dates:
+                    row = rows_by_day[day_value]
+                    if day_value in ready_days:
+                        row.update(
+                            {
+                                "host": "Elmo",
+                                "stage": "feature_ready",
+                                "percent": 100.0,
+                            }
+                        )
+                    elif day_value in running_days:
+                        row.update(
+                            {
+                                "host": "Elmo",
+                                "stage": "featurizing",
+                                "percent": 0.0,
+                                "service": {"active": True},
+                            }
+                        )
+                    else:
+                        row.update(
+                            {
+                                "stage": "archive_ready",
+                                "percent": 50.0,
+                            }
+                        )
+                    rows.append(row)
+            daily_active = bool(running_days)
+            selected_daily_days = (
+                20 if specialist_sync_current else len(daily_status)
+            )
+            daily_materialization_ready = bool(
+                selected_daily_days
+                and len(ready_days) == selected_daily_days
+                and not running_days
+                and not failed_days
+            )
+            specialist_sync_active = (
+                run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "is-active",
+                        LATEST20_SPECIALIST_SYNC_SERVICE,
+                    ],
+                    timeout=4,
+                ).strip()
+                in {"active", "activating"}
+            )
+            specialist_pointer_ready = (
+                LATEST20_SPECIALIST_CURRENT.is_symlink()
+                and LATEST20_SPECIALIST_CURRENT.resolve().is_dir()
+            )
+            source_bytes = int(specialist_sync.get("source_bytes") or 0)
+            copied_bytes = min(
+                source_bytes,
+                int(specialist_sync.get("copied_bytes") or 0),
+            )
+            sync_percent = (
+                100.0 * copied_bytes / source_bytes
+                if specialist_sync_current and source_bytes > 0
+                else None
+            )
+            finalization_label = (
+                "latest20 specialist corpus READY on Inzi"
+                if specialist_pointer_ready
+                else (
+                    "Inzi checksum sync active · atomic pointer withheld until "
+                    "validation"
+                    if specialist_sync_active
+                    else "managed corpus finalizer and Inzi sync pending"
+                )
+            )
             return {
                 "available": True,
-                "active": False,
-                "complete": True,
+                # The source pipeline remains active after its selected missing
+                # days finish because the managed corpus finalizer and atomic
+                # Inzi promotion still have to publish their receipts.
+                "active": bool(daily_active or specialist_sync_active),
+                "complete": specialist_pointer_ready,
                 "archive_window_ready": True,
                 "host": "Bert Wi-Fi → Elmo Ethernet",
-                "stage": "ready",
-                "phase": "archive_window_ready",
+                "stage": (
+                    "ready"
+                    if specialist_pointer_ready
+                    else "syncing_specialist_corpora"
+                    if specialist_sync_active and specialist_sync_current
+                    else "specialist_corpus_sync_pending"
+                    if specialist_sync_current
+                    else "featurizing"
+                    if daily_active
+                    else "daily_features_ready"
+                    if daily_materialization_ready
+                    else "daily_feature_retry_pending"
+                    if failed_days
+                    else "archive_ready"
+                ),
+                "phase": (
+                    "corpus_ready"
+                    if specialist_pointer_ready
+                    else "atomic_checksum_sync_to_inzi"
+                    if specialist_sync_active and specialist_sync_current
+                    else "atomic_checksum_sync_pending"
+                    if specialist_sync_current
+                    else "parallel_daily_materialization"
+                    if daily_active
+                    else "managed_corpus_finalization_pending"
+                    if daily_materialization_ready
+                    else "managed_daily_retry_pending"
+                    if failed_days
+                    else "archive_window_ready"
+                ),
                 "window_start": dates[0],
                 "window_end": dates[-1],
-                "completed_days": 20,
+                "completed_days": len(ready_days),
                 "archive_ready_days": 20,
-                "feature_ready_days": 0,
+                "feature_ready_days": len(ready_days),
                 "total_days": 20,
-                "percent": 100.0,
+                "percent": (
+                    100.0
+                    if specialist_pointer_ready
+                    else 75.0 + 0.25 * float(sync_percent or 0.0)
+                    if specialist_sync_current
+                    else 50.0
+                    + (
+                        25.0 * len(ready_days) / selected_daily_days
+                        if selected_daily_days
+                        else 0.0
+                    )
+                ),
+                "daily_materialization": {
+                    "selected_days": selected_daily_days,
+                    "completed_days": len(ready_days),
+                    "running_days": len(running_days),
+                    "failed_days": len(failed_days),
+                    "ready": daily_materialization_ready,
+                    "finalization_pending": bool(
+                        daily_materialization_ready
+                        and not specialist_sync_current
+                    ),
+                    "finalization_ready": specialist_sync_current,
+                },
+                "specialist_sync": {
+                    "status": specialist_sync.get("status"),
+                    "current_bytes": copied_bytes,
+                    "total_bytes": source_bytes,
+                    "percent": sync_percent,
+                    "bandwidth_limit_kib_per_second": specialist_sync.get(
+                        "bandwidth_limit_kib_per_second"
+                    ),
+                    "atomic_pointer_ready": specialist_pointer_ready,
+                    "source": str(LATEST20_SPECIALIST_SYNC_STATE),
+                },
+                "expanded_v6": strategic_v6,
                 "days": rows,
                 "latest_line": (
                     f"Latest 20 daily archives ready · {dates[0]} through "
-                    f"{dates[-1]} · Bert Wi-Fi ingress → Elmo archive"
+                    f"{dates[-1]} · {len(ready_days)}/"
+                    f"{selected_daily_days or 20} selected missing daily "
+                    f"features complete · {len(running_days)} active"
+                    + (
+                        f" · {len(failed_days)} awaiting managed retry"
+                        if failed_days
+                        else ""
+                    )
+                    + (
+                        f" · {finalization_label}"
+                        if daily_materialization_ready
+                        else ""
+                    )
+                    + (
+                        f" · {copied_bytes:,}/{source_bytes:,} bytes "
+                        f"({float(sync_percent or 0.0):.1f}%)"
+                        if specialist_sync_current and source_bytes > 0
+                        else ""
+                    )
                 ),
                 "source": str(EXPERT20_CURRENT_RECEIPT),
                 "updated_at": current.get("committed_at"),
@@ -9094,6 +11196,79 @@ def latest10_state() -> dict[str, Any]:
     }
 
 
+def reconcile_protocol_with_live_curriculum(
+    protocol: dict[str, Any],
+    *,
+    service: dict[str, Any],
+    curriculum: dict[str, Any],
+) -> dict[str, Any]:
+    """Project the selected live gate instead of a prior specialist boundary."""
+
+    if (
+        protocol.get("available") is not True
+        or not curriculum.get("run")
+        or service.get("active") is not True
+    ):
+        return protocol
+    gate_program = dict(curriculum.get("gate_program") or {})
+    next_gate = dict(gate_program.get("next_gate") or {})
+    evaluation = dict(next_gate.get("evaluation") or {})
+    research_measurements = [
+        row
+        for row in (next_gate.get("research_measurements") or [])
+        if isinstance(row, dict)
+    ]
+    premium_games = int(evaluation.get("games_total") or 0)
+    official_games = sum(
+        int(row.get("games") or 0) for row in research_measurements
+    )
+    if official_games <= 0:
+        official_games = int(
+            (curriculum.get("latest_official_heldout") or {}).get("games")
+            or 0
+        )
+    command = str(service.get("command") or "")
+    floor_match = re.search(
+        r"(?:^|\s)--minimum-terminal-iteration\s+(\d+)(?:\s|$)",
+        command,
+    )
+    iterations_match = re.search(
+        r"(?:^|\s)--iterations\s+(\d+)(?:\s|$)",
+        command,
+    )
+    preparation = dict(protocol.get("preparation") or {})
+    preparation.update(
+        {
+            "terminal_protocol_active": True,
+            "terminal_active_gate_id": (
+                gate_program.get("active_gate_id")
+                or next_gate.get("effective_gate_id")
+                or next_gate.get("id")
+            ),
+            "active_specialist_service": service.get("name"),
+            "current_premium_gate_games": premium_games,
+            "current_official_research_games": official_games,
+            "current_total_evaluation_games": (
+                premium_games + official_games
+            ),
+            "gate_handler_minimum_completed_iteration": (
+                int(floor_match.group(1))
+                if floor_match
+                else preparation.get(
+                    "gate_handler_minimum_completed_iteration"
+                )
+            ),
+            "terminal_iteration_ceiling": (
+                max(0, int(iterations_match.group(1)) - 1)
+                if iterations_match
+                else preparation.get("terminal_iteration_ceiling")
+            ),
+            "gate_handler_source": "live_service_and_gate_program",
+        }
+    )
+    return {**protocol, "preparation": preparation}
+
+
 def authoritative_training_state(
     curriculum: dict[str, Any],
     transition: dict[str, Any],
@@ -9107,7 +11282,9 @@ def authoritative_training_state(
     payload instead of allowing the completed marker to shadow production.
     """
     owner_handoff = owner_handoff or {}
-    if owner_handoff.get("active"):
+    if owner_handoff.get("active") or owner_handoff.get("terminal_failure"):
+        handoff_active = bool(owner_handoff.get("active"))
+        terminal_failure = bool(owner_handoff.get("terminal_failure"))
         return {
             "authoritative": True,
             "source": owner_handoff.get("source"),
@@ -9115,7 +11292,7 @@ def authoritative_training_state(
             "latest_line": owner_handoff.get("latest_line"),
             "updated_at": owner_handoff.get("updated_at"),
             "fresh": True,
-            "status": "running",
+            "status": "running" if handoff_active else "failed",
             "mode": "specialist_handoff",
             "phase": owner_handoff.get("stage"),
             "epoch": owner_handoff.get("epoch"),
@@ -9126,13 +11303,21 @@ def authoritative_training_state(
             "rate": owner_handoff.get("rate"),
             "rate_unit": owner_handoff.get("rate_unit"),
             "metrics": {},
-            "run": "owner-accepted-alakazam-to-core-to-trevenant",
+            "run": (
+                owner_handoff.get("source_specialist_id")
+                or owner_handoff.get("next_specialist_id")
+                or "specialist-cycle-handoff"
+            ),
             "service": {
-                "active": True,
+                "active": handoff_active,
                 "pid": owner_handoff.get("pid"),
                 "memory_bytes": owner_handoff.get("memory_bytes"),
                 "source": owner_handoff.get("source"),
             },
+            "terminal_failure": terminal_failure,
+            "core_gameplay_regression": owner_handoff.get(
+                "core_gameplay_regression"
+            ),
         }
     if curriculum.get("run"):
         progress = curriculum.get("progress") or {}
@@ -9264,6 +11449,36 @@ def active_specialist_commit_overlay(
             "run_path": str(run_dir),
             "commit_path": str(commit_path),
         }
+    learner = commit.get("learner")
+    learner = learner if isinstance(learner, dict) else {}
+    latest_learner = latest.get("learner_after")
+    latest_learner = (
+        latest_learner if isinstance(latest_learner, dict) else {}
+    )
+    learner_checkpoint = str(
+        learner.get("path") or latest_learner.get("path") or checkpoint
+    )
+    learner_digest = str(
+        learner.get("digest") or latest_learner.get("digest") or checkpoint_digest
+    )
+    if (
+        not learner_checkpoint
+        or not learner_digest.startswith("sha256:")
+        or (
+            learner
+            and latest_learner
+            and (
+                learner_checkpoint != str(latest_learner.get("path") or "")
+                or learner_digest != str(latest_learner.get("digest") or "")
+            )
+        )
+    ):
+        return {
+            "available": False,
+            "reason": "latest immutable commit learner identity is inconsistent",
+            "run_path": str(run_dir),
+            "commit_path": str(commit_path),
+        }
     premium = latest.get("active_gate_result")
     premium = dict(premium) if isinstance(premium, dict) else {}
     if premium and (
@@ -9290,6 +11505,30 @@ def active_specialist_commit_overlay(
             "run_path": str(run_dir),
             "commit_path": str(commit_path),
         }
+    incumbent = latest.get("incumbent_after")
+    incumbent = incumbent if isinstance(incumbent, dict) else {}
+    protected_champion = commit.get("champion")
+    protected_champion = (
+        protected_champion
+        if isinstance(protected_champion, dict)
+        else incumbent
+    )
+    promotion = latest.get("promotion")
+    promotion = promotion if isinstance(promotion, dict) else {}
+    continuous_learner = promotion.get("continuous_learner")
+    continuous_learner = (
+        continuous_learner
+        if isinstance(continuous_learner, dict)
+        else {}
+    )
+    exact_gate_regression = continuous_learner.get(
+        "exact_gate_regression"
+    )
+    exact_gate_regression = (
+        exact_gate_regression
+        if isinstance(exact_gate_regression, dict)
+        else {}
+    )
     return {
         "available": True,
         "source": "latest_immutable_active_run_commit",
@@ -9301,6 +11540,14 @@ def active_specialist_commit_overlay(
         "rl_iterations_completed": len(completed_rows),
         "checkpoint": checkpoint,
         "checkpoint_digest": checkpoint_digest,
+        "learner_checkpoint": learner_checkpoint,
+        "learner_digest": learner_digest,
+        "protected_champion": protected_champion or None,
+        "candidate_promoted": latest.get("promoted") is True,
+        "heldout_champion_updated": (
+            latest.get("heldout_champion_updated") is True
+        ),
+        "exact_gate_regression": exact_gate_regression or None,
         "premium_holdout": premium or None,
         "official_research": research or None,
     }
@@ -9337,6 +11584,64 @@ def reconcile_frozen_specialist_rows(
     if active in frozen_specialist_ids:
         active = ""
     return reconciled, counts, active
+
+
+def prestage_receipt_is_current(
+    receipt: dict[str, Any],
+    active_specialist_id: str,
+) -> bool:
+    """Accept an explicit blocked receipt without inventing a next target."""
+    status = str(receipt.get("status") or "")
+    return bool(
+        receipt.get("schema") == "poke_bot.next_specialist_prestage/v1"
+        and receipt.get("active_specialist") == active_specialist_id
+        and status in {"ready", "blocked"}
+        and (
+            status == "blocked"
+            or bool(str(receipt.get("selected_specialist") or ""))
+        )
+    )
+
+
+def canonical_next_prestage_overlay(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the staged next-specialist requirement owned by canonical state.
+
+    A checksum-ready historical V5 pre-stage remains useful evidence, but it
+    cannot be rendered as executable when the canonical V6 handoff requires
+    the separate expanded-target corpus.  Keeping this projection pure makes
+    the dashboard behavior regression-testable without live services.
+    """
+
+    archive = payload.get("expert_corpus_archive")
+    policy = (
+        archive.get("canonical_policy")
+        if isinstance(archive, dict)
+        else None
+    )
+    row = (
+        policy.get("next_specialist_prestage")
+        if isinstance(policy, dict)
+        else None
+    )
+    if not isinstance(row, dict):
+        return {}
+    status = str(row.get("status") or "")
+    blocker = str(row.get("blocker") or "")
+    intended = str(
+        row.get("intended_next_specialist_after_corpus_validation") or ""
+    )
+    blocks_v6 = bool(
+        status == "blocked_waiting_for_expanded_v6_corpus"
+        or blocker == "protocol_valid_expert_corpus_not_ready"
+    )
+    return {
+        "status": status or None,
+        "blocker": blocker or None,
+        "intended_specialist": intended or None,
+        "blocks_v6_handoff": blocks_v6,
+        "receipt": row.get("receipt"),
+        "cpu_pack_status": row.get("cpu_pack_status"),
+    }
 
 
 def specialist_protocol_state(
@@ -9412,7 +11717,7 @@ def specialist_protocol_state(
     if canonical_roster_present:
         canonical_ids = [
             str(value)
-            for value in (canonical_roster.get("expert_ids") or [])
+            for value in (canonical_roster.get("active_expert_ids") or [])
             if str(value)
         ]
         if (
@@ -9466,12 +11771,12 @@ def specialist_protocol_state(
     runtime_specialist_id = str(runtime_specialist_id or "").strip().lower()
     runtime_run_name = str(runtime_run_name or "").strip()
     runtime_service_state = str(runtime_service_state or "").strip()
-    runtime_reconciled = bool(
+    runtime_identity_reconciled = bool(
         runtime_specialist_id and runtime_specialist_id != canonical_active_id
     )
     active_id = runtime_specialist_id or canonical_active_id
     live_execution = canonical_live_execution
-    if runtime_reconciled and runtime_run_name:
+    if runtime_identity_reconciled and runtime_run_name:
         runtime_path = (
             Path("/home/inzi/poke-bot-agent/outputs/pure_rl")
             / Path(runtime_run_name).name
@@ -9479,6 +11784,40 @@ def specialist_protocol_state(
         live_execution = active_specialist_commit_overlay(
             {"path": str(runtime_path)}
         )
+    runtime_execution_reconciled = bool(
+        live_execution.get("available") is True
+        and (
+            int(
+                active_run.get("last_completed_iteration")
+                if active_run.get("last_completed_iteration") is not None
+                else -1
+            )
+            != int(
+                live_execution.get("last_completed_iteration")
+                if live_execution.get("last_completed_iteration") is not None
+                else -1
+            )
+            or int(
+                active_run.get("next_iteration")
+                if active_run.get("next_iteration") is not None
+                else -1
+            )
+            != int(
+                live_execution.get("next_iteration")
+                if live_execution.get("next_iteration") is not None
+                else -1
+            )
+            or str(active_run.get("learner_checksum") or "")
+            != str(
+                live_execution.get("learner_digest")
+                or live_execution.get("checkpoint_digest")
+                or ""
+            )
+        )
+    )
+    runtime_reconciled = (
+        runtime_identity_reconciled or runtime_execution_reconciled
+    )
     rows: list[dict[str, Any]] = []
     ids: list[str] = []
     for raw in specialists:
@@ -9895,17 +12234,27 @@ def specialist_protocol_state(
         next_selection = {}
     selected_next = dict(next_selection.get("selected") or {})
     prestage_state = read_json(NEXT_SPECIALIST_PRESTAGE_STATE)
-    prestage_available = bool(
-        prestage_state.get("schema") == "poke_bot.next_specialist_prestage/v1"
-        and prestage_state.get("active_specialist") == active_id
-        and str(prestage_state.get("selected_specialist") or "")
+    prestage_available = prestage_receipt_is_current(
+        prestage_state,
+        active_id,
     )
     if prestage_available:
         staged_selection = dict(prestage_state.get("selection") or {})
         selected_next = dict(staged_selection.get("selected") or {})
         next_selection = staged_selection
+    canonical_prestage = canonical_next_prestage_overlay(payload)
+    v6_handoff_blocked = (
+        canonical_prestage.get("blocks_v6_handoff") is True
+    )
+    legacy_v5_selected = dict(selected_next)
+    if v6_handoff_blocked:
+        selected_next = {
+            "specialist_id": canonical_prestage.get(
+                "intended_specialist"
+            )
+        }
     selected_pointer = Path(
-        str(selected_next.get("pointer") or "/nonexistent")
+        str(legacy_v5_selected.get("pointer") or "/nonexistent")
     )
     selected_corpus = read_json(selected_pointer)
     frozen_program_ids = sorted(
@@ -9950,6 +12299,9 @@ def specialist_protocol_state(
         "active_specialist_ids": (
             [program_active_id] if program_active_id else []
         ),
+        "remaining_unfinished": max(
+            0, expected_count - len(frozen_program_ids)
+        ),
         "remaining_after_active": max(
             0,
             expected_count
@@ -9961,17 +12313,56 @@ def specialist_protocol_state(
     unfinished_including_active = max(
         0, expected_count - len(frozen_program_ids)
     )
+    status_by_id = {
+        str(row["id"]): str(row["status"])
+        for row in rows
+    }
+    live_priority_source = [*canonical_priority, *ids]
+    live_ordered_priority: list[str] = []
+    for specialist_id in live_priority_source:
+        if (
+            specialist_id
+            and specialist_id != program_active_id
+            and status_by_id.get(specialist_id)
+            not in {"passed_frozen", "population_training"}
+            and specialist_id not in live_ordered_priority
+        ):
+            live_ordered_priority.append(specialist_id)
+    live_rank_by_id = {
+        specialist_id: rank
+        for rank, specialist_id in enumerate(
+            live_ordered_priority, start=1
+        )
+    }
+    for row in rows:
+        row["rank_after_active"] = live_rank_by_id.get(str(row["id"]))
     effective_next_action = current.get("next_action")
-    if runtime_reconciled and program_active_id:
+    if live_execution.get("available") is True and program_active_id:
         active_label = program_active_id.replace("-", " ").title()
         effective_next_action = (
-            f"Continue the live {active_label} specialist through its exact "
+            f"Continue live {active_label} iteration "
+            f"{int(live_execution['next_iteration'])} through its exact "
             f"training and gate contract. {unfinished_including_active} "
             "specialists remain unfinished including the active specialist; "
             f"{live_program_progress['remaining_after_active']} remain after it. "
             "Freeze and register it only after both gates pass, then begin the "
             "next unfinished specialist. Population training remains blocked "
             f"until all {expected_count} specialists are frozen."
+        )
+    elif runtime_identity_reconciled and program_active_id:
+        # A selector may commit the next specialist before that run has
+        # published its first immutable iteration receipt. The selector is
+        # still authoritative for identity, so never leave the previous
+        # specialist's planning action on screen during this brief boundary.
+        active_label = program_active_id.replace("-", " ").title()
+        effective_next_action = (
+            f"Continue live {active_label} specialist under the selected "
+            "runtime contract while its first immutable execution receipt is "
+            f"pending. {unfinished_including_active} specialists remain "
+            "unfinished including the active specialist; preserve all frozen "
+            "predecessors and begin normal receipt-backed iteration tracking "
+            "as soon as it appears. Population training remains blocked until "
+            f"all {expected_count} specialists are frozen."
         )
     population_runtime: dict[str, Any] = {}
     if POPULATION_ROUND_ROBIN_STATE.is_file():
@@ -10032,11 +12423,21 @@ def specialist_protocol_state(
         "runtime_run_name": runtime_run_name or None,
         "runtime_service_state": runtime_service_state or None,
         "runtime_reconciled": runtime_reconciled,
-        "canonical_pointer_stale": runtime_reconciled,
+        "runtime_identity_reconciled": runtime_identity_reconciled,
+        "runtime_execution_reconciled": runtime_execution_reconciled,
+        # A newer immutable iteration commit makes planning counters stale,
+        # not the canonical specialist pointer.  Only an actual selected
+        # specialist identity mismatch invalidates that pointer.
+        "canonical_pointer_stale": runtime_identity_reconciled,
         "accuracy_warning": (
-            "Selected production service supersedes the stale canonical "
-            "active-specialist pointer; "
-            "immutable completed-specialist history is preserved."
+            (
+                "Selected production service supersedes the stale canonical "
+                "active-specialist identity; immutable completed-specialist "
+                "history is preserved."
+                if runtime_identity_reconciled
+                else "Live immutable commits supersede stale execution "
+                "counters in the canonical planning snapshot."
+            )
             if runtime_reconciled
             else None
         ),
@@ -10079,10 +12480,20 @@ def specialist_protocol_state(
         "specialists": rows,
         "training_priority": {
             "policy": priority.get("policy"),
-            "ordered_unfinished_ids_after_active": ordered_priority,
-            "next_specialist": ordered_priority[0] if ordered_priority else None,
-            "next_executable_specialist": selected_next.get("specialist_id"),
-            "next_executable_decisions": selected_next.get("decisions"),
+            "ordered_unfinished_ids_after_active": live_ordered_priority,
+            "next_specialist": (
+                live_ordered_priority[0]
+                if live_ordered_priority
+                else None
+            ),
+            "next_executable_specialist": (
+                None
+                if v6_handoff_blocked
+                else selected_next.get("specialist_id")
+            ),
+            "next_executable_decisions": (
+                None if v6_handoff_blocked else selected_next.get("decisions")
+            ),
             "deferred_higher_priority": next_selection.get(
                 "deferred_higher_priority", []
             ),
@@ -10115,12 +12526,21 @@ def specialist_protocol_state(
         "frozen_inference_opponents": frozen_runtime_rows,
         "preparation": {
             "next_specialist": selected_next.get("specialist_id"),
-            "prestage_available": prestage_available,
+            "prestage_available": bool(
+                prestage_available or canonical_prestage
+            ),
             "prestage_status": (
-                prestage_state.get("status") if prestage_available else None
+                canonical_prestage.get("status")
+                if v6_handoff_blocked
+                else prestage_state.get("status")
+                if prestage_available
+                else None
             ),
             "prestage_blockers": (
-                list(prestage_state.get("blockers") or ())
+                [canonical_prestage.get("blocker")]
+                if v6_handoff_blocked
+                and canonical_prestage.get("blocker")
+                else list(prestage_state.get("blockers") or ())
                 if prestage_available
                 else []
             ),
@@ -10131,7 +12551,9 @@ def specialist_protocol_state(
                 else False
             ),
             "prestage_cpu_pack_status": (
-                (prestage_state.get("cpu_pack") or {}).get("status")
+                canonical_prestage.get("cpu_pack_status")
+                if v6_handoff_blocked
+                else (prestage_state.get("cpu_pack") or {}).get("status")
                 if prestage_available
                 else None
             ),
@@ -10145,16 +12567,49 @@ def specialist_protocol_state(
                 if prestage_available
                 else None
             ),
-            "expert_corpus_ready": selected_pointer.is_file(),
+            "expert_corpus_ready": bool(
+                selected_pointer.is_file() and not v6_handoff_blocked
+            ),
             "expert_corpus_pointer": (
-                str(selected_pointer) if selected_pointer.is_file() else None
+                str(selected_pointer)
+                if selected_pointer.is_file() and not v6_handoff_blocked
+                else None
             ),
             "expert_records": int(
-                ((selected_corpus.get("totals") or {}).get("records_kept")) or 0
+                ((selected_corpus.get("totals") or {}).get("records_kept"))
+                or 0
             ),
             "expert_decisions": int(
                 ((selected_corpus.get("totals") or {}).get("decisions_kept")) or 0
             ),
+            "required_expert_corpus": (
+                "v6_expanded_strategic_latest20"
+                if v6_handoff_blocked
+                else "selected_checksum_pinned_corpus"
+            ),
+            "legacy_v5_prestage": {
+                "available": prestage_available,
+                "status": (
+                    prestage_state.get("status")
+                    if prestage_available
+                    else None
+                ),
+                "specialist_id": legacy_v5_selected.get("specialist_id"),
+                "pointer": (
+                    str(selected_pointer)
+                    if selected_pointer.is_file()
+                    else None
+                ),
+                "decisions": int(
+                    (
+                        (selected_corpus.get("totals") or {}).get(
+                            "decisions_kept"
+                        )
+                    )
+                    or 0
+                ),
+                "v6_bootstrap_eligible": not v6_handoff_blocked,
+            },
             "balanced_core_corpus_ready": core_pointer.is_file(),
             "balanced_core_builder_active": bool(core_service.get("active")),
             "balanced_core_builder_pid": core_service.get("pid"),
@@ -10292,11 +12747,14 @@ def annotate_gpu_production_assignments(
 def main() -> None:
     # Elmo is an independent host. Fetch its three views concurrently so a
     # slow SSH handshake cannot serialize into the outer Bert→Inzi timeout.
-    with ThreadPoolExecutor(max_workers=4) as remote_pool:
+    with ThreadPoolExecutor(max_workers=5) as remote_pool:
         elmo_future = remote_pool.submit(elmo_state)
         latest10_future = remote_pool.submit(latest10_state)
         expert_refresh_future = remote_pool.submit(expert_refresh_state)
         matchup_pipeline_future = remote_pool.submit(matchup_pipeline_state)
+        guide_prestage_future = remote_pool.submit(
+            current_deck_guide_prestage_state
+        )
         system = system_state()
         service = service_state()
         transition = transition_state()
@@ -10306,6 +12764,7 @@ def main() -> None:
         latest10 = latest10_future.result()
         expert_refresh = expert_refresh_future.result()
         matchup_pipeline = matchup_pipeline_future.result()
+        guide_prestage = guide_prestage_future.result()
     runtime_service_selected = bool(
         service.get("active")
         or str(service.get("active_state") or "") == "activating"
@@ -10353,14 +12812,28 @@ def main() -> None:
         next_specialist=(
             (
                 specialist_protocol.get("training_priority") or {}
-            ).get("ordered_unfinished_ids_after_active")
-            or [None]
-        )[0],
+            ).get("next_executable_specialist")
+            or (
+                (
+                    specialist_protocol.get("training_priority") or {}
+                ).get("ordered_unfinished_ids_after_active")
+                or [None]
+            )[0]
+        ),
     )
     specialist_protocol = reconcile_protocol_with_active_handoff(
         specialist_protocol,
         specialist_handoff,
     )
+    specialist_protocol = reconcile_protocol_with_live_curriculum(
+        specialist_protocol,
+        service=service,
+        curriculum=curriculum,
+    )
+    if isinstance(specialist_protocol.get("preparation"), dict):
+        specialist_protocol["preparation"][
+            "current_deck_guide_prestage"
+        ] = guide_prestage
     matchup_pipeline = reconcile_canonical_router_candidate(
         matchup_pipeline,
         specialist_protocol,
@@ -10482,6 +12955,12 @@ def main() -> None:
                 "model": {
                     **(curriculum.get("model_contract") or {}),
                     "run": curriculum.get("run"),
+                    "staged_expanded_head_training": (
+                        specialist_handoff.get(
+                            "staged_expanded_head_training"
+                        )
+                        or {}
+                    ),
                     "matchup_pipeline": matchup_pipeline,
                     "runtime_identity": model_runtime_identity,
                     "canonical_matchup_transition": (
