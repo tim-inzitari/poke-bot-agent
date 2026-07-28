@@ -1,6 +1,6 @@
 {
   "schema": "poke_bot.specialist_deck_representatives/v1",
-  "artifact_sha256": "sha256:033b5e6c04b890b414657e05a3ae4e9c0183234d361a149f706d5afc7c1d3685",
+  "artifact_sha256": "sha256:d41347f8a52f310cb2c260865ffca5eb09e73f548fba2ca6238ccf1f9c4453c1",
   "source": {
     "corpus": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/hops-trevenant-v2/PROTECTED_EXPERT_CORPUS.json",
     "manifest_sha256": "sha256:20a2ef140708c3786c125b98fd191584d3b581ecf32d8bf8281b26a9ba434d3c",
@@ -608,7 +608,7 @@
         15,
         5
       ],
-      "canonical_multiset_sha256": "sha256:dfc0139100e56de0989e004c476d62f2474a98cf2dc805bdb6152f68fe4f47c6",
+      "canonical_multiset_sha256": "sha256:c8b507cfa05062cd74e8b90d9ad558dba0e670fef449572f4a55d97b640483f8",
       "cards_sha256": "sha256:dc32282c1053c83579a22081fde00c6b871e5ca798d2ff4e8f1f854a4ff6b19d",
       "source_deck_id": "team-rockets-spidops",
       "distinct_lists": 1,

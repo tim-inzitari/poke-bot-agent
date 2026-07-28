@@ -1,0 +1,63 @@
+{
+  "schema": "poke_bot.spidops_activation_boundary/v1",
+  "status": "active_training_verified",
+  "verified_at_utc": "2026-07-28T20:20:38Z",
+  "specialist_id": "team-rockets-spidops",
+  "selector": {
+    "path": "/home/inzi/.config/pokebot/specialist_runtime.env",
+    "value": "team-rockets-spidops",
+    "runtime_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1"
+  },
+  "managed_service": {
+    "name": "pokebot-pure-rl-trevenant-staged.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "run_name": "pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723",
+    "iteration": 0,
+    "phase": "collect_self_play"
+  },
+  "bootstrap": {
+    "epochs_completed": 25,
+    "checkpoint_digest": "sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338",
+    "ready_receipt": "/home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-expert-bootstrap-ready-v9.json",
+    "ready_receipt_sha256": "sha256:39ab933e180a412a3d4da710f658f78cb503bb5aa200947462bc0d368c30d8bc",
+    "accepted_core_version": 9,
+    "accepted_core_digest": "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056"
+  },
+  "rejected_core_v10": {
+    "checkpoint_digest": "sha256:fb634ad17a34287272f4bde26cd6c82b9ea0c8cab4bab2daa387e8ae25c45e1d",
+    "regression_receipt": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v10-fused-v1-gameplay-regression.json",
+    "regression_receipt_sha256": "sha256:7b2e07e69a36930072fb72c6d736d1bf00471075590dc404b66b89ace51af8b8",
+    "aggregate_raw_win_rate": 0.5087499999999999,
+    "failed_teacher": "marnie-s-grimmsnarl-ex",
+    "failed_teacher_raw_win_rate": 0.275,
+    "per_teacher_floor": 0.35,
+    "accepted": false,
+    "blocked_production": false
+  },
+  "activation_receipt": {
+    "path": "/home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-specialist-rl-activation-v9.json",
+    "sha256": "sha256:94c99e97a8fa15d2f9b204b24064e795e1a73732613a86d41b22fcb833a98c8b"
+  },
+  "corpus": {
+    "window_start": "2026-06-26",
+    "window_end": "2026-07-27",
+    "days": 32,
+    "indexed_floor_games": 16639,
+    "materialized_games": 16650,
+    "decisions": 1186370,
+    "guide_rows": 113013,
+    "manifest_sha256": "sha256:caf7c2d0be46a2f110547fd90b335d3df8eb39cb8fd78271442dad8a4ea64602"
+  },
+  "terminal_preflight": {
+    "status": "passed",
+    "representative_registry": "data/training_mixes/specialist_representatives.v1.json",
+    "representative_registry_artifact_sha256": "sha256:d41347f8a52f310cb2c260865ffca5eb09e73f548fba2ca6238ccf1f9c4453c1",
+    "representative_registry_file_sha256": "sha256:6399089e8ed9e5795f34f4415ae4c68b323a5ebde651e408e89d5fa0f72d359b",
+    "canonical_multiset_sha256": "sha256:c8b507cfa05062cd74e8b90d9ad558dba0e670fef449572f4a55d97b640483f8",
+    "failure_repaired": "prestage_digest_encoding_differed_from_pass_handler_canonical_multiset_digest",
+    "focused_tests_passed": 5
+  },
+  "hammer_pult_selected": false,
+  "interactive_sessions_modified": false
+}

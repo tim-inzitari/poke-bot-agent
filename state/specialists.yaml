@@ -38,29 +38,28 @@ allowed_status_values:
     - accepted_with_waiver
 
 current:
-  phase: cumulative_core_handoff
-  active_specialist: thwackey
+  phase: specialist_rl_training
+  active_specialist: team-rockets-spidops
   transition_source_specialist: thwackey
-  staged_successor_specialist: team-rockets-spidops
+  staged_successor_specialist: null
   program_progress:
     required_specialists_total: 18
     completed_frozen: 10
     completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo, thwackey]
     boundary_frozen_pending_public_mix_registration: []
     active_specialists: 1
-    active_specialist_ids: [thwackey]
+    active_specialist_ids: [team-rockets-spidops]
     remaining_unfinished: 8
-    remaining_after_active: 8
+    remaining_after_active: 7
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Preserve Thwackey's immutable iteration-5 passing checkpoint while the
-    managed cumulative-core-v10 handoff runs. Team Rocket's Spidops is the sole
-    prepared successor: its full June 26 through July 27 public corpus contains
-    16,650 exact acting-seat games, exceeds the 16,639 indexed floor, includes
-    all recent days, and has passed checksum, guide, route, representative, and
-    CPU-pack pre-stage validation. Keep the selector on Thwackey until the
-    receipt-backed core/bootstrap boundary; never fall through to Hammer-Pult.
+    Continue Team Rocket's Spidops specialist RL from its exact 25-epoch
+    accepted-core-v9 bootstrap. The selector, managed trainer, full 16,650-game
+    public corpus, guide, route, representative, and terminal-handler preflight
+    are checksum-aligned. Preserve rejected cumulative core v10 as immutable
+    diagnostic evidence and prepare the next successor without interrupting
+    healthy Spidops training.
   next_successor_prestage:
     specialist_id: team-rockets-spidops
     status: ready
@@ -1041,7 +1040,6 @@ training_priority:
   # "Dragapult ex" row; the shared percentage is group-level, not an assertion
   # that each variant independently owns that fraction of the field.
   ordered_unfinished_ids_after_active:
-    - team-rockets-spidops
     - hammer-pult
     - dragapult-blaziken
     - dragapult-dudunsparce
@@ -2065,44 +2063,47 @@ historical_marnie_cumulative_core_refresh:
 
 current_cumulative_core_refresh:
   schema: poke_bot.cumulative_core_refresh_state/v1
-  status: ready_gameplay_regression_passed
-  trigger_specialist: rockets-mewtwo
-  output_core_version: 9
-  handoff_receipt: /home/inzi/poke-bot-agent/outputs/state/post-rockets-mewtwo-core-v9-handoff.json
-  candidate_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt
-  candidate_checkpoint_checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
-  candidate_registered_as_accepted: true
-  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v9-fused-v1-ready.json
-  ready_receipt_checksum: sha256:37ef4c69094475a71dfc3d962efedfb2f02eddb5c2202b1afb6be4c1c64fa478
+  status: rejected_gameplay_regression_fallback_activated
+  trigger_specialist: thwackey
+  output_core_version: 10
+  candidate_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v10_fused_v1/model.pt
+  candidate_checkpoint_checksum: sha256:fb634ad17a34287272f4bde26cd6c82b9ea0c8cab4bab2daa387e8ae25c45e1d
+  candidate_registered_as_accepted: false
+  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v10-fused-v1-ready.json
+  ready_receipt_checksum: sha256:21b49a5dc7f2b0fc42a1e3570e90c90539d082a2c5d27358eda54d36b7d0104b
   gameplay_regression:
-    passed: true
-    receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v9-fused-v1-gameplay-regression.json
-    receipt_checksum: sha256:a39a69861ebb74c3f604758a1d69793c7fe352a4141e7766fab00784d07b25d5
+    passed: false
+    receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v10-fused-v1-gameplay-regression.json
+    receipt_checksum: sha256:7b2e07e69a36930072fb72c6d736d1bf00471075590dc404b66b89ace51af8b8
     games_per_teacher: 80
-    teacher_count: 9
-    games_completed: 720
-    aggregate_raw_win_rate: 0.4819444444444445
+    teacher_count: 10
+    games_completed: 800
+    aggregate_raw_win_rate: 0.5087499999999999
     aggregate_raw_floor: 0.40
     aggregate_raw_floor_passed: true
     per_teacher_raw_floor: 0.35
-    per_teacher_raw_floor_passed: true
+    per_teacher_raw_floor_passed: false
+    failed_teacher: marnie-s-grimmsnarl-ex
+    failed_teacher_win_rate: 0.275
   latest_accepted_core:
     version: 9
     checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt
     checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
   active_successor:
-    specialist_id: thwackey
+    specialist_id: team-rockets-spidops
     bootstrap_core_version: 9
     bootstrap_core_checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
-    bootstrap_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey_expert_bootstrap_from_core_v9/model.pt
-    bootstrap_checkpoint_checksum: sha256:825200cbcf3c96afa6aa28a1b20d274313149cb539fa8deb7bd3661a4a80fbc9
+    bootstrap_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
+    bootstrap_checkpoint_checksum: sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338
     bootstrap_epochs_completed: 25
-    handoff_receipt: /home/inzi/poke-bot-agent/outputs/state/thwackey-specialist-rl-activation-v9.json
+    handoff_receipt: /home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-specialist-rl-activation-v9.json
+    handoff_receipt_checksum: sha256:94c99e97a8fa15d2f9b204b24064e795e1a73732613a86d41b22fcb833a98c8b
   rejected_or_unaccepted_candidate_blocks_production: false
   active_training_modified: true
   next_action: >-
-    Keep Thwackey specialist RL running from the accepted cumulative core v9
-    bootstrap. Attempt the next cumulative refresh only after Thwackey becomes
+    Keep Team Rocket's Spidops specialist RL running from the accepted
+    cumulative core v9 bootstrap. Attempt the next cumulative refresh only
+    after Spidops becomes
     training-complete; a future rejected candidate still may not block the next
     specialist.
 
@@ -2878,7 +2879,7 @@ specialists:
   - id: thwackey
     name: Thwackey
     status: passed_frozen
-    active: true
+    active: false
     heads: {status: terminal_fused_runtime_frozen, archetype_policy: trained, game_plan_policies: trained}
     datasets: {expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/thwackey/PROTECTED_EXPERT_CORPUS.json}
     counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 6, rl_epochs_completed: 6, rehearsal_epochs_completed: 5, last_completed_iteration: 5, next_iteration: null}
@@ -2905,9 +2906,9 @@ specialists:
 
   - id: team-rockets-spidops
     name: Team Rocket's Spidops
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
+    status: active_training
+    active: true
+    heads: {status: bootstrap_trained_fused_runtime_active, archetype_policy: trained, game_plan_policies: trained}
     datasets:
       expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/team-rockets-spidops/PROTECTED_EXPERT_CORPUS.json
       preparation:
@@ -3025,8 +3026,19 @@ specialists:
           three_mewtwo_canary_rejected: true
           active_runtime_modified: false
         active_training_modified: false
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, last_completed_iteration: -1, next_iteration: 0}
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
+      bootstrap_checksum: sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
+      latest_checksum: sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338
+      passing: null
+      passing_checksum: null
+    activation_receipt: /home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-specialist-rl-activation-v9.json
+    activation_receipt_checksum: sha256:94c99e97a8fa15d2f9b204b24064e795e1a73732613a86d41b22fcb833a98c8b
+    transition_boundary_receipt: state/spidops_activation_boundary_v1.json
+    transition_boundary_receipt_checksum: sha256:e623208e98f949f4a04898554547a667375a5c09ee382f6794a1f87587871025
     holdouts: {official: null, premium: null}
     frozen: false
     public_mix_eligible: false

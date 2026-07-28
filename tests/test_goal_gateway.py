@@ -54,14 +54,11 @@ def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
 
     assert "Revision: `24`" in goal
     assert "mandatory and sole successor after Thwackey" in goal
-    assert state["current"]["active_specialist"] == "thwackey"
-    assert (
-        state["current"]["staged_successor_specialist"]
-        == "team-rockets-spidops"
-    )
+    assert state["current"]["active_specialist"] == "team-rockets-spidops"
+    assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
         "ordered_unfinished_ids_after_active"
-    ][0] == "team-rockets-spidops"
+    ][0] == "hammer-pult"
     assert cycle["selection"]["strict_priority_prefix"][-1] == (
         "team-rockets-spidops"
     )
@@ -75,6 +72,8 @@ def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
     assert projected["mandatory_next_specialist"] == "team-rockets-spidops"
     assert projected["minimum_acting_seat_games"] == 16_639
     assert projected["lower_priority_fallthrough_allowed"] is False
+    assert projected["activation_status"] == "active_training_verified"
+    assert projected["hammer_pult_selected"] is False
 
 
 def test_clean_specialist_transition_contract_cannot_regress() -> None:
