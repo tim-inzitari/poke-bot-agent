@@ -117,6 +117,52 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _validated_existing_receipt(
+    path: Path,
+    *,
+    source_host: str,
+    source_root: str,
+    destination: Path,
+    identity: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return an already-committed import receipt only when it is still exact."""
+
+    if not path.is_file():
+        return None
+    receipt = _read(path)
+    expected = {
+        "schema": "poke_bot.prestaged_specialist_corpus_import/v1",
+        "status": "ready",
+        "source_host": source_host,
+        "source_root": source_root,
+        "destination": str(destination),
+        **identity,
+        "active_training_modified": False,
+    }
+    if (
+        not str(receipt.get("created_at_utc") or "")
+        or any(receipt.get(key) != value for key, value in expected.items())
+    ):
+        raise RuntimeError(f"immutable import receipt identity differs: {path}")
+    replaced = receipt.get("replaced_unavailable_placeholder")
+    archive = receipt.get("unavailable_placeholder_archive")
+    archive_digest = receipt.get("unavailable_placeholder_sha256")
+    if replaced is True:
+        archive_path = Path(str(archive or "")).expanduser()
+        if (
+            not archive_path.is_dir()
+            or not str(archive_digest or "").startswith("sha256:")
+        ):
+            raise RuntimeError(f"immutable import receipt archive differs: {path}")
+    elif not (
+        replaced is False
+        and archive is None
+        and archive_digest is None
+    ):
+        raise RuntimeError(f"immutable import receipt replacement differs: {path}")
+    return receipt
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", required=True)
@@ -210,12 +256,20 @@ def main() -> int:
             shutil.rmtree(staging, ignore_errors=True)
 
     receipt_path = args.receipt.resolve()
-    existing_receipt = _read(receipt_path) if receipt_path.is_file() else {}
+    existing_receipt = _validated_existing_receipt(
+        receipt_path,
+        source_host=args.host,
+        source_root=args.remote_root,
+        destination=destination,
+        identity=identity,
+    )
+    if existing_receipt is not None:
+        print(json.dumps(existing_receipt, indent=2, sort_keys=True))
+        return 0
     receipt = {
         "schema": "poke_bot.prestaged_specialist_corpus_import/v1",
         "status": "ready",
-        "created_at_utc": existing_receipt.get("created_at_utc")
-        or datetime.now(timezone.utc).isoformat(),
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_host": args.host,
         "source_root": args.remote_root,
         "destination": str(destination),

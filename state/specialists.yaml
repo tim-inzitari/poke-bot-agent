@@ -38,31 +38,83 @@ allowed_status_values:
     - accepted_with_waiver
 
 current:
-  phase: specialist_rl
+  phase: cumulative_core_handoff
   active_specialist: thwackey
-  transition_source_specialist: null
+  transition_source_specialist: thwackey
   staged_successor_specialist: team-rockets-spidops
   program_progress:
     required_specialists_total: 18
-    completed_frozen: 9
-    completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo]
+    completed_frozen: 10
+    completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo, thwackey]
     boundary_frozen_pending_public_mix_registration: []
     active_specialists: 1
     active_specialist_ids: [thwackey]
-    remaining_unfinished: 9
+    remaining_unfinished: 8
     remaining_after_active: 8
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Continue Thwackey specialist RL from its accepted cumulative-core-v9
-    25-epoch bootstrap. Preserve the fixed 8,192-game iterations and exact
-    research/gate isolation through the established iteration-5 floor and
-    iteration-15 ceiling. Keep Team Rocket's Spidops staged as the sole next
-    specialist, materialize at least 16,639 exact acting-seat games from the
-    public June 26 through July 27 rolling window, and do not allow missing
-    inputs to fall through to Hammer-Pult. Do not interrupt healthy Thwackey
-    production.
+    Preserve Thwackey's immutable iteration-5 passing checkpoint while the
+    managed cumulative-core-v10 handoff runs. Team Rocket's Spidops is the sole
+    prepared successor: its full June 26 through July 27 public corpus contains
+    16,650 exact acting-seat games, exceeds the 16,639 indexed floor, includes
+    all recent days, and has passed checksum, guide, route, representative, and
+    CPU-pack pre-stage validation. Keep the selector on Thwackey until the
+    receipt-backed core/bootstrap boundary; never fall through to Hammer-Pult.
   next_successor_prestage:
+    specialist_id: team-rockets-spidops
+    status: ready
+    active_training_modified: false
+    dedicated_two_task_research_agent_complete: true
+    guide_contract: config/deck_guides/team-rockets-spidops.yaml
+    guide_contract_checksum: sha256:39aa2e0c896bb712b781116d6652624d75fb4c8bcaca13f7a1da5a0d9885da72
+    guide_version: team-rockets-spidops-north-star-v1
+    teacher_module: poke_bot/team_rockets_spidops_heuristics.py
+    teacher_module_checksum: sha256:bc0f5f797f11318de77f5297bdeea23dbe1d8314072144dddf1eb2ad6d060f96
+    expert_writeup: docs/deck_guides/team-rockets-spidops-expert-brief.txt
+    expert_writeup_checksum: sha256:0c2e1036e5cdc7a29457f19e5af06a07f355f7fa351d9bf08c81d5c2a8b9b686
+    expert_writeup_words: 6746
+    exact_60_card_representative:
+      status: ready
+      logical_specialist_id: team-rockets-spidops
+      checksum: sha256:dfc0139100e56de0989e004c476d62f2474a98cf2dc805bdb6152f68fe4f47c6
+    corpus:
+      status: ready_checksum_validated_promoted_on_inzi
+      source_mode: public_full_history_exact_deck_identity
+      date_start: 2026-06-26
+      date_end: 2026-07-27
+      days: 32
+      indexed_minimum_records: 16639
+      materialized_records: 16650
+      decisions: 1186370
+      guide_rows: 113013
+      ready_receipt_checksum: sha256:f3c272de204699449160182942151a73b5b575429f977f8f92b3f8c3aacb8445
+      manifest_checksum: sha256:caf7c2d0be46a2f110547fd90b335d3df8eb39cb8fd78271442dad8a4ea64602
+      protected_pointer_checksum: sha256:f39d90b2519ab25d2d059a9b2fc17d239d80883348a692f1f3e33902da378b94
+      public_deck_catalog_checksum: sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff
+      import_receipt_checksum: sha256:ecf6cd5255cd4754bc5ebfd09a5ffcd17096be1cc11a57b0fa513f6808f7b55a
+      raw_archive_index_gap_audit: state/spidops_raw_archive_index_gap_audit_v1.json
+      raw_archive_index_gap_audit_checksum: sha256:24576ee948dd3e58fcacc5a9a3fbb28ddb96a021d69faa6bcbd46e323ac1b33e
+      all_32_daily_feature_and_receipt_checksums_verified: true
+      duplicate_episode_seat_keys: 0
+    runtime_route:
+      status: accepted
+      candidate_tree_checksum: sha256:1d78081bbb76fcaa9e22e63a146c3d58460226306166c3e68b0b8a23a9ed58c5
+      candidate_audit_checksum: sha256:80b9372231f19c9963312cf71368bb19ada9f8efbab8b47ae818f453f68c1608
+      precision: 0.9315
+      weighted_support: 15703
+    cpu_pack:
+      status: ready
+      key: 8585cd7866c57d95b48c7c155b0be3babdea892541c3d54eab16038bb8b4af35
+      manifest_checksum: sha256:338519a8c560898300c772bf4b226a3416d3c83c822db6c04ceb564bf661a165
+      payload_checksum: sha256:4eb436c06a049d2c184d9fbc8d34c3ef8f1053bb45706011562f1cc8a09f52b0
+    pre_stage_ready: true
+    pre_stage_receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
+    pre_stage_receipt_checksum: sha256:53c14f620f28b682faf9cf9224d39af4d013445e44cbf7d3671d24d9361fd691
+    pre_stage_created_at_utc: 2026-07-28T19:21:43.529122+00:00
+    selection_identity_checksum: sha256:747e92644bb4d041dc368e8e6275f36082a8f69d7f89fef3f22792a7f4cdd009
+    blockers: []
+  historical_thwackey_prestage:
     specialist_id: thwackey
     status: ready
     active_training_modified: false
@@ -2848,13 +2900,14 @@ specialists:
     active: false
     heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
     datasets:
-      expert_manifest: null
+      expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/team-rockets-spidops/PROTECTED_EXPERT_CORPUS.json
       preparation:
-        status: full32_clean_rebuild_running
+        status: full32_ready_imported_and_prestaged
         source_mode: public_full_history_exact_deck_identity
         source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
         required_records: 16639
         source_observed_records: 16639
+        materialized_records: 16650
         public_deck_catalog: data/training_mixes/team-rockets-spidops-public-full32.v1.json
         public_deck_catalog_checksum: sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff
         remote_output_root: /mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v2
@@ -2864,6 +2917,7 @@ specialists:
         download_status: completed_successfully
         guide_service: pokebot-spidops-full32-guide-v5.service
         guide_service_started_at_utc: 2026-07-28T17:57:35Z
+        guide_service_status: completed_successfully
         guide_builder_script: ops/elmo/build_spidops_full32_corpus.sh
         guide_builder_script_checksum: sha256:1f5f719edb59b9bbd8806fdd19eba4b1983a4a4aa70612ccd858a961d97a8d9f
         teacher_module: poke_bot/team_rockets_spidops_heuristics.py
@@ -2876,15 +2930,19 @@ specialists:
           duplicate_episode_ids: 0
           orphan_json_episode_ids: 0
         featurization:
-          state: running
+          state: ready_checksum_validated
           day_parallelism: 4
           workers_per_day: 3
           maximum_worker_processes: 12
-          current_dates: [2026-07-08, 2026-07-09, 2026-07-10, 2026-07-11]
-          completed_days: 12
-          records: 1530
-          decisions: 107000
-          guide_rows: 11488
+          current_dates: []
+          completed_days: 32
+          records: 16650
+          decisions: 1186370
+          guide_rows: 113013
+          ready_receipt_checksum: sha256:f3c272de204699449160182942151a73b5b575429f977f8f92b3f8c3aacb8445
+          manifest_checksum: sha256:caf7c2d0be46a2f110547fd90b335d3df8eb39cb8fd78271442dad8a4ea64602
+          protected_pointer_checksum: sha256:f39d90b2519ab25d2d059a9b2fc17d239d80883348a692f1f3e33902da378b94
+          all_32_daily_feature_and_receipt_checksums_verified: true
         first_clean_batch_validation:
           status: passed
           dates: [2026-06-26, 2026-06-27, 2026-06-28, 2026-06-29]
@@ -2922,10 +2980,35 @@ specialists:
         july_24_catalog_impact_audit_checksum: sha256:c16efc43198a670038701c2f7da94cb3e05310896a54f86c0735293eff078ba2
         public_deck_guide_identity_validation: state/spidops_public_deck_guide_identity_validation_v1.json
         public_deck_guide_identity_validation_checksum: sha256:861102cb7f89e1556d3349287e5b6cfeed49cf422cd50a1e4553eb944191c3d1
+        raw_archive_index_gap_audit: state/spidops_raw_archive_index_gap_audit_v1.json
+        raw_archive_index_gap_audit_checksum: sha256:24576ee948dd3e58fcacc5a9a3fbb28ddb96a021d69faa6bcbd46e323ac1b33e
+        raw_archive_index_gap:
+          indexed_floor: 16639
+          materialized_records: 16650
+          delta: 11
+          mismatch_days: 7
+          duplicate_episode_seat_keys: 0
+          missing_indexed_keys_from_raw: 0
+        inzi_import:
+          status: ready
+          destination: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/team-rockets-spidops
+          receipt: /home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-prestage-corpus-import-v1.json
+          receipt_checksum: sha256:ecf6cd5255cd4754bc5ebfd09a5ffcd17096be1cc11a57b0fa513f6808f7b55a
+          completed_at_utc: 2026-07-28T19:20:30.306923+00:00
+          replaced_unavailable_placeholder: true
+        pre_stage:
+          status: ready
+          selected_specialist: team-rockets-spidops
+          receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
+          receipt_checksum: sha256:53c14f620f28b682faf9cf9224d39af4d013445e44cbf7d3671d24d9361fd691
+          selection_identity_checksum: sha256:747e92644bb4d041dc368e8e6275f36082a8f69d7f89fef3f22792a7f4cdd009
+          cpu_pack_manifest_checksum: sha256:338519a8c560898300c772bf4b226a3416d3c83c822db6c04ceb564bf661a165
+          cpu_pack_payload_checksum: sha256:4eb436c06a049d2c184d9fbc8d34c3ef8f1053bb45706011562f1cc8a09f52b0
+          hammer_pult_selected: false
         inactive_handoff_deployment:
           root: /home/inzi/poke-bot-agent-deployments/core-behavior-repair-v1
           teacher_module_checksum: sha256:bc0f5f797f11318de77f5297bdeea23dbe1d8314072144dddf1eb2ad6d060f96
-          guide_contract_checksum: sha256:f15238ee480f1002411e2c6d45e6c613331b160da467ffb300406653aea47019
+          guide_contract_checksum: sha256:39aa2e0c896bb712b781116d6652624d75fb4c8bcaca13f7a1da5a0d9885da72
           expert_writeup_checksum: sha256:0c2e1036e5cdc7a29457f19e5af06a07f355f7fa351d9bf08c81d5c2a8b9b686
           one_mewtwo_canary_accepted: true
           two_mewtwo_canary_accepted: true

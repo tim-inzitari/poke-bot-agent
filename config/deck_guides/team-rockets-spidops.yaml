@@ -1,13 +1,13 @@
-# Checksum-ready research and causal-target contract for one specialist guide.
-# This proposed staging artifact has no runtime, training, selector, gate, or
-# serving authority.
+# Checksum-ready research, causal-target, and corpus contract for one specialist
+# guide. This staging artifact has no runtime, selector, gate, or serving
+# authority.
 schema_version: poke_bot.current_deck_guide/v1
 specialist_id: team-rockets-spidops
 display_name: "Team Rocket's Spidops"
-status: research_and_sparse_teacher_validated_corpus_targets_pending
+status: corpus_ready_elmo_and_inzi_checksum_validated
 guide_version: team-rockets-spidops-north-star-v1
 teacher_module: poke_bot.team_rockets_spidops_heuristics
-implementation_status: sparse_causal_teacher_validated
+implementation_status: sparse_causal_teacher_validated_corpus_ready
 teacher_module_sha256: sha256:bc0f5f797f11318de77f5297bdeea23dbe1d8314072144dddf1eb2ad6d060f96
 
 project_representative_binding:
@@ -328,18 +328,39 @@ target_safety:
 weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
 
 corpus_binding_evidence:
-  status: not_materialized
-  date_start: null
-  date_end: null
-  days: null
-  records: null
-  decisions: null
-  guide_rows: null
-  ready_receipt: null
-  all_daily_feature_and_receipt_checksums_verified: false
-  specialist_identity_verified: false
-  guide_version_verified: false
+  status: ready_on_elmo_and_inzi
+  date_start: 2026-06-26
+  date_end: 2026-07-27
+  days: 32
+  records: 16650
+  indexed_minimum_records: 16639
+  decisions: 1186370
+  guide_rows: 113013
+  ready_receipt: /mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v2/CURRENT_DECK_GUIDE_CORPUS_READY.json
+  ready_receipt_sha256: sha256:f3c272de204699449160182942151a73b5b575429f977f8f92b3f8c3aacb8445
+  manifest_sha256: sha256:caf7c2d0be46a2f110547fd90b335d3df8eb39cb8fd78271442dad8a4ea64602
+  protected_pointer_sha256: sha256:f39d90b2519ab25d2d059a9b2fc17d239d80883348a692f1f3e33902da378b94
+  public_deck_catalog_sha256: sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff
+  raw_archive_index_gap_audit: state/spidops_raw_archive_index_gap_audit_v1.json
+  raw_archive_index_gap_audit_sha256: sha256:24576ee948dd3e58fcacc5a9a3fbb28ddb96a021d69faa6bcbd46e323ac1b33e
+  all_daily_feature_and_receipt_checksums_verified: true
+  exact_sequential_dates_verified: true
+  specialist_identity_verified: true
+  guide_version_verified: true
   active_training_modified: false
+  inzi_promotion:
+    status: ready
+    managed_service: pokebot-next-specialist-corpus-import.service
+    destination: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/team-rockets-spidops
+    state_receipt: /home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-prestage-corpus-import-v1.json
+    atomic_after_all_shard_checksums_pass: true
+    completed_at_utc: 2026-07-28T19:20:30.306923+00:00
+    manifest_sha256: sha256:caf7c2d0be46a2f110547fd90b335d3df8eb39cb8fd78271442dad8a4ea64602
+    protected_pointer_sha256: sha256:f39d90b2519ab25d2d059a9b2fc17d239d80883348a692f1f3e33902da378b94
+    ready_receipt_sha256: sha256:f3c272de204699449160182942151a73b5b575429f977f8f92b3f8c3aacb8445
+    all_32_daily_feature_and_receipt_hashes_verified: true
+    replaced_unavailable_placeholder: true
+    active_training_modified: false
 
 validation:
   research_sources_reviewed: true
@@ -348,7 +369,7 @@ validation:
   unit_tests_passed: true
   scorer_canary_passed: true
   focused_tests_passed: 33
-  guide_rows_in_filtered_expert_corpus: null
+  guide_rows_in_filtered_expert_corpus: 113013
   unresolved_evidence_gaps:
     - no_world_champion_SME_approval_yet
     - no_controlled_current_first_versus_second_study_found

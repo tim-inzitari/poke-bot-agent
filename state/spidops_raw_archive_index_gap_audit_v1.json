@@ -1,0 +1,126 @@
+{
+  "schema": "poke_bot.public_raw_archive_index_gap_audit/v1",
+  "status": "verified",
+  "created_at_utc": "2026-07-28T19:21:40Z",
+  "specialist_id": "team-rockets-spidops",
+  "source": {
+    "site": "https://ptcgreplay.netlify.app/",
+    "access": "authenticated_public_site_with_supabase_rls",
+    "credentials_loaded_dynamically": true,
+    "credentials_persisted": false,
+    "source_archetype_id": 75,
+    "source_archetype_name": "Team Rocket's Spidops",
+    "deck_fingerprint_count": 38,
+    "window": {
+      "start": "2026-06-26",
+      "end": "2026-07-27",
+      "days": 32
+    }
+  },
+  "indexed_catalog": {
+    "path": "data/training_mixes/team-rockets-spidops-public-full32.v1.json",
+    "sha256": "sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff",
+    "acting_seat_games": 16639,
+    "interpretation": "minimum floor; the public index can omit an otherwise valid raw replay"
+  },
+  "raw_corpus": {
+    "remote_root": "/mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v2",
+    "ready_receipt": "CURRENT_DECK_GUIDE_CORPUS_READY.json",
+    "ready_receipt_sha256": "sha256:f3c272de204699449160182942151a73b5b575429f977f8f92b3f8c3aacb8445",
+    "manifest": "manifest.json",
+    "manifest_sha256": "sha256:caf7c2d0be46a2f110547fd90b335d3df8eb39cb8fd78271442dad8a4ea64602",
+    "records": 16650,
+    "unique_episode_seat_keys": 16650,
+    "decisions": 1186370,
+    "guide_rows": 113013,
+    "duplicate_episode_seat_keys": 0,
+    "missing_indexed_keys_from_raw": 0
+  },
+  "comparison": {
+    "raw_minus_indexed": 11,
+    "mismatch_day_count": 7,
+    "all_32_days_compared": true,
+    "all_non_mismatch_days_exact": true,
+    "mismatch_days": [
+      {
+        "date": "2026-07-15",
+        "raw": 1110,
+        "indexed": 1106,
+        "missing_from_index": [
+          {"episode_id": "86098041", "seat": 0},
+          {"episode_id": "86122511", "seat": 1},
+          {"episode_id": "86129860", "seat": 0},
+          {"episode_id": "86170629", "seat": 0}
+        ]
+      },
+      {
+        "date": "2026-07-16",
+        "raw": 1174,
+        "indexed": 1173,
+        "missing_from_index": [
+          {"episode_id": "86206883", "seat": 0}
+        ]
+      },
+      {
+        "date": "2026-07-17",
+        "raw": 721,
+        "indexed": 720,
+        "missing_from_index": [
+          {"episode_id": "86406340", "seat": 0}
+        ]
+      },
+      {
+        "date": "2026-07-20",
+        "raw": 1002,
+        "indexed": 1000,
+        "missing_from_index": [
+          {"episode_id": "87060926", "seat": 0},
+          {"episode_id": "87144651", "seat": 1}
+        ]
+      },
+      {
+        "date": "2026-07-22",
+        "raw": 1214,
+        "indexed": 1213,
+        "missing_from_index": [
+          {"episode_id": "87484221", "seat": 1}
+        ]
+      },
+      {
+        "date": "2026-07-24",
+        "raw": 837,
+        "indexed": 836,
+        "missing_from_index": [
+          {"episode_id": "87852049", "seat": 1}
+        ]
+      },
+      {
+        "date": "2026-07-25",
+        "raw": 1246,
+        "indexed": 1245,
+        "missing_from_index": [
+          {"episode_id": "88121157", "seat": 1}
+        ]
+      }
+    ]
+  },
+  "method": {
+    "indexed_keys": "PTCGReplay matches table episode_id plus acting seat for the 38 archetype-75 deck hashes",
+    "raw_keys": "GameSequence episode_id plus acting seat from every checksum-sealed daily feature shard",
+    "comparison": "set equality per day plus raw duplicate-key cardinality audit",
+    "training_evaluation_isolation_unchanged": true
+  },
+  "conclusion": {
+    "minimum_16639_satisfied": true,
+    "full_public_window_complete": true,
+    "recent_days_included": [
+      "2026-07-24",
+      "2026-07-25",
+      "2026-07-26",
+      "2026-07-27"
+    ],
+    "catalog_remains_valid_as_floor": true,
+    "raw_corpus_is_safe_to_import": true,
+    "active_training_modified": false
+  }
+}

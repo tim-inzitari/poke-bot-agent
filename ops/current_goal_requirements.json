@@ -1,7 +1,7 @@
 {
   "schema": "poke_bot.goal_requirements/v1",
   "status": "compatibility_projection",
-  "created_at_utc": "2026-07-27T22:18:10Z",
+  "created_at_utc": "2026-07-28T19:21:43Z",
   "purpose": "Compatibility projection for older controllers. GOAL.md is the authoritative adaptive goal gateway. Runtime selectors and immutable receipts remain authoritative for execution facts.",
   "authoritative_sources": {
     "goal_gateway": "GOAL.md",
@@ -31,7 +31,14 @@
         "days": 32
       },
       "minimum_acting_seat_games": 16639,
-      "public_deck_catalog": "data/training_mixes/team-rockets-spidops-public-full32.v1.json"
+      "public_deck_catalog": "data/training_mixes/team-rockets-spidops-public-full32.v1.json",
+      "materialized_acting_seat_games": 16650,
+      "materialized_decisions": 1186370,
+      "materialized_guide_rows": 113013,
+      "corpus_status": "ready_checksum_validated_promoted_on_inzi",
+      "raw_archive_index_gap_audit": "state/spidops_raw_archive_index_gap_audit_v1.json",
+      "next_specialist_prestage_status": "ready",
+      "next_specialist_selected": "team-rockets-spidops"
     }
   },
   "historical_snapshot_retained_for_audit": {
@@ -612,27 +619,32 @@
     }
   },
   "verified_snapshot": {
-    "verified_at_utc": "2026-07-27T21:37:00Z",
-    "phase": "specialist_rl_training",
+    "verified_at_utc": "2026-07-28T19:21:43Z",
+    "phase": "cumulative_core_handoff",
     "canonical_specialist_count": 18,
-    "active_specialist": "rockets-mewtwo",
+    "active_specialist": "thwackey",
     "active_run": {
-      "service": "pokebot-pure-rl-trevenant-staged.service",
-      "service_state": "active_running",
-      "run_name": "pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723",
-      "run_state": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723",
+      "service": "pokebot-specialist-cycle-handoff.service",
+      "service_state": "active_running_cumulative_core_refresh",
+      "run_name": "deck_agnostic_core_cumulative_v10_fused_v1_20260723",
+      "run_state": "/home/inzi/poke-bot-agent/outputs/bootstrap/deck-agnostic-core-cumulative-v10-fused-v1",
       "selector": "/home/inzi/.config/pokebot/specialist_runtime.env",
-      "selector_value": "rockets-mewtwo",
-      "last_completed_iteration": 2,
-      "current_iteration": 3,
-      "current_stage": "collect_self_play",
-      "latest_committed_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723/checkpoints/iter_00002.pt",
-      "latest_committed_checkpoint_digest": "sha256:e0e3fea3303242023e6d5b5cdbf8b9f83a454ea0483b68a091d3b364df9253a6",
-      "games_per_iteration": 8192,
-      "public_mix_games": 7168,
-      "self_play_games": 1024,
+      "selector_value": "thwackey",
+      "source_specialist": "thwackey",
+      "source_specialist_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey-protocol-gate-pass-v1/model.pt",
+      "source_specialist_checkpoint_digest": "sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce",
+      "current_stage": "multi_teacher_core_refresh",
       "decision_fusion_runtime_enabled": true,
       "required_fused_head_count": 17
+    },
+    "completed_thwackey": {
+      "status": "passed_frozen",
+      "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey-protocol-gate-pass-v1/model.pt",
+      "checkpoint_digest": "sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce",
+      "passing_handler_receipt": "/home/inzi/poke-bot-agent/outputs/state/thwackey-passed-gate-handler-v1.json",
+      "terminal_iteration": 5,
+      "kaggle_copy_count": 1,
+      "handoff_started": true
     },
     "completed_garchomp": {
       "status": "passed_frozen",
@@ -643,9 +655,11 @@
       "handoff_receipt": "/home/inzi/poke-bot-agent/outputs/state/post-garchomp-rockets-mewtwo-handoff-v1.json"
     },
     "cumulative_core": {
-      "latest_accepted_version": 6,
-      "latest_accepted_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6/model.pt",
-      "latest_accepted_checkpoint_digest": "sha256:e1966ea311657c9a68f918da0f9276df6d74258216f38837a294d1f9c1cb2490",
+      "latest_accepted_version": 9,
+      "latest_accepted_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt",
+      "latest_accepted_checkpoint_digest": "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056",
+      "post_thwackey_v10_status": "active_training",
+      "post_thwackey_v10_run": "/home/inzi/poke-bot-agent/outputs/bootstrap/deck-agnostic-core-cumulative-v10-fused-v1",
       "post_garchomp_v8_candidate": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v8_fused_v1/model.pt",
       "post_garchomp_v8_candidate_digest": "sha256:739d9e72185a828315d77887319fd6382053b8c6ba83928197c4e2ed285b7e1e",
       "post_garchomp_v8_status": "rejected_gameplay_regression",
@@ -658,19 +672,21 @@
     },
     "next_specialist_prestage": {
       "status": "ready",
-      "active_specialist": "rockets-mewtwo",
-      "selected_specialist": "thwackey",
+      "active_specialist": "thwackey",
+      "selected_specialist": "team-rockets-spidops",
       "receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
-      "receipt_sha256": "sha256:8b9b954d967b00a1594842a2bb9421c1b90f1d0758008aecdb68a70624377cc9",
-      "receipt_created_at_utc": "2026-07-27T21:01:47.950704+00:00",
+      "receipt_sha256": "sha256:53c14f620f28b682faf9cf9224d39af4d013445e44cbf7d3671d24d9361fd691",
+      "receipt_created_at_utc": "2026-07-28T19:21:43.529122+00:00",
       "blockers": [],
-      "matching_games": 2105,
-      "matching_decisions": 150766,
-      "guide_dates": 20,
-      "guide_rows": 26824,
+      "matching_games": 16650,
+      "minimum_matching_games": 16639,
+      "matching_decisions": 1186370,
+      "guide_dates": 32,
+      "guide_rows": 113013,
       "representative_ready": true,
       "runtime_route_ready": true,
-      "cpu_pack_ready": true
+      "cpu_pack_ready": true,
+      "hammer_pult_selected": false
     },
     "latest20_alias_correct_promotion": {
       "status": "checksum_validated_ready_on_inzi",
@@ -699,8 +715,8 @@
     },
     "current_deck_guides": {
       "required_for_every_new_specialist": true,
-      "prepared_next_specialist": "thwackey",
-      "prepared_contract": "config/deck_guides/thwackey.yaml",
+      "prepared_next_specialist": "team-rockets-spidops",
+      "prepared_contract": "config/deck_guides/team-rockets-spidops.yaml",
       "expert_writeup": {
         "maximum_words": 10000,
         "how_to_play_is_primary": true,
