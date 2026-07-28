@@ -114,6 +114,13 @@ def main() -> int:
         default=[],
         help="Forward a checksum-bound SOURCE=TARGET classifier alias.",
     )
+    parser.add_argument(
+        "--authoritative-deck-catalog",
+        type=Path,
+        action="append",
+        default=[],
+        help="Forward a checksum-bound public exact-deck archetype catalog.",
+    )
     parser.add_argument("--day-parallelism", type=int, default=4)
     parser.add_argument("--workers-per-day", type=int, default=3)
     parser.add_argument("--max-in-flight-per-day", type=int, default=6)
@@ -248,6 +255,10 @@ def main() -> int:
                     ]
                     for alias in args.logical_alias:
                         command.extend(["--logical-alias", alias])
+                    for catalog in args.authoritative_deck_catalog:
+                        command.extend(
+                            ["--authoritative-deck-catalog", str(catalog)]
+                        )
                     running[day] = (
                         subprocess.Popen(
                             command,

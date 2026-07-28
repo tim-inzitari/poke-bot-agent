@@ -33,6 +33,50 @@ def test_goal_gateway_references_existing_canonical_sources() -> None:
         assert (ROOT / relative).is_file(), relative
 
 
+def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
+    goal = (ROOT / "GOAL.md").read_text(encoding="utf-8")
+    human = (ROOT / "docs/RL_TRAINING_PROTOCOL.md").read_text(
+        encoding="utf-8"
+    )
+    state = yaml.safe_load(
+        (ROOT / "state/specialists.yaml").read_text(encoding="utf-8")
+    )
+    cycle = json.loads(
+        (ROOT / "ops/specialist_cycle_handoff_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    compatibility = json.loads(
+        (ROOT / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "Revision: `24`" in goal
+    assert "mandatory and sole successor after Thwackey" in goal
+    assert state["current"]["active_specialist"] == "thwackey"
+    assert (
+        state["current"]["staged_successor_specialist"]
+        == "team-rockets-spidops"
+    )
+    assert state["training_priority"][
+        "ordered_unfinished_ids_after_active"
+    ][0] == "team-rockets-spidops"
+    assert cycle["selection"]["strict_priority_prefix"][-1] == (
+        "team-rockets-spidops"
+    )
+    assert cycle["selection"]["minimum_records_by_specialist"] == {
+        "team-rockets-spidops": 16_639
+    }
+    assert "never permits fall-through" in human
+    projected = compatibility["current_owner_overrides"][
+        "team_rockets_spidops_successor"
+    ]
+    assert projected["mandatory_next_specialist"] == "team-rockets-spidops"
+    assert projected["minimum_acting_seat_games"] == 16_639
+    assert projected["lower_priority_fallthrough_allowed"] is False
+
+
 def test_clean_specialist_transition_contract_cannot_regress() -> None:
     goal = (ROOT / "GOAL.md").read_text(encoding="utf-8")
     human = (ROOT / "docs/RL_TRAINING_PROTOCOL.md").read_text(encoding="utf-8")

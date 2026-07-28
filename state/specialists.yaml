@@ -11,7 +11,7 @@
 # not change or block that status.
 schema_version: poke_bot.specialist_state/v1
 protocol_schema_version: poke_bot.rl_protocol/v2
-last_verified_at_utc: 2026-07-28T15:00:00Z
+last_verified_at_utc: 2026-07-28T16:15:57Z
 verification_scope:
   repository: /Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you
   runtime_repository: /home/inzi/poke-bot-agent
@@ -41,7 +41,7 @@ current:
   phase: specialist_rl
   active_specialist: thwackey
   transition_source_specialist: null
-  staged_successor_specialist: hammer-pult
+  staged_successor_specialist: team-rockets-spidops
   program_progress:
     required_specialists_total: 18
     completed_frozen: 9
@@ -57,9 +57,11 @@ current:
     Continue Thwackey specialist RL from its accepted cumulative-core-v9
     25-epoch bootstrap. Preserve the fixed 8,192-game iterations and exact
     research/gate isolation through the established iteration-5 floor and
-    iteration-15 ceiling. Keep Hammer-Pult staged one specialist ahead,
-    promote its checksum-sealed 20-day guide corpus as soon as the managed
-    Elmo build completes, and do not interrupt healthy Thwackey production.
+    iteration-15 ceiling. Keep Team Rocket's Spidops staged as the sole next
+    specialist, materialize at least 16,639 exact acting-seat games from the
+    public June 26 through July 27 rolling window, and do not allow missing
+    inputs to fall through to Hammer-Pult. Do not interrupt healthy Thwackey
+    production.
   next_successor_prestage:
     specialist_id: thwackey
     status: ready
@@ -927,9 +929,11 @@ training_priority:
     reason: >-
       Operator-pinned future sequence: Dragapult/Dusknoir, Dudunsparce,
       Marnie's Grimmsnarl ex, Cynthia's Garchomp ex, Team Rocket's Mewtwo ex,
-      Thwackey, then Team Rocket's Spidops. Hammer-Pult then resumes at its
-      actual meta priority without an existing-artifact penalty; remaining
-      unfinished v5 targets resume the established ordering.
+      Thwackey, then Team Rocket's Spidops. Spidops is fail-closed and may not
+      be skipped when its corpus is missing; recover the full public-history
+      inputs instead. Hammer-Pult then resumes at its actual meta priority
+      without an existing-artifact penalty; remaining unfinished v5 targets
+      resume the established ordering.
     removes_target: false
   source:
     status: verified_current
@@ -1193,6 +1197,19 @@ expert_corpus_archive:
       stopping_rule: null
       current_bound_corpus_eligibility: unknown
       current_fallback_receipt: null
+    owner_required_full_history_exceptions:
+      team-rockets-spidops:
+        decision_revision: 24
+        source_mode: public_full_history_exact_deck_identity
+        source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
+        minimum_acting_seat_games: 16639
+        observed_acting_seat_games: 16639
+        exact_deck_fingerprints: 38
+        deck_catalog: data/training_mixes/team-rockets-spidops-public-full32.v1.json
+        deck_catalog_checksum: sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff
+        public_source_ingest_id: 17
+        lower_priority_fallthrough_allowed: false
+        historical_12_game_shard_is_intended_corpus: false
     refresh_boundary: next_safe_bootstrap_or_rehearsal
     current_bound_corpus_must_not_be_relabelled_or_rewritten: true
     authoritative_config: config/rl_protocol.yaml#/specialist_training/expert_corpus
@@ -2830,7 +2847,19 @@ specialists:
     status: unstarted
     active: false
     heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
+    datasets:
+      expert_manifest: null
+      preparation:
+        status: missing_public_days_downloading_then_full32_featurization
+        source_mode: public_full_history_exact_deck_identity
+        source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
+        required_records: 16639
+        source_observed_records: 16639
+        public_deck_catalog: data/training_mixes/team-rockets-spidops-public-full32.v1.json
+        public_deck_catalog_checksum: sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff
+        remote_output_root: /mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v1
+        download_service: pokebot-spidops-full32-download-v1.service
+        active_training_modified: false
     counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
     checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
     holdouts: {official: null, premium: null}

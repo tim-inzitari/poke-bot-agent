@@ -14,9 +14,12 @@ of our active ladder policies.
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import re
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
@@ -37,6 +40,23 @@ SUPPORT_EX_IDS = frozenset({140, 1071, 184, 754, 272})
 def canonical_deck_fingerprint(card_ids: Sequence[int]) -> tuple[int, ...]:
     """Stable multiset identity for one submitted 60-card list."""
     return tuple(sorted(int(card_id) for card_id in card_ids))
+
+
+def canonical_deck_sha256(card_ids: Sequence[int]) -> str:
+    """Content identity used by checksum-bound public archetype catalogs."""
+    encoded = json.dumps(
+        canonical_deck_fingerprint(card_ids),
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return "sha256:" + digest.hexdigest()
 
 
 def _numeric_hp(raw: Any) -> float:
@@ -77,6 +97,7 @@ class LadderReplayClassifier:
         card_csv: Optional[Path] = None,
         additive_registered_ids: Sequence[str] = (),
         logical_aliases: Mapping[str, str] | None = None,
+        authoritative_deck_catalogs: Sequence[str | Path] = (),
     ) -> None:
         bound = representatives.bind(mix)
         self.mix = mix
@@ -104,6 +125,75 @@ class LadderReplayClassifier:
         if invalid_aliases:
             raise ValueError(f"invalid logical ladder aliases: {invalid_aliases}")
         self.logical_aliases = dict(sorted(aliases.items()))
+        authoritative: dict[str, str] = {}
+        catalog_contracts: list[dict[str, Any]] = []
+        for raw_path in authoritative_deck_catalogs:
+            path = Path(raw_path).expanduser().resolve()
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            specialist_id = str(payload.get("specialist_id") or "").casefold()
+            fingerprints = tuple(
+                str(value) for value in payload.get("deck_fingerprints") or ()
+            )
+            source_window = dict(payload.get("source_window") or {})
+            observed_by_day = dict(payload.get("observed_by_day") or {})
+            minimum_games = int(payload.get("minimum_acting_seat_games") or 0)
+            observed_games = int(payload.get("observed_acting_seat_games") or 0)
+            try:
+                start = date.fromisoformat(str(source_window.get("start") or ""))
+                end = date.fromisoformat(str(source_window.get("end") or ""))
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid authoritative public deck catalog: {path}"
+                ) from exc
+            expected_dates = [
+                (start + timedelta(days=index)).isoformat()
+                for index in range((end - start).days + 1)
+            ]
+            if (
+                payload.get("schema")
+                != "poke_bot.public_deck_archetype_catalog/v1"
+                or specialist_id not in archetypes.archetype_ids()
+                or not str(payload.get("source") or "").startswith("https://")
+                or minimum_games <= 0
+                or observed_games < minimum_games
+                or int(source_window.get("days") or 0) != len(expected_dates)
+                or end < start
+                or sorted(observed_by_day) != expected_dates
+                or any(int(value) < 0 for value in observed_by_day.values())
+                or sum(int(value) for value in observed_by_day.values())
+                != observed_games
+                or not fingerprints
+                or len(set(fingerprints)) != len(fingerprints)
+                or any(
+                    not re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+                    for value in fingerprints
+                )
+            ):
+                raise ValueError(
+                    f"invalid authoritative public deck catalog: {path}"
+                )
+            for fingerprint in fingerprints:
+                previous = authoritative.get(fingerprint)
+                if previous is not None and previous != specialist_id:
+                    raise ValueError(
+                        "authoritative public deck catalogs disagree for "
+                        f"{fingerprint}"
+                    )
+                authoritative[fingerprint] = specialist_id
+            catalog_contracts.append(
+                {
+                    "path": str(path),
+                    "sha256": _sha256(path),
+                    "specialist_id": specialist_id,
+                    "source": payload["source"],
+                    "source_window": source_window,
+                    "minimum_acting_seat_games": minimum_games,
+                    "observed_acting_seat_games": observed_games,
+                    "deck_fingerprint_count": len(fingerprints),
+                }
+            )
+        self._authoritative_deck_labels = authoritative
+        self._authoritative_catalog_contracts = tuple(catalog_contracts)
 
         exact: dict[tuple[int, ...], str] = {}
         for entry in bound:
@@ -162,6 +252,7 @@ class LadderReplayClassifier:
         card_csv: Optional[str | Path] = None,
         additive_registered_ids: Sequence[str] = (),
         logical_aliases: Mapping[str, str] | None = None,
+        authoritative_deck_catalogs: Sequence[str | Path] = (),
     ) -> "LadderReplayClassifier":
         return cls(
             load_ladder_deck_mix(mix_path),
@@ -169,6 +260,7 @@ class LadderReplayClassifier:
             card_csv=Path(card_csv) if card_csv is not None else None,
             additive_registered_ids=additive_registered_ids,
             logical_aliases=logical_aliases,
+            authoritative_deck_catalogs=authoritative_deck_catalogs,
         )
 
     @property
@@ -181,6 +273,9 @@ class LadderReplayClassifier:
             "active_deck_ids": list(self.active_ids),
             "additive_registered_ids": list(self.additive_registered_ids),
             "logical_aliases": self.logical_aliases,
+            "authoritative_deck_catalogs": list(
+                self._authoritative_catalog_contracts
+            ),
             "derived_ace_ids": {
                 key: list(value)
                 for key, value in sorted(self._derived_ace_ids.items())
@@ -191,6 +286,14 @@ class LadderReplayClassifier:
         if card_ids is None or len(card_ids) != 60:
             return LadderReplayLabel(archetypes.UNKNOWN, "invalid_or_missing_deck")
         cards = [int(card_id) for card_id in card_ids]
+        authoritative = self._authoritative_deck_labels.get(
+            canonical_deck_sha256(cards)
+        )
+        if authoritative is not None:
+            return self._logical_label(
+                authoritative,
+                "authoritative_public_deck_identity",
+            )
         exact = self._exact.get(canonical_deck_fingerprint(cards))
         if exact is not None:
             return self._logical_label(exact, "representative_exact")

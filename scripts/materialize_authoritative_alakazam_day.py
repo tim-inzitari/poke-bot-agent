@@ -96,6 +96,16 @@ def main() -> int:
             "identity, using SOURCE=TARGET. The mapping is checksum-bound."
         ),
     )
+    parser.add_argument(
+        "--authoritative-deck-catalog",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "Checksum-bound public exact-deck archetype catalog. Repeatable; "
+            "catalog labels take precedence over stale local signatures."
+        ),
+    )
     parser.add_argument("--no-resume", action="store_true")
     args = parser.parse_args()
     classifier = LadderReplayClassifier.from_paths(
@@ -106,6 +116,7 @@ def main() -> int:
             args.required_archetype, args.additive_archetype
         ),
         logical_aliases=logical_aliases(args.logical_alias),
+        authoritative_deck_catalogs=args.authoritative_deck_catalog,
     )
     receipt = materialize_day(
         args.archive,

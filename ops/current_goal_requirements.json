@@ -18,6 +18,22 @@
     "kaggle_queue": "/home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json",
     "v5_frozen_derivative_receipt": "/home/inzi/poke-bot-agent/outputs/state/frozen-specialist-roster18-v5-pool.json"
   },
+  "current_owner_overrides": {
+    "team_rockets_spidops_successor": {
+      "goal_revision": 24,
+      "active_specialist": "thwackey",
+      "mandatory_next_specialist": "team-rockets-spidops",
+      "lower_priority_fallthrough_allowed": false,
+      "source_mode": "public_full_history_exact_deck_identity",
+      "source_window": {
+        "start": "2026-06-26",
+        "end": "2026-07-27",
+        "days": 32
+      },
+      "minimum_acting_seat_games": 16639,
+      "public_deck_catalog": "data/training_mixes/team-rockets-spidops-public-full32.v1.json"
+    }
+  },
   "historical_snapshot_retained_for_audit": {
     "verified_at_utc": "2026-07-26T16:43:35Z",
     "phase": "cumulative_core_gameplay_regression_failed",

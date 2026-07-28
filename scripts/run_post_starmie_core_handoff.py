@@ -1370,6 +1370,9 @@ def run(contract_path: Path) -> int:
             minimum_decisions_by_specialist=dict(
                 next_config.get("minimum_decisions_by_specialist", {})
             ),
+            minimum_records_by_specialist=dict(
+                next_config.get("minimum_records_by_specialist", {})
+            ),
             strict_priority_prefix=list(
                 next_config.get("strict_priority_prefix", [])
             ),

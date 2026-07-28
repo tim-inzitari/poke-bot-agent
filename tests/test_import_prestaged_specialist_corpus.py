@@ -13,4 +13,6 @@ def test_prestaged_import_is_atomic_checksum_bound_and_non_runtime() -> None:
     assert "CURRENT_DECK_GUIDE_CORPUS_READY.json" in source
     assert "active_training_modified" in source
     assert "--bwlimit=" in source
+    assert "--minimum-records" in source
+    assert "replaced_unavailable_placeholder" in source
     assert 'existing_receipt.get("created_at_utc")' in source

@@ -30,6 +30,7 @@ UNFINISHED = {
 LATEST20_DAYS = 20
 PRIMARY_SOURCE_MODE = "latest20_primary"
 FALLBACK_SOURCE_MODE = "historical_validated_shard_fallback"
+PUBLIC_FULL_HISTORY_SOURCE_MODE = "public_full_history_exact_deck_identity"
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -314,7 +315,7 @@ def validate_corpus_source_contract(
     *,
     specialist_id: str,
 ) -> dict[str, Any]:
-    """Validate latest20 primary data or its one explicit zero-match fallback."""
+    """Validate an authorized immutable expert-corpus source contract."""
 
     pointer = pointer.expanduser().resolve()
     payload = _load_json(pointer)
@@ -338,6 +339,88 @@ def validate_corpus_source_contract(
             "manifest": str(manifest_path),
             "manifest_sha256": _sha256(manifest_path),
             "latest20": latest20,
+            "historical_fallback": False,
+            "masquerades_as_latest20": False,
+        }
+    if mode == PUBLIC_FULL_HISTORY_SOURCE_MODE:
+        validated_shards = _validated_historical_shards(
+            manifest_path,
+            manifest,
+            specialist_id=specialist_id,
+        )
+        catalog_raw = str(policy.get("public_deck_catalog") or "").strip()
+        catalog_path = (pointer.parent / catalog_raw).resolve()
+        if (
+            not catalog_raw
+            or catalog_path.parent != pointer.parent
+            or not catalog_path.is_file()
+            or policy.get("public_deck_catalog_sha256")
+            != _sha256(catalog_path)
+        ):
+            raise RuntimeError(
+                "public full-history corpus lacks its checksum-bound deck catalog"
+            )
+        catalog = _load_json(catalog_path)
+        window = dict(catalog.get("source_window") or {})
+        observed_by_day = dict(catalog.get("observed_by_day") or {})
+        try:
+            start = date.fromisoformat(str(window.get("start") or ""))
+            end = date.fromisoformat(str(window.get("end") or ""))
+        except ValueError as exc:
+            raise RuntimeError(
+                "public full-history deck catalog has an invalid date"
+            ) from exc
+        dates = [
+            (start + timedelta(days=index)).isoformat()
+            for index in range((end - start).days + 1)
+        ]
+        minimum_records = int(policy.get("minimum_records") or 0)
+        observed_records = int(
+            catalog.get("observed_acting_seat_games") or 0
+        )
+        manifest_records = int(
+            (manifest.get("totals") or {}).get("records_kept") or 0
+        )
+        manifest_dates = [
+            str(value) for value in (manifest.get("dates") or ())
+        ]
+        if not manifest_dates:
+            manifest_dates = sorted(
+                {
+                    str(value)
+                    for row in (manifest.get("shards") or ())
+                    for value in (row.get("source_dates") or ())
+                }
+            )
+        if (
+            catalog.get("schema")
+            != "poke_bot.public_deck_archetype_catalog/v1"
+            or catalog.get("specialist_id") != specialist_id
+            or not str(catalog.get("source") or "").startswith("https://")
+            or int(window.get("days") or 0) != len(dates)
+            or end < start
+            or sorted(observed_by_day) != dates
+            or sum(int(value) for value in observed_by_day.values())
+            != observed_records
+            or observed_records < minimum_records
+            or manifest_records < minimum_records
+            or manifest_dates != dates
+            or dict(policy.get("source_window") or {}) != window
+        ):
+            raise RuntimeError(
+                "public full-history corpus identity or record floor changed"
+            )
+        return {
+            "mode": PUBLIC_FULL_HISTORY_SOURCE_MODE,
+            "manifest": str(manifest_path),
+            "manifest_sha256": _sha256(manifest_path),
+            "public_deck_catalog": str(catalog_path),
+            "public_deck_catalog_sha256": _sha256(catalog_path),
+            "source_window": window,
+            "observed_public_acting_seat_games": observed_records,
+            "minimum_records": minimum_records,
+            "manifest_records": manifest_records,
+            "validated_shards": validated_shards,
             "historical_fallback": False,
             "masquerades_as_latest20": False,
         }
@@ -390,6 +473,7 @@ def select(
     corpus_root: Path,
     minimum_decisions: int,
     minimum_decisions_by_specialist: dict[str, int] | None = None,
+    minimum_records_by_specialist: dict[str, int] | None = None,
     strict_priority_prefix: list[str] | None = None,
     completed_ids: set[str] | None = None,
     active_id: str | None = None,
@@ -497,10 +581,16 @@ def select(
         str(key): int(value)
         for key, value in (minimum_decisions_by_specialist or {}).items()
     }
+    minimum_record_overrides = {
+        str(key): int(value)
+        for key, value in (minimum_records_by_specialist or {}).items()
+    }
     strict_prefix = [str(value) for value in (strict_priority_prefix or [])]
     if (
         any(value <= 0 for value in minimum_overrides.values())
+        or any(value <= 0 for value in minimum_record_overrides.values())
         or not set(minimum_overrides).issubset(rows)
+        or not set(minimum_record_overrides).issubset(rows)
         or len(set(strict_prefix)) != len(strict_prefix)
         or not set(strict_prefix).issubset(rows)
     ):
@@ -544,9 +634,11 @@ def select(
             continue
         payload = _load_json(pointer)
         decisions = int((payload.get("totals") or {}).get("decisions_kept") or 0)
+        records = int((payload.get("totals") or {}).get("records_kept") or 0)
         required_decisions = minimum_overrides.get(
             specialist_id, int(minimum_decisions)
         )
+        required_records = minimum_record_overrides.get(specialist_id, 0)
         try:
             source_contract = validate_corpus_source_contract(
                 pointer,
@@ -567,6 +659,7 @@ def select(
             payload.get("schema") != "poke_bot.pinned_expert_corpus/v1"
             or payload.get("protected") is not True
             or decisions < required_decisions
+            or records < required_records
         ):
             deferred.append(
                 {
@@ -575,6 +668,14 @@ def select(
                     "reason": "protected_expert_corpus_below_contract",
                     "decisions": decisions,
                     "minimum_decisions": required_decisions,
+                    **(
+                        {
+                            "records": records,
+                            "minimum_records": required_records,
+                        }
+                        if required_records
+                        else {}
+                    ),
                     "pointer": str(pointer),
                 }
             )
@@ -585,6 +686,14 @@ def select(
                 "priority_rank": rank,
                 "decisions": decisions,
                 "minimum_decisions": required_decisions,
+                **(
+                    {
+                        "records": records,
+                        "minimum_records": required_records,
+                    }
+                    if required_records
+                    else {}
+                ),
                 "pointer": str(pointer),
                 "source_contract": source_contract,
             }
@@ -654,6 +763,7 @@ def select(
         "remaining_after_starmie": len(order),
         "minimum_decisions": int(minimum_decisions),
         "minimum_decisions_by_specialist": minimum_overrides,
+        "minimum_records_by_specialist": minimum_record_overrides,
         "strict_priority_prefix": strict_prefix,
         "staged_successor_specialist": effective_staged_successor,
         "completed_specialist_ids": sorted(completed),
@@ -678,6 +788,12 @@ def main() -> int:
     parser.add_argument("--minimum-decisions", type=int, default=20_000)
     parser.add_argument(
         "--minimum-decisions-override",
+        action="append",
+        default=[],
+        metavar="SPECIALIST_ID=COUNT",
+    )
+    parser.add_argument(
+        "--minimum-records-override",
         action="append",
         default=[],
         metavar="SPECIALIST_ID=COUNT",
@@ -710,6 +826,14 @@ def main() -> int:
                 "minimum decision override must be SPECIALIST_ID=positive-count"
             )
         minimum_overrides[specialist_id] = int(count)
+    minimum_record_overrides: dict[str, int] = {}
+    for raw in args.minimum_records_override:
+        specialist_id, separator, count = str(raw).partition("=")
+        if not separator or not specialist_id or int(count) <= 0:
+            raise ValueError(
+                "minimum record override must be SPECIALIST_ID=positive-count"
+            )
+        minimum_record_overrides[specialist_id] = int(count)
     routable_ids = None
     if args.runtime_tree is not None:
         tree = _load_json(args.runtime_tree.expanduser().resolve())
@@ -726,6 +850,7 @@ def main() -> int:
                 corpus_root=args.corpus_root,
                 minimum_decisions=int(args.minimum_decisions),
                 minimum_decisions_by_specialist=minimum_overrides,
+                minimum_records_by_specialist=minimum_record_overrides,
                 strict_priority_prefix=list(args.strict_priority_specialist),
                 completed_ids=set(args.completed_specialist),
                 active_id=args.active_specialist,

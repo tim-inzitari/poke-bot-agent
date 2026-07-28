@@ -611,20 +611,28 @@ counters, RNG state, and provenance. Positional optimizer state without a
 verified parameter-name mapping fails closed. A V6-to-V5 projection is allowed
 only when no active or trained V6-only slot would be lost.
 
-PTCGReplay is authoritative for meta analysis and specialist priority only.
-Mappings use its numeric archetype identifier plus exact source name as a
-consistency guard. Known deck variants may additionally use the existing
-card-signature classifier with an allowed source-family guard. Fuzzy display
-name matching is prohibited. Aggregate, ambiguous, and missing mappings do not
-automatically affect priority. They never supply training labels, expert
-replays, holdout results, or gate evidence.
+PTCGReplay is authoritative for meta analysis and specialist priority. A
+separately checksum-bound exact submitted-deck-to-archetype catalog from its
+public deck table may also repair a demonstrably stale local classifier for
+the same public Kaggle replay window. That catalog may label only the acting
+seat's exact submitted 60-card multiset; the causal decisions still come from
+the original checksummed replay archive. It may not supply actions, hidden
+state, outcomes, holdout results, or gate evidence. Mappings use the numeric
+archetype identifier plus exact source name as a consistency guard. Fuzzy
+display-name matching is prohibited, and aggregate, ambiguous, or missing
+mappings do not become training labels.
 
 After the current cumulative-core boundary, the explicit unfinished priority
 prefix is Dragapult/Dusknoir, Dudunsparce, Marnie's Grimmsnarl ex, Cynthia's
 Garchomp ex, Team Rocket's Mewtwo ex, Thwackey, and Team Rocket's Spidops.
+Team Rocket's Spidops is the mandatory successor after Thwackey. Its absence
+from a smaller expert window blocks selection and requires recovery from the
+full public rolling replay history; it never permits fall-through to a
+lower-priority executable corpus. The June 26 through July 27 public window
+must contribute at least 16,639 checksum-bound exact acting-seat Spidops games.
 Hammer-Pult then returns at its actual meta priority without the
-existing-artifact priority penalty. Remaining unfinished canonical targets then
-return to the established normal ordering.
+existing-artifact priority penalty. Remaining unfinished canonical targets
+then return to the established normal ordering.
 
 The active specialist's own matchup route is mandatory for mirror self-play.
 For example, a Hop's Trevenant specialist must contain the

@@ -15,6 +15,7 @@ def test_import_service_is_generic_and_uses_one_selector_environment() -> None:
     assert "team-rockets-spidops" not in service
     assert "OnSuccess=pokebot-next-specialist-prestage.service" in service
     assert "import_prestaged_specialist_corpus.py" in service
+    assert "--minimum-records ${PRESTAGE_MINIMUM_RECORDS}" in service
     assert "OnUnitInactiveSec=60s" in timer
 
 
@@ -26,3 +27,4 @@ def test_current_selector_names_one_exact_target() -> None:
     assert selector.count("PRESTAGE_GUIDE_VERSION=") == 1
     assert selector.count("PRESTAGE_REMOTE_ROOT=") == 1
     assert selector.count("PRESTAGE_DESTINATION=") == 1
+    assert selector.count("PRESTAGE_MINIMUM_RECORDS=16639") == 1

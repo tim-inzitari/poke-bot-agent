@@ -9,6 +9,7 @@ import yaml
 
 from scripts.select_next_specialist import (
     FALLBACK_SOURCE_MODE,
+    PUBLIC_FULL_HISTORY_SOURCE_MODE,
     select,
     validate_corpus_source_contract,
 )
@@ -80,7 +81,13 @@ def _latest20_manifest(specialist_id: str, *, matching_games: int = 1) -> dict:
     }
 
 
-def _corpus(root: Path, specialist_id: str, decisions: int) -> None:
+def _corpus(
+    root: Path,
+    specialist_id: str,
+    decisions: int,
+    *,
+    records: int = 0,
+) -> None:
     directory = root / specialist_id
     directory.mkdir(parents=True)
     manifest = directory / "manifest.json"
@@ -95,7 +102,10 @@ def _corpus(root: Path, specialist_id: str, decisions: int) -> None:
                 "protected": True,
                 "manifest": manifest.name,
                 "manifest_sha256": _sha256(manifest),
-                "totals": {"decisions_kept": decisions},
+                "totals": {
+                    "decisions_kept": decisions,
+                    "records_kept": records,
+                },
             }
         ),
         encoding="utf-8",
@@ -245,6 +255,91 @@ def _fallback_corpus(
     return pointer
 
 
+def _public_full_history_corpus(
+    root: Path,
+    specialist_id: str,
+    *,
+    records: int,
+) -> Path:
+    directory = root / specialist_id
+    directory.mkdir(parents=True)
+    shard = directory / "public-full-history.features"
+    shard.write_bytes(b"public full history")
+    dates = ["2026-07-26", "2026-07-27"]
+    manifest = directory / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "dates": dates,
+                "selection": {"value": specialist_id},
+                "quality_gates": {"passed": True, "checksummed": True},
+                "shards": [
+                    {
+                        "path": shard.name,
+                        "bytes": shard.stat().st_size,
+                        "sha256": _sha256(shard),
+                        "source_dates": dates,
+                    }
+                ],
+                "totals": {
+                    "records_kept": records,
+                    "decisions_kept": 100_000,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    catalog = directory / "PUBLIC_DECK_ARCHETYPE_CATALOG.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.public_deck_archetype_catalog/v1",
+                "source": "https://ptcgreplay.netlify.app/",
+                "specialist_id": specialist_id,
+                "source_window": {
+                    "start": dates[0],
+                    "end": dates[-1],
+                    "days": len(dates),
+                },
+                "observed_acting_seat_games": records,
+                "observed_by_day": {
+                    dates[0]: records - 1,
+                    dates[1]: 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    pointer = directory / "PROTECTED_EXPERT_CORPUS.json"
+    pointer.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.pinned_expert_corpus/v1",
+                "protected": True,
+                "manifest": manifest.name,
+                "manifest_sha256": _sha256(manifest),
+                "totals": {
+                    "records_kept": records,
+                    "decisions_kept": 100_000,
+                },
+                "source_policy": {
+                    "mode": PUBLIC_FULL_HISTORY_SOURCE_MODE,
+                    "public_deck_catalog": catalog.name,
+                    "public_deck_catalog_sha256": _sha256(catalog),
+                    "minimum_records": records,
+                    "source_window": {
+                        "start": dates[0],
+                        "end": dates[-1],
+                        "days": len(dates),
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return pointer
+
+
 def test_selection_defers_required_but_insufficient_target(tmp_path: Path) -> None:
     state = _state(tmp_path / "state.yaml")
     corpora = tmp_path / "corpora"
@@ -320,6 +415,42 @@ def test_staged_successor_fails_closed_when_its_corpus_is_not_ready(
             corpus_root=corpora,
             minimum_decisions=20_000,
         )
+
+
+def test_staged_successor_enforces_specialist_record_floor(
+    tmp_path: Path,
+) -> None:
+    state = _state(tmp_path / "state.yaml")
+    payload = yaml.safe_load(state.read_text(encoding="utf-8"))
+    payload["current"]["staged_successor_specialist"] = "lucario"
+    state.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    corpora = tmp_path / "corpora"
+    _corpus(corpora, "lucario", 800_000, records=16_638)
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "staged successor lucario is not executable: "
+            "protected_expert_corpus_below_contract"
+        ),
+    ):
+        select(
+            state_path=state,
+            corpus_root=corpora,
+            minimum_decisions=20_000,
+            minimum_records_by_specialist={"lucario": 16_639},
+        )
+
+    _corpus_root = tmp_path / "ready-corpora"
+    _corpus(_corpus_root, "lucario", 800_000, records=16_639)
+    selected = select(
+        state_path=state,
+        corpus_root=_corpus_root,
+        minimum_decisions=20_000,
+        minimum_records_by_specialist={"lucario": 16_639},
+    )
+    assert selected["selected"]["records"] == 16_639
+    assert selected["selected"]["minimum_records"] == 16_639
 
 
 def test_stale_staged_successor_equal_to_active_is_ignored(
@@ -616,6 +747,40 @@ def test_historical_fallback_requires_exactly_zero_latest20_matches(
     with pytest.raises(RuntimeError, match="forbidden"):
         validate_corpus_source_contract(
             nonzero_pointer,
+            specialist_id="dudunsparce",
+        )
+
+
+def test_public_full_history_source_is_explicit_and_record_bound(
+    tmp_path: Path,
+) -> None:
+    pointer = _public_full_history_corpus(
+        tmp_path / "corpora",
+        "dudunsparce",
+        records=16_639,
+    )
+    source = validate_corpus_source_contract(
+        pointer,
+        specialist_id="dudunsparce",
+    )
+
+    assert source["mode"] == PUBLIC_FULL_HISTORY_SOURCE_MODE
+    assert source["minimum_records"] == 16_639
+    assert source["manifest_records"] == 16_639
+    assert source["observed_public_acting_seat_games"] == 16_639
+    assert source["historical_fallback"] is False
+    assert source["masquerades_as_latest20"] is False
+
+    manifest = pointer.parent / "manifest.json"
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["totals"]["records_kept"] = 16_638
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+    pointer_payload = json.loads(pointer.read_text(encoding="utf-8"))
+    pointer_payload["manifest_sha256"] = _sha256(manifest)
+    pointer.write_text(json.dumps(pointer_payload), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="record floor"):
+        validate_corpus_source_contract(
+            pointer,
             specialist_id="dudunsparce",
         )
 

@@ -167,12 +167,19 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
     assert contract["selection"]["minimum_decisions_by_specialist"] == {
         "dragapult-dusknoir": 10000,
         "dudunsparce": 2000,
-        "team-rockets-spidops": 630,
+        "team-rockets-spidops": 20000,
+    }
+    assert contract["selection"]["minimum_records_by_specialist"] == {
+        "team-rockets-spidops": 16639,
     }
     assert contract["selection"]["strict_priority_prefix"] == [
         "dragapult-dusknoir",
         "dudunsparce",
         "marnie-s-grimmsnarl-ex",
+        "garchomp",
+        "rockets-mewtwo",
+        "thwackey",
+        "team-rockets-spidops",
     ]
 
 
@@ -447,6 +454,9 @@ def test_prior_cumulative_contract_accepts_only_additive_selection_controls() ->
             "minimum_decisions_by_specialist": {
                 "dragapult-dusknoir": 10_000
             },
+            "minimum_records_by_specialist": {
+                "team-rockets-spidops": 16_639
+            },
             "strict_priority_prefix": ["dragapult-dusknoir"],
             "current_deck_guide_required": True,
         },
@@ -460,6 +470,7 @@ def test_prior_cumulative_contract_accepts_only_additive_selection_controls() ->
     prior = json.loads(json.dumps(current))
     prior["trigger"].pop("threshold_transition_receipt")
     prior["next_specialist"].pop("minimum_decisions_by_specialist")
+    prior["next_specialist"].pop("minimum_records_by_specialist")
     prior["next_specialist"].pop("strict_priority_prefix")
     prior["next_specialist"].pop("current_deck_guide_required")
     prior["runtime"]["inactive_tree_candidate"] = None

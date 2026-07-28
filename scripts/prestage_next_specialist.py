@@ -552,6 +552,9 @@ def prepare(
             minimum_decisions_by_specialist=dict(
                 selection_config.get("minimum_decisions_by_specialist", {})
             ),
+            minimum_records_by_specialist=dict(
+                selection_config.get("minimum_records_by_specialist", {})
+            ),
             strict_priority_prefix=list(
                 selection_config.get("strict_priority_prefix", [])
             ),
@@ -560,8 +563,12 @@ def prepare(
             routable_ids=routable_ids,
         )
     except RuntimeError as exc:
-        if str(exc) != (
-            "no unfinished specialist currently has a protocol-valid corpus"
+        reason = str(exc)
+        if not (
+            reason
+            == "no unfinished specialist currently has a protocol-valid corpus"
+            or reason.startswith("staged successor ")
+            or reason.startswith("strict priority specialist ")
         ):
             raise
         return _blocked_selection_receipt(
@@ -570,7 +577,7 @@ def prepare(
             active_id=active_id,
             completed_ids=completed_ids,
             assets=assets,
-            reason=str(exc),
+            reason=reason,
         )
     selected = dict(selection["selected"])
     specialist_id = str(selected["specialist_id"])

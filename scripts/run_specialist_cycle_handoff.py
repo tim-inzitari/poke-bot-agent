@@ -77,6 +77,9 @@ def _compatible_prior_cumulative_contract(
                         next_specialist.pop(
                             "minimum_decisions_by_specialist", None
                         )
+                        next_specialist.pop(
+                            "minimum_records_by_specialist", None
+                        )
                         next_specialist.pop("strict_priority_prefix", None)
                     if remove_boundary_scope and "runtime" in candidate:
                         candidate["runtime"].pop(
@@ -847,6 +850,11 @@ def _cumulative_core_contract(
             "minimum_decisions_by_specialist": dict(
                 cycle["selection"].get(
                     "minimum_decisions_by_specialist", {}
+                )
+            ),
+            "minimum_records_by_specialist": dict(
+                cycle["selection"].get(
+                    "minimum_records_by_specialist", {}
                 )
             ),
             "strict_priority_prefix": list(

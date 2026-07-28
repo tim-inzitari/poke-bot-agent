@@ -10,7 +10,7 @@
   },
   "core_refresh_template": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/post_starmie_core_v2_handoff_v1.json",
   "selection": {
-    "state": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/specialists.yaml",
+    "state": "/home/inzi/poke-bot-agent/state/specialists.yaml",
     "corpus_root": "/home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic",
     "core_corpus": "/home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic/core-balanced-v6/PROTECTED_CORE_CORPUS.json",
     "corpus_source_receipt": "/home/inzi/poke-bot-agent/outputs/state/expert-latest20-v6-strategic-sync.json",
@@ -18,12 +18,19 @@
     "minimum_decisions_by_specialist": {
       "dragapult-dusknoir": 10000,
       "dudunsparce": 2000,
-      "team-rockets-spidops": 630
+      "team-rockets-spidops": 20000
+    },
+    "minimum_records_by_specialist": {
+      "team-rockets-spidops": 16639
     },
     "strict_priority_prefix": [
       "dragapult-dusknoir",
       "dudunsparce",
-      "marnie-s-grimmsnarl-ex"
+      "marnie-s-grimmsnarl-ex",
+      "garchomp",
+      "rockets-mewtwo",
+      "thwackey",
+      "team-rockets-spidops"
     ]
   },
   "prestage": {

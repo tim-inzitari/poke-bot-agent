@@ -10,7 +10,10 @@ from poke_bot.ladder_deck_mix import (
     load_ladder_deck_mix,
     load_ladder_deck_representatives,
 )
-from poke_bot.ladder_replay import LadderReplayClassifier
+from poke_bot.ladder_replay import (
+    LadderReplayClassifier,
+    canonical_deck_sha256,
+)
 from poke_bot.train import split_dataset
 from scripts.run_top_ladder_hotstart import _sha256, _validate_dataset
 from scripts.split_top_ladder_dataset import main as split_top_ladder_dataset
@@ -71,6 +74,48 @@ def test_spidops_additive_signature_does_not_steal_rockets_mewtwo() -> None:
     assert label.deck_id == "team-rockets-spidops"
     assert label.method == "registered_signature"
     assert classifier.classify_deck(mewtwo).deck_id == "rockets-mewtwo"
+
+
+def test_public_deck_catalog_overrides_stale_cross_archetype_signature(
+    tmp_path: Path,
+) -> None:
+    representatives = load_ladder_deck_representatives(REPS)
+    cards = representatives.decks["alakazam"]["card_ids"]
+    catalog = tmp_path / "spidops-public-catalog.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.public_deck_archetype_catalog/v1",
+                "source": "https://ptcgreplay.netlify.app/",
+                "specialist_id": "team-rockets-spidops",
+                "source_window": {
+                    "start": "2026-06-26",
+                    "end": "2026-06-26",
+                    "days": 1,
+                },
+                "minimum_acting_seat_games": 1,
+                "observed_acting_seat_games": 1,
+                "observed_by_day": {"2026-06-26": 1},
+                "deck_fingerprints": [canonical_deck_sha256(cards)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    classifier = LadderReplayClassifier.from_paths(
+        MIX,
+        REPS,
+        additive_registered_ids=["team-rockets-spidops"],
+        authoritative_deck_catalogs=[catalog],
+    )
+
+    label = classifier.classify_deck(cards)
+    assert label.deck_id == "team-rockets-spidops"
+    assert label.method == "authoritative_public_deck_identity"
+    contract = classifier.contract["authoritative_deck_catalogs"][0]
+    assert contract["minimum_acting_seat_games"] == 1
+    assert contract["observed_acting_seat_games"] == 1
+    assert contract["deck_fingerprint_count"] == 1
+    assert contract["sha256"].startswith("sha256:")
 
 
 def test_additive_allowlist_rejects_unregistered_family() -> None:

@@ -69,6 +69,15 @@ def main() -> int:
     parser.add_argument("--end", required=True)
     parser.add_argument("--specialist-id", required=True)
     parser.add_argument("--guide-version", required=True)
+    parser.add_argument("--minimum-records", type=int, default=0)
+    parser.add_argument(
+        "--public-deck-catalog",
+        type=Path,
+        help=(
+            "Catalog copied into the output directory for an owner-authorized "
+            "public full-history exact-deck source contract."
+        ),
+    )
     parser.add_argument("--expected-max-context", type=int, default=320)
     parser.add_argument(
         "--assembler",
@@ -210,6 +219,55 @@ def main() -> int:
 
     manifest_payload = _load(manifest)
     pointer_payload = _load(pointer)
+    manifest_records = int(
+        (manifest_payload.get("totals") or {}).get("records_kept") or 0
+    )
+    if args.minimum_records < 0 or manifest_records < int(args.minimum_records):
+        raise RuntimeError(
+            "sealed guide corpus is below the required record floor: "
+            f"actual={manifest_records} required={int(args.minimum_records)}"
+        )
+    source_policy = None
+    if args.public_deck_catalog is not None:
+        catalog_path = args.public_deck_catalog.resolve()
+        if catalog_path.parent != out_dir or not catalog_path.is_file():
+            raise RuntimeError(
+                "public deck catalog must be immutable inside the corpus root"
+            )
+        catalog = _load(catalog_path)
+        source_window = dict(catalog.get("source_window") or {})
+        if (
+            catalog.get("schema")
+            != "poke_bot.public_deck_archetype_catalog/v1"
+            or catalog.get("specialist_id") != args.specialist_id
+            or int(catalog.get("observed_acting_seat_games") or 0)
+            < int(args.minimum_records)
+            or source_window
+            != {
+                "start": expected_dates[0],
+                "end": expected_dates[-1],
+                "days": len(expected_dates),
+            }
+        ):
+            raise RuntimeError("public deck catalog identity changed")
+        source_policy = {
+            "mode": "public_full_history_exact_deck_identity",
+            "public_deck_catalog": catalog_path.name,
+            "public_deck_catalog_sha256": _sha256(catalog_path),
+            "minimum_records": int(args.minimum_records),
+            "source_window": source_window,
+        }
+        existing_policy = pointer_payload.get("source_policy")
+        if existing_policy is not None and existing_policy != source_policy:
+            raise RuntimeError("protected pointer source policy differs")
+        if existing_policy is None:
+            if ready_path.is_file():
+                raise RuntimeError(
+                    "ready corpus cannot gain a source policy after sealing"
+                )
+            pointer_payload["source_policy"] = source_policy
+            _atomic_json(pointer, pointer_payload)
+            pointer_payload = _load(pointer)
     total_guide_rows = int(
         ((manifest_payload.get("totals") or {}).get("target_coverage") or {}).get(
             "guide_rows", 0
@@ -238,6 +296,7 @@ def main() -> int:
         "protected_pointer": str(pointer),
         "protected_pointer_sha256": _sha256(pointer),
         "pointer_manifest_sha256": pointer_payload.get("manifest_sha256"),
+        "source_policy": source_policy,
         "daily_shards": rows,
         "active_training_modified": False,
     }

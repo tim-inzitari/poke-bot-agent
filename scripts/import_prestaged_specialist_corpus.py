@@ -30,7 +30,11 @@ def _sha256(path: Path) -> str:
 
 
 def _validate(
-    root: Path, *, specialist_id: str, guide_version: str
+    root: Path,
+    *,
+    specialist_id: str,
+    guide_version: str,
+    minimum_records: int,
 ) -> dict[str, Any]:
     manifest_path = root / "manifest.json"
     pointer_path = root / "PROTECTED_EXPERT_CORPUS.json"
@@ -54,6 +58,9 @@ def _validate(
         or ready.get("protected_pointer_sha256") != _sha256(pointer_path)
         or int(ready.get("decisions") or 0)
         != int(totals.get("decisions_kept") or 0)
+        or int(ready.get("records") or 0)
+        != int(totals.get("records_kept") or 0)
+        or int(ready.get("records") or 0) < int(minimum_records)
         or int(ready.get("guide_rows") or 0)
         != int(coverage.get("guide_rows") or 0)
         or int(ready.get("decisions") or 0) <= 0
@@ -67,11 +74,34 @@ def _validate(
     return {
         "specialist_id": specialist_id,
         "guide_version": guide_version,
+        "records": int(ready["records"]),
         "decisions": int(ready["decisions"]),
         "guide_rows": int(ready["guide_rows"]),
         "manifest_sha256": _sha256(manifest_path),
         "protected_pointer_sha256": _sha256(pointer_path),
         "ready_receipt_sha256": _sha256(ready_path),
+    }
+
+
+def _unavailable_placeholder(
+    destination: Path, *, specialist_id: str
+) -> dict[str, Any] | None:
+    if not destination.is_dir():
+        return None
+    entries = list(destination.iterdir())
+    if len(entries) != 1 or entries[0].name != "UNAVAILABLE_EXPERT_CORPUS.json":
+        return None
+    payload = _read(entries[0])
+    if (
+        payload.get("schema") != "poke_bot.specialist_expert_corpus_unavailable/v1"
+        or payload.get("archetype") != specialist_id
+        or payload.get("reason")
+        != "no acting-seat records in the pinned source corpus"
+    ):
+        return None
+    return {
+        "path": str(entries[0]),
+        "sha256": _sha256(entries[0]),
     }
 
 
@@ -96,17 +126,28 @@ def main() -> int:
     parser.add_argument("--guide-version", required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--bwlimit-kib", type=int, default=8_000)
+    parser.add_argument("--minimum-records", type=int, default=0)
     args = parser.parse_args()
-    if args.bwlimit_kib <= 0:
-        raise ValueError("bandwidth limit must be positive")
+    if args.bwlimit_kib <= 0 or args.minimum_records < 0:
+        raise ValueError("bandwidth and minimum-record contracts are invalid")
 
     destination = args.destination.resolve()
-    if destination.is_dir():
+    placeholder = _unavailable_placeholder(
+        destination,
+        specialist_id=args.specialist_id,
+    )
+    if destination.is_dir() and placeholder is None:
         identity = _validate(
             destination,
             specialist_id=args.specialist_id,
             guide_version=args.guide_version,
+            minimum_records=int(args.minimum_records),
         )
+        replacement = {
+            "replaced_unavailable_placeholder": False,
+            "unavailable_placeholder_archive": None,
+            "unavailable_placeholder_sha256": None,
+        }
     else:
         staging = destination.with_name(
             f".{destination.name}.importing.{os.getpid()}"
@@ -129,9 +170,42 @@ def main() -> int:
                 staging,
                 specialist_id=args.specialist_id,
                 guide_version=args.guide_version,
+                minimum_records=int(args.minimum_records),
             )
             destination.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(staging, destination)
+            placeholder_archive = None
+            if placeholder is not None:
+                placeholder_archive = destination.with_name(
+                    f".{destination.name}.unavailable-"
+                    f"{str(placeholder['sha256']).removeprefix('sha256:')[:12]}"
+                )
+                if placeholder_archive.exists():
+                    raise RuntimeError(
+                        "unavailable placeholder archive already exists: "
+                        f"{placeholder_archive}"
+                    )
+                os.replace(destination, placeholder_archive)
+            try:
+                os.replace(staging, destination)
+            except BaseException:
+                if (
+                    placeholder_archive is not None
+                    and placeholder_archive.exists()
+                    and not destination.exists()
+                ):
+                    os.replace(placeholder_archive, destination)
+                raise
+            replacement = {
+                "replaced_unavailable_placeholder": placeholder is not None,
+                "unavailable_placeholder_archive": (
+                    str(placeholder_archive)
+                    if placeholder_archive is not None
+                    else None
+                ),
+                "unavailable_placeholder_sha256": (
+                    placeholder["sha256"] if placeholder is not None else None
+                ),
+            }
         finally:
             shutil.rmtree(staging, ignore_errors=True)
 
@@ -146,6 +220,7 @@ def main() -> int:
         "source_root": args.remote_root,
         "destination": str(destination),
         **identity,
+        **replacement,
         "active_training_modified": False,
     }
     _atomic_json(receipt_path, receipt)
