@@ -33,7 +33,8 @@ def _successor_fusion_fixture(
     checkpoint_path.write_bytes(b"successor-fused-checkpoint")
     digest = "sha256:" + "5" * 64
     bootstrap_digest = "sha256:" + "6" * 64
-    fingerprint = "sha256:" + "7" * 64
+    design_contract = {"fixture": "initial-successor-design-v1"}
+    fingerprint = _canonical_digest(design_contract)
     learner = {"path": str(checkpoint_path.resolve()), "digest": digest}
     publish = {
         "checkpoint": str(checkpoint_path.resolve()),
@@ -63,6 +64,7 @@ def _successor_fusion_fixture(
         {
             "specialist_archetype": "test-specialist",
             "design_fingerprint": fingerprint,
+            "design_contract": design_contract,
             "initial_learner_checkpoint": {"digest": bootstrap_digest},
         },
     )
@@ -145,6 +147,92 @@ def test_generated_successor_fusion_requires_fleet_publication(
     ready, reason = _decision_fusion_runtime_ready(run_dir)
     assert ready is False
     assert "not published fleet-wide" in reason
+
+
+def test_generated_successor_fusion_accepts_verified_design_migration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    previous_contract = manifest["design_contract"]
+    previous_fingerprint = manifest["design_fingerprint"]
+    current_contract = {**previous_contract, "source": {"revision": 2}}
+    current_fingerprint = _canonical_digest(current_contract)
+    migration_path = run_dir / "design_migrations" / "migration_0001.json"
+    migration = {
+        "schema": 1,
+        "receipt": str(migration_path.resolve()),
+        "reason": "receipt_backed_decision_fusion_runtime_v1",
+        "boundary_next_iteration": 5,
+        "last_completed_iteration": 4,
+        "previous_fingerprint": previous_fingerprint,
+        "current_fingerprint": current_fingerprint,
+        "previous_contract": previous_contract,
+        "current_contract": current_contract,
+    }
+    _write(migration_path, migration)
+    history = [
+        {
+            "receipt": str(migration_path.resolve()),
+            "fingerprint": current_fingerprint,
+            "boundary_next_iteration": 5,
+            "reason": "receipt_backed_decision_fusion_runtime_v1",
+        }
+    ]
+    for path in (run_dir / "loop_state.json", commit_path):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["design_fingerprint"] = current_fingerprint
+        payload["design_migration_history"] = history
+        _write(path, payload)
+
+    ready, reason = _decision_fusion_runtime_ready(run_dir)
+
+    assert ready is True
+    assert "verified successor fused descendant" in reason
+
+
+def test_generated_successor_fusion_rejects_corrupt_design_migration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    migration_path = run_dir / "design_migrations" / "migration_0001.json"
+    current_contract = {"fixture": "tampered"}
+    current_fingerprint = _canonical_digest(current_contract)
+    _write(
+        migration_path,
+        {
+            "schema": 1,
+            "receipt": str(migration_path.resolve()),
+            "reason": "receipt_backed_decision_fusion_runtime_v1",
+            "boundary_next_iteration": 5,
+            "last_completed_iteration": 4,
+            "previous_fingerprint": manifest["design_fingerprint"],
+            "current_fingerprint": current_fingerprint,
+            "previous_contract": {"not": "the manifest contract"},
+            "current_contract": current_contract,
+        },
+    )
+    history = [
+        {
+            "receipt": str(migration_path.resolve()),
+            "fingerprint": current_fingerprint,
+            "boundary_next_iteration": 5,
+            "reason": "receipt_backed_decision_fusion_runtime_v1",
+        }
+    ]
+    for path in (run_dir / "loop_state.json", commit_path):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["design_fingerprint"] = current_fingerprint
+        payload["design_migration_history"] = history
+        _write(path, payload)
+
+    ready, reason = _decision_fusion_runtime_ready(run_dir)
+
+    assert ready is False
+    assert reason == "successor design migration chain is corrupt"
 
 
 def _publish_exact_pointer(run_dir: Path, contract_path: Path) -> None:

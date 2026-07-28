@@ -87,6 +87,89 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _verified_effective_design_fingerprint(
+    run_dir: Path,
+    *,
+    manifest: dict[str, Any],
+    ledger: dict[str, Any],
+) -> tuple[str | None, str]:
+    """Verify the immutable manifest plus its append-only migration chain."""
+
+    contract = manifest.get("design_contract")
+    fingerprint = str(manifest.get("design_fingerprint") or "")
+    if (
+        not isinstance(contract, dict)
+        or not fingerprint.startswith("sha256:")
+        or _canonical_digest(contract) != fingerprint
+    ):
+        return None, "successor manifest design contract is corrupt"
+
+    migration_paths = sorted(
+        Path(run_dir).glob("design_migrations/migration_*.json")
+    )
+    history = list(ledger.get("design_migration_history") or [])
+    if len(history) != len(migration_paths):
+        return None, "successor design migration ledger is incomplete"
+
+    for index, migration_path in enumerate(migration_paths):
+        receipt = _read_json(migration_path)
+        previous = receipt.get("previous_contract")
+        current = receipt.get("current_contract")
+        previous_fingerprint = str(receipt.get("previous_fingerprint") or "")
+        current_fingerprint = str(receipt.get("current_fingerprint") or "")
+        receipt_path = Path(str(receipt.get("receipt") or "")).expanduser()
+        boundary_next_iteration = int(
+            receipt.get("boundary_next_iteration", -1)
+        )
+        last_completed_iteration = int(
+            receipt.get("last_completed_iteration", -2)
+        )
+        if not (
+            int(receipt.get("schema", -1)) == 1
+            and isinstance(previous, dict)
+            and isinstance(current, dict)
+            and receipt_path.is_file()
+            and receipt_path.resolve() == migration_path.resolve()
+            and previous_fingerprint == fingerprint
+            and previous == contract
+            and _canonical_digest(previous) == previous_fingerprint
+            and _canonical_digest(current) == current_fingerprint
+            and boundary_next_iteration > 0
+            and last_completed_iteration == boundary_next_iteration - 1
+        ):
+            return None, "successor design migration chain is corrupt"
+
+        history_row = history[index]
+        if not isinstance(history_row, dict):
+            return None, "successor design migration ledger is corrupt"
+        history_receipt_path = Path(
+            str(history_row.get("receipt") or "")
+        ).expanduser()
+        if not (
+            history_receipt_path.is_file()
+            and history_receipt_path.resolve() == migration_path.resolve()
+            and str(history_row.get("fingerprint") or "")
+            == current_fingerprint
+            and (
+                history_row.get("recovered") is True
+                or (
+                    int(history_row.get("boundary_next_iteration", -1))
+                    == boundary_next_iteration
+                    and str(history_row.get("reason") or "")
+                    == str(receipt.get("reason") or "")
+                )
+            )
+        ):
+            return None, "successor design migration ledger is corrupt"
+
+        contract = current
+        fingerprint = current_fingerprint
+
+    if str(ledger.get("design_fingerprint") or "") != fingerprint:
+        return None, "successor effective design fingerprint is not committed"
+    return fingerprint, "verified"
+
+
 def _successor_decision_fusion_runtime_ready(
     run_dir: Path,
     *,
@@ -130,12 +213,17 @@ def _successor_decision_fusion_runtime_ready(
 
     manifest = _read_json(run_dir / "manifest.json")
     initial = dict(manifest.get("initial_learner_checkpoint") or {})
-    design_fingerprint = str(manifest.get("design_fingerprint") or "")
+    design_fingerprint, design_reason = _verified_effective_design_fingerprint(
+        run_dir,
+        manifest=manifest,
+        ledger=state,
+    )
+    if design_fingerprint is None:
+        return False, design_reason
     if not (
         str(manifest.get("specialist_archetype") or "").strip().casefold()
         == specialist_id
         and str(initial.get("digest") or "").startswith("sha256:")
-        and design_fingerprint.startswith("sha256:")
     ):
         return False, "successor run manifest is not lineage-bound"
 
@@ -185,10 +273,19 @@ def _successor_decision_fusion_runtime_ready(
     completed_iteration = int(state.get("last_completed_iteration", -1))
     commit_path = run_dir / "commits" / f"iter_{completed_iteration:05d}.json"
     commit = _read_json(commit_path)
+    commit_design_fingerprint, commit_design_reason = (
+        _verified_effective_design_fingerprint(
+            run_dir,
+            manifest=manifest,
+            ledger=commit,
+        )
+    )
+    if commit_design_fingerprint is None:
+        return False, commit_design_reason
     if not (
         completed_iteration >= 0
         and int(state.get("next_iteration", -1)) == completed_iteration + 1
-        and commit.get("design_fingerprint") == design_fingerprint
+        and commit_design_fingerprint == design_fingerprint
         and int(commit.get("last_completed_iteration", -1))
         == completed_iteration
         and int(commit.get("next_iteration", -1)) == completed_iteration + 1
