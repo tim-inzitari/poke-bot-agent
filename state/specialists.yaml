@@ -2864,6 +2864,8 @@ specialists:
         guide_service: pokebot-spidops-full32-guide-v2.service
         july_24_public_archive_audit: state/spidops_public_replay_archive_audit_v1.json
         july_24_public_archive_audit_checksum: sha256:907d17d583313d1219bbf6f32410de87daa8cb468498045d4e54c938b14ab3a5
+        july_24_catalog_impact_audit: state/spidops_public_replay_catalog_impact_v1.json
+        july_24_catalog_impact_audit_checksum: sha256:c16efc43198a670038701c2f7da94cb3e05310896a54f86c0735293eff078ba2
         active_training_modified: false
     counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
     checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}

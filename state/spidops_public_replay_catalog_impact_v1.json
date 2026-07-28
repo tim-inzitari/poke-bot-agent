@@ -1,0 +1,46 @@
+{
+  "schema": "poke_bot.public_replay_catalog_impact_audit/v1",
+  "specialist_id": "team-rockets-spidops",
+  "created_at_utc": "2026-07-28T16:50:00Z",
+  "status": "publisher_manifest_gap_does_not_affect_spidops_record_floor",
+  "archive_audit": "state/spidops_public_replay_archive_audit_v1.json",
+  "archive_audit_sha256": "sha256:907d17d583313d1219bbf6f32410de87daa8cb468498045d4e54c938b14ab3a5",
+  "catalog": "data/training_mixes/team-rockets-spidops-public-full32.v1.json",
+  "catalog_sha256": "sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff",
+  "public_source": {
+    "site": "https://ptcgreplay.netlify.app/",
+    "access": "site_published_config_with_supabase_rls",
+    "credentials_committed": false,
+    "completed_ingest_id": 17,
+    "completed_ingest_finished_at_utc": "2026-07-28T16:15:57.338131+00:00",
+    "window": {
+      "start": "2026-06-26",
+      "end": "2026-07-27",
+      "days": 32
+    },
+    "query": {
+      "table": "matches",
+      "filter": "episode_id=eq.87841523",
+      "selected_fields": [
+        "episode_id",
+        "played_on",
+        "deck0_hash",
+        "deck1_hash",
+        "winner",
+        "first_player",
+        "team0",
+        "team1"
+      ],
+      "rows": 0
+    }
+  },
+  "conclusion": {
+    "manifest_only_episode_id": "87841523",
+    "episode_contributes_to_catalog": false,
+    "july_24_spidops_acting_seat_games": 836,
+    "full_window_spidops_acting_seat_games": 16639,
+    "minimum_required_acting_seat_games": 16639,
+    "record_floor_unchanged": true,
+    "active_training_modified": false
+  }
+}
