@@ -110,8 +110,8 @@ current:
       payload_checksum: sha256:4eb436c06a049d2c184d9fbc8d34c3ef8f1053bb45706011562f1cc8a09f52b0
     pre_stage_ready: true
     pre_stage_receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
-    pre_stage_receipt_checksum: sha256:53c14f620f28b682faf9cf9224d39af4d013445e44cbf7d3671d24d9361fd691
-    pre_stage_created_at_utc: 2026-07-28T19:21:43.529122+00:00
+    pre_stage_receipt_checksum: sha256:69e5c343444aabb3248a760ab71565df1612fdf272a5e532c875358f3ffe652e
+    pre_stage_created_at_utc: 2026-07-28T19:28:02.492097+00:00
     selection_identity_checksum: sha256:747e92644bb4d041dc368e8e6275f36082a8f69d7f89fef3f22792a7f4cdd009
     blockers: []
   historical_thwackey_prestage:
@@ -2996,11 +2996,12 @@ specialists:
           receipt_checksum: sha256:ecf6cd5255cd4754bc5ebfd09a5ffcd17096be1cc11a57b0fa513f6808f7b55a
           completed_at_utc: 2026-07-28T19:20:30.306923+00:00
           replaced_unavailable_placeholder: true
+          timer_idempotency_verified: true
         pre_stage:
           status: ready
           selected_specialist: team-rockets-spidops
           receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
-          receipt_checksum: sha256:53c14f620f28b682faf9cf9224d39af4d013445e44cbf7d3671d24d9361fd691
+          receipt_checksum: sha256:69e5c343444aabb3248a760ab71565df1612fdf272a5e532c875358f3ffe652e
           selection_identity_checksum: sha256:747e92644bb4d041dc368e8e6275f36082a8f69d7f89fef3f22792a7f4cdd009
           cpu_pack_manifest_checksum: sha256:338519a8c560898300c772bf4b226a3416d3c83c822db6c04ceb564bf661a165
           cpu_pack_payload_checksum: sha256:4eb436c06a049d2c184d9fbc8d34c3ef8f1053bb45706011562f1cc8a09f52b0
