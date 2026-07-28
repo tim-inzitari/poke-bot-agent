@@ -2850,7 +2850,7 @@ specialists:
     datasets:
       expert_manifest: null
       preparation:
-        status: recent_public_days_downloading_then_full32_featurization
+        status: full32_featurization_running
         source_mode: public_full_history_exact_deck_identity
         source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
         required_records: 16639
@@ -2858,10 +2858,30 @@ specialists:
         public_deck_catalog: data/training_mixes/team-rockets-spidops-public-full32.v1.json
         public_deck_catalog_checksum: sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff
         remote_output_root: /mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v1
-        public_archives_present: 29
+        public_archives_present: 32
         public_archives_required: 32
         download_service: pokebot-spidops-full32-download-v2.service
-        guide_service: pokebot-spidops-full32-guide-v2.service
+        download_status: completed_successfully
+        guide_service: pokebot-spidops-full32-guide-v3.service
+        guide_service_started_at_utc: 2026-07-28T17:16:27Z
+        guide_builder_script: ops/elmo/build_spidops_full32_corpus.sh
+        guide_builder_script_checksum: sha256:0ffec128e6cb724536782291a8d321bd907da45e7f854bcb919dfd1fbe9cc961
+        archive_preflight:
+          status: passed
+          json_replays: 160576
+          manifest_rows: 160577
+          manifest_only_episode_ids: ["87841523"]
+          duplicate_episode_ids: 0
+          orphan_json_episode_ids: 0
+        featurization:
+          state: running
+          day_parallelism: 4
+          workers_per_day: 3
+          maximum_worker_processes: 12
+          current_dates: [2026-06-26, 2026-06-27, 2026-06-28, 2026-06-29]
+        preserved_failed_launches:
+          - {service: pokebot-spidops-full32-guide-v1.service, reason: dependency_download_validation_failed}
+          - {service: pokebot-spidops-full32-guide-v2.service, reason: direct_entrypoint_on_noexec_home_mount}
         july_24_public_archive_audit: state/spidops_public_replay_archive_audit_v1.json
         july_24_public_archive_audit_checksum: sha256:907d17d583313d1219bbf6f32410de87daa8cb468498045d4e54c938b14ab3a5
         july_24_catalog_impact_audit: state/spidops_public_replay_catalog_impact_v1.json
