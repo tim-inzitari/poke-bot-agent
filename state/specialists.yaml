@@ -2850,7 +2850,7 @@ specialists:
     datasets:
       expert_manifest: null
       preparation:
-        status: full32_clean_rebuild_pending
+        status: full32_clean_rebuild_running
         source_mode: public_full_history_exact_deck_identity
         source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
         required_records: 16639
@@ -2862,8 +2862,8 @@ specialists:
         public_archives_required: 32
         download_service: pokebot-spidops-full32-download-v2.service
         download_status: completed_successfully
-        guide_service: pokebot-spidops-full32-guide-v4.service
-        guide_service_started_at_utc: null
+        guide_service: pokebot-spidops-full32-guide-v5.service
+        guide_service_started_at_utc: 2026-07-28T17:57:35Z
         guide_builder_script: ops/elmo/build_spidops_full32_corpus.sh
         guide_builder_script_checksum: sha256:1f5f719edb59b9bbd8806fdd19eba4b1983a4a4aa70612ccd858a961d97a8d9f
         teacher_module: poke_bot/team_rockets_spidops_heuristics.py
@@ -2876,14 +2876,16 @@ specialists:
           duplicate_episode_ids: 0
           orphan_json_episode_ids: 0
         featurization:
-          state: clean_rebuild_pending
+          state: running
           day_parallelism: 4
           workers_per_day: 3
           maximum_worker_processes: 12
-          current_dates: []
+          current_dates: [2026-06-26, 2026-06-27, 2026-06-28, 2026-06-29]
         preserved_failed_launches:
           - {service: pokebot-spidops-full32-guide-v1.service, reason: dependency_download_validation_failed}
           - {service: pokebot-spidops-full32-guide-v2.service, reason: direct_entrypoint_on_noexec_home_mount}
+          - {service: pokebot-spidops-full32-guide-v4.service, reason: archive_parent_did_not_permit_admin_to_create_clean_output_root}
+          - {service: pokebot-spidops-full32-guide-v4-retry.service, reason: archive_parent_permission_failure_captured_with_exact_log}
         preserved_audit_only_partial_build:
           service: pokebot-spidops-full32-guide-v3.service
           root: /mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v1
