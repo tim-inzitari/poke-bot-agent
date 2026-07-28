@@ -2880,7 +2880,20 @@ specialists:
           day_parallelism: 4
           workers_per_day: 3
           maximum_worker_processes: 12
-          current_dates: [2026-06-26, 2026-06-27, 2026-06-28, 2026-06-29]
+          current_dates: [2026-06-30, 2026-07-01, 2026-07-02, 2026-07-03]
+          completed_days: 4
+          records: 571
+          decisions: 38553
+          guide_rows: 4306
+        first_clean_batch_validation:
+          status: passed
+          dates: [2026-06-26, 2026-06-27, 2026-06-28, 2026-06-29]
+          exact_catalog_records: 571
+          materialized_records: 571
+          decisions: 38553
+          guide_rows: 4306
+          zero_guide_row_days: 0
+          stale_teacher_same_dates_guide_rows: 0
         preserved_failed_launches:
           - {service: pokebot-spidops-full32-guide-v1.service, reason: dependency_download_validation_failed}
           - {service: pokebot-spidops-full32-guide-v2.service, reason: direct_entrypoint_on_noexec_home_mount}
