@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll for finalized Hammer-Pult guide corpus
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=pokebot-hammer-pult-guide-promote-v1.service
+
+[Install]
+WantedBy=timers.target

@@ -652,7 +652,7 @@ def test_merge_preserves_parent_training_state_and_discards_adapter_optimizer(
         ].zero_()
     untrained_path = tmp_path / "untrained.pt"
     torch.save(untrained, untrained_path)
-    with pytest.raises(RuntimeError, match="hammer-pult"):
+    with pytest.raises(RuntimeError, match=EXPERT_IDS[6]):
         merge_dormant_adapter_checkpoint(
             parent_checkpoint=parent,
             adapter_checkpoint=untrained_path,

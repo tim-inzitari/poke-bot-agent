@@ -1,0 +1,13 @@
+[Unit]
+Description=Pokebot guarded swap-to-RAM repatriation
+After=local-fs.target
+ConditionPathExists=/proc/meminfo
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pokebot-safe-swap-repatriate
+Nice=10
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+CPUWeight=10
+IOWeight=10

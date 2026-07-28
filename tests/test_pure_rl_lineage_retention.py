@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -560,3 +561,130 @@ def test_heldout_audit_requires_all_1000_exact_digest_greedy_balanced_games() ->
         n_games=1000,
         checkpoint_digest=digest,
     )["passed"] is False
+
+
+def test_matchup_runtime_receipt_is_aggregated_separately_from_winrate_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_train_pure_rl()
+    runtime_tree = tmp_path / "runtime-tree.json"
+    runtime_tree.write_text(
+        json.dumps(
+            {
+                "runtime_contract": {
+                    "accepted_archetype_ids": ["crustle"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    runtime_digest = "sha256:" + hashlib.sha256(
+        runtime_tree.read_bytes()
+    ).hexdigest()
+    monkeypatch.setenv("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", str(runtime_tree))
+    digest = "sha256:" + "c" * 64
+    rows = _heldout_rows(digest)
+    for index, row in enumerate(rows):
+        route = 0 if index < 400 else -1
+        row["matchup_runtime_audit"] = {
+            "schema": "poke_bot.matchup_adapter_runtime_audit/v1",
+            "mode": "causal_public_tree",
+            "runtime_enabled": True,
+            "tree_digest": runtime_digest,
+            "model_route": route,
+            "initial_model_route": -1,
+            "active_archetype_id": "crustle" if route == 0 else None,
+            "observations": 8,
+            "recognized_observations": 3 if route == 0 else 0,
+            "accepted_archetype_ids": ["crustle"],
+            "accepted_routes": {"crustle": 0},
+            "per_route": {"0": 3} if route == 0 else {},
+            "route_transition_count": 1 if route == 0 else 0,
+            "route_transitions": (
+                [{"observation": 2, "from_route": -1, "to_route": 0}]
+                if route == 0
+                else []
+            ),
+        }
+    audit = module._audit_heldout_rows(
+        rows,
+        n_games=1000,
+        checkpoint_digest=digest,
+    )
+    assert audit["passed"] is True
+    runtime = audit["matchup_runtime"]
+    assert runtime["all_games_audited"] is True
+    assert runtime["all_runtime_enabled"] is True
+    assert runtime["contract_clean"] is True
+    assert runtime["active_final_route_games"] == 400
+    assert runtime["exact_bypass_final_games"] == 600
+    assert runtime["observations"] == 8000
+    assert runtime["per_route_observations"] == {"0": 1200}
+    runtime["tree_digest_counts"] = {runtime_digest: 1000}
+    runtime["accepted_roster_counts"] = {"crustle": 1000}
+    enforcement = module._matchup_runtime_collection_enforcement(
+        runtime,
+        valid_games=1000,
+        required=True,
+        self_play_audit={
+            "per_archetype_observations": {"hops-trevenant": 37}
+        },
+        required_mirror_archetype="hops-trevenant",
+    )
+    assert enforcement["passed"] is True
+    assert enforcement["mirror_route_observations"] == 37
+    assert enforcement["expected_tree_digest"] == runtime_digest
+    assert enforcement["expected_accepted_route_roster"] == "crustle"
+
+    # A same-checkpoint mirror has two causal routers. Either seat may be the
+    # first to observe enough public cards to activate the specialist route,
+    # so the collection gate must aggregate both independently audited seats.
+    combined_mirror = module._combine_self_play_matchup_runtime_audits(
+        {"per_archetype_observations": {}},
+        {"per_archetype_observations": {"hops-trevenant": 11}},
+    )
+    opponent_only_enforcement = module._matchup_runtime_collection_enforcement(
+        runtime,
+        valid_games=1000,
+        required=True,
+        self_play_audit=combined_mirror,
+        required_mirror_archetype="hops-trevenant",
+    )
+    assert opponent_only_enforcement["passed"] is True
+    assert opponent_only_enforcement["mirror_route_observations"] == 11
+
+    missing = dict(runtime)
+    missing["all_games_audited"] = False
+    failed = module._matchup_runtime_collection_enforcement(
+        missing,
+        valid_games=1000,
+        required=True,
+    )
+    assert failed["passed"] is False
+    assert failed["assertions"]["all_valid_games_audited"] is False
+
+    stale = dict(runtime)
+    stale["tree_digest_counts"] = {"sha256:" + "d" * 64: 1000}
+    stale_enforcement = module._matchup_runtime_collection_enforcement(
+        stale,
+        valid_games=1000,
+        required=True,
+    )
+    assert stale_enforcement["passed"] is False
+    assert (
+        stale_enforcement["assertions"]["configured_tree_identity_only"] is False
+    )
+
+    missing_mirror = module._matchup_runtime_collection_enforcement(
+        runtime,
+        valid_games=1000,
+        required=True,
+        self_play_audit={"per_archetype_observations": {}},
+        required_mirror_archetype="hops-trevenant",
+    )
+    assert missing_mirror["passed"] is False
+    assert (
+        missing_mirror["assertions"]["active_specialist_mirror_route_observed"]
+        is False
+    )

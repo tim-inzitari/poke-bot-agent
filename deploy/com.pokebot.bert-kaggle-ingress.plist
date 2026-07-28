@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pokebot.bert-kaggle-ingress</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>-u</string>
+    <string>/Users/tsinzitari/workspace/poke-bot-agent/scripts/bert_kaggle_ingress_to_elmo.py</string>
+    <string>--start-date</string>
+    <string>2026-06-16</string>
+    <string>--end-date</string>
+    <string>2026-06-25</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/tsinzitari/workspace/poke-bot-agent</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/tsinzitari/workspace/poke-bot-agent</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/tsinzitari/Library/Logs/PokeBot/bert-kaggle-ingress.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tsinzitari/Library/Logs/PokeBot/bert-kaggle-ingress.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+</dict>
+</plist>

@@ -33,12 +33,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 #: Advertised capability set for trainer dispatch / redeploy gates.
-REMOTE_JOB_KINDS = ("play", "promotion", "self_play")
+REMOTE_JOB_KINDS = ("play", "promotion", "self_play", "runtime_probe")
 REMOTE_WORKER_CAPABILITIES = (
     "greedy_play_v1",
     "active_checkpoint_job_barrier_v1",
     "play_result_contract_v1",
     "portable_baseline_spec_v1",
+    "matchup_runtime_worker_probe_v1",
+    "controlled_rotation_v1",
 )
 REMOTE_WORKER_SAFETY_VERSION = "20260717"
 REMOTE_WORKER_ARM_FILE = REPO_ROOT / "outputs" / "state" / "REMOTE_WORKER_ARMED"
@@ -62,7 +64,30 @@ def _raw_sha256_digest(path: Path) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
-def _activate_matchup_runtime_from_marker(checkpoint_path: Path) -> Optional[dict]:
+def _apply_matchup_runtime_environment(runtime: dict) -> None:
+    """Publish one validated runtime contract to subsequently spawned workers."""
+
+    os.environ["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
+    os.environ["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(runtime["tree"])
+    os.environ["POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE"] = "runtime"
+
+
+def _matchup_runtime_worker_identity(runtime: Optional[dict]) -> tuple[str, tuple[str, ...]]:
+    """Return the routing identity captured by long-lived simulator children."""
+
+    if not isinstance(runtime, dict):
+        return "", ()
+    return (
+        str(runtime.get("tree_digest") or ""),
+        tuple(sorted(str(value) for value in runtime.get("accepted_archetype_ids") or ())),
+    )
+
+
+def _activate_matchup_runtime_from_marker(
+    checkpoint_path: Path,
+    *,
+    apply_environment: bool = True,
+) -> Optional[dict]:
     """Enable routing only from an explicit, digest-verified deployment marker."""
 
     marker = checkpoint_path.parent / MATCHUP_RUNTIME_MARKER
@@ -81,7 +106,10 @@ def _activate_matchup_runtime_from_marker(checkpoint_path: Path) -> Optional[dic
         "continuous_reevaluation",
         "one_route_per_decision",
     }
-    if set(payload) != required_keys or not (
+    optional_keys = {"zero_materialized_adapters_allowed"}
+    if not required_keys.issubset(payload) or not set(payload).issubset(
+        required_keys | optional_keys
+    ) or not (
         payload.get("schema") == MATCHUP_RUNTIME_MARKER_SCHEMA
         and payload.get("runtime_enabled") is True
         and payload.get("continuous_reevaluation") is True
@@ -107,19 +135,60 @@ def _activate_matchup_runtime_from_marker(checkpoint_path: Path) -> Optional[dic
         raise ValueError("matchup runtime marker accepted-route roster changed")
     saved = checkpoint_mod.load_checkpoint(checkpoint_path, map_location="cpu")
     fit = dict((saved.get("extra") or {}).get("dormant_matchup_adapter_fit") or {})
+    extra = dict(saved.get("extra") or {})
+    dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
+    adapter_config = dict(extra.get("matchup_adapter_config") or {})
     route_decisions = {
         str(key): int(value) for key, value in (fit.get("route_decisions") or {}).items()
     }
-    if not (
+    fully_trained = bool(
         fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
-        and accepted
         and all(route_decisions.get(archetype_id, 0) > 0 for archetype_id in accepted)
+    )
+    zero_bank = bool(
+        payload.get("zero_materialized_adapters_allowed") is True
+        and dormant.get("schema") == "poke_bot.zero_dormant_matchup_adapter/v1"
+        and dormant.get("zero_output") is True
+        and dormant.get("runtime_enabled") is False
+        and set(accepted).issubset(set(adapter_config.get("expert_ids") or ()))
+    )
+    # Once the first isolated adapter pass runs, the checkpoint is a hybrid:
+    # observed routes are trained while routes without examples must remain an
+    # exact zero-output no-op. Requiring every accepted route to have appeared
+    # in the same/cumulative replay window incorrectly rejects that safe state.
+    # Prove the dormant subset from the serialized tensors instead.
+    hybrid_covered = False
+    if (
+        payload.get("zero_materialized_adapters_allowed") is True
+        and fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
+        and fit.get("zero_example_routes_remain_dormant") is True
     ):
+        expert_ids = [str(value) for value in adapter_config.get("expert_ids") or ()]
+        model_state = dict(saved.get("model_state_dict") or {})
+        dormant_ids = {
+            str(value)
+            for value in fit.get("dormant_no_example_archetype_ids") or ()
+        }
+        hybrid_covered = set(accepted).issubset(set(expert_ids))
+        for archetype_id in accepted:
+            if not hybrid_covered or route_decisions.get(archetype_id, 0) > 0:
+                continue
+            if archetype_id not in dormant_ids:
+                hybrid_covered = False
+                break
+            route_index = expert_ids.index(archetype_id)
+            for suffix in ("up.weight", "up.bias"):
+                tensor = model_state.get(
+                    f"matchup_adapter_bank.experts.{route_index}.{suffix}"
+                )
+                if tensor is None or bool(tensor.detach().count_nonzero().item()):
+                    hybrid_covered = False
+                    break
+            if not hybrid_covered:
+                break
+    if not accepted or not (fully_trained or zero_bank or hybrid_covered):
         raise ValueError("active checkpoint does not contain every accepted adapter")
-    os.environ["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
-    os.environ["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(tree_path)
-    os.environ["POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE"] = "runtime"
-    return {
+    runtime = {
         "marker": str(marker),
         "marker_digest": _raw_sha256_digest(marker),
         "tree": str(tree_path),
@@ -129,8 +198,12 @@ def _activate_matchup_runtime_from_marker(checkpoint_path: Path) -> Optional[dic
         "continuous_reevaluation": True,
         "one_route_per_decision": True,
         "unknown_route_exact_bypass": True,
+        "zero_materialized_adapters_allowed": bool(zero_bank or hybrid_covered),
         "consecutive_required": int(tree.runtime_consecutive_required),
     }
+    if apply_environment:
+        _apply_matchup_runtime_environment(runtime)
+    return runtime
 
 
 def _reload_matchup_runtime_contract(
@@ -141,7 +214,10 @@ def _reload_matchup_runtime_contract(
 
     if current_runtime is None:
         return None
-    pending = _activate_matchup_runtime_from_marker(checkpoint_path)
+    pending = _activate_matchup_runtime_from_marker(
+        checkpoint_path,
+        apply_environment=False,
+    )
     if pending is None:
         raise ValueError(
             "matchup runtime reload lost its explicit activation marker"
@@ -976,6 +1052,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     from poke_bot.checkpoint import checkpoint_digest
     from poke_bot.remote_jobs import serve_forever
     from poke_bot.remote_sim_jobs import (
+        remote_matchup_runtime_probe,
         remote_play_job,
         remote_promotion_job,
         remote_self_play_job,
@@ -1500,6 +1577,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                                 f"{type(exc).__name__}: {exc}"
                             ),
                         }
+                runtime_identity_changed = (
+                    _matchup_runtime_worker_identity(pending_matchup_runtime)
+                    != _matchup_runtime_worker_identity(
+                        state.get("matchup_runtime")
+                    )
+                )
                 if requested_digest is not None and actual != requested_digest:
                     return {
                         "type": "reload_ok",
@@ -1508,6 +1591,66 @@ def main(argv: Optional[list[str]] = None) -> int:
                             f"digest mismatch: expected {requested_digest}, "
                             f"got {actual}"
                         ),
+                    }
+                if runtime_identity_changed:
+                    reason = (
+                        "matchup runtime identity changed; rotating the worker "
+                        "so every simulator child inherits the new tree"
+                    )
+                    # The checkpoint and its digest-verified runtime companions
+                    # have already passed preflight above.  Record the requested
+                    # checkpoint before the planned process rotation; otherwise
+                    # the service supervisor restarts the previous checkpoint,
+                    # every retry observes the same identity transition, and the
+                    # production trainer can never cross this boundary.
+                    try:
+                        published = _persist_active_checkpoint(path, actual)
+                    except (OSError, ValueError) as exc:
+                        return {
+                            "type": "reload_ok",
+                            "ok": False,
+                            "error": (
+                                "matchup runtime rotation checkpoint publish "
+                                f"failed: {type(exc).__name__}: {exc}"
+                            ),
+                            "checkpoint_digest": state["digest"],
+                            "version": state["version"],
+                        }
+                    if (
+                        os.environ.get(
+                            "POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE", ""
+                        ).strip()
+                        and published is None
+                    ):
+                        return {
+                            "type": "reload_ok",
+                            "ok": False,
+                            "error": (
+                                "matchup runtime rotation checkpoint publish "
+                                "did not produce its configured durable record"
+                            ),
+                            "checkpoint_digest": state["digest"],
+                            "version": state["version"],
+                        }
+                    state["accepting_jobs"] = False
+                    state["healthy"] = False
+                    state["controller_error"] = reason
+                    timer = threading.Timer(
+                        0.25,
+                        lambda: _mark_shutdown(
+                            reason,
+                            exit_code=REMOTE_WORKER_PLANNED_ROTATION_EXIT_CODE,
+                        ),
+                    )
+                    timer.daemon = True
+                    timer.start()
+                    return {
+                        "type": "reload_ok",
+                        "ok": False,
+                        "error": reason,
+                        "rotation_scheduled": True,
+                        "checkpoint_digest": state["digest"],
+                        "version": state["version"],
                     }
                 # Close admission before draining. Existing games retain the
                 # old resident identity until they finish; reload never changes
@@ -1624,6 +1767,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 # the previous checkpoint's runtime proof.
                 if state.get("matchup_runtime") is not None:
                     state["matchup_runtime"] = pending_matchup_runtime
+                    _apply_matchup_runtime_environment(
+                        pending_matchup_runtime
+                    )
                 # Publish to long-lived workers BEFORE returning so the next job
                 # cannot observe server version N while still expecting N-1.
                 _publish_expect(primary=actual, version=new_version)
@@ -1686,6 +1832,39 @@ def main(argv: Optional[list[str]] = None) -> int:
                     }
                 pins.pop(digest, None)
                 return {"type": "unpin_ok", "ok": True, "digest": digest}
+        if mtype == "rotate":
+            with ctrl_cond:
+                reason = str(
+                    msg.get("reason")
+                    or "trainer requested a clean remote-worker rotation"
+                )
+                if int(state["active_jobs"]) > 0:
+                    return {
+                        "type": "rotate_ok",
+                        "ok": False,
+                        "error": (
+                            "controlled rotation requires a drained boundary; "
+                            f"active_jobs={state['active_jobs']}"
+                        ),
+                    }
+                state["accepting_jobs"] = False
+                state["healthy"] = False
+                state["controller_error"] = reason
+                timer = threading.Timer(
+                    0.25,
+                    lambda: _mark_shutdown(
+                        reason,
+                        exit_code=REMOTE_WORKER_PLANNED_ROTATION_EXIT_CODE,
+                    ),
+                )
+                timer.daemon = True
+                timer.start()
+                return {
+                    "type": "rotate_ok",
+                    "ok": True,
+                    "rotation_scheduled": True,
+                    "reason": reason,
+                }
         if mtype == "job":
             kind = str(msg.get("kind") or "play")
             job = msg.get("job")
@@ -1699,6 +1878,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 worker_fn = remote_self_play_job
             elif kind == "promotion":
                 worker_fn = remote_promotion_job
+            elif kind == "runtime_probe":
+                worker_fn = remote_matchup_runtime_probe
             else:
                 return {
                     "type": "result",
@@ -1725,6 +1906,17 @@ def main(argv: Optional[list[str]] = None) -> int:
                     }
                 active_digest = str(state["digest"])
                 active_checkpoint = str(state["checkpoint"])
+                # This field is controller-owned and overwritten for every
+                # request.  Worker children reassert it before constructing
+                # the candidate agent, preventing a frozen opponent or a
+                # recycled child from leaking a stale routing tree across
+                # game boundaries.
+                job = {
+                    **job,
+                    "_controller_matchup_runtime": copy.deepcopy(
+                        state.get("matchup_runtime")
+                    ),
+                }
                 if kind in ("play", "self_play"):
                     # A job may use the active leaf checkpoint plus a CPU-local
                     # opponent checkpoint. Different leaf primaries cannot

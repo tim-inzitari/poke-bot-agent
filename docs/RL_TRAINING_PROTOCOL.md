@@ -72,6 +72,20 @@ deterministic zero-output roster and bit-identical throughout core
 distillation. Never average specialist checkpoints or copy either teacher's
 matchup adapters into the shared core.
 
+If the bounded parameter-space initialization set produces four valid
+gameplay-regression failures, one final architecture-repair attempt is
+permitted. It must evaluate each immutable frozen teacher only on expert games
+whose acting archetype matches that teacher, using the exact causal
+board/action history and legal options, and train against that teacher's
+greedy action with the machine-locked loss weight. Rows without a matching
+teacher remain masked from this additional objective and retain their ordinary
+expert targets. This is behavior-level distillation, not another seed retry:
+teachers remain gradient-free and immutable, the protected balanced corpus and
+exact 25-epoch schedule remain unchanged, and the established per-teacher and
+aggregate gameplay gates may not be weakened. No further pass-seeking attempt
+at that same boundary is authorized if this single behavior-repair candidate
+fails.
+
 The artifact is eligible for the next specialist only after a protected
 checkpoint, checksum, reproducibility receipt, exact identities for every
 teacher and the balanced corpus, neutral-adapter audit, and regression
@@ -81,10 +95,13 @@ contract runs exactly 80 inference-only games per teacher, requires at least
 rate across all teachers. The 90% confidence intervals remain recorded as
 diagnostics but do not block core transfer. These games are never training- or
 replay-eligible. This transfer check is separate from, and does not alter, any
-specialist baseline gate threshold. If validation is incomplete or fails,
-the handoff fails closed before the next specialist's bootstrap. This does not
-modify Starmie or invalidate core v1 and must not interrupt an active Starmie
-run.
+specialist baseline gate threshold. A failed candidate remains rejected,
+immutable, and ineligible to initialize a specialist. It does not stop
+production: the handoff immediately selects the latest checksum-accepted
+cumulative core and hot-starts the next specialist from that accepted
+fallback. Core v6 is the current fallback. The controller still attempts a new
+cumulative refresh from all frozen teachers after every later completed
+specialist.
 
 ## 2. Sequential specialist training
 
@@ -114,12 +131,101 @@ materialize the checksum-bound S+ gate, then atomically select and start the
 managed specialist service. A pre-stage receipt never weakens or bypasses any
 of those checks.
 
+Every specialist transition must be clean and automatic. Before the managed
+trainer is allowed to start, its preflight must validate both the selected
+training-launch path and the exact terminal freeze, package, asynchronous
+submission, and next-specialist handoff path. This includes an exact
+checksum-bound 60-card representative stored under the specialist's logical
+ID; an alias alone is not sufficient terminal evidence. A deterministic
+missing or malformed transition input therefore fails before RL wall time is
+spent.
+
+A successful terminal trainer exit directly starts the idempotent gate
+handler. That handler freezes and registers the exact passing checkpoint,
+authorizes or queues its non-blocking Kaggle copy, and starts the managed
+handoff. The periodic gate supervisor is recovery-only and must never be the
+normal transition mechanism. Replaying either handler is safe only when its
+recorded identities are unchanged.
+
+### Current-deck guide north star
+
+Preparation of every new specialist must research and checksum-bind one
+specialist-specific current-deck guide contract before bootstrap. The guide
+follows the validated Alakazam pattern: a sparse teacher ranks the complete
+legal action stage only when cited strategy evidence and the causally
+observable public state support a high-confidence preference. The resulting
+masked, confidence-weighted loss shapes the existing shared policy logits. It
+is not a separate serving action path, may not inspect hidden or future state,
+and never overrides the flat policy.
+
+The guide is temporary scaffolding. Its loss weight ramps from 0.01 to 0.05
+during bootstrap epochs 1–5 and remains at no more than 0.05 through the exact
+25-epoch bootstrap. After bootstrap, a separate training-ineligible,
+replay-ineligible evaluation estimates the association between guide/policy
+agreement and wins, both overall and by matchup. The weight remains fixed only
+while the lower confidence bound of that win-agreement lift is positive. Two
+consecutive non-positive evaluations multiply the weight by 0.8; values below
+0.005 become zero. The weight may never rise above its bootstrap maximum.
+Every change requires a checksum-bound schedule receipt.
+
+This ramp/hold/anneal lifecycle is the owner's protected goal-path guide
+vision. It may not be silently removed, replaced with a permanently fixed
+weight, or driven by ordinary training outcomes. It remains a required part of
+the guide contract alongside the dedicated two-task research workflow.
+
+Training games and formal gate games never tune the guide weight. Missing,
+ambiguous, or partially scored legal stages are masked, not assigned a false
+target. Each checkpoint reports guide rows, loss, policy agreement, win and
+non-win agreement, agreement lift, and current weight. The one machine-readable
+authority for this schedule is
+`config/rl_protocol.yaml#/specialist_training/current_deck_guide`; individual
+researched contracts live under `config/deck_guides/`.
+
+Pre-stage readiness is bound to the expert corpus that bootstrap will actually
+open. The guide contract's row count, specialist identity, and guide version
+must match a `poke_bot.current_deck_guide_corpus_ready/v1` receipt beside that
+selected protected pointer. The receipt, pointer, and selected manifest must
+agree on their SHA-256 identities, decision count, and a nonzero guide-row
+count. Every daily shard is checksum-validated before the guide corpus is
+atomically promoted. The derived CPU pack is not built until this binding is
+ready. A separate guide artifact, an unrelated unguided corpus, or a YAML-only
+row claim can never satisfy pre-stage.
+
+Every researched deck guide also requires a shareable expert brief under
+`docs/deck_guides/`. It must identify the specialist and guide contract, cite
+the same strategy-source set, explain the proposed principles, abstention
+conditions, safety limits, and open review questions, and contain no more than
+10,000 words. The guide contract records the brief's path, SHA-256 checksum,
+and exact word count. A missing, oversized, identity-mismatched, source-
+mismatched, or checksum-mismatched brief blocks successor pre-stage readiness.
+The intended reviewers are world-champion and equivalent Pokémon TCG
+subject-matter experts.
+
+The write-up is always a practical guide for a human piloting the deck, not a
+report about the training system. Its main body covers strategic identity,
+variants and card roles, setup, going-first and going-second plans,
+turn-by-turn sequencing, resource and attack planning, bench and prize
+management, matchup plans, recovery lines, common mistakes, and decision
+checklists whenever the reviewed evidence supports them. Uncertain or
+format-dated advice is labeled. Exact mechanics are never invented.
+Heuristic-extraction and training-audit details may appear only in a short
+appendix.
+
+The research and heuristic-extraction work for each specialist is assigned to
+one dedicated subagent using the highest reasoning capability available in the
+active environment. That subagent has exactly two tasks: produce the
+expert-facing guide and extract its causal, abstaining heuristics. It may not
+operate production training, selectors, services, dashboards, or unrelated
+architecture. The production controller validates and integrates the returned
+artifacts.
+
 For each specialist:
 
 1. Hot-start from the shared core.
-2. Generate archetype, game-plan, and matchup policy heads following the
-   validated Alakazam design. Matchup heads are required for every specialist,
-   not only for Alakazam.
+2. Generate archetype, game-plan, and matchup policy heads plus the
+   checksum-bound current-deck guide objective following the validated Alakazam
+   design. Matchup heads are required for every specialist, not only for
+   Alakazam.
 3. Before the first bootstrap or RL update, materialize the complete canonical
    matchup bank and enable the validated causal runtime router. This is the
    default launch state for Starmie and every later specialist; runtime-off is
@@ -129,6 +235,161 @@ For each specialist:
 5. Run baseline-phase RL iterations for that specialist. After every 5 RL
    epochs, run exactly 5 expert-replay rehearsal epochs.
 6. Permit updates only to the active specialist.
+
+### Expanded strategic heads
+
+The current corrected Dudunsparce learner and every subsequent cumulative core
+and specialist contain the complete expanded strategic-head architecture. No
+frozen V5 checkpoint is rewritten. During each ordinary full-model RL epoch and
+each scheduled expert-rehearsal epoch, every architecture-present head with
+valid exact causal labels participates in the loss and receives gradients.
+Rows without a valid target are masked and contribute neither a fabricated
+zero target nor a gradient.
+
+Training activation is distinct from inference activation in checkpoints
+created before owner decision 16. The currently executing iteration retains
+its checksum-pinned flat-policy path, but the next safe-boundary runtime must
+replace it with the canonical learned decision-fusion path. That path consumes
+value, archetype, opponent-hand, opponent-remainder, lethal, prize-race, and
+all eleven expanded strategic heads. Matchup adapters remain gated by the
+causal router, and an absent current-deck guide is an exact bypass.
+
+Implementation and shadow-training status is
+`active_training_runtime_shadow`, not serving-path activation.
+The checksum-contract validation receipt is
+`state/expanded_strategic_heads_validation_v1.json`. It binds the complete
+11-head inventory, target schema
+`poke_bot.expanded_strategic_targets/v2`, target digest
+`sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f`,
+schedule schema `poke_bot.expanded_strategic_schedule/v1`, and schedule digest
+`sha256:e471f58915df0cbe88b837de6fbe532e6416aa028a538b92a11ec788621f45dc`.
+The earlier validation receipt proves architecture, labels, losses, gradients,
+persistence, and handoff behavior; it does not by itself authorize the fused
+serving path. Activation additionally requires a checksum-bound fusion receipt
+proving deterministic local/remote logits, nonzero influence from every
+required head, causal information use, and acceptable throughput and memory.
+Once activated, the fused path is mandatory for Dudunsparce and every successor
+specialist; silently omitting a required architecture-present head fails
+closed.
+
+Cross-platform local/remote parity means float32 logits within the canonical
+absolute tolerance and exactly identical greedy decisions; it does not require
+byte-identical floating-point results from different CPU kernels. Serving
+acceptance is owned by
+`config/rl_protocol.yaml#/specialist_training/decision_fusion/activation/performance_acceptance`.
+The relative flat-versus-fused microbenchmark is diagnostic because activating
+the required heads necessarily adds work. The serving checkpoint must still
+meet the Blackwell absolute decision-throughput floor, memory ceiling, no-OOM
+rule, and its own exact current premium evaluation plus 1,000-game official
+evaluation. The premium count is 250 times the three active external opponents
+plus every frozen specialist registered when that child is evaluated.
+
+Target masking still applies to each head's direct auxiliary loss. A missing
+direct label contributes zero direct head loss and is never replaced by a
+fabricated target. Because the head output is part of the learned action path
+after fusion activation, ordinary policy loss may still backpropagate through
+that output; this is joint policy learning, not an inferred auxiliary label.
+
+The action decoder supplies a selected-action Q estimate plus separate
+legal-candidate scorers for action type, target binding, and
+resource/source/tool/energy binding. Their labels come only from the canonical
+factorized action stages and decoder binding contract. The selected candidate
+may train against the terminal Monte Carlo return; unselected candidates remain
+masked unless a checksum-bound audited search or counterfactual target proves
+their value. A separate action-utility head predicts immediate damage, cards
+drawn, energy change, open-bench change, prize change, and knockout. Utility
+labels require an exact immediate post-action transition and are masked when
+that transition is unavailable.
+
+State-level heads predict tactical outcomes over the next one, two, and three
+same-seat decision frames; the opponent response after the selected action and
+before the same seat next acts; next-decision hand, deck, attached-energy,
+bench-space, attachment-availability, and retreat-availability resources; game
+phase; win/draw/loss outcome distribution; and log-one-plus remaining complete
+game turns. Tactical, response, and resource components use independent masks.
+Incomplete, terminal, truncated, ambiguous, or unavailable targets are absent,
+not numeric zero.
+
+Game phase is deterministic, public-state-only, and uses this precedence:
+`closeout` when our prizes are at most one or the existing exact lethal label
+is positive; `prize_race` when both players have at most three prizes;
+`stabilize` when we trail by at least two prizes; `setup` during our first two
+turns; otherwise `pressure`. Missing required fields mask the phase row.
+
+All expanded labels are training-only. They are derived on the complete
+trajectory before any context truncation, carry a versioned target schema and
+provenance digest, and are never placed in board, option, history, routing, or
+serving inputs. A malformed present label fails closed before an optimizer
+step.
+
+The exact 25 supervised bootstrap epochs use one cumulative schedule:
+
+- epochs 1–5 train action Q, action-type, action-target, action-resource, and
+  action-utility heads;
+- epochs 6–10 add tactical-outcome and opponent-response heads;
+- epochs 11–15 add resource-forecast and game-phase heads;
+- epochs 16–20 add outcome-distribution and remaining-turn heads; and
+- epochs 21–25 train the complete enabled head set jointly.
+
+Existing policy, value, belief, strategy, game-plan, archetype, and eligible
+matchup objectives continue under their established contracts. Expanded-head
+losses continue during RL and scheduled expert rehearsal whenever their exact
+labels are present. Checkpoints and receipts record the target and schedule
+digests, architecture-present heads, gradient-enabled heads, runtime-enabled
+heads, weights, train/validation losses, labeled/masked row counts, coverage,
+and calibration diagnostics. Local and remote workers must agree on these
+schema digests. A metadata/tensor mismatch fails closed.
+
+The initial numerical weights and exact head dimensions are authoritative in
+`config/rl_protocol.yaml#/specialist_training/expanded_strategic_heads`.
+Gameplay gates do not change. Before activation, measured bootstrap/RL training
+throughput may regress by no more than ten percent. The fused serving path must
+publish measured rollout throughput and memory evidence, and OOM is never
+accepted.
+
+### Parallel orchestration and wall-clock throughput
+
+The program optimizes completed training iterations per wall-clock hour.
+Independent work must run concurrently across available hardware: source
+download and validation, per-day featurization, corpus assembly, current-deck
+guide preparation, derived CPU-pack construction, dashboard validation, and
+successor-specialist readiness checks may all overlap healthy active-specialist
+training and one another.
+
+Sequential execution is permitted only for a real dependency: an input
+artifact must exist before its consumer, a checksum or immutable receipt must
+be committed before a bound transition, the selector update must occur at its
+safe boundary, or the single-active-specialist rule requires one learner.
+Controllers must not introduce global barriers for unrelated work. Parallel
+jobs remain subject to the configured memory guards and may not starve,
+restart, or preempt healthy production training.
+
+#### Retrofitting expanded heads onto completed specialists
+
+After the first cumulative core containing the expanded V6 architecture is
+frozen and checksum-registered, completed V5 specialists may receive the
+architecture only as new, separately identified compatibility derivatives.
+The exact original passing checkpoints remain immutable and continue to be the
+authoritative historical gate and Kaggle artifacts. A retrofit must never
+rewrite, replace, re-freeze, or silently promote an original checkpoint.
+
+Every added expanded head is deterministically initialized, materialized as
+dormant, and runtime-disabled. Creating the derivative is architecture
+migration, not training completion, gate passage, or runtime activation. The
+derivative must record its source checkpoint checksum, cumulative-core
+checksum, target and schedule digests, initialization seed and method, tensor
+compatibility audit, and a checksum distinct from the source artifact.
+
+A dormant retrofit may be trained later only in an explicitly scheduled
+retrofit phase in which that specialist is the sole active learner. All other
+completed specialists and their derivatives remain frozen and inference-only.
+The retrofit uses the same exact-label masking, 25-epoch expanded-head
+bootstrap schedule, rehearsal contract, and research/training separation as a
+new V6 specialist. It may not affect policy actions, search, matchup routing,
+public-mix inference, or holdouts until it independently passes compatibility,
+regression, and gameplay validation and receives a separate activation
+receipt. Until then, eligible public-mix and gate opponents continue using the
+original frozen runtime package.
 
 ### Active-specialist expert corpus
 
@@ -216,12 +477,16 @@ Alakazam, as equal-contribution immutable teachers.
 
 Repeat the shared-core refresh before bootstrapping every later specialist.
 Each refresh must include the newly passing specialist plus every other
-checksum-verified frozen specialist, create a new versioned and checksummed
-core, pass the established core acceptance checks, and only then hot-start the
-next specialist from that latest core. A later specialist must not silently
-reuse an older fixed core. Whether the final strongest core should replace the
-bases of all completed specialists is intentionally undecided and requires a
-separate explicit decision; this protocol does not perform that replacement.
+checksum-verified frozen specialist and create a new versioned and checksummed
+candidate. If it passes the established core acceptance checks, hot-start the
+next specialist from that newly accepted core. If it fails, preserve it as
+rejected diagnostic evidence and immediately hot-start the next specialist
+from the latest previously accepted core. This fallback is explicit,
+checksum-bound, and nonblocking; it does not weaken the failed candidate's
+gate or disable the next boundary's refresh attempt. Whether the final
+strongest core should replace the bases of all completed specialists is
+intentionally undecided and requires a separate explicit decision; this
+protocol does not perform that replacement.
 
 The active specialist is never preempted. At each specialist handoff, choose
 the next model only from specialists that do not yet have an exact frozen
@@ -229,18 +494,30 @@ checkpoint that passed both baseline gates after the iteration floor. First
 prioritize specialists for which the registry has no existing specialist
 model or checkpoint artifact. Within that
 group, rank by descending current public-ladder meta inclusion share from the
-pinned PTCG Ladder Meta snapshot. Only after that group is exhausted may the
+pinned PTCGReplay snapshot at `https://ptcgreplay.netlify.app/`. PTCGReplay is
+the authoritative source for all meta analysis: archetype prevalence, matchup
+analysis, play-order splits, deck-list analysis, and specialist priority.
+Only after that group is exhausted may the
 scheduler select an unfinished specialist that already has an existing model
 artifact; rank that second group by the same meta-share rule. An artifact may
 establish availability without being protocol-valid or resumable: its recorded
 restart policy still applies.
 
-Refresh and pin the meta source immediately before a handoff; a refresh may
+Refresh and pin the newest completed PTCGReplay ingest immediately before a
+handoff. The pinned receipt must record the ingest ID and timestamps, date
+window, match-fact count, archetype mapping, aggregation filters, and source
+schema. Derive displayed values from the authenticated per-match `match_facts`
+stream using the site's own side-aware aggregation semantics; do not scrape
+rendered chart text or reuse the retired PTCG Ladder Meta strategies API.
+Credentials published by the site configuration are runtime access material
+and must never be committed to this repository. A refresh may
 reorder only specialists that have not started. Equal shares use the stable
 target-registry order. Missing or ambiguous source mappings remain null and
 sort after verified shares within their availability group; they must not be
 guessed. Public meta share is a training-priority signal only and never changes
-a gate or supplies training examples.
+a gate or supplies training examples. PTCGReplay does not replace expert replay
+archives, training labels, official/premium research agents, frozen-specialist
+registries, or established gate evidence.
 
 A handoff may carry an explicit, recorded operator priority prefix or overlap
 deferral. The named missing-model targets run first in their recorded order;
@@ -284,16 +561,27 @@ be described as absent. This does not mean that every route contributes to
 every decision. At each decision, the causal router selects at most one route,
 and unknown or insufficient evidence uses the exact base-policy bypass.
 
-### Canonical v5 specialist and matchup roster
+### Canonical specialist roster and Matchup Adapter V6
 
-The deployed authoritative roster is
-`state/matchup_adapter_roster.json#/expert_ids`. Its checkpoint format is
-`poke-bot-matchup-adapter-bank-v5-roster18`. It contains exactly the 18
-logical routes named by that source. Raging Bolt, Gardevoir, N's Zoroark,
-Lopunny, and Cornerstone Ogerpon are retired: they are absent from active
-specialist selection, active planning records, current checkpoint rows, and
-runtime routing. Historical v4 artifacts and receipts may still name them,
-but only as explicitly historical lineage.
+The logical authoritative roster is
+`state/matchup_adapter_roster.json#/active_expert_ids`. The live run remains on
+the immutable `poke-bot-matchup-adapter-bank-v5-roster18` format until a safe
+receipt-backed boundary. The staged successor format is the roster-neutral
+`poke-bot-matchup-adapter-bank-v6`.
+
+V6 always contains 64 physical adapter slots. Slots 0 through 17 preserve the
+exact V5 route identities and tensor values; unused slots are entirely zero and
+have no optimizer state. Adding an archetype allocates the lowest never-used
+slot. Removing one marks its slot retired and disables routing, gradients,
+optimizer steps, replay updates, and rehearsal updates without deleting or
+reindexing it. Retired slots are never automatically recycled. Therefore an
+ordinary roster edit changes registry data, not model shape, state-dict keys,
+parameter count, or checkpoint format.
+
+Raging Bolt, Gardevoir, N's Zoroark, Lopunny, and Cornerstone Ogerpon remain
+retired from the logical roster. Historical V4 and V5 artifacts remain
+immutable lineage. V6 activation may not replace or rewrite any passing V5
+checkpoint.
 
 The v4 `festival-lead` route was migrated by route identity to the canonical
 `thwackey` route. Team Rocket's Spidops was appended as an exact zero-output
@@ -304,16 +592,32 @@ non-prefix-compatible migration. The migrated active checkpoint, causal
 router, authorization receipt, and fleet copies must share their recorded
 checksums.
 
-Head-count and parameter checks must never encode a copied total. The adapter
-count is derived from the length of the canonical `expert_ids` list. The
-parameter expectation is derived as:
+Head-count and parameter checks must never encode a copied total. In V6 the
+physical adapter count is the registry's fixed `slot_capacity`; the active
+logical count is the length of `active_expert_ids`. The parameter expectation
+is derived as:
 
-`canonical adapter count × parameters in one adapter head as instantiated by
+`physical slot capacity × parameters in one adapter head as instantiated by
 the checkpoint's declared per-head architecture`.
 
 Tests and monitoring must derive both factors from those authoritative
-structures. A roster change or per-head architecture change therefore updates
-the expectation without editing a hard-coded total.
+structures. A roster change does not update the physical parameter expectation.
+A per-head architecture change still requires an explicit model migration.
+
+The V6 loader accepts only the exact known V5 18-row contract. It copies those
+rows and name-keyed optimizer moments byte-for-byte into slots 0 through 17,
+adds no optimizer state for unused slots, and preserves the trunk, other heads,
+counters, RNG state, and provenance. Positional optimizer state without a
+verified parameter-name mapping fails closed. A V6-to-V5 projection is allowed
+only when no active or trained V6-only slot would be lost.
+
+PTCGReplay is authoritative for meta analysis and specialist priority only.
+Mappings use its numeric archetype identifier plus exact source name as a
+consistency guard. Known deck variants may additionally use the existing
+card-signature classifier with an allowed source-family guard. Fuzzy display
+name matching is prohibited. Aggregate, ambiguous, and missing mappings do not
+automatically affect priority. They never supply training labels, expert
+replays, holdout results, or gate evidence.
 
 After the current cumulative-core boundary, the explicit unfinished priority
 prefix is Dragapult/Dusknoir, Dudunsparce, Marnie's Grimmsnarl ex, Cynthia's
@@ -378,24 +682,40 @@ as training.
 
 ## 4. Research-only evaluations
 
-Research evaluations are completely separate from training. The base program
-totals 3,000 games; each frozen specialist adds 250 premium-holdout games:
+Research evaluations are completely separate from training. Before any
+archetype-supersession rule is applied, the catalog contains 1,000 official
+games and 2,000 premium games. The exact current total is derived from the
+active external premium roster after supersession plus 250 games for every
+registered frozen specialist:
 
 - Official holdout: 1,000 games against 4 official agents, exactly 250 per
   agent, with 125 going first and 125 going second.
-- Premium competition holdout: the established 2,000 games against 8 premium
-  competition agents, plus exactly 250 games against every frozen completed
-  specialist. Every opponent receives 125 games with the candidate going
-  first and 125 going second. Frozen specialists are labeled `S+`, carry the
-  established S-tier safety-floor requirement, and remain inference-only.
+- Premium competition holdout: exactly 250 games against each active external
+  premium opponent after supersession and each frozen completed specialist.
+  Every opponent receives 125 games with the candidate going first and 125
+  going second. Frozen specialists are labeled `S+`, carry the established
+  S-tier safety-floor requirement, and remain inference-only.
 
-Lucario has one explicit future supersession rule. When our Lucario specialist
+The official research-control roster is permanently fixed to exactly those
+four official agents. It must not grow when a specialist is frozen, and no
+frozen specialist may be placed in that roster. This restriction applies only
+to research controls: every eligible frozen specialist remains a required
+inference-only opponent in the separate premium/S+ holdout gate.
+
+Lucario has one explicit supersession rule. When our Lucario specialist
 passes, is frozen, and is registered, all external premium-holdout opponents
 whose canonical archetype is `lucario` are removed from every subsequent
 premium holdout. The exact frozen Lucario specialist remains in the holdout as
 an `S+` opponent. Historical results against the removed external Lucario
 agents remain immutable and visible. This rule does not alter the separate
 official research-control roster and never removes any non-Lucario opponent.
+In the current catalog this removes five external Lucario opponents, leaving
+three external premium opponents. The frozen registry currently contains eight
+specialists, so the current premium holdout is 2,750 games across eleven
+opponents and the official-plus-premium research total is 3,750 games. These
+two current totals grow by 250 whenever another completed specialist is frozen
+and registered; the three-external count remains unchanged unless another
+explicit supersession decision is recorded.
 
 These games must never enter training datasets, replay buffers, rehearsal
 data, expert corpora, advantage calculations, optimizer inputs, or any other
@@ -416,8 +736,9 @@ machine-readable value remains null and gate passage is impossible.
 The stage-2 competition gate uses a skill-weighted 90% confidence-lower-bound
 threshold of 0.50 for every specialist. A specialist may record earlier
 research results, but it cannot complete or transition before its iteration-5
-commit. The exact 250-game-per-opponent allocation, base eight-agent roster
-plus every frozen specialist, both-seat balance, weighted-win-rate floor,
+commit. The exact 250-game-per-opponent allocation, active external roster
+after explicit supersession plus every frozen specialist, both-seat balance,
+weighted-win-rate floor,
 S-tier floor, individual-opponent floor, official non-regression requirement,
 and audit requirement remain unchanged.
 
@@ -446,14 +767,19 @@ gate at or after the iteration-5 floor:
    separate asynchronous obligation and is not part of training completion.
 4. Create one clearly labeled submission-copy record pinned to the checksum of
    that exact frozen passing checkpoint.
-5. Submit that copy if the remaining five-submission daily quota permits and
-   record its submission ID, timestamp, and returned score.
-6. If quota is exhausted, mark the copy `pending`, append it to the
+5. Automatically create exactly one single-use Kaggle authorization bound to
+   the specialist ID, frozen checkpoint checksum, upload-bundle checksum,
+   competition, and label. This standing authorization rule applies at every
+   training-complete boundary; it is not a reusable or unbounded grant.
+6. Submit that copy if the remaining five-submission daily quota and four-hour
+   spacing permit, then record its submission ID, timestamp, and returned
+   score.
+7. If quota is exhausted, mark the copy `pending`, append it to the
    persistent submission queue, and immediately begin or continue the next
    unfinished specialist.
-7. Add the frozen checkpoint to the eligible public-mix inference-only pool
+8. Add the frozen checkpoint to the eligible public-mix inference-only pool
    and to every later premium holdout as an `S+` opponent.
-8. Immediately begin the next unfinished specialist.
+9. Immediately begin the next unfinished specialist.
 
 Before an upload, the submission builder and asynchronous queue processor must
 both fail closed unless the package contains: (a) the exact frozen passing
@@ -464,6 +790,11 @@ matchup tree. The queued label, specialist ID, checkpoint checksum, deck-file
 checksum, canonical card-list checksum, representative-registry checksum, and
 matchup-tree checksum must remain immutable. A mismatched or stale
 model/deck/router package is failed and must never reach Kaggle.
+
+If a prior attempt was rejected locally before network I/O solely because its
+one-shot authorization was missing, restore that exact queue item to `pending`
+and issue the same checksum-bound single-use authorization oldest-first. Never
+use this recovery rule to retry an upload with an unknown network outcome.
 
 The submission queue is processed oldest-first whenever quota becomes
 available, but every upload must also be spaced at least four hours after the

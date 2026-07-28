@@ -13,12 +13,17 @@ import torch
 
 from . import checkpoint
 from .matchup_adapters import (
+    ADAPTER_CHECKPOINT_FORMAT as V5_ADAPTER_CHECKPOINT_FORMAT,
     EXPERT_IDS,
     LEGACY_EXPERT_IDS_V4,
     RETIRED_EXPERT_IDS_V5,
     MatchupAdapterBank,
     ZERO_DORMANT_CHECKPOINT_SCHEMA,
 )
+from .matchup_adapters_v6 import (
+    ADAPTER_CHECKPOINT_FORMAT as V6_ADAPTER_CHECKPOINT_FORMAT,
+)
+from .matchup_adapters_v6 import MatchupAdapterBankV6
 
 
 FLEET_ROLES = ("inzi", "elmo", "bert", "submission")
@@ -30,12 +35,20 @@ FLEET_ROLES = ("inzi", "elmo", "bert", "submission")
 LOADER_RUNTIME_FILES = (
     "poke_bot/config.py",
     "poke_bot/matchup_adapters.py",
+    "poke_bot/matchup_adapters_v6.py",
     "poke_bot/public_matchup_router.py",
     "poke_bot/matchup_adapter_activation.py",
     "poke_bot/model.py",
     "poke_bot/checkpoint.py",
     "poke_bot/train.py",
+    "poke_bot/strategic_heads.py",
+    "poke_bot/strategic_losses.py",
+    "poke_bot/strategic_schedule.py",
     "poke_bot/dormant_adapter_compat.py",
+    # Remote simulation dispatch imports this module dynamically to construct
+    # training records.  Keep its keyword/schema contract in the same
+    # checksum-bound overlay as the package-side dispatch code.
+    "scripts/train_round_robin.py",
 )
 COMPATIBILITY_SCHEMA = "poke_bot.dormant_adapter_loader_compatibility/v1"
 ROSTER_MIGRATION_SCHEMA = "poke_bot.matchup_adapter_roster_migration/v1"
@@ -124,14 +137,33 @@ def validate_zero_dormant_checkpoint(
     model_config = dict(payload.get("model_config") or {})
     extra = dict(payload.get("extra") or {})
     dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
-    expected_bank = MatchupAdapterBank(enabled=False)
-    expected_config = expected_bank.config_dict()
-    legacy_configs = (
-        expected_bank.legacy_config_dict_v1(),
-        expected_bank.legacy_config_dict_v2(),
-        expected_bank.legacy_config_dict_v3(),
-    )
     saved_config = extra.get("matchup_adapter_config")
+    saved_format = str(dict(saved_config or {}).get("format") or "")
+    if saved_format == V6_ADAPTER_CHECKPOINT_FORMAT:
+        embedded_registry = dict(dict(saved_config).get("slot_registry") or {})
+        expected_bank = MatchupAdapterBankV6(
+            enabled=False,
+            registry=embedded_registry,
+        )
+        legacy_configs: tuple[dict[str, Any], ...] = ()
+        if (
+            model_config.get("matchup_adapter_format")
+            != V6_ADAPTER_CHECKPOINT_FORMAT
+        ):
+            raise RuntimeError("V6 checkpoint lacks its serialized model selector")
+    else:
+        expected_bank = MatchupAdapterBank(enabled=False)
+        legacy_configs = (
+            expected_bank.legacy_config_dict_v1(),
+            expected_bank.legacy_config_dict_v2(),
+            expected_bank.legacy_config_dict_v3(),
+        )
+        if saved_format not in {
+            V5_ADAPTER_CHECKPOINT_FORMAT,
+            *(str(config.get("format") or "") for config in legacy_configs),
+        }:
+            raise RuntimeError("unsupported dormant adapter checkpoint format")
+    expected_config = expected_bank.config_dict()
     saved_expert_count = len(dict(saved_config or {}).get("expert_ids") or [])
     expected_state = expected_bank.state_dict()
     if saved_config in legacy_configs:

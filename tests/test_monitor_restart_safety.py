@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from scripts import launch_pure_rl, unattended_monitor
 
@@ -122,10 +123,85 @@ def test_launcher_captures_log_boundary_before_spawn() -> None:
     assert capture < spawn < monitor
 
 
+def test_optimizer_progress_log_activity_resets_stall_evidence(
+    tmp_path: Path,
+) -> None:
+    progress = tmp_path / "run.progress.log"
+    progress.write_text(
+        "rl-agreement parent:  94%|████| 363/387 [09:05<00:37]\r",
+        encoding="utf-8",
+    )
+    first_key, first_line, first_age = unattended_monitor._progress_file_sample(
+        progress,
+        now=progress.stat().st_mtime + 2,
+    )
+
+    with progress.open("a", encoding="utf-8") as stream:
+        stream.write("rl-train ep0:   1%| | 4/387 [00:03<05:00]\r")
+    second_key, second_line, second_age = unattended_monitor._progress_file_sample(
+        progress,
+        now=progress.stat().st_mtime + 1,
+    )
+
+    assert first_key is not None
+    assert second_key is not None
+    assert second_key != first_key
+    assert "rl-agreement parent" in first_line
+    assert "rl-train ep0" in second_line
+    assert first_age == 2
+    assert second_age == 1
+
+
+def test_launcher_wires_optimizer_progress_log_to_watchdog() -> None:
+    source = (ROOT / "scripts/launch_pure_rl.py").read_text(encoding="utf-8")
+    assert '"--progress-log",\n            str(prog_path)' in source
+
+
 def test_launcher_reports_signal_exit_without_wrapping_to_241() -> None:
     assert launch_pure_rl._normalized_child_returncode(-15) == 143
     assert launch_pure_rl._normalized_child_returncode(-9) == 137
     assert launch_pure_rl._normalized_child_returncode(3) == 3
+
+
+def test_monitor_stop_receipt_must_match_exact_attempt(tmp_path: Path) -> None:
+    alert = tmp_path / "MONITOR_STOP_REQUESTED.json"
+    alert.write_text(
+        json.dumps({"timestamp": 101.0, "pid": 1234, "reason": "no_progress"}),
+        encoding="utf-8",
+    )
+
+    assert launch_pure_rl._monitor_requested_this_attempt_stop(
+        alert,
+        training_pid=1234,
+        attempt_started_at=100.0,
+    )
+    assert not launch_pure_rl._monitor_requested_this_attempt_stop(
+        alert,
+        training_pid=9999,
+        attempt_started_at=100.0,
+    )
+    assert not launch_pure_rl._monitor_requested_this_attempt_stop(
+        alert,
+        training_pid=1234,
+        attempt_started_at=102.0,
+    )
+
+
+def test_monitor_stop_receipt_rejects_missing_or_invalid_evidence(
+    tmp_path: Path,
+) -> None:
+    alert = tmp_path / "MONITOR_STOP_REQUESTED.json"
+    assert not launch_pure_rl._monitor_requested_this_attempt_stop(
+        alert,
+        training_pid=1234,
+        attempt_started_at=100.0,
+    )
+    alert.write_text("not-json", encoding="utf-8")
+    assert not launch_pure_rl._monitor_requested_this_attempt_stop(
+        alert,
+        training_pid=1234,
+        attempt_started_at=100.0,
+    )
 
 
 def test_launcher_lock_rejects_overlapping_full_hardware_run(

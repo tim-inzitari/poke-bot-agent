@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -38,6 +39,11 @@ from poke_bot.feature_shards import (
     iter_feature_shard,
 )
 from poke_bot.features import FEATURE_SCHEMA_VERSION
+from poke_bot.strategic_heads import (
+    expanded_strategic_sequence_coverage,
+    masked_expanded_strategic_coverage,
+    merge_expanded_strategic_coverages,
+)
 from scripts.filter_feature_manifest import seal_filtered_manifest, sha256
 
 
@@ -102,6 +108,7 @@ def _new_stats() -> dict[str, Any]:
         "records": 0,
         "decisions": 0,
         "coverage": Counter(),
+        "expanded_strategic_targets": masked_expanded_strategic_coverage(0),
         "seats": Counter(),
         "opponents": Counter(),
     }
@@ -115,6 +122,7 @@ def split_manifest(
     minimum_decisions: int = 100_000,
     progress_every: int = 1_000,
     expected_source_days: int | None = None,
+    logical_aliases: dict[str, str] | None = None,
 ) -> Path:
     source_manifest = Path(source_manifest).expanduser().resolve()
     output_root = Path(output_root).expanduser().resolve()
@@ -122,6 +130,10 @@ def split_manifest(
     targets = tuple(
         dict.fromkeys(str(value).strip().casefold() for value in archetypes)
     )
+    aliases = {
+        str(alias).strip().casefold(): str(target).strip().casefold()
+        for alias, target in dict(logical_aliases or {}).items()
+    }
     if (
         source.get("format") != MANIFEST_FORMAT
         or int(source.get("format_version", -1)) != MANIFEST_FORMAT_VERSION
@@ -153,6 +165,7 @@ def split_manifest(
             if expected_source_days is not None
             else None
         ),
+        "logical_aliases": dict(sorted(aliases.items())),
     }
     ready_path = output_root / "SPECIALIST_CORPORA_READY.json"
     if ready_path.is_file():
@@ -229,7 +242,10 @@ def split_manifest(
                     partials[target] = partial
                 for sequence in iter_feature_shard(source_path):
                     scanned += 1
-                    target = str(sequence.archetype).strip().casefold()
+                    source_archetype = str(
+                        sequence.archetype
+                    ).strip().casefold()
+                    target = aliases.get(source_archetype, source_archetype)
                     if target not in streams:
                         continue
                     if not sequence.info_set_ok:
@@ -237,16 +253,47 @@ def split_manifest(
                             f"selected sequence failed info-set guard: "
                             f"{sequence.episode_id}"
                         )
+                    opponent_archetype = str(
+                        sequence.opp_archetype
+                    ).strip().casefold()
+                    canonical_opponent = aliases.get(
+                        opponent_archetype,
+                        str(sequence.opp_archetype),
+                    )
+                    canonical_sequence = (
+                        sequence
+                        if (
+                            source_archetype not in aliases
+                            and opponent_archetype not in aliases
+                        )
+                        else replace(
+                            sequence,
+                            archetype=target,
+                            opp_archetype=canonical_opponent,
+                        )
+                    )
                     pickle.dump(
-                        sequence, streams[target], protocol=pickle.HIGHEST_PROTOCOL
+                        canonical_sequence,
+                        streams[target],
+                        protocol=pickle.HIGHEST_PROTOCOL,
                     )
                     current = shard_stats[target]
                     coverage = _target_coverage(sequence)
                     current["coverage"].update(coverage)
+                    current["expanded_strategic_targets"] = (
+                        merge_expanded_strategic_coverages(
+                            (
+                                current["expanded_strategic_targets"],
+                                expanded_strategic_sequence_coverage(
+                                    sequence.decisions
+                                ),
+                            )
+                        )
+                    )
                     current["records"] += 1
                     current["decisions"] += len(sequence)
                     current["seats"][str(int(sequence.seat))] += 1
-                    current["opponents"][str(sequence.opp_archetype)] += 1
+                    current["opponents"][canonical_opponent] += 1
                     if int(progress_every) > 0 and scanned % int(
                         progress_every
                     ) == 0:
@@ -284,6 +331,9 @@ def split_manifest(
                                 "target_coverage": dict(
                                     sorted(current["coverage"].items())
                                 ),
+                                "expanded_strategic_targets": current[
+                                    "expanded_strategic_targets"
+                                ],
                                 "source_records_scanned": scanned,
                                 "source_records_excluded": (
                                     scanned - current["records"]
@@ -328,6 +378,9 @@ def split_manifest(
                             "target_coverage": dict(
                                 sorted(current["coverage"].items())
                             ),
+                            "expanded_strategic_targets": current[
+                                "expanded_strategic_targets"
+                            ],
                             "source_records_scanned": scanned,
                             "source_records_excluded": (
                                 scanned - current["records"]
@@ -349,6 +402,14 @@ def split_manifest(
                     total["records"] += current["records"]
                     total["decisions"] += current["decisions"]
                     total["coverage"].update(current["coverage"])
+                    total["expanded_strategic_targets"] = (
+                        merge_expanded_strategic_coverages(
+                            (
+                                total["expanded_strategic_targets"],
+                                current["expanded_strategic_targets"],
+                            )
+                        )
+                    )
                     total["seats"].update(current["seats"])
                     total["opponents"].update(current["opponents"])
                 for target in targets:
@@ -444,6 +505,9 @@ def split_manifest(
                 "source_days": sorted(
                     source_day_rows[target], key=lambda row: row["date"]
                 ),
+                "expanded_strategic_targets": current[
+                    "expanded_strategic_targets"
+                ],
                 "shards": shard_rows[target],
                 "totals": {
                     "bytes": sum(int(row["bytes"]) for row in shard_rows[target]),
@@ -455,6 +519,9 @@ def split_manifest(
                         for row in shard_rows[target]
                     ),
                     "target_coverage": coverage,
+                    "expanded_strategic_targets": current[
+                        "expanded_strategic_targets"
+                    ],
                 },
                 "quality_gates": {
                     "passed": True,

@@ -1,0 +1,24 @@
+[Unit]
+Description=Generate bounded public-prefix simulator evidence for sparse router routes
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/Main/main/poke-adapter-oracle-v29
+ExecStartPre=/usr/bin/mkdir -p /mnt/Main/main/poke-bot-agent/archive/router-calibration-v35
+ExecStart=/usr/bin/sudo -n /usr/bin/docker run --rm --name pokebot-router-calibration-v35-sim --cpus 8 --memory 12g -e PYTHONPATH=/work/src -v /mnt/Main/main/poke-adapter-oracle-v29:/work -v /mnt/Main/main/poke-bot-agent/archive/router-calibration-v35:/calibration -w /work/src --entrypoint /bin/bash poke-bot-truenas-worker:matchup-v33-runtime -lc 'python -u scripts/generate_router_calibration_episodes.py --representatives /work/config/top_ladder_representatives.v1.json --target-deck dragapult-blaziken=/work/src/decks/dragapult-only/2026-05_regional-melbourne-2026_8th_dragapult-blaziken.csv --target-deck dragapult-dusknoir=/work/src/decks/dragapult-only/2026-05_regional-melbourne-2026_15th_dragapult-dusknoir.csv --target-deck dudunsparce=/work/src/decks/competitive/the_rest/2026-05_regional-utrecht-2026_385th_alakazam-dudunsparce.csv --games-per-target 1500 --workers 8 --out /calibration/router-calibration-v35.zip'
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=24h
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=12G
+MemoryMax=16G
+OOMPolicy=stop
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

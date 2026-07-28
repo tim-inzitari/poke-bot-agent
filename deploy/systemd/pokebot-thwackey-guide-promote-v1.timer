@@ -1,0 +1,12 @@
+[Unit]
+Description=Promote finalized Thwackey guide corpus from Elmo
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+Unit=pokebot-thwackey-guide-promote-v1.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

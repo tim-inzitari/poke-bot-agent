@@ -1,0 +1,12 @@
+ARG BASE_IMAGE=poke-bot-truenas-worker:safety-20260720.8-persistent-workers
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="poke-bot Elmo remote worker" \
+      org.opencontainers.image.version="dormant-matchup-adapters-v19-r2" \
+      org.opencontainers.image.description="Persistent worker with frozen zero-output matchup-adapter loader"
+
+# This is a loader overlay over the already audited persistent-worker image.
+# The build context contains the exact pinned overlay files; the resulting
+# image must also pass an actual checkpoint-load smoke against its retained
+# device-specific worker package before it can replace production.
+COPY poke_bot/ /workspace/poke_bot/

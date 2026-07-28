@@ -25,9 +25,10 @@ from poke_bot.dataset import (
 )
 from poke_bot.pure_rl.shards import CompactDecision, CompactGame, iter_shard_games
 from poke_bot.blackwell_heads import attach_blackwell_strategy_labels
+from poke_bot.strategic_heads import attach_expanded_strategic_labels
 
 
-COMPACT_CACHE_SCHEMA_VERSION = 2
+COMPACT_CACHE_SCHEMA_VERSION = 3
 _STREAM_STAGING_NAME = re.compile(r"^iter_\d{5}\.(\d+)\.\d+$")
 
 
@@ -848,21 +849,29 @@ def compact_game_to_sequence(
     )
     if max_ctx <= 0:
         raise ValueError("max_context must be positive")
-    source_decisions = game.decisions[:max_ctx]
-    decisions_truncated = max(0, len(game.decisions) - len(source_decisions))
-    # Build the complete acting-seat trajectory first.  Scope-B tactical
-    # labels depend on later public prize-count observations, while privileged
-    # belief labels (when present) remain isolated under aux_labels.
-    steps = [
+    # Build and label the complete acting-seat trajectory before selecting the
+    # model context. Future events beyond the retained window remain legitimate
+    # targets for an earlier decision and must not be right-censored.
+    all_steps = [
         {
             "observation": d.observation,
             "action": list(d.action),
             "env_step": d.env_step,
             "aux_labels": dict(d.aux_labels or {}),
         }
-        for d in source_decisions
+        for d in game.decisions
     ]
-    attach_blackwell_strategy_labels(steps)
+    attach_blackwell_strategy_labels(all_steps)
+    strategic_contract = attach_expanded_strategic_labels(
+        all_steps,
+        game_value=float(game.value),
+        terminal_complete=not bool(
+            game.target_provenance.get("terminal_policy_failure")
+        ),
+    )
+    source_decisions = game.decisions[:max_ctx]
+    steps = all_steps[:max_ctx]
+    decisions_truncated = max(0, len(game.decisions) - len(source_decisions))
     decisions: list[DecisionSample] = []
     for d, step in zip(source_decisions, steps):
         try:
@@ -919,6 +928,7 @@ def compact_game_to_sequence(
             "soft_policy_targets": False,
             "max_context": max_ctx,
             "decisions_truncated": decisions_truncated,
+            "expanded_strategic_targets": strategic_contract,
         },
     )
 

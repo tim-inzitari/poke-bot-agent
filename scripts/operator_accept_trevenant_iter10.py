@@ -13,8 +13,13 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from poke_bot.pure_rl.model_registry import freeze_model, sha256, verify_frozen_model
 from scripts.handle_passed_gate import (
@@ -154,7 +159,7 @@ def main() -> int:
         output_path=args.submission_root / "pinned-hops-trevenant.deck.csv",
     )
     bundle = build_submission_bundle(
-        repo_root=Path("/home/inzi/poke-bot-agent"),
+        repo_root=ROOT,
         frozen_manifest=frozen,
         deck_receipt=deck,
         output_dir=args.submission_root / "build",

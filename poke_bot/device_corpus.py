@@ -29,13 +29,29 @@ from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .features import SparseVector
 from .matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
 from .model import PackedSparse
+from .strategic_heads import (
+    ACTION_FACTOR_NAMES,
+    ACTION_UTILITY_NAMES,
+    EXPANDED_STRATEGIC_KEY,
+    EXPANDED_STRATEGIC_SCHEMA,
+    EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+    EXPANDED_STRATEGIC_SCHEMA_VERSION,
+    GAME_PHASE_NAMES,
+    OPPONENT_RESPONSE_NAMES,
+    OUTCOME_CLASS_NAMES,
+    RESOURCE_FORECAST_NAMES,
+    TACTICAL_HORIZONS,
+    TACTICAL_OUTCOME_NAMES,
+    validate_expanded_strategic_labels,
+)
 
 
 BOARD_WORDS = 24
 DEFAULT_MIN_FREE_GIB = 12.0
-# v3 also guarantees every present exact-card/strategy target passed strict
-# validation. Older packs could preserve a malformed field as an all-zero row.
-DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 3
+# v3 guarantees every present exact-card/strategy target passed strict
+# validation. v4 adds the versioned expanded-strategic target layout while
+# retaining decision/sample boundaries explicitly.
+DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 4
 
 DEVICE_CORPUS_REQUIRED_TENSOR_FIELDS = (
     "board_index",
@@ -67,6 +83,23 @@ DEVICE_CORPUS_OPTIONAL_TENSOR_FIELDS = (
     "action_offset",
     "game_decision_offset",
     "game_sample_offset",
+    "strategic_action_q_target",
+    "strategic_action_q_mask",
+    "strategic_action_factor_mask",
+    "strategic_action_utility_target",
+    "strategic_action_utility_mask",
+    "strategic_tactical_outcome_target",
+    "strategic_tactical_outcome_mask",
+    "strategic_opponent_response_target",
+    "strategic_opponent_response_mask",
+    "strategic_resource_forecast_target",
+    "strategic_resource_forecast_mask",
+    "strategic_game_phase_target",
+    "strategic_game_phase_mask",
+    "strategic_outcome_class_target",
+    "strategic_outcome_class_mask",
+    "strategic_remaining_turns_target",
+    "strategic_remaining_turns_mask",
 )
 DEVICE_CORPUS_TENSOR_FIELDS = (
     *DEVICE_CORPUS_REQUIRED_TENSOR_FIELDS,
@@ -81,6 +114,11 @@ DEVICE_CORPUS_SCALAR_FIELDS = (
     "input_bytes",
     "build_seconds",
     "belief_card_vocab",
+)
+DEVICE_CORPUS_OPTIONAL_SCALAR_FIELDS = (
+    "expanded_strategic_schema",
+    "expanded_strategic_schema_version",
+    "expanded_strategic_schema_digest",
 )
 
 
@@ -169,6 +207,326 @@ def _validated_exact_aux_targets(
         math.nan if lethal is None else lethal,
         (math.nan, math.nan) if race is None else race,
     )
+
+
+class _ExpandedStrategicBuilder:
+    """Pack strict target-only V6 labels without losing row alignment.
+
+    Option-conditioned rows align with resident policy samples. State rows align
+    with resident board/decision rows and are gathered through ``sample_board``
+    by the training path. Missing labels remain explicit zero-plus-mask rows;
+    malformed present labels fail before any cache can be written.
+    """
+
+    def __init__(self, *, force_layout: bool = False) -> None:
+        self.force_layout = bool(force_layout)
+        # Per policy-stage sample.
+        self.action_q_target = array("f")
+        self.action_q_mask = array("B")
+        self.action_factor_mask = array("B")
+        self.action_utility_target = array("f")
+        self.action_utility_mask = array("B")
+        # Per board/decision.
+        self.tactical_outcome_target = array("f")
+        self.tactical_outcome_mask = array("B")
+        self.opponent_response_target = array("f")
+        self.opponent_response_mask = array("B")
+        self.resource_forecast_target = array("f")
+        self.resource_forecast_mask = array("B")
+        self.game_phase_target = array("h")
+        self.game_phase_mask = array("B")
+        self.outcome_class_target = array("h")
+        self.outcome_class_mask = array("B")
+        self.remaining_turns_target = array("f")
+        self.remaining_turns_mask = array("B")
+        self.present_decisions = 0
+
+    @property
+    def has_targets(self) -> bool:
+        return self.force_layout or self.present_decisions > 0
+
+    def validate_decision(
+        self,
+        aux: dict[str, Any],
+        *,
+        raw_stage_count: int,
+        game_value: float,
+    ) -> dict[str, Any] | None:
+        raw = aux.get(EXPANDED_STRATEGIC_KEY)
+        if raw is None:
+            return None
+        target = validate_expanded_strategic_labels(raw)
+        factors = list(target["action_factors"])
+        if len(factors) != int(raw_stage_count):
+            raise ValueError(
+                "expanded strategic action-factor stages do not align with "
+                f"policy stages: targets={len(factors)} policy={raw_stage_count}"
+            )
+        terminal_complete = bool(target["provenance"]["terminal_complete"])
+        if terminal_complete:
+            value = float(game_value)
+            if not math.isfinite(value) or value not in (-1.0, 0.0, 1.0):
+                raise ValueError(
+                    "expanded strategic terminal action-Q target requires "
+                    "game value -1, 0, or 1"
+                )
+            expected_outcome = 0 if value < 0 else 1 if value == 0 else 2
+            if int(target["outcome_class"]) != expected_outcome:
+                raise ValueError(
+                    "expanded strategic outcome class contradicts game value"
+                )
+        elif target["outcome_class"] is not None:
+            raise ValueError(
+                "incomplete expanded strategic trajectory has an outcome class"
+            )
+        return target
+
+    @staticmethod
+    def _append_masked_vector(
+        values_out: array,
+        masks_out: array,
+        target: dict[str, Any] | None,
+        *,
+        length: int,
+    ) -> None:
+        if target is None:
+            values_out.extend([0.0] * int(length))
+            masks_out.extend([0] * int(length))
+            return
+        values = list(target["values"])
+        masks = list(target["mask"])
+        if len(values) != int(length) or len(masks) != int(length):
+            # The shared strict validator should have caught this; retain a
+            # local invariant so future schema changes fail at the pack edge.
+            raise ValueError("expanded strategic vector width changed unexpectedly")
+        values_out.extend(float(value) for value in values)
+        masks_out.extend(1 if bool(mask) else 0 for mask in masks)
+
+    def add_decision(self, target: dict[str, Any] | None) -> None:
+        if target is not None:
+            self.present_decisions += 1
+        tactical_width = len(TACTICAL_HORIZONS) * len(TACTICAL_OUTCOME_NAMES)
+        if target is None:
+            tactical = None
+        else:
+            tactical = {
+                "values": [
+                    value
+                    for row in target["tactical_outcomes"]["values"]
+                    for value in row
+                ],
+                "mask": [
+                    value
+                    for row in target["tactical_outcomes"]["mask"]
+                    for value in row
+                ],
+            }
+        self._append_masked_vector(
+            self.tactical_outcome_target,
+            self.tactical_outcome_mask,
+            tactical,
+            length=tactical_width,
+        )
+        self._append_masked_vector(
+            self.opponent_response_target,
+            self.opponent_response_mask,
+            None if target is None else target["opponent_response"],
+            length=len(OPPONENT_RESPONSE_NAMES),
+        )
+        self._append_masked_vector(
+            self.resource_forecast_target,
+            self.resource_forecast_mask,
+            None if target is None else target["resource_forecast"],
+            length=len(RESOURCE_FORECAST_NAMES),
+        )
+
+        phase = None if target is None else target["game_phase"]
+        self.game_phase_target.append(-1 if phase is None else int(phase))
+        self.game_phase_mask.append(0 if phase is None else 1)
+        outcome = None if target is None else target["outcome_class"]
+        self.outcome_class_target.append(-1 if outcome is None else int(outcome))
+        self.outcome_class_mask.append(0 if outcome is None else 1)
+        remaining = (
+            None if target is None else target["remaining_turns_log1p"]
+        )
+        self.remaining_turns_target.append(
+            0.0 if remaining is None else float(remaining)
+        )
+        self.remaining_turns_mask.append(0 if remaining is None else 1)
+
+    def add_sample(
+        self,
+        target: dict[str, Any] | None,
+        *,
+        raw_stage_index: int,
+        game_value: float,
+    ) -> None:
+        terminal_complete = bool(
+            target is not None
+            and target["provenance"]["terminal_complete"]
+        )
+        self.action_q_target.append(
+            float(game_value) if terminal_complete else 0.0
+        )
+        self.action_q_mask.append(1 if terminal_complete else 0)
+
+        if target is None:
+            self.action_factor_mask.extend([0] * len(ACTION_FACTOR_NAMES))
+        else:
+            factor = target["action_factors"][int(raw_stage_index)]
+            self.action_factor_mask.extend(
+                1 if bool(factor[name]) else 0 for name in ACTION_FACTOR_NAMES
+            )
+
+        # The transition describes the completed ordered action, so it belongs
+        # only to the selected candidate in the final canonical stage. Prefix
+        # stages must not receive the same utility label.
+        is_final = bool(
+            target is not None
+            and int(raw_stage_index) == len(target["action_factors"]) - 1
+        )
+        self._append_masked_vector(
+            self.action_utility_target,
+            self.action_utility_mask,
+            target["action_utility"] if is_final else None,
+            length=len(ACTION_UTILITY_NAMES),
+        )
+
+    def arrays(self) -> tuple[array, ...]:
+        return (
+            self.action_q_target,
+            self.action_q_mask,
+            self.action_factor_mask,
+            self.action_utility_target,
+            self.action_utility_mask,
+            self.tactical_outcome_target,
+            self.tactical_outcome_mask,
+            self.opponent_response_target,
+            self.opponent_response_mask,
+            self.resource_forecast_target,
+            self.resource_forecast_mask,
+            self.game_phase_target,
+            self.game_phase_mask,
+            self.outcome_class_target,
+            self.outcome_class_mask,
+            self.remaining_turns_target,
+            self.remaining_turns_mask,
+        )
+
+    def validate_counts(self, *, decisions: int, samples: int) -> None:
+        sample_shapes = {
+            "action_q_target": len(self.action_q_target),
+            "action_q_mask": len(self.action_q_mask),
+            "action_factor_mask": len(self.action_factor_mask)
+            // len(ACTION_FACTOR_NAMES),
+            "action_utility_target": len(self.action_utility_target)
+            // len(ACTION_UTILITY_NAMES),
+            "action_utility_mask": len(self.action_utility_mask)
+            // len(ACTION_UTILITY_NAMES),
+        }
+        decision_shapes = {
+            "tactical_outcome_target": len(self.tactical_outcome_target)
+            // (len(TACTICAL_HORIZONS) * len(TACTICAL_OUTCOME_NAMES)),
+            "tactical_outcome_mask": len(self.tactical_outcome_mask)
+            // (len(TACTICAL_HORIZONS) * len(TACTICAL_OUTCOME_NAMES)),
+            "opponent_response_target": len(self.opponent_response_target)
+            // len(OPPONENT_RESPONSE_NAMES),
+            "opponent_response_mask": len(self.opponent_response_mask)
+            // len(OPPONENT_RESPONSE_NAMES),
+            "resource_forecast_target": len(self.resource_forecast_target)
+            // len(RESOURCE_FORECAST_NAMES),
+            "resource_forecast_mask": len(self.resource_forecast_mask)
+            // len(RESOURCE_FORECAST_NAMES),
+            "game_phase_target": len(self.game_phase_target),
+            "game_phase_mask": len(self.game_phase_mask),
+            "outcome_class_target": len(self.outcome_class_target),
+            "outcome_class_mask": len(self.outcome_class_mask),
+            "remaining_turns_target": len(self.remaining_turns_target),
+            "remaining_turns_mask": len(self.remaining_turns_mask),
+        }
+        wrong_samples = {
+            name: count
+            for name, count in sample_shapes.items()
+            if count != int(samples)
+        }
+        wrong_decisions = {
+            name: count
+            for name, count in decision_shapes.items()
+            if count != int(decisions)
+        }
+        if wrong_samples or wrong_decisions:
+            raise AssertionError(
+                "expanded strategic target alignment mismatch: "
+                f"samples={wrong_samples} decisions={wrong_decisions}"
+            )
+
+    def tensor_kwargs(
+        self,
+        device: torch.device,
+    ) -> dict[str, torch.Tensor | None]:
+        if not self.has_targets:
+            return {
+                name: None
+                for name in DEVICE_CORPUS_OPTIONAL_TENSOR_FIELDS
+                if name.startswith("strategic_")
+            }
+        return {
+            "strategic_action_q_target": _to_tensor(
+                self.action_q_target, torch.float32, device
+            ),
+            "strategic_action_q_mask": _to_tensor(
+                self.action_q_mask, torch.uint8, device
+            ),
+            "strategic_action_factor_mask": _to_tensor(
+                self.action_factor_mask, torch.uint8, device
+            ).reshape(-1, len(ACTION_FACTOR_NAMES)),
+            "strategic_action_utility_target": _to_tensor(
+                self.action_utility_target, torch.float32, device
+            ).reshape(-1, len(ACTION_UTILITY_NAMES)),
+            "strategic_action_utility_mask": _to_tensor(
+                self.action_utility_mask, torch.uint8, device
+            ).reshape(-1, len(ACTION_UTILITY_NAMES)),
+            "strategic_tactical_outcome_target": _to_tensor(
+                self.tactical_outcome_target, torch.float32, device
+            ).reshape(
+                -1, len(TACTICAL_HORIZONS), len(TACTICAL_OUTCOME_NAMES)
+            ),
+            "strategic_tactical_outcome_mask": _to_tensor(
+                self.tactical_outcome_mask, torch.uint8, device
+            ).reshape(
+                -1, len(TACTICAL_HORIZONS), len(TACTICAL_OUTCOME_NAMES)
+            ),
+            "strategic_opponent_response_target": _to_tensor(
+                self.opponent_response_target, torch.float32, device
+            ).reshape(-1, len(OPPONENT_RESPONSE_NAMES)),
+            "strategic_opponent_response_mask": _to_tensor(
+                self.opponent_response_mask, torch.uint8, device
+            ).reshape(-1, len(OPPONENT_RESPONSE_NAMES)),
+            "strategic_resource_forecast_target": _to_tensor(
+                self.resource_forecast_target, torch.float32, device
+            ).reshape(-1, len(RESOURCE_FORECAST_NAMES)),
+            "strategic_resource_forecast_mask": _to_tensor(
+                self.resource_forecast_mask, torch.uint8, device
+            ).reshape(-1, len(RESOURCE_FORECAST_NAMES)),
+            "strategic_game_phase_target": _to_tensor(
+                self.game_phase_target, torch.int16, device
+            ),
+            "strategic_game_phase_mask": _to_tensor(
+                self.game_phase_mask, torch.uint8, device
+            ),
+            "strategic_outcome_class_target": _to_tensor(
+                self.outcome_class_target, torch.int16, device
+            ),
+            "strategic_outcome_class_mask": _to_tensor(
+                self.outcome_class_mask, torch.uint8, device
+            ),
+            "strategic_remaining_turns_target": _to_tensor(
+                self.remaining_turns_target, torch.float32, device
+            ),
+            "strategic_remaining_turns_mask": _to_tensor(
+                self.remaining_turns_mask, torch.uint8, device
+            ),
+        }
 
 
 class _CSRBuilder:
@@ -310,6 +668,30 @@ class DeviceResidentBootstrapCorpus:
     action_offset: torch.Tensor | None = None
     game_decision_offset: torch.Tensor | None = None
     game_sample_offset: torch.Tensor | None = None
+    # Expanded V6 option-conditioned targets align with policy samples.
+    strategic_action_q_target: torch.Tensor | None = None
+    strategic_action_q_mask: torch.Tensor | None = None
+    # Columns follow strategic_heads.ACTION_FACTOR_NAMES.
+    strategic_action_factor_mask: torch.Tensor | None = None
+    strategic_action_utility_target: torch.Tensor | None = None
+    strategic_action_utility_mask: torch.Tensor | None = None
+    # Expanded V6 state targets align with board/decision rows and are mapped to
+    # policy samples through ``sample_board``.
+    strategic_tactical_outcome_target: torch.Tensor | None = None
+    strategic_tactical_outcome_mask: torch.Tensor | None = None
+    strategic_opponent_response_target: torch.Tensor | None = None
+    strategic_opponent_response_mask: torch.Tensor | None = None
+    strategic_resource_forecast_target: torch.Tensor | None = None
+    strategic_resource_forecast_mask: torch.Tensor | None = None
+    strategic_game_phase_target: torch.Tensor | None = None
+    strategic_game_phase_mask: torch.Tensor | None = None
+    strategic_outcome_class_target: torch.Tensor | None = None
+    strategic_outcome_class_mask: torch.Tensor | None = None
+    strategic_remaining_turns_target: torch.Tensor | None = None
+    strategic_remaining_turns_mask: torch.Tensor | None = None
+    expanded_strategic_schema: str = ""
+    expanded_strategic_schema_version: int = 0
+    expanded_strategic_schema_digest: str = ""
 
     @property
     def device(self) -> torch.device:
@@ -355,6 +737,14 @@ class DeviceResidentBootstrapCorpus:
             == self.train_games + self.val_games + 1
         )
 
+    @property
+    def has_expanded_strategic_targets(self) -> bool:
+        return all(
+            getattr(self, name) is not None
+            for name in DEVICE_CORPUS_OPTIONAL_TENSOR_FIELDS
+            if name.startswith("strategic_")
+        )
+
     def tensor_state(self) -> dict[str, torch.Tensor]:
         """Return the exact packed tensors, excluding absent optional targets."""
         state: dict[str, torch.Tensor] = {}
@@ -366,8 +756,14 @@ class DeviceResidentBootstrapCorpus:
                 state[name] = value
         return state
 
-    def scalar_state(self) -> dict[str, int | float]:
-        return {name: getattr(self, name) for name in DEVICE_CORPUS_SCALAR_FIELDS}
+    def scalar_state(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in (
+                *DEVICE_CORPUS_SCALAR_FIELDS,
+                *DEVICE_CORPUS_OPTIONAL_SCALAR_FIELDS,
+            )
+        }
 
     @classmethod
     def from_packed_state(
@@ -393,6 +789,15 @@ class DeviceResidentBootstrapCorpus:
             name: tensors.get(name) for name in DEVICE_CORPUS_TENSOR_FIELDS
         }
         values.update({name: scalars[name] for name in DEVICE_CORPUS_SCALAR_FIELDS})
+        values.update(
+            {
+                name: scalars.get(
+                    name,
+                    0 if name == "expanded_strategic_schema_version" else "",
+                )
+                for name in DEVICE_CORPUS_OPTIONAL_SCALAR_FIELDS
+            }
+        )
         return cls(**values)
 
     @property
@@ -472,6 +877,7 @@ class DeviceResidentBootstrapCorpus:
         min_free_gib: float = DEFAULT_MIN_FREE_GIB,
         exact_card_vocab: int | None = None,
         matchup_adapter_route: int | None = None,
+        force_expanded_strategic: bool = False,
     ) -> "DeviceResidentBootstrapCorpus":
         if exact_card_vocab is not None and (
             int(exact_card_vocab) <= 0 or int(exact_card_vocab) >= 2**15
@@ -504,6 +910,9 @@ class DeviceResidentBootstrapCorpus:
         remainder_present = array("B")
         lethal_target = array("f")
         prize_race_target = array("f")
+        strategic = _ExpandedStrategicBuilder(
+            force_layout=bool(force_expanded_strategic)
+        )
         archetype_ids = list(archetypes.archetype_ids())
         decisions = 0
 
@@ -516,13 +925,20 @@ class DeviceResidentBootstrapCorpus:
                         "device-resident bootstrap currently requires hard targets only"
                     )
                 for decision in game.decisions:
-                    raw_stages = decision.policy_stages or [
+                    canonical_stages = decision.policy_stages or [
                         PolicyStage(
                             options=decision.options,
                             action_combos=decision.action_combos,
                             target_index=decision.action_combo_index,
                         )
                     ]
+                    aux = dict(decision.aux_labels or {})
+                    strategic_target = strategic.validate_decision(
+                        aux,
+                        raw_stage_count=len(canonical_stages),
+                        game_value=float(game.value),
+                    )
+                    raw_stages = canonical_stages
                     if matchup_adapter_route is not None:
                         oracle_route = getattr(
                             decision,
@@ -539,11 +955,13 @@ class DeviceResidentBootstrapCorpus:
                         if oracle_route != matchup_adapter_route:
                             raw_stages = []
                     valid = []
-                    for stage in raw_stages:
+                    for raw_stage_index, stage in enumerate(raw_stages):
                         count = int(stage.options.num_words)
                         target = int(stage.target_index)
                         if count > 0 and 0 <= target < count:
-                            valid.append((stage, count, target))
+                            valid.append(
+                                (raw_stage_index, stage, count, target)
+                            )
                     if decision.board.num_words != BOARD_WORDS:
                         raise ValueError(
                             f"expected {BOARD_WORDS} board words, got "
@@ -561,8 +979,8 @@ class DeviceResidentBootstrapCorpus:
                         )
                     actions.add(action)
                     decisions += 1
+                    strategic.add_decision(strategic_target)
                     if exact_card_vocab is not None:
-                        aux = dict(decision.aux_labels or {})
                         (
                             hand_ids,
                             has_hand,
@@ -584,7 +1002,7 @@ class DeviceResidentBootstrapCorpus:
                         remainder_offset.append(len(remainder_index))
                         lethal_target.append(lethal)
                         prize_race_target.extend(race)
-                    for stage, count, target in valid:
+                    for raw_stage_index, stage, count, target in valid:
                         if count >= 2**16 or target >= 2**16:
                             raise ValueError("option count/target exceeds uint16 capacity")
                         sample_board.append(board_id)
@@ -607,6 +1025,11 @@ class DeviceResidentBootstrapCorpus:
                         if exact_card_vocab is not None:
                             sample_aux_class.append(-1)
                         options.add(stage.options)
+                        strategic.add_sample(
+                            strategic_target,
+                            raw_stage_index=raw_stage_index,
+                            game_value=float(game.value),
+                        )
                 if (
                     exact_card_vocab is not None
                     and len(sample_board) > game_sample_start
@@ -643,6 +1066,10 @@ class DeviceResidentBootstrapCorpus:
             raise AssertionError("option word-prefix accounting mismatch")
         if len(guide_target_index) != len(sample_board):
             raise AssertionError("resident guide target shape mismatch")
+        strategic.validate_counts(
+            decisions=decisions,
+            samples=len(sample_board),
+        )
         if exact_card_vocab is not None:
             if len(hand_offset) != decisions + 1 or len(remainder_offset) != decisions + 1:
                 raise AssertionError("exact card-target CSR offset mismatch")
@@ -664,6 +1091,7 @@ class DeviceResidentBootstrapCorpus:
             prize_race_target,
             sample_aux_class,
         )
+        strategic_arrays = strategic.arrays()
 
         cpu_bytes = (
             boards.nbytes
@@ -681,6 +1109,11 @@ class DeviceResidentBootstrapCorpus:
             + (
                 sum(len(values) * values.itemsize for values in exact_arrays)
                 if exact_card_vocab is not None
+                else 0
+            )
+            + (
+                sum(len(values) * values.itemsize for values in strategic_arrays)
+                if strategic.has_targets
                 else 0
             )
         )
@@ -788,11 +1221,26 @@ class DeviceResidentBootstrapCorpus:
             guide_confidence=_to_tensor(
                 guide_confidence, torch.float32, device
             ),
+            **strategic.tensor_kwargs(device),
+            expanded_strategic_schema=(
+                EXPANDED_STRATEGIC_SCHEMA if strategic.has_targets else ""
+            ),
+            expanded_strategic_schema_version=(
+                EXPANDED_STRATEGIC_SCHEMA_VERSION
+                if strategic.has_targets
+                else 0
+            ),
+            expanded_strategic_schema_digest=(
+                EXPANDED_STRATEGIC_SCHEMA_DIGEST
+                if strategic.has_targets
+                else ""
+            ),
         )
         # Clear closure cells explicitly. ``del`` makes Ruff treat references
         # inside ``add_sequences`` as undefined, and ``exact_arrays`` otherwise
         # keeps every supposedly deleted target buffer alive until return.
         exact_arrays = ()
+        strategic_arrays = ()
         boards = options = actions = None
         sample_board = game_decision_offset = game_sample_offset = None
         option_word_start = n_options = target_index = value_target = None
@@ -800,6 +1248,7 @@ class DeviceResidentBootstrapCorpus:
         hand_index = hand_offset = hand_present = None
         remainder_index = remainder_offset = remainder_present = None
         lethal_target = prize_race_target = sample_aux_class = None
+        strategic = None
         gc.collect()
         if device.type == "cuda":
             free, total = torch.cuda.mem_get_info(device)
@@ -857,6 +1306,7 @@ class DeviceResidentBootstrapCorpus:
         remainder_present = array("B")
         lethal_target = array("f")
         prize_race_target = array("f")
+        strategic = _ExpandedStrategicBuilder()
         archetype_ids = list(archetypes.archetype_ids())
         decisions = 0
         train_games = 0
@@ -873,12 +1323,20 @@ class DeviceResidentBootstrapCorpus:
                         target_index=decision.action_combo_index,
                     )
                 ]
-                valid: list[tuple[PolicyStage, int, int]] = []
-                for stage in raw_stages:
+                aux = dict(decision.aux_labels or {})
+                strategic_target = strategic.validate_decision(
+                    aux,
+                    raw_stage_count=len(raw_stages),
+                    game_value=float(game.value),
+                )
+                valid: list[tuple[int, PolicyStage, int, int]] = []
+                for raw_stage_index, stage in enumerate(raw_stages):
                     count = int(stage.options.num_words)
                     target = int(stage.target_index)
                     if count > 0 and 0 <= target < count:
-                        valid.append((stage, count, target))
+                        valid.append(
+                            (raw_stage_index, stage, count, target)
+                        )
                 if not valid:
                     continue
                 if decision.board.num_words != BOARD_WORDS:
@@ -890,7 +1348,7 @@ class DeviceResidentBootstrapCorpus:
                 board_id = boards.vectors_total
                 boards.add(decision.board)
                 decisions += 1
-                aux = dict(decision.aux_labels or {})
+                strategic.add_decision(strategic_target)
                 (
                     hand_ids,
                     has_hand,
@@ -910,7 +1368,7 @@ class DeviceResidentBootstrapCorpus:
                 lethal_target.append(lethal)
                 prize_race_target.extend(race)
 
-                for stage, count, target in valid:
+                for raw_stage_index, stage, count, target in valid:
                     if count >= 2**16 or target >= 2**16:
                         raise ValueError("option count/target exceeds uint16 capacity")
                     sample_board.append(board_id)
@@ -932,6 +1390,11 @@ class DeviceResidentBootstrapCorpus:
                     )
                     sample_aux_class.append(-1)
                     options.add(stage.options)
+                    strategic.add_sample(
+                        strategic_target,
+                        raw_stage_index=raw_stage_index,
+                        game_value=float(game.value),
+                    )
 
             if len(sample_board) > game_sample_start and game.opp_archetype in archetype_ids:
                 label = archetype_ids.index(game.opp_archetype)
@@ -989,6 +1452,10 @@ class DeviceResidentBootstrapCorpus:
             == len(sample_board)
         ):
             raise AssertionError("exact guide target shape mismatch")
+        strategic.validate_counts(
+            decisions=decisions,
+            samples=len(sample_board),
+        )
 
         exact_arrays = (
             hand_index,
@@ -1001,6 +1468,7 @@ class DeviceResidentBootstrapCorpus:
             prize_race_target,
             sample_aux_class,
         )
+        strategic_arrays = strategic.arrays()
         cpu_bytes = (
             boards.nbytes
             + options.nbytes
@@ -1012,6 +1480,11 @@ class DeviceResidentBootstrapCorpus:
             + len(guide_target_index) * guide_target_index.itemsize
             + len(guide_confidence) * guide_confidence.itemsize
             + sum(len(values) * values.itemsize for values in exact_arrays)
+            + (
+                sum(len(values) * values.itemsize for values in strategic_arrays)
+                if strategic.has_targets
+                else 0
+            )
         )
         if device.type == "cuda":
             free_device, total_device = torch.cuda.mem_get_info(device)
@@ -1067,16 +1540,32 @@ class DeviceResidentBootstrapCorpus:
             guide_confidence=_to_tensor(
                 guide_confidence, torch.float32, device
             ),
+            **strategic.tensor_kwargs(device),
+            expanded_strategic_schema=(
+                EXPANDED_STRATEGIC_SCHEMA if strategic.has_targets else ""
+            ),
+            expanded_strategic_schema_version=(
+                EXPANDED_STRATEGIC_SCHEMA_VERSION
+                if strategic.has_targets
+                else 0
+            ),
+            expanded_strategic_schema_digest=(
+                EXPANDED_STRATEGIC_SCHEMA_DIGEST
+                if strategic.has_targets
+                else ""
+            ),
         )
         # Release both local references and the aggregate tuple before checking
         # post-pack device headroom. The nested packers capture these cells.
         exact_arrays = ()
+        strategic_arrays = ()
         boards = options = sample_board = None
         option_word_start = n_options = target_index = value_target = None
         hand_index = hand_offset = hand_present = None
         remainder_index = remainder_offset = remainder_present = None
         lethal_target = prize_race_target = sample_aux_class = None
         guide_target_index = guide_confidence = None
+        strategic = None
         gc.collect()
         if device.type == "cuda":
             free, total = torch.cuda.mem_get_info(device)

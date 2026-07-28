@@ -1,0 +1,22 @@
+[Unit]
+Description=Verify all 22 specialists and authorize population round-robin
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/prepare_population_round_robin.py --contract ops/specialist_cycle_handoff_v1.json
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=12h
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=8G
+MemoryMax=16G
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/population-round-robin-handoff.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/population-round-robin-handoff.log

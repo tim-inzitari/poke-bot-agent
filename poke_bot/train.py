@@ -42,7 +42,22 @@ from .matchup_adapter_activation import (
     training_route_for_decision,
     validate_adapter_training_authorization,
 )
-from .model import TemporalCabtTransformer, build_model
+from .model import (
+    DECISION_FUSION_KEY_PREFIX,
+    DECISION_FUSION_SCHEMA,
+    EXPANDED_HEAD_KEY_PREFIXES,
+    EXPANDED_HEAD_NAMES,
+    EXPANDED_HEAD_SCHEMA,
+    TemporalCabtTransformer,
+    build_model,
+)
+from .strategic_losses import (
+    canonical_expanded_loss_weights,
+    expanded_strategic_losses,
+    resident_expanded_strategic_losses,
+)
+from .strategic_heads import EXPANDED_STRATEGIC_SCHEMA, TARGET_SCHEMA_DIGEST
+from .strategic_schedule import EXPANDED_HEAD_IDS, EXPANDED_SCHEDULE_SCHEMA
 
 # Distinct named belief + Blackwell strategy heads — warm-start may omit only
 # these key prefixes (Scope A particle priors + Scope B Hammer heads).
@@ -75,6 +90,9 @@ class TrainConfig:
     #: Scope B (Blackwell Hammer) only — keep 0.0 for core / generic bootstrap.
     lethal_threat_loss_weight: float = 0.0
     prize_race_loss_weight: float = 0.0
+    #: Additive V6 auxiliary weights keyed by canonical expanded head id.
+    #: Empty/all-zero preserves the exact V5 optimizer and forward path.
+    expanded_head_loss_weights: dict[str, float] = field(default_factory=dict)
     grad_clip: float = 1.0
     amp: bool = True
     seed: int = 0
@@ -150,6 +168,7 @@ class TrainConfig:
 @dataclass
 class BatchMetrics:
     policy_loss: float = 0.0
+    teacher_policy_loss: float = 0.0
     value_loss: float = 0.0
     aux_loss: float = 0.0
     opp_hand_loss: float = 0.0
@@ -172,6 +191,8 @@ class BatchMetrics:
     n_lethal_threat_rows: int = 0
     n_prize_race_rows: int = 0
     n_matchup_adapter_rows: int = 0
+    n_teacher_policy_rows: int = 0
+    expanded_head_metrics: dict[str, Any] = field(default_factory=dict)
     # Backward-compatible pipeline signal consumed by pure_rl.aborts. It is
     # deliberately the raw mean absolute advantage, not a signed/whitened mean.
     mean_advantage: float = 0.0
@@ -222,6 +243,32 @@ def belief_head_names_from_state_keys(keys: Sequence[str]) -> tuple[str, ...]:
         if is_allowed_missing_belief_head_key(key):
             names.add(key.split(".", 1)[0])
     return tuple(sorted(names))
+
+
+def is_allowed_missing_expanded_head_key(key: str) -> bool:
+    """Return whether ``key`` belongs to the opt-in V6 strategic head bank."""
+
+    return any(key.startswith(prefix) for prefix in EXPANDED_HEAD_KEY_PREFIXES)
+
+
+def expanded_head_names_from_state_keys(keys: Sequence[str]) -> tuple[str, ...]:
+    """Map missing state keys to deterministic expanded-head module names."""
+
+    return tuple(
+        sorted(
+            {
+                key.split(".", 1)[0]
+                for key in keys
+                if is_allowed_missing_expanded_head_key(key)
+            }
+        )
+    )
+
+
+def is_allowed_missing_decision_fusion_key(key: str) -> bool:
+    """Return whether ``key`` belongs to the opt-in causal fusion module."""
+
+    return key.startswith(DECISION_FUSION_KEY_PREFIX)
 
 
 def belief_card_vocab_from_state(state: dict[str, Any]) -> int:
@@ -448,12 +495,12 @@ def load_append_only_matchup_adapter_optimizer_state(
     optimizer: torch.optim.Optimizer,
     prior_state: dict[str, Any],
 ) -> int:
-    """Restore Adam state only for the exact current adapter roster.
+    """Restore Adam state only for the exact current adapter architecture.
 
-    The canonical v5 roster is not append-compatible with historical banks:
-    rows were deleted and renamed. Historical optimizer state is deliberately
-    discarded by the explicit checkpoint migration. Exact v5 resumes preserve
-    every moment bit-for-bit.
+    V5 and fixed-capacity V6 both use four parameters per physical slot. Any
+    historical or partially migrated optimizer whose parameter-group length
+    differs from the instantiated bank fails closed. The explicit V5-to-V6
+    migrator expands the group before this loader is allowed to restore it.
     """
 
     if len(optimizer.param_groups) != 1:
@@ -469,9 +516,10 @@ def load_append_only_matchup_adapter_optimizer_state(
         or len(saved_params) != len(current_params)
         or len(saved_params) % 4 != 0
         or len(current_params) % 4 != 0
-        or len(saved_params) // 4 != len(EXPERT_IDS)
     ):
-        raise ValueError("saved adapter optimizer does not match canonical roster")
+        raise ValueError(
+            "saved adapter optimizer does not match the current physical bank"
+        )
     saved_slots = dict(prior_state.get("state") or {})
     unknown_slots = set(saved_slots) - set(saved_params)
     if unknown_slots:
@@ -762,6 +810,7 @@ def sequence_losses(
     alakazam_guide_weight: float = 0.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
+    expanded_head_weights: Optional[dict[str, float]] = None,
     pure_rl: bool = False,
     awr_beta: float = 0.5,
     awr_weight_max: float = 20.0,
@@ -777,6 +826,7 @@ def sequence_losses(
         alakazam_guide_weight=alakazam_guide_weight,
         lethal_threat_weight=lethal_threat_weight,
         prize_race_weight=prize_race_weight,
+        expanded_head_weights=expanded_head_weights,
         pure_rl=pure_rl,
         awr_beta=awr_beta,
         awr_weight_max=awr_weight_max,
@@ -794,6 +844,7 @@ def batch_losses(
     alakazam_guide_weight: float = 0.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
+    expanded_head_weights: Optional[dict[str, float]] = None,
     opp_hand_multihot: Optional[torch.Tensor] = None,
     opp_remainder_multihot: Optional[torch.Tensor] = None,
     pure_rl: bool = False,
@@ -836,6 +887,14 @@ def batch_losses(
     """
     if float(alakazam_guide_weight) < 0.0:
         raise ValueError("Alakazam guide loss weight cannot be negative")
+    expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
+    use_expanded_heads = any(weight > 0.0 for weight in expanded_weights.values())
+    if use_expanded_heads and not bool(
+        getattr(model, "expanded_heads_enabled", False)
+    ):
+        raise ValueError(
+            "nonzero expanded strategic loss requires an expanded-head checkpoint"
+        )
     if matchup_adapter_training:
         assert_matchup_adapter_training_contract(model)
     device = next(model.parameters()).device
@@ -901,6 +960,7 @@ def batch_losses(
     aux_rows: list[int] = []
     aux_labels: list[int] = []
     decision_aux: list[dict[str, Any]] = []
+    expanded_stage_indices: list[int] = []
     matchup_routes: list[int] = []
     guide_target_rows: list[int] = []
     guide_confidence_rows: list[float] = []
@@ -1008,6 +1068,7 @@ def batch_losses(
                 value_targets.append(val)
                 awr_baseline_keys.append((id(g), t, stage_i))
                 decision_aux.append(dict(d.aux_labels or {}))
+                expanded_stage_indices.append(stage_i)
                 matchup_routes.append(matchup_route)
                 if use_alakazam_guide:
                     guide_target_rows.append(
@@ -1043,12 +1104,26 @@ def batch_losses(
             route_tensor,
             enabled=True,
         )
-    logits_all = model.decode_options(
+    decoded = model.decode_options(
         valid_options,
         current_spatial,
         policy_value_state,
         n_options=valid_n,
+        return_hidden=use_expanded_heads,
+        decision_fusion_state_vec=state_all,
     )
+    if use_expanded_heads:
+        if not isinstance(decoded, tuple):
+            raise AssertionError("expanded option decoder did not return hidden states")
+        logits_all, option_hidden = decoded
+        expanded_option_outputs = model.expanded_option_logits(option_hidden)
+        expanded_state_outputs = model.expanded_state_logits(state_all)
+    else:
+        if isinstance(decoded, tuple):
+            raise AssertionError("legacy option decoder unexpectedly returned a tuple")
+        logits_all = decoded
+        expanded_option_outputs = {}
+        expanded_state_outputs = {}
     value_pred = torch.tanh(model.value_head(policy_value_state)).squeeze(-1)
     need_belief_outputs = any(
         float(weight) > 0.0
@@ -1348,6 +1423,21 @@ def batch_losses(
         + float(prize_race_weight) * prize_race_loss
         + float(history_identity_weight) * history_identity_loss
     )
+    expanded_loss = total.sum() * 0.0
+    expanded_metrics: dict[str, Any] = {}
+    if use_expanded_heads:
+        expanded_loss, expanded_metric_record = expanded_strategic_losses(
+            option_outputs=expanded_option_outputs,
+            state_outputs=expanded_state_outputs,
+            target_indices=target_idx,
+            value_targets=v_target,
+            option_counts=valid_n,
+            stage_indices=expanded_stage_indices,
+            decision_aux=decision_aux,
+            weights=expanded_weights,
+        )
+        total = total + expanded_loss
+        expanded_metrics = expanded_metric_record.as_dict()
     preds = logits_all.argmax(dim=1)
     if prediction_sink is not None:
         prediction_sink.extend(int(x) for x in preds.detach().cpu().tolist())
@@ -1380,6 +1470,7 @@ def batch_losses(
             if matchup_adapter_training
             else 0
         ),
+        expanded_head_metrics=expanded_metrics,
         mean_advantage=awr_mean_adv,
         raw_advantage_mean=raw_adv_mean,
         raw_advantage_std=raw_adv_std,
@@ -1499,7 +1590,10 @@ def device_temporal_batch_losses(
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     alakazam_guide_weight: float = 0.0,
+    expanded_head_weights: Optional[dict[str, float]] = None,
     matchup_adapter_route: int | None = None,
+    teacher_policy_targets: Optional[torch.Tensor] = None,
+    teacher_policy_weight: float = 0.0,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Hard-target full-game loss with every resident temporal target.
 
@@ -1510,6 +1604,27 @@ def device_temporal_batch_losses(
     """
     if model.decision_context != "history":
         raise ValueError("temporal resident loss requires history context")
+    expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
+    use_expanded_heads = any(
+        weight > 0.0 for weight in expanded_weights.values()
+    )
+    if use_expanded_heads:
+        if not bool(getattr(model, "expanded_heads_enabled", False)):
+            raise ValueError(
+                "nonzero resident strategic loss requires an expanded-head checkpoint"
+            )
+        if not corpus.has_expanded_strategic_targets:
+            raise ValueError(
+                "nonzero resident strategic loss requires packed strategic targets"
+            )
+        if (
+            str(corpus.expanded_strategic_schema) != EXPANDED_STRATEGIC_SCHEMA
+            or str(corpus.expanded_strategic_schema_digest)
+            != TARGET_SCHEMA_DIGEST
+        ):
+            raise ValueError(
+                "resident strategic target schema or digest does not match runtime"
+            )
     if matchup_adapter_route is not None:
         if not (
             type(matchup_adapter_route) is int
@@ -1517,6 +1632,23 @@ def device_temporal_batch_losses(
         ):
             raise ValueError("invalid resident matchup-adapter route")
         assert_matchup_adapter_training_contract(model)
+    if float(teacher_policy_weight) < 0.0:
+        raise ValueError("teacher policy weight cannot be negative")
+    if float(teacher_policy_weight) > 0.0:
+        if teacher_policy_targets is None:
+            raise ValueError(
+                "nonzero teacher policy weight requires resident teacher targets"
+            )
+        if teacher_policy_targets.device != corpus.device:
+            raise ValueError(
+                "teacher policy targets must reside with the expert corpus"
+            )
+        if teacher_policy_targets.ndim != 1 or int(
+            teacher_policy_targets.numel()
+        ) != int(corpus.total_samples):
+            raise ValueError(
+                "teacher policy targets must contain one row per resident sample"
+            )
     for name, weight in (
         ("aux", aux_weight),
         ("opp_hand", opp_hand_weight),
@@ -1606,13 +1738,33 @@ def device_temporal_batch_losses(
             ),
             enabled=True,
         )
-    logits = model.decode_options_packed(
+    decoded = model.decode_options_packed(
         options,
         sample_spatial,
         policy_value_state,
         n_options=counts,
         batch_size=samples,
+        return_hidden=use_expanded_heads,
+        decision_fusion_state_vec=state,
     )
+    expanded_option_outputs: dict[str, torch.Tensor] = {}
+    expanded_state_outputs: dict[str, torch.Tensor] = {}
+    if use_expanded_heads:
+        if not isinstance(decoded, tuple):
+            raise AssertionError(
+                "resident expanded option decoder did not return hidden states"
+            )
+        logits, option_hidden = decoded
+        expanded_option_outputs = model.expanded_option_logits(option_hidden)
+        # State targets are decision-aligned, so they are evaluated exactly
+        # once per real decision rather than once per factorized policy stage.
+        expanded_state_outputs = model.expanded_state_logits(state_by_decision)
+    else:
+        if isinstance(decoded, tuple):
+            raise AssertionError(
+                "legacy resident option decoder unexpectedly returned a tuple"
+            )
+        logits = decoded
     total, metrics = _resident_hard_target_objective(
         model,
         logits,
@@ -1622,9 +1774,60 @@ def device_temporal_batch_losses(
         value_weight=value_weight,
         n_games=int(game_ids.numel()),
     )
+    sample_ids: Optional[torch.Tensor] = None
+    if float(teacher_policy_weight) > 0.0:
+        assert teacher_policy_targets is not None
+        assert corpus.game_sample_offset is not None
+        resident_game_ids = game_ids.reshape(-1).to(
+            device=corpus.device, dtype=torch.long
+        )
+        sample_starts = corpus.game_sample_offset.index_select(
+            0, resident_game_ids
+        ).to(dtype=torch.long)
+        sample_ends = corpus.game_sample_offset.index_select(
+            0, resident_game_ids + 1
+        ).to(dtype=torch.long)
+        sample_ids, _sample_lengths = corpus._expand_ranges(  # noqa: SLF001
+            sample_starts, sample_ends
+        )
+        if int(sample_ids.numel()) != samples:
+            raise AssertionError(
+                "resident teacher target mapping disagrees with policy rows"
+            )
+        teacher_target = teacher_policy_targets.index_select(
+            0, sample_ids
+        ).to(dtype=torch.long)
+        teacher_mask = teacher_target >= 0
+        invalid_teacher = teacher_mask & (teacher_target >= counts)
+        if bool(invalid_teacher.any()):
+            bad_row = int(
+                torch.nonzero(invalid_teacher, as_tuple=False)[0].item()
+            )
+            raise ValueError(
+                "teacher policy target is outside resident option row: "
+                f"target={int(teacher_target[bad_row].item())} "
+                f"options={int(counts[bad_row].item())}"
+            )
+        if bool(teacher_mask.any()):
+            teacher_rows = torch.nonzero(
+                teacher_mask, as_tuple=False
+            ).flatten()
+            teacher_log_p = torch.nan_to_num(
+                F.log_softmax(logits, dim=-1), neginf=0.0
+            )
+            teacher_loss = -teacher_log_p[
+                teacher_rows,
+                teacher_target.index_select(0, teacher_rows),
+            ].mean()
+            total = total + float(teacher_policy_weight) * teacher_loss
+            metrics.teacher_policy_loss = float(
+                teacher_loss.detach().item()
+            )
+            metrics.n_teacher_policy_rows = int(teacher_rows.numel())
+            metrics.total_loss = float(total.detach().item())
     if matchup_adapter_route is not None:
         metrics.n_matchup_adapter_rows = metrics.n_decisions
-    if not any(
+    auxiliary_targets_enabled = any(
         float(weight) > 0.0
         for weight in (
             aux_weight,
@@ -1634,7 +1837,8 @@ def device_temporal_batch_losses(
             prize_race_weight,
             alakazam_guide_weight,
         )
-    ):
+    )
+    if not auxiliary_targets_enabled and not use_expanded_heads:
         # Retain the historical policy/value-only path exactly, including RNG
         # consumption (``aux_head`` contains dropout on nonzero-dropout models).
         return total, metrics
@@ -1646,15 +1850,16 @@ def device_temporal_batch_losses(
     resident_game_ids = game_ids.reshape(-1).to(
         device=corpus.device, dtype=torch.long
     )
-    sample_starts = corpus.game_sample_offset.index_select(
-        0, resident_game_ids
-    ).to(dtype=torch.long)
-    sample_ends = corpus.game_sample_offset.index_select(
-        0, resident_game_ids + 1
-    ).to(dtype=torch.long)
-    sample_ids, _sample_lengths = corpus._expand_ranges(  # noqa: SLF001
-        sample_starts, sample_ends
-    )
+    if sample_ids is None:
+        sample_starts = corpus.game_sample_offset.index_select(
+            0, resident_game_ids
+        ).to(dtype=torch.long)
+        sample_ends = corpus.game_sample_offset.index_select(
+            0, resident_game_ids + 1
+        ).to(dtype=torch.long)
+        sample_ids, _sample_lengths = corpus._expand_ranges(  # noqa: SLF001
+            sample_starts, sample_ends
+        )
     if int(sample_ids.numel()) != samples:
         raise AssertionError(
             "resident temporal sample target mapping disagrees with policy rows"
@@ -1662,6 +1867,40 @@ def device_temporal_batch_losses(
     board_ids = corpus.sample_board.index_select(0, sample_ids).to(
         dtype=torch.long
     )
+
+    assert corpus.game_decision_offset is not None
+    decision_starts = corpus.game_decision_offset.index_select(
+        0, resident_game_ids
+    ).to(dtype=torch.long)
+    decision_ends = corpus.game_decision_offset.index_select(
+        0, resident_game_ids + 1
+    ).to(dtype=torch.long)
+    decision_ids, _decision_lengths = corpus._expand_ranges(  # noqa: SLF001
+        decision_starts, decision_ends
+    )
+    if int(decision_ids.numel()) != decisions:
+        raise AssertionError(
+            "resident temporal decision target mapping disagrees with state rows"
+        )
+
+    if use_expanded_heads:
+        expanded_loss, expanded_metric_record = (
+            resident_expanded_strategic_losses(
+                option_outputs=expanded_option_outputs,
+                state_outputs=expanded_state_outputs,
+                target_indices=target_idx,
+                option_counts=counts,
+                target_tensors=corpus.tensor_state(),
+                sample_ids=sample_ids,
+                decision_ids=decision_ids,
+                weights=expanded_weights,
+            )
+        )
+        total = total + expanded_loss
+        metrics.expanded_head_metrics = expanded_metric_record.as_dict()
+        metrics.total_loss = float(total.detach().item())
+    if not auxiliary_targets_enabled:
+        return total, metrics
 
     belief = model.belief_aux_logits(state)
     aux_loss = belief["aux_logits"].sum() * 0.0
@@ -1822,6 +2061,167 @@ def device_temporal_batch_losses(
     metrics.n_prize_race_rows = n_prize_race_rows
     metrics.n_alakazam_guide_rows = n_guide_rows
     return total, metrics
+
+
+def temporal_batches_for_game_ids(
+    corpus: DeviceResidentBootstrapCorpus,
+    game_ids: torch.Tensor,
+    *,
+    batch_size: int,
+) -> list[torch.Tensor]:
+    """Pack an explicit resident game subset under the temporal work budget."""
+
+    if not corpus.has_temporal_layout:
+        raise ValueError("explicit temporal batches require game layout")
+    assert corpus.game_decision_offset is not None
+    assert corpus.game_sample_offset is not None
+    ids = game_ids.reshape(-1).to(device=corpus.device, dtype=torch.long)
+    if ids.numel() == 0:
+        return []
+    game_count = int(corpus.train_games + corpus.val_games)
+    if bool(((ids < 0) | (ids >= game_count)).any()):
+        raise IndexError("explicit temporal game id is outside the corpus")
+    decision_lengths = (
+        corpus.game_decision_offset.index_select(0, ids + 1)
+        - corpus.game_decision_offset.index_select(0, ids)
+    ).to(dtype=torch.long)
+    sample_lengths = (
+        corpus.game_sample_offset.index_select(0, ids + 1)
+        - corpus.game_sample_offset.index_select(0, ids)
+    ).to(dtype=torch.long)
+    work = torch.maximum(decision_lengths, sample_lengths).cpu().tolist()
+    ordered_ids = ids.cpu().tolist()
+    limit = max(1, int(batch_size))
+    chunks: list[torch.Tensor] = []
+    current: list[int] = []
+    current_work = 0
+    for game_id, game_work in zip(ordered_ids, work):
+        game_work = int(game_work)
+        if game_work <= 0:
+            continue
+        if current and current_work + game_work > limit:
+            chunks.append(
+                torch.tensor(
+                    current, device=corpus.device, dtype=torch.long
+                )
+            )
+            current = []
+            current_work = 0
+        current.append(int(game_id))
+        current_work += game_work
+    if current:
+        chunks.append(
+            torch.tensor(current, device=corpus.device, dtype=torch.long)
+        )
+    return chunks
+
+
+@torch.no_grad()
+def device_temporal_greedy_policy_targets(
+    model: TemporalCabtTransformer,
+    corpus: DeviceResidentBootstrapCorpus,
+    game_ids: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return global sample IDs and causal greedy actions for resident games."""
+
+    if model.decision_context != "history":
+        raise ValueError("teacher policy targets require temporal history")
+    (
+        board,
+        previous_actions,
+        options,
+        counts,
+        _target_idx,
+        _value_target,
+        game_lengths,
+        sample_state_rows,
+    ) = corpus.temporal_batch(game_ids)
+    decisions = int(game_lengths.sum().item())
+    samples = int(sample_state_rows.numel())
+    if decisions <= 0 or samples <= 0:
+        raise ValueError("teacher policy batch has no causal decisions")
+    if int(game_lengths.max().item()) > int(model.max_context):
+        raise ValueError("teacher checkpoint context is shorter than corpus")
+
+    was_training = model.training
+    model.eval()
+    spatial = model.encode_board_packed(board, batch_size=decisions)
+    action_state = model.encode_previous_actions_packed(
+        previous_actions, batch_size=decisions
+    )
+    cls = (
+        model.pool_cls(spatial)
+        + float(model.cfg.history_action_scale) * action_state
+    )
+    lengths = [int(value) for value in game_lengths.cpu().tolist()]
+    starts: list[int] = []
+    cursor = 0
+    by_length: dict[int, list[int]] = {}
+    for length in lengths:
+        starts.append(cursor)
+        by_length.setdefault(length, []).append(cursor)
+        cursor += length
+    state_parts: list[torch.Tensor] = []
+    row_parts: list[torch.Tensor] = []
+    for length, group_starts in by_length.items():
+        tokens = torch.stack(
+            [cls[start : start + length] for start in group_starts],
+            dim=0,
+        )
+        encoded, _ = model.temporal_encode(
+            tokens, append=False, return_all=True
+        )
+        state_parts.append(encoded.reshape(-1, model.d_model))
+        row_parts.append(
+            torch.cat(
+                [
+                    torch.arange(
+                        start,
+                        start + length,
+                        device=corpus.device,
+                        dtype=torch.long,
+                    )
+                    for start in group_starts
+                ]
+            )
+        )
+    grouped_states = torch.cat(state_parts, dim=0)
+    grouped_rows = torch.cat(row_parts, dim=0)
+    state_by_decision = grouped_states.index_select(
+        0, torch.argsort(grouped_rows)
+    )
+    state = state_by_decision.index_select(0, sample_state_rows)
+    sample_spatial = spatial.index_select(0, sample_state_rows)
+    decoded = model.decode_options_packed(
+        options,
+        sample_spatial,
+        state,
+        n_options=counts,
+        batch_size=samples,
+        decision_fusion_state_vec=state,
+    )
+    if isinstance(decoded, tuple):
+        raise AssertionError("teacher policy decoder unexpectedly returned hidden")
+    greedy = decoded.argmax(dim=1).to(dtype=torch.long)
+
+    assert corpus.game_sample_offset is not None
+    resident_game_ids = game_ids.reshape(-1).to(
+        device=corpus.device, dtype=torch.long
+    )
+    sample_starts = corpus.game_sample_offset.index_select(
+        0, resident_game_ids
+    ).to(dtype=torch.long)
+    sample_ends = corpus.game_sample_offset.index_select(
+        0, resident_game_ids + 1
+    ).to(dtype=torch.long)
+    sample_ids, _sample_lengths = corpus._expand_ranges(  # noqa: SLF001
+        sample_starts, sample_ends
+    )
+    if int(sample_ids.numel()) != samples:
+        raise AssertionError("teacher policy sample mapping changed")
+    if was_training:
+        model.train()
+    return sample_ids, greedy
 
 
 def device_exact_value_predictions(
@@ -2089,6 +2489,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
     lethal_rows = sum(int(p.n_lethal_threat_rows) for p in parts)
     prize_rows = sum(int(p.n_prize_race_rows) for p in parts)
     matchup_adapter_rows = sum(int(p.n_matchup_adapter_rows) for p in parts)
+    teacher_policy_rows = sum(int(p.n_teacher_policy_rows) for p in parts)
     guide_loss = (
         sum(
             float(p.alakazam_guide_loss) * int(p.n_alakazam_guide_rows)
@@ -2098,9 +2499,99 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         if guide_rows > 0
         else 0.0
     )
+    teacher_policy_loss = (
+        sum(
+            float(p.teacher_policy_loss) * int(p.n_teacher_policy_rows)
+            for p in parts
+        )
+        / teacher_policy_rows
+        if teacher_policy_rows > 0
+        else 0.0
+    )
+    expanded_parts = [
+        dict(part.expanded_head_metrics)
+        for part in parts
+        if part.expanded_head_metrics
+    ]
+    expanded_metrics: dict[str, Any] = {}
+    if expanded_parts:
+        head_ids = sorted(
+            {
+                str(name)
+                for record in expanded_parts
+                for name in dict(record.get("total") or {})
+            }
+        )
+        labeled = {
+            name: sum(
+                int(dict(record.get("labeled") or {}).get(name, 0))
+                for record in expanded_parts
+            )
+            for name in head_ids
+        }
+        total_rows = {
+            name: sum(
+                int(dict(record.get("total") or {}).get(name, 0))
+                for record in expanded_parts
+            )
+            for name in head_ids
+        }
+        masked = {
+            name: max(0, int(total_rows[name]) - int(labeled[name]))
+            for name in head_ids
+        }
+        losses = {
+            name: (
+                sum(
+                    float(dict(record.get("losses") or {}).get(name, 0.0))
+                    * int(dict(record.get("labeled") or {}).get(name, 0))
+                    for record in expanded_parts
+                )
+                / int(labeled[name])
+                if int(labeled[name]) > 0
+                else 0.0
+            )
+            for name in head_ids
+        }
+        outcome_rows = int(labeled.get("outcome_distribution", 0))
+
+        def calibration_average(field_name: str) -> float | None:
+            if outcome_rows <= 0:
+                return None
+            numerator = 0.0
+            denominator = 0
+            for record in expanded_parts:
+                value = dict(record.get("calibration") or {}).get(field_name)
+                rows = int(
+                    dict(record.get("labeled") or {}).get(
+                        "outcome_distribution", 0
+                    )
+                )
+                if value is None or rows <= 0:
+                    continue
+                numerator += float(value) * rows
+                denominator += rows
+            return numerator / denominator if denominator else None
+
+        expanded_metrics = {
+            "losses": losses,
+            "labeled": labeled,
+            "masked": masked,
+            "total": total_rows,
+            "coverage": {
+                name: float(labeled[name]) / max(int(total_rows[name]), 1)
+                for name in head_ids
+            },
+            "calibration": {
+                "outcome_brier": calibration_average("outcome_brier"),
+                "outcome_ece": calibration_average("outcome_ece"),
+                "outcome_entropy": calibration_average("outcome_entropy"),
+            },
+        }
 
     return BatchMetrics(
         policy_loss=wavg("policy_loss"),
+        teacher_policy_loss=teacher_policy_loss,
         value_loss=wavg("value_loss"),
         aux_loss=wavg("aux_loss"),
         alakazam_guide_loss=guide_loss,
@@ -2123,6 +2614,8 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         n_lethal_threat_rows=lethal_rows,
         n_prize_race_rows=prize_rows,
         n_matchup_adapter_rows=matchup_adapter_rows,
+        n_teacher_policy_rows=teacher_policy_rows,
+        expanded_head_metrics=expanded_metrics,
         mean_advantage=wavg("mean_advantage"),
         raw_advantage_mean=raw_mean,
         raw_advantage_std=math.sqrt(max(raw_mean_sq - raw_mean * raw_mean, 0.0)),
@@ -2491,6 +2984,7 @@ def evaluate(
                 lethal_threat_weight=cfg.lethal_threat_loss_weight,
                 prize_race_weight=cfg.prize_race_loss_weight,
                 alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                expanded_head_weights=cfg.expanded_head_loss_weights,
                 pure_rl=bool(cfg.pure_rl),
                 awr_beta=float(cfg.awr_beta),
                 awr_weight_max=float(cfg.awr_weight_max),
@@ -2517,6 +3011,8 @@ def evaluate_device_corpus(
     cfg: TrainConfig,
     batch_size: int,
     desc: str = "val",
+    teacher_policy_targets: Optional[torch.Tensor] = None,
+    teacher_policy_weight: float = 0.0,
 ) -> BatchMetrics:
     """Evaluate the validation partition without moving inputs off device."""
     model.eval()
@@ -2559,6 +3055,9 @@ def evaluate_device_corpus(
                     lethal_threat_weight=cfg.lethal_threat_loss_weight,
                     prize_race_weight=cfg.prize_race_loss_weight,
                     alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                    expanded_head_weights=cfg.expanded_head_loss_weights,
+                    teacher_policy_targets=teacher_policy_targets,
+                    teacher_policy_weight=teacher_policy_weight,
                 )
             else:
                 _, metrics = device_batch_losses(
@@ -2776,6 +3275,9 @@ def _fit_device_batch_size(
                             lethal_threat_weight=cfg.lethal_threat_loss_weight,
                             prize_race_weight=cfg.prize_race_loss_weight,
                             alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                            expanded_head_weights=(
+                                cfg.expanded_head_loss_weights
+                            ),
                         )
                     elif cfg.pure_rl and corpus.has_exact_targets:
                         total, _ = device_exact_batch_losses(
@@ -3338,6 +3840,9 @@ def train_bootstrap(
                             lethal_threat_weight=cfg.lethal_threat_loss_weight,
                             prize_race_weight=cfg.prize_race_loss_weight,
                             alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                            expanded_head_weights=(
+                                cfg.expanded_head_loss_weights
+                            ),
                             history_identity_weight=float(
                                 cfg.history_identity_loss_weight
                             ),
@@ -3582,9 +4087,15 @@ def supervised_rehearsal_step(
     lethal_threat_loss_weight: float = 0.0,
     prize_race_loss_weight: float = 0.0,
     alakazam_guide_loss_weight: float = 0.0,
+    expanded_head_loss_weights: Optional[dict[str, float]] = None,
+    expanded_head_schedule: Optional[dict[str, Any]] = None,
     output_archetype_id: Optional[str] = None,
     output_model_id: Optional[str] = None,
     extra_updates: Optional[dict[str, Any]] = None,
+    teacher_policy_targets: Optional[torch.Tensor] = None,
+    teacher_policy_weight: float = 0.0,
+    teacher_policy_target_digest: str = "",
+    teacher_policy_checkpoint_digests: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
 
@@ -3614,6 +4125,64 @@ def supervised_rehearsal_step(
     ):
         if float(weight) < 0.0:
             raise ValueError(f"rehearsal {name} loss weight cannot be negative")
+    if float(teacher_policy_weight) < 0.0:
+        raise ValueError("rehearsal teacher policy weight cannot be negative")
+    teacher_policy_enabled = float(teacher_policy_weight) > 0.0
+    if teacher_policy_enabled:
+        if teacher_policy_targets is None:
+            raise ValueError(
+                "teacher policy distillation requires resident targets"
+            )
+        if teacher_policy_targets.device != corpus.device:
+            raise ValueError(
+                "teacher policy distillation targets must be device resident"
+            )
+        if teacher_policy_targets.ndim != 1 or int(
+            teacher_policy_targets.numel()
+        ) != int(corpus.total_samples):
+            raise ValueError(
+                "teacher policy targets do not align to the resident corpus"
+            )
+        if (
+            not str(teacher_policy_target_digest).startswith("sha256:")
+            or len(str(teacher_policy_target_digest)) != 71
+        ):
+            raise ValueError("teacher policy target digest is invalid")
+        if not teacher_policy_checkpoint_digests or any(
+            not str(value).startswith("sha256:") or len(str(value)) != 71
+            for value in teacher_policy_checkpoint_digests
+        ):
+            raise ValueError("teacher checkpoint digests are invalid")
+    canonical_expanded_weights = canonical_expanded_loss_weights(
+        expanded_head_loss_weights
+    )
+    expanded_enabled = any(
+        weight > 0.0 for weight in canonical_expanded_weights.values()
+    )
+    schedule_record = dict(expanded_head_schedule or {})
+    if expanded_enabled:
+        if schedule_record.get("schema") != "poke_bot.expanded_head_schedule/v1":
+            raise ValueError(
+                "expanded-head rehearsal requires the canonical schedule record"
+            )
+        if schedule_record.get("runtime_enabled_heads", []) != []:
+            raise ValueError("expanded strategic bootstrap must remain shadow-only")
+        if dict(schedule_record.get("loss_weights") or {}) != (
+            canonical_expanded_weights
+        ):
+            raise ValueError(
+                "expanded strategic schedule/loss-weight contract mismatch"
+            )
+        for field_name in (
+            "schedule_digest",
+            "target_schema",
+            "target_schema_digest",
+        ):
+            value = str(schedule_record.get(field_name) or "")
+            if not value:
+                raise ValueError(
+                    f"expanded strategic schedule lacks {field_name}"
+                )
     actual_parent_digest = checkpoint.checkpoint_digest(base_path)
     if str(parent_digest) != actual_parent_digest:
         raise ValueError(
@@ -3639,15 +4208,32 @@ def supervised_rehearsal_step(
         lethal_threat_loss_weight=float(lethal_threat_loss_weight),
         prize_race_loss_weight=float(prize_race_loss_weight),
         alakazam_guide_loss_weight=float(alakazam_guide_loss_weight),
+        expanded_head_loss_weights=canonical_expanded_weights,
         amp=device.type == "cuda",
         seed=int(seed),
     )
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
     model = load_model_from_checkpoint(base_path, device=device)
+    if expanded_enabled and not bool(
+        getattr(model, "expanded_heads_enabled", False)
+    ):
+        raise ValueError(
+            "expanded strategic schedule cannot train a V5 architecture"
+        )
+    if expanded_enabled and model.decision_context != "history":
+        raise ValueError(
+            "expanded strategic bootstrap requires the resident temporal layout"
+        )
     aux_head_expanded = expand_aux_head_to_current_registry(model)
     warm_started_heads_before = tuple(
         getattr(model, "warm_started_belief_heads", ()) or ()
+    )
+    warm_started_expanded_before = tuple(
+        getattr(model, "warm_started_expanded_heads", ()) or ()
+    )
+    warm_started_fusion_before = bool(
+        getattr(model, "warm_started_decision_fusion", False)
     )
     # Dormant matchup adapters are architecture-present but must stay outside
     # the ordinary learner optimizer.  This also keeps legacy/base optimizer
@@ -3668,7 +4254,12 @@ def supervised_rehearsal_step(
         "cuda", enabled=(use_amp and amp_dtype == torch.float16)
     )
     base_payload = checkpoint.load_checkpoint(base_path, map_location="cpu")
-    if warm_started_heads_before or aux_head_expanded:
+    if (
+        warm_started_heads_before
+        or warm_started_expanded_before
+        or warm_started_fusion_before
+        or aux_head_expanded
+    ):
         # ``load_model_from_checkpoint`` already restored every pre-existing
         # tensor and deterministically initialized only allowed new heads.  An
         # optimizer snapshot from the legacy architecture cannot contain those
@@ -3757,6 +4348,9 @@ def supervised_rehearsal_step(
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
                         alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        expanded_head_weights=cfg.expanded_head_loss_weights,
+                        teacher_policy_targets=teacher_policy_targets,
+                        teacher_policy_weight=float(teacher_policy_weight),
                     )
                 else:
                     total, metrics = device_batch_losses(
@@ -3776,6 +4370,14 @@ def supervised_rehearsal_step(
             bar.set_postfix(
                 loss=f"{metrics.total_loss:.3f}",
                 policy=f"{metrics.policy_loss:.3f}",
+                teacher=(
+                    "off"
+                    if not teacher_policy_enabled
+                    else (
+                        f"{metrics.teacher_policy_loss:.3f}/"
+                        f"{metrics.n_teacher_policy_rows}"
+                    )
+                ),
                 value=f"{metrics.value_loss:.3f}",
                 aux=(
                     "off"
@@ -3811,6 +4413,14 @@ def supervised_rehearsal_step(
                     else f"{metrics.alakazam_guide_loss:.3f}/"
                     f"{metrics.n_alakazam_guide_rows}"
                 ),
+                strategic=(
+                    "off"
+                    if not expanded_enabled
+                    else (
+                        f"{sum(int(value) for value in dict((metrics.expanded_head_metrics or {}).get('labeled') or {}).values())}"
+                        f"/{len([value for value in canonical_expanded_weights.values() if value > 0.0])}h"
+                    )
+                ),
                 acc=f"{metrics.policy_acc:.2%}",
                 step=step,
             )
@@ -3823,6 +4433,8 @@ def supervised_rehearsal_step(
             cfg=cfg,
             batch_size=batch_size,
             desc=f"expert validation before iter{int(rehearsal_iteration)}",
+            teacher_policy_targets=teacher_policy_targets,
+            teacher_policy_weight=float(teacher_policy_weight),
         )
         if corpus.val_samples
         else train_metrics
@@ -3842,6 +4454,138 @@ def supervised_rehearsal_step(
     # serving may consume them instead of retaining the uniform warm fallback.
     model.warm_started_belief_heads = warm_started_heads_remaining
     inherited_extra = dict(base_payload.get("extra") or {})
+    prior_expanded_contract = dict(
+        inherited_extra.get("expanded_head_training") or {}
+    )
+    prior_trained_expanded = {
+        str(name) for name in prior_expanded_contract.get("trained_heads") or ()
+    }
+    expanded_training_contract: dict[str, Any] = {}
+    warm_started_expanded_remaining = warm_started_expanded_before
+    if expanded_enabled:
+        train_expanded = dict(train_metrics.expanded_head_metrics or {})
+        validation_expanded = dict(val_metrics.expanded_head_metrics or {})
+        train_labeled = dict(train_expanded.get("labeled") or {})
+        validation_labeled = dict(validation_expanded.get("labeled") or {})
+        gradient_enabled = [
+            name
+            for name in EXPANDED_HEAD_IDS
+            if float(canonical_expanded_weights[name]) > 0.0
+        ]
+        trained_this_epoch = [
+            name
+            for name in gradient_enabled
+            if int(train_labeled.get(name, 0)) > 0
+        ]
+        trained_expanded = [
+            name
+            for name in EXPANDED_HEAD_IDS
+            if name in prior_trained_expanded or name in trained_this_epoch
+        ]
+        warm_started_expanded_remaining = tuple(
+            module
+            for module in warm_started_expanded_before
+            if module.removesuffix("_head") not in trained_expanded
+        )
+        model.warm_started_expanded_heads = warm_started_expanded_remaining
+
+        train_losses = dict(train_expanded.get("losses") or {})
+        validation_losses = dict(validation_expanded.get("losses") or {})
+        train_masked = dict(train_expanded.get("masked") or {})
+        validation_masked = dict(validation_expanded.get("masked") or {})
+        train_total = dict(train_expanded.get("total") or {})
+        validation_total = dict(validation_expanded.get("total") or {})
+        head_rows: dict[str, dict[str, Any]] = {}
+        coverage_rows: dict[str, dict[str, Any]] = {}
+        for name in EXPANDED_HEAD_IDS:
+            labeled_rows = int(train_labeled.get(name, 0)) + int(
+                validation_labeled.get(name, 0)
+            )
+            masked_rows = int(train_masked.get(name, 0)) + int(
+                validation_masked.get(name, 0)
+            )
+            total_rows = int(train_total.get(name, 0)) + int(
+                validation_total.get(name, 0)
+            )
+            coverage = (
+                float(labeled_rows) / total_rows if total_rows > 0 else 0.0
+            )
+            coverage_rows[name] = {
+                "labeled_rows": labeled_rows,
+                "masked_rows": masked_rows,
+                "total_rows": total_rows,
+                "coverage": coverage,
+            }
+            head_rows[name] = {
+                "present": True,
+                "trained": name in trained_expanded,
+                "trained_this_epoch": name in trained_this_epoch,
+                "gradient_enabled": name in gradient_enabled,
+                "runtime_enabled": False,
+                "loss_weight": float(canonical_expanded_weights[name]),
+                "train_loss": (
+                    float(train_losses[name]) if name in train_losses else None
+                ),
+                "validation_loss": (
+                    float(validation_losses[name])
+                    if name in validation_losses
+                    else None
+                ),
+                "train_labeled_rows": int(train_labeled.get(name, 0)),
+                "validation_labeled_rows": int(
+                    validation_labeled.get(name, 0)
+                ),
+                **coverage_rows[name],
+            }
+        fused_action_path = bool(
+            getattr(model, "decision_fusion_enabled", False)
+            and getattr(model, "decision_fusion_runtime_enabled", False)
+        )
+        expanded_training_contract = {
+            "schema": "poke_bot.expanded_head_training/v1",
+            "target_schema_version": str(schedule_record["target_schema"]),
+            "target_schema_digest": str(
+                schedule_record["target_schema_digest"]
+            ),
+            "schedule_version": str(schedule_record["schema"]),
+            "schedule_digest": str(schedule_record["schedule_digest"]),
+            "stage": int(schedule_record.get("stage_index", 0)),
+            "epoch": int(schedule_record.get("epoch", rehearsal_iteration)),
+            "epochs_total": 25,
+            "architecture_present_heads": list(EXPANDED_HEAD_IDS),
+            "trained_heads": trained_expanded,
+            "trained_this_epoch": trained_this_epoch,
+            "gradient_enabled_heads": gradient_enabled,
+            "runtime_enabled_heads": [],
+            "loss_weights": dict(canonical_expanded_weights),
+            "train_metrics": {
+                name: {"loss": train_losses.get(name)}
+                for name in EXPANDED_HEAD_IDS
+            },
+            "validation_metrics": {
+                name: {"loss": validation_losses.get(name)}
+                for name in EXPANDED_HEAD_IDS
+            },
+            "coverage": coverage_rows,
+            "heads": head_rows,
+            "calibration": {
+                "train": dict(train_expanded.get("calibration") or {}),
+                "validation": dict(
+                    validation_expanded.get("calibration") or {}
+                ),
+            },
+            "warm_started_heads_before": list(
+                warm_started_expanded_before
+            ),
+            "warm_started_heads_remaining": list(
+                warm_started_expanded_remaining
+            ),
+            "shadow_only": not fused_action_path,
+            "flat_policy_authoritative": not fused_action_path,
+            "authoritative_action_path": (
+                "fused_policy" if fused_action_path else "flat_policy"
+            ),
+        }
     rehearsal_record = {
         "schema": 1,
         "before_iteration": int(rehearsal_iteration),
@@ -3860,6 +4604,12 @@ def supervised_rehearsal_step(
         "warm_started_belief_heads_remaining": list(
             warm_started_heads_remaining
         ),
+        "warm_started_expanded_heads_before": list(
+            warm_started_expanded_before
+        ),
+        "warm_started_expanded_heads_remaining": list(
+            warm_started_expanded_remaining
+        ),
         "decision_context": str(model.decision_context),
         "resident_temporal_layout": bool(corpus.has_temporal_layout),
         "corpus_split_seed": int(corpus_split_seed),
@@ -3871,7 +4621,32 @@ def supervised_rehearsal_step(
             "lethal_threat": float(cfg.lethal_threat_loss_weight),
             "prize_race": float(cfg.prize_race_loss_weight),
             "alakazam_guide": float(cfg.alakazam_guide_loss_weight),
+            "expanded_strategic": dict(canonical_expanded_weights),
         },
+        "teacher_behavior_distillation": {
+            "enabled": teacher_policy_enabled,
+            "target_digest": (
+                str(teacher_policy_target_digest)
+                if teacher_policy_enabled
+                else None
+            ),
+            "teacher_checkpoint_digests": (
+                [str(value) for value in teacher_policy_checkpoint_digests]
+                if teacher_policy_enabled
+                else []
+            ),
+            "loss_weight": float(teacher_policy_weight),
+            "train_rows": int(train_metrics.n_teacher_policy_rows),
+            "validation_rows": int(val_metrics.n_teacher_policy_rows),
+            "train_loss": float(train_metrics.teacher_policy_loss),
+            "validation_loss": float(val_metrics.teacher_policy_loss),
+            "causal_inputs_only": True,
+        },
+        **(
+            {"expanded_head_training": expanded_training_contract}
+            if expanded_training_contract
+            else {}
+        ),
     }
     inherited_extra.update(
         {
@@ -3882,6 +4657,10 @@ def supervised_rehearsal_step(
     )
     if extra_updates:
         inherited_extra.update(dict(extra_updates))
+    if expanded_training_contract:
+        # The exact checkpoint-producing step owns this record. Callers may
+        # add bootstrap provenance but cannot override tensor-bound telemetry.
+        inherited_extra["expanded_head_training"] = expanded_training_contract
     payload = checkpoint.build_checkpoint(
         model=model,
         optimizer=optimizer,
@@ -3919,6 +4698,7 @@ def supervised_rehearsal_step(
         "batch_size": int(batch_size),
         "train_metrics": train_metrics.__dict__,
         "validation_metrics": val_metrics.__dict__,
+        "expanded_head_training": expanded_training_contract,
         "rehearsal": rehearsal_record,
         "output_archetype_id": str(payload.get("archetype_id") or ""),
         "output_model_id": str(payload.get("model_id") or ""),
@@ -4468,6 +5248,34 @@ def rl_train_step(
                 group["lr"] = float(cfg.lr)
                 group["weight_decay"] = float(cfg.weight_decay)
 
+    parent_payload = (
+        learner_ckpt
+        if learner_ckpt is not None
+        else checkpoint.load_checkpoint(base_ckpt, map_location="cpu")
+    )
+    parent_expanded_contract = dict(
+        (parent_payload.get("extra") or {}).get("expanded_head_training") or {}
+    )
+    requested_expanded_weights = canonical_expanded_loss_weights(
+        cfg.expanded_head_loss_weights
+    )
+    if bool(getattr(model, "expanded_heads_enabled", False)):
+        if not parent_expanded_contract:
+            raise ValueError(
+                "expanded-head checkpoint lacks tensor-bound training metadata"
+            )
+        inherited_expanded_weights = canonical_expanded_loss_weights(
+            dict(parent_expanded_contract.get("loss_weights") or {})
+        )
+        if not any(requested_expanded_weights.values()):
+            cfg.expanded_head_loss_weights = inherited_expanded_weights
+        elif requested_expanded_weights != inherited_expanded_weights:
+            raise ValueError(
+                "RL expanded-head weights drift from the parent checkpoint"
+            )
+    elif any(requested_expanded_weights.values()):
+        raise ValueError("V5 RL checkpoint cannot receive expanded-head losses")
+
     # Keep only decision-bearing games, then reuse bootstrap's val split / ES.
     usable_sequences = [s for s in dataset.sequences if s.decisions]
     if model.decision_context == "history":
@@ -4695,6 +5503,7 @@ def rl_train_step(
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
                         alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        expanded_head_weights=cfg.expanded_head_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
                         awr_weight_max=float(cfg.awr_weight_max),
@@ -5014,6 +5823,125 @@ def rl_train_step(
     rl_metrics["awr_weight_quantiles_exact"] = bool(
         cfg.capture_awr_weight_distribution
     )
+    rl_expanded_contract: dict[str, Any] = {}
+    if bool(getattr(model, "expanded_heads_enabled", False)):
+        train_expanded = dict(last.expanded_head_metrics or {})
+        validation_expanded = dict(
+            validation_metrics.expanded_head_metrics or {}
+        )
+        train_labeled = dict(train_expanded.get("labeled") or {})
+        validation_labeled = dict(validation_expanded.get("labeled") or {})
+        train_masked = dict(train_expanded.get("masked") or {})
+        validation_masked = dict(validation_expanded.get("masked") or {})
+        train_total = dict(train_expanded.get("total") or {})
+        validation_total = dict(validation_expanded.get("total") or {})
+        train_losses = dict(train_expanded.get("losses") or {})
+        validation_losses = dict(validation_expanded.get("losses") or {})
+        gradient_enabled = [
+            name
+            for name in EXPANDED_HEAD_IDS
+            if float(cfg.expanded_head_loss_weights.get(name, 0.0)) > 0.0
+        ]
+        prior_trained = {
+            str(name)
+            for name in parent_expanded_contract.get("trained_heads") or ()
+        }
+        trained_this_iteration = [
+            name
+            for name in gradient_enabled
+            if int(train_labeled.get(name, 0)) > 0
+            and int(validation_labeled.get(name, 0)) > 0
+        ]
+        trained = [
+            name
+            for name in EXPANDED_HEAD_IDS
+            if name in prior_trained or name in trained_this_iteration
+        ]
+        remaining_warm = tuple(
+            module
+            for module in (
+                getattr(model, "warm_started_expanded_heads", ()) or ()
+            )
+            if module.removesuffix("_head") not in trained
+        )
+        model.warm_started_expanded_heads = remaining_warm
+        heads: dict[str, dict[str, Any]] = {}
+        coverage: dict[str, dict[str, Any]] = {}
+        for name in EXPANDED_HEAD_IDS:
+            labeled_rows = int(train_labeled.get(name, 0)) + int(
+                validation_labeled.get(name, 0)
+            )
+            masked_rows = int(train_masked.get(name, 0)) + int(
+                validation_masked.get(name, 0)
+            )
+            total_rows = int(train_total.get(name, 0)) + int(
+                validation_total.get(name, 0)
+            )
+            coverage[name] = {
+                "labeled_rows": labeled_rows,
+                "masked_rows": masked_rows,
+                "total_rows": total_rows,
+                "coverage": (
+                    float(labeled_rows) / total_rows
+                    if total_rows > 0
+                    else 0.0
+                ),
+            }
+            heads[name] = {
+                "present": True,
+                "trained": name in trained,
+                "trained_this_iteration": name in trained_this_iteration,
+                "gradient_enabled": name in gradient_enabled,
+                "runtime_enabled": False,
+                "loss_weight": float(
+                    cfg.expanded_head_loss_weights.get(name, 0.0)
+                ),
+                "train_loss": train_losses.get(name),
+                "validation_loss": validation_losses.get(name),
+                "train_labeled_rows": int(train_labeled.get(name, 0)),
+                "validation_labeled_rows": int(
+                    validation_labeled.get(name, 0)
+                ),
+                **coverage[name],
+            }
+        fused_action_path = bool(
+            getattr(model, "decision_fusion_enabled", False)
+            and getattr(model, "decision_fusion_runtime_enabled", False)
+        )
+        rl_expanded_contract = {
+            **parent_expanded_contract,
+            "schema": "poke_bot.expanded_head_training/v1",
+            "stage": "rl",
+            "epoch": int(base_rl_iteration + 1),
+            "architecture_present_heads": list(EXPANDED_HEAD_IDS),
+            "trained_heads": trained,
+            "trained_this_iteration": trained_this_iteration,
+            "gradient_enabled_heads": gradient_enabled,
+            "runtime_enabled_heads": [],
+            "loss_weights": dict(cfg.expanded_head_loss_weights),
+            "train_metrics": {
+                name: {"loss": train_losses.get(name)}
+                for name in EXPANDED_HEAD_IDS
+            },
+            "validation_metrics": {
+                name: {"loss": validation_losses.get(name)}
+                for name in EXPANDED_HEAD_IDS
+            },
+            "coverage": coverage,
+            "heads": heads,
+            "calibration": {
+                "train": dict(train_expanded.get("calibration") or {}),
+                "validation": dict(
+                    validation_expanded.get("calibration") or {}
+                ),
+            },
+            "warm_started_heads_remaining": list(remaining_warm),
+            "shadow_only": not fused_action_path,
+            "flat_policy_authoritative": not fused_action_path,
+            "authoritative_action_path": (
+                "fused_policy" if fused_action_path else "flat_policy"
+            ),
+        }
 
     delta_sq = 0.0
     base_sq = 0.0
@@ -5097,6 +6025,11 @@ def rl_train_step(
             "dormant_matchup_adapter_fit": dormant_adapter_fit,
             "dormant_matchup_adapter_optimizer_state": (
                 dormant_adapter_optimizer_state
+            ),
+            **(
+                {"expanded_head_training": rl_expanded_contract}
+                if rl_expanded_contract
+                else {}
             ),
         },
     )
@@ -5190,6 +6123,13 @@ def load_model_from_checkpoint(
         # an ambient environment default turn a bankless checkpoint on.
         snap = dict(snap)
         snap.setdefault("matchup_adapters_enabled", False)
+        # Expanded strategic heads are an explicit V6 migration.  An ambient
+        # environment variable must never materialize them while loading an
+        # immutable V5 checkpoint.
+        snap.setdefault("expanded_heads_enabled", False)
+        snap.setdefault("decision_fusion_enabled", False)
+        snap.setdefault("decision_fusion_runtime_enabled", False)
+        snap.setdefault("decision_fusion_width", 16)
         known = set(config.ModelConfig.__dataclass_fields__)  # type: ignore[attr-defined]
         unknown = sorted(set(snap) - known)
         if unknown:
@@ -5254,8 +6194,104 @@ def load_model_from_checkpoint(
             f"checkpoint architecture/state incompatibility for {path}: "
             f"unexpected keys {unexpected}"
         )
+    extra = dict(ckpt.get("extra") or {})
+    expanded_migration = dict(extra.get("expanded_head_migration") or {})
+    explicit_expanded_migration = bool(
+        getattr(cfg, "expanded_heads_enabled", False)
+        and expanded_migration.get("schema")
+        == "poke_bot.expanded_head_migration/v1"
+        and expanded_migration.get("target_architecture_schema")
+        == EXPANDED_HEAD_SCHEMA
+        and expanded_migration.get("target_schema")
+        == EXPANDED_STRATEGIC_SCHEMA
+        and expanded_migration.get("target_schema_digest")
+        == TARGET_SCHEMA_DIGEST
+        and expanded_migration.get("schedule_schema")
+        == EXPANDED_SCHEDULE_SCHEMA
+        and str(expanded_migration.get("schedule_digest") or "").startswith(
+            "sha256:"
+        )
+        and len(str(expanded_migration.get("schedule_digest") or "")) == 71
+        and expanded_migration.get("runtime_enabled_heads") == []
+    )
+    expanded_missing = [
+        key for key in missing if is_allowed_missing_expanded_head_key(key)
+    ]
+    if expanded_missing and not explicit_expanded_migration:
+        raise RuntimeError(
+            f"checkpoint architecture/state incompatibility for {path}: "
+            "expanded strategic tensors are missing without an explicit "
+            "V6 migration contract"
+        )
+    if expanded_missing:
+        expected_by_head: dict[str, set[str]] = {
+            name: {
+                key
+                for key in model.state_dict()
+                if key.startswith(f"{name}.")
+            }
+            for name in EXPANDED_HEAD_NAMES
+        }
+        missing_set = set(expanded_missing)
+        partial = {
+            name: sorted(keys & missing_set)
+            for name, keys in expected_by_head.items()
+            if keys & missing_set and not keys <= missing_set
+        }
+        if partial:
+            raise RuntimeError(
+                f"checkpoint {path} has partially missing expanded head tensors: "
+                f"{partial}"
+            )
+    fusion_migration = dict(extra.get("decision_fusion_migration") or {})
+    explicit_fusion_migration = bool(
+        getattr(cfg, "decision_fusion_enabled", False)
+        and fusion_migration.get("schema")
+        == "poke_bot.causal_decision_fusion_migration/v1"
+        and fusion_migration.get("target_schema") == DECISION_FUSION_SCHEMA
+        and fusion_migration.get("zero_safe_initialization") is True
+        and (
+            fusion_migration.get("runtime_enabled") is False
+            or (
+                fusion_migration.get("runtime_enabled") is True
+                and fusion_migration.get("activation_scope")
+                == "isolated_specialist_bootstrap"
+                and fusion_migration.get("serving_eligible") is False
+            )
+        )
+    )
+    fusion_missing = [
+        key for key in missing if is_allowed_missing_decision_fusion_key(key)
+    ]
+    if fusion_missing and not explicit_fusion_migration:
+        raise RuntimeError(
+            f"checkpoint architecture/state incompatibility for {path}: "
+            "decision-fusion tensors are missing without an explicit "
+            "zero-safe migration contract"
+        )
+    if fusion_missing:
+        expected_fusion = {
+            key
+            for key in model.state_dict()
+            if is_allowed_missing_decision_fusion_key(key)
+        }
+        if set(fusion_missing) != expected_fusion:
+            raise RuntimeError(
+                f"checkpoint {path} has partially missing decision-fusion "
+                f"tensors: {sorted(set(fusion_missing) ^ expected_fusion)}"
+            )
     disallowed_missing = [
-        key for key in missing if not is_allowed_missing_belief_head_key(key)
+        key
+        for key in missing
+        if not is_allowed_missing_belief_head_key(key)
+        and not (
+            explicit_expanded_migration
+            and is_allowed_missing_expanded_head_key(key)
+        )
+        and not (
+            explicit_fusion_migration
+            and is_allowed_missing_decision_fusion_key(key)
+        )
     ]
     if disallowed_missing:
         raise RuntimeError(
@@ -5264,7 +6300,9 @@ def load_model_from_checkpoint(
         )
     warm = belief_head_names_from_state_keys(missing)
     model.warm_started_belief_heads = warm
-    extra = dict(ckpt.get("extra") or {})
+    expanded_warm = expanded_head_names_from_state_keys(missing)
+    model.warm_started_expanded_heads = expanded_warm
+    model.warm_started_decision_fusion = bool(fusion_missing)
     dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
     has_adapter_state = any(
         name.startswith("matchup_adapter_bank.") for name in state
@@ -5317,9 +6355,14 @@ def load_model_from_checkpoint(
                 activation_parent_match=(source_path == activation.parent_checkpoint),
             )
         model.matchup_adapter_bank.dormant_provenance = dormant_provenance
-    if warm:
+    if warm or expanded_warm or fusion_missing:
         extra["warm_start"] = True
-        extra["warm_started_belief_heads"] = list(warm)
+        if warm:
+            extra["warm_started_belief_heads"] = list(warm)
+        if expanded_warm:
+            extra["warm_started_expanded_heads"] = list(expanded_warm)
+        if fusion_missing:
+            extra["warm_started_decision_fusion"] = True
         extra["aux_heads_present"] = list(model.aux_heads_present)
         ckpt["extra"] = extra
     model.eval()

@@ -1,0 +1,12 @@
+[Unit]
+Description=Activate cumulative H2H-safe learner at Alakazam iteration-5 boundary
+After=pokebot-pure-rl-alakazam.service
+Wants=pokebot-pure-rl-alakazam.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v12
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/apply_learner_retention_at_boundary.py --loop-state /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721/loop_state.json --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721 --target-next-iteration 6 --unit pokebot-pure-rl-alakazam.service --staged-root /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v12 --dropin /home/inzi/.config/systemd/user/pokebot-pure-rl-alakazam.service.d/90-source-v12-retention.conf --migration-reason continuous-learner-and-all-head-rehearsal-v12 --source-sha256 5f87a37f4c54f901501552ce6c13156fa60cc014c8b25a0bd6bf4db25cc3b0b9 --status /home/inzi/poke-bot-agent/outputs/state/learner-retention-v12-boundary.json --poll-seconds 0.20
+TimeoutStartSec=infinity
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/learner-retention-v12-boundary.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/learner-retention-v12-boundary.log

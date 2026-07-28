@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import yaml
 from torch import nn
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,21 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from poke_bot import archetypes, checkpoint, device as device_mod
+from poke_bot.model import (
+    DECISION_FUSION_REQUIRED_HEADS,
+    DECISION_FUSION_SCHEMA,
+)
+from poke_bot.strategic_heads import (
+    EXPANDED_STRATEGIC_SCHEMA,
+    EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+)
+from poke_bot.strategic_schedule import (
+    EXPANDED_HEAD_IDS,
+    EXPANDED_SCHEDULE_SCHEMA,
+    expanded_head_epoch_plan,
+    expanded_schedule_digest,
+    validated_expanded_head_schedule,
+)
 from poke_bot.pure_rl.expert_rehearsal import (
     ResidentExpertCorpusCache,
     resolve_expert_manifest,
@@ -47,6 +63,441 @@ TARGETS = (
 SPECIALIST_AUX_EXPANSION_SCHEMA = (
     "poke_bot.specialist_aux_archetype_head_expansion/v1"
 )
+EXPANDED_HEAD_MIGRATION_SCHEMA = "poke_bot.expanded_head_migration/v1"
+EXPANDED_HEAD_TRAINING_SCHEMA = "poke_bot.expanded_head_training/v1"
+DEFAULT_RL_PROTOCOL = ROOT / "config/rl_protocol.yaml"
+
+
+def canonical_json_digest(value: Any) -> str:
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _tensor_bytes_equal(first: torch.Tensor, second: torch.Tensor) -> bool:
+    """Compare serialized tensor payload bytes, including identical NaN bits."""
+
+    if first.shape != second.shape or first.dtype != second.dtype:
+        return False
+    left = first.detach().cpu().contiguous().reshape(-1).view(torch.uint8)
+    right = second.detach().cpu().contiguous().reshape(-1).view(torch.uint8)
+    return torch.equal(left, right)
+
+
+def load_expanded_head_contract(
+    protocol_path: Path = DEFAULT_RL_PROTOCOL,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load and validate the one canonical V6 head/schedule contract."""
+
+    protocol_path = Path(protocol_path).expanduser().resolve()
+    payload = yaml.safe_load(protocol_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("RL protocol must be a YAML object")
+    raw = (
+        (payload.get("specialist_training") or {}).get(
+            "expanded_strategic_heads"
+        )
+    )
+    if not isinstance(raw, dict):
+        raise RuntimeError("canonical expanded strategic-head contract is absent")
+    schedule = validated_expanded_head_schedule(raw)
+    return dict(raw), {
+        "canonical_config": str(protocol_path),
+        "canonical_config_sha256": checkpoint.checkpoint_digest(protocol_path),
+        "source_digest": canonical_json_digest(raw),
+        "architecture_schema": str(raw["schema"]),
+        "target_schema": str(raw["target_schema"]),
+        "target_schema_digest": EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+        "checkpoint_contract_schema": str(raw["checkpoint_contract_schema"]),
+        "schedule_schema": EXPANDED_SCHEDULE_SCHEMA,
+        "schedule_digest": expanded_schedule_digest(raw),
+        "schedule": schedule,
+    }
+
+
+def expanded_handoff_training_contract(
+    protocol_path: Path = DEFAULT_RL_PROTOCOL,
+) -> dict[str, Any]:
+    """Return the immutable projection carried by generated handoffs."""
+
+    _raw, identity = load_expanded_head_contract(protocol_path)
+    schedule = dict(identity["schedule"])
+    return {
+        "schema": EXPANDED_HEAD_TRAINING_SCHEMA,
+        "architecture_schema": identity["architecture_schema"],
+        "target_schema": identity["target_schema"],
+        "target_schema_digest": identity["target_schema_digest"],
+        "canonical_config": (
+            "config/rl_protocol.yaml#/"
+            "specialist_training/expanded_strategic_heads"
+        ),
+        "canonical_config_sha256": identity["canonical_config_sha256"],
+        "source_digest": identity["source_digest"],
+        "schedule_schema": identity["schedule_schema"],
+        "schedule_digest": identity["schedule_digest"],
+        "schedule": schedule,
+        "activation_boundary": (
+            "next_safe_v6_cumulative_core_and_specialist_handoff"
+        ),
+        "current_live_v5_must_remain_unchanged": True,
+        "initial_runtime_mode": "shadow_only",
+        "runtime_enabled_heads": [],
+        "flat_policy_remains_authoritative": True,
+        "exact_bootstrap_epochs": int(schedule["total_epochs"]),
+        "schedule_is_cumulative": True,
+        "checkpoint_and_receipt_metadata_required": True,
+    }
+
+
+def decision_fusion_handoff_contract(
+    protocol_path: Path = DEFAULT_RL_PROTOCOL,
+) -> dict[str, Any]:
+    """Project the canonical all-head action contract into each handoff."""
+
+    protocol_path = Path(protocol_path).expanduser().resolve()
+    payload = yaml.safe_load(protocol_path.read_text(encoding="utf-8"))
+    raw = (
+        (payload.get("specialist_training") or {}).get("decision_fusion")
+        if isinstance(payload, dict)
+        else None
+    )
+    if not isinstance(raw, dict):
+        raise RuntimeError("canonical causal decision-fusion contract is absent")
+    required = tuple(str(value) for value in raw.get("required_causal_head_inputs") or ())
+    if (
+        raw.get("schema") != DECISION_FUSION_SCHEMA
+        or raw.get("required") is not True
+        or required != DECISION_FUSION_REQUIRED_HEADS
+        or raw.get("applies_to_every_successor_specialist") is not True
+    ):
+        raise RuntimeError("canonical causal decision-fusion contract changed")
+    return {
+        "schema": DECISION_FUSION_SCHEMA,
+        "canonical_config": (
+            "config/rl_protocol.yaml#/specialist_training/decision_fusion"
+        ),
+        "canonical_config_sha256": checkpoint.checkpoint_digest(protocol_path),
+        "source_digest": canonical_json_digest(raw),
+        "required_heads": list(required),
+        "head_count": len(required),
+        "training_mode": "joint_full_model",
+        "runtime_required_after_bootstrap_validation": True,
+        "matchup_adapter_behavior": "causal_route_gated",
+        "absent_deck_guide_behavior": "exact_bypass",
+        "future_specialists_required": True,
+    }
+
+
+def current_deck_guide_handoff_contract(
+    *,
+    specialist_id: str,
+    contract_path: Path,
+    expected_contract_sha256: str,
+    guide_version: str,
+    corpus_ready_receipt: Path,
+    expected_corpus_ready_sha256: str,
+    protocol_path: Path = DEFAULT_RL_PROTOCOL,
+) -> dict[str, Any]:
+    """Validate and project one successor's checksum-bound guide schedule."""
+
+    specialist_id = str(specialist_id).strip().casefold()
+    contract_path = Path(contract_path).expanduser().resolve()
+    corpus_ready_receipt = Path(corpus_ready_receipt).expanduser().resolve()
+    protocol_path = Path(protocol_path).expanduser().resolve()
+    if not contract_path.is_file() or not corpus_ready_receipt.is_file():
+        raise RuntimeError("current-deck guide artifacts are absent")
+    contract_digest = checkpoint.checkpoint_digest(contract_path)
+    ready_digest = checkpoint.checkpoint_digest(corpus_ready_receipt)
+    if (
+        contract_digest != str(expected_contract_sha256)
+        or ready_digest != str(expected_corpus_ready_sha256)
+    ):
+        raise RuntimeError("current-deck guide checksum changed")
+    guide = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    ready = json.loads(corpus_ready_receipt.read_text(encoding="utf-8"))
+    protocol = yaml.safe_load(protocol_path.read_text(encoding="utf-8"))
+    canonical = (
+        (protocol.get("specialist_training") or {}).get("current_deck_guide")
+        if isinstance(protocol, dict)
+        else None
+    )
+    bootstrap = dict((canonical or {}).get("bootstrap") or {})
+    if (
+        not isinstance(guide, dict)
+        or not isinstance(canonical, dict)
+        or guide.get("schema_version") != "poke_bot.current_deck_guide/v1"
+        or guide.get("specialist_id") != specialist_id
+        or guide.get("guide_version") != str(guide_version)
+        or canonical.get("required_for_every_new_specialist") is not True
+        or canonical.get("separate_parameterized_action_head") is not False
+        or canonical.get("runtime_action_override_allowed") is not False
+        or bootstrap.get("ramp_epochs") != [1, 5]
+        or float(bootstrap.get("ramp_start_weight", -1.0)) != 0.01
+        or float(bootstrap.get("ramp_end_weight", -1.0)) != 0.05
+        or int(bootstrap.get("hold_through_epoch", -1)) != 25
+        or float(canonical.get("maximum_loss_weight", -1.0)) != 0.05
+        or ready.get("schema")
+        != "poke_bot.current_deck_guide_corpus_ready/v1"
+        or ready.get("status") != "ready"
+        or ready.get("specialist_id") != specialist_id
+        or ready.get("guide_version") != str(guide_version)
+        or int(ready.get("guide_rows") or 0) <= 0
+    ):
+        raise RuntimeError("current-deck guide handoff contract changed")
+    return {
+        "schema": "poke_bot.current_deck_guide_handoff/v1",
+        "specialist_id": specialist_id,
+        "guide_version": str(guide_version),
+        "contract": str(contract_path),
+        "contract_sha256": contract_digest,
+        "corpus_ready_receipt": str(corpus_ready_receipt),
+        "corpus_ready_receipt_sha256": ready_digest,
+        "policy_target": "shared_flat_policy",
+        "runtime_action_override": False,
+        "bootstrap_schedule": {
+            "ramp_epochs": [1, 5],
+            "ramp_start_weight": 0.01,
+            "ramp_end_weight": 0.05,
+            "hold_through_epoch": 25,
+            "maximum_loss_weight": 0.05,
+        },
+        "runtime_initial_weight": float(canonical["initial_loss_weight"]),
+        "adaptive_annealing_after_bootstrap": bool(
+            (canonical.get("adaptive_annealing") or {}).get(
+                "enabled_after_bootstrap"
+            )
+        ),
+    }
+
+
+def current_deck_guide_epoch_weight(
+    contract: dict[str, Any],
+    epoch: int,
+) -> float:
+    """Return the exact canonical bootstrap weight for one epoch."""
+
+    schedule = dict(contract.get("bootstrap_schedule") or {})
+    start_epoch, end_epoch = [
+        int(value) for value in schedule.get("ramp_epochs") or ()
+    ]
+    start_weight = float(schedule["ramp_start_weight"])
+    end_weight = float(schedule["ramp_end_weight"])
+    hold_through = int(schedule["hold_through_epoch"])
+    epoch = int(epoch)
+    if not 1 <= epoch <= hold_through:
+        raise ValueError("current-deck guide epoch is outside bootstrap")
+    if epoch >= end_epoch:
+        return end_weight
+    fraction = float(epoch - start_epoch) / float(end_epoch - start_epoch)
+    return start_weight + fraction * (end_weight - start_weight)
+
+
+def validate_expanded_handoff_training_contract(
+    value: Any,
+    *,
+    protocol_path: Path = DEFAULT_RL_PROTOCOL,
+) -> dict[str, Any]:
+    """Fail closed when a generated handoff drifts from canonical V6."""
+
+    if not isinstance(value, dict):
+        raise RuntimeError("expanded-head handoff contract is absent")
+    expected = expanded_handoff_training_contract(protocol_path)
+    for key in (
+        "schema",
+        "architecture_schema",
+        "target_schema",
+        "target_schema_digest",
+        "source_digest",
+        "schedule_schema",
+        "schedule_digest",
+        "schedule",
+        "activation_boundary",
+        "current_live_v5_must_remain_unchanged",
+        "initial_runtime_mode",
+        "runtime_enabled_heads",
+        "flat_policy_remains_authoritative",
+        "exact_bootstrap_epochs",
+        "schedule_is_cumulative",
+        "checkpoint_and_receipt_metadata_required",
+    ):
+        if value.get(key) != expected[key]:
+            raise RuntimeError(
+                f"expanded-head handoff contract changed at {key}"
+            )
+    return expected
+
+
+def _manifest_expanded_targets(
+    manifest_path: Path,
+    *,
+    decisions: int,
+) -> dict[str, Any]:
+    """Validate manifest-level target identity and per-head mask coverage."""
+
+    payload = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    raw = payload.get("expanded_strategic_targets")
+    if not isinstance(raw, dict):
+        raise RuntimeError(
+            "expert corpus lacks expanded_strategic_targets metadata"
+        )
+    coverage = raw.get("head_coverage")
+    if (
+        raw.get("schema") != EXPANDED_STRATEGIC_SCHEMA
+        or raw.get("digest") != EXPANDED_STRATEGIC_SCHEMA_DIGEST
+        or int(raw.get("decisions", -1)) != int(decisions)
+        or not isinstance(coverage, dict)
+        or set(coverage) != set(EXPANDED_HEAD_IDS)
+    ):
+        raise RuntimeError("expert corpus expanded target identity changed")
+    normalized: dict[str, dict[str, int]] = {}
+    zero_labeled: list[str] = []
+    for head_id in EXPANDED_HEAD_IDS:
+        row = coverage.get(head_id)
+        if not isinstance(row, dict):
+            raise RuntimeError(
+                f"expert corpus expanded target coverage is invalid: {head_id}"
+            )
+        try:
+            labeled = int(row["labeled_rows"])
+            masked = int(row["masked_rows"])
+            total = int(row["total_rows"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"expert corpus expanded target coverage is invalid: {head_id}"
+            ) from exc
+        if (
+            labeled < 0
+            or masked < 0
+            or total != int(decisions)
+            or labeled + masked != total
+        ):
+            raise RuntimeError(
+                f"expert corpus expanded target coverage is invalid: {head_id}"
+            )
+        if labeled == 0:
+            zero_labeled.append(head_id)
+        normalized[head_id] = {
+            "labeled_rows": labeled,
+            "masked_rows": masked,
+            "total_rows": total,
+        }
+    if zero_labeled:
+        raise RuntimeError(
+            "expert corpus has zero labeled rows for scheduled expanded heads: "
+            + ", ".join(zero_labeled)
+        )
+    return {
+        "schema": EXPANDED_STRATEGIC_SCHEMA,
+        "digest": EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+        "decisions": int(decisions),
+        "head_coverage": normalized,
+    }
+
+
+def _validate_metric_split(
+    value: Any,
+    *,
+    enabled_heads: tuple[str, ...],
+    split: str,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise RuntimeError(f"expanded {split} metrics are absent")
+    metrics = value.get("expanded_head_metrics")
+    if not isinstance(metrics, dict):
+        raise RuntimeError(f"expanded {split} metrics are absent")
+    labeled = metrics.get("labeled")
+    total = metrics.get("total")
+    losses = metrics.get("losses")
+    if not all(isinstance(row, dict) for row in (labeled, total, losses)):
+        raise RuntimeError(f"expanded {split} metrics are malformed")
+    for head_id in enabled_heads:
+        try:
+            labeled_rows = int(labeled[head_id])
+            total_rows = int(total[head_id])
+            loss = float(losses[head_id])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"expanded {split} metrics are missing {head_id}"
+            ) from exc
+        if (
+            labeled_rows <= 0
+            or total_rows < labeled_rows
+            or not math.isfinite(loss)
+        ):
+            raise RuntimeError(
+                f"expanded {split} has no valid labeled rows for {head_id}"
+            )
+    return dict(metrics)
+
+
+def validate_expanded_epoch_checkpoint(
+    checkpoint_path: Path,
+    *,
+    plan: Any,
+    identity: dict[str, Any],
+    train_metrics: Any,
+    validation_metrics: Any,
+) -> dict[str, Any]:
+    """Verify one epoch trained exactly the cumulative scheduled head set."""
+
+    _validate_metric_split(
+        train_metrics,
+        enabled_heads=plan.enabled_heads,
+        split="train",
+    )
+    _validate_metric_split(
+        validation_metrics,
+        enabled_heads=plan.enabled_heads,
+        split="validation",
+    )
+    payload = checkpoint.load_checkpoint(checkpoint_path, map_location="cpu")
+    extra = dict(payload.get("extra") or {})
+    contract = extra.get("expanded_head_training")
+    if not isinstance(contract, dict):
+        raise RuntimeError(
+            "expanded-head checkpoint lacks extra.expanded_head_training"
+        )
+    declared = {
+        str(value)
+        for value in contract.get("architecture_present_heads") or ()
+    }
+    trained = {
+        str(value) for value in contract.get("trained_heads") or ()
+    }
+    gradient = {
+        str(value)
+        for value in contract.get("gradient_enabled_heads") or ()
+    }
+    weights = {
+        str(name): float(weight)
+        for name, weight in dict(contract.get("loss_weights") or {}).items()
+    }
+    target_schema = contract.get(
+        "target_schema", contract.get("target_schema_version")
+    )
+    schedule_schema = contract.get(
+        "schedule_schema", contract.get("schedule_version")
+    )
+    if (
+        contract.get("schema") != EXPANDED_HEAD_TRAINING_SCHEMA
+        or target_schema != identity["target_schema"]
+        or contract.get("target_schema_digest")
+        != identity["target_schema_digest"]
+        or schedule_schema != identity["schedule_schema"]
+        or contract.get("schedule_digest") != identity["schedule_digest"]
+        or int(contract.get("epoch", -1)) != int(plan.epoch)
+        or int(contract.get("epochs_total", -1)) != 25
+        or declared != set(EXPANDED_HEAD_IDS)
+        or trained != set(plan.enabled_heads)
+        or gradient != set(plan.enabled_heads)
+        or contract.get("runtime_enabled_heads") != []
+        or weights != dict(plan.loss_weights)
+    ):
+        raise RuntimeError(
+            f"expanded-head epoch {plan.epoch} checkpoint contract changed"
+        )
+    return dict(contract)
 
 
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -65,11 +516,24 @@ def _specialist_hot_start_from_core(
     *,
     run_dir: Path,
     archetype: str,
+    enable_expanded_heads: bool = False,
+    expanded_identity: dict[str, Any] | None = None,
+    enable_decision_fusion: bool = False,
 ) -> tuple[Path, str, dict[str, Any]]:
-    """Append registered archetype rows without changing the frozen core."""
+    """Build an append-only specialist hot start without rewriting the core.
 
+    V6 is explicit. Its checkpoint advertises the new architecture while
+    intentionally omitting new-head tensors; the audited loader then creates
+    only those missing tensors under its fixed isolated RNG seed. Every source
+    tensor remains byte-identical (or, for an older archetype classifier, its
+    named rows are copied byte-identically into the append-expanded tensor).
+    """
+
+    if enable_decision_fusion and not enable_expanded_heads:
+        raise ValueError("decision fusion requires expanded strategic heads")
     payload = checkpoint.load_checkpoint(core_path, map_location="cpu")
-    state = dict(payload.get("model_state_dict") or {})
+    source_state = dict(payload.get("model_state_dict") or {})
+    state = dict(source_state)
     weight_key = "aux_head.3.weight"
     bias_key = "aux_head.3.bias"
     old_weight = state.get(weight_key)
@@ -84,82 +548,238 @@ def _specialist_hot_start_from_core(
     old_classes = int(old_weight.shape[0])
     parent_digest = checkpoint.checkpoint_digest(core_path)
     if old_classes == target_classes:
-        return (
-            core_path,
-            parent_digest,
-            {
-                "schema": SPECIALIST_AUX_EXPANSION_SCHEMA,
-                "status": "already_current",
-                "parent_checkpoint": str(core_path),
-                "parent_checkpoint_digest": parent_digest,
-                "target_archetype_ids": target_ids,
-                "classes": target_classes,
-            },
+        old_ids = list(target_ids)
+        expansion = {
+            "schema": SPECIALIST_AUX_EXPANSION_SCHEMA,
+            "status": "already_current",
+            "parent_checkpoint": str(core_path),
+            "parent_checkpoint_digest": parent_digest,
+            "source_archetype_ids": old_ids,
+            "target_archetype_ids": target_ids,
+            "source_classes": old_classes,
+            "target_classes": target_classes,
+            "copied_named_rows": old_ids,
+            "newly_initialized_rows": [],
+            "unknown_row_moved_to_final": False,
+            "optimizer_state_imported": False,
+        }
+        if not enable_expanded_heads:
+            return (
+                core_path,
+                parent_digest,
+                {
+                    **expansion,
+                    "checkpoint_digest": parent_digest,
+                    "expanded_head_migration": None,
+                },
+            )
+    else:
+        compatible_orders = (
+            archetypes.CUMULATIVE_V4_AUX_ARCHETYPE_IDS,
+            archetypes.PINNED_CORE_AUX_ARCHETYPE_IDS,
+            archetypes.LEGACY_AUX_ARCHETYPE_IDS,
         )
-
-    compatible_orders = (
-        archetypes.CUMULATIVE_V4_AUX_ARCHETYPE_IDS,
-        archetypes.PINNED_CORE_AUX_ARCHETYPE_IDS,
-        archetypes.LEGACY_AUX_ARCHETYPE_IDS,
-    )
-    old_ids = next(
-        (
-            list(order)
-            for order in compatible_orders
-            if old_classes == len(order) + 1
-        ),
-        None,
-    )
-    if old_ids is None:
-        raise RuntimeError(
-            "shared core archetype head cannot be append-expanded safely: "
-            f"classes={old_classes}"
+        old_ids = next(
+            (
+                list(order)
+                for order in compatible_orders
+                if old_classes == len(order) + 1
+            ),
+            None,
         )
-    if any(name not in target_ids for name in old_ids):
-        raise RuntimeError("shared core archetype order is not append-compatible")
+        if old_ids is None:
+            raise RuntimeError(
+                "shared core archetype head cannot be append-expanded safely: "
+                f"classes={old_classes}"
+            )
+        if any(name not in target_ids for name in old_ids):
+            raise RuntimeError(
+                "shared core archetype order is not append-compatible"
+            )
 
-    seed_material = (
-        f"{parent_digest}|{archetype}|{SPECIALIST_AUX_EXPANSION_SCHEMA}"
-    ).encode("utf-8")
-    expansion_seed = int.from_bytes(
-        hashlib.sha256(seed_material).digest()[:8], "big"
-    ) % (2**31)
-    with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(expansion_seed)
-        expanded = nn.Linear(
-            int(old_weight.shape[1]),
-            target_classes,
-            bias=True,
-            device="cpu",
-            dtype=old_weight.dtype,
+        seed_material = (
+            f"{parent_digest}|{archetype}|{SPECIALIST_AUX_EXPANSION_SCHEMA}"
+        ).encode("utf-8")
+        expansion_seed = int.from_bytes(
+            hashlib.sha256(seed_material).digest()[:8], "big"
+        ) % (2**31)
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(expansion_seed)
+            expanded = nn.Linear(
+                int(old_weight.shape[1]),
+                target_classes,
+                bias=True,
+                device="cpu",
+                dtype=old_weight.dtype,
+            )
+        with torch.no_grad():
+            for old_index, name in enumerate(old_ids):
+                new_index = target_ids.index(name)
+                expanded.weight[new_index].copy_(old_weight[old_index])
+                expanded.bias[new_index].copy_(old_bias[old_index])
+            expanded.weight[-1].copy_(old_weight[-1])
+            expanded.bias[-1].copy_(old_bias[-1])
+
+        expansion = {
+            "schema": SPECIALIST_AUX_EXPANSION_SCHEMA,
+            "status": "expanded_append_only",
+            "parent_checkpoint": str(core_path),
+            "parent_checkpoint_digest": parent_digest,
+            "source_archetype_ids": old_ids,
+            "target_archetype_ids": target_ids,
+            "source_classes": old_classes,
+            "target_classes": target_classes,
+            "copied_named_rows": old_ids,
+            "newly_initialized_rows": [
+                name for name in target_ids if name not in old_ids
+            ],
+            "unknown_row_moved_to_final": True,
+            "expansion_seed": expansion_seed,
+            "optimizer_state_imported": False,
+        }
+        state[weight_key] = expanded.weight.detach().clone()
+        state[bias_key] = expanded.bias.detach().clone()
+
+    unchanged = []
+    changed = []
+    for name, source_tensor in source_state.items():
+        target_tensor = state.get(name)
+        if not isinstance(source_tensor, torch.Tensor) or not isinstance(
+            target_tensor, torch.Tensor
+        ):
+            if source_tensor != target_tensor:
+                raise RuntimeError(f"hot-start non-tensor state changed: {name}")
+            unchanged.append(name)
+            continue
+        if (
+            _tensor_bytes_equal(source_tensor, target_tensor)
+        ):
+            unchanged.append(name)
+            continue
+        if name not in {weight_key, bias_key} or old_classes == target_classes:
+            raise RuntimeError(f"hot-start inherited V5 tensor changed: {name}")
+        changed.append(name)
+    if set(changed) not in (set(), {weight_key, bias_key}):
+        raise RuntimeError("archetype append migration changed an incomplete pair")
+
+    migration: dict[str, Any] | None = None
+    fusion_migration: dict[str, Any] | None = None
+    inherited_extra = dict(payload.get("extra") or {})
+    if enable_expanded_heads:
+        if expanded_identity is None:
+            _raw, expanded_identity = load_expanded_head_contract()
+        if (
+            expanded_identity.get("architecture_schema")
+            != "poke_bot.expanded_strategic_heads/v1"
+            or expanded_identity.get("target_schema")
+            != EXPANDED_STRATEGIC_SCHEMA
+            or expanded_identity.get("target_schema_digest")
+            != EXPANDED_STRATEGIC_SCHEMA_DIGEST
+            or expanded_identity.get("schedule_schema")
+            != EXPANDED_SCHEDULE_SCHEMA
+            or not str(expanded_identity.get("schedule_digest") or "").startswith(
+                "sha256:"
+            )
+        ):
+            raise RuntimeError("expanded-head migration identity is invalid")
+        model_config = dict(payload.get("model_config") or {})
+        source_expanded_enabled = bool(
+            model_config.get("expanded_heads_enabled", False)
         )
-    with torch.no_grad():
-        for old_index, name in enumerate(old_ids):
-            new_index = target_ids.index(name)
-            expanded.weight[new_index].copy_(old_weight[old_index])
-            expanded.bias[new_index].copy_(old_bias[old_index])
-        expanded.weight[-1].copy_(old_weight[-1])
-        expanded.bias[-1].copy_(old_bias[-1])
+        source_expanded_tensor_keys = sorted(
+            name
+            for name in source_state
+            if any(
+                name.startswith(f"{head_id}_head.")
+                for head_id in EXPANDED_HEAD_IDS
+            )
+        )
+        expected_expanded_tensor_keys = {
+            f"{head_id}_head.{suffix}"
+            for head_id in EXPANDED_HEAD_IDS
+            for suffix in ("weight", "bias")
+        }
+        if (
+            bool(source_expanded_tensor_keys) != source_expanded_enabled
+            or (
+                source_expanded_tensor_keys
+                and set(source_expanded_tensor_keys)
+                != expected_expanded_tensor_keys
+            )
+        ):
+            raise RuntimeError(
+                "shared core has a partial/inconsistent expanded-head architecture"
+            )
+        inherited_training = inherited_extra.pop(
+            "expanded_head_training", None
+        )
+        model_config["expanded_heads_enabled"] = True
+        payload["model_config"] = model_config
+        migration = {
+            "schema": EXPANDED_HEAD_MIGRATION_SCHEMA,
+            "status": "staged_shadow_only",
+            "target_architecture_schema": expanded_identity[
+                "architecture_schema"
+            ],
+            "target_schema": expanded_identity["target_schema"],
+            "target_schema_digest": expanded_identity[
+                "target_schema_digest"
+            ],
+            "runtime_enabled_heads": [],
+            "source_checkpoint": str(core_path),
+            "source_checkpoint_digest": parent_digest,
+            "source_digest": expanded_identity["source_digest"],
+            "schedule_schema": expanded_identity["schedule_schema"],
+            "schedule_digest": expanded_identity["schedule_digest"],
+            "inherited_v5_tensor_count": len(source_state),
+            "whole_tensor_byte_identical_count": len(unchanged),
+            "append_expanded_tensor_keys": sorted(changed),
+            "all_inherited_v5_values_preserved": True,
+            "source_expanded_heads_enabled": source_expanded_enabled,
+            "source_expanded_tensor_count": len(
+                source_expanded_tensor_keys
+            ),
+            "source_expanded_head_training_digest": (
+                canonical_json_digest(inherited_training)
+                if isinstance(inherited_training, dict)
+                else None
+            ),
+            "specialist_training_metadata_reset": True,
+            "new_head_tensors_materialized_by_audited_loader": (
+                not source_expanded_tensor_keys
+            ),
+        }
+    if enable_decision_fusion:
+        model_config = dict(payload.get("model_config") or {})
+        source_fusion_enabled = bool(
+            model_config.get("decision_fusion_enabled", False)
+        )
+        source_fusion_tensor_keys = sorted(
+            name
+            for name in source_state
+            if name.startswith("decision_fusion.")
+        )
+        if bool(source_fusion_tensor_keys) != source_fusion_enabled:
+            raise RuntimeError(
+                "shared core has a partial/inconsistent decision-fusion architecture"
+            )
+        model_config["decision_fusion_enabled"] = True
+        model_config["decision_fusion_runtime_enabled"] = True
+        model_config.setdefault("decision_fusion_width", 16)
+        payload["model_config"] = model_config
+        if not source_fusion_tensor_keys:
+            fusion_migration = {
+                "schema": "poke_bot.causal_decision_fusion_migration/v1",
+                "target_schema": "poke_bot.causal_decision_fusion/v1",
+                "source_checkpoint": str(core_path),
+                "source_checkpoint_digest": parent_digest,
+                "zero_safe_initialization": True,
+                "runtime_enabled": True,
+                "activation_scope": "isolated_specialist_bootstrap",
+                "serving_eligible": False,
+                "all_inherited_tensors_preserved": True,
+            }
 
-    expansion = {
-        "schema": SPECIALIST_AUX_EXPANSION_SCHEMA,
-        "status": "expanded_append_only",
-        "parent_checkpoint": str(core_path),
-        "parent_checkpoint_digest": parent_digest,
-        "source_archetype_ids": old_ids,
-        "target_archetype_ids": target_ids,
-        "source_classes": old_classes,
-        "target_classes": target_classes,
-        "copied_named_rows": old_ids,
-        "newly_initialized_rows": [
-            name for name in target_ids if name not in old_ids
-        ],
-        "unknown_row_moved_to_final": True,
-        "expansion_seed": expansion_seed,
-        "optimizer_state_imported": False,
-    }
-    state[weight_key] = expanded.weight.detach().clone()
-    state[bias_key] = expanded.bias.detach().clone()
     payload["model_state_dict"] = state
     payload["step"] = 0
     payload["epoch"] = 0
@@ -175,11 +795,30 @@ def _specialist_hot_start_from_core(
     ):
         payload.pop(key, None)
     payload["extra"] = {
-        **dict(payload.get("extra") or {}),
+        **inherited_extra,
         "specialist_aux_archetype_head_expansion": expansion,
+        **(
+            {"expanded_head_migration": migration}
+            if migration is not None
+            else {}
+        ),
+        **(
+            {"decision_fusion_migration": fusion_migration}
+            if fusion_migration is not None
+            else {}
+        ),
     }
 
-    hot_start = run_dir / "shared_core_hot_start.current_archetypes.pt"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    hot_start = run_dir / (
+        "shared_core_hot_start.expanded-v6-fused-v1.pt"
+        if enable_decision_fusion
+        else (
+            "shared_core_hot_start.expanded-v6.pt"
+            if enable_expanded_heads
+            else "shared_core_hot_start.current_archetypes.pt"
+        )
+    )
     if hot_start.is_file():
         existing = checkpoint.load_checkpoint(hot_start, map_location="cpu")
         existing_expansion = dict(
@@ -188,12 +827,31 @@ def _specialist_hot_start_from_core(
             )
             or {}
         )
-        if existing_expansion != expansion:
+        existing_migration = (existing.get("extra") or {}).get(
+            "expanded_head_migration"
+        )
+        if (
+            existing_expansion != expansion
+            or existing_migration != migration
+            or dict(existing.get("model_config") or {}).get(
+                "expanded_heads_enabled", False
+            )
+            is not bool(enable_expanded_heads)
+            or dict(existing.get("model_config") or {}).get(
+                "decision_fusion_enabled", False
+            )
+            is not bool(enable_decision_fusion)
+        ):
             raise RuntimeError("existing specialist hot-start identity changed")
     else:
         checkpoint.atomic_torch_save(payload, hot_start)
     hot_digest = checkpoint.checkpoint_digest(hot_start)
-    return hot_start, hot_digest, {**expansion, "checkpoint_digest": hot_digest}
+    return hot_start, hot_digest, {
+        **expansion,
+        "checkpoint_digest": hot_digest,
+        "expanded_head_migration": migration,
+        "decision_fusion_migration": fusion_migration,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -217,6 +875,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split-seed", type=int, default=20260722)
     parser.add_argument("--cpu-pack-root", type=Path, required=True)
     parser.add_argument("--required-target", action="append", default=[])
+    parser.add_argument("--expanded-heads", action="store_true")
+    parser.add_argument("--decision-fusion", action="store_true")
+    parser.add_argument("--rl-protocol", type=Path, default=DEFAULT_RL_PROTOCOL)
+    parser.add_argument("--expected-expanded-schedule-digest", default="")
+    parser.add_argument("--expected-expanded-target-digest", default="")
+    parser.add_argument("--current-deck-guide-contract", type=Path)
+    parser.add_argument("--expected-current-deck-guide-sha256", default="")
+    parser.add_argument("--current-deck-guide-version", default="")
+    parser.add_argument("--current-deck-guide-corpus-ready", type=Path)
+    parser.add_argument(
+        "--expected-current-deck-guide-corpus-ready-sha256",
+        default="",
+    )
     args = parser.parse_args(argv)
     required_targets = tuple(args.required_target or TARGETS)
     if (
@@ -231,6 +902,61 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("specialist archetype must be a non-empty lowercase slug")
     if int(args.epochs) != 25:
         raise ValueError("specialist bootstrap is locked to exactly 25 epochs")
+    expanded_raw: dict[str, Any] | None = None
+    expanded_identity: dict[str, Any] | None = None
+    if args.expanded_heads:
+        expanded_raw, expanded_identity = load_expanded_head_contract(
+            args.rl_protocol
+        )
+        if (
+            str(args.expected_expanded_schedule_digest or "")
+            != expanded_identity["schedule_digest"]
+            or str(args.expected_expanded_target_digest or "")
+            != expanded_identity["target_schema_digest"]
+        ):
+            raise ValueError(
+                "generated handoff expanded-head digests do not match canon"
+            )
+    elif (
+        args.expected_expanded_schedule_digest
+        or args.expected_expanded_target_digest
+    ):
+        raise ValueError(
+            "expanded-head digests require --expanded-heads"
+        )
+    if args.decision_fusion and not args.expanded_heads:
+        raise ValueError("--decision-fusion requires --expanded-heads")
+    fusion_identity = (
+        decision_fusion_handoff_contract(args.rl_protocol)
+        if args.decision_fusion
+        else None
+    )
+    guide_arguments = (
+        args.current_deck_guide_contract,
+        str(args.expected_current_deck_guide_sha256 or ""),
+        str(args.current_deck_guide_version or ""),
+        args.current_deck_guide_corpus_ready,
+        str(args.expected_current_deck_guide_corpus_ready_sha256 or ""),
+    )
+    if any(value not in {None, ""} for value in guide_arguments) and not all(
+        value not in {None, ""} for value in guide_arguments
+    ):
+        raise ValueError("current-deck guide arguments must be complete")
+    guide_identity = (
+        current_deck_guide_handoff_contract(
+            specialist_id=archetype,
+            contract_path=args.current_deck_guide_contract,
+            expected_contract_sha256=args.expected_current_deck_guide_sha256,
+            guide_version=args.current_deck_guide_version,
+            corpus_ready_receipt=args.current_deck_guide_corpus_ready,
+            expected_corpus_ready_sha256=(
+                args.expected_current_deck_guide_corpus_ready_sha256
+            ),
+            protocol_path=args.rl_protocol,
+        )
+        if all(value not in {None, ""} for value in guide_arguments)
+        else None
+    )
     corpus_argument = args.expert_corpus or args.starmie_corpus
     assert corpus_argument is not None
     family_name = str(args.family).strip() or (
@@ -267,14 +993,66 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise ValueError("protected distilled core has the wrong architecture/role")
     corpus_pointer = corpus_argument.expanduser().resolve()
+    manifest_requirements = {
+        "min_decisions": int(args.min_decisions),
+        "require_protected": True,
+        "required_archetype": archetype,
+        "required_compact_mode": "temporal-expert-v1",
+        "required_max_context": 320,
+        "required_target_coverage": required_targets,
+        **(
+            {
+                "required_expanded_target_schema": expanded_identity[
+                    "target_schema"
+                ],
+                "required_expanded_target_digest": expanded_identity[
+                    "target_schema_digest"
+                ],
+                "required_expanded_heads": tuple(EXPANDED_HEAD_IDS),
+            }
+            if expanded_identity is not None
+            else {}
+        ),
+    }
     identity = resolve_expert_manifest(
         corpus_pointer,
-        min_decisions=int(args.min_decisions),
-        require_protected=True,
-        required_archetype=archetype,
-        required_compact_mode="temporal-expert-v1",
-        required_max_context=320,
-        required_target_coverage=required_targets,
+        **manifest_requirements,
+    )
+    if guide_identity is not None:
+        guide_ready = json.loads(
+            Path(guide_identity["corpus_ready_receipt"]).read_text(
+                encoding="utf-8"
+            )
+        )
+        manifest_payload = json.loads(
+            Path(identity.path).read_text(encoding="utf-8")
+        )
+        guide_rows = int(
+            ((manifest_payload.get("totals") or {}).get("target_coverage") or {}).get(
+                "guide_rows"
+            )
+            or 0
+        )
+        if (
+            guide_ready.get("manifest_sha256") != identity.digest
+            or guide_ready.get("protected_pointer_sha256")
+            != checkpoint.checkpoint_digest(corpus_pointer)
+            or int(guide_ready.get("decisions") or 0) != int(identity.decisions)
+            or int(guide_ready.get("guide_rows") or 0) != guide_rows
+            or guide_rows <= 0
+        ):
+            raise RuntimeError(
+                "current-deck guide corpus binding changed"
+            )
+        os.environ["POKEBOT_CURRENT_DECK_GUIDE"] = archetype
+        os.environ["POKEBOT_CURRENT_DECK_GUIDE_TARGETS"] = "1"
+    expanded_targets = (
+        _manifest_expanded_targets(
+            Path(identity.path),
+            decisions=identity.decisions,
+        )
+        if expanded_identity is not None
+        else None
     )
     family_dir = args.registry_root.expanduser().resolve() / family_name
     if args.ready.is_file() and family_dir.is_dir():
@@ -286,6 +1064,16 @@ def main(argv: list[str] | None = None) -> int:
             and ready.get("core_checkpoint_digest") == core.get("checkpoint_digest")
             and ready.get("expert_manifest_sha256") == identity.digest
             and ready.get("acting_seat_archetype") == archetype
+            and ready.get("current_deck_guide") == guide_identity
+            and (
+                expanded_identity is None
+                or (
+                    ready.get("expanded_target_schema_digest")
+                    == expanded_identity["target_schema_digest"]
+                    and ready.get("expanded_schedule_digest")
+                    == expanded_identity["schedule_digest"]
+                )
+            )
         ):
             print(json.dumps(ready, indent=2), flush=True)
             return 0
@@ -299,6 +1087,9 @@ def main(argv: list[str] | None = None) -> int:
             core_path,
             run_dir=run_dir,
             archetype=archetype,
+            enable_expanded_heads=expanded_identity is not None,
+            expanded_identity=expanded_identity,
+            enable_decision_fusion=bool(args.decision_fusion),
         )
     )
     state_path = run_dir / "state.json"
@@ -307,6 +1098,16 @@ def main(argv: list[str] | None = None) -> int:
         state.get("core_checkpoint_digest") != core.get("checkpoint_digest")
         or state.get("manifest_digest") != identity.digest
         or state.get("hot_start_checkpoint_digest") != hot_start_digest
+        or (
+            expanded_identity is not None
+            and (
+                state.get("expanded_target_schema_digest")
+                != expanded_identity["target_schema_digest"]
+                or state.get("expanded_schedule_digest")
+                != expanded_identity["schedule_digest"]
+            )
+        )
+        or state.get("current_deck_guide") != guide_identity
     ):
         raise RuntimeError("specialist bootstrap state identity changed")
 
@@ -349,6 +1150,16 @@ def main(argv: list[str] | None = None) -> int:
         start_epoch = int(last["epoch"]) + 1
     try:
         for epoch in range(start_epoch, int(args.epochs) + 1):
+            guide_weight = (
+                current_deck_guide_epoch_weight(guide_identity, epoch)
+                if guide_identity is not None
+                else 0.0
+            )
+            plan = (
+                expanded_head_epoch_plan(expanded_raw, epoch)
+                if expanded_raw is not None
+                else None
+            )
             output = checkpoint_dir / f"epoch_{epoch:02d}.pt"
             if output.is_file():
                 saved = checkpoint.load_checkpoint(output, map_location="cpu")
@@ -361,6 +1172,26 @@ def main(argv: list[str] | None = None) -> int:
                     or extra.get("parent_digest") != parent_digest
                     or extra.get("manifest_digest") != identity.digest
                     or extra.get("acting_seat_archetype") != archetype
+                    or extra.get("current_deck_guide") != (
+                        {
+                            **guide_identity,
+                            "epoch": epoch,
+                            "loss_weight": guide_weight,
+                        }
+                        if guide_identity is not None
+                        else None
+                    )
+                    or (
+                        plan is not None
+                        and (
+                            extra.get("expanded_target_schema_digest")
+                            != expanded_identity["target_schema_digest"]
+                            or extra.get("expanded_schedule_digest")
+                            != expanded_identity["schedule_digest"]
+                            or extra.get("expanded_epoch_plan")
+                            != plan.as_dict()
+                        )
+                    )
                 ):
                     raise RuntimeError(f"existing specialist epoch identity drift: {output}")
                 result = {
@@ -370,52 +1201,139 @@ def main(argv: list[str] | None = None) -> int:
                     "reused": True,
                 }
             else:
+                specialist_bootstrap_extra = {
+                    "schema": epoch_schema,
+                    "epoch": epoch,
+                    "acting_seat_archetype": archetype,
+                    "core_checkpoint_digest": core["checkpoint_digest"],
+                    "hot_start_checkpoint_digest": hot_start_digest,
+                    "hot_start_expansion": hot_start_expansion,
+                    "parent_digest": parent_digest,
+                    "manifest_digest": identity.digest,
+                    "all_auxiliary_heads_trained": (
+                        all_auxiliary_heads_trained
+                    ),
+                    "current_deck_guide": (
+                        {
+                            **guide_identity,
+                            "epoch": epoch,
+                            "loss_weight": guide_weight,
+                        }
+                        if guide_identity is not None
+                        else None
+                    ),
+                    **(
+                        {"decision_fusion": fusion_identity}
+                        if fusion_identity is not None
+                        else {}
+                    ),
+                    "trained_target_coverage": list(required_targets),
+                    "inherited_target_coverage": [
+                        target
+                        for target in TARGETS
+                        if target not in required_targets
+                    ],
+                    **(
+                        {
+                            "expanded_target_schema": expanded_identity[
+                                "target_schema"
+                            ],
+                            "expanded_target_schema_digest": (
+                                expanded_identity["target_schema_digest"]
+                            ),
+                            "expanded_schedule_schema": expanded_identity[
+                                "schedule_schema"
+                            ],
+                            "expanded_schedule_digest": expanded_identity[
+                                "schedule_digest"
+                            ],
+                            "expanded_epoch_plan": plan.as_dict(),
+                            "expanded_manifest_targets": expanded_targets,
+                            "runtime_enabled_heads": [],
+                        }
+                        if plan is not None
+                        else {}
+                    ),
+                }
+                rehearsal_kwargs = {
+                    "base_ckpt": parent,
+                    "output_path": output,
+                    "parent_digest": parent_digest,
+                    "rehearsal_iteration": epoch,
+                    "manifest_identity": {
+                        **identity.as_dict(),
+                        **(
+                            {
+                                "expanded_strategic_targets": (
+                                    expanded_targets
+                                )
+                            }
+                            if expanded_targets is not None
+                            else {}
+                        ),
+                    },
+                    "epochs": 1,
+                    "lr": 5e-5,
+                    "requested_batch_size": int(args.batch_size),
+                    "seed": 20260722 + epoch,
+                    "corpus_split_seed": int(args.split_seed),
+                    "device": device,
+                    "aux_loss_weight": 0.05,
+                    "opp_hand_loss_weight": 0.05,
+                    "opp_remainder_loss_weight": 0.05,
+                    "lethal_threat_loss_weight": 0.025,
+                    "prize_race_loss_weight": 0.025,
+                    "alakazam_guide_loss_weight": guide_weight,
+                    "output_archetype_id": archetype,
+                    "output_model_id": f"{args.run_name}.epoch{epoch:02d}",
+                    "extra_updates": {
+                        "specialist_bootstrap": specialist_bootstrap_extra,
+                    },
+                }
+                if plan is not None:
+                    rehearsal_kwargs.update(
+                        {
+                            "expanded_head_loss_weights": (
+                                dict(plan.loss_weights)
+                            ),
+                            "expanded_head_schedule": plan.as_dict(),
+                        }
+                    )
                 result = supervised_rehearsal_step(
                     corpus,
-                    base_ckpt=parent,
-                    output_path=output,
-                    parent_digest=parent_digest,
-                    rehearsal_iteration=epoch,
-                    manifest_identity=identity.as_dict(),
-                    epochs=1,
-                    lr=5e-5,
-                    requested_batch_size=int(args.batch_size),
-                    seed=20260722 + epoch,
-                    corpus_split_seed=int(args.split_seed),
-                    device=device,
-                    aux_loss_weight=0.05,
-                    opp_hand_loss_weight=0.05,
-                    opp_remainder_loss_weight=0.05,
-                    lethal_threat_loss_weight=0.025,
-                    prize_race_loss_weight=0.025,
-                    alakazam_guide_loss_weight=0.0,
-                    output_archetype_id=archetype,
-                    output_model_id=f"{args.run_name}.epoch{epoch:02d}",
-                    extra_updates={
-                        "specialist_bootstrap": {
-                            "schema": epoch_schema,
-                            "epoch": epoch,
-                            "acting_seat_archetype": archetype,
-                            "core_checkpoint_digest": core["checkpoint_digest"],
-                            "hot_start_checkpoint_digest": hot_start_digest,
-                            "hot_start_expansion": hot_start_expansion,
-                            "parent_digest": parent_digest,
-                            "manifest_digest": identity.digest,
-                            "all_auxiliary_heads_trained": (
-                                all_auxiliary_heads_trained
-                            ),
-                            "trained_target_coverage": list(required_targets),
-                            "inherited_target_coverage": [
-                                target
-                                for target in TARGETS
-                                if target not in required_targets
-                            ],
-                        }
-                    },
+                    **rehearsal_kwargs,
                 )
+            expanded_checkpoint_contract = (
+                validate_expanded_epoch_checkpoint(
+                    output,
+                    plan=plan,
+                    identity=expanded_identity,
+                    train_metrics=result.get("train_metrics"),
+                    validation_metrics=result.get("validation_metrics"),
+                )
+                if plan is not None
+                else None
+            )
             metric = float((result.get("validation_metrics") or {}).get("total_loss", math.inf))
             if not math.isfinite(metric):
                 raise RuntimeError("specialist validation metric is not finite")
+            if guide_identity is not None and (
+                int(
+                    (result.get("train_metrics") or {}).get(
+                        "n_alakazam_guide_rows", 0
+                    )
+                )
+                <= 0
+                or int(
+                    (result.get("validation_metrics") or {}).get(
+                        "n_alakazam_guide_rows", 0
+                    )
+                )
+                <= 0
+            ):
+                raise RuntimeError(
+                    "current-deck guide received no labeled bootstrap rows"
+                )
             row = {
                 "epoch": epoch,
                 "checkpoint": str(output),
@@ -428,15 +1346,30 @@ def main(argv: list[str] | None = None) -> int:
                 "train_metrics": result.get("train_metrics"),
                 "validation_metrics": result.get("validation_metrics"),
                 "reused": bool(result.get("reused")),
+                **(
+                    {
+                        "expanded_epoch_plan": plan.as_dict(),
+                        "expanded_head_training": (
+                            expanded_checkpoint_contract
+                        ),
+                    }
+                    if plan is not None
+                    else {}
+                ),
             }
             history.append(row)
-            if metric < best_metric - float(args.min_delta):
-                best_metric = metric
-                best_path = str(output)
-                best_digest = str(result["candidate_digest"])
-                bad_epochs = 0
-            else:
-                bad_epochs += 1
+            selection_eligible = (
+                plan is None
+                or set(plan.enabled_heads) == set(EXPANDED_HEAD_IDS)
+            )
+            if selection_eligible:
+                if metric < best_metric - float(args.min_delta):
+                    best_metric = metric
+                    best_path = str(output)
+                    best_digest = str(result["candidate_digest"])
+                    bad_epochs = 0
+                else:
+                    bad_epochs += 1
             parent = output
             parent_digest = str(result["candidate_digest"])
             state = {
@@ -450,6 +1383,33 @@ def main(argv: list[str] | None = None) -> int:
                 "hot_start_expansion": hot_start_expansion,
                 "manifest": identity.as_dict(),
                 "manifest_digest": identity.digest,
+                "current_deck_guide": guide_identity,
+                **(
+                    {
+                        "expanded_target_schema": expanded_identity[
+                            "target_schema"
+                        ],
+                        "expanded_target_schema_digest": expanded_identity[
+                            "target_schema_digest"
+                        ],
+                        "expanded_schedule_schema": expanded_identity[
+                            "schedule_schema"
+                        ],
+                        "expanded_schedule_digest": expanded_identity[
+                            "schedule_digest"
+                        ],
+                        "expanded_schedule": expanded_identity["schedule"],
+                        "expanded_manifest_targets": expanded_targets,
+                        "expanded_head_migration": (
+                            hot_start_expansion.get(
+                                "expanded_head_migration"
+                            )
+                        ),
+                        "runtime_enabled_heads": [],
+                    }
+                    if expanded_identity is not None
+                    else {}
+                ),
                 "history": history,
                 "best_path": best_path,
                 "best_digest": best_digest,
@@ -469,12 +1429,56 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         cache.release()
 
+    if [int(row.get("epoch", -1)) for row in history] != list(
+        range(1, 26)
+    ):
+        raise RuntimeError(
+            "specialist bootstrap did not complete exact epochs 1..25"
+        )
     best = Path(best_path).resolve()
     if not best.is_file() or checkpoint.checkpoint_digest(best) != best_digest:
         raise RuntimeError("selected specialist bootstrap identity is invalid")
     best_payload = checkpoint.load_checkpoint(best, map_location="cpu")
     if str(best_payload.get("archetype_id") or "") != archetype:
         raise RuntimeError("selected specialist checkpoint lost archetype metadata")
+    best_expanded_training = (
+        dict((best_payload.get("extra") or {}).get("expanded_head_training") or {})
+        if expanded_identity is not None
+        else None
+    )
+    if expanded_identity is not None and (
+        best_expanded_training.get("schema")
+        != EXPANDED_HEAD_TRAINING_SCHEMA
+        or set(best_expanded_training.get("trained_heads") or ())
+        != set(EXPANDED_HEAD_IDS)
+        or best_expanded_training.get("runtime_enabled_heads") != []
+        or best_expanded_training.get("target_schema_digest")
+        != expanded_identity["target_schema_digest"]
+        or best_expanded_training.get("schedule_digest")
+        != expanded_identity["schedule_digest"]
+    ):
+        raise RuntimeError(
+            "selected specialist checkpoint has incomplete expanded-head training"
+        )
+    if fusion_identity is not None:
+        best_config = dict(best_payload.get("model_config") or {})
+        best_provenance = dict(best_payload.get("provenance") or {})
+        fusion_inventory = dict(best_provenance.get("decision_fusion") or {})
+        fusion_state = dict(best_payload.get("model_state_dict") or {})
+        output_weight = fusion_state.get("decision_fusion.residual.2.weight")
+        if (
+            best_config.get("decision_fusion_enabled") is not True
+            or best_config.get("decision_fusion_runtime_enabled") is not True
+            or fusion_inventory.get("schema") != DECISION_FUSION_SCHEMA
+            or fusion_inventory.get("runtime_enabled") is not True
+            or fusion_inventory.get("required_heads")
+            != list(DECISION_FUSION_REQUIRED_HEADS)
+            or not isinstance(output_weight, torch.Tensor)
+            or not bool(torch.count_nonzero(output_weight).item())
+        ):
+            raise RuntimeError(
+                "selected specialist checkpoint lacks trained causal decision fusion"
+            )
     frozen = freeze_model(
         registry_root=args.registry_root,
         family=family_name,
@@ -506,6 +1510,39 @@ def main(argv: list[str] | None = None) -> int:
             "epochs_max": int(args.epochs),
             "early_stop_patience": int(args.patience),
             "history": history,
+            "current_deck_guide": guide_identity,
+            **(
+                {
+                    "decision_fusion": {
+                        **fusion_identity,
+                        "runtime_enabled": True,
+                    }
+                }
+                if fusion_identity is not None
+                else {}
+            ),
+            **(
+                {
+                    "expanded_head_migration": hot_start_expansion.get(
+                        "expanded_head_migration"
+                    ),
+                    "expanded_target_contract": expanded_targets,
+                    "expanded_target_schema_digest": expanded_identity[
+                        "target_schema_digest"
+                    ],
+                    "expanded_schedule_schema": expanded_identity[
+                        "schedule_schema"
+                    ],
+                    "expanded_schedule_digest": expanded_identity[
+                        "schedule_digest"
+                    ],
+                    "expanded_schedule": expanded_identity["schedule"],
+                    "expanded_head_training": best_expanded_training,
+                    "runtime_enabled_heads": [],
+                }
+                if expanded_identity is not None
+                else {}
+            ),
         },
         evidence={
             "kind": "specialist_episode_disjoint_expert_validation",
@@ -544,9 +1581,45 @@ def main(argv: list[str] | None = None) -> int:
         "early_stop_patience": int(args.patience),
         "best_metric": best_metric,
         "trained_target_coverage": list(required_targets),
+        "current_deck_guide": guide_identity,
         "inherited_target_coverage": [
             target for target in TARGETS if target not in required_targets
         ],
+        **(
+            {
+                "expanded_head_migration": hot_start_expansion.get(
+                    "expanded_head_migration"
+                ),
+                "expanded_target_contract": expanded_targets,
+                "expanded_target_schema": expanded_identity["target_schema"],
+                "expanded_target_schema_digest": expanded_identity[
+                    "target_schema_digest"
+                ],
+                "expanded_schedule_schema": expanded_identity[
+                    "schedule_schema"
+                ],
+                "expanded_schedule_digest": expanded_identity[
+                    "schedule_digest"
+                ],
+                "expanded_schedule": expanded_identity["schedule"],
+                "expanded_head_training": best_expanded_training,
+                "expanded_heads_trained": list(EXPANDED_HEAD_IDS),
+                "runtime_enabled_heads": [],
+                "flat_policy_remains_authoritative": fusion_identity is None,
+            }
+            if expanded_identity is not None
+            else {}
+        ),
+        **(
+            {
+                "decision_fusion": {
+                    **fusion_identity,
+                    "runtime_enabled": True,
+                }
+            }
+            if fusion_identity is not None
+            else {}
+        ),
     }
     atomic_json(args.ready, ready)
     atomic_json(state_path, {**state, "status": "complete", "ready": ready})

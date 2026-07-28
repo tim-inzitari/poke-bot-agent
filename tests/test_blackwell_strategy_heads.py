@@ -13,10 +13,13 @@ from poke_bot.blackwell_heads import (
     attach_blackwell_strategy_labels,
     blackwell_strategy_heads_enabled,
     is_allowed_missing_blackwell_head_key,
+    lethal_target_from_aux,
     lethal_threat_label_from_trajectory,
     masked_bce_logit,
     masked_smooth_l1,
     prize_counts_from_obs,
+    prize_race_target_from_aux,
+    prize_race_values_from_aux,
     root_value_bias_from_lethal,
 )
 from poke_bot.features import SparseVector
@@ -122,6 +125,40 @@ def test_masked_losses_when_labels_absent() -> None:
     assert float(zero_l.detach()) == 0.0
     assert float(zero_r.detach()) == 0.0
     (zero_l + zero_r + logits.sum() * 0 + pred.sum() * 0).backward()
+
+
+def test_strategy_target_contract_rejects_malformed_present_labels() -> None:
+    assert lethal_target_from_aux({}) is None
+    assert prize_race_values_from_aux({}) is None
+    assert lethal_target_from_aux({"lethal_threat": 0.25}) == 0.25
+    assert prize_race_values_from_aux({"prize_race": [0.25, 1.0]}) == (
+        0.25,
+        1.0,
+    )
+    assert prize_race_values_from_aux({"prize_race": [1.25, 0.5]}) == (
+        1.25,
+        0.5,
+    )
+    tensor = prize_race_target_from_aux(
+        {"prize_race": [0.25, 1.0]},
+        device=torch.device("cpu"),
+    )
+    assert tensor is not None
+    torch.testing.assert_close(tensor, torch.tensor([0.25, 1.0]))
+
+    for raw in (-0.01, 1.01, float("nan"), float("inf"), True, "bad"):
+        with pytest.raises(ValueError, match="lethal_threat"):
+            lethal_target_from_aux({"lethal_threat": raw})
+    for raw in (
+        [0.5],
+        [0.5, 0.5, 0.5],
+        [float("nan"), 0.5],
+        [-0.1, 0.5],
+        [True, 0.5],
+        "bad",
+    ):
+        with pytest.raises(ValueError, match="prize_race"):
+            prize_race_values_from_aux({"prize_race": raw})
 
 
 def test_batch_losses_masks_scope_b_without_labels() -> None:

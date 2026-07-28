@@ -63,9 +63,24 @@ def read_json(path: Path) -> dict:
 
 def main() -> None:
     tree_path = OUTPUT / "public-matchup-tree-calibrated-v31/public-matchup-tree.json"
+    refresh_status_path = OUTPUT / "public-matchup-tree-latest22-v32.status.json"
+    refresh_tree_path = OUTPUT / "public-matchup-tree-latest22-v32/public-matchup-tree.json"
+    refresh_receipt_path = (
+        OUTPUT / "public-matchup-tree-latest22-v32/PUBLIC_MATCHUP_TREE_READY.json"
+    )
     staged_manifest_path = OUTPUT / "alakazam-adapter-staged-all22-v31/manifest.json"
     fit_result_path = OUTPUT / "alakazam-adapter-fit-v31/final.pt"
     tree = read_json(tree_path)
+    refresh_status = read_json(refresh_status_path)
+    refresh_tree = read_json(refresh_tree_path)
+    refresh_calibration = (
+        (refresh_tree.get("runtime_calibration") or {}).get("per_archetype") or {}
+    )
+    refresh_routable = sorted(
+        str(archetype_id)
+        for archetype_id, row in refresh_calibration.items()
+        if isinstance(row, dict) and row.get("available") is True
+    )
     staged = read_json(staged_manifest_path)
     route_rows = staged.get("routes") if isinstance(staged.get("routes"), list) else []
     coverage = {
@@ -95,6 +110,19 @@ def main() -> None:
             ),
             "artifact": str(tree_path),
             "partial_bytes": partial_bytes("public-matchup-tree-calibrated-v31/*"),
+        },
+        "router_refresh": {
+            **container("pokebot-public-tree-latest22-v32"),
+            **refresh_status,
+            "candidate_ready": refresh_receipt_path.is_file(),
+            "candidate_runtime_enabled": refresh_tree.get("runtime_enabled"),
+            "target_routes": len(refresh_tree.get("targets") or []) or 22,
+            "calibrated_route_count": len(refresh_routable),
+            "calibrated_route_ids": refresh_routable,
+            "artifact": str(refresh_tree_path),
+            "receipt": str(refresh_receipt_path),
+            "status_source": str(refresh_status_path),
+            "production_active": False,
         },
         "staging": {
             **container("pokebot-adapter-stage-all22-v31"),

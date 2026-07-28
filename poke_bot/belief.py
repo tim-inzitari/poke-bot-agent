@@ -951,10 +951,15 @@ class EmpiricalDeckPosterior:
 
 def simulator_version() -> str:
     """Digest the competition Python API and native simulator used by search."""
+    # Submission tarballs vendor ``cg/`` beside ``main.py`` and expose that
+    # location through CG_LIB_PATH.  Resolve the same runtime that search will
+    # actually import instead of assuming the development-only kaggle/input
+    # directory exists.
+    runtime_dir = paths.cg_runtime_dir() / "cg"
     candidates = [
-        paths.COMPETITION_CG_DIR / "api.py",
-        paths.COMPETITION_CG_DIR / "sim.py",
-        paths.COMPETITION_CG_DIR / "libcg.so",
+        runtime_dir / "api.py",
+        runtime_dir / "sim.py",
+        runtime_dir / "libcg.so",
     ]
     digest = hashlib.sha256()
     found = 0
@@ -969,4 +974,3 @@ def simulator_version() -> str:
     if not found:
         raise FileNotFoundError("competition simulator files unavailable")
     return f"competition-libcg-sha256:{digest.hexdigest()}"
-

@@ -1,0 +1,102 @@
+{
+  "schema": "poke_bot.matchup_adapter_activation_program/v1",
+  "status": "staged_not_deployed",
+  "activation_after_completed_iteration": 15,
+  "first_eligible_iteration": 16,
+  "boundary_parent_role": "learner",
+  "runtime_default_enabled": false,
+  "training": {
+    "ready": false,
+    "mode": "isolated_oracle_partition_adapter_only",
+    "base_model_frozen": true,
+    "optimizer_scope": "matchup_adapter_bank_only",
+    "acting_archetype": "alakazam",
+    "requires_raw_exact_history": true,
+    "requires_package_id_and_content_digest": true,
+    "requires_active_gate_package_exclusion": true,
+    "requires_episode_disjoint_route_stratified_split": true,
+    "bounded_stager_ready": true,
+    "bounded_streaming_trainer_ready": true,
+    "single_route_optimizer_batches": true,
+    "exact_interrupted_resume_tested": true,
+    "memory_guard": {
+      "default_max_process_rss_gib": 8.0,
+      "default_min_available_ram_gib": 16.0,
+      "check_every_batches": 1,
+      "checkpoint_last_verified_cursor_before_stop": true
+    },
+    "current_blocker": "The protected compact expert corpus has archetype labels but no authoritative package content identities. Build a checksummed raw-archive oracle index and pinned display-name/alias-to-package-digest registry before staging the real seven-route corpus. Never guess a package digest from a deck or display name."
+  },
+  "runtime_router": {
+    "ready": false,
+    "oracle_identity_is_inference_input": false,
+    "global_boundary_overrides_route_gate": false,
+    "confidence_threshold": 1.0,
+    "winner_runner_up_margin": 0.5,
+    "consecutive_evidence_states": 2,
+    "contradiction_policy": "immediate exact bypass",
+    "unknown_policy": "exact base no-op",
+    "remote_leaf_wiring": "not implemented; runtime must remain disabled",
+    "evidence_artifact": "/Users/tsinzitari/pokebot-experiments/alakazam-matchup-mlp-v1/artifacts/evidence-router-v2/result.json"
+  },
+  "routes": [
+    {
+      "route": 0,
+      "archetype_id": "crustle",
+      "training_ready": false,
+      "runtime_router_eligible": false,
+      "reason": "rejected public rule precision"
+    },
+    {
+      "route": 1,
+      "archetype_id": "marnie-s-grimmsnarl-ex",
+      "training_ready": false,
+      "runtime_router_eligible": true,
+      "public_card_ids": [646, 647, 648],
+      "heldout_predicted_route_precision": 0.995636
+    },
+    {
+      "route": 2,
+      "archetype_id": "garchomp",
+      "training_ready": false,
+      "runtime_router_eligible": true,
+      "public_card_ids": [379, 380, 381, 342, 387, 1173],
+      "heldout_predicted_route_precision": 0.999669
+    },
+    {
+      "route": 3,
+      "archetype_id": "cornerstone-ogerpon",
+      "training_ready": false,
+      "runtime_router_eligible": false,
+      "reason": "no accepted public rule"
+    },
+    {
+      "route": 4,
+      "archetype_id": "rockets-mewtwo",
+      "training_ready": false,
+      "runtime_router_eligible": true,
+      "public_card_ids": [431],
+      "heldout_predicted_route_precision": 1.0
+    },
+    {
+      "route": 5,
+      "archetype_id": "starmie",
+      "training_ready": false,
+      "runtime_router_eligible": false,
+      "reason": "rejected public rule precision"
+    },
+    {
+      "route": 6,
+      "archetype_id": "hammer-pult",
+      "training_ready": false,
+      "runtime_router_eligible": false,
+      "reason": "rejected public rule precision"
+    }
+  ],
+  "promotion": {
+    "automatic": false,
+    "adapter_only_checkpoint_may_become_rl_learner": false,
+    "merge_policy": "merge adapter tensors into exact parent while preserving parent optimizer/scaler/RNG/counters",
+    "separate_review_and_gate_required": true
+  }
+}

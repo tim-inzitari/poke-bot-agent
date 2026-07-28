@@ -341,6 +341,35 @@ def test_training_context_cannot_silently_drop_unaligned_targets(
         model.temporal_encode(tokens, append=False, return_all=True)
 
 
+def test_padded_temporal_batch_matches_individual_causal_histories(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    torch.manual_seed(41)
+    model = _small_model(monkeypatch, max_context=8, temporal_layers=2)
+    histories = [torch.randn(2, model.d_model), torch.randn(5, model.d_model)]
+    expected = [
+        model.temporal_encode(
+            history.unsqueeze(0), append=False, return_all=True
+        )[0].squeeze(0)
+        for history in histories
+    ]
+    padded = torch.zeros(2, 5, model.d_model)
+    padding = torch.ones(2, 5, dtype=torch.bool)
+    for row, history in enumerate(histories):
+        padded[row, : history.size(0)] = history
+        padding[row, : history.size(0)] = False
+    observed, _ = model.temporal_encode(
+        padded,
+        append=False,
+        return_all=True,
+        key_padding_mask=padding,
+    )
+    for row, target in enumerate(expected):
+        torch.testing.assert_close(
+            observed[row, : target.size(0)], target, atol=1e-6, rtol=1e-5
+        )
+
+
 @pytest.mark.parametrize("temporal_pos", ["rope", "learned"])
 def test_rollover_recompute_matches_fresh_multilayer_training_window(
     monkeypatch: pytest.MonkeyPatch,

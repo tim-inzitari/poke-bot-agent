@@ -1,0 +1,14 @@
+[Unit]
+Description=Freeze the exact passing Trevenant checkpoint and queue its submission
+After=pokebot-pure-rl-trevenant-staged.service
+
+[Service]
+Type=simple
+EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist_gate_handler.py --check
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist_gate_handler.py
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=default.target

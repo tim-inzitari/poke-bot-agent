@@ -13,6 +13,12 @@ TARBALL="$OUT_DIR/submission.tar.gz"
 ARCH="${POKEBOT_PRIMARY_ARCHETYPE:-dragapult}"
 DECK_SRC="${POKEBOT_SUBMISSION_DECK:-$ROOT/submission/deck.csv}"
 MATCHUP_TREE_SRC="${POKEBOT_SUBMISSION_MATCHUP_TREE:-}"
+SEARCH_CONFIG_SRC="$ROOT/submission/search_config.json"
+BELIEF_PRIOR_BUILDER="$ROOT/scripts/build_submission_belief_posterior.py"
+BELIEF_PRIOR_SOURCES=(
+  "$ROOT/data/training_mixes/top_ladder_representatives.v1.json"
+  "$ROOT/data/training_mixes/specialist_representatives.v1.json"
+)
 
 if [[ -z "$CKPT" ]]; then
   for cand in \
@@ -33,6 +39,16 @@ if [[ ! -f "$DECK_SRC" ]]; then
   echo "ERROR: submission deck does not exist: $DECK_SRC" >&2
   exit 1
 fi
+if [[ ! -f "$SEARCH_CONFIG_SRC" || ! -f "$BELIEF_PRIOR_BUILDER" ]]; then
+  echo "ERROR: default belief-MCTS submission assets are missing" >&2
+  exit 1
+fi
+for source in "${BELIEF_PRIOR_SOURCES[@]}"; do
+  if [[ ! -f "$source" ]]; then
+    echo "ERROR: public belief-prior source does not exist: $source" >&2
+    exit 1
+  fi
+done
 
 # Deployment is policy-first/history-only. Privileged single-world search must
 # never be packaged accidentally, even if enabled in the caller's environment.
@@ -87,6 +103,11 @@ echo "   out=$TARBALL"
 cp "$ROOT/submission/main.py" "$STAGE/main.py"
 cp "$DECK_SRC" "$STAGE/deck.csv"
 cp "$CKPT" "$STAGE/model.pt"
+cp "$SEARCH_CONFIG_SRC" "$STAGE/search_config.json"
+"$PYTHON" "$BELIEF_PRIOR_BUILDER" \
+  --output "$STAGE/belief_decks.json" \
+  --source "${BELIEF_PRIOR_SOURCES[0]}" \
+  --source "${BELIEF_PRIOR_SOURCES[1]}"
 cp -a "$CG_SRC" "$STAGE/cg"
 if [[ -n "$MATCHUP_TREE_SRC" ]]; then
   if [[ ! -f "$MATCHUP_TREE_SRC" ]]; then
@@ -117,6 +138,56 @@ rsync -a --delete \
   --exclude '__pycache__' \
   --exclude '*.pyc' \
   "$ROOT/poke_bot/" "$STAGE/poke_bot/"
+
+# The dormant-adapter loader contract checksum-binds the dynamic simulation
+# record loader alongside the package modules. Submission inference does not
+# execute this training script, but the exact source file must be present so a
+# bank-bearing checkpoint proves it carries the validated loader overlay.
+mkdir -p "$STAGE/scripts"
+cp "$ROOT/scripts/train_round_robin.py" "$STAGE/scripts/train_round_robin.py"
+
+"$PYTHON" - "$STAGE" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+stage = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(stage))
+from poke_bot.submission_budget import SubmissionSearchBudget
+
+config = json.loads((stage / "search_config.json").read_text())
+budget = SubmissionSearchBudget.from_config(config, started_at=0.0)
+prior = json.loads((stage / "belief_decks.json").read_text())
+decks = prior.get("deck_lists") or []
+if (
+    config.get("enabled") is not False
+    or config.get("algorithm") != "public_history_root_sampled_belief_mcts"
+    or config.get("leaf_evaluator")
+    != "trained_checkpoint_policy_value_head"
+    or config.get("leaf_evaluator_checkpoint") != "submission_model_pt"
+    or config.get("require_trained_state_evaluator") is not True
+    or config.get("search_failure_behavior")
+    != "greedy_current_decision_then_retry"
+    or config.get("game_wide_greedy_only_for_time_budget") is not True
+    or config.get("fallback") != "frozen_model_greedy_policy"
+    or config.get("oracle_inputs_allowed") is not False
+    or budget.hard_cap_s != 600.0
+    or prior.get("schema") != "poke_bot.submission_belief_decks/v1"
+    or prior.get("anonymous") is not True
+    or prior.get("contains_opponent_identity") is not False
+    or prior.get("deck_count") != len(decks)
+    or len(decks) < 8
+    or any(len(deck) != 60 for deck in decks)
+):
+    raise SystemExit("ERROR: packaged belief-MCTS contract is invalid")
+print(
+    "OK: default frozen policy-only deployment",
+    f"hard_cap={budget.hard_cap_s:.0f}s",
+    f"internal_deadline={budget.internal_deadline_s:.0f}s",
+    f"final_greedy_reserve={budget.final_greedy_reserve_s:.0f}s",
+    f"decks={len(decks)}",
+)
+PY
 
 # A bank-bearing checkpoint must ship the exact loader implementation that was
 # validated before fleet rollout. Ordinary legacy checkpoints remain unchanged.
@@ -178,7 +249,9 @@ rm -rf "$SMOKE_DIR"
 mkdir -p "$SMOKE_DIR"
 tar -xzf "$TARBALL" -C "$SMOKE_DIR"
 (
-  env -u PYTHONPATH -u CG_LIB_PATH "$PYTHON" -I - "$SMOKE_DIR" <<'PY'
+  env -u PYTHONPATH -u CG_LIB_PATH \
+    POKEBOT_SUBMISSION_SEARCH_DISABLE=1 \
+    "$PYTHON" -I - "$SMOKE_DIR" <<'PY'
 import importlib.util
 import os
 from pathlib import Path
@@ -250,6 +323,73 @@ print(f"OK: Kaggle-style neural battle steps={steps}")
 PY
 )
 
+# Default-policy isolated tarball smoke. This exercises the exact packaged
+# config without an environment override and proves future submissions do not
+# construct or invoke MCTS.
+(
+  env -u PYTHONPATH -u CG_LIB_PATH \
+    "$PYTHON" -I - "$SMOKE_DIR" <<'PY'
+import importlib.util
+import os
+from pathlib import Path
+import random
+import sys
+
+stage = Path(sys.argv[1]).resolve()
+os.chdir(stage)
+spec = importlib.util.spec_from_file_location(
+    "kaggle_submission_search_smoke", stage / "main.py"
+)
+assert spec is not None and spec.loader is not None
+agent_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(agent_mod)
+deck = agent_mod.agent({"logs": [], "current": None, "select": None})
+from cg.game import battle_finish, battle_select, battle_start
+
+obs, _ = battle_start(deck, deck)
+steps = 0
+agent_calls = 0
+try:
+    while obs is not None and steps < 80:
+        current = obs.get("current") or {}
+        if current.get("result", -1) != -1:
+            break
+        selection = obs.get("select")
+        if selection is None:
+            break
+        choice = agent_mod.agent(obs)
+        agent_calls += 1
+        obs = battle_select(choice)
+        steps += 1
+finally:
+    battle_finish()
+
+budget = agent_mod._SEARCH_BUDGET
+policy = agent_mod._POLICY
+assert budget is not None
+assert budget.enabled is False
+assert budget.searches_used == 0
+assert budget.disabled_reason is None, budget.disabled_reason
+assert budget.consecutive_search_failures == 0
+assert policy is not None and policy.use_mcts is False
+assert policy.belief_mcts is False
+assert policy.last_result is None
+# These counters were added after the first frozen V5 specialists.  Their
+# absence in an older, checksum-pinned policy runtime is equivalent to the
+# untouched zero/None state and must not force replacement of that runtime.
+assert getattr(policy, "last_search_fallback_reason", None) is None
+assert int(getattr(policy, "fail_closed_count", 0)) == 0
+assert agent_calls > 0
+assert budget.final_greedy_reserve_s == 20.0
+print(
+    "OK: packaged policy-only default",
+    f"calls={agent_calls}",
+    "mcts_calls=0",
+    f"final_reserve={budget.final_greedy_reserve_s:.0f}s",
+)
+PY
+)
+
 echo ">> isolated smoke dir: $SMOKE_DIR"
 "$PYTHON" - "$TARBALL" <<'PY'
 import datetime as dt
@@ -266,6 +406,18 @@ payload = {
     "schema": "poke_bot.submission_go_first_attestation/v1",
     "file_sha256": "sha256:" + digest,
     "go_first_if_offered": True,
+    "belief_mcts_default": False,
+    "belief_mcts_leaf_evaluator": "trained_checkpoint_policy_value_head",
+    "belief_mcts_leaf_evaluator_checkpoint": "submission_model_pt",
+    "belief_mcts_hard_cap_s": 600.0,
+    "belief_mcts_internal_deadline_s": 540.0,
+    "belief_mcts_final_greedy_reserve_s": 20.0,
+    "search_config_sha256": "sha256:" + hashlib.sha256(
+        (bundle.parent / "stage" / "search_config.json").read_bytes()
+    ).hexdigest(),
+    "belief_decks_sha256": "sha256:" + hashlib.sha256(
+        (bundle.parent / "stage" / "belief_decks.json").read_bytes()
+    ).hexdigest(),
     "verified_cases": [
         "integer_enum",
         "string_enum_reversed_options",

@@ -35,6 +35,14 @@ from poke_bot.feature_shards import (
     iter_feature_shard,
 )
 from poke_bot.features import FEATURE_SCHEMA_VERSION
+from poke_bot.strategic_heads import (
+    EXPANDED_STRATEGIC_SCHEMA,
+    EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+    expanded_strategic_sequence_coverage,
+    masked_expanded_strategic_coverage,
+    merge_expanded_strategic_coverages,
+)
+from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
 
 
 def sha256(path: Path) -> str:
@@ -63,6 +71,8 @@ def build_balanced_manifest(
     max_records_per_archetype: int,
     max_decisions_per_archetype: int,
     additive_archetypes: tuple[str, ...] = (),
+    required_expanded_target_schema: str = "",
+    required_expanded_target_digest: str = "",
 ) -> Path:
     source_manifest = Path(source_manifest).resolve()
     output_dir = Path(output_dir).resolve()
@@ -78,6 +88,34 @@ def build_balanced_manifest(
         raise ValueError("source manifest has no shards")
     if max_records_per_archetype <= 0 or max_decisions_per_archetype <= 0:
         raise ValueError("per-archetype caps must be positive")
+    if bool(required_expanded_target_schema) != bool(
+        required_expanded_target_digest
+    ):
+        raise ValueError(
+            "expanded target schema and digest must be supplied together"
+        )
+    source_expanded = source.get("expanded_strategic_targets")
+    expanded_enabled = isinstance(source_expanded, dict)
+    if required_expanded_target_schema and not expanded_enabled:
+        raise ValueError("source manifest lacks required expanded targets")
+    if expanded_enabled and (
+        source_expanded.get("schema") != EXPANDED_STRATEGIC_SCHEMA
+        or source_expanded.get("digest")
+        != EXPANDED_STRATEGIC_SCHEMA_DIGEST
+        or (
+            required_expanded_target_schema
+            and source_expanded.get("schema")
+            != required_expanded_target_schema
+        )
+        or (
+            required_expanded_target_digest
+            and source_expanded.get("digest")
+            != required_expanded_target_digest
+        )
+        or set(source_expanded.get("head_coverage") or ())
+        != set(EXPANDED_HEAD_IDS)
+    ):
+        raise ValueError("source expanded strategic target identity changed")
 
     known = set(archetypes.archetype_ids())
     known.update(additive_archetypes)
@@ -99,6 +137,19 @@ def build_balanced_manifest(
             == max_decisions_per_archetype
             and list((manifest.get("selection") or {}).get("additive_archetypes") or [])
             == list(additive_archetypes)
+            and (
+                not required_expanded_target_schema
+                or (
+                    (manifest.get("expanded_strategic_targets") or {}).get(
+                        "schema"
+                    )
+                    == required_expanded_target_schema
+                    and (
+                        manifest.get("expanded_strategic_targets") or {}
+                    ).get("digest")
+                    == required_expanded_target_digest
+                )
+            )
         ):
             return manifest_path
         raise RuntimeError("existing balanced-core corpus identity differs")
@@ -108,6 +159,7 @@ def build_balanced_manifest(
     opponents: Counter[str] = Counter()
     seats: Counter[str] = Counter()
     coverage: Counter[str] = Counter()
+    expanded_coverage = masked_expanded_strategic_coverage(0)
     scanned: Counter[str] = Counter()
     source_digests: list[dict[str, Any]] = []
     partial = output.with_name(f".{output.name}.{os.getpid()}.partial")
@@ -125,6 +177,11 @@ def build_balanced_manifest(
         "max_records_per_archetype": int(max_records_per_archetype),
         "max_decisions_per_archetype": int(max_decisions_per_archetype),
         "additive_archetypes": list(additive_archetypes),
+        **(
+            {"expanded_strategic_targets": dict(source_expanded)}
+            if expanded_enabled
+            else {}
+        ),
     }
     try:
         with partial.open("xb") as stream:
@@ -158,6 +215,17 @@ def build_balanced_manifest(
                     opponents[str(sequence.opp_archetype)] += 1
                     seats[str(int(sequence.seat))] += 1
                     coverage.update(_target_coverage(sequence))
+                    if expanded_enabled:
+                        expanded_coverage = (
+                            merge_expanded_strategic_coverages(
+                                (
+                                    expanded_coverage,
+                                    expanded_strategic_sequence_coverage(
+                                        sequence.decisions
+                                    ),
+                                )
+                            )
+                        )
             total_records = sum(records.values())
             total_decisions = sum(decisions.values())
             if total_records <= 0 or total_decisions <= 0:
@@ -177,7 +245,39 @@ def build_balanced_manifest(
                 "decisions_truncated": 0,
                 "policy_targets_padded": 0,
                 "policy_targets_truncated": 0,
+                **(
+                    {
+                        "expanded_strategic_targets": expanded_coverage,
+                    }
+                    if expanded_enabled
+                    else {}
+                ),
             }
+            if expanded_enabled:
+                head_coverage = dict(
+                    expanded_coverage.get("head_coverage") or {}
+                )
+                if (
+                    expanded_coverage.get("schema")
+                    != EXPANDED_STRATEGIC_SCHEMA
+                    or expanded_coverage.get("digest")
+                    != EXPANDED_STRATEGIC_SCHEMA_DIGEST
+                    or int(expanded_coverage.get("decisions") or -1)
+                    != total_decisions
+                    or set(head_coverage) != set(EXPANDED_HEAD_IDS)
+                    or any(
+                        int(row.get("labeled_rows") or 0) <= 0
+                        or int(row.get("labeled_rows") or 0)
+                        + int(row.get("masked_rows") or 0)
+                        != total_decisions
+                        or int(row.get("total_rows") or -1)
+                        != total_decisions
+                        for row in head_coverage.values()
+                    )
+                ):
+                    raise ValueError(
+                        "balanced core expanded target coverage is incomplete"
+                    )
             pickle.dump(
                 {
                     "format": SHARD_FORMAT + "-footer",
@@ -240,7 +340,17 @@ def build_balanced_manifest(
             "records_per_archetype": dict(sorted(records.items())),
             "decisions_per_archetype": dict(sorted(decisions.items())),
             "target_coverage": dict(sorted(coverage.items())),
+            **(
+                {"expanded_strategic_targets": expanded_coverage}
+                if expanded_enabled
+                else {}
+            ),
         },
+        **(
+            {"expanded_strategic_targets": expanded_coverage}
+            if expanded_enabled
+            else {}
+        ),
         "quality_gates": {
             "passed": True,
             "nonempty": True,
@@ -250,6 +360,16 @@ def build_balanced_manifest(
             "hidden_targets_are_aux_only": True,
             "temporal_action_tokens_complete": int(coverage.get("temporal_action_rows", 0))
             == total_decisions,
+            **(
+                {
+                    "expanded_strategic_targets_complete": (
+                        int(expanded_coverage.get("decisions") or -1)
+                        == total_decisions
+                    )
+                }
+                if expanded_enabled
+                else {}
+            ),
         },
     }
     atomic_json(manifest_path, manifest)
@@ -262,6 +382,15 @@ def build_balanced_manifest(
             "manifest_sha256": sha256(manifest_path),
             "selection": manifest["selection"],
             "totals": manifest["totals"],
+            **(
+                {
+                    "expanded_strategic_targets": (
+                        manifest["expanded_strategic_targets"]
+                    )
+                }
+                if expanded_enabled
+                else {}
+            ),
         },
     )
     os.chmod(output, 0o444)
@@ -278,6 +407,8 @@ def main() -> int:
     parser.add_argument("--max-records-per-archetype", type=int, default=2500)
     parser.add_argument("--max-decisions-per-archetype", type=int, default=220000)
     parser.add_argument("--additive-archetype", action="append", default=[])
+    parser.add_argument("--required-expanded-target-schema", default="")
+    parser.add_argument("--required-expanded-target-digest", default="")
     args = parser.parse_args()
     result = build_balanced_manifest(
         args.source_manifest,
@@ -290,6 +421,12 @@ def main() -> int:
                 for value in args.additive_archetype
                 if str(value).strip()
             )
+        ),
+        required_expanded_target_schema=str(
+            args.required_expanded_target_schema
+        ),
+        required_expanded_target_digest=str(
+            args.required_expanded_target_digest
         ),
     )
     print(json.dumps(json.loads(result.read_text()), indent=2), flush=True)

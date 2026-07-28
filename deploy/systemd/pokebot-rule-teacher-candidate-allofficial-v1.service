@@ -1,0 +1,18 @@
+[Unit]
+Description=Exact four-official evaluation of isolated Iono rule-teacher candidate
+After=docker.service
+Requires=docker.service
+ConditionPathExists=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint/rule-teacher-candidates/alakazam_iono_teacher_iter1_v1.best.pt
+
+[Service]
+Type=oneshot
+ExecStart=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/bin/eval_rule_teacher_candidate_allofficial_v1.sh
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=20
+TimeoutStartSec=infinity
+StandardOutput=append:/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/rule-teacher-candidate-allofficial-v1.log
+StandardError=append:/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/rule-teacher-candidate-allofficial-v1.log
+
+[Install]
+WantedBy=multi-user.target

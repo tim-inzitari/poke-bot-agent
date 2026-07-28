@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import threading
+import time
 
 import pytest
 
@@ -38,6 +40,41 @@ def test_digest_addressed_basename_embeds_content_digest(tmp_path: Path) -> None
     assert dig_b.split(":", 1)[-1][:16] in name_b
     # Same logical trainer filename, distinct remote objects.
     assert name_a.split(".", 1)[0] == name_b.split(".", 1)[0]
+
+
+def test_runtime_checkpoint_staging_builds_all_route_companions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tree = tmp_path / "runtime-tree.json"
+    tree.write_text(
+        json.dumps(
+            {
+                "runtime_contract": {
+                    "accepted_archetype_ids": [
+                        f"matchup-{index}" for index in range(22)
+                    ],
+                    "one_route_per_decision": True,
+                    "unknown_route_exact_bypass": True,
+                    "consecutive_required": 2,
+                    "zero_materialized_adapters_allowed": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "1")
+    monkeypatch.setenv("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", str(tree))
+
+    source, marker_raw = remote_jobs._matchup_runtime_companions()
+    marker = json.loads(marker_raw)
+
+    assert source == tree
+    assert marker["schema"] == "poke_bot.remote_matchup_runtime_activation/v1"
+    assert marker["tree_file"] == tree.name
+    assert len(marker["accepted_archetype_ids"]) == 22
+    assert marker["continuous_reevaluation"] is True
+    assert marker["one_route_per_decision"] is True
 
 
 def test_prepare_remote_play_job_stages_both_elmo_checkpoints(
@@ -104,6 +141,97 @@ def test_prepare_remote_play_job_remaps_both_bert_checkpoints(
         "/Users/tsinzitari/workspace/"
     )
     assert original["spec"]["path"].startswith("/home/inzi/")
+
+
+def test_concurrent_bert_checkpoint_stage_publishes_exactly_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    train_root = tmp_path / "trainer"
+    bert_root = Path("/Users/test/workspace/poke-bot-agent")
+    checkpoint = train_root / "outputs" / "checkpoints" / "iter_00025.pt"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"one immutable checkpoint")
+    digest = checkpoint_digest(checkpoint)
+    publishes = 0
+    published = False
+
+    def remote_digest(_path: Path) -> str | None:
+        return digest if published else None
+
+    def publish(_src: Path, _dest: Path, *, digest: str) -> None:
+        nonlocal publishes, published
+        publishes += 1
+        time.sleep(0.02)
+        published = True
+
+    monkeypatch.setattr(remote_jobs, "_TRAIN_ROOT", train_root)
+    monkeypatch.setattr(remote_jobs, "_BERT_ROOT", bert_root)
+    monkeypatch.setattr(remote_jobs, "_bert_sftp_root", lambda: None)
+    monkeypatch.setattr(remote_jobs, "_bert_remote_digest", remote_digest)
+    monkeypatch.setattr(remote_jobs, "_rsync_to_bert", publish)
+    remote_jobs._BERT_STAGE_CACHE.clear()
+    barrier = threading.Barrier(24)
+    results: list[str] = []
+
+    def stage() -> None:
+        barrier.wait()
+        results.append(remote_jobs._stage_bert_checkpoint(checkpoint))
+
+    threads = [threading.Thread(target=stage) for _ in range(24)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert publishes == 1
+    assert len(set(results)) == 1
+    assert digest.split(":", 1)[-1][:16] in results[0]
+
+
+def test_concurrent_elmo_checkpoint_stage_publishes_exactly_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkpoint = tmp_path / "trainer" / "seed.pt"
+    checkpoint.parent.mkdir()
+    checkpoint.write_bytes(b"one immutable Elmo checkpoint")
+    checkpoint_dir = tmp_path / "elmo-checkpoint"
+    checkpoint_dir.mkdir()
+    publishes = 0
+
+    def publish(src: Path, dest: Path) -> None:
+        nonlocal publishes
+        publishes += 1
+        time.sleep(0.02)
+        dest.write_bytes(src.read_bytes())
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: checkpoint_dir)
+    monkeypatch.setattr(remote_jobs, "_gvfs_safe_copy", publish)
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+    barrier = threading.Barrier(24)
+    results: list[str] = []
+
+    def stage() -> None:
+        barrier.wait()
+        results.append(
+            remote_jobs.resolve_remote_checkpoint_path(
+                "192.168.1.143",
+                str(checkpoint),
+            )
+        )
+
+    threads = [threading.Thread(target=stage) for _ in range(24)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert publishes == 1
+    assert len(set(results)) == 1
+    assert checkpoint_digest(checkpoint).split(":", 1)[-1][:16] in results[0]
 
 
 @pytest.mark.parametrize(
@@ -422,6 +550,47 @@ def test_scheduled_dispatch_reports_remote_execution_origin(
             "kind": "self_play",
         }
     ]
+
+
+def test_scheduled_emitter_closes_its_socket_before_outer_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completed emitter must not retain a dead socket until wave teardown."""
+
+    monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
+
+    class ClosingRemote(_ScheduledRemote):
+        def __init__(self) -> None:
+            super().__init__(fail=False)
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    remote = ClosingRemote()
+    # Exclude this client from the outer owned-client list so the assertion
+    # specifically exercises the emitter's finally block.
+    monkeypatch.setattr(
+        remote_jobs,
+        "_parallel_remote_slots",
+        lambda *_args, **_kwargs: ([remote], []),
+    )
+
+    rows = list(
+        iter_scheduled_additive_results(
+            local_pool=_ScheduledPool(),
+            local_fn=lambda job: job,
+            jobs=[{"job_index": 13}],
+            remote_clients=[remote],  # type: ignore[list-item]
+            kind="self_play",
+            scheduler=_ScheduledScheduler(),
+            local_workers=1,
+            remote_workers=1,
+        )
+    )
+
+    assert len(rows) == 1
+    assert remote.close_calls == 1
 
 
 def test_scheduled_demand_shrink_finishes_claimed_chunks(

@@ -1,0 +1,28 @@
+[Unit]
+Description=Refresh the shared core and continue beyond Starmie
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=1
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/post_starmie_core_v2_handoff_v1.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_post_starmie_core_handoff.py --contract /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/post_starmie_core_v2_handoff_v1.json
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=48h
+TimeoutStopSec=90
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/post-starmie-core-v2-handoff.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/post-starmie-core-v2-handoff.log

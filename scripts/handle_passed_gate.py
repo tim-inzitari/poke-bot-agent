@@ -30,6 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from poke_bot import checkpoint
+from poke_bot.model import DECISION_FUSION_REQUIRED_HEADS
 from poke_bot.pure_rl.model_registry import (
     freeze_model,
     sha256,
@@ -83,6 +85,197 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+
+
+def _successor_decision_fusion_runtime_ready(
+    run_dir: Path,
+    *,
+    state: dict[str, Any],
+    learner: dict[str, Any],
+) -> tuple[bool, str]:
+    """Verify a generated successor's runtime-fused descendant.
+
+    Generated successors start from an immutable bootstrap whose fused action
+    path is authorized by the specialist activation receipt.  Their later RL
+    checkpoints inherit that path, so they do not have the one-off loop
+    activation receipt used by the original Dudunsparce migration.  Require
+    the bootstrap receipt, run manifest, immutable descendant commit, local
+    and remote publication, checkpoint tensors/config, and exact learner
+    identity to agree before accepting that equivalent authorization.
+    """
+
+    run_dir = Path(run_dir).expanduser().resolve()
+    learner_path = Path(str(learner.get("path") or "")).expanduser().resolve()
+    learner_digest = str(learner.get("digest") or "")
+    if (
+        not learner_digest.startswith("sha256:")
+        or not learner_path.is_file()
+        or checkpoint.checkpoint_digest(learner_path) != learner_digest
+    ):
+        return False, "successor runtime learner identity changed"
+    payload = checkpoint.load_checkpoint(learner_path, map_location="cpu")
+    model_config = dict(payload.get("model_config") or {})
+    fusion = dict((payload.get("provenance") or {}).get("decision_fusion") or {})
+    required_heads = list(DECISION_FUSION_REQUIRED_HEADS)
+    specialist_id = str(payload.get("archetype_id") or "").strip().casefold()
+    if not (
+        specialist_id
+        and model_config.get("decision_fusion_enabled") is True
+        and model_config.get("decision_fusion_runtime_enabled") is True
+        and fusion.get("schema") == "poke_bot.causal_decision_fusion/v1"
+        and fusion.get("runtime_enabled") is True
+        and fusion.get("required_heads") == required_heads
+    ):
+        return False, "successor checkpoint is not the complete fused runtime"
+
+    manifest = _read_json(run_dir / "manifest.json")
+    initial = dict(manifest.get("initial_learner_checkpoint") or {})
+    design_fingerprint = str(manifest.get("design_fingerprint") or "")
+    if not (
+        str(manifest.get("specialist_archetype") or "").strip().casefold()
+        == specialist_id
+        and str(initial.get("digest") or "").startswith("sha256:")
+        and design_fingerprint.startswith("sha256:")
+    ):
+        return False, "successor run manifest is not lineage-bound"
+
+    state_root = run_dir.parent.parent / "state"
+    activation_candidates = sorted(
+        state_root.glob(f"{specialist_id}-specialist-rl-activation-v*.json"),
+        key=lambda path: path.stat().st_mtime_ns,
+        reverse=True,
+    )
+    activation_path: Path | None = None
+    for candidate_path in activation_candidates:
+        receipt = _read_json(candidate_path)
+        identity = dict(receipt.get("identity") or {})
+        bootstrap = dict(identity.get("next_specialist_bootstrap") or {})
+        bootstrap_fusion = dict(bootstrap.get("decision_fusion") or {})
+        registration = dict(identity.get("runtime_registration") or {})
+        runtime_row = dict(registration.get("runtime_row") or {})
+        runtime_fusion = dict(runtime_row.get("decision_fusion") or {})
+        runtime_initial_digest = "sha256:" + str(
+            runtime_row.get("initial_checkpoint_sha256") or ""
+        ).removeprefix("sha256:")
+        bootstrap_digest = str(bootstrap.get("checkpoint_digest") or "")
+        if (
+            receipt.get("schema") == "poke_bot.specialist_rl_activation/v2"
+            and receipt.get("status") == "ready"
+            and str(bootstrap.get("specialist_id") or "").casefold()
+            == specialist_id
+            and str(registration.get("specialist_id") or "").casefold()
+            == specialist_id
+            and bootstrap_digest == str(initial.get("digest") or "")
+            and runtime_initial_digest == bootstrap_digest
+            and bootstrap_fusion.get("schema")
+            == "poke_bot.causal_decision_fusion/v1"
+            and bootstrap_fusion.get("runtime_enabled") is True
+            and bootstrap_fusion.get("required_heads") == required_heads
+            and runtime_fusion.get("schema")
+            == "poke_bot.causal_decision_fusion/v1"
+            and runtime_fusion.get("required") is True
+            and runtime_fusion.get("runtime_enabled") is True
+            and runtime_fusion.get("required_heads") == required_heads
+        ):
+            activation_path = candidate_path
+            break
+    if activation_path is None:
+        return False, "successor bootstrap activation receipt is absent or invalid"
+
+    completed_iteration = int(state.get("last_completed_iteration", -1))
+    commit_path = run_dir / "commits" / f"iter_{completed_iteration:05d}.json"
+    commit = _read_json(commit_path)
+    if not (
+        completed_iteration >= 0
+        and int(state.get("next_iteration", -1)) == completed_iteration + 1
+        and commit.get("design_fingerprint") == design_fingerprint
+        and int(commit.get("last_completed_iteration", -1))
+        == completed_iteration
+        and int(commit.get("next_iteration", -1)) == completed_iteration + 1
+        and dict(commit.get("learner") or {}) == learner
+    ):
+        return False, "successor immutable commit does not bind the active learner"
+    lineage_rows = [
+        dict(row)
+        for row in (commit.get("history") or [])
+        if isinstance(row, dict)
+        and int(row.get("iteration", -1)) == completed_iteration
+    ]
+    if len(lineage_rows) != 1:
+        return False, "successor commit has no unique terminal lineage row"
+    lineage = lineage_rows[0]
+    candidate = dict(lineage.get("candidate") or {})
+    learner_after = dict(lineage.get("learner_after") or {})
+    publish = dict(lineage.get("next_collection_publish") or {})
+    if not (
+        lineage.get("completed") is True
+        and candidate == learner
+        and learner_after == learner
+        and str(publish.get("checkpoint") or "") == str(learner_path)
+        and str(publish.get("digest") or "") == learner_digest
+        and publish.get("local_ok") is True
+        and publish.get("remote_ok") is True
+    ):
+        return False, "successor terminal learner was not published fleet-wide"
+    return (
+        True,
+        "verified successor fused descendant via "
+        f"{activation_path.name} and {commit_path.name}",
+    )
+
+
+def _decision_fusion_runtime_ready(run_dir: Path) -> tuple[bool, str]:
+    """Verify the exact learner is the receipted all-head serving checkpoint."""
+    state = _read_json(Path(run_dir) / "loop_state.json")
+    learner = dict(state.get("learner") or {})
+    activation = dict(state.get("decision_fusion_activation") or {})
+    digest = str(learner.get("digest") or "")
+    receipt_path = Path(str(activation.get("receipt") or "")).expanduser()
+    loop_activation_ready = bool(
+        activation.get("phase") == "runtime_active"
+        and activation.get("runtime_enabled") is True
+        and activation.get("serving_eligible") is True
+        and str(activation.get("learner_digest") or "") == digest
+        and digest.startswith("sha256:")
+        and receipt_path.is_file()
+    )
+    if not loop_activation_ready:
+        successor_ready, successor_reason = (
+            _successor_decision_fusion_runtime_ready(
+                run_dir,
+                state=state,
+                learner=learner,
+            )
+        )
+        if successor_ready:
+            return successor_ready, successor_reason
+        return (
+            False,
+            "runtime activation receipt is not published; "
+            f"{successor_reason}",
+        )
+    if sha256(receipt_path) != str(activation.get("receipt_digest") or ""):
+        return False, "runtime activation receipt checksum changed"
+    receipt = _read_json(receipt_path)
+    if not (
+        receipt.get("schema") == "poke_bot.causal_decision_fusion_runtime_boundary/v1"
+        and str((receipt.get("runtime_learner") or {}).get("digest") or "")
+        == digest
+        and (receipt.get("decision_fusion") or {}).get("runtime_enabled") is True
+        and (receipt.get("decision_fusion") or {}).get("serving_eligible") is True
+    ):
+        return False, "runtime activation receipt contract is incomplete"
+    learner_path = Path(str(learner.get("path") or "")).expanduser()
+    if not learner_path.is_file() or checkpoint.checkpoint_digest(learner_path) != digest:
+        return False, "runtime learner checkpoint identity changed"
+    payload = checkpoint.load_checkpoint(learner_path, map_location="cpu")
+    model_config = dict(payload.get("model_config") or {})
+    if not (
+        model_config.get("decision_fusion_enabled") is True
+        and model_config.get("decision_fusion_runtime_enabled") is True
+    ):
+        return False, "runtime learner checkpoint is not serving-enabled"
+    return True, "verified"
 
 
 def _canonical_digest(payload: Any) -> str:
@@ -416,6 +609,230 @@ def validate_ceiling_completion(
         "marker": None,
         "result": result,
         "validation": validation,
+    }
+
+
+def validate_runtime_exact_gate(
+    run_dir: Path,
+    contract_path: Path,
+    receipt_path: Path,
+    *,
+    accept_ceiling: bool,
+    ceiling_iteration: int,
+) -> dict[str, Any]:
+    """Validate both exact gates for the serving-enabled fusion child.
+
+    Runtime activation intentionally creates a checksum-distinct child after
+    the immutable RL commit.  Its gate evidence therefore lives in a separate
+    append-only receipt and must never be substituted with the flat parent's
+    committed result.
+    """
+
+    run_dir = Path(run_dir).expanduser().resolve()
+    contract_path = Path(contract_path).expanduser().resolve()
+    receipt_path = Path(receipt_path).expanduser().resolve()
+    receipt = _read_json(receipt_path)
+    contract = _read_json(contract_path)
+    gate = dict(contract.get("next_gate") or {})
+    evaluation = dict(gate.get("evaluation") or {})
+    result = dict(receipt.get("result") or {})
+    checkpoint_row = dict(receipt.get("checkpoint") or {})
+    activation_row = dict(receipt.get("activation_receipt") or {})
+    boundary = dict(receipt.get("boundary") or {})
+    checkpoint_path = Path(
+        str(checkpoint_row.get("path") or "")
+    ).expanduser().resolve()
+    checkpoint_digest = str(checkpoint_row.get("digest") or "")
+    activation_path = Path(
+        str(activation_row.get("path") or "")
+    ).expanduser().resolve()
+    activation = _read_json(activation_path)
+    commit_path = Path(str(boundary.get("commit") or "")).expanduser().resolve()
+    commit = _read_json(commit_path)
+    premium_rows = {
+        str(row.get("opponent_id") or ""): dict(row)
+        for row in result.get("matchups") or []
+        if isinstance(row, dict)
+    }
+    official = dict(result.get("research_controls") or {})
+    official_rows = {
+        str(row.get("opponent_id") or ""): dict(row)
+        for row in official.get("matchups") or []
+        if isinstance(row, dict)
+    }
+    premium_ids = {
+        str(row.get("opponent_id") or "")
+        for row in gate.get("roster") or []
+    }
+    official_ids = {
+        str(row.get("opponent_id") or "")
+        for row in gate.get("research_measurements") or []
+    }
+    premium_per = int(evaluation.get("games_per_opponent") or 0)
+    premium_total = int(evaluation.get("games_total") or 0)
+    official_total = sum(
+        int(row.get("games") or 0)
+        for row in gate.get("research_measurements") or []
+    )
+    result_checks = dict(result.get("checks") or {})
+    research_checks = dict(result.get("research_checks") or {})
+    required_checks = _required_active_gate_checks(
+        dict(gate.get("pass_criteria") or {})
+    )
+    premium_audit = dict(result.get("audit") or {})
+    official_audit = dict(official.get("audit") or {})
+    both_passed = bool(receipt.get("both_gates_passed"))
+    measured_passed = bool(
+        receipt.get("premium_gate_passed") is True
+        and receipt.get("official_gate_passed") is True
+        and result.get("passed") is True
+        and all(research_checks.get(name) is True for name in (
+            "research_control_audit",
+            "accepted_official_holdout_non_regression",
+        ))
+    )
+    completion_authority = str(receipt.get("completion_authority") or "")
+    ceiling_accepted = bool(
+        not measured_passed
+        and accept_ceiling
+        and int(receipt.get("iteration", -1)) == int(ceiling_iteration)
+        and completion_authority == "explicit_owner_ceiling_acceptance"
+    )
+    activation_runtime = dict(activation.get("runtime_learner") or {})
+    activation_decision = dict(activation.get("decision_fusion") or {})
+    checks = {
+        "receipt_schema": receipt.get("schema")
+        == "poke_bot.causal_decision_fusion_exact_gate/v1",
+        "receipt_complete": receipt.get("complete") is True,
+        "training_ineligible": receipt.get("training_eligible") is False,
+        "replay_ineligible": receipt.get("replay_eligible") is False,
+        "run_dir": Path(str(receipt.get("run_dir") or "")).resolve() == run_dir,
+        "iteration": int(receipt.get("iteration", -1))
+        == int(ceiling_iteration),
+        "checkpoint_exists": checkpoint_path.is_file(),
+        "checkpoint_bytes": checkpoint_path.is_file()
+        and sha256(checkpoint_path) == checkpoint_digest,
+        "activation_exists": activation_path.is_file(),
+        "activation_digest": activation_path.is_file()
+        and sha256(activation_path) == str(activation_row.get("digest") or ""),
+        "activation_schema": activation.get("schema")
+        == "poke_bot.causal_decision_fusion_runtime_boundary/v1",
+        "activation_checkpoint": (
+            str(activation_runtime.get("path") or "") == str(checkpoint_path)
+            and str(activation_runtime.get("digest") or "")
+            == checkpoint_digest
+        ),
+        "activation_serving": (
+            activation_decision.get("runtime_enabled") is True
+            and activation_decision.get("serving_eligible") is True
+        ),
+        "commit_exists": commit_path.is_file(),
+        "commit_file_digest": commit_path.is_file()
+        and sha256(commit_path) == str(boundary.get("commit_digest") or ""),
+        "commit_boundary": int(commit.get("last_completed_iteration", -1))
+        == int(receipt.get("iteration", -2))
+        and int(commit.get("next_iteration", -1))
+        == int(receipt.get("iteration", -2)) + 1,
+        "contract_path": str(
+            (receipt.get("contract") or {}).get("path") or ""
+        )
+        == str(contract_path),
+        "contract_digest": sha256(contract_path)
+        == str((receipt.get("contract") or {}).get("digest") or ""),
+        "gate_id": str(result.get("gate_id") or "")
+        == str(gate.get("id") or ""),
+        "result_schema": result.get("schema") == GATE_RESULT_SCHEMA,
+        "result_digest": _canonical_digest(result)
+        == str(receipt.get("result_digest") or ""),
+        "result_checkpoint": (
+            str(result.get("checkpoint") or "") == str(checkpoint_path)
+            and str(result.get("checkpoint_digest") or "")
+            == checkpoint_digest
+        ),
+        "premium_games": int(result.get("games", -1)) == premium_total,
+        "premium_roster": set(premium_rows) == premium_ids,
+        "premium_allocation": all(
+            int(row.get("games", -1)) == premium_per
+            and int(row.get("seat0", -1)) == premium_per // 2
+            and int(row.get("seat1", -1)) == premium_per // 2
+            for row in premium_rows.values()
+        ),
+        "premium_audit": (
+            premium_audit.get("passed") is True
+            and premium_audit.get("exact_distribution") is True
+            and premium_audit.get("exact_weights") is True
+            and premium_audit.get("greedy_required") is True
+            and premium_audit.get("greedy") is True
+        ),
+        "official_games": int(official.get("games", -1))
+        == official_total
+        == 1000,
+        "official_roster": set(official_rows) == official_ids,
+        "official_allocation": all(
+            int(row.get("games", -1)) == 250
+            and int(row.get("seat0", -1)) == 125
+            and int(row.get("seat1", -1)) == 125
+            for row in official_rows.values()
+        ),
+        "official_audit": (
+            official_audit.get("passed") is True
+            and official_audit.get("exact_distribution") is True
+            and official_audit.get("exact_weights") is True
+            and official_audit.get("greedy_required") is True
+        ),
+        "premium_check_set": set(result_checks) == required_checks,
+        "pass_identity": both_passed == measured_passed,
+        "completion_authority": measured_passed or ceiling_accepted,
+    }
+    failed = sorted(name for name, passed in checks.items() if not passed)
+    if failed:
+        raise RuntimeError(
+            "runtime exact gate validation failed: " + ",".join(failed)
+        )
+    return {
+        "schema": "poke_bot.exact_pass_archive_plan/v1",
+        "completion_authority": (
+            "measured_both_gates_pass"
+            if measured_passed
+            else "explicit_owner_ceiling_acceptance"
+        ),
+        "measured_gate_passed": measured_passed,
+        "preserves_measured_gate_result": True,
+        "run_dir": str(run_dir),
+        "iteration": int(receipt["iteration"]),
+        "commit_boundary": int(receipt["iteration"]),
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_digest": checkpoint_digest,
+        "gate_id": str(gate["id"]),
+        "base_gate_id": str(gate["id"]),
+        "effective_contract_digest": _canonical_digest(contract),
+        "games": premium_total,
+        "games_per_opponent": premium_per,
+        "candidate_first_per_opponent": premium_per // 2,
+        "candidate_second_per_opponent": premium_per // 2,
+        "roster_ids": sorted(premium_ids),
+        "skill_weighted_wr": float(result["skill_weighted_wr"]),
+        "confidence_lower": float(result["confidence_lower"]),
+        "contract": str(contract_path),
+        "contract_sha256": sha256(contract_path),
+        "commit": str(commit_path),
+        "commit_digest": _canonical_digest(commit),
+        "commit_file_sha256": sha256(commit_path),
+        "exact_result_pointer": str(receipt_path),
+        "exact_result_pointer_sha256": sha256(receipt_path),
+        "marker": None,
+        "result": result,
+        "complete_holdouts": {
+            "premium": {
+                "games": premium_total,
+                "passed": bool(receipt["premium_gate_passed"]),
+            },
+            "official": {
+                "games": official_total,
+                "passed": bool(receipt["official_gate_passed"]),
+            },
+        },
+        "validation": checks,
     }
 
 
@@ -903,6 +1320,11 @@ def queue_submission_copies(
                 "schema": SUBMISSION_QUEUE_SCHEMA,
                 "daily_submission_limit": 5,
                 "minimum_hours_between_submissions": 4,
+                "automatic_one_shot_authorization_on_training_complete": True,
+                "one_shot_authorization_uses": 1,
+                "standing_owner_decision_source": (
+                    "GOAL.md#/decision-ledger/revision-18"
+                ),
                 "queue_order": "oldest_first",
                 "retry_while_quota_exhausted": False,
                 "updated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -1380,6 +1802,27 @@ def _service_properties(service: str) -> dict[str, str]:
     return properties
 
 
+def _managed_maintenance_lock(service: str) -> dict[str, Any] | None:
+    """Return a valid short-lived managed-boundary lock for this service."""
+
+    raw_path = str(os.environ.get("POKEBOT_MANAGED_MAINTENANCE_LOCK") or "").strip()
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or not (
+        payload.get("schema") == "poke_bot.managed_training_maintenance/v1"
+        and payload.get("training_service") == service
+        and float(payload.get("expires_at_epoch") or 0.0) > time.time()
+        and int(payload.get("owner_pid") or 0) > 0
+    ):
+        return None
+    return payload
+
+
 def _recover_status_143_stop(service: str) -> dict[str, Any]:
     """Restart only an externally stopped pre-gate trainer.
 
@@ -1395,6 +1838,13 @@ def _recover_status_143_stop(service: str) -> dict[str, Any]:
     )
     if not should_recover:
         return {"recovered": False, "properties": properties}
+    maintenance = _managed_maintenance_lock(service)
+    if maintenance is not None:
+        return {
+            "recovered": False,
+            "properties": properties,
+            "managed_maintenance": maintenance,
+        }
     reset = subprocess.run(
         ["systemctl", "--user", "reset-failed", service],
         check=False,
@@ -1597,6 +2047,23 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--continue-drop-in-target", type=Path, required=True)
     parser.add_argument("--poll-seconds", type=float, default=15.0)
     parser.add_argument("--upload-timeout-seconds", type=float, default=900.0)
+    parser.add_argument(
+        "--require-decision-fusion-runtime",
+        action="store_true",
+        help=(
+            "Do not freeze or hand off until the exact learner has a verified "
+            "all-head serving-activation receipt."
+        ),
+    )
+    parser.add_argument(
+        "--runtime-exact-gate-receipt",
+        type=Path,
+        help=(
+            "Append-only two-gate receipt for the serving-enabled fusion child. "
+            "When configured, flat-parent markers and ceiling results are never "
+            "eligible for freeze or handoff."
+        ),
+    )
     parser.add_argument("--once", action="store_true")
     return parser.parse_args()
 
@@ -1647,7 +2114,36 @@ def run(args: argparse.Namespace) -> int:
             )
             marker = args.run_dir / marker_name
             plan = None
-            if (
+            runtime_gate_path = getattr(args, "runtime_exact_gate_receipt", None)
+            if runtime_gate_path is not None:
+                runtime_gate_path = Path(runtime_gate_path).expanduser().resolve()
+                if runtime_gate_path.is_file():
+                    plan = validate_runtime_exact_gate(
+                        args.run_dir,
+                        args.contract,
+                        runtime_gate_path,
+                        accept_ceiling=bool(
+                            getattr(args, "accept_ceiling_and_continue", False)
+                        ),
+                        ceiling_iteration=int(args.ceiling_completed_iteration),
+                    )
+                else:
+                    state = _save_state(
+                        args.state,
+                        state,
+                        phase="waiting_for_runtime_exact_gate",
+                        runtime_exact_gate_receipt=str(runtime_gate_path),
+                        flat_parent_marker_eligible=False,
+                        flat_parent_ceiling_result_eligible=False,
+                        observed_training_pid=_service_main_pid(
+                            args.training_service
+                        ),
+                    )
+                    if args.once:
+                        return 0
+                    time.sleep(max(float(args.poll_seconds), 1.0))
+                    continue
+            elif (
                 not marker.is_file()
                 and bool(getattr(args, "accept_ceiling_and_continue", False))
                 and _service_main_pid(args.training_service) == 0
@@ -1660,7 +2156,7 @@ def run(args: argparse.Namespace) -> int:
                     )
                 except RuntimeError:
                     plan = None
-            if not marker.is_file() and plan is None:
+            if runtime_gate_path is None and not marker.is_file() and plan is None:
                 recovery = {"recovered": False, "properties": {}}
                 if bool(
                     getattr(args, "recover_status_143_before_gate", False)
@@ -1703,6 +2199,43 @@ def run(args: argparse.Namespace) -> int:
                     return 0
                 time.sleep(max(float(args.poll_seconds), 1.0))
                 continue
+            if bool(getattr(args, "require_decision_fusion_runtime", False)):
+                fusion_ready, fusion_reason = _decision_fusion_runtime_ready(
+                    args.run_dir
+                )
+                if not fusion_ready:
+                    state = _save_state(
+                        args.state,
+                        state,
+                        phase="waiting_for_decision_fusion_runtime",
+                        decision_fusion_runtime_required=True,
+                        decision_fusion_runtime_ready=False,
+                        decision_fusion_runtime_reason=fusion_reason,
+                    )
+                    if args.once:
+                        return 0
+                    time.sleep(max(float(args.poll_seconds), 1.0))
+                    continue
+                state = _save_state(
+                    args.state,
+                    state,
+                    decision_fusion_runtime_required=True,
+                    decision_fusion_runtime_ready=True,
+                    decision_fusion_runtime_reason=fusion_reason,
+                )
+                active_learner = dict(
+                    _read_json(args.run_dir / "loop_state.json").get("learner")
+                    or {}
+                )
+                if plan is not None and (
+                    str(plan.get("checkpoint") or "")
+                    != str(active_learner.get("path") or "")
+                    or str(plan.get("checkpoint_digest") or "")
+                    != str(active_learner.get("digest") or "")
+                ):
+                    raise RuntimeError(
+                        "gate plan is not the exact serving-enabled fusion learner"
+                    )
 
             try:
                 if plan is None:

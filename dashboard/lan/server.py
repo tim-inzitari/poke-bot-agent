@@ -19,7 +19,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "index.html"
-REMOTE_SNAPSHOT = "/home/inzi/poke-bot-agent-deployments/state-core-v1/scripts/dashboard_snapshot.py"
+REMOTE_SNAPSHOT = "/home/inzi/poke-bot-agent/scripts/run_live_dashboard_snapshot.py"
 REMOTE_PYTHON = "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python"
 LOCAL_SNAPSHOT = ROOT / "fleet_host_snapshot.py"
 RATE_STATE = ROOT / "fleet_rate_state.json"
@@ -989,9 +989,15 @@ class SnapshotCache:
         now = float(value.get("dashboard_sampled_at") or time.time())
         curriculum = value.get("curriculum") or {}
         service = value.get("service") or {}
+        handoff = value.get("specialist_handoff") or {}
         protocol = value.get("specialist_protocol") or {}
         model = value.get("model") or {}
         structure = model.get("checkpoint_structure") or {}
+        expanded_heads = structure.get("expanded_head_training") or {}
+        expanded_heads_required = bool(
+            expanded_heads.get("available") is True
+            or expanded_heads.get("actual_tensor_heads")
+        )
         expert = value.get("expert_refresh") or {}
         queues = value.get("scheduler_queues") or {}
         fleet = value.get("fleet") or {}
@@ -1010,8 +1016,28 @@ class SnapshotCache:
         canonical_specialist = str(
             protocol.get("canonical_active_specialist") or ""
         )
+        effective_protocol_specialist = (
+            runtime_specialist or canonical_specialist
+        )
+        handoff_target_specialist = str(
+            handoff.get("next_specialist_id") or ""
+        )
         service_active = bool(
             service.get("active") and int(service.get("pid") or 0) > 0
+        )
+        handoff_active = bool(
+            handoff.get("active")
+            and int(handoff.get("pid") or 0) > 0
+            and str(handoff.get("source") or "")
+        )
+        handoff_progress_current = bool(
+            handoff_active
+            and isinstance(handoff.get("updated_at"), (int, float))
+            and now - float(handoff["updated_at"]) <= 35.0
+            and (
+                isinstance(handoff.get("epoch"), int)
+                or str(handoff.get("phase") or handoff.get("stage") or "")
+            )
         )
         expert_days = [
             row
@@ -1037,6 +1063,8 @@ class SnapshotCache:
         protocol_roster_current = True
         protocol_frozen_pool_current = True
         protocol_model_roster_current = True
+        specialist_ids: list[str] = []
+        active_record_ids: set[str] = set()
         if isinstance(protocol_specialists, list):
             specialist_ids = [
                 str(row.get("id") or "")
@@ -1049,6 +1077,27 @@ class SnapshotCache:
                 for row in protocol_specialists
                 if isinstance(row, dict) and row.get("active") is True
             }
+            if handoff_active:
+                handoff_source_specialist = str(
+                    handoff.get("source_specialist_id") or ""
+                )
+                allowed_transition_active_records = {frozenset()}
+                if handoff_source_specialist:
+                    allowed_transition_active_records.add(
+                        frozenset({handoff_source_specialist})
+                    )
+                if handoff_target_specialist:
+                    allowed_transition_active_records.add(
+                        frozenset({handoff_target_specialist})
+                    )
+                active_records_current = (
+                    frozenset(active_record_ids)
+                    in allowed_transition_active_records
+                )
+            else:
+                active_records_current = active_record_ids == {
+                    effective_protocol_specialist
+                }
             protocol_roster_current = bool(
                 specialist_ids
                 and all(specialist_ids)
@@ -1057,7 +1106,7 @@ class SnapshotCache:
                     not isinstance(required_target_count, int)
                     or len(specialist_ids) == required_target_count
                 )
-                and active_record_ids == {canonical_specialist}
+                and active_records_current
             )
             frozen_state_ids = {
                 str(row.get("id") or "")
@@ -1086,18 +1135,74 @@ class SnapshotCache:
         # stronger reconciliation requirement: its selected specialist must
         # match the canonical pointer.  Do not make a stopped controller erase
         # an otherwise valid, parseable canonical protocol.
+        completed_ids = set(
+            (protocol.get("program_progress") or {}).get(
+                "completed_specialist_ids", ()
+            )
+        )
+        handoff_source_specialist = str(
+            handoff.get("source_specialist_id") or ""
+        )
+        source_is_transition_owner = bool(
+            handoff_source_specialist
+            and (
+                handoff_source_specialist in completed_ids
+                or handoff_source_specialist == canonical_specialist
+                or handoff_source_specialist
+                == str(protocol.get("active_specialist") or "")
+                or active_record_ids == {handoff_source_specialist}
+            )
+        )
+        target_is_known_unfinished = bool(
+            handoff_target_specialist
+            and handoff_target_specialist in specialist_ids
+            and handoff_target_specialist not in completed_ids
+        )
+        handoff_protocol_current = bool(
+            handoff_active
+            and handoff_progress_current
+            and source_is_transition_owner
+            and (
+                (
+                    protocol.get("phase") == "shared_core_derivation"
+                    and not canonical_specialist
+                    and not handoff_target_specialist
+                )
+                or (
+                    target_is_known_unfinished
+                    and (
+                        handoff_target_specialist
+                        == str(protocol.get("active_specialist") or "")
+                        or canonical_specialist == handoff_source_specialist
+                        or active_record_ids == {handoff_source_specialist}
+                    )
+                )
+            )
+        )
         protocol_identity_current = bool(
             protocol.get("available") is True
-            and protocol.get("canonical_pointer_stale") is not True
-            and canonical_specialist
+            and (
+                protocol.get("canonical_pointer_stale") is not True
+                or protocol.get("runtime_identity_reconciled") is True
+                or handoff_protocol_current
+            )
             and protocol_roster_current
             and protocol_frozen_pool_current
             and protocol_model_roster_current
             and (
-                not service_active
+                handoff_protocol_current
+                or (
+                    canonical_specialist
+                    and not service_active
+                )
                 or (
                     runtime_specialist
-                    and runtime_specialist == canonical_specialist
+                    and runtime_specialist
+                    == str(protocol.get("active_specialist") or "")
+                    and (
+                        runtime_specialist == canonical_specialist
+                        or protocol.get("runtime_identity_reconciled") is True
+                    )
                 )
             )
         )
@@ -1105,25 +1210,48 @@ class SnapshotCache:
             "stage": {
                 "required": True,
                 "current": bool(
-                    service_active
-                    and int(service.get("restart_count") or 0) >= 0
+                    handoff_progress_current
+                    or (
+                        service_active
+                        and int(service.get("restart_count") or 0) >= 0
+                    )
                 ),
-                "identity": service.get("name"),
-                "source": "systemd user cgroup",
+                "identity": (
+                    handoff.get("service", {}).get("name")
+                    if handoff_active
+                    else service.get("name")
+                ),
+                "source": (
+                    handoff.get("source")
+                    if handoff_active
+                    else "systemd user cgroup"
+                ),
             },
             "progress": {
                 "required": True,
                 "current": bool(
-                    curriculum.get("active")
-                    and curriculum.get("source_current") is True
-                    and str(curriculum.get("run") or "")
+                    handoff_progress_current
+                    or (
+                        curriculum.get("active")
+                        and curriculum.get("source_current") is True
+                        and str(curriculum.get("run") or "")
+                    )
                 ),
                 "identity": (
-                    f"{curriculum.get('run') or 'unknown'}:"
-                    f"{curriculum.get('iteration')}:{stage}"
+                    f"handoff:{handoff.get('source_specialist_id')}:"
+                    f"{handoff.get('epoch')}:{handoff.get('stage')}"
+                    if handoff_active
+                    else (
+                        f"{curriculum.get('run') or 'unknown'}:"
+                        f"{curriculum.get('iteration')}:{stage}"
+                    )
                 ),
-                "source": curriculum.get("progress_status_source")
-                or curriculum.get("progress_source"),
+                "source": (
+                    handoff.get("source")
+                    if handoff_active
+                    else curriculum.get("progress_status_source")
+                    or curriculum.get("progress_source")
+                ),
             },
             "model": {
                 "required": True,
@@ -1136,16 +1264,60 @@ class SnapshotCache:
                 ),
                 "identity": model.get("active_checkpoint_digest"),
                 "source": structure.get("checkpoint"),
+                "checks": {
+                    "checkpoint_identity": bool(
+                        structure.get("checkpoint")
+                        == model.get("active_checkpoint")
+                        and structure.get("checkpoint_digest")
+                        == model.get("active_checkpoint_digest")
+                    ),
+                    "expanded_heads": bool(
+                        not expanded_heads_required
+                        or expanded_heads.get("verified") is True
+                    ),
+                    "legacy_v5_allowed": bool(
+                        not expanded_heads_required
+                        or expanded_heads.get("legacy_v5") is True
+                        or expanded_heads.get("verified") is True
+                    ),
+                },
+            },
+            "expanded_heads": {
+                "required": expanded_heads_required,
+                "current": bool(
+                    not expanded_heads_required
+                    or (
+                        expanded_heads.get("verified") is True
+                        and structure.get("checkpoint_digest")
+                        == model.get("active_checkpoint_digest")
+                    )
+                ),
+                "identity": (
+                    expanded_heads.get("contract_digest")
+                    or model.get("active_checkpoint_digest")
+                ),
+                "source": structure.get("checkpoint"),
             },
             "protocol": {
                 "required": True,
                 "current": protocol_identity_current,
-                "identity": runtime_specialist or canonical_specialist,
+                "identity": (
+                    runtime_specialist
+                    or canonical_specialist
+                    or handoff_target_specialist
+                ),
                 "source": protocol.get("source"),
                 "checks": {
                     "canonical_pointer": bool(
-                        canonical_specialist
-                        and protocol.get("canonical_pointer_stale") is not True
+                        (
+                            effective_protocol_specialist
+                            or handoff_protocol_current
+                        )
+                        and (
+                            protocol.get("canonical_pointer_stale") is not True
+                            or protocol.get("runtime_identity_reconciled") is True
+                            or handoff_protocol_current
+                        )
                     ),
                     "specialist_roster": protocol_roster_current,
                     "frozen_pool": protocol_frozen_pool_current,
@@ -1154,13 +1326,19 @@ class SnapshotCache:
                         not service_active
                         or (
                             runtime_specialist
-                            and runtime_specialist == canonical_specialist
+                            and runtime_specialist
+                            == str(protocol.get("active_specialist") or "")
+                            and (
+                                runtime_specialist == canonical_specialist
+                                or protocol.get("runtime_identity_reconciled")
+                                is True
+                            )
                         )
                     ),
                 },
             },
             "latest10": {
-                "required": True,
+                "required": not handoff_active,
                 "current": bool(
                     expert_archive_current
                     and expert.get("authoritative_for_active_run") is True
@@ -1205,7 +1383,6 @@ class SnapshotCache:
         training = value.get("training") or {}
         bootstrap = value.get("bootstrap") or {}
         transition = value.get("transition") or {}
-        handoff = value.get("specialist_handoff") or {}
         baseline = value.get("baseline_eval") or {}
         gate = (
             (curriculum.get("gate_program") or {}).get("next_gate")
@@ -1217,10 +1394,17 @@ class SnapshotCache:
                 "bootstrap": {
                     "required": True,
                     "current": bool(
-                        progress_current
-                        and bootstrap.get("compatibility_alias") is True
-                        and bootstrap.get("alias_of") == "training"
-                        and bootstrap.get("phase") == training.get("phase")
+                        (
+                            handoff_progress_current
+                            and training.get("mode") == "specialist_handoff"
+                            and training.get("source") == handoff.get("source")
+                        )
+                        or (
+                            progress_current
+                            and bootstrap.get("compatibility_alias") is True
+                            and bootstrap.get("alias_of") == "training"
+                            and bootstrap.get("phase") == training.get("phase")
+                        )
                     ),
                     "identity": (
                         f"{curriculum.get('iteration')}:{stage}"
@@ -1301,14 +1485,14 @@ class SnapshotCache:
                     or (curriculum.get("gate_program") or {}).get("source"),
                 },
                 "curriculum": {
-                    "required": True,
-                    "current": progress_current,
+                    "required": not handoff_active,
+                    "current": bool(handoff_active or progress_current),
                     "identity": f"{curriculum.get('run')}:{stage}",
                     "source": progress_source,
                 },
                 "pure": {
-                    "required": True,
-                    "current": progress_current,
+                    "required": not handoff_active,
+                    "current": bool(handoff_active or progress_current),
                     "identity": curriculum.get("run"),
                     "source": progress_source,
                 },
@@ -1329,8 +1513,8 @@ class SnapshotCache:
                     "current": bool(
                         not handoff.get("active")
                         or (
-                            handoff.get("source_specialist_id")
-                            == protocol.get("active_specialist")
+                            handoff_progress_current
+                            and source_is_transition_owner
                         )
                     ),
                     "identity": handoff.get("source_specialist_id"),

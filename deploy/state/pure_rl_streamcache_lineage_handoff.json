@@ -1,0 +1,16 @@
+{
+  "schema": "poke_bot.pure_rl_lineage_handoff/v1",
+  "source_run": "pure_rl_core_exact20k_resident_fleet152_bertcpu_v1_20260719",
+  "source_iteration": 3,
+  "global_iteration_offset": 4,
+  "champion": {
+    "digest": "sha256:ef31418c187c80da82f5d5c850b987885457a6116fdb26b7cd4c5241b5bfb353",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_core_exact20k_resident_fleet152_bertcpu_v1_20260719/checkpoints/iter_00003.pt"
+  },
+  "inherited_heldout": {
+    "games": 200,
+    "win_rate": 0.185,
+    "passed": false,
+    "source": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_core_exact20k_resident_fleet152_bertcpu_v1_20260719/eval/iter_00003.json"
+  }
+}

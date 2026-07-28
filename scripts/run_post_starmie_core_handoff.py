@@ -15,13 +15,23 @@ from typing import Any
 from poke_bot import archetypes, checkpoint
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.run_sequential_specialist_handoff import (
+    load_contract as load_sequential_contract,
+    path_value as sequential_path_value,
+    save_state as save_sequential_state,
     service_active,
     run as run_sequential_handoff,
+    validate_core as validate_sequential_core,
+    validate_corpus as validate_sequential_corpus,
     validate_frozen_predecessor_registry,
     validate_source,
 )
 from scripts.select_next_specialist import select as select_next_specialist
 from scripts.resolve_specialist_assets import resolve_specialist_assets
+from scripts.run_starmie_expert_bootstrap import (
+    current_deck_guide_handoff_contract,
+    decision_fusion_handoff_contract,
+    expanded_handoff_training_contract,
+)
 
 
 SCHEMA = "poke_bot.post_specialist_core_refresh_handoff/v1"
@@ -83,6 +93,8 @@ def _save_state(path: Path, phase: str, **values: Any) -> None:
 def _upgrade_selected_handoff_contract(
     payload: dict[str, Any],
     selected: dict[str, Any],
+    *,
+    current_deck_guide: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Apply selection-derived fields before any target bootstrap has begun."""
 
@@ -106,6 +118,57 @@ def _upgrade_selected_handoff_contract(
     training = dict(upgraded.get("training") or {})
     gate_materialization = dict(upgraded.get("gate_materialization") or {})
     source_specialist = dict(upgraded.get("source_specialist") or {})
+    expected_expanded = expanded_handoff_training_contract()
+    expected_fusion = decision_fusion_handoff_contract()
+    if training.get("expanded_heads") != expected_expanded:
+        target = dict(upgraded.get("next_specialist") or {})
+        ready_raw = str(target.get("ready") or "").strip()
+        run_raw = str(target.get("run_dir") or "").strip()
+        run_dir = Path(run_raw).expanduser() if run_raw else None
+        bootstrap_started = bool(
+            (ready_raw and Path(ready_raw).expanduser().is_file())
+            or (
+                run_dir is not None
+                and (
+                    (run_dir / "state.json").is_file()
+                    or (
+                        (run_dir / "checkpoints").is_dir()
+                        and any((run_dir / "checkpoints").iterdir())
+                    )
+                )
+            )
+        )
+        if bootstrap_started:
+            raise RuntimeError(
+                "cannot add expanded-head schedule after specialist bootstrap "
+                "has started"
+            )
+    if (
+        current_deck_guide is not None
+        and training.get("current_deck_guide") != current_deck_guide
+    ):
+        target = dict(upgraded.get("next_specialist") or {})
+        ready_raw = str(target.get("ready") or "").strip()
+        run_raw = str(target.get("run_dir") or "").strip()
+        run_dir = Path(run_raw).expanduser() if run_raw else None
+        bootstrap_started = bool(
+            (ready_raw and Path(ready_raw).expanduser().is_file())
+            or (
+                run_dir is not None
+                and (
+                    (run_dir / "state.json").is_file()
+                    or (
+                        (run_dir / "checkpoints").is_dir()
+                        and any((run_dir / "checkpoints").iterdir())
+                    )
+                )
+            )
+        )
+        if bootstrap_started:
+            raise RuntimeError(
+                "cannot bind current-deck guide after specialist bootstrap "
+                "has started"
+            )
     pointer = Path(str(selected.get("pointer") or "")).expanduser().resolve()
     required_targets: list[str] | None = None
     if pointer.is_file():
@@ -141,7 +204,20 @@ def _upgrade_selected_handoff_contract(
             "before": gate_materialization.get("archetype_label"),
             "after": source_archetype.name,
         },
+        "expanded_heads": {
+            "before": training.get("expanded_heads"),
+            "after": expected_expanded,
+        },
+        "decision_fusion": {
+            "before": training.get("decision_fusion"),
+            "after": expected_fusion,
+        },
     }
+    if current_deck_guide is not None:
+        changes["current_deck_guide"] = {
+            "before": training.get("current_deck_guide"),
+            "after": current_deck_guide,
+        }
     if required_targets is not None:
         changes["required_target_coverage"] = {
             "before": training.get("required_target_coverage"),
@@ -175,6 +251,10 @@ def _upgrade_selected_handoff_contract(
             }
             source_specialist["threshold_transition_receipt"] = transition
     training["minimum_decisions"] = minimum_decisions
+    training["expanded_heads"] = changes["expanded_heads"]["after"]
+    training["decision_fusion"] = changes["decision_fusion"]["after"]
+    if current_deck_guide is not None:
+        training["current_deck_guide"] = current_deck_guide
     if required_targets is not None:
         training["required_target_coverage"] = required_targets
     gate_materialization["archetype_label"] = source_archetype.name
@@ -204,6 +284,16 @@ def _reusable_core_candidate(
     expected_teacher_digests = [
         str(row["checksum"]) for row in core.get("teachers", ())
     ]
+    expanded = dict(core.get("expanded_heads") or {})
+    fallback_enabled = bool(
+        (contract.get("core_failure_fallback") or {}).get("enabled")
+    )
+    if (
+        expanded
+        and expanded != expanded_handoff_training_contract()
+        and not fallback_enabled
+    ):
+        raise RuntimeError("cumulative-core expanded-head contract changed")
     status = str(ready.get("status") or "")
     if (
         ready.get("schema") != "poke_bot.multi_teacher_core_ready/v1"
@@ -216,6 +306,24 @@ def _reusable_core_candidate(
         or ready.get("checkpoint_digest") != frozen.get("checkpoint_digest")
         or ready.get("teacher_checkpoint_digests")
         != expected_teacher_digests
+        or (
+            bool(expanded)
+            and (
+                ready.get("expanded_target_schema_digest")
+                != expanded["target_schema_digest"]
+                or ready.get("expanded_schedule_digest")
+                != expanded["schedule_digest"]
+                or set(ready.get("expanded_heads_trained") or ())
+                != set(
+                    expanded["schedule"]["stages"][-1][
+                        "enabled_heads"
+                    ]
+                )
+                or ready.get("runtime_enabled_heads") != []
+                or int(ready.get("epochs_completed") or 0)
+                != int(expanded["schedule"]["total_epochs"])
+            )
+        )
     ):
         raise RuntimeError("existing refreshed-core readiness identity changed")
     return ready, frozen
@@ -227,7 +335,12 @@ def _reusable_core_regression(
     candidate_digest: str,
     teacher_digests: list[str],
 ) -> dict[str, Any] | None:
-    """Reuse a passed immutable regression after controller-only changes."""
+    """Reuse an immutable regression after controller-only changes.
+
+    A valid rejection is also authoritative: the non-blocking fallback policy
+    must consume it instead of rerunning evaluation or retraining the rejected
+    boundary candidate.
+    """
 
     if not path.is_file():
         return None
@@ -237,7 +350,8 @@ def _reusable_core_regression(
     if (
         result.get("schema")
         != "poke_bot.multi_teacher_core_gameplay_regression/v1"
-        or result.get("passed") is not True
+        or result.get("passed") not in {True, False}
+        or result.get("training_eligible") is not False
         or candidate.get("digest") != candidate_digest
         or identity.get("teacher_checkpoint_digests") != teacher_digests
     ):
@@ -245,7 +359,49 @@ def _reusable_core_regression(
     return result
 
 
-def _resume_selected_handoff(state_path: Path) -> bool:
+def _validated_nonblocking_fallback_core(
+    *,
+    contract: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    """Resolve the latest accepted core after a rejected refresh candidate."""
+
+    policy = dict(contract.get("core_failure_fallback") or {})
+    if not policy:
+        return None
+    if (
+        policy.get("enabled") is not True
+        or policy.get("behavior")
+        != "continue_with_latest_accepted_core"
+        or policy.get("continue_refresh_after_each_specialist") is not True
+    ):
+        raise RuntimeError("nonblocking core-fallback policy changed")
+    family = _path(policy, "family")
+    ready_path = _path(policy, "ready_receipt")
+    ready = _read(ready_path)
+    frozen = verify_frozen_model(family)
+    expected_digest = str(policy.get("checkpoint_digest") or "")
+    version = int(policy.get("version") or 0)
+    if (
+        version <= 0
+        or ready.get("schema") != "poke_bot.multi_teacher_core_ready/v1"
+        or ready.get("status") != "ready"
+        or ready.get("gameplay_regression_passed") is not True
+        or ready.get("checkpoint_digest") != expected_digest
+        or frozen.get("checkpoint_digest") != expected_digest
+    ):
+        raise RuntimeError("latest accepted fallback core identity changed")
+    return ready, frozen, {
+        **dict(contract["core_refresh"]),
+        "version": version,
+        "family": str(family),
+        "ready_receipt": str(ready_path),
+    }
+
+
+def _resume_selected_handoff(
+    state_path: Path,
+    contract: dict[str, Any],
+) -> bool:
     if not state_path.is_file():
         return False
     state = _read(state_path)
@@ -270,11 +426,186 @@ def _resume_selected_handoff(state_path: Path) -> bool:
     ):
         raise RuntimeError("selected specialist resume identity changed")
     payload = _read(generated)
-    upgraded, changes = _upgrade_selected_handoff_contract(payload, selected)
+    expected_assets = str(
+        (contract.get("runtime") or {}).get("future_assets_receipt") or ""
+    ).strip()
+    saved_assets = str(
+        (payload.get("asset_generation") or {}).get("promotion_receipt") or ""
+    ).strip()
+    if expected_assets and Path(saved_assets).expanduser().resolve() != Path(
+        expected_assets
+    ).expanduser().resolve():
+        # Continue through normal selection so the controller can validate and
+        # receipt-bind the newer boundary router before resuming this bootstrap.
+        return False
+    guide_handoff = None
+    if bool(
+        dict(contract["next_specialist"]).get(
+            "current_deck_guide_required", False
+        )
+    ):
+        runtime = dict(contract["runtime"])
+        prestage = _validated_prestage(
+            contract=contract,
+            selected=selected,
+            assets={
+                "candidate_tree": _optional_path(
+                    runtime, "inactive_tree_candidate"
+                ),
+                "candidate_audit": _optional_path(
+                    runtime, "candidate_audit"
+                ),
+            },
+        )
+        if prestage is None:
+            raise RuntimeError(
+                "required current-deck guide pre-stage receipt is not ready"
+            )
+        guide = dict(prestage.get("current_deck_guide") or {})
+        if (
+            guide.get("status") != "ready"
+            or guide.get("specialist_id")
+            != str(selected["specialist_id"])
+            or guide.get("implementation_ready") is not True
+            or guide.get("corpus_binding_ready") is not True
+            or guide.get("targets_ready") is not True
+        ):
+            raise RuntimeError(
+                "pre-staged current-deck guide is not handoff-ready"
+            )
+        guide_handoff = current_deck_guide_handoff_contract(
+            specialist_id=str(selected["specialist_id"]),
+            contract_path=Path(str(guide["path"])),
+            expected_contract_sha256=str(guide["sha256"]),
+            guide_version=str(guide["guide_version"]),
+            corpus_ready_receipt=Path(
+                str(guide["corpus_ready_receipt"])
+            ),
+            expected_corpus_ready_sha256=str(
+                guide["corpus_ready_receipt_sha256"]
+            ),
+            protocol_path=Path(__file__).resolve().parents[1]
+            / "config/rl_protocol.yaml",
+        )
+    # Recover a controller crash that occurred after the immutable selected
+    # contract was upgraded but before its source-only preflight state could be
+    # rebound.  No bootstrap/model mutation has happened at this phase, and all
+    # three immutable inputs must still validate exactly under the new contract.
+    sequential_contract, sequential_digest = load_sequential_contract(generated)
+    sequential_state_path = sequential_path_value(
+        sequential_contract, "paths", "state"
+    )
+    if sequential_state_path.is_file():
+        sequential_state = _read(sequential_state_path)
+        if sequential_state.get("contract_sha256") != sequential_digest:
+            source_contract = dict(
+                sequential_contract.get("source_specialist") or {}
+            )
+            saved_source = dict(
+                sequential_state.get("source_specialist") or {}
+            )
+            frozen_source = verify_frozen_model(
+                Path(str(source_contract.get("passed_family") or ""))
+                .expanduser()
+                .resolve()
+            )
+            handler = _read(
+                Path(str(source_contract.get("handler_state") or ""))
+                .expanduser()
+                .resolve()
+            )
+            handler_frozen = dict(handler.get("frozen_model") or {})
+            immutable_source_matches = (
+                saved_source.get("specialist_id")
+                == source_contract.get("id")
+                and Path(str(saved_source.get("frozen_family") or ""))
+                .expanduser()
+                .resolve()
+                == Path(str(source_contract.get("passed_family") or ""))
+                .expanduser()
+                .resolve()
+                and saved_source.get("checkpoint_digest")
+                == frozen_source.get("checkpoint_digest")
+                == handler_frozen.get("checkpoint_digest")
+                and (saved_source.get("gate") or {}).get("contract")
+                == source_contract.get("gate_contract")
+            )
+            if (
+                sequential_state.get("schema")
+                != "poke_bot.sequential_specialist_handoff_state/v1"
+                or sequential_state.get("phase") != "source_preflight_verified"
+                or not immutable_source_matches
+                or sequential_state.get("shared_deck_agnostic_core")
+                != validate_sequential_core(sequential_contract)
+                or sequential_state.get("next_specialist_corpus")
+                != validate_sequential_corpus(sequential_contract)
+            ):
+                raise RuntimeError(
+                    "selected handoff state cannot be rebound safely"
+                )
+            _atomic(
+                sequential_state_path,
+                {
+                    **sequential_state,
+                    "contract_sha256": sequential_digest,
+                    "contract_migration": {
+                        "schema":
+                            "poke_bot.selected_handoff_crash_recovery/v1",
+                        "new_contract_sha256": sequential_digest,
+                        "bootstrap_started_before_migration": False,
+                    },
+                    "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+    upgraded, changes = _upgrade_selected_handoff_contract(
+        payload,
+        selected,
+        current_deck_guide=guide_handoff,
+    )
     if changes:
         old_digest = expected_digest
+        old_sequential_contract, old_sequential_digest = (
+            load_sequential_contract(generated)
+        )
+        sequential_state_path = sequential_path_value(
+            old_sequential_contract, "paths", "state"
+        )
+        sequential_state = (
+            _read(sequential_state_path)
+            if sequential_state_path.is_file()
+            else {}
+        )
+        if sequential_state and (
+            sequential_state.get("schema")
+            != "poke_bot.sequential_specialist_handoff_state/v1"
+            or sequential_state.get("contract_sha256")
+            != old_sequential_digest
+            or str(sequential_state.get("phase") or "")
+            not in {"source_preflight_verified", "preflight_verified"}
+        ):
+            raise RuntimeError(
+                "selected handoff contract cannot migrate active bootstrap state"
+            )
         _atomic(generated, upgraded)
         expected_digest = sha256(generated)
+        _, new_sequential_digest = load_sequential_contract(generated)
+        if sequential_state:
+            _atomic(
+                sequential_state_path,
+                {
+                    **sequential_state,
+                    "contract_sha256": new_sequential_digest,
+                    "contract_migration": {
+                        "schema":
+                            "poke_bot.selected_handoff_contract_migration/v1",
+                        "old_contract_sha256": old_sequential_digest,
+                        "new_contract_sha256": new_sequential_digest,
+                        "changes": changes,
+                        "bootstrap_started_before_migration": False,
+                    },
+                    "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+                },
+            )
         _save_state(
             state_path,
             "next_specialist_selected",
@@ -288,6 +619,30 @@ def _resume_selected_handoff(state_path: Path) -> bool:
                 "bootstrap_started_before_migration": False,
             },
         )
+    sequential_contract, sequential_digest = load_sequential_contract(
+        generated
+    )
+    sequential_state = sequential_path_value(
+        sequential_contract, "paths", "state"
+    )
+    if not sequential_state.is_file():
+        saved_source = dict(state.get("source") or {})
+        if not saved_source:
+            raise RuntimeError(
+                "selected specialist resume lost immutable source evidence"
+            )
+        save_sequential_state(
+            sequential_contract,
+            "source_preflight_verified",
+            sequential_digest,
+            source_specialist=saved_source,
+            shared_deck_agnostic_core=validate_sequential_core(
+                sequential_contract
+            ),
+            next_specialist_corpus=validate_sequential_corpus(
+                sequential_contract
+            ),
+        )
     run_sequential_handoff(generated)
     _save_state(
         state_path,
@@ -295,6 +650,83 @@ def _resume_selected_handoff(state_path: Path) -> bool:
         selected_specialist=selected,
     )
     return True
+
+
+def _compatible_selected_asset_upgrade(
+    existing: dict[str, Any],
+    current: dict[str, Any],
+) -> bool:
+    """Permit only a boundary router generation change after bootstrap."""
+
+    if existing.get("schema") != current.get("schema"):
+        return False
+    old = json.loads(json.dumps(existing))
+    new = json.loads(json.dumps(current))
+    old["asset_generation"] = {}
+    new["asset_generation"] = {}
+    for payload in (old, new):
+        source = dict(payload.get("source_specialist") or {})
+        source.pop("gate_contract", None)
+        payload["source_specialist"] = source
+        registration = dict(payload.get("runtime_registration") or {})
+        registration.pop("inactive_tree_candidate", None)
+        registration.pop("candidate_audit", None)
+        payload["runtime_registration"] = registration
+    return old == new
+
+
+def _migrate_selected_asset_contract(
+    *,
+    generated_path: Path,
+    existing: dict[str, Any],
+    current: dict[str, Any],
+) -> dict[str, Any]:
+    """Rebind a resumable handoff state to a validated router-only upgrade."""
+
+    if not _compatible_selected_asset_upgrade(existing, current):
+        raise RuntimeError("generated next-specialist handoff identity changed")
+    old_digest = sha256(generated_path)
+    state_path = _path(dict(existing["paths"]), "state")
+    state = _read(state_path)
+    allowed = {
+        "preflight_verified",
+        "next_specialist_bootstrap_frozen",
+        "next_specialist_runtime_checkpoint_frozen",
+        "matchup_v6_fleet_activated",
+    }
+    if (
+        state.get("schema")
+        != "poke_bot.sequential_specialist_handoff_state/v1"
+        or state.get("contract_sha256") != old_digest
+        or str(state.get("phase") or "") not in allowed
+    ):
+        raise RuntimeError(
+            "router upgrade cannot rebind the current sequential handoff phase"
+        )
+    _atomic(generated_path, current)
+    new_digest = sha256(generated_path)
+    migration = {
+        "schema": "poke_bot.selected_handoff_router_upgrade/v1",
+        "old_contract_sha256": old_digest,
+        "new_contract_sha256": new_digest,
+        "phase_preserved": state["phase"],
+        "bootstrap_checkpoint_preserved": (
+            (state.get("next_specialist_bootstrap") or {}).get(
+                "checkpoint_digest"
+            )
+        ),
+        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    _atomic(
+        state_path,
+        {
+            **state,
+            "contract_sha256": new_digest,
+            "router_contract_migration": migration,
+            "updated_at_utc": migration["updated_at_utc"],
+        },
+    )
+    return migration
 
 
 def _source_contract(contract: dict[str, Any]) -> dict[str, Any]:
@@ -366,10 +798,63 @@ def _core_refresh_command(
             str(int(core["minimum_decisions"])),
             "--batch-size",
             str(int(core["requested_decisions_per_batch"])),
+            "--split-seed",
+            str(int(core.get("split_seed", 20260723))),
             "--cpu-pack-root",
             str(_path(core, "cpu_pack_root")),
         ]
     )
+    expanded = dict(core.get("expanded_heads") or {})
+    expected_expanded = expanded_handoff_training_contract()
+    fusion = dict(core.get("decision_fusion") or {})
+    expected_fusion = decision_fusion_handoff_contract()
+    if expanded:
+        if expanded != expected_expanded:
+            raise RuntimeError(
+                "cumulative-core expanded-head contract changed"
+            )
+        if fusion != expected_fusion:
+            raise RuntimeError(
+                "cumulative-core decision-fusion contract changed"
+            )
+        command.extend(
+            [
+                "--expanded-heads",
+                "--decision-fusion",
+                "--rl-protocol",
+                str(
+                    Path(__file__).resolve().parents[1]
+                    / "config/rl_protocol.yaml"
+                ),
+                "--expected-expanded-schedule-digest",
+                str(expanded["schedule_digest"]),
+                "--expected-expanded-target-digest",
+                str(expanded["target_schema_digest"]),
+            ]
+        )
+    teacher_behavior = dict(
+        core.get("teacher_behavior_distillation") or {}
+    )
+    if teacher_behavior:
+        if (
+            teacher_behavior.get("schema")
+            != "poke_bot.teacher_behavior_distillation/v1"
+            or teacher_behavior.get("enabled") is not True
+            or teacher_behavior.get("target")
+            != "matching_archetype_frozen_teacher_greedy_action"
+            or teacher_behavior.get("causal_inputs_only") is not True
+            or float(teacher_behavior.get("loss_weight") or 0.0) <= 0.0
+        ):
+            raise RuntimeError(
+                "cumulative-core teacher behavior contract changed"
+            )
+        command.extend(
+            [
+                "--teacher-behavior-distillation",
+                "--teacher-policy-weight",
+                str(float(teacher_behavior["loss_weight"])),
+            ]
+        )
     return command
 
 
@@ -417,6 +902,40 @@ def _generated_contract(
     staged_pack_root = str(
         ((prestage or {}).get("cpu_pack") or {}).get("root") or ""
     ).strip()
+    guide_handoff = None
+    guide_required = bool(
+        dict(contract["next_specialist"]).get(
+            "current_deck_guide_required", False
+        )
+    )
+    if guide_required and prestage is None:
+        raise RuntimeError(
+            "required current-deck guide pre-stage receipt is not ready"
+        )
+    if prestage is not None:
+        guide = dict(prestage.get("current_deck_guide") or {})
+        if (
+            guide.get("status") != "ready"
+            or guide.get("specialist_id") != specialist_id
+            or guide.get("implementation_ready") is not True
+            or guide.get("corpus_binding_ready") is not True
+            or guide.get("targets_ready") is not True
+        ):
+            raise RuntimeError(
+                "pre-staged current-deck guide is not handoff-ready"
+            )
+        guide_handoff = current_deck_guide_handoff_contract(
+            specialist_id=specialist_id,
+            contract_path=Path(str(guide["path"])),
+            expected_contract_sha256=str(guide["sha256"]),
+            guide_version=str(guide["guide_version"]),
+            corpus_ready_receipt=Path(str(guide["corpus_ready_receipt"])),
+            expected_corpus_ready_sha256=str(
+                guide["corpus_ready_receipt_sha256"]
+            ),
+            protocol_path=Path(__file__).resolve().parents[1]
+            / "config/rl_protocol.yaml",
+        )
     runtime_registration = {
         "runtime_tree": runtime["runtime_tree"],
         "runtime_registry": runtime["runtime_registry"],
@@ -491,6 +1010,7 @@ def _generated_contract(
             "frozen_specialist_registry": gate[
                 "base_frozen_specialist_registry"
             ],
+            "current_deck_guide_required": guide_required,
         },
         "gate_materialization": {
             **gate,
@@ -507,6 +1027,13 @@ def _generated_contract(
             ),
             "requested_decisions_per_batch": int(
                 core["requested_decisions_per_batch"]
+            ),
+            "expanded_heads": expanded_handoff_training_contract(),
+            "decision_fusion": decision_fusion_handoff_contract(),
+            **(
+                {"current_deck_guide": guide_handoff}
+                if guide_handoff is not None
+                else {}
             ),
         },
         "submission_policy": {
@@ -638,7 +1165,7 @@ def run(contract_path: Path) -> int:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        if _resume_selected_handoff(state_path):
+        if _resume_selected_handoff(state_path, contract):
             return 0
         source_service = str(contract["trigger"]["training_service"])
         if service_active(source_service):
@@ -695,6 +1222,17 @@ def run(contract_path: Path) -> int:
             teacher_digests=expected_teacher_digests,
         )
         if regression is None:
+            _save_state(
+                state_path,
+                "core_gameplay_regression_running",
+                core_candidate=ready,
+                core_gameplay_regression={
+                    "status": "running",
+                    "candidate_digest": str(frozen["checkpoint_digest"]),
+                    "teachers_total": len(expected_teacher_digests),
+                    "games_per_teacher": int(acceptance["games_per_teacher"]),
+                },
+            )
             result = subprocess.run(
                 [
                     str(runtime["python"]),
@@ -724,11 +1262,30 @@ def run(contract_path: Path) -> int:
             core_gameplay_regression=regression,
         )
         if regression_returncode or regression.get("passed") is not True:
-            raise RuntimeError("refreshed core failed established gameplay regression")
-        ready["gameplay_regression_passed"] = True
-        ready["gameplay_regression_result"] = str(regression_path)
-        ready["status"] = "ready"
-        _atomic(ready_path, ready)
+            fallback = _validated_nonblocking_fallback_core(contract=contract)
+            if fallback is None:
+                raise RuntimeError(
+                    "refreshed core failed established gameplay regression"
+                )
+            ready, frozen, core = fallback
+            contract = {**contract, "core_refresh": core}
+            _save_state(
+                state_path,
+                "core_gameplay_regression_failed_fallback_selected",
+                rejected_core_gameplay_regression=regression,
+                fallback_core={
+                    "version": int(core["version"]),
+                    "family": str(core["family"]),
+                    "checkpoint_digest": str(frozen["checkpoint_digest"]),
+                    "ready_receipt": str(core["ready_receipt"]),
+                },
+                production_continues=True,
+            )
+        else:
+            ready["gameplay_regression_passed"] = True
+            ready["gameplay_regression_result"] = str(regression_path)
+            ready["status"] = "ready"
+            _atomic(ready_path, ready)
 
         next_config = dict(contract["next_specialist"])
         promotion_raw = str(runtime.get("future_assets_receipt") or "").strip()
@@ -757,6 +1314,9 @@ def run(contract_path: Path) -> int:
                 default_candidate_tree=default_tree,
                 default_candidate_audit=default_audit,
                 promotion_receipt=promotion_receipt,
+                promotion_scope=str(
+                    runtime.get("future_assets_scope") or "full_bundle"
+                ),
             )
         candidate_audit = (
             _read(Path(assets["candidate_audit"]))
@@ -834,9 +1394,14 @@ def run(contract_path: Path) -> int:
             prestage=prestage,
         )
         generated_path = _path(next_config, "generated_handoff_contract")
+        generated_migration = None
         if generated_path.is_file() and _read(generated_path) != generated:
-            raise RuntimeError("generated next-specialist handoff identity changed")
-        if not generated_path.is_file():
+            generated_migration = _migrate_selected_asset_contract(
+                generated_path=generated_path,
+                existing=_read(generated_path),
+                current=generated,
+            )
+        elif not generated_path.is_file():
             _atomic(generated_path, generated)
         _save_state(
             state_path,
@@ -844,6 +1409,7 @@ def run(contract_path: Path) -> int:
             selection=selection,
             generated_handoff_contract=str(generated_path),
             generated_handoff_contract_sha256=sha256(generated_path),
+            generated_handoff_contract_migration=generated_migration,
         )
         run_sequential_handoff(generated_path)
         _save_state(

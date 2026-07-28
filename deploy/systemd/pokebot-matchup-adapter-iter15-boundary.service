@@ -1,0 +1,16 @@
+[Unit]
+Description=Pause Alakazam RL at the immutable iteration-15 adapter boundary
+Wants=pokebot-pure-rl-alakazam.service
+After=pokebot-pure-rl-alakazam.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v19-adapter-boundary-tools
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v19-adapter-boundary-tools
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/pause_matchup_adapters_at_iter15.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721 --unit pokebot-pure-rl-alakazam.service --trainer-root /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v19-adapter-boundary-tools --status /home/inzi/poke-bot-agent/outputs/state/alakazam-matchup-adapter-iter15-boundary.json --poll-seconds 0.02 --timeout-seconds 21600
+Restart=no
+TimeoutStopSec=15
+MemoryMax=1G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/alakazam-matchup-adapter-iter15-boundary.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/alakazam-matchup-adapter-iter15-boundary.log

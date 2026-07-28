@@ -17,6 +17,14 @@ from poke_bot.authoritative_visual_trace import (
     convert_visual_episode,
     materialize_day,
 )
+from poke_bot.feature_shards import iter_feature_shard
+from poke_bot.strategic_heads import (
+    EXPANDED_STRATEGIC_KEY,
+    EXPANDED_STRATEGIC_SCHEMA,
+    TARGET_SCHEMA_DIGEST,
+    validate_expanded_strategic_labels,
+)
+from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
 
 
 @dataclass(frozen=True)
@@ -382,6 +390,17 @@ def test_exact_transition_targets_are_masked_and_alakazam_acting_seat_only() -> 
         assert _ids(aux["own_prizes"]) == list(range(3, 9))
         assert aux["prize_race"] == pytest.approx([1.0, 1.0])
         assert aux["lethal_threat"] == 0.0
+        validate_expanded_strategic_labels(
+            aux[EXPANDED_STRATEGIC_KEY]
+        )
+        assert "transition_after" not in step
+
+    strategic_contract = record["target_provenance"][
+        "expanded_strategic_targets"
+    ]
+    assert strategic_contract["schema"] == EXPANDED_STRATEGIC_SCHEMA
+    assert strategic_contract["digest"] == TARGET_SCHEMA_DIGEST
+    assert strategic_contract["decisions"] == len(record["steps"])
 
     assert TARGET_CONSUMER_CONTRACT["stored_without_loss"] == [
         "acting_archetype",
@@ -390,10 +409,11 @@ def test_exact_transition_targets_are_masked_and_alakazam_acting_seat_only() -> 
     assert set(TARGET_CONSUMER_CONTRACT["loss_wired"]) == {
         "opp_archetype",
         "opp_hand",
-        "opp_hidden_remainder",
-        "lethal_threat",
-        "prize_race",
-    }
+            "opp_hidden_remainder",
+            "lethal_threat",
+            "prize_race",
+            "current_deck_guide",
+        }
 
     # Exact private zones are target-only.  The policy/value observation stays
     # byte-for-byte faithful to the acting seat's masked Kaggle observation.
@@ -408,6 +428,8 @@ def test_exact_transition_targets_are_masked_and_alakazam_acting_seat_only() -> 
         "decisions_validated": 3,
         "exact_target_rows": 3,
         "alakazam_records": 1,
+        "required_archetype": "alakazam",
+        "selected_records": 1,
         "seat_labels": ["alakazam", "crustle"],
         "label_methods": ["representative_exact", "representative_exact"],
     }
@@ -482,6 +504,7 @@ def test_materialized_day_is_atomic_and_checksum_resumable(tmp_path: Path) -> No
         workers=1,
         max_in_flight=1,
         max_context=320,
+        min_available_bytes=0,
         resume=True,
     )
 
@@ -494,11 +517,35 @@ def test_materialized_day_is_atomic_and_checksum_resumable(tmp_path: Path) -> No
     assert receipt["output"]["sha256"] == _sha256(output)
     assert receipt["classifier"]["sha256"].startswith("sha256:")
     assert receipt["schemas"]["compact_mode"] == "temporal-expert-v1"
+    assert receipt["schemas"]["expanded_strategic_targets"] == {
+        "schema": EXPANDED_STRATEGIC_SCHEMA,
+        "digest": TARGET_SCHEMA_DIGEST,
+    }
     assert receipt["target_consumer_contract"] == TARGET_CONSUMER_CONTRACT
     metadata = json.loads(
         Path(receipt["output"]["metadata_path"]).read_text(encoding="utf-8")
     )
     assert metadata["target_consumer_contract"] == TARGET_CONSUMER_CONTRACT
+    expanded = metadata["stats"]["expanded_strategic_targets"]
+    assert expanded["schema"] == EXPANDED_STRATEGIC_SCHEMA
+    assert expanded["digest"] == TARGET_SCHEMA_DIGEST
+    assert expanded["decisions"] == metadata["stats"]["decisions_kept"]
+    assert set(expanded["head_coverage"]) == set(EXPANDED_HEAD_IDS)
+    assert all(
+        row["labeled_rows"] + row["masked_rows"]
+        == row["total_rows"]
+        == expanded["decisions"]
+        for row in expanded["head_coverage"].values()
+    )
+    for head_id in ("action_q", "game_phase", "outcome_distribution"):
+        assert expanded["head_coverage"][head_id]["labeled_rows"] > 0
+    loaded = list(iter_feature_shard(output))
+    assert loaded
+    assert all(
+        EXPANDED_STRATEGIC_KEY in decision.aux_labels
+        for sequence in loaded
+        for decision in sequence.decisions
+    )
     assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
     assert not [
         path
@@ -517,6 +564,7 @@ def test_materialized_day_is_atomic_and_checksum_resumable(tmp_path: Path) -> No
         source_date="2026-07-20",
         workers=1,
         max_context=320,
+        min_available_bytes=0,
         resume=True,
     )
     assert output.read_bytes() == before
@@ -537,6 +585,7 @@ def test_materialized_day_is_atomic_and_checksum_resumable(tmp_path: Path) -> No
             source_date="2026-07-20",
             workers=1,
             max_context=320,
+            min_available_bytes=0,
             resume=True,
         )
     assert output.read_bytes() == tampered
@@ -565,6 +614,7 @@ def test_materialization_quarantines_bad_member_and_keeps_exact_good_member(
         source_date="2026-07-20",
         workers=1,
         max_context=320,
+        min_available_bytes=0,
         resume=True,
     )
 
@@ -604,6 +654,7 @@ def test_all_bad_materialization_publishes_neither_shard_nor_receipt(
             source_date="2026-07-20",
             workers=1,
             max_context=320,
+            min_available_bytes=0,
             resume=True,
         )
 

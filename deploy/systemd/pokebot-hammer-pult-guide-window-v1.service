@@ -1,0 +1,23 @@
+[Unit]
+Description=Materialize Hammer-Pult 20-day current-deck-guide corpus
+After=network-online.target
+Wants=network-online.target
+OnSuccess=pokebot-hammer-pult-guide-finalize-v1.service
+
+[Service]
+Type=oneshot
+User=admin
+WorkingDirectory=/home/admin/pokebot-expert-guide-src-v1
+Environment=CG_LIB_PATH=/mnt/Main/main/poke-bot-agent/engine-runtimes/znver3-v1
+ExecStart=/usr/bin/python3 scripts/materialize_authoritative_guide_window_parallel.py --start 2026-07-04 --end 2026-07-23 --archive-dir /mnt/Main/main/poke-bot-agent/archive/episode-days --out-dir /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/hammer-pult --status /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/hammer-pult/status/window.json --required-archetype hammer-pult --current-deck-guide hammer-pult --day-parallelism 2 --workers-per-day 2 --max-in-flight-per-day 4 --max-context 320 --memory-floor-gib 16 --min-records 0
+Restart=on-failure
+RestartSec=60
+Nice=15
+CPUWeight=5
+IOWeight=5
+MemoryHigh=16G
+MemoryMax=24G
+MemorySwapMax=0
+TimeoutStartSec=12h
+TimeoutStopSec=60
+KillMode=control-group

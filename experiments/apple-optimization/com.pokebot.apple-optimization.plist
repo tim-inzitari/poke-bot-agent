@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pokebot.apple-optimization</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>CG_LIB_PATH=/Users/tsinzitari/workspace/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission</string>
+    <string>PYTHONPATH=/Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you</string>
+    <string>PYTHONUNBUFFERED=1</string>
+    <string>PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.50</string>
+    <string>PYTORCH_MPS_LOW_WATERMARK_RATIO=0.40</string>
+    <string>/Users/tsinzitari/workspace/poke-bot-agent-deployments/safety-20260717-8a71861e9984/.venv/bin/python</string>
+    <string>/Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you/scripts/run_apple_cpu_endurance.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>/Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you/outputs/logs/apple_optimization.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you/outputs/logs/apple_optimization.log</string>
+</dict>
+</plist>

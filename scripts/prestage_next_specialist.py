@@ -31,9 +31,6 @@ from poke_bot.pure_rl.expert_rehearsal import (
 )
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.resolve_specialist_assets import resolve_specialist_assets
-from scripts.launch_active_specialist_gate_handler import (
-    build_prestage_command,
-)
 from scripts.run_specialist_cycle_handoff import (
     _active_specialist,
     _path,
@@ -656,41 +653,6 @@ def prepare(
         specialist_id=specialist_id,
         logical_aliases=logical_aliases,
     )
-    terminal_preflight_input = {
-        "schema": SCHEMA,
-        "selected_specialist": specialist_id,
-        "runtime_assets": {
-            "candidate_tree": str(tree_path),
-            "candidate_tree_sha256": sha256(tree_path),
-            "selected_route_accepted": specialist_id in routable_ids,
-        },
-        "representative": representative,
-    }
-    try:
-        terminal_command = build_prestage_command(
-            _read(_path(runtime, "runtime_registry")),
-            terminal_preflight_input,
-            contract,
-        )
-        terminal_preflight = {
-            "status": "ready",
-            "specialist_id": specialist_id,
-            "run_name": (
-                f"pure_rl_{specialist_id}_temporal1_8k_v1_20260723"
-            ),
-            "terminal_gate_marker": (
-                f"SPECIALIST_GATE_PASSED.{specialist_id}-splus-v1"
-            ),
-            "command_sha256": _canonical_digest(terminal_command),
-            "validated_before_bootstrap": True,
-        }
-    except (OSError, RuntimeError, ValueError) as exc:
-        terminal_preflight = {
-            "status": "blocked",
-            "specialist_id": specialist_id,
-            "reason": str(exc),
-            "validated_before_bootstrap": False,
-        }
     deck_guide = _deck_guide_contract(
         contract_path.parents[1],
         specialist_id,
@@ -734,8 +696,6 @@ def prepare(
         blockers.append("expert_cpu_pack_not_built")
     if deck_guide["status"] != "ready":
         blockers.append(str(deck_guide["reason"]))
-    if terminal_preflight["status"] != "ready":
-        blockers.append("terminal_handler_preflight_failed")
     receipt = {
         "schema": SCHEMA,
         "status": "ready" if not blockers else "blocked",
@@ -780,7 +740,6 @@ def prepare(
             ),
             "selected_route_accepted": specialist_id in routable_ids,
         },
-        "terminal_preflight": terminal_preflight,
         "representative": representative,
         "current_deck_guide": deck_guide,
         "cpu_pack": cpu_pack,

@@ -1,0 +1,12 @@
+[Unit]
+Description=Conservative Pokemon production pipeline supervisor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/production_supervisor.py
+TimeoutStartSec=45
+MemoryMax=256M
+StandardOutput=journal
+StandardError=journal

@@ -292,6 +292,33 @@ class ModelConfig:
     #: Dormant exact-match policy/value adapters.  Routing is never inferred;
     #: the bootstrap-only training opt-in supplies ground-truth routes directly.
     matchup_adapters_enabled: bool = _env_bool("MATCHUP_ADAPTERS_ENABLED", False)
+    #: Serialized adapter architecture. Existing checkpoints omit this field
+    #: and therefore retain the immutable V5 roster18 bank. V6 checkpoints set
+    #: it explicitly after a receipt-backed migration.
+    matchup_adapter_format: str = os.environ.get(
+        "POKEBOT_MATCHUP_ADAPTER_FORMAT",
+        "poke-bot-matchup-adapter-bank-v5-roster18",
+    )
+    #: Immutable V6 slot snapshot carried by a checkpoint. New checkpoints
+    #: derive it from the canonical registry; loaders use the serialized copy
+    #: so later roster edits cannot invalidate a frozen historical model.
+    matchup_adapter_registry: Optional[dict[str, Any]] = None
+    #: Additive V6 strategic auxiliary-head architecture.  This is deliberately
+    #: opt-in so loading or serving an immutable V5 checkpoint cannot change
+    #: its tensor inventory merely because the runtime code was upgraded.
+    #: Expanded outputs may feed the separately gated causal decision-fusion
+    #: module. Architecture presence never implies serving activation.
+    expanded_heads_enabled: bool = _env_bool("EXPANDED_HEADS_ENABLED", False)
+    #: Learned residual that consumes every causal auxiliary/strategic head.
+    #: It trains jointly when present, but serving remains separately gated so
+    #: an architecture migration can begin as an exact flat-policy no-op.
+    decision_fusion_enabled: bool = _env_bool(
+        "DECISION_FUSION_ENABLED", False
+    )
+    decision_fusion_runtime_enabled: bool = _env_bool(
+        "DECISION_FUSION_RUNTIME_ENABLED", False
+    )
+    decision_fusion_width: int = _env_int("DECISION_FUSION_WIDTH", 16)
     dropout: float = _env_float("DROPOUT", 0.1)
 
     @property

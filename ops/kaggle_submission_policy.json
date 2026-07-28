@@ -1,0 +1,22 @@
+{
+  "schema": "poke_bot.kaggle_submission_policy/v1",
+  "mode": "deny_by_default_single_use_only",
+  "automatic_submissions_allowed": false,
+  "retries_allowed_without_new_user_approval": false,
+  "minimum_hours_between_submissions": 4,
+  "spacing_wait_behavior": "leave_pending_and_continue_training",
+  "explicit_user_approval_required_for_each_submission": true,
+  "authorization_uses": 1,
+  "authorization_consumed_before_network_upload": true,
+  "authorization_path": "/home/inzi/.config/pokebot/kaggle-submission-authorization.json",
+  "go_first_attestation_required": true,
+  "go_first_attestation_suffix": ".go-first-verified.json",
+  "go_first_policy": "If the competition offers IsFirst, choose Yes deterministically before model inference or random fallback.",
+  "current_authorization_present": false,
+  "incident": {
+    "unexpected_submission_ref": 54883731,
+    "occurred_at_utc": "2026-07-21T17:36:49.210000Z",
+    "cause": "A first duplicate upload remained alive after yielding as a background exec cell. A second retry was launched before the first process was terminated; the first command later completed.",
+    "prevention": "Consume an exact file/message/competition-bound one-shot grant before upload. A retry always requires a new explicit user approval."
+  }
+}

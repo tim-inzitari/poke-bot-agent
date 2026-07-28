@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing
 import random
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional
@@ -30,6 +32,7 @@ from poke_bot.feature_shards import (
     SUPPORTED_COMPACT_MODES,
     iter_feature_shard,
 )
+from poke_bot.strategic_heads import EXPANDED_STRATEGIC_KEY
 
 
 def _sha256(path: Path) -> str:
@@ -86,6 +89,121 @@ class _VerifiedShard:
             )
 
 
+@dataclass(frozen=True)
+class _ShardScanResult:
+    shard: _VerifiedShard
+    group_counts: tuple[tuple[str, int], ...]
+    sequence_metadata: tuple[tuple[str, str], ...]
+    sequences: int
+    decisions: int
+    packed_decisions: int
+    truncated_sequences: int
+    has_expanded_strategic_targets: bool
+
+
+def _scan_verified_shard(
+    task: tuple[Path, str, int, int, Optional[int]],
+) -> _ShardScanResult:
+    """Verify and scan one shard without retaining any sequence objects."""
+
+    path, digest, records, start_index, max_context = task
+    shard = _VerifiedShard.verify(path, digest, records)
+    group_counts: dict[str, int] = {}
+    sequence_metadata: list[tuple[str, str]] = []
+    decisions = 0
+    packed_decisions = 0
+    truncated = 0
+    has_expanded_strategic_targets = False
+    loaded = 0
+    shard.assert_unchanged()
+    for local_index, sequence in enumerate(iter_feature_shard(shard.path)):
+        episode_id = str(
+            sequence.episode_id
+            or f"__missing_episode_{int(start_index) + local_index}"
+        )
+        group_counts[episode_id] = group_counts.get(episode_id, 0) + 1
+        sequence_metadata.append((episode_id, str(sequence.archetype or "")))
+        raw_decisions = len(sequence.decisions)
+        decisions += raw_decisions
+        packed_decisions += (
+            min(raw_decisions, int(max_context))
+            if max_context is not None
+            else raw_decisions
+        )
+        retained_decisions = (
+            sequence.decisions[: int(max_context)]
+            if max_context is not None
+            else sequence.decisions
+        )
+        has_expanded_strategic_targets = (
+            has_expanded_strategic_targets
+            or any(
+                (decision.aux_labels or {}).get(EXPANDED_STRATEGIC_KEY)
+                is not None
+                for decision in retained_decisions
+            )
+        )
+        truncated += int(
+            max_context is not None
+            and raw_decisions > int(max_context)
+        )
+        loaded += 1
+    shard.assert_unchanged()
+    if loaded != shard.records:
+        raise ValueError(
+            f"manifest count mismatch for {shard.path}: "
+            f"expected={shard.records} loaded={loaded}"
+        )
+    return _ShardScanResult(
+        shard=shard,
+        group_counts=tuple(group_counts.items()),
+        sequence_metadata=tuple(sequence_metadata),
+        sequences=loaded,
+        decisions=decisions,
+        packed_decisions=packed_decisions,
+        truncated_sequences=truncated,
+        has_expanded_strategic_targets=has_expanded_strategic_targets,
+    )
+
+
+@dataclass(frozen=True)
+class FeatureManifestShardView:
+    """One immutable manifest shard with its deterministic split assignment."""
+
+    shard: _VerifiedShard
+    start_index: int
+    validation_episode_ids: frozenset[str]
+    max_context: Optional[int]
+
+    def __len__(self) -> int:
+        return int(self.shard.records)
+
+    def __iter__(self) -> Iterator[tuple[bool, GameSequence]]:
+        self.shard.assert_unchanged()
+        loaded = 0
+        for local_index, sequence in enumerate(
+            iter_feature_shard(self.shard.path)
+        ):
+            episode_id = str(
+                sequence.episode_id
+                or f"__missing_episode_{self.start_index + local_index}"
+            )
+            if self.max_context is not None:
+                from poke_bot.train import cap_game_sequence_context
+
+                sequence, _changed = cap_game_sequence_context(
+                    sequence, self.max_context
+                )
+            loaded += 1
+            yield episode_id in self.validation_episode_ids, sequence
+        self.shard.assert_unchanged()
+        if loaded != self.shard.records:
+            raise ValueError(
+                f"manifest count mismatch for {self.shard.path}: "
+                f"expected={self.shard.records} loaded={loaded}"
+            )
+
+
 class FeatureManifestSplitView:
     """A sized iterable that re-opens, validates, and filters every pass."""
 
@@ -99,7 +217,11 @@ class FeatureManifestSplitView:
         self._validation = bool(validation)
 
     def __len__(self) -> int:
-        return self._plan.val_sequences if self._validation else self._plan.train_sequences
+        return (
+            self._plan.val_sequences
+            if self._validation
+            else self._plan.train_sequences
+        )
 
     def __iter__(self) -> Iterator[GameSequence]:
         return self._plan.iter_partition(validation=self._validation)
@@ -117,10 +239,14 @@ class EpisodeGroupedFeatureManifest:
         validation_episode_ids: frozenset[str],
         sequences: int,
         decisions: int,
+        packed_decisions: int,
         train_sequences: int,
         val_sequences: int,
         max_context: Optional[int],
         truncated_sequences: int,
+        shard_starts: tuple[int, ...],
+        has_expanded_strategic_targets: bool,
+        sequence_metadata: tuple[tuple[str, str], ...],
     ) -> None:
         self.manifest_path = Path(manifest_path).resolve()
         self.manifest_digest = str(manifest_digest)
@@ -128,12 +254,21 @@ class EpisodeGroupedFeatureManifest:
         self._validation_episode_ids = validation_episode_ids
         self.sequences = int(sequences)
         self.decisions = int(decisions)
+        self.packed_decisions = int(packed_decisions)
         self.train_sequences = int(train_sequences)
         self.val_sequences = int(val_sequences)
         self.max_context = (
             int(max_context) if max_context is not None else None
         )
         self.truncated_sequences = int(truncated_sequences)
+        self._shard_starts = tuple(int(value) for value in shard_starts)
+        self.has_expanded_strategic_targets = bool(
+            has_expanded_strategic_targets
+        )
+        self._sequence_metadata = tuple(
+            (str(episode_id), str(archetype_id))
+            for episode_id, archetype_id in sequence_metadata
+        )
 
     @classmethod
     def open(
@@ -145,6 +280,7 @@ class EpisodeGroupedFeatureManifest:
         seed: int,
         max_context: Optional[int],
         expected_compact_mode: Optional[str] = None,
+        workers: int = 1,
     ) -> "EpisodeGroupedFeatureManifest":
         path = Path(manifest_path).expanduser().resolve()
         manifest_bytes = path.read_bytes()
@@ -189,31 +325,71 @@ class EpisodeGroupedFeatureManifest:
         rows = list(payload.get("shards") or ())
         if not rows:
             raise ValueError("feature manifest contains no shards")
-        verified: list[_VerifiedShard] = []
-        for row in rows:
-            shard_path = (path.parent / str(row.get("path") or "")).resolve()
-            verified.append(
-                _VerifiedShard.verify(
-                    shard_path,
-                    str(row.get("sha256") or ""),
-                    int((row.get("stats") or {}).get("records_kept", 0)),
-                )
-            )
-
         group_counts: dict[str, int] = {}
         sequences = 0
         decisions = 0
+        packed_decisions = 0
         truncated = 0
-        for index, sequence in cls._iter_verified(tuple(verified)):
-            episode_id = str(
-                sequence.episode_id or f"__missing_episode_{index}"
+        has_expanded_strategic_targets = False
+        sequence_metadata: list[tuple[str, str]] = []
+        verified: list[_VerifiedShard] = []
+        shard_starts: list[int] = []
+        expected_cursor = 0
+        scan_tasks: list[tuple[Path, str, int, int, Optional[int]]] = []
+        for row in rows:
+            shard_path = (path.parent / str(row.get("path") or "")).resolve()
+            records = int((row.get("stats") or {}).get("records_kept", 0))
+            shard_starts.append(expected_cursor)
+            scan_tasks.append(
+                (
+                    shard_path,
+                    str(row.get("sha256") or ""),
+                    records,
+                    expected_cursor,
+                    context,
+                )
             )
-            group_counts[episode_id] = group_counts.get(episode_id, 0) + 1
-            sequences += 1
-            decisions += len(sequence.decisions)
-            truncated += int(
-                context is not None and len(sequence.decisions) > context
-            )
+            expected_cursor += records
+
+        requested_workers = max(1, int(workers))
+        if requested_workers > 1 and len(scan_tasks) > 1:
+            with ProcessPoolExecutor(
+                max_workers=min(requested_workers, len(scan_tasks)),
+                mp_context=multiprocessing.get_context("spawn"),
+            ) as pool:
+                scan_results = list(pool.map(_scan_verified_shard, scan_tasks))
+            for result in scan_results:
+                verified.append(result.shard)
+                for episode_id, count in result.group_counts:
+                    group_counts[episode_id] = (
+                        group_counts.get(episode_id, 0) + int(count)
+                    )
+                sequence_metadata.extend(result.sequence_metadata)
+                sequences += int(result.sequences)
+                decisions += int(result.decisions)
+                packed_decisions += int(result.packed_decisions)
+                truncated += int(result.truncated_sequences)
+                has_expanded_strategic_targets = (
+                    has_expanded_strategic_targets
+                    or result.has_expanded_strategic_targets
+                )
+        else:
+            for task in scan_tasks:
+                result = _scan_verified_shard(task)
+                verified.append(result.shard)
+                for episode_id, count in result.group_counts:
+                    group_counts[episode_id] = (
+                        group_counts.get(episode_id, 0) + int(count)
+                    )
+                sequence_metadata.extend(result.sequence_metadata)
+                sequences += int(result.sequences)
+                decisions += int(result.decisions)
+                packed_decisions += int(result.packed_decisions)
+                truncated += int(result.truncated_sequences)
+                has_expanded_strategic_targets = (
+                    has_expanded_strategic_targets
+                    or result.has_expanded_strategic_targets
+                )
 
         expected_records = sum(shard.records for shard in verified)
         manifest_records = int(
@@ -262,10 +438,14 @@ class EpisodeGroupedFeatureManifest:
             validation_episode_ids=frozenset(val_ids),
             sequences=sequences,
             decisions=decisions,
+            packed_decisions=packed_decisions,
             train_sequences=sequences - val_sequences,
             val_sequences=val_sequences,
             max_context=context,
             truncated_sequences=truncated,
+            shard_starts=tuple(shard_starts),
+            has_expanded_strategic_targets=has_expanded_strategic_targets,
+            sequence_metadata=tuple(sequence_metadata),
         )
 
     @staticmethod
@@ -315,4 +495,51 @@ class EpisodeGroupedFeatureManifest:
         return (
             FeatureManifestSplitView(self, validation=False),
             FeatureManifestSplitView(self, validation=True),
+        )
+
+    def partition_archetypes(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return acting-archetype IDs in the exact packed split order.
+
+        The device corpus is materialized as every training sequence followed
+        by every validation sequence.  Retaining this tiny metadata projection
+        during the already-required immutable shard scan lets cumulative-core
+        distillation bind each game to its matching frozen teacher without
+        reopening the multi-gigabyte feature corpus or changing CPU-pack
+        tensor schemas.
+        """
+
+        train: list[str] = []
+        validation: list[str] = []
+        for episode_id, archetype_id in self._sequence_metadata:
+            target = (
+                validation
+                if episode_id in self._validation_episode_ids
+                else train
+            )
+            target.append(archetype_id)
+        if len(train) != self.train_sequences:
+            raise RuntimeError(
+                "training archetype metadata count changed: "
+                f"expected={self.train_sequences} actual={len(train)}"
+            )
+        if len(validation) != self.val_sequences:
+            raise RuntimeError(
+                "validation archetype metadata count changed: "
+                f"expected={self.val_sequences} actual={len(validation)}"
+            )
+        return tuple(train), tuple(validation)
+
+    def shard_views(self) -> tuple[FeatureManifestShardView, ...]:
+        """Return manifest-ordered, independently iterable shard views."""
+
+        return tuple(
+            FeatureManifestShardView(
+                shard=shard,
+                start_index=start,
+                validation_episode_ids=self._validation_episode_ids,
+                max_context=self.max_context,
+            )
+            for shard, start in zip(
+                self._shards, self._shard_starts, strict=True
+            )
         )

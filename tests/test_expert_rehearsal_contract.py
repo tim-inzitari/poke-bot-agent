@@ -7,12 +7,20 @@ from pathlib import Path
 import pytest
 
 from poke_bot.pure_rl.expert_rehearsal import (
+    EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
     REHEARSAL_RECEIPT_SCHEMA_VERSION,
     ExpertManifestIdentity,
     _validate_receipt,
+    canonical_checkpoint_rehearsal_loss_weights,
+    canonical_expanded_rehearsal_contract,
     canonical_rehearsal_loss_weights,
     resolve_expert_manifest,
 )
+from poke_bot.strategic_heads import (
+    EXPANDED_STRATEGIC_SCHEMA,
+    TARGET_SCHEMA_DIGEST,
+)
+from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
 
 
 REQUIRED_TARGETS = (
@@ -192,3 +200,187 @@ def test_loss_contract_requires_every_head() -> None:
     incomplete.pop("opponent_hand")
     with pytest.raises(ValueError, match="loss keys"):
         canonical_rehearsal_loss_weights(incomplete)
+
+
+def _expanded_schedule_contract() -> dict:
+    return {
+        "schema": "poke_bot.expanded_head_schedule/v1",
+        "target_schema": EXPANDED_STRATEGIC_SCHEMA,
+        "target_schema_digest": TARGET_SCHEMA_DIGEST,
+        "schedule_digest": "sha256:" + "b" * 64,
+        "loss_weights": {
+            name: (0.1 if name == "action_q" else 0.0)
+            for name in EXPANDED_HEAD_IDS
+        },
+        "runtime_enabled_heads": [],
+    }
+
+
+def test_expanded_receipt_binds_shadow_training_and_digests(
+    tmp_path: Path,
+) -> None:
+    _pointer, identity = _protected_manifest(tmp_path)
+    output = tmp_path / "expanded-expert.pt"
+    output.write_bytes(b"immutable-expanded-checkpoint")
+    expanded = canonical_expanded_rehearsal_contract(
+        _expanded_schedule_contract()
+    )
+    training = {
+        "schema": "poke_bot.expanded_head_training/v1",
+        "target_schema_version": expanded["target_schema"],
+        "target_schema_digest": expanded["target_schema_digest"],
+        "schedule_digest": expanded["schedule_digest"],
+        "loss_weights": expanded["loss_weights"],
+        "gradient_enabled_heads": ["action_q"],
+        "runtime_enabled_heads": [],
+        "heads": {
+            "action_q": {
+                "present": True,
+                "trained_this_epoch": True,
+                "gradient_enabled": True,
+                "train_loss": 0.4,
+                "validation_loss": 0.5,
+                "train_labeled_rows": 400,
+                "validation_labeled_rows": 100,
+            }
+        },
+    }
+    receipt = {
+        "schema": EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
+        "before_iteration": 10,
+        "parent_digest": "sha256:" + "a" * 64,
+        "checkpoint": str(output),
+        "checkpoint_digest": _sha256(output),
+        "manifest": identity.as_dict(),
+        "epochs": 5,
+        "learning_rate": 2e-5,
+        "loss_weights": _loss_weights(),
+        "corpus_split_seed": 5_000_123,
+        "expanded_head_training": training,
+    }
+    validated = _validate_receipt(
+        receipt,
+        before_iteration=10,
+        parent_digest=receipt["parent_digest"],
+        epochs=5,
+        learning_rate=2e-5,
+        manifest_identity=identity,
+        loss_weights=_loss_weights(),
+        corpus_split_seed=5_000_123,
+        expanded_head_contract=expanded,
+    )
+    assert validated["reused"] is True
+
+    drifted = {
+        **receipt,
+        "expanded_head_training": {
+            **training,
+            "target_schema_digest": "sha256:" + "c" * 64,
+        },
+    }
+    with pytest.raises(RuntimeError, match="target digest"):
+        _validate_receipt(
+            drifted,
+            before_iteration=10,
+            parent_digest=receipt["parent_digest"],
+            epochs=5,
+            learning_rate=2e-5,
+            manifest_identity=identity,
+            loss_weights=_loss_weights(),
+            corpus_split_seed=5_000_123,
+            expanded_head_contract=expanded,
+        )
+
+    runtime_enabled = {
+        **_expanded_schedule_contract(),
+        "runtime_enabled_heads": ["action_q"],
+    }
+    with pytest.raises(ValueError, match="shadow-only"):
+        canonical_expanded_rehearsal_contract(runtime_enabled)
+
+
+def test_expanded_receipt_allows_masked_or_train_only_labels(
+    tmp_path: Path,
+) -> None:
+    _pointer, identity = _protected_manifest(tmp_path)
+    output = tmp_path / "expanded-masked-expert.pt"
+    output.write_bytes(b"immutable-expanded-masked-checkpoint")
+    expanded = canonical_expanded_rehearsal_contract(
+        _expanded_schedule_contract()
+    )
+    training = {
+        "schema": "poke_bot.expanded_head_training/v1",
+        "target_schema_version": expanded["target_schema"],
+        "target_schema_digest": expanded["target_schema_digest"],
+        "schedule_digest": expanded["schedule_digest"],
+        "loss_weights": expanded["loss_weights"],
+        "gradient_enabled_heads": ["action_q"],
+        "runtime_enabled_heads": [],
+        "heads": {
+            "action_q": {
+                "present": True,
+                "trained": True,
+                # Legacy checkpoints required validation coverage before
+                # setting this telemetry bit. Finite train-pass evidence is
+                # authoritative when a deterministic split has no val labels.
+                "trained_this_epoch": False,
+                "gradient_enabled": True,
+                "train_loss": 0.4,
+                "validation_loss": 0.0,
+                "train_labeled_rows": 400,
+                "validation_labeled_rows": 0,
+            }
+        },
+    }
+    receipt = {
+        "schema": EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
+        "before_iteration": 10,
+        "parent_digest": "sha256:" + "a" * 64,
+        "checkpoint": str(output),
+        "checkpoint_digest": _sha256(output),
+        "manifest": identity.as_dict(),
+        "epochs": 5,
+        "learning_rate": 2e-5,
+        "loss_weights": _loss_weights(),
+        "corpus_split_seed": 5_000_123,
+        "expanded_head_training": training,
+    }
+    assert _validate_receipt(
+        receipt,
+        before_iteration=10,
+        parent_digest=receipt["parent_digest"],
+        epochs=5,
+        learning_rate=2e-5,
+        manifest_identity=identity,
+        loss_weights=_loss_weights(),
+        corpus_split_seed=5_000_123,
+        expanded_head_contract=expanded,
+    )["reused"] is True
+
+
+def test_expanded_checkpoint_loss_contract_accepts_bound_nested_weights() -> None:
+    expanded = canonical_expanded_rehearsal_contract(
+        _expanded_schedule_contract()
+    )
+    checkpoint_losses = {
+        **_loss_weights(),
+        "expanded_strategic": expanded["loss_weights"],
+    }
+    assert canonical_checkpoint_rehearsal_loss_weights(
+        checkpoint_losses,
+        expanded,
+    ) == _loss_weights()
+
+    changed = {
+        **checkpoint_losses,
+        "expanded_strategic": {
+            **expanded["loss_weights"],
+            "action_q": 0.2,
+        },
+    }
+    with pytest.raises(ValueError, match="strategic weights mismatch"):
+        canonical_checkpoint_rehearsal_loss_weights(changed, expanded)
+
+    missing = dict(_loss_weights())
+    with pytest.raises(ValueError, match="missing strategic weights"):
+        canonical_checkpoint_rehearsal_loss_weights(missing, expanded)

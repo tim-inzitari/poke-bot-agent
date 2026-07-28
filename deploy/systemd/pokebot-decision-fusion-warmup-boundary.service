@@ -1,0 +1,16 @@
+[Unit]
+Description=Receipt-backed causal decision-fusion warmup boundary
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1
+EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/scripts/apply_decision_fusion_warmup_managed_boundary.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725 --after-iteration 14 --wait-for-completed-collection-iteration 15 --unit pokebot-pure-rl-trevenant-staged.service --old-runtime-root /home/inzi/poke-bot-agent-deployments/dudunsparce-corrected-runtime-v2 --new-runtime-root /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1 --selector /home/inzi/.config/pokebot/specialist_runtime.env --stop-override /home/inzi/.config/systemd/user/pokebot-pure-rl-trevenant-staged.service.d/zz-decision-fusion-boundary.conf --maintenance-lock /home/inzi/poke-bot-agent/outputs/state/managed-training-maintenance.lock --artifact-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/decision-fusion-warmup-v1 --status /home/inzi/poke-bot-agent/outputs/state/decision-fusion-warmup-boundary-v1.json --bert-stage /Users/tsinzitari/workspace/poke-bot-agent-decision-fusion-stage-v1/after/poke_bot --bert-live /Users/tsinzitari/workspace/poke-bot-agent/poke_bot --elmo-project-dir /mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker --elmo-host-compose /mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.host.yml --elmo-production-compose /mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.production.yml --elmo-fusion-compose /mnt/Main/main/poke-bot-agent/decision-fusion-stage-v1/docker-compose.decision-fusion-v1.yml --poll-seconds 0.10
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

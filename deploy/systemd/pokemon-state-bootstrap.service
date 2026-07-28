@@ -1,0 +1,25 @@
+[Unit]
+Description=Pokemon state-core five-day bootstrap owner
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/pokemon-state-bootstrap-supervisor
+Restart=on-failure
+RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=90s
+OOMPolicy=stop
+MemoryAccounting=yes
+MemoryHigh=76G
+MemoryMax=88G
+MemorySwapMax=4G
+TasksMax=4096
+LimitNOFILE=1048576
+Nice=-5
+UMask=0002
+
+[Install]
+WantedBy=multi-user.target

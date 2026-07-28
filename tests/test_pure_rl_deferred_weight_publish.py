@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
+
+
+def _load_train_pure_rl():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "train_pure_rl.py"
+    spec = importlib.util.spec_from_file_location("train_pure_rl_gate_runtime", path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def test_candidate_gate_precedes_publish_and_next_collect() -> None:
@@ -41,6 +53,20 @@ def test_candidate_gate_precedes_publish_and_next_collect() -> None:
     assert "WARN remote reload" not in candidate_window
 
 
+def test_failed_promotion_restores_runtime_compatible_behavior_identity() -> None:
+    """Temporary evaluation must not roll back to a pre-adapter champion."""
+    src = Path(__file__).resolve().parents[1] / "scripts" / "train_pure_rl.py"
+    text = src.read_text(encoding="utf-8")
+    start = text.index("heldout_rows, heldout_audit = _heldout_eval(")
+    end = text.index("gate = aggregate_heldout_wr(", start)
+    rollback = text[start:end]
+
+    assert "if not promoted:" in rollback
+    assert "ckpt=behavior_before.path" in rollback
+    assert "digest=behavior_before.digest" in rollback
+    assert "ckpt=incumbent_before.path" not in rollback
+
+
 def test_boot_collection_uses_continuous_learner_not_rollback_champion() -> None:
     src = Path(__file__).resolve().parents[1] / "scripts" / "train_pure_rl.py"
     text = src.read_text(encoding="utf-8")
@@ -68,14 +94,28 @@ def test_continuous_learner_selection_does_not_reset_to_heldout_champion() -> No
     assert "heldout_audit_ok=bool(heldout_audit.get" in selection
     assert "learner_after = candidate" in selection
     assert "learner_after = learner_before" in selection
+    assert "_exact_regression_rollback_identity(" in selection
+    assert "learner_after = heldout_champion_identity" not in selection
     assert "learner_after = prior_heldout_champion_identity" not in selection
 
 
-def test_staged_production_learner_has_same_safety_carry_contract() -> None:
-    src = (
-        Path(__file__).resolve().parents[1]
-        / "deploy/staging/train_pure_rl_v11.py"
-    )
+def test_rejected_candidate_restores_exact_pre_eval_behavior_identity() -> None:
+    src = Path(__file__).resolve().parents[1] / "scripts" / "train_pure_rl.py"
+    text = src.read_text(encoding="utf-8")
+    start = text.index("finally:\n                if not promoted:")
+    end = text.index("            gate = aggregate_heldout_wr(", start)
+    rollback = text[start:end]
+
+    assert "ckpt=behavior_before.path" in rollback
+    assert "digest=behavior_before.digest" in rollback
+    assert "ckpt=incumbent_before.path" not in rollback
+    assert "digest=incumbent_before.digest" not in rollback
+
+
+def test_canonical_production_learner_has_one_safety_carry_contract() -> None:
+    root = Path(__file__).resolve().parents[1]
+    assert not (root / "deploy/staging/train_pure_rl_v11.py").exists()
+    src = root / "scripts/train_pure_rl.py"
     text = src.read_text(encoding="utf-8")
     start = text.index("carry_candidate, learner_carry_reason = (")
     end = text.index('promotion_report["continuous_learner"]', start)
@@ -167,6 +207,164 @@ def test_hard_gate_refreshes_stale_present_client_before_reload(tmp_path: Path) 
         "pin",
         "reconnect",
     ]
+
+
+def test_weight_publish_refuses_shadow_only_remote_when_runtime_is_required(
+    tmp_path: Path, monkeypatch
+) -> None:
+    mod = _load_train_pure_rl()
+    digest = "sha256:" + "c" * 64
+
+    class ShadowOnlyClient:
+        host = "worker.local"
+        port = 8765
+
+        def reconnect(self):
+            return SimpleNamespace(
+                checkpoint_digest=digest,
+                matchup_runtime=None,
+            )
+
+        def reload_checkpoint(self, _path, *, digest, version):
+            return {
+                "ok": True,
+                "checkpoint_digest": digest,
+                "version": version,
+            }
+
+        def pin_checkpoint(self, _path, *, digest):
+            return {"ok": True, "checkpoint_digest": digest}
+
+    farm = SimpleNamespace(
+        clients=[ShadowOnlyClient()],
+        _reconnect_missing=lambda: None,
+    )
+    checkpoint = tmp_path / "candidate.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    runtime_tree = tmp_path / "runtime-tree.json"
+    runtime_tree.write_text(
+        json.dumps(
+            {
+                "runtime_contract": {
+                    "accepted_archetype_ids": ["hops-trevenant"]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "1")
+    monkeypatch.setenv(
+        "POKEBOT_PUBLIC_MATCHUP_TREE_PATH", str(runtime_tree)
+    )
+
+    with pytest.raises(
+        mod.BetweenIterSyncError,
+        match="matchup runtime is not active",
+    ):
+        mod._hard_gate_publish_weights(
+            leaf=SimpleNamespace(remote_channel=None),
+            remote_farm=farm,
+            ckpt=checkpoint,
+            digest=digest,
+            version=11,
+            required_endpoints=["worker.local:8765"],
+        )
+
+
+def test_weight_publish_probes_pool_child_and_rotates_on_stale_tree(
+    tmp_path: Path, monkeypatch
+) -> None:
+    mod = _load_train_pure_rl()
+    digest = "sha256:" + "c" * 64
+    runtime_tree = tmp_path / "runtime-tree.json"
+    runtime_tree.write_text(
+        json.dumps(
+            {
+                "runtime_contract": {
+                    "accepted_archetype_ids": [
+                        "alakazam",
+                        "hops-trevenant",
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    tree_digest = mod._sha256_file(runtime_tree)
+    rotations: list[str] = []
+
+    class StaleChildClient:
+        host = "worker.local"
+        port = 8765
+
+        def reconnect(self):
+            return SimpleNamespace(
+                checkpoint_digest=digest,
+                matchup_runtime={
+                    "checkpoint_digest": digest,
+                    "tree_digest": tree_digest,
+                    "accepted_archetype_ids": [
+                        "alakazam",
+                        "hops-trevenant",
+                    ],
+                    "continuous_reevaluation": True,
+                    "one_route_per_decision": True,
+                    "unknown_route_exact_bypass": True,
+                },
+            )
+
+        def reload_checkpoint(self, _path, *, digest, version):
+            return {
+                "ok": True,
+                "checkpoint_digest": digest,
+                "version": version,
+            }
+
+        def pin_checkpoint(self, _path, *, digest):
+            return {"ok": True, "checkpoint_digest": digest}
+
+        def submit_job(self, _job, *, kind):
+            assert kind == "runtime_probe"
+            return {
+                "runtime_probe": {
+                    "runtime_enabled": True,
+                    "tree_digest": "sha256:" + "d" * 64,
+                    "accepted_archetype_ids": [
+                        "alakazam",
+                        "hops-trevenant",
+                        "walrein",
+                    ],
+                }
+            }
+
+        def request_rotation(self, reason):
+            rotations.append(reason)
+            return {"ok": True, "rotation_scheduled": True}
+
+    monkeypatch.setenv("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "1")
+    monkeypatch.setenv(
+        "POKEBOT_PUBLIC_MATCHUP_TREE_PATH", str(runtime_tree)
+    )
+    farm = SimpleNamespace(
+        clients=[StaleChildClient()],
+        _reconnect_missing=lambda: None,
+    )
+    checkpoint = tmp_path / "candidate.pt"
+    checkpoint.write_bytes(b"checkpoint")
+
+    with pytest.raises(
+        mod.BetweenIterSyncError,
+        match="simulator-child matchup runtime differs",
+    ):
+        mod._hard_gate_publish_weights(
+            leaf=SimpleNamespace(remote_channel=None),
+            remote_farm=farm,
+            ckpt=checkpoint,
+            digest=digest,
+            version=11,
+            required_endpoints=["worker.local:8765"],
+        )
+    assert len(rotations) == 1
 
 
 def test_tqdm_progress_desc_uses_real_iteration() -> None:

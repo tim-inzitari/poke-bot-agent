@@ -1,0 +1,20 @@
+[Unit]
+Description=Promote checksum-bound Grimmsnarl guide corpus without touching live training
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/promote_current_deck_guide_corpus.py --specialist-id marnie-s-grimmsnarl-ex --source /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex --destination /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic/marnie-s-grimmsnarl-ex --state /home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-guide-corpus-promotion-v1.json --bwlimit-kib 4000
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=5
+MemoryHigh=2G
+MemoryMax=4G
+MemorySwapMax=0
+TimeoutStartSec=6h
+TimeoutStopSec=30
+NoNewPrivileges=yes
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/marnie-s-grimmsnarl-ex-guide-corpus-promotion-v1.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/marnie-s-grimmsnarl-ex-guide-corpus-promotion-v1.log

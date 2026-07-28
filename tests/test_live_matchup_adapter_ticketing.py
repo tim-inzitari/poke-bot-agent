@@ -109,9 +109,16 @@ def test_live_ticketing_includes_lucario_and_mirror_only() -> None:
 
     assert receipt["ticketed_sequences"] == 2
     assert receipt["route_sequences"] == {"lucario": 1, "alakazam": 1}
-    assert route_for_archetype("lucario") == 8
-    assert training_route_for_decision(lucario, lucario.decisions[0]) == 8
-    assert training_route_for_decision(mirror, mirror.decisions[0]) == 7
+    lucario_route = route_for_archetype("lucario")
+    mirror_route = route_for_archetype("alakazam")
+    assert lucario_route != UNKNOWN_ROUTE
+    assert mirror_route != UNKNOWN_ROUTE
+    assert training_route_for_decision(
+        lucario, lucario.decisions[0]
+    ) == lucario_route
+    assert training_route_for_decision(
+        mirror, mirror.decisions[0]
+    ) == mirror_route
     assert diverse.matchup_adapter_training_ticket == {}
     assert research.matchup_adapter_training_ticket == {}
     assert diverse.decisions[0].matchup_adapter_oracle_route == UNKNOWN_ROUTE

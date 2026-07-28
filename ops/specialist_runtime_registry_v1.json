@@ -51,7 +51,7 @@
     "--min-usable-game-frac",
     "0.98",
     "--remote-worker-endpoints",
-    "192.168.1.143:8765,bert.local:8766",
+    "192.168.1.143:8765,192.168.1.158:8766",
     "--expert-rehearsal-every",
     "5",
     "--expert-rehearsal-force-before",
@@ -92,7 +92,7 @@
     "continue_drop_in_source": "deploy/systemd/pokebot-pure-rl-alakazam.service.d/zz-continue-after-exact-gate.conf",
     "continue_drop_in_target": "/home/inzi/.config/systemd/user/pokebot-pure-rl-trevenant-staged.service.d/zz-continue-after-exact-gate.conf",
     "kaggle": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/kaggle",
-    "launcher": "/home/inzi/poke-bot-gate-handler-v42/scripts/handle_passed_gate.py",
+    "launcher": "scripts/handle_passed_gate.py",
     "poll_seconds": 15,
     "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
     "representatives": "data/training_mixes/specialist_representatives.v1.json",
@@ -105,7 +105,7 @@
   },
   "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
   "research_control_registry": "ops/research_control_registry_v1.json",
-  "runtime_root": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime",
+  "runtime_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
   "schema": "poke_bot.specialist_runtime_registry/v1",
   "selector_environment_variable": "POKEBOT_ACTIVE_SPECIALIST",
   "specialists": {
@@ -123,8 +123,8 @@
       "initial_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00001_roster18.pt",
       "initial_checkpoint_sha256": "4f56ffb864d425c1651480372124537cffcf4ca983de2cd136b04f164d1526fd",
       "log": "/home/inzi/poke-bot-agent/outputs/logs/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723.log",
-      "matchup_adapter_authorization": "/home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-matchup-adapter-authorization-roster18-v1.json",
-      "matchup_adapter_authorization_sha256": "b03b8dcd8daeb3a60cdf6d77110c2af48cdff957a40c7b508bf6e4d04ac75970",
+      "matchup_adapter_authorization": "/home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-matchup-adapter-bootstrap-v1.json",
+      "matchup_adapter_authorization_sha256": "41f3f40628351ff8e2fb73f93d22bb75018702cf4a2c621b1f958e077ec576e7",
       "matchup_adapter_epochs_per_rl_iteration": 1,
       "matchup_runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-public-matchup-tree-roster18-v1.json",
       "matchup_runtime_tree_sha256": "033264ab10a51fe093ad2b64f5def3a8e22d869c42b978ee86d2ff7d01ea0328",
@@ -141,6 +141,42 @@
       "run_name": "pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723",
       "status": "ready",
       "terminal_gate_marker": "SPECIALIST_GATE_PASSED.dragapult-dusknoir-splus-v1"
+    },
+    "dudunsparce": {
+      "expert_manifest": "/home/inzi/poke-bot-agent/data/bootstrap/dudunsparce-verified-visual-schema-v2/PROTECTED_EXPERT_CORPUS.json",
+      "expert_manifest_sha256": "dba158ccf0e98bec56df2df558008e4a5f8b438661cd59c06f64d6bc5ac25aa8",
+      "expert_minimum_decisions": 1000,
+      "expert_required_target_coverage": [
+        "temporal_action_rows",
+        "opponent_hand_rows",
+        "opponent_remainder_rows",
+        "opponent_private_prize_rows",
+        "lethal_threat_rows",
+        "prize_race_rows"
+      ],
+      "guide_loss_weight": 0.0,
+      "initial_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce_expert_bootstrap_from_core_v5_corrected_v2/model.pt",
+      "initial_checkpoint_sha256": "72f2c998f2239378017956269927ce885ada0b5fd30207763f01b3a58552865c",
+      "log": "/home/inzi/poke-bot-agent/outputs/logs/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725.log",
+      "matchup_adapter_authorization": "/home/inzi/poke-bot-agent/outputs/state/dudunsparce-matchup-adapter-bootstrap-corrected-v2.json",
+      "matchup_adapter_authorization_sha256": "876d4e7705b63fc6f0c03b9b0624cb6c688d4c9f5f40f8ea4f7cf6aa0b177c47",
+      "matchup_adapter_epochs_per_rl_iteration": 1,
+      "matchup_runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/dudunsparce-public-matchup-tree-v33.json",
+      "matchup_runtime_tree_sha256": "15ffdf665bda2a7c6b0ed2e42adfcf5ad91f3fbd7ba5691393304725fa7ed466",
+      "measurement_decks": "dudunsparce",
+      "pass_handler": {
+        "display_name": "dudunsparce Exact Protocol Gate Champion",
+        "family": "dudunsparce-protocol-gate-pass-v1",
+        "handoff_service": "pokebot-specialist-cycle-handoff.service",
+        "lock": "/home/inzi/.local/state/pokebot/dudunsparce-passed-gate-handler-v1.lock",
+        "runtime_exact_gate_receipt": "/home/inzi/poke-bot-agent/outputs/state/dudunsparce-decision-fusion-runtime-exact-gate-v1.json",
+        "state": "/home/inzi/poke-bot-agent/outputs/state/dudunsparce-passed-gate-handler-v1.json",
+        "submission_root": "/home/inzi/poke-bot-agent/outputs/submissions/dudunsparce-protocol-gate-pass-v1"
+      },
+      "reason": null,
+      "run_name": "pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725",
+      "status": "ready",
+      "terminal_gate_marker": "SPECIALIST_GATE_PASSED.dudunsparce-splus-v1"
     },
     "hops-trevenant": {
       "expert_manifest": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/hops-trevenant-v2/PROTECTED_EXPERT_CORPUS.json",
@@ -195,6 +231,69 @@
       "status": "ready",
       "terminal_gate_marker": "SPECIALIST_GATE_PASSED.lucario-splus-v1"
     },
+    "marnie-s-grimmsnarl-ex": {
+      "decision_fusion": {
+        "required": true,
+        "required_heads": [
+          "value",
+          "archetype",
+          "opponent_hand",
+          "opponent_remainder",
+          "lethal_threat",
+          "prize_race",
+          "action_q",
+          "action_type",
+          "action_target",
+          "action_resource",
+          "action_utility",
+          "tactical_outcomes",
+          "opponent_response",
+          "resource_forecast",
+          "game_phase",
+          "outcome_distribution",
+          "remaining_turns"
+        ],
+        "runtime_enabled": true,
+        "schema": "poke_bot.causal_decision_fusion/v1"
+      },
+      "expert_manifest": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json",
+      "expert_manifest_sha256": "08bcd3a0d21e301c0b11da09f6c780fda02e80ef71f316da43a66ebd8ed17819",
+      "expert_minimum_decisions": 20000,
+      "expert_required_target_coverage": [
+        "temporal_action_rows",
+        "opponent_hand_rows",
+        "opponent_remainder_rows",
+        "opponent_private_prize_rows",
+        "lethal_threat_rows",
+        "prize_race_rows"
+      ],
+      "guide_contract": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/config/deck_guides/marnie-s-grimmsnarl-ex.yaml",
+      "guide_contract_sha256": "7ccc948f2b7c177d8ff2cb6dc40a0c1dd81a9517e38bed7d74de78e72c00e40d",
+      "guide_id": "marnie-s-grimmsnarl-ex",
+      "guide_loss_weight": 0.05,
+      "guide_version": "marnie-grimmsnarl-north-star-v1",
+      "initial_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex_expert_bootstrap_from_core_v6/model.pt",
+      "initial_checkpoint_sha256": "6e0bc93f1b6c62641ab9cf0f5e376cfa077144fa4d2ead536668c7a9b02db1e2",
+      "log": "/home/inzi/poke-bot-agent/outputs/logs/pure_rl_marnie-s-grimmsnarl-ex_temporal1_8k_v1_20260723.log",
+      "matchup_adapter_authorization": "/home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-matchup-adapter-bootstrap-v1.json",
+      "matchup_adapter_authorization_sha256": "536d1e482df801779cfd4bc6a4a24ce8490889ecc19f21161230b2234154fb72",
+      "matchup_adapter_epochs_per_rl_iteration": 1,
+      "matchup_runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-public-matchup-tree-v33.json",
+      "matchup_runtime_tree_sha256": "3c0ae4144cfc317417c5041759c3d8b3a84428260cfa7354bdde16318b96d79e",
+      "measurement_decks": "marnie-s-grimmsnarl-ex",
+      "pass_handler": {
+        "display_name": "marnie-s-grimmsnarl-ex Exact Protocol Gate Champion",
+        "family": "marnie-s-grimmsnarl-ex-protocol-gate-pass-v1",
+        "handoff_service": "pokebot-specialist-cycle-handoff.service",
+        "lock": "/home/inzi/.local/state/pokebot/marnie-s-grimmsnarl-ex-passed-gate-handler-v1.lock",
+        "state": "/home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-passed-gate-handler-v1.json",
+        "submission_root": "/home/inzi/poke-bot-agent/outputs/submissions/marnie-s-grimmsnarl-ex-protocol-gate-pass-v1"
+      },
+      "reason": null,
+      "run_name": "pure_rl_marnie-s-grimmsnarl-ex_temporal1_8k_v1_20260723",
+      "status": "ready",
+      "terminal_gate_marker": "SPECIALIST_GATE_PASSED.marnie-s-grimmsnarl-ex-splus-v1"
+    },
     "starmie": {
       "expert_manifest": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/starmie-v2/PROTECTED_EXPERT_CORPUS.json",
       "expert_manifest_sha256": "979f405c2dc1c4b1c6bcbbfcf5a30a0a467d1e04d744b4cc5d4840fbac1ca9ae",
@@ -222,6 +321,6 @@
       "terminal_gate_marker": "SPECIALIST_GATE_PASSED.starmie-splus-v1"
     }
   },
-  "terminal_active_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r1",
-  "version": 1
+  "terminal_active_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r6",
+  "version": 2
 }

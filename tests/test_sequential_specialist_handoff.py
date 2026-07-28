@@ -6,6 +6,10 @@ from pathlib import Path
 import pytest
 
 from scripts import run_sequential_specialist_handoff as handoff
+from scripts.run_starmie_expert_bootstrap import (
+    decision_fusion_handoff_contract,
+    expanded_handoff_training_contract,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +48,36 @@ def test_contract_rejects_non_exact_bootstrap_epochs(
         handoff.load_contract(changed)
 
 
+def test_expanded_handoff_passes_checksum_pinned_schedule_to_bootstrap() -> None:
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    expanded = expanded_handoff_training_contract()
+    contract["training"]["expanded_heads"] = expanded
+    contract["training"]["decision_fusion"] = decision_fusion_handoff_contract()
+
+    command = handoff.bootstrap_command(contract)
+
+    assert "--expanded-heads" in command
+    assert command[
+        command.index("--expected-expanded-schedule-digest") + 1
+    ] == expanded["schedule_digest"]
+    assert command[
+        command.index("--expected-expanded-target-digest") + 1
+    ] == expanded["target_schema_digest"]
+
+
+def test_successor_with_expanded_heads_requires_decision_fusion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    payload["training"]["expanded_heads"] = expanded_handoff_training_contract()
+    changed = tmp_path / "contract.json"
+    changed.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(handoff, "path_value", lambda *args: ROOT / "README.md")
+
+    with pytest.raises(RuntimeError, match="successor lacks"):
+        handoff.load_contract(changed)
+
+
 def test_contract_rejects_weakened_source_iteration_floor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -54,6 +88,28 @@ def test_contract_rejects_weakened_source_iteration_floor(
     monkeypatch.setattr(handoff, "path_value", lambda *args: ROOT / "README.md")
     with pytest.raises(RuntimeError, match="contract changed"):
         handoff.load_contract(changed)
+
+
+def test_runtime_tree_target_count_derives_from_canonical_roster(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(handoff, "EXPERT_IDS", ("one", "two", "three"))
+    contract = {"runtime_registration": {"matchup_target_ids": ["one", "two", "three"]}}
+    assert handoff.canonical_matchup_target_ids(contract) == (
+        "one",
+        "two",
+        "three",
+    )
+
+    contract["runtime_registration"]["matchup_target_ids"] = ["one", "two"]
+    with pytest.raises(RuntimeError, match="differs from canonical"):
+        handoff.canonical_matchup_target_ids(contract)
+
+    source = (
+        ROOT / "scripts/run_sequential_specialist_handoff.py"
+    ).read_text(encoding="utf-8")
+    assert 'audit.get("target_count") or 0) != 22' not in source
+    assert "len(canonical_matchup_target_ids(contract))" in source
 
 
 def test_frozen_predecessor_registry_preserves_source_gate_s_plus_rows() -> None:
@@ -189,6 +245,112 @@ def test_saved_preflight_source_survives_later_gate_expansion(
         handoff.validate_saved_preflight_source(contract, contract_digest)
         == saved
     )
+
+
+def test_ceiling_plan_allows_only_checksum_identical_contract_alias(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "runtime-v5" / "gate.json"
+    second = tmp_path / "safe-boundary" / "gate.json"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text('{"gate":"same"}\n', encoding="utf-8")
+    second.write_text(first.read_text(encoding="utf-8"), encoding="utf-8")
+    digest = handoff.sha256(first)
+    base = {
+        "schema": "poke_bot.ceiling_acceptance_archive_plan/v1",
+        "completion_authority": "explicit_owner_ceiling_acceptance",
+        "contract_sha256": digest,
+        "checkpoint_digest": "sha256:" + "a" * 64,
+        "commit_boundary": 15,
+    }
+    saved = {**base, "contract": str(first)}
+    current = {**base, "contract": str(second)}
+
+    assert handoff.compatible_ceiling_acceptance_plan(saved, current)
+
+    second.write_text('{"gate":"changed"}\n', encoding="utf-8")
+    assert not handoff.compatible_ceiling_acceptance_plan(saved, current)
+
+
+def test_source_ceiling_uses_exact_fused_child_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = "sha256:" + "a" * 64
+    exact_receipt = tmp_path / "runtime-exact-gate.json"
+    exact_receipt.write_text("{}\n", encoding="utf-8")
+    plan = {
+        "schema": "poke_bot.exact_pass_archive_plan/v1",
+        "completion_authority": "explicit_owner_ceiling_acceptance",
+        "checkpoint_digest": digest,
+        "commit_boundary": 15,
+        "exact_result_pointer": str(exact_receipt),
+    }
+    frozen = {"checkpoint_digest": digest}
+    handler_state = {
+        "schema": handoff.HANDLER_SCHEMA,
+        "phase": "submissions_queued",
+        "submission_mode": "queue_and_continue",
+        "gate": plan,
+        "frozen_model": frozen,
+        "queued_submissions": [
+            {
+                "copy_number": 1,
+                "label": "dudunsparce exact fused copy 1",
+                "checkpoint_checksum": digest,
+                "queued_at": "2026-07-25T00:00:00+00:00",
+            }
+        ],
+    }
+    paths = {
+        "handler_state": tmp_path / "handler.json",
+        "run_dir": tmp_path / "run",
+        "gate_contract": tmp_path / "gate.json",
+        "passed_family": tmp_path / "frozen",
+    }
+    monkeypatch.setattr(
+        handoff,
+        "path_value",
+        lambda _contract, _group, key: paths[key],
+    )
+    monkeypatch.setattr(handoff, "read_json", lambda _path: handler_state)
+    monkeypatch.setattr(
+        handoff,
+        "validate_exact_pass",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("no flat pass marker")
+        ),
+    )
+    seen: list[tuple[Path, int]] = []
+
+    def validate_runtime(
+        _run: Path,
+        _contract: Path,
+        receipt: Path,
+        *,
+        accept_ceiling: bool,
+        ceiling_iteration: int,
+    ) -> dict:
+        assert accept_ceiling is True
+        seen.append((receipt, ceiling_iteration))
+        return plan
+
+    monkeypatch.setattr(handoff, "validate_runtime_exact_gate", validate_runtime)
+    monkeypatch.setattr(handoff, "verify_frozen_model", lambda _path: frozen)
+    monkeypatch.setattr(handoff, "sha256", lambda _path: digest)
+
+    evidence = handoff.validate_source(
+        {
+            "source_specialist": {
+                "id": "dudunsparce",
+                "minimum_completed_iteration": 5,
+                "gate_marker_name": "unused-flat-marker",
+            }
+        }
+    )
+
+    assert seen == [(exact_receipt, 15)]
+    assert evidence["gate"] == plan
 
 
 def test_next_specialist_gate_rejects_stale_source_checkpoint(
@@ -407,7 +569,7 @@ def test_activation_identity_ignores_only_registration_timestamp(
     assert resumed == original
 
 
-def test_handoff_rebinds_gate_handler_after_target_is_active() -> None:
+def test_handoff_defers_gate_handler_to_trainer_on_success() -> None:
     source = (ROOT / "scripts/run_sequential_specialist_handoff.py").read_text(
         encoding="utf-8"
     )
@@ -418,12 +580,9 @@ def test_handoff_rebinds_gate_handler_after_target_is_active() -> None:
         '["/usr/bin/systemctl", "--user", "is-active", "--quiet", target_service]',
         start,
     )
-    restart_handler = source.index('"restart",', target_active)
-    handler_active = source.index(
-        '"is-active",\n                    "--quiet",\n                    gate_handler_service',
-        restart_handler,
-    )
-    assert start < target_active < restart_handler < handler_active
+    trigger = source.index('"trainer_on_success"', target_active)
+    assert start < target_active < trigger
+    assert '"restart",\n                    gate_handler_service' not in source
 
 
 def test_starmie_unit_uses_exact_games_and_research_totals() -> None:

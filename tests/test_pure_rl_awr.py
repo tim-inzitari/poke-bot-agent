@@ -65,6 +65,32 @@ def _small_model():
     return model
 
 
+def _small_stateless_model():
+    cfg = config.ModelConfig(
+        d_model=16,
+        spatial_layers=1,
+        temporal_layers=0,
+        option_decoder_layers=1,
+        n_heads=4,
+        ff_dim=32,
+        max_context=8,
+        temporal_pos="rope",
+        decision_context="stateless",
+        kv_cache=False,
+        dropout=0.0,
+    )
+    model = build_model(
+        cfg,
+        device=torch.device("cpu"),
+        aux_archetype_classes=3,
+        encoder_vocab=64,
+        decoder_vocab=64,
+        belief_card_vocab=64,
+    )
+    model.eval()
+    return model
+
+
 def test_pure_rl_defaults_zero_aux_weights() -> None:
     cfg = TrainConfig.pure_rl_defaults()
     assert cfg.pure_rl is True
@@ -168,7 +194,11 @@ def test_frozen_awr_baseline_survives_value_head_update() -> None:
 def test_rl_train_step_restores_adam_and_global_counters(tmp_path) -> None:
     torch.manual_seed(0)
     model = _small_model()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(
+        (parameter for parameter in model.parameters() if parameter.requires_grad),
+        lr=3e-4,
+        weight_decay=1e-4,
+    )
     for _ in range(3):
         optimizer.zero_grad(set_to_none=True)
         sum(parameter.square().sum() for parameter in model.parameters()).backward()
@@ -235,6 +265,66 @@ def test_rl_train_step_restores_adam_and_global_counters(tmp_path) -> None:
         if "step" in state
     ]
     assert max(optimizer_steps) == 4
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_rl_train_step_exact_device_resident_integration(tmp_path) -> None:
+    torch.manual_seed(4)
+    model = _small_stateless_model()
+    optimizer = torch.optim.AdamW(
+        (parameter for parameter in model.parameters() if parameter.requires_grad),
+        lr=3e-4,
+    )
+    base = tmp_path / "resident-base.pt"
+    checkpoint.atomic_torch_save(
+        checkpoint.build_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            step=0,
+            epoch=0,
+            rl_iteration=0,
+            model_config=model.cfg,
+        ),
+        base,
+    )
+    seq = GameSequence(
+        episode_id="resident",
+        seat=0,
+        archetype="alakazam",
+        opp_archetype="unknown",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0), _decision(1)],
+    )
+    output = tmp_path / "resident-candidate.pt"
+    cfg = TrainConfig.pure_rl_defaults(
+        amp=True,
+        val_frac=0.0,
+        early_stop_patience=0,
+        games_per_batch=4,
+        max_decisions_per_batch=32,
+    )
+    result = rl_train_step(
+        BootstrapDataset(sequences=[seq]),
+        base_ckpt=base,
+        out_run_name="resident-integration",
+        archetype_id="alakazam",
+        epochs=1,
+        device=torch.device("cuda:0"),
+        cfg=cfg,
+        output_path=output,
+        device_resident=True,
+        device_resident_min_free_gib=2.0,
+    )
+
+    assert result["device_resident_rl"] is True
+    assert result["device_resident_bytes"] > 0
+    assert result["device_resident_batch_size"] == 2
+    assert result["device_resident_build_seconds"] > 0.0
+    assert result["device_resident_samples"] == 2
+    assert result["metrics"]["optimizer_samples_per_second"] > 0.0
+    assert result["awr_baseline_mode"] == "frozen_device_resident"
+    assert result["policy_prev_agreement_rows"] == 2
 
 
 def test_pure_rl_hard_fails_on_soft_behavior_targets() -> None:

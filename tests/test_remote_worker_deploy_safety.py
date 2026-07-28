@@ -128,7 +128,11 @@ def test_redeploy_script_is_fail_closed_and_updates_elmo_bind_source() -> None:
     assert "checkpoint.assert_trusted_policy_checkpoint" in text
     assert "feature_schema != features.FEATURE_SCHEMA_VERSION" in text
     assert "actual_profile != expected_profile" in text
+    assert text.count('os.environ["PREFLIGHT_PROFILE"] != "none"') == 3
+    assert '-e PREFLIGHT_PROFILE="$preflight_profile"' in text
+    assert 'PREFLIGHT_PROFILE="$preflight_profile"' in text
     assert "scripts/run_test_profile.py" in text
+    assert "scripts/seed_remote_active_checkpoint.py" in text
     assert (
         'CG_LIB_PATH="$repo/kaggle/input/pokemon-tcg-ai-battle/'
         'sample_submission/sample_submission/cg"'
@@ -145,6 +149,27 @@ def test_redeploy_script_is_fail_closed_and_updates_elmo_bind_source() -> None:
     assert 'tmp="${host_checkpoint}.tmp.${deploy_id}"' in text
     assert 'mv -f "$tmp" "$host_checkpoint"' in text
     assert 'docker cp "$bootstrap" "$container:/workspace/checkpoint/model.pt"' not in text
+
+    # Elmo's durable active-checkpoint pointer is authoritative at process
+    # startup, so it must participate in both activation and rollback.
+    assert "POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE" in text
+    assert 'active_pointer_backup="/tmp/pokebot_active_checkpoint_before_${deploy_id}.json"' in text
+    assert 'cp -p "$active_checkpoint_host" "$active_pointer_backup"' in text
+    assert "_persist_active_checkpoint" in text
+    assert 'python - /workspace/checkpoint/model.pt' in text
+    assert 'cp -p "$active_pointer_backup" "$active_restore_tmp"' in text
+    elmo_activation = text.split("<<'ELMO'\n", 1)[1].split("\nELMO\n", 1)[0]
+    pointer_publish = elmo_activation.index("_persist_active_checkpoint")
+    elmo_restart = elmo_activation.index('docker restart "$container"')
+    assert pointer_publish < elmo_restart
+    elmo_rollback = text.split("<<'ELMOROLLBACK'\n", 1)[1].split(
+        "\nELMOROLLBACK\n", 1
+    )[0]
+    pointer_restore = elmo_rollback.index(
+        'cp -p "$active_pointer_backup" "$active_restore_tmp"'
+    )
+    rollback_restart = elmo_rollback.index('docker restart "$container"')
+    assert pointer_restore < rollback_restart
 
     # Every Bert process group is captured before bootout and terminated as a
     # unit; parent-only cleanup cannot leave reparented pool/MPS children.
@@ -173,6 +198,19 @@ def test_redeploy_script_is_fail_closed_and_updates_elmo_bind_source() -> None:
     assert "pokebot_workspace_before_${deploy_id}.tar" in text
     assert "pokebot_worker_cmds_before_${deploy_id}.json" in text
     assert "pokebot_bert_service_before_${deploy_id}" in text
+    assert 'active_checkpoint_file="$repo/outputs/state/bert_worker_supervisor/active-checkpoint.json"' in text
+    assert 'cp -Pp "$active_checkpoint_file" "$service_snapshot/active_checkpoint"' in text
+    assert 'cp -p "$service_snapshot/active_checkpoint" "$active_checkpoint_restore"' in text
+    assert "bert_active_checkpoint_published=" in text
+    assert 'PYTHONPATH="$repo"' in text
+    assert 'failure_file="$repo/outputs/state/bert_worker_supervisor/failures.epoch"' in text
+    assert 'cp -Pp "$failure_file" "$service_snapshot/failure_file"' in text
+    assert 'cp -p "$service_snapshot/failure_file" "$failure_file"' in text
+    assert 'arm_file="$repo/outputs/state/REMOTE_WORKER_ARMED"' in text
+    assert 'cp -Pp "$arm_file" "$service_snapshot/arm_file"' in text
+    assert 'cp -p "$service_snapshot/arm_file" "$arm_file"' in text
+    assert "printf %s '20260717'" in text
+    assert 'sys.path.insert(0, os.environ["POKEBOT_REMOTE_CHECKPOINT_ROOT"])' in text
     assert 'service_snapshot/enable_state' in text
     assert 'launchctl print-disabled "$service_domain"' in text
     assert 'previous_mode="$(cat "$service_snapshot/mode")"' in text
@@ -202,7 +240,9 @@ def test_redeploy_script_is_fail_closed_and_updates_elmo_bind_source() -> None:
     group_capture = activation.index(
         'capture_worker_groups "$activation_worker_groups"'
     )
+    disable = activation.index('launchctl disable "$service_target"')
     bootout = activation.index('launchctl bootout "$service_target"')
+    bootout_wait = activation.index("for _ in $(seq 1 240)")
     group_cleanup = activation.index(
         'terminate_worker_groups "$activation_worker_groups"'
     )
@@ -210,18 +250,25 @@ def test_redeploy_script_is_fail_closed_and_updates_elmo_bind_source() -> None:
     checkpoint_publish = activation.index(
         'mv -f "$checkpoint_link_tmp" "$checkpoint_current"'
     )
+    durable_checkpoint_publish = activation.index(
+        "bert_active_checkpoint_published="
+    )
     bootstrap = activation.index(
         'launchctl bootstrap "$service_domain" "$agent_plist"'
     )
     assert (
         group_capture
+        < disable
         < bootout
         < group_cleanup
+        < bootout_wait
         < source_publish
         < checkpoint_publish
+        < durable_checkpoint_publish
         < bootstrap
     )
     assert 'nohup "$repo/.venv/bin/python"' not in activation
+    assert text.count('launchctl disable "$service_target"') >= 3
     assert 'plutil -lint "$agent_plist_tmp"' in activation
     assert '"REMOTE_REQUEST_TIMEOUT_S": "120"' in text
     assert 'POKEBOT_REMOTE_REQUEST_TIMEOUT_S": "120"' in text
@@ -239,6 +286,11 @@ def test_bert_launchagent_bounds_restarts_and_memory() -> None:
     assert plist["KeepAlive"] == {"SuccessfulExit": False}
     assert plist["ThrottleInterval"] >= 120
     assert plist["ProcessType"] == "Standard"
+    assert plist["SoftResourceLimits"]["NumberOfFiles"] >= 1024
+    assert (
+        plist["HardResourceLimits"]["NumberOfFiles"]
+        >= plist["SoftResourceLimits"]["NumberOfFiles"]
+    )
     assert plist["AbandonProcessGroup"] is False
     env = plist["EnvironmentVariables"]
     assert env["REMOTE_REQUEST_TIMEOUT_S"] == "120"
@@ -250,11 +302,17 @@ def test_bert_launchagent_bounds_restarts_and_memory() -> None:
     assert env["POKEBOT_BERT_MAX_GROUP_RSS_MIB"] == "18432"
     assert env["POKEBOT_BERT_MIN_FREE_PERCENT"] == "30"
     assert env["POKEBOT_BERT_RESTART_LIMIT"] == "3"
+    assert env["POKEBOT_BERT_MAX_GROUP_PROCESSES"] == "32"
     assert env["POKEBOT_WORKER_RECYCLE_GAMES"] == "32"
     assert env["WORKER_RECYCLE_GAMES"] == "32"
     assert env["POKEBOT_REMOTE_TREE_RSS_LIMIT_GB"] == "18"
     assert env["POKEBOT_REMOTE_MIN_FREE_RAM_GB"] == "20"
     assert env["POKEBOT_REMOTE_MAX_SERVICE_JOBS"] == "0"
+    # Runtime companions are staged beside each content-addressed checkpoint
+    # by the trainer. Pinning startup sources in launchd would overwrite a
+    # newer specialist's tree after the planned worker rotation.
+    assert "POKEBOT_MATCHUP_RUNTIME_MARKER_SOURCE" not in env
+    assert "POKEBOT_PUBLIC_MATCHUP_TREE_SOURCE" not in env
     assert "__POKEBOT_BERT_REPO__" in " ".join(plist["ProgramArguments"])
 
     wrapper = (

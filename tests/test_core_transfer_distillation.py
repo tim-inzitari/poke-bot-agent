@@ -121,3 +121,13 @@ def test_transfer_initialization_rejects_wrong_source_digest(tmp_path: Path) -> 
         assert "source identity changed" in str(exc)
     else:  # pragma: no cover - explicit failure message is easier to diagnose
         raise AssertionError("wrong passed-checkpoint digest was accepted")
+
+
+def test_core_distillation_materializes_all_head_targets() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts/run_passed_alakazam_core_distillation.py"
+    ).read_text(encoding="utf-8")
+    assert "belief_card_vocab_from_state" in source
+    assert "belief_card_vocab=belief_card_vocab" in source
+    assert "if not corpus.has_exact_targets" in source

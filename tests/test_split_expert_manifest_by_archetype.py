@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import pickle
 
 from poke_bot.feature_shards import (
     COMPACT_MODE,
@@ -12,6 +13,7 @@ from poke_bot.feature_shards import (
 from poke_bot.pure_rl.expert_rehearsal import resolve_expert_manifest
 from scripts.split_expert_manifest_by_archetype import split_manifest
 from scripts.validate_specialist_corpora import validate_corpora
+from scripts.filter_feature_manifest import sha256
 from tests.test_filter_feature_manifest import _write_source
 
 
@@ -88,6 +90,20 @@ def test_many_specialist_corpora_are_built_in_one_source_scan(
         assert manifest_payload["source_days"][0]["date"] == "2026-07-18"
         assert manifest_payload["source_days"][0]["source_feature_validated"] is True
         assert manifest_payload["source_days"][0]["matching_games"] == expected
+        expanded = manifest_payload["expanded_strategic_targets"]
+        assert expanded["decisions"] == expected
+        assert all(
+            row["labeled_rows"] == 0
+            and row["masked_rows"] == expected
+            and row["total_rows"] == expected
+            for row in expanded["head_coverage"].values()
+        )
+        assert (
+            json.loads(pointer.read_text(encoding="utf-8"))[
+                "expanded_strategic_targets"
+            ]
+            == expanded
+        )
         rows = list(
             iter_feature_shard(
                 root / target / manifest_payload["shards"][0]["path"]
@@ -135,3 +151,76 @@ def test_nonempty_corpus_below_bootstrap_floor_is_not_marked_ready(
         "lucario/PROTECTED_EXPERT_CORPUS.json"
     )
     assert result["manifest_sha256"].startswith("sha256:")
+
+
+def test_logical_alias_is_materialized_under_canonical_specialist(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "all.features"
+    shard = _write_source(source)
+    with source.open("rb") as stream:
+        header = pickle.load(stream)
+        rows = [pickle.load(stream) for _ in range(3)]
+        footer = pickle.load(stream)
+    rows[0].archetype = "festival-lead"
+    rows[1].opp_archetype = "festival-lead"
+    with source.open("wb") as stream:
+        pickle.dump(header, stream)
+        for row in rows:
+            pickle.dump(row, stream)
+        pickle.dump(footer, stream)
+    shard["bytes"] = source.stat().st_size
+    shard["sha256"] = sha256(source)
+    manifest = tmp_path / "source.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "format": MANIFEST_FORMAT,
+                "format_version": MANIFEST_FORMAT_VERSION,
+                "date_start": "2026-07-18",
+                "date_end": "2026-07-18",
+                "dates": ["2026-07-18"],
+                "max_context": 320,
+                "shards": [shard],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    ready_path = split_manifest(
+        manifest,
+        tmp_path / "specialists",
+        archetypes=("thwackey", "lucario"),
+        minimum_decisions=1,
+        logical_aliases={"festival-lead": "thwackey"},
+    )
+
+    ready = json.loads(ready_path.read_text(encoding="utf-8"))
+    by_id = {row["archetype"]: row for row in ready["results"]}
+    assert by_id["thwackey"]["records"] == 1
+    thwackey_manifest = json.loads(
+        (
+            tmp_path / "specialists/thwackey/manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    thwackey_rows = list(
+        iter_feature_shard(
+            tmp_path
+            / "specialists/thwackey"
+            / thwackey_manifest["shards"][0]["path"]
+        )
+    )
+    assert thwackey_rows[0].archetype == "thwackey"
+    lucario_manifest = json.loads(
+        (
+            tmp_path / "specialists/lucario/manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    lucario_rows = list(
+        iter_feature_shard(
+            tmp_path
+            / "specialists/lucario"
+            / lucario_manifest["shards"][0]["path"]
+        )
+    )
+    assert lucario_rows[0].opp_archetype == "thwackey"

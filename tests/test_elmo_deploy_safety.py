@@ -378,6 +378,16 @@ def test_reload_success_persists_before_worker_identity_publish() -> None:
     assert "durable active-checkpoint publication failed" in source
 
 
+def test_runtime_identity_rotation_persists_requested_checkpoint_first() -> None:
+    source = (ROOT / "scripts" / "run_remote_worker.py").read_text(encoding="utf-8")
+    branch = source.index("if runtime_identity_changed:")
+    persist = source.index("_persist_active_checkpoint(path, actual)", branch)
+    rotation = source.index("threading.Timer(", persist)
+    assert branch < persist < rotation
+    assert "matchup runtime rotation checkpoint publish " in source
+    assert 'f"failed: {type(exc).__name__}: {exc}"' in source
+
+
 def test_explicit_seed_preserves_an_existing_reloaded_identity(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

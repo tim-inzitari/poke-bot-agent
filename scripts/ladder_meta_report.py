@@ -50,6 +50,9 @@ SUPPORT_EX_IDS = {
 # Non-Dragapult deck signatures (checked after classify_deck). Order = specificity.
 # Each entry: (archetype_id, required_any_of_card_ids, optional_extra_any)
 META_SIGNATURES: list[tuple[str, set[int], set[int]]] = [
+    ("hops-trevenant", {879}, set()),                  # Hop's Trevenant
+    ("walrein", {943}, set()),                         # Walrein
+    ("dudunsparce", {306, 997}, set()),                # Dudunsparce ex variants
     ("starmie", {1031}, set()),                          # Mega Starmie ex
     ("lucario", {678}, set()),                           # Mega Lucario ex
     ("garchomp", {381}, set()),                          # Cynthia's Garchomp ex
@@ -77,6 +80,9 @@ META_SIGNATURES: list[tuple[str, set[int], set[int]]] = [
 
 # Ace-name → archetype_id for busyaprime fallback.
 ACE_NAME_MAP: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"hop'?s\s*trevenant|trevenant", re.I), "hops-trevenant"),
+    (re.compile(r"walrein", re.I), "walrein"),
+    (re.compile(r"dudunsparce", re.I), "dudunsparce"),
     (re.compile(r"dragapult", re.I), "dragapult"),  # rare if classify_deck missed
     (re.compile(r"starmie", re.I), "starmie"),
     (re.compile(r"lucario", re.I), "lucario"),

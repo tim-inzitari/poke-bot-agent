@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply adaptive shared-queue dispatch at committed iteration 2
+After=pokebot-pure-rl-top-ladder-10day-hotstart.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/inzi/.local/libexec/pokebot-apply-adaptive-dispatch.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_core_exact20k_resident_fleet152_bertcpu_v1_20260719 --service pokebot-pure-rl-top-ladder-10day-hotstart.service --target-next-iteration 2 --poll-seconds 0.10 --status /home/inzi/.local/state/pokebot/adaptive-dispatch-iter2.json
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

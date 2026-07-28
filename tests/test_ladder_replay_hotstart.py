@@ -45,6 +45,67 @@ def test_every_pinned_representative_has_exact_family_label() -> None:
         assert label.method == "representative_exact"
 
 
+def test_post_snapshot_family_requires_explicit_additive_allowlist() -> None:
+    cards = [879] + [1] * 59
+    default = LadderReplayClassifier.from_paths(MIX, REPS)
+    assert default.classify_deck(cards).deck_id == "unknown"
+
+    additive = LadderReplayClassifier.from_paths(
+        MIX, REPS, additive_registered_ids=["hops-trevenant"]
+    )
+    label = additive.classify_deck(cards)
+    assert label.deck_id == "hops-trevenant"
+    assert label.method == "registered_signature"
+    assert additive.contract["additive_registered_ids"] == ["hops-trevenant"]
+
+
+def test_spidops_additive_signature_does_not_steal_rockets_mewtwo() -> None:
+    spidops = [400] * 4 + [401] * 4 + [431] + [1] * 51
+    mewtwo = [400] * 4 + [401] * 4 + [431] * 2 + [1] * 50
+    classifier = LadderReplayClassifier.from_paths(
+        MIX,
+        REPS,
+        additive_registered_ids=["team-rockets-spidops"],
+    )
+    label = classifier.classify_deck(spidops)
+    assert label.deck_id == "team-rockets-spidops"
+    assert label.method == "registered_signature"
+    assert classifier.classify_deck(mewtwo).deck_id == "rockets-mewtwo"
+
+
+def test_additive_allowlist_rejects_unregistered_family() -> None:
+    with pytest.raises(ValueError, match="unregistered additive"):
+        LadderReplayClassifier.from_paths(
+            MIX, REPS, additive_registered_ids=["not-a-real-family"]
+        )
+
+
+def test_logical_alias_reuses_festival_lead_evidence_as_thwackey() -> None:
+    representatives = load_ladder_deck_representatives(REPS)
+    classifier = LadderReplayClassifier.from_paths(
+        MIX,
+        REPS,
+        logical_aliases={"festival-lead": "thwackey"},
+    )
+    label = classifier.classify_deck(
+        representatives.decks["festival-lead"]["card_ids"]
+    )
+    assert label.deck_id == "thwackey"
+    assert label.method == "representative_exact+logical_alias"
+    assert classifier.contract["logical_aliases"] == {
+        "festival-lead": "thwackey"
+    }
+
+
+def test_logical_alias_rejects_unknown_identity() -> None:
+    with pytest.raises(ValueError, match="invalid logical ladder aliases"):
+        LadderReplayClassifier.from_paths(
+            MIX,
+            REPS,
+            logical_aliases={"festival-lead": "not-a-real-family"},
+        )
+
+
 def test_ace_labeled_families_generalize_beyond_exact_modal_list(tmp_path: Path) -> None:
     card_csv = tmp_path / "cards.csv"
     card_csv.write_text(

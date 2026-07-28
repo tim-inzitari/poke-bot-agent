@@ -1,0 +1,22 @@
+[Unit]
+Description=Build additive rare-route temporal expert shards for validated router v35
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/Main/main/poke-adapter-oracle-v29
+ExecStartPre=/bin/sh -c 'while ! /usr/bin/test -s /mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-v34/public-matchup-tree.audit.json; do /usr/bin/sleep 30; done'
+ExecStart=/usr/bin/python3 /mnt/Main/main/poke-adapter-oracle-v29/src/scripts/prepare_rare_route_expert_shards_elmo.py
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=48h
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=24G
+MemoryMax=32G
+OOMPolicy=stop
+ExecStopPost=-/bin/sh -c '/usr/bin/sudo -n /usr/bin/docker ps -q --filter name=pokebot-rare-expert- | /usr/bin/xargs -r /usr/bin/sudo -n /usr/bin/docker stop --time 20'
+StandardOutput=append:/mnt/Main/main/poke-bot-agent/archive/rare-route-expert-history-20260626-20260701/service.log
+StandardError=append:/mnt/Main/main/poke-bot-agent/archive/rare-route-expert-history-20260626-20260701/service.log

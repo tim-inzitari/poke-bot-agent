@@ -1,0 +1,23 @@
+[Unit]
+Description=Finite RTX 3080 Ti official Basic Bench Play parity gate (OUT OF FLEET)
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-remote-cutover
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-remote-cutover
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=GPU-72bf89ff-6e52-01d4-a49b-90a7addfd632
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/cuda-sim-lab/official_basic_bench_play_collect.py --deck /home/inzi/cuda-sim-lab/official_basic_energy_attach_deck.csv --official-lib /home/inzi/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg/libcg.so --json-out /home/inzi/cuda-sim-lab/outputs/official-basic-bench-play-fixtures.json --fixtures 256 --max-games 2048 --max-steps 256
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/cuda-sim-lab/official_basic_bench_play_cuda.py --fixtures /home/inzi/cuda-sim-lab/outputs/official-basic-bench-play-fixtures.json --json-out /home/inzi/cuda-sim-lab/outputs/official-basic-bench-play-cuda.json --benchmark-lanes 16384 --benchmark-iters 25
+TimeoutStartSec=300
+MemoryHigh=6G
+MemoryMax=8G
+CPUQuota=200%
+CPUWeight=50
+IOWeight=50
+StandardOutput=append:/home/inzi/cuda-sim-lab/outputs/official-basic-bench-play-once.log
+StandardError=append:/home/inzi/cuda-sim-lab/outputs/official-basic-bench-play-once.log
+
+# Deliberately no installation section or restart policy.

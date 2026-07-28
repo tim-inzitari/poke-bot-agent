@@ -258,13 +258,17 @@ REMOTE_PREFLIGHT_PROFILE=none \
 
 status installing_remote_runtime_bundles
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-scp -q "$TREE_RUNTIME" elmo:/tmp/public-matchup-tree-runtime-v31.json
-scp -q "$REMOTE_MARKER" elmo:/tmp/matchup-runtime-activation.json
-ssh elmo "set -e; sudo -n docker stop poke-bot-truenas-worker >/dev/null; d=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint; sudo -n cp -p \"\$d/public-matchup-tree-runtime-v31.json\" \"\$d/public-matchup-tree-runtime-v31.json.before-$stamp\" 2>/dev/null || true; sudo -n cp -p \"\$d/matchup-runtime-activation.json\" \"\$d/matchup-runtime-activation.json.before-$stamp\" 2>/dev/null || true; sudo -n install -m 0444 /tmp/public-matchup-tree-runtime-v31.json \"\$d/public-matchup-tree-runtime-v31.json\"; sudo -n install -m 0444 /tmp/matchup-runtime-activation.json \"\$d/matchup-runtime-activation.json\"; sudo -n docker start poke-bot-truenas-worker >/dev/null"
+elmo_tree_tmp="/tmp/public-matchup-tree-runtime-v31-$stamp.json"
+elmo_marker_tmp="/tmp/matchup-runtime-activation-$stamp.json"
+scp -q "$TREE_RUNTIME" "elmo:$elmo_tree_tmp"
+scp -q "$REMOTE_MARKER" "elmo:$elmo_marker_tmp"
+ssh elmo "set -e; sudo -n docker stop poke-bot-truenas-worker >/dev/null; d=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint; sudo -n cp -p \"\$d/public-matchup-tree-runtime-v31.json\" \"\$d/public-matchup-tree-runtime-v31.json.before-$stamp\" 2>/dev/null || true; sudo -n cp -p \"\$d/matchup-runtime-activation.json\" \"\$d/matchup-runtime-activation.json.before-$stamp\" 2>/dev/null || true; sudo -n install -m 0444 \"$elmo_tree_tmp\" \"\$d/public-matchup-tree-runtime-v31.json\"; sudo -n install -m 0444 \"$elmo_marker_tmp\" \"\$d/matchup-runtime-activation.json\"; rm -f \"$elmo_tree_tmp\" \"$elmo_marker_tmp\"; sudo -n docker start poke-bot-truenas-worker >/dev/null"
 
-scp -q "$TREE_RUNTIME" bert.local:/tmp/public-matchup-tree-runtime-v31.json
-scp -q "$REMOTE_MARKER" bert.local:/tmp/matchup-runtime-activation.json
-ssh bert.local "set -e; domain=gui/\$(id -u); target=\$domain/com.pokebot.remote-worker-8766; plist=\$HOME/Library/LaunchAgents/com.pokebot.remote-worker-8766.plist; launchctl bootout \"\$target\" >/dev/null 2>&1 || true; d=/Users/tsinzitari/workspace/poke-bot-agent/outputs/checkpoints; cp -p \"\$d/public-matchup-tree-runtime-v31.json\" \"\$d/public-matchup-tree-runtime-v31.json.before-$stamp\" 2>/dev/null || true; cp -p \"\$d/matchup-runtime-activation.json\" \"\$d/matchup-runtime-activation.json.before-$stamp\" 2>/dev/null || true; install -m 0444 /tmp/public-matchup-tree-runtime-v31.json \"\$d/public-matchup-tree-runtime-v31.json\"; install -m 0444 /tmp/matchup-runtime-activation.json \"\$d/matchup-runtime-activation.json\"; launchctl bootstrap \"\$domain\" \"\$plist\""
+bert_tree_tmp="/tmp/public-matchup-tree-runtime-v31-$stamp.json"
+bert_marker_tmp="/tmp/matchup-runtime-activation-$stamp.json"
+scp -q "$TREE_RUNTIME" "bert.local:$bert_tree_tmp"
+scp -q "$REMOTE_MARKER" "bert.local:$bert_marker_tmp"
+ssh bert.local "set -e; domain=gui/\$(id -u); target=\$domain/com.pokebot.remote-worker-8766; launchctl print \"\$target\" >/dev/null; d=/Users/tsinzitari/workspace/poke-bot-agent/outputs/checkpoints; cp -p \"\$d/public-matchup-tree-runtime-v31.json\" \"\$d/public-matchup-tree-runtime-v31.json.before-$stamp\" 2>/dev/null || true; cp -p \"\$d/matchup-runtime-activation.json\" \"\$d/matchup-runtime-activation.json.before-$stamp\" 2>/dev/null || true; install -m 0444 \"$bert_tree_tmp\" \"\$d/public-matchup-tree-runtime-v31.json\"; install -m 0444 \"$bert_marker_tmp\" \"\$d/matchup-runtime-activation.json\"; rm -f \"$bert_tree_tmp\" \"$bert_marker_tmp\"; nohup launchctl kickstart -k \"\$target\" >/dev/null 2>&1 </dev/null &"
 
 status verifying_remote_runtime
 EXPECTED_TREE="$($PY -c 'import hashlib,sys; print("sha256:"+hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$TREE_RUNTIME")" \

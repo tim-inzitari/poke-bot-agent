@@ -1,0 +1,16 @@
+[Unit]
+Description=Seal completed Hammer-Pult current-deck-guide corpus
+After=pokebot-hammer-pult-guide-window-v1.service
+
+[Service]
+Type=oneshot
+User=admin
+WorkingDirectory=/home/admin/pokebot-expert-guide-src-v1
+ExecStart=/usr/bin/python3 scripts/finalize_current_deck_guide_window.py --status /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/hammer-pult/status/window.json --out-dir /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/hammer-pult --start 2026-07-04 --end 2026-07-23 --specialist-id hammer-pult --guide-version hammer-pult-north-star-v1 --expected-max-context 320
+Nice=15
+CPUWeight=5
+IOWeight=5
+MemoryMax=8G
+MemorySwapMax=0
+TimeoutStartSec=2h
+TimeoutStopSec=30

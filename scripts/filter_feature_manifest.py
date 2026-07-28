@@ -37,6 +37,12 @@ from poke_bot.feature_shards import (
     iter_feature_shard,
 )
 from poke_bot.features import FEATURE_SCHEMA_VERSION
+from poke_bot.matchup_adapters import UNKNOWN_ROUTE, route_for_archetype
+from poke_bot.strategic_heads import (
+    expanded_strategic_sequence_coverage,
+    masked_expanded_strategic_coverage,
+    merge_expanded_strategic_coverages,
+)
 
 
 PINNED_CORPUS_SCHEMA = "poke_bot.pinned_expert_corpus/v1"
@@ -86,6 +92,18 @@ def seal_filtered_manifest(manifest_path: Path) -> Path:
         or int(totals.get("decisions_kept") or 0) <= 0
     ):
         raise ValueError("refusing to seal an invalid filtered feature manifest")
+    expanded_raw = manifest.get("expanded_strategic_targets")
+    expanded_targets = None
+    if expanded_raw is not None:
+        expanded_targets = merge_expanded_strategic_coverages(
+            (expanded_raw,)
+        )
+        if int(expanded_targets["decisions"]) != int(
+            totals["decisions_kept"]
+        ):
+            raise ValueError(
+                "expanded strategic coverage does not match filtered decisions"
+            )
     pointer = {
         "schema": PINNED_CORPUS_SCHEMA,
         "protected": True,
@@ -97,6 +115,11 @@ def seal_filtered_manifest(manifest_path: Path) -> Path:
             "records_kept": int(totals["records_kept"]),
             "decisions_kept": int(totals["decisions_kept"]),
         },
+        **(
+            {"expanded_strategic_targets": expanded_targets}
+            if expanded_targets is not None
+            else {}
+        ),
     }
     pointer_path = manifest_path.parent / PINNED_CORPUS_NAME
     if pointer_path.exists():
@@ -124,6 +147,7 @@ def _output_is_valid(
     *,
     source_digest: str,
     archetype: str,
+    opponent_routes_only: bool,
 ) -> dict[str, Any] | None:
     try:
         metadata = json.loads(sidecar.read_text(encoding="utf-8"))
@@ -133,6 +157,8 @@ def _output_is_valid(
         not output.is_file()
         or metadata.get("source_sha256") != source_digest
         or metadata.get("selection_archetype") != archetype
+        or bool(metadata.get("opponent_routes_only"))
+        != bool(opponent_routes_only)
         or metadata.get("sha256") != sha256(output)
     ):
         return None
@@ -150,6 +176,8 @@ def filter_feature_shard(
     *,
     expected_source_digest: str,
     archetype: str,
+    opponent_routes_only: bool = False,
+    allow_empty: bool = False,
 ) -> dict[str, Any]:
     source = Path(source).resolve()
     output = Path(output).resolve()
@@ -168,6 +196,7 @@ def filter_feature_shard(
         sidecar,
         source_digest=actual_source_digest,
         archetype=requested,
+        opponent_routes_only=bool(opponent_routes_only),
     )
     if existing is not None:
         return existing
@@ -192,10 +221,30 @@ def filter_feature_shard(
         "source_sha256": actual_source_digest,
         "source_dates": list(source_header.get("source_dates") or []),
         "max_context": int(source_header.get("max_context") or 0),
-        "selection": "sequence.archetype == selection_archetype",
+        "selection": (
+            "sequence.archetype == selection_archetype and "
+            "route_for_archetype(sequence.opp_archetype) != UNKNOWN_ROUTE"
+            if opponent_routes_only
+            else "sequence.archetype == selection_archetype"
+        ),
         "selection_archetype": requested,
+        "opponent_routes_only": bool(opponent_routes_only),
+        "required_archetype": requested,
     }
+    # Preserve the immutable raw-archive/classifier contract.  Matchup-adapter
+    # staging replays the corresponding raw member and must be able to prove
+    # that a filtered Alakazam row came from the exact authoritative shard.
+    for provenance_key in (
+        "classifier_sha256",
+        "source_archive",
+        "source_archive_sha256",
+        "visual_trace_schema",
+        "target_consumer_contract",
+    ):
+        if provenance_key in source_header:
+            header[provenance_key] = source_header[provenance_key]
     coverage: Counter[str] = Counter()
+    expanded_strategic_targets = masked_expanded_strategic_coverage(0)
     try:
         with partial.open("xb") as stream:
             pickle.dump(header, stream, protocol=pickle.HIGHEST_PROTOCOL)
@@ -203,12 +252,26 @@ def filter_feature_shard(
                 scanned += 1
                 if str(sequence.archetype).strip().lower() != requested:
                     continue
+                if opponent_routes_only and route_for_archetype(
+                    sequence.opp_archetype
+                ) == UNKNOWN_ROUTE:
+                    continue
                 if not sequence.info_set_ok:
                     raise ValueError(
                         f"selected sequence failed info-set guard: {sequence.episode_id}"
                     )
                 sequence_coverage = _target_coverage(sequence)
                 coverage.update(sequence_coverage)
+                expanded_strategic_targets = (
+                    merge_expanded_strategic_coverages(
+                        (
+                            expanded_strategic_targets,
+                            expanded_strategic_sequence_coverage(
+                                sequence.decisions
+                            ),
+                        )
+                    )
+                )
                 pickle.dump(sequence, stream, protocol=pickle.HIGHEST_PROTOCOL)
                 kept += 1
                 decisions += len(sequence)
@@ -228,6 +291,7 @@ def filter_feature_shard(
                 "feature_schema": FEATURE_SCHEMA_VERSION,
                 "compact_mode": header["compact_mode"],
                 "target_coverage": dict(sorted(coverage.items())),
+                "expanded_strategic_targets": expanded_strategic_targets,
                 "source_records_scanned": scanned,
                 "source_records_excluded": scanned - kept,
                 "seat_counts": dict(sorted(seats.items())),
@@ -248,6 +312,14 @@ def filter_feature_shard(
         raise
     if kept <= 0 or decisions <= 0:
         output.unlink(missing_ok=True)
+        if allow_empty:
+            return {
+                "skipped_empty": True,
+                "source_feature_shard": source.name,
+                "source_sha256": actual_source_digest,
+                "source_dates": list(source_header.get("source_dates") or []),
+                "selection_archetype": requested,
+            }
         raise ValueError(f"filter selected no usable {requested} sequences: {source}")
     metadata = {
         **header,
@@ -263,13 +335,15 @@ def filter_feature_shard(
     return metadata
 
 
-def _filter_one(job: tuple[str, str, str, str]) -> dict[str, Any]:
-    source, output, digest, archetype = job
+def _filter_one(job: tuple[str, str, str, str, bool, bool]) -> dict[str, Any]:
+    source, output, digest, archetype, opponent_routes_only, allow_empty = job
     return filter_feature_shard(
         Path(source),
         Path(output),
         expected_source_digest=digest,
         archetype=archetype,
+        opponent_routes_only=opponent_routes_only,
+        allow_empty=allow_empty,
     )
 
 
@@ -279,6 +353,7 @@ def filter_manifest(
     *,
     archetype: str,
     workers: int = 1,
+    opponent_routes_only: bool = False,
 ) -> Path:
     source_manifest = Path(source_manifest).resolve()
     output_dir = Path(output_dir).resolve()
@@ -292,25 +367,47 @@ def filter_manifest(
     if not shards:
         raise ValueError("source feature manifest has no shards")
     output_dir.mkdir(parents=True, exist_ok=True)
-    jobs: list[tuple[str, str, str, str]] = []
+    jobs: list[tuple[str, str, str, str, bool, bool]] = []
     for row in shards:
         source = (source_manifest.parent / str(row["path"])).resolve()
         stem = source.name[: -len(".features")] if source.name.endswith(".features") else source.stem
         output = output_dir / f"{stem}.{requested}.features"
-        jobs.append((str(source), str(output), str(row["sha256"]), requested))
+        jobs.append(
+            (
+                str(source),
+                str(output),
+                str(row["sha256"]),
+                requested,
+                bool(opponent_routes_only),
+                True,
+            )
+        )
     if int(workers) <= 1:
         filtered = [_filter_one(job) for job in jobs]
     else:
         with ProcessPoolExecutor(max_workers=min(int(workers), len(jobs))) as pool:
             filtered = list(pool.map(_filter_one, jobs))
+    filtered = [row for row in filtered if not row.get("skipped_empty")]
     filtered.sort(key=lambda row: tuple(row.get("source_dates") or ()))
     compact_modes = {str(row.get("compact_mode") or COMPACT_MODE) for row in filtered}
     if len(compact_modes) != 1:
         raise ValueError(f"filtered shards mix compact modes: {sorted(compact_modes)}")
     compact_mode = next(iter(compact_modes))
     target_coverage: Counter[str] = Counter()
+    expanded_strategic_targets = masked_expanded_strategic_coverage(0)
     for row in filtered:
         target_coverage.update(dict((row.get("stats") or {}).get("target_coverage") or {}))
+        expanded_strategic_targets = merge_expanded_strategic_coverages(
+            (
+                expanded_strategic_targets,
+                (row.get("stats") or {}).get(
+                    "expanded_strategic_targets"
+                )
+                or masked_expanded_strategic_coverage(
+                    int((row.get("stats") or {}).get("decisions_kept") or 0)
+                ),
+            )
+        )
     totals = {
         "bytes": sum(int(row["bytes"]) for row in filtered),
         "records_kept": sum(int(row["stats"]["records_kept"]) for row in filtered),
@@ -320,6 +417,7 @@ def filter_manifest(
             int(row["stats"]["source_records_scanned"]) for row in filtered
         ),
         "target_coverage": dict(sorted(target_coverage.items())),
+        "expanded_strategic_targets": expanded_strategic_targets,
     }
     if totals["records_kept"] <= 0 or totals["decisions_kept"] <= 0:
         raise ValueError("filtered manifest would be empty")
@@ -341,14 +439,17 @@ def filter_manifest(
         "date_end": payload.get("date_end"),
         "dates": list(payload.get("dates") or []),
         "compact_mode": compact_mode,
+        "max_context": int(payload.get("max_context") or 0),
         "selection": {
             "field": "GameSequence.archetype",
             "operator": "exact_casefold",
             "value": requested,
             "seat_semantics": "acting_seat_only",
+            "opponent_routes_only": bool(opponent_routes_only),
         },
         "source_manifest": str(source_manifest),
         "source_manifest_sha256": sha256(source_manifest),
+        "expanded_strategic_targets": expanded_strategic_targets,
         "shards": filtered,
         "totals": totals,
         "quality_gates": {
@@ -356,6 +457,7 @@ def filter_manifest(
             "nonempty": True,
             "checksummed": True,
             "acting_seat_archetype_exact": True,
+            "max_context_exact": int(payload.get("max_context") or 0) > 0,
             "temporal_action_tokens_complete": temporal_actions_complete,
             "hidden_targets_are_aux_only": True,
         },
@@ -377,12 +479,18 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--archetype", required=True)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--opponent-routes-only",
+        action="store_true",
+        help="Keep only seats whose opponent has a configured adapter route.",
+    )
     args = parser.parse_args()
     manifest = filter_manifest(
         args.source_manifest,
         args.output_dir,
         archetype=args.archetype,
         workers=max(1, int(args.workers)),
+        opponent_routes_only=bool(args.opponent_routes_only),
     )
     print(json.dumps(json.loads(manifest.read_text()), indent=2), flush=True)
     return 0

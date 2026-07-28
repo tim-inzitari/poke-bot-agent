@@ -1,0 +1,792 @@
+TEAM ROCKET'S MEWTWO EX
+PRACTICAL PILOT GUIDE FOR EXPERT REVIEW
+
+Specialist ID: rockets-mewtwo
+Guide version: rockets-mewtwo-north-star-v1
+Prepared: 2026-07-26
+Audience: world-champion and equivalent Pokémon TCG subject-matter experts
+Status: research pilot; not yet expert-approved
+
+
+HOW TO READ THIS PILOT
+
+This is a practical guide to piloting the current Team Rocket's Mewtwo ex /
+Team Rocket's Spidops archetype. It is not a claim that one 60-card list is
+universally correct.
+
+The concrete reference list is Juho Kallama's seventh-place list from NAIC
+2026. It plays a 4-4 Team Rocket's Tarountula/Spidops line, two Team Rocket's
+Mewtwo ex, two Team Rocket's Mimikyu, two Team Rocket's Articuno, one Lillie's
+Clefairy ex, a dense Team Rocket Supporter package, Maximum Belt, and eleven
+Energy. Lists change, so confirm every card against the registered list and
+event format.
+
+Labels used below:
+
+SOURCE: directly supported by a source listed at the end.
+
+INFERENCE: strategic reasoning from sourced card text, current successful
+lists, or public results. Experts should challenge these statements.
+
+LIST CHECK: advice that applies only if the registered list contains the card.
+
+SME CHECK: an intentionally unresolved question for expert review.
+
+Use current printed card text and current rulings for exact costs, legality,
+damage, and timing. This guide paraphrases mechanics; it does not replace the
+cards or rulebook.
+
+
+QUICK START: THE DECK IN ONE MINUTE
+
+Team Rocket's Mewtwo is a board-building and prize-trading deck, not simply a
+deck that rushes a 280-HP two-Prize attacker.
+
+SOURCE: Mewtwo's Power Saver prevents it from attacking unless at least four
+Team Rocket's Pokémon are in play. Mewtwo counts itself. Erasure Ball costs
+two Psychic and one Colorless Energy, starts at 160 damage, and may discard up
+to two Energy from Benched Pokémon for 60 more damage per card.
+
+SOURCE: Team Rocket's Spidops is the deck's renewable single-Prize attacker
+and Energy engine. Charging Up attaches one Basic Energy from the discard to
+that Spidops once per turn. Rocket Rush does 30 damage for each Team Rocket's
+Pokémon in play. With a full six-Pokémon Team Rocket board, that is 180 damage
+before Weakness, Resistance, Tools, or other modifiers.
+
+The default plan is:
+
+1. Establish four or more Team Rocket's Pokémon immediately, with multiple
+   Tarountula whenever possible.
+2. Evolve Tarountula into Spidops and use Charging Up every turn that a useful
+   Basic Energy is available in the discard.
+3. Trade with Spidops in matchups where a stream of single-Prize attackers
+   forces the opponent to take five or six knockouts.
+4. Build Mewtwo behind that exchange. Use it when 160, 220, or 280 damage
+   changes the prize race enough to justify exposing a two-Prize Pokémon and
+   spending Benched Energy.
+5. Keep Articuno in play when its Repelling Veil matters. It prevents effects
+   of opposing attacks done to Basic Team Rocket's Pokémon; it does not
+   prevent damage.
+6. Use Mimikyu as a free-retreat pivot and, against a Tera Active, as a
+   possible attacker through Gemstone Mimicry.
+7. Bench Lillie's Clefairy only for a specific Dragon-Weakness or attack line.
+   A non-Team-Rocket Pokémon turns Ariana's enhanced draw-to-eight into
+   draw-to-five.
+8. Sequence Team Rocket Supporters before using Team Rocket's Factory's
+   optional draw-two effect.
+
+The deck rewards exact arithmetic and restraint. The pilot must count Team
+Rocket Pokémon, Energy, available attacks, prizes, and bench slots before
+committing to a line.
+
+
+STRATEGIC IDENTITY
+
+SOURCE: Kallama's NAIC Top-8 list uses eight Spidops-line cards and only two
+Mewtwo. That construction is strong evidence that Spidops is not incidental:
+it is the repeatable engine and often the first attacker.
+
+SOURCE: A current public strategy discussion independently recommends
+streaming Spidops in most matchups, using Spidops's Energy acceleration to
+support Mewtwo, making the opponent take five or six knockouts, and treating
+Mimikyu as both a narrow attacker and free-retreat pivot. Because this is
+community testimony rather than controlled analysis, it is supporting
+evidence, not authority.
+
+SOURCE: Limitless reports five Regional Top-8 finishes and one International
+Top-8 finish for the archetype in the TEF-CRI format. At Indianapolis in May
+2026, the aggregate was 200 wins, 249 losses, and 75 ties over 524 recorded
+results. That 42.94% aggregate warns against describing the deck as
+universally favored even though it has elite finishes.
+
+INFERENCE: Think of the deck as a single-Prize tempo shell with a two-Prize
+threshold breaker. Spidops asks the opponent to keep taking modest-value
+knockouts. Mewtwo appears when the board and Energy make its larger hit worth
+the two-Prize liability. The strongest turns often combine several small
+advantages:
+
+- a Team Rocket Supporter selected by Transceiver;
+- Factory draw after that Supporter;
+- one or more Charging Up activations;
+- a free-retreat Mimikyu pivot or Giovanni switch;
+- an exact Spidops or Mewtwo damage threshold; and
+- a protected Basic bench under Articuno.
+
+Before playing the first search card, answer:
+
+- Does this game want a Spidops-first or Mewtwo-first prize map?
+- How many single-Prize knockouts can the opponent be forced to take?
+- Which opposing attacker requires Mewtwo's 220/280 ceiling?
+- Is Articuno's effect protection relevant to the opposing attack text?
+- Is Clefairy worth turning off Ariana's draw-to-eight?
+- Which Energy can be spent by Erasure Ball without breaking the next attack?
+
+
+CARD ROLES AND ENGINE
+
+Team Rocket's Tarountula and Spidops
+
+SOURCE: The current NAIC list plays four of each. Spidops has 130 HP. Charging
+Up retrieves a Basic Energy from the discard to itself. Rocket Rush costs one
+Grass and one Colorless and deals 30 damage per Team Rocket's Pokémon in play.
+
+Practical role:
+
+- Tarountula is both a future attacker and a Team Rocket body for Power Saver
+  and Rocket Rush.
+- Spidops is a single-Prize attacker.
+- Each Spidops is a renewable Benched Energy source for Erasure Ball.
+- Multiple Spidops create redundant attackers and multiple once-per-turn
+  Charging Up abilities.
+
+INFERENCE: Filling the bench is functional here. Every additional Team
+Rocket's Pokémon can increase Rocket Rush by 30 until the board is full, and
+the fourth Team Rocket body unlocks Mewtwo. However, a full bench is not an
+excuse to bench randomly. Preserve room for the attacker, the next Spidops,
+Articuno when relevant, and Mimikyu as a pivot. Clefairy consumes a slot
+without counting for Rocket Rush or Power Saver.
+
+Do not evolve every Tarountula automatically. If the board already has the
+Spidops needed for the current attack and an opponent can gust a Stage 1,
+keeping a second Basic may diversify the board. Conversely, evolve when the
+new Charging Up activation, extra attacker, or 130-HP body matters now.
+
+Team Rocket's Mewtwo ex
+
+SOURCE: Power Saver requires four Team Rocket's Pokémon in play. Erasure Ball
+does 160, 220, or 280 depending on whether zero, one, or two Benched Energy are
+discarded.
+
+Practical role:
+
+- a durable 280-HP attacker;
+- a 220/280 damage ceiling unavailable to an unmodified Spidops;
+- a way to convert Energy stored on Benched Pokémon into immediate damage;
+- a Fighting-resistant attacker in matchups where that changes the exchange.
+
+INFERENCE: Do not assume that 280 is always correct. Choose the smallest
+Energy discard that takes the intended prizes:
+
+- zero discarded: 160;
+- one discarded: 220;
+- two discarded: 280;
+- Maximum Belt against an opposing Pokémon ex: 210, 270, or 330 before
+  Weakness and Resistance.
+
+An unnecessary second discard is not "free" merely because Spidops can recover
+Basic Energy later. It costs a future Charging Up activation and can break the
+next attack. Conversely, refusing to discard Energy when 220 or 280 takes a
+critical knockout wastes Mewtwo's reason to be in the deck.
+
+Team Rocket's Articuno
+
+SOURCE: Repelling Veil prevents all effects of opposing attacks done to Basic
+Team Rocket's Pokémon. Existing effects remain, and damage is explicitly not
+an effect. Articuno's Dark Frost does 60, or 120 if it has Team Rocket's
+Energy attached.
+
+Practical role:
+
+- protects Basic Team Rocket Pokémon from attack effects such as damage
+  counter placement or other non-damage effects when the exact opposing text
+  falls under Repelling Veil;
+- supplies another Team Rocket body;
+- offers an emergency 120-damage attack in lists with compatible Energy.
+
+INFERENCE: Do not call Articuno a generic Bench Barrier. It protects Basic
+Team Rocket's Pokémon from effects of attacks; it does not prevent ordinary
+damage, does not protect non-Team-Rocket Pokémon, and does not protect
+Spidops, which is a Stage 1. Confirm the exact interaction before relying on
+it.
+
+Team Rocket's Mimikyu
+
+SOURCE: Mimikyu has free retreat. Gemstone Mimicry can use one attack of the
+opponent's Active Tera Pokémon for one Psychic and one Colorless Energy.
+
+Practical role:
+
+- free-retreat pivot;
+- Team Rocket body for Power Saver and Rocket Rush;
+- searchable switch partner for Team Rocket's Giovanni;
+- matchup-specific attacker against a Tera Active when the copied attack is
+  legal and valuable.
+
+INFERENCE: Its most common value can be positional rather than offensive. A
+free-retreat pivot lets the pilot choose the attacker after drawing, using
+Charging Up, or resolving Giovanni. Do not attach two Energy to Mimikyu merely
+because Gemstone Mimicry exists; inspect the opponent's current Active attack,
+its costs and effects, and the exact damage before committing.
+
+Lillie's Clefairy ex
+
+SOURCE: Fairy Zone makes the Weakness of opposing Dragon Pokémon Psychic.
+Full Moon Rondo does 20 plus 20 for every Benched Pokémon on both sides.
+
+LIST CHECK: The NAIC Top-8 list plays one Clefairy and one basic Psychic
+Energy.
+
+INFERENCE: Clefairy is a precision card, not a default bench. It can create
+Psychic-Weakness attacks into Dragon Pokémon and can exploit crowded benches,
+but it is a two-Prize non-Team-Rocket Pokémon. While it remains in play:
+
+- it does not count toward Mewtwo's four;
+- it does not add 30 to Rocket Rush;
+- Ariana draws only to five rather than eight;
+- Giovanni cannot use it as the pilot's Team Rocket switch target.
+
+Bench it only after naming the exact Dragon or attack threshold it enables.
+If that threshold never arrives, the opportunity cost may exceed its value.
+
+Team Rocket Supporters, Transceiver, and Factory
+
+SOURCE: Team Rocket's Proton searches up to three Basic Team Rocket's Pokémon.
+It is specifically legal on the pilot's first turn when going first.
+
+SOURCE: Team Rocket's Ariana draws to five, or to eight if every Pokémon in
+play is a Team Rocket's Pokémon.
+
+SOURCE: Team Rocket's Giovanni switches the pilot's Active Team Rocket's
+Pokémon with a Benched Team Rocket's Pokémon, then switches an opposing
+Benched Pokémon Active.
+
+SOURCE: Team Rocket's Petrel searches any Trainer.
+
+SOURCE: Team Rocket's Transceiver searches a Team Rocket Supporter.
+
+SOURCE: Team Rocket's Factory lets a player draw two once during their turn
+after playing a Team Rocket Supporter from hand that turn.
+
+These cards turn Transceiver into a decision point:
+
+- Proton builds the opening board.
+- Ariana repairs a low hand, especially while the board is all Team Rocket.
+- Giovanni combines a switch and gust in one Supporter.
+- Petrel becomes access to a required Trainer, including a Tool, Stadium,
+  Item, or another situation-specific Trainer in the registered list.
+
+INFERENCE: Decide the Supporter before consuming flexible cards. Then play the
+chosen Team Rocket Supporter and remember the Factory draw. Factory is
+optional, so pause if drawing would matter for deck-out or another rare
+constraint.
+
+
+SETUP, PRIZE CHECKING, AND BENCH MAPPING
+
+Opening board
+
+A robust generic opening aims for:
+
+- at least two Tarountula;
+- four total Team Rocket's Pokémon as soon as practical;
+- Mewtwo only when it belongs in the intended prize map;
+- Articuno when exact attack-effect protection matters;
+- Mimikyu when a pivot or Tera-copy line matters; and
+- one bench slot held until the matchup plan is clear.
+
+SOURCE: Current community sequencing advice recommends filling the bench
+quickly, going first, using Proton on the first turn whenever possible, and
+keeping Factory in play for draw. This aligns with Proton's exact card text and
+the deck's four-body and Rocket Rush requirements, but the recommendation has
+not been validated by controlled first/second data.
+
+Prize checking
+
+Use the first deck search to determine:
+
+- how many Mewtwo, Tarountula, and Spidops remain;
+- whether both Articuno and both Mimikyu are available;
+- whether Clefairy and the basic Psychic Energy are available;
+- whether Maximum Belt is available;
+- how many Team Rocket's Energy and basic Grass Energy remain;
+- whether Energy Switch and recovery cards are available; and
+- which Supporter routes are live through Transceiver.
+
+Then rebuild the plan. If one Mewtwo is prized, avoid exposing the other
+without purpose. If Spidops are constrained, preserve the remaining Stage 1s
+and recovery. If Maximum Belt is prized, do not plan around 330 from Erasure
+Ball.
+
+Bench map
+
+Every occupied slot should have a declared job:
+
+- present Spidops attacker;
+- replacement Tarountula/Spidops;
+- Mewtwo threshold attacker;
+- Articuno protection;
+- Mimikyu pivot/copier; or
+- Clefairy Dragon solution.
+
+INFERENCE: The all-Team-Rocket board is the cleanest default because it
+maximizes Rocket Rush and Ariana. Clefairy should displace a Team Rocket body
+only when its exact contribution is larger.
+
+
+GOING FIRST AND GOING SECOND
+
+Going first
+
+SOURCE: Proton explicitly bypasses the usual first-turn Supporter restriction
+when the pilot goes first. Current community advice therefore recommends
+going first and using Proton immediately.
+
+Priorities:
+
+1. Find Proton directly or through Transceiver.
+2. Search the Basic Team Rocket Pokémon needed for four bodies and redundant
+   Tarountula.
+3. Attach Energy to the line least likely to strand it.
+4. Establish Factory if doing so is legal and useful.
+5. On turn two, evolve into Spidops, use Charging Up if a Basic Energy is in
+   the discard, and attack if possible.
+
+Going second
+
+Going second permits an attack on the first turn but does not provide Proton's
+exclusive first-turn exception because ordinary Supporters are already legal.
+The list's actual turn-one attack depends on the opening Pokémon, Energy, and
+current legal actions.
+
+Priorities:
+
+1. Build four Team Rocket bodies if Mewtwo is the planned attacker.
+2. Use Proton if board development is worth more than Ariana, Giovanni, or
+   another Supporter.
+3. Take a useful attack only if it improves the prize map; do not damage the
+   setup merely to attack.
+4. Prepare two Tarountula so that turn-two evolution is resilient.
+
+SME CHECK: No authoritative, controlled first-versus-second performance study
+for the current NAIC-style list was found. "Go first" is a strong mechanical
+default, not a universal matchup law.
+
+
+SEQUENCING A TURN
+
+Use this order unless exact information requires a deviation:
+
+1. Count prizes remaining on both sides.
+2. Identify the intended attacker and exact knockout threshold.
+3. Count Team Rocket's Pokémon in play. Confirm Power Saver and Rocket Rush.
+4. Check every Spidops. Use each relevant Charging Up before an action could
+   remove, evolve away from, or strand that Spidops.
+5. Use deterministic search before random draw when prize knowledge matters.
+6. Choose the Supporter. If using Transceiver, know whether it is fetching
+   Proton, Ariana, Giovanni, or Petrel before playing it.
+7. Play the Team Rocket Supporter.
+8. Use Factory's draw-two after the Supporter when beneficial.
+9. Attach the manual Energy according to the current and replacement attack.
+10. Resolve switching and gust. Giovanni requires both sides of the switch.
+11. Recalculate damage after the final board, Tool, Weakness, Resistance, and
+    Energy state.
+12. If using Erasure Ball, discard only the number of Benched Energy required
+    for the selected prize outcome.
+13. Before attacking, verify the next attacker and remaining Energy.
+
+The most expensive sequencing mistakes are playing Ariana before thinning,
+forgetting Factory, evolving without using a relevant Charging Up, benching
+Clefairy before Ariana, or spending two Energy for 280 when 220 already takes
+the same prizes.
+
+
+ATTACK AND RESOURCE PLANNING
+
+Spidops-first plan
+
+Choose Spidops when:
+
+- its exact Rocket Rush damage takes the intended knockout;
+- forcing another single-Prize exchange improves the opponent's required
+  knockout count;
+- Mewtwo's extra damage is unnecessary;
+- a Darkness-Weak opponent makes the Grass attack efficient; or
+- Mewtwo must remain protected while Energy accumulates.
+
+Keep the bench populated with Team Rocket Pokémon. Prepare the next
+Tarountula/Spidops before the current one falls. If a Spidops survives, its
+Charging Up can continue supplying Energy or repair its own attack cost.
+
+Mewtwo plan
+
+Choose Mewtwo when:
+
+- 160, 220, or 280 reaches a prize threshold Spidops cannot;
+- Mewtwo's 280 HP or Fighting Resistance changes the exchange;
+- the game can absorb the two-Prize liability;
+- enough Benched Energy exists without destroying the following turn; and
+- Power Saver remains satisfied after all switches or knockouts.
+
+Maximum Belt raises damage against an opposing Pokémon ex by 50. The key
+thresholds become 210/270/330 before Weakness and Resistance. Do not attach it
+merely because Mewtwo is Active; attach it when the extra 50 changes the
+current prize result or when the registered plan has a specific protected
+future target.
+
+Energy ledger
+
+At the start of every turn, record:
+
+- basic Grass in hand, play, and discard;
+- basic Psychic in hand, play, and discard;
+- Team Rocket's Energy in visible zones;
+- Energy attached to every Benched Pokémon;
+- which Spidops have used Charging Up;
+- the current Mewtwo attack cost; and
+- the Energy that Erasure Ball would consume.
+
+INFERENCE: Basic Energy on Spidops is the most naturally renewable fuel, but
+recovery still costs future abilities and is not guaranteed after a knockout
+or board disruption. Team Rocket's Energy may enable other attacks and is not
+retrieved by Charging Up because it is not Basic Energy. Preserve it when a
+specific attacker requires it.
+
+Recovery
+
+LIST CHECK: Kallama's NAIC list uses three Night Stretcher. Other successful
+lists may use Sacred Ash or different recovery counts.
+
+Prioritize recovery by the board's actual bottleneck:
+
+1. the only Basic or Stage 1 that restores the attacker stream;
+2. the Energy that creates the current attack;
+3. Mewtwo when its damage tier is required;
+4. Articuno or Mimikyu only when their exact role is live.
+
+Do not recover a high-profile Pokémon simply because it was knocked out.
+Recover the card that changes the present prize race.
+
+
+MATCHUP PLANNING
+
+The public matchup numbers below are descriptive, not prescriptions. They are
+from one Indianapolis event and include ties; small rows are noisy.
+
+Dragapult variants
+
+SOURCE: Indianapolis reported 47.87% into straight Dragapult over 94 records,
+51.85% into Dragapult/Dusknoir over 36, and 44.93% into
+Dragapult/Blaziken over 23.
+
+Plan:
+
+- identify whether Articuno's Repelling Veil prevents the exact attack effect
+  aimed at Basic Team Rocket Pokémon;
+- keep in mind that Articuno does not protect Spidops and does not prevent
+  direct damage;
+- preserve multiple Tarountula rather than one fragile line;
+- consider Mimikyu only when the opposing Active is Tera and its copied attack
+  is legal and useful;
+- bench Clefairy only if Fairy Zone creates an exact Psychic-Weakness knockout
+  against a Dragon Pokémon.
+
+Mega Lucario and Fighting decks
+
+SOURCE: Indianapolis reported 65.22% over 23 results into Lucario/Hariyama and
+64.29% over 14 into Mega Lucario. Mewtwo resists Fighting according to its
+card text.
+
+Plan:
+
+- calculate Mewtwo's Resistance into the exact opposing damage;
+- use Mewtwo when its survival and return knockout justify two-Prize exposure;
+- retain the Spidops route so the opponent cannot map only two-Prize
+  knockouts; and
+- do not infer that the matchup is automatically won from a small event
+  sample.
+
+Darkness and Rocket mirrors
+
+Mewtwo is Weak to Darkness. Spidops is Grass and can be the safer primary
+attacker into Darkness attackers when damage permits. In the mirror, count
+which player can maintain more Spidops, renewable Energy, and single-Prize
+attacks.
+
+SOURCE: Indianapolis's Rocket's Mewtwo mirror row was 10-10-4. This is too
+small and too tie-heavy to support a deterministic matchup script.
+
+High-HP, low-Energy attackers
+
+SOURCE: Current strategy discussion identifies large, efficient attackers as
+a core problem because they can remove Mewtwo while asking for little Energy.
+TCGplayer similarly notes that Mewtwo can be difficult to repower after a
+one-hit knockout and that Maximum Belt is important for non-Weak targets.
+
+Plan:
+
+- prize-map before benching Mewtwo;
+- use Maximum Belt only at an exact ex knockout threshold;
+- force single-Prize exchanges with Spidops where possible;
+- preserve Energy Switch and recovery for rebuilding;
+- accept that some boards cannot be solved by raw Mewtwo damage alone.
+
+Alakazam
+
+SOURCE: The Indianapolis aggregate showed 72.22% over 12 results into
+Alakazam/Dudunsparce. Community discussion also describes Articuno as relevant
+to attack effects on Basic Team Rocket Pokémon.
+
+Plan:
+
+- verify the exact Alakazam attack and Articuno ruling rather than relying on
+  the matchup label;
+- maintain an all-Team-Rocket board so Ariana and Rocket Rush remain strong;
+- avoid overcommitting Mewtwo if Spidops can carry the prize exchange.
+
+Mega Starmie and other fast efficient attackers
+
+Evidence is conflicting and sparse. Indianapolis's pure Mega Starmie row was
+3-2 over five games, while Starmie/Froslass was 1-8 over nine. Current
+community reports call Starmie difficult. Treat the matchup as unresolved,
+not as a known percentage.
+
+Plan:
+
+- identify whether Spidops can trade before the opponent establishes repeated
+  knockouts;
+- preserve Maximum Belt for an exact ex threshold;
+- minimize unnecessary two-Prize liabilities;
+- do not tune a fixed line from tiny samples.
+
+
+RECOVERY WHEN THE IDEAL SETUP FAILS
+
+Fewer than four Team Rocket Pokémon
+
+Mewtwo cannot attack. Use Proton, Transceiver-to-Proton, Pokémon search, or
+recovery to restore the fourth body. If that cannot happen this turn, pivot to
+a legal Spidops, Mimikyu, or Articuno attack rather than attaching to a locked
+Mewtwo without a plan.
+
+No Spidops on turn two
+
+Protect Tarountula, use Ariana or another draw route, and avoid discarding the
+remaining evolution cards. A Mewtwo attack can bridge only if four Team Rocket
+bodies and its Energy cost are already satisfied.
+
+No Energy in the discard
+
+Charging Up has no target. Do not manufacture a discard unless the same action
+also advances the turn. Ultra Ball, Prism Tower, or another exact cost can
+place a Basic Energy in the discard, but the discarded cards and resulting
+search/draw must justify the action.
+
+Mewtwo knocked out after Erasure Ball
+
+Recount Energy before choosing the replacement. Multiple Spidops may recover
+multiple Basic Energy, but each ability belongs to its own Spidops. Use Energy
+Switch only when the exact transfer restores the needed attack. If the large
+attack cannot be rebuilt, revert to a single-Prize Spidops route.
+
+Ariana reduced to five
+
+Check whether Clefairy or another non-Team-Rocket Pokémon is in play. Do not
+assume the enhanced draw-to-eight condition. Use the actual printed condition
+and current board.
+
+Factory replaced
+
+The deck has no guaranteed on-board draw engine. Conserve Transceiver and
+draw Supporters, use deterministic search before consuming random draw, and
+do not discard the last recovery or Supporter access without a reason.
+
+
+COMMON MISTAKES
+
+1. Treating Mewtwo as the only attacker. The current elite list's 4-4 Spidops
+   line indicates otherwise.
+2. Forgetting that Mewtwo counts itself toward Power Saver.
+3. Forgetting that Clefairy does not count toward Power Saver or Rocket Rush.
+4. Benching Clefairy early and accidentally reducing Ariana from eight to
+   five.
+5. Assuming Articuno prevents damage. It prevents effects of attacks to Basic
+   Team Rocket Pokémon, not damage.
+6. Assuming Articuno protects Spidops. Spidops is a Stage 1.
+7. Discarding two Benched Energy with Erasure Ball when one or zero takes the
+   same prizes.
+8. Discarding Team Rocket's Energy as if Charging Up could recover it.
+9. Missing one or more Charging Up activations.
+10. Playing Transceiver without deciding which Supporter the turn needs.
+11. Playing a Team Rocket Supporter and forgetting Factory's draw-two.
+12. Using Giovanni as simple gust while forgetting that the pilot must also
+    switch between Team Rocket Pokémon.
+13. Filling the bench without reserving the correct attacker or pivot slot.
+14. Treating Mimikyu's copied attack as automatically legal or useful.
+15. Taking matchup percentages from very small samples as certainty.
+
+
+DECISION CHECKLISTS
+
+Opening
+
+- Did I prize-check both Mewtwo, the Spidops line, Articuno, Mimikyu,
+  Clefairy, Maximum Belt, and Energy?
+- Can I establish four Team Rocket Pokémon?
+- Can I establish two Tarountula?
+- Is Proton available directly or through Transceiver?
+- Does Articuno prevent a specific opposing attack effect?
+- Does Clefairy enable a specific Dragon knockout, or should it stay off the
+  bench?
+
+Before search or draw
+
+- What exact card category is missing?
+- Can deterministic search answer the prize check first?
+- Which Team Rocket Supporter does Transceiver need to become?
+- Should I thin the hand before Ariana?
+- Have I preserved Factory's draw condition?
+
+Before evolving
+
+- Have I used the relevant Charging Up ability?
+- Does another Spidops create a current attacker or Energy source?
+- Do I still have a replacement Tarountula?
+
+Before attaching Energy
+
+- Which Pokémon attacks this turn?
+- Which attacks next turn if the Active is knocked out?
+- Is the Energy Basic and therefore recoverable by Charging Up?
+- Is Team Rocket's Energy required for Articuno or another registered attack?
+- Will Energy Switch be needed?
+
+Before Giovanni
+
+- Is my current Active a Team Rocket Pokémon?
+- Which Benched Team Rocket Pokémon becomes Active?
+- Which opposing Benched Pokémon becomes Active?
+- Does the final attacker take exact prizes after both switches?
+- Will Power Saver remain satisfied?
+
+Before attacking
+
+- How many Team Rocket Pokémon are in play?
+- What is Rocket Rush's exact damage?
+- Is Power Saver satisfied?
+- What are Erasure Ball's exact 160/220/280 outcomes?
+- Does Maximum Belt apply to the opposing Active?
+- What do Weakness and Resistance do?
+- What is the smallest Energy discard that takes the same prizes?
+- What is the next attacker?
+
+End of turn
+
+- Did every usable Spidops use Charging Up?
+- Did I use Factory after a Team Rocket Supporter?
+- Is a free-retreat Mimikyu available for the next turn?
+- How many knockouts must the opponent still take?
+- Did I expose an unnecessary two-Prize target?
+
+
+QUESTIONS FOR WORLD-CHAMPION SME REVIEW
+
+1. In the current format, which matchups override the general preference to go
+   first for Proton?
+2. What is the correct default opening bench among two Tarountula, Mewtwo,
+   Articuno, and Mimikyu?
+3. When should the pilot intentionally play a five-body board rather than
+   filling all six slots for Rocket Rush?
+4. Which current attacks does Articuno meaningfully blank, and which common
+   interactions are frequently misruled?
+5. What are the highest-value Mewtwo 220, 280, and Maximum Belt thresholds?
+6. When is Team Rocket's Energy the preferred Erasure Ball discard despite
+   being unrecoverable by Charging Up?
+7. When is Clefairy's Dragon plan worth losing Ariana's draw-to-eight?
+8. Which matchups should stream Spidops exclusively until the final two
+   prizes?
+9. What is the correct response to fast high-HP, low-Energy attackers?
+10. Which current NAIC-style slots are flex cards rather than core engine?
+
+
+SHORT TRAINING-HEURISTIC APPENDIX
+
+The companion machine contract extracts only sparse preferences that can be
+computed from the exact current legal options and causally available state.
+It does not encode hidden deck contents, future draws, opponent intent, or
+game outcomes.
+
+Examples include:
+
+- prefer exact Proton combinations that establish four Team Rocket bodies and
+  redundant visible Tarountula;
+- prefer the smallest Erasure Ball Energy discard that takes the same current
+  prizes;
+- prefer Giovanni switch pairs only when exact current damage proves a better
+  prize result;
+- prefer Maximum Belt only when its current +50 crosses an exact knockout
+  threshold;
+- prefer Ariana from a Transceiver prompt only when the exact current board
+  grants a materially larger draw;
+- prefer Mimikyu's copied attack only when the engine can resolve its current
+  effect and prize result exactly.
+
+Every supplied legal combination in a stage must be scored. If any option,
+prompt origin, damage result, or identity is unresolved, the entire stage is
+masked. The guide is an auxiliary objective, has no runtime authority, and
+cannot override the flat or fused policy.
+
+
+SOURCES REVIEWED
+
+1. Limitless TCG, "Rocket's Mewtwo - Deck Overview."
+   https://limitlesstcg.com/decks/337
+   Current results and archetype adoption; reviewed 2026-07-26.
+
+2. Limitless TCG, "Rocket's Mewtwo by Juho Kallama."
+   https://limitlesstcg.com/decks/list/28254
+   Seventh-place NAIC 2026 reference list; reviewed 2026-07-26.
+
+3. Limitless TCG card database, "Team Rocket's Mewtwo ex."
+   https://limitlesstcg.com/cards/DRI/81
+   Exact card text; reviewed 2026-07-26.
+
+4. Limitless TCG card database, "Team Rocket's Spidops."
+   https://limitlesstcg.com/cards/DRI/20
+   Exact card text; reviewed 2026-07-26.
+
+5. Limitless TCG card database, "Team Rocket's Articuno."
+   https://limitlesstcg.com/cards/DRI/51
+   Exact card text; reviewed 2026-07-26.
+
+6. Limitless TCG card database, "Team Rocket's Mimikyu."
+   https://limitlesstcg.com/cards/DRI/87
+   Exact card text; reviewed 2026-07-26.
+
+7. Limitless TCG card database, "Team Rocket's Proton."
+   https://limitlesstcg.com/cards/DRI/177
+   Exact card text and first-turn exception; reviewed 2026-07-26.
+
+8. Limitless TCG card database, "Team Rocket's Giovanni."
+   https://limitlesstcg.com/cards/DRI/174
+   Exact double-switch card text; reviewed 2026-07-26.
+
+9. Limitless TCG card database, "Team Rocket's Ariana."
+   https://limitlesstcg.com/cards/DRI/171
+   Exact conditional draw text; reviewed 2026-07-26.
+
+10. Limitless TCG card database, "Team Rocket's Factory."
+    https://limitlesstcg.com/cards/DRI/173
+    Exact conditional draw text; reviewed 2026-07-26.
+
+11. Limitless Labs, "Rocket's Mewtwo - Regional Championship
+    Indianapolis."
+    https://labs.limitlesstcg.com/0068/decks/rocket-mewtwo-ex/matchups
+    Event-level aggregate and matchup evidence; reviewed 2026-07-26.
+
+12. Reddit r/pkmntcg, "Team Rocket's Mewtwo Deck."
+    https://www.reddit.com/r/pkmntcg/comments/1tt0m9j/team_rockets_mewtwo_deck/
+    Explicitly anecdotal pilot sequencing and matchup observations; reviewed
+    2026-07-26.
+
+
+EVIDENCE GAPS
+
+- No world-champion SME has approved this guide.
+- No controlled current-format first-versus-second study was found.
+- No authoritative comprehensive matchup guide for the exact NAIC list was
+  found.
+- Event matchup rows are heterogeneous and many samples are small.
+- Exact current rulings for every Articuno interaction were not exhaustively
+  audited.
+- The exact registered future specialist list may differ from the NAIC
+  reference list.

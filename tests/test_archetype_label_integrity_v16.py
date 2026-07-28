@@ -102,6 +102,38 @@ def test_worker_record_preserves_package_and_canonical_archetype_separately() ->
     assert record["target_provenance"]["opponent_archetype_id"] == "lucario"
 
 
+def test_forced_go_first_row_does_not_create_a_mixed_policy_source() -> None:
+    forced = {
+        "observation": {
+            "select": {
+                "option": [{"type": 14}, {"type": 14}],
+                "minCount": 1,
+                "maxCount": 1,
+            }
+        },
+        "action": [0],
+        "diagnostics": {
+            "target_source": "forced_go_first_contract",
+            "trusted": True,
+        },
+    }
+    record = _build_selfplay_record(
+        [forced, _history_target()],
+        our_deck=[1] * 60,
+        our_seat=0,
+        value=1.0,
+        opp_id="yaminh-ai-challenge",
+        opp_archetype="lucario",
+        archetype="alakazam",
+        seed=18,
+        target_provenance={"pure_rl": True},
+    )
+    assert record is not None
+    assert len(record["steps"]) == 2
+    assert record["target_provenance"]["target_source"] == "history_policy"
+    assert record["factorized_policy_targets"][0][0]["policy"] == [1.0, 0.0]
+
+
 def test_unmapped_package_identity_cannot_become_a_known_archetype_label() -> None:
     record = _record(
         opponent_id="unknown-public-package-v7",

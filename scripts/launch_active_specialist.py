@@ -15,12 +15,27 @@ from typing import Any
 from poke_bot.pure_rl.holdout_supersession import (
     superseded_external_archetypes,
 )
-from poke_bot.matchup_adapters import EXPERT_IDS
+from poke_bot.matchup_adapters import (
+    ADAPTER_CHECKPOINT_FORMAT as V5_ADAPTER_CHECKPOINT_FORMAT,
+)
+from poke_bot.matchup_adapters_v6 import (
+    ADAPTER_CHECKPOINT_FORMAT as V6_ADAPTER_CHECKPOINT_FORMAT,
+    load_slot_registry,
+)
+from poke_bot.model import (
+    DECISION_FUSION_REQUIRED_HEADS,
+    DECISION_FUSION_SCHEMA,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REGISTRY = ROOT / "ops/specialist_runtime_registry_v1.json"
 SELECTOR_ENV = "POKEBOT_ACTIVE_SPECIALIST"
+
+
+def _canonical_expert_ids() -> tuple[str, ...]:
+    registry = load_slot_registry(ROOT / "state/matchup_adapter_roster.json")
+    return tuple(str(value) for value in registry["active_expert_ids"])
 
 
 def _sha256(path: Path) -> str:
@@ -95,13 +110,14 @@ def _resolve(
     tree = json.loads(runtime_tree.read_text(encoding="utf-8"))
     runtime = dict(tree.get("runtime_contract") or {})
     targets = tuple(str(value) for value in tree.get("targets") or ())
+    canonical_expert_ids = _canonical_expert_ids()
     accepted = {
         str(value) for value in runtime.get("accepted_archetype_ids") or ()
     }
     if (
         tree.get("runtime_enabled") is not True
-        or targets != EXPERT_IDS
-        or len(set(targets)) != len(EXPERT_IDS)
+        or targets != canonical_expert_ids
+        or len(set(targets)) != len(canonical_expert_ids)
         or selected not in targets
         or selected not in accepted
         or runtime.get("one_route_per_decision") is not True
@@ -126,19 +142,103 @@ def _resolve(
         raise RuntimeError(
             f"specialist {selected!r} lacks adapter-only training authorization"
         )
+    guide_weight = float(row.get("guide_loss_weight") or 0.0)
+    guide_id = str(row.get("guide_id") or "").strip().casefold()
+    if guide_weight > 0.0:
+        guide_contract = _required_file(
+            row, "guide_contract", "guide_contract_sha256"
+        )
+        if (
+            guide_id != selected
+            or not str(row.get("guide_version") or "").strip()
+            or guide_contract.suffix not in {".yaml", ".yml"}
+        ):
+            raise RuntimeError(
+                f"specialist {selected!r} lacks its checksum-bound deck guide"
+            )
     import torch
 
     checkpoint_payload = torch.load(
         checkpoint, map_location="cpu", weights_only=False
     )
+    fusion_contract = dict(row.get("decision_fusion") or {})
+    model_config = dict(checkpoint_payload.get("model_config") or {})
+    if (
+        fusion_contract.get("required") is True
+        or model_config.get("expanded_heads_enabled") is True
+    ):
+        provenance = dict(checkpoint_payload.get("provenance") or {})
+        fusion_inventory = dict(provenance.get("decision_fusion") or {})
+        fusion_tensors = {
+            name: tensor
+            for name, tensor in dict(
+                checkpoint_payload.get("model_state_dict") or {}
+            ).items()
+            if str(name).startswith("decision_fusion.")
+        }
+        if (
+            (
+                fusion_contract
+                and (
+                    fusion_contract.get("schema") != DECISION_FUSION_SCHEMA
+                    or fusion_contract.get("runtime_enabled") is not True
+                    or fusion_contract.get("required_heads")
+                    != list(DECISION_FUSION_REQUIRED_HEADS)
+                )
+            )
+            or model_config.get("expanded_heads_enabled") is not True
+            or model_config.get("decision_fusion_enabled") is not True
+            or model_config.get("decision_fusion_runtime_enabled") is not True
+            or fusion_inventory.get("schema") != DECISION_FUSION_SCHEMA
+            or fusion_inventory.get("enabled") is not True
+            or fusion_inventory.get("runtime_enabled") is not True
+            or fusion_inventory.get("required_heads")
+            != list(DECISION_FUSION_REQUIRED_HEADS)
+            or not fusion_tensors
+        ):
+            raise RuntimeError(
+                f"specialist {selected!r} lacks its mandatory 17-head "
+                "runtime decision-fusion checkpoint"
+            )
     checkpoint_extra = dict(checkpoint_payload.get("extra") or {})
     checkpoint_adapter_config = dict(
         checkpoint_extra.get("matchup_adapter_config") or {}
     )
-    checkpoint_routes = tuple(
-        str(value)
-        for value in checkpoint_adapter_config.get("expert_ids") or ()
-    )
+    checkpoint_format = str(checkpoint_adapter_config.get("format") or "")
+    # V5 checkpoints created before the format selector was serialized contain
+    # only the ordered expert_ids list.  Preserve that established wire format
+    # while requiring every V6 checkpoint to identify itself explicitly.
+    if not checkpoint_format and checkpoint_adapter_config.get("expert_ids"):
+        checkpoint_format = V5_ADAPTER_CHECKPOINT_FORMAT
+    if checkpoint_format == V6_ADAPTER_CHECKPOINT_FORMAT:
+        checkpoint_registry = dict(
+            checkpoint_adapter_config.get("slot_registry") or {}
+        )
+        canonical_registry = load_slot_registry(
+            ROOT / "state/matchup_adapter_roster.json"
+        )
+        if checkpoint_registry != canonical_registry:
+            raise RuntimeError(
+                f"specialist {selected!r} V6 checkpoint registry is not the "
+                "exact runtime registry"
+            )
+        checkpoint_routes = tuple(
+            str(value)
+            for value in checkpoint_registry.get("active_expert_ids") or ()
+        )
+        physical_route_count = int(
+            checkpoint_adapter_config.get("slot_capacity") or 0
+        )
+    elif checkpoint_format == V5_ADAPTER_CHECKPOINT_FORMAT:
+        checkpoint_routes = tuple(
+            str(value)
+            for value in checkpoint_adapter_config.get("expert_ids") or ()
+        )
+        physical_route_count = len(checkpoint_routes)
+    else:
+        raise RuntimeError(
+            f"specialist {selected!r} has an unsupported adapter format"
+        )
     adapter_tensor_routes = {
         int(name.split(".")[2])
         for name in dict(checkpoint_payload.get("model_state_dict") or {})
@@ -147,11 +247,12 @@ def _resolve(
     }
     if (
         checkpoint_routes != targets
-        or adapter_tensor_routes != set(range(len(targets)))
+        or adapter_tensor_routes != set(range(physical_route_count))
     ):
         raise RuntimeError(
             f"specialist {selected!r} checkpoint lacks the canonical "
-            f"{len(EXPERT_IDS)}-route bank"
+            f"{len(canonical_expert_ids)}-route logical bank with "
+            f"{physical_route_count} physical slots"
         )
     for field in (
         "run_name",
@@ -314,7 +415,7 @@ def _build_command(
         learner_digest = str(learner.get("digest") or "").removeprefix("sha256:")
         if (
             not isinstance(loop_state, dict)
-            or int(loop_state.get("next_iteration") or -1) < 0
+            or int(loop_state.get("next_iteration", -1)) < 0
             or not learner_path.is_file()
             or len(learner_digest) != 64
             or _sha256(learner_path) != learner_digest
@@ -355,7 +456,7 @@ def _build_command(
         str(int(row["matchup_adapter_epochs_per_rl_iteration"])),
         "--dormant-matchup-adapter-activation-receipt",
         str(adapter_authorization),
-        "--alakazam-guide-loss-weight",
+        "--current-deck-guide-loss-weight",
         str(float(row.get("guide_loss_weight") or 0.0)),
         "--terminal-active-gate-id",
         gate_id,
@@ -377,6 +478,56 @@ def _build_command(
         *common_trainer_args,
     ]
     return command
+
+
+def _validate_exact_runtime_identity(
+    specialist_id: str,
+    row: dict[str, Any],
+) -> None:
+    """Exercise exact deck and guide dispatch before the service starts."""
+
+    from scripts.train_pure_rl import _our_decks
+
+    decks = _our_decks("specialist", specialist_id)
+    if len(decks) != 1 or decks[0][0] != specialist_id or len(decks[0][1]) != 60:
+        raise RuntimeError(
+            "selected specialist has no unique exact 60-card runtime identity"
+        )
+
+    guide_weight = float(row.get("guide_loss_weight") or 0.0)
+    if guide_weight <= 0.0:
+        return
+    guide_id = str(row.get("guide_id") or "").strip().lower()
+    if guide_id != specialist_id:
+        raise RuntimeError(
+            "nonzero guide weight requires guide_id equal to active specialist"
+        )
+    from poke_bot import deck_guides
+
+    if guide_id not in deck_guides.supported_ids():
+        raise RuntimeError(
+            f"current-deck guide is not registered for runtime: {guide_id!r}"
+        )
+    previous_id = os.environ.get("POKEBOT_CURRENT_DECK_GUIDE")
+    previous_targets = os.environ.get("POKEBOT_CURRENT_DECK_GUIDE_TARGETS")
+    try:
+        os.environ["POKEBOT_CURRENT_DECK_GUIDE"] = guide_id
+        os.environ["POKEBOT_CURRENT_DECK_GUIDE_TARGETS"] = "1"
+        if not deck_guides.enabled():
+            raise RuntimeError("selected current-deck guide is not enabled")
+        if deck_guides.guide_version() != str(row.get("guide_version") or ""):
+            raise RuntimeError(
+                "selected current-deck guide version differs from runtime registry"
+            )
+    finally:
+        if previous_id is None:
+            os.environ.pop("POKEBOT_CURRENT_DECK_GUIDE", None)
+        else:
+            os.environ["POKEBOT_CURRENT_DECK_GUIDE"] = previous_id
+        if previous_targets is None:
+            os.environ.pop("POKEBOT_CURRENT_DECK_GUIDE_TARGETS", None)
+        else:
+            os.environ["POKEBOT_CURRENT_DECK_GUIDE_TARGETS"] = previous_targets
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -404,6 +555,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_tree,
         adapter_authorization,
     )
+    _validate_exact_runtime_identity(selected, row)
     print(
         "SPECIALIST_SELECTOR_OK "
         f"id={selected} run={row['run_name']} "
@@ -418,9 +570,40 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     os.chdir(Path(str(registry["runtime_root"])).expanduser().resolve())
     environment = os.environ.copy()
+    guide_id = str(row.get("guide_id") or "").strip().lower()
+    guide_weight = float(row.get("guide_loss_weight") or 0.0)
+    if guide_weight > 0.0:
+        if guide_id != selected:
+            raise RuntimeError(
+                "nonzero guide weight requires guide_id equal to active specialist"
+            )
+        environment["POKEBOT_CURRENT_DECK_GUIDE"] = guide_id
+        environment["POKEBOT_CURRENT_DECK_GUIDE_TARGETS"] = "1"
+    else:
+        environment.pop("POKEBOT_CURRENT_DECK_GUIDE", None)
+        environment.pop("POKEBOT_CURRENT_DECK_GUIDE_TARGETS", None)
     environment["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
     environment["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(runtime_tree)
     environment["POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE"] = "runtime"
+    import torch
+
+    checkpoint_payload = torch.load(
+        checkpoint, map_location="cpu", weights_only=False
+    )
+    checkpoint_adapter_config = dict(
+        (checkpoint_payload.get("extra") or {}).get("matchup_adapter_config")
+        or {}
+    )
+    checkpoint_format = str(checkpoint_adapter_config.get("format") or "")
+    if not checkpoint_format and checkpoint_adapter_config.get("expert_ids"):
+        checkpoint_format = V5_ADAPTER_CHECKPOINT_FORMAT
+    environment["POKEBOT_MATCHUP_ADAPTER_FORMAT"] = checkpoint_format
+    if checkpoint_format == V6_ADAPTER_CHECKPOINT_FORMAT:
+        environment["POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH"] = str(
+            ROOT / "state/matchup_adapter_roster.json"
+        )
+    else:
+        environment.pop("POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH", None)
     os.execvpe(command[0], command, environment)
     return 1
 

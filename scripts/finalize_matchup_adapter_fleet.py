@@ -43,21 +43,35 @@ def _progress(name: str) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _pull_elmo() -> None:
-    remote = "/mnt/Main/main/poke-adapter-fleet-v31/output"
+def _pull_remote(host: str, remote: str, name: str) -> None:
+    """Pull a cheap receipt every poll and the large artifact only when done."""
+
+    progress_name = f"{name}.pt.progress.json"
     subprocess.run(
         [
             "rsync",
             "-a",
-            "elmo:" + remote + "/elmo.pt",
-            "elmo:" + remote + "/elmo.pt.progress.json",
-            str(FLEET_DIR) + "/",
+            f"{host}:{remote}/{progress_name}",
+            str(FLEET_DIR / progress_name),
         ],
-        timeout=120,
+        timeout=30,
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    if _progress(name).get("complete") is True:
+        subprocess.run(
+            [
+                "rsync",
+                "-a",
+                f"{host}:{remote}/{name}.pt",
+                str(FLEET_DIR / f"{name}.pt"),
+            ],
+            timeout=120,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
 def _atomic_copy(source: Path, destination: Path) -> None:
@@ -74,10 +88,53 @@ def _service_active(name: str) -> bool:
     return result.returncode == 0
 
 
+def _published_checkpoint_is_valid() -> bool:
+    """Make the enabled coordinator a verified no-op after publication."""
+
+    try:
+        receipt = json.loads(STATUS.read_text())
+        final_path = Path(str(receipt["final_checkpoint"])).resolve()
+        expected_digest = str(receipt["final_checkpoint_digest"])
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if (
+        receipt.get("phase") != "published"
+        or final_path != (SOURCE_DIR / "final.pt").resolve()
+        or not final_path.is_file()
+        or not expected_digest.startswith("sha256:")
+        or checkpoint.checkpoint_digest(final_path) != expected_digest
+    ):
+        return False
+    try:
+        saved = checkpoint.load_checkpoint(final_path, map_location="cpu")
+    except Exception:
+        return False
+    state = dict(
+        dict(saved.get("extra") or {}).get("streaming_matchup_adapter_state") or {}
+    )
+    return bool(
+        int(saved.get("epoch", -1)) == 25
+        and int(state.get("epoch", -1)) == 25
+        and state.get("complete") is True
+        and dict(saved.get("extra") or {}).get("matchup_adapter_fit_complete") is True
+    )
+
+
 def main() -> int:
     FLEET_DIR.mkdir(parents=True, exist_ok=True)
+    if _published_checkpoint_is_valid():
+        return 0
     while True:
-        _pull_elmo()
+        _pull_remote(
+            "elmo",
+            "/mnt/Main/main/poke-adapter-fleet-v31/output",
+            "elmo",
+        )
+        _pull_remote(
+            "bert.local",
+            "/Users/tsinzitari/workspace/poke-adapter-fleet-v31/output",
+            "bert",
+        )
         progress = {name: _progress(name) for name in WORKERS}
         complete = {
             name: bool(row.get("complete") is True)
@@ -150,6 +207,9 @@ def main() -> int:
             "phase": "published",
             "workers_complete": {name: True for name in WORKERS},
             "final_checkpoint": str(SOURCE_DIR / "final.pt"),
+            "final_checkpoint_digest": checkpoint.checkpoint_digest(
+                SOURCE_DIR / "final.pt"
+            ),
             "epoch": 25,
             "updated_at": time.time(),
         }

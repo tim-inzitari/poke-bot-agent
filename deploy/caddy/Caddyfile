@@ -7,7 +7,7 @@ mc.tsinzitari.com {
 	# Direct access to :8780 remains unchanged as well.
 	@external not remote_ip private_ranges 100.64.0.0/10
 	basic_auth @external {
-		access $2a$14$N1DzYH8urcegHTEAvwDNMOrX1fYe1/VbECAYKahEGoDfIJEBWOF7O
+		access $2a$14$8A/3/y4ISJP7ro9cGlM6iezE3wCOplEonmPSuQbhU5vGF4CRXYW0u
 	}
 
 	header {

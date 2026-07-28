@@ -16,6 +16,7 @@ from poke_bot.pure_rl.dataset_bridge import (
     _prune_stale_stream_staging,
     _range_worker,
     dataset_from_shard,
+    validated_replay_cache_manifest,
 )
 from poke_bot.pure_rl.shards import CompactGame, CompactShardWriter
 
@@ -146,6 +147,50 @@ def test_stream_cache_publishes_only_complete_source(tmp_path: Path, monkeypatch
     for part in manifest["parts"]:
         with Path(part["path"]).open("rb") as handle:
             assert len(pickle.load(handle)["sequences"]) == 0
+
+    verified = validated_replay_cache_manifest(
+        shard, verify_info_set=False, max_context=64
+    )
+    assert verified is not None
+    assert verified["covered_bytes"] == shard.stat().st_size
+
+    manifest_path = Path(str(verified["manifest_path"]))
+    broken = json.loads(manifest_path.read_text())
+    broken["records"] += 1
+    manifest_path.write_text(json.dumps(broken))
+    assert (
+        validated_replay_cache_manifest(
+            shard, verify_info_set=False, max_context=64
+        )
+        is None
+    )
+
+
+def test_completed_shard_writer_restores_counters_but_cannot_append(
+    tmp_path: Path,
+) -> None:
+    shard = tmp_path / "iter_00005.jsonl"
+    _write_empty_games(shard, 3)
+    recovered = CompactShardWriter.from_completed_shard(
+        shard,
+        n_games=3,
+        n_decisions=17,
+        elapsed_sec=2.0,
+    )
+    assert recovered.n_games == 3
+    assert recovered.n_decisions == 17
+    with pytest.raises(RuntimeError, match="immutable"):
+        recovered.write_game(
+            CompactGame(
+                episode_id="late",
+                seat=0,
+                archetype="core",
+                opp_archetype="core",
+                deck=[1] * 60,
+                value=1.0,
+                decisions=[],
+            )
+        )
 
 
 def test_stream_cache_startup_prunes_only_dead_pid_staging(

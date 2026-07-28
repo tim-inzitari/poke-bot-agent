@@ -1,0 +1,28 @@
+{
+  "accepted_archetype_ids": [
+    "alakazam",
+    "archaludon-ex",
+    "crustle",
+    "dragapult",
+    "dragapult-blaziken",
+    "dragapult-dudunsparce",
+    "dragapult-dusknoir",
+    "dudunsparce",
+    "garchomp",
+    "hammer-pult",
+    "hops-trevenant",
+    "lucario",
+    "marnie-s-grimmsnarl-ex",
+    "rockets-mewtwo",
+    "starmie",
+    "thwackey",
+    "walrein"
+  ],
+  "continuous_reevaluation": true,
+  "one_route_per_decision": true,
+  "runtime_enabled": true,
+  "schema": "poke_bot.remote_matchup_runtime_activation/v1",
+  "tree_digest": "sha256:033264ab10a51fe093ad2b64f5def3a8e22d869c42b978ee86d2ff7d01ea0328",
+  "tree_file": "dragapult-dusknoir-public-matchup-tree-roster18-v1.json",
+  "zero_materialized_adapters_allowed": true
+}

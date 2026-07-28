@@ -1,0 +1,15 @@
+[Unit]
+Description=Keep the state-core bootstrap as the sole Inzi GPU trainer
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/inzi/poke-bot-agent-deployments/state-core-v1/scripts/enforce_state_core_owner.sh
+Restart=always
+RestartSec=2
+MemoryMax=64M
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/bootstrap.guardian.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/bootstrap.guardian.log
+
+[Install]
+WantedBy=default.target

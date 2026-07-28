@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 import hashlib
 import io
@@ -35,6 +35,12 @@ QUOTA_ERROR_TOKENS = (
     "submission quota",
 )
 TERMINAL_KAGGLE_FAILURES = {"ERROR", "CANCELLED", "FAILED"}
+MINIMUM_SUBMISSION_SPACING_HOURS = 4
+AUTH_SCHEMA = "poke_bot.kaggle_submission_authorization/v1"
+DEFAULT_AUTHORIZATION = Path(
+    "/home/inzi/.config/pokebot/kaggle-submission-authorization.json"
+)
+STANDING_OWNER_DECISION = "GOAL.md#/decision-ledger/revision-18"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -102,6 +108,34 @@ def _score(value: str) -> float | None:
         return None
 
 
+def _submission_time(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _latest_submission_time(
+    submissions: list[dict[str, str]],
+    queue: list[dict[str, Any]],
+) -> datetime | None:
+    timestamps = [
+        timestamp
+        for timestamp in (
+            *(_submission_time(row.get("date")) for row in submissions),
+            *(_submission_time(row.get("submitted_at")) for row in queue),
+        )
+        if timestamp is not None
+    ]
+    return max(timestamps, default=None)
+
+
 def _reconcile(
     queue: list[dict[str, Any]],
     submissions: list[dict[str, str]],
@@ -163,6 +197,8 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
         "deck_cards": str(entry.get("deck_cards_checksum") or ""),
         "representatives": str(entry.get("representatives_checksum") or ""),
         "matchup_tree": str(entry.get("matchup_tree_checksum") or ""),
+        "search_config": str(entry.get("search_config_checksum") or ""),
+        "belief_decks": str(entry.get("belief_decks_checksum") or ""),
     }
     if (
         not file_path.is_file()
@@ -176,6 +212,8 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
                 expected["deck_cards"],
                 expected["representatives"],
                 expected["matchup_tree"],
+                expected["search_config"],
+                expected["belief_decks"],
             )
         )
     ):
@@ -199,6 +237,8 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
         member_bytes("main.py")
         member_bytes("cg/api.py")
         matchup_tree_bytes = member_bytes("matchup_tree.json")
+        search_config_bytes = member_bytes("search_config.json")
+        belief_decks_bytes = member_bytes("belief_decks.json")
     actual_model = "sha256:" + hashlib.sha256(model_bytes).hexdigest()
     actual_deck_file = "sha256:" + hashlib.sha256(deck_bytes).hexdigest()
     try:
@@ -213,6 +253,51 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
         raise RuntimeError(
             f"queued submission deck must contain 60 cards, got {len(cards)}"
         )
+    try:
+        search_config = json.loads(search_config_bytes)
+        belief_decks = json.loads(belief_decks_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("queued belief-MCTS assets are invalid JSON") from exc
+    hypotheses = belief_decks.get("deck_lists") or []
+    search_contract_valid = (
+        search_config.get("schema")
+        == "poke_bot.submission_search_config/v1"
+        and search_config.get("enabled") is False
+        and search_config.get("algorithm")
+        == "public_history_root_sampled_belief_mcts"
+        and search_config.get("leaf_evaluator")
+        == "trained_checkpoint_policy_value_head"
+        and search_config.get("leaf_evaluator_checkpoint")
+        == "submission_model_pt"
+        and search_config.get("require_trained_state_evaluator") is True
+        and float(search_config.get("hard_cap_s") or 0) == 600.0
+        and float(search_config.get("internal_deadline_s") or 0) == 540.0
+        and float(search_config.get("final_greedy_reserve_s") or 0) == 20.0
+        and float(search_config.get("total_search_budget_s") or 0) == 400.0
+        and float(search_config.get("baseline_call_s") or 0) == 0.2
+        and int(search_config.get("maximum_calls") or 0) == 340
+        and int(search_config.get("expected_search_decisions") or 0) == 64
+        and float(search_config.get("maximum_move_s") or 0) == 4.0
+        and float(search_config.get("minimum_move_s") or 0) == 0.5
+        and int(search_config.get("minimum_sims") or 0) == 50
+        and int(search_config.get("maximum_sims") or 0) == 50
+        and search_config.get("search_failure_behavior")
+        == "greedy_current_decision_then_retry"
+        and search_config.get("game_wide_greedy_only_for_time_budget") is True
+        and float(search_config.get("safety_factor") or 0) == 0.8
+        and search_config.get("fallback") == "frozen_model_greedy_policy"
+        and search_config.get("oracle_inputs_allowed") is False
+        and belief_decks.get("schema")
+        == "poke_bot.submission_belief_decks/v1"
+        and belief_decks.get("anonymous") is True
+        and belief_decks.get("contains_opponent_identity") is False
+        and belief_decks.get("deck_count") == len(hypotheses)
+        and len(hypotheses) >= 8
+        and all(
+            len(deck) == 60 and all(int(card) > 0 for card in deck)
+            for deck in hypotheses
+        )
+    )
     checks = {
         "model": actual_model == expected["model"],
         "checkpoint": actual_model == expected["checkpoint"],
@@ -222,6 +307,15 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
             "sha256:" + hashlib.sha256(matchup_tree_bytes).hexdigest()
             == expected["matchup_tree"]
         ),
+        "search_config": (
+            "sha256:" + hashlib.sha256(search_config_bytes).hexdigest()
+            == expected["search_config"]
+        ),
+        "belief_decks": (
+            "sha256:" + hashlib.sha256(belief_decks_bytes).hexdigest()
+            == expected["belief_decks"]
+        ),
+        "belief_mcts_contract": search_contract_valid,
     }
     failed = sorted(name for name, passed in checks.items() if not passed)
     if failed:
@@ -231,11 +325,81 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
         )
 
 
+def _ensure_automatic_one_shot_authorization(
+    entry: dict[str, Any],
+    authorization_path: Path,
+) -> dict[str, Any]:
+    """Materialize one exact standing-authorized grant immediately before upload."""
+
+    authorization_path = authorization_path.expanduser().resolve()
+    now = _now()
+    nonce = (
+        f"{entry['specialist_id']}-iter{int(entry['iteration'])}-"
+        f"copy{int(entry['copy_number'])}-automatic-"
+        f"{now.strftime('%Y%m%dT%H%M%S%fZ')}"
+    )
+    authorization = {
+        "schema": AUTH_SCHEMA,
+        "explicit_user_approval": True,
+        "approval_text": (
+            "When the training cycle completes on a deck always submit "
+            "with a one shot."
+        ),
+        "standing_owner_decision_source": STANDING_OWNER_DECISION,
+        "remaining_uses": 1,
+        "nonce": nonce,
+        "expires_at_epoch": time.time() + 3600.0,
+        "competition": str(entry.get("competition") or ""),
+        "file_sha256": str(entry.get("file_sha256") or ""),
+        "message": str(entry.get("label") or ""),
+        "specialist_id": str(entry.get("specialist_id") or ""),
+        "frozen_checkpoint_checksum": str(
+            entry.get("checkpoint_checksum") or ""
+        ),
+        "submission_file_checksum": str(entry.get("file_sha256") or ""),
+    }
+    identity_fields = (
+        "schema",
+        "explicit_user_approval",
+        "remaining_uses",
+        "competition",
+        "file_sha256",
+        "message",
+        "specialist_id",
+        "frozen_checkpoint_checksum",
+        "submission_file_checksum",
+    )
+    if authorization_path.exists():
+        existing = _read_json(authorization_path)
+        legacy_exact_repair = (
+            existing.get("schema") == AUTH_SCHEMA
+            and existing.get("explicit_user_approval") is True
+            and int(existing.get("remaining_uses") or 0) == 1
+            and existing.get("competition") == authorization["competition"]
+            and existing.get("file_sha256") == authorization["file_sha256"]
+            and existing.get("message") == authorization["message"]
+            and existing.get("conditional_checkpoint_digest")
+            == authorization["frozen_checkpoint_checksum"]
+            and float(existing.get("expires_at_epoch") or 0.0) >= time.time()
+        )
+        if legacy_exact_repair:
+            return existing
+        if (
+            any(existing.get(key) != authorization.get(key) for key in identity_fields)
+            or float(existing.get("expires_at_epoch") or 0.0) < time.time()
+        ):
+            raise RuntimeError("another Kaggle one-shot authorization is active")
+        return existing
+    _atomic_json(authorization_path, authorization)
+    return authorization
+
+
 def process_once(
     *,
     queue_path: Path,
     kaggle: Path,
     default_competition: str,
+    authorization_path: Path = DEFAULT_AUTHORIZATION,
 ) -> dict[str, Any]:
     queue_path = queue_path.expanduser().resolve()
     process_lock_path = queue_path.with_suffix(queue_path.suffix + ".processor.lock")
@@ -257,6 +421,31 @@ def process_once(
             limit = int(payload.get("daily_submission_limit", 5))
             if limit != 5:
                 raise RuntimeError("Kaggle daily submission limit changed")
+            minimum_spacing_hours = int(
+                payload.get(
+                    "minimum_hours_between_submissions",
+                    MINIMUM_SUBMISSION_SPACING_HOURS,
+                )
+            )
+            if minimum_spacing_hours != MINIMUM_SUBMISSION_SPACING_HOURS:
+                raise RuntimeError("Kaggle submission spacing policy changed")
+            payload["minimum_hours_between_submissions"] = minimum_spacing_hours
+            automatic_authorization = bool(
+                payload.get(
+                    "automatic_one_shot_authorization_on_training_complete",
+                    False,
+                )
+            )
+            if automatic_authorization:
+                if int(payload.get("one_shot_authorization_uses", -1)) != 1:
+                    raise RuntimeError("Kaggle one-shot authorization count changed")
+                if (
+                    str(payload.get("standing_owner_decision_source") or "")
+                    != STANDING_OWNER_DECISION
+                ):
+                    raise RuntimeError(
+                        "Kaggle standing owner authorization source changed"
+                    )
             competition = str(
                 next(
                     (
@@ -276,6 +465,12 @@ def process_once(
                 if str(row.get("date") or "").startswith(quota_date)
             )
             _reconcile(queue, submissions)
+            last_submission_at = _latest_submission_time(submissions, queue)
+            next_submission_eligible_at = (
+                last_submission_at + timedelta(hours=minimum_spacing_hours)
+                if last_submission_at is not None
+                else None
+            )
             quota = dict(payload.get("quota") or {})
             prior_quota_date = str(quota.get("quota_date") or "")
             if prior_quota_date != quota_date:
@@ -288,9 +483,20 @@ def process_once(
             quota.update(
                 {
                     "daily_submission_limit": limit,
+                    "minimum_hours_between_submissions": minimum_spacing_hours,
                     "known_submissions_used_today": known_used,
                     "quota_date": quota_date,
                     "next_reset_time": None,
+                    "last_submission_at": (
+                        last_submission_at.isoformat()
+                        if last_submission_at is not None
+                        else None
+                    ),
+                    "next_submission_eligible_at": (
+                        next_submission_eligible_at.isoformat()
+                        if next_submission_eligible_at is not None
+                        else None
+                    ),
                     "quota_exhausted": exhausted,
                     "checked_at_utc": now.isoformat(),
                 }
@@ -315,6 +521,20 @@ def process_once(
             if exhausted:
                 _save_queue(queue_path, payload)
                 return {"status": "quota_exhausted", "used": used, "limit": limit}
+            if (
+                next_submission_eligible_at is not None
+                and now < next_submission_eligible_at
+            ):
+                _save_queue(queue_path, payload)
+                return {
+                    "status": "spacing_wait",
+                    "next_submission_eligible_at": (
+                        next_submission_eligible_at.isoformat()
+                    ),
+                    "remaining_seconds": int(
+                        (next_submission_eligible_at - now).total_seconds()
+                    ),
+                }
             entry = pending[0]
             file_path = Path(str(entry.get("file") or "")).expanduser().resolve()
             try:
@@ -339,6 +559,22 @@ def process_once(
             entry["attempt_started_at"] = now.isoformat()
             entry["attempt_quota_date"] = quota_date
             entry["attempt_count"] = int(entry.get("attempt_count") or 0) + 1
+            if automatic_authorization:
+                try:
+                    authorization = _ensure_automatic_one_shot_authorization(
+                        entry,
+                        authorization_path,
+                    )
+                except RuntimeError as exc:
+                    entry["attempt_started_at"] = None
+                    entry["attempt_quota_date"] = None
+                    _save_queue(queue_path, payload)
+                    return {
+                        "status": "authorization_wait",
+                        "reason": str(exc),
+                    }
+                entry["one_shot_authorization_nonce"] = authorization["nonce"]
+                entry["one_shot_authorization_created_at"] = now.isoformat()
             _save_queue(queue_path, payload)
             completed = subprocess.run(
                 [
@@ -359,11 +595,16 @@ def process_once(
             )
             output = "\n".join((completed.stdout, completed.stderr)).strip()
             if completed.returncode == 0:
+                submitted_at = _now()
                 entry["queue_status"] = "submitted"
-                entry["submitted_at"] = _now().isoformat()
+                entry["submitted_at"] = submitted_at.isoformat()
                 entry["failure_reason"] = None
                 quota["known_submissions_used_today"] = min(limit, used + 1)
                 quota["quota_exhausted"] = used + 1 >= limit
+                quota["last_submission_at"] = submitted_at.isoformat()
+                quota["next_submission_eligible_at"] = (
+                    submitted_at + timedelta(hours=minimum_spacing_hours)
+                ).isoformat()
             elif _quota_error(output):
                 entry["attempt_started_at"] = None
                 entry["attempt_quota_date"] = quota_date
@@ -401,6 +642,11 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("/home/inzi/miniconda3/envs/poke-bot-agent/bin/kaggle"),
     )
+    parser.add_argument(
+        "--authorization",
+        type=Path,
+        default=DEFAULT_AUTHORIZATION,
+    )
     parser.add_argument("--competition", default="pokemon-tcg-ai-battle")
     parser.add_argument("--poll-seconds", type=float, default=60.0)
     parser.add_argument("--once", action="store_true")
@@ -415,6 +661,7 @@ def main() -> int:
                 queue_path=args.queue,
                 kaggle=args.kaggle,
                 default_competition=args.competition,
+                authorization_path=args.authorization,
             )
             print(json.dumps(result, sort_keys=True), flush=True)
         except Exception as exc:

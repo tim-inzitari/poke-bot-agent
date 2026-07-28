@@ -17,12 +17,13 @@ import gc
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 
 REHEARSAL_RECEIPT_SCHEMA_VERSION = 2
+EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION = 3
 REHEARSAL_LOSS_WEIGHT_KEYS = (
     "value",
     "archetype",
@@ -56,6 +57,153 @@ def canonical_rehearsal_loss_weights(
     return canonical
 
 
+def canonical_checkpoint_rehearsal_loss_weights(
+    values: dict[str, Any],
+    expanded_head_contract: Optional[dict[str, Any]] = None,
+) -> dict[str, float]:
+    """Validate checkpoint/result loss metadata and return its base losses.
+
+    Expanded-head checkpoints bind the per-head weights both in the dedicated
+    tensor-training record and under the historical rehearsal loss mapping.
+    Durable receipts intentionally keep the base loss mapping flat and bind
+    expanded heads in ``expanded_head_training``.  Accept that checkpoint-only
+    nested field while still failing closed on missing or changed head weights.
+    """
+
+    raw = dict(values)
+    embedded_expanded = raw.pop("expanded_strategic", None)
+    expected_expanded = canonical_expanded_rehearsal_contract(
+        expanded_head_contract
+    )
+    if expected_expanded:
+        if not isinstance(embedded_expanded, dict):
+            raise ValueError(
+                "expanded rehearsal checkpoint is missing strategic weights"
+            )
+        from poke_bot.strategic_losses import canonical_expanded_loss_weights
+
+        actual_expanded = canonical_expanded_loss_weights(
+            dict(embedded_expanded)
+        )
+        if actual_expanded != expected_expanded["loss_weights"]:
+            raise ValueError(
+                "expanded rehearsal checkpoint strategic weights mismatch"
+            )
+    elif embedded_expanded is not None:
+        raise ValueError(
+            "legacy rehearsal checkpoint unexpectedly contains strategic weights"
+        )
+    return canonical_rehearsal_loss_weights(raw)
+
+
+def canonical_expanded_rehearsal_contract(
+    values: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """Canonical identity of an expanded-head rehearsal, or an empty mapping."""
+
+    if not values:
+        return {}
+    from poke_bot.strategic_losses import canonical_expanded_loss_weights
+
+    raw = dict(values)
+    if raw.get("schema") != "poke_bot.expanded_head_schedule/v1":
+        raise ValueError("expanded rehearsal schedule schema mismatch")
+    target_schema = str(raw.get("target_schema") or "")
+    target_digest = str(raw.get("target_schema_digest") or "")
+    schedule_digest = str(raw.get("schedule_digest") or "")
+    if target_schema != "poke_bot.expanded_strategic_targets/v2":
+        raise ValueError("expanded rehearsal target schema mismatch")
+    for name, value in (
+        ("target schema", target_digest),
+        ("schedule", schedule_digest),
+    ):
+        if not value.startswith("sha256:") or len(value) != 71:
+            raise ValueError(f"expanded rehearsal {name} digest is invalid")
+    weights = canonical_expanded_loss_weights(
+        dict(raw.get("loss_weights") or {})
+    )
+    enabled = [name for name, weight in weights.items() if weight > 0.0]
+    if not enabled:
+        raise ValueError("expanded rehearsal contract enables no heads")
+    if raw.get("runtime_enabled_heads", []) != []:
+        raise ValueError("expanded rehearsal must remain shadow-only")
+    return {
+        "schema": "poke_bot.expanded_head_schedule/v1",
+        "target_schema": target_schema,
+        "target_schema_digest": target_digest,
+        "schedule_digest": schedule_digest,
+        "loss_weights": weights,
+        "enabled_heads": enabled,
+        "runtime_enabled_heads": [],
+    }
+
+
+def _validate_expanded_training_record(
+    record: dict[str, Any],
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate a checkpoint-bound expanded record against its requested pass."""
+
+    if record.get("schema") != "poke_bot.expanded_head_training/v1":
+        raise RuntimeError("expanded rehearsal checkpoint schema mismatch")
+    if record.get("target_schema_version") != expected["target_schema"]:
+        raise RuntimeError("expanded rehearsal checkpoint target schema mismatch")
+    if record.get("target_schema_digest") != expected["target_schema_digest"]:
+        raise RuntimeError("expanded rehearsal checkpoint target digest mismatch")
+    if record.get("schedule_digest") != expected["schedule_digest"]:
+        raise RuntimeError("expanded rehearsal checkpoint schedule digest mismatch")
+    try:
+        actual_weights = canonical_expanded_rehearsal_contract(
+            {
+                **expected,
+                "loss_weights": dict(record.get("loss_weights") or {}),
+            }
+        )["loss_weights"]
+    except ValueError as exc:
+        raise RuntimeError(
+            f"expanded rehearsal checkpoint weights invalid: {exc}"
+        ) from exc
+    if actual_weights != expected["loss_weights"]:
+        raise RuntimeError("expanded rehearsal checkpoint weights mismatch")
+    gradient = {
+        str(name) for name in record.get("gradient_enabled_heads") or ()
+    }
+    if gradient != set(expected["enabled_heads"]):
+        raise RuntimeError("expanded rehearsal gradient-head set mismatch")
+    if record.get("runtime_enabled_heads") != []:
+        raise RuntimeError("expanded rehearsal unexpectedly enabled runtime heads")
+    heads = dict(record.get("heads") or {})
+    for name in expected["enabled_heads"]:
+        row = dict(heads.get(name) or {})
+        train_rows = int(row.get("train_labeled_rows", 0))
+        validation_rows = int(row.get("validation_labeled_rows", 0))
+        train_loss = row.get("train_loss")
+        validation_loss = row.get("validation_loss")
+        if row.get("present") is not True or row.get("gradient_enabled") is not True:
+            raise RuntimeError(
+                f"expanded rehearsal did not expose trainable {name}"
+            )
+        # Causal labels are allowed to be absent and are then masked. A head
+        # with labeled training rows must, however, have finite loss evidence
+        # from this exact checkpoint-producing pass. Validation coverage is
+        # independently optional; a small deterministic split may contain no
+        # validation labels for an otherwise trained head.
+        if train_rows > 0 and (
+            train_loss is None or not math.isfinite(float(train_loss))
+        ):
+            raise RuntimeError(
+                f"expanded rehearsal did not train labeled {name} rows"
+            )
+        if validation_rows > 0 and (
+            validation_loss is None
+            or not math.isfinite(float(validation_loss))
+        ):
+            raise RuntimeError(
+                f"expanded rehearsal did not validate labeled {name} rows"
+            )
+    return record
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -81,10 +229,14 @@ class ExpertManifestIdentity:
     dates: tuple[str, ...]
     decisions: int
     records: int
+    expanded_strategic_targets: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         row = asdict(self)
         row["dates"] = list(self.dates)
+        if not self.expanded_strategic_targets:
+            # Preserve byte-for-byte identity of legacy V5 rehearsal receipts.
+            row.pop("expanded_strategic_targets", None)
         return row
 
 
@@ -97,6 +249,9 @@ def resolve_expert_manifest(
     required_compact_mode: str = "",
     required_max_context: Optional[int] = None,
     required_target_coverage: tuple[str, ...] = (),
+    required_expanded_target_schema: str = "",
+    required_expanded_target_digest: str = "",
+    required_expanded_heads: tuple[str, ...] = (),
 ) -> ExpertManifestIdentity:
     """Resolve either a direct feature manifest or an atomic rolling pointer."""
     source = Path(source).expanduser().resolve()
@@ -189,12 +344,66 @@ def resolve_expert_manifest(
                 "expert manifest target coverage is incomplete: "
                 f"decisions={decisions} coverage={incomplete}"
             )
+    expanded_targets = dict(payload.get("expanded_strategic_targets") or {})
+    required_expanded_target_schema = str(
+        required_expanded_target_schema
+    ).strip()
+    required_expanded_target_digest = str(
+        required_expanded_target_digest
+    ).strip()
+    required_expanded_heads = tuple(
+        str(name).strip() for name in required_expanded_heads
+    )
+    if (
+        required_expanded_target_schema
+        or required_expanded_target_digest
+        or required_expanded_heads
+    ):
+        if not expanded_targets:
+            raise ValueError(
+                "expert manifest lacks expanded strategic target metadata"
+            )
+        if (
+            required_expanded_target_schema
+            and expanded_targets.get("schema")
+            != required_expanded_target_schema
+        ):
+            raise ValueError("expert expanded strategic target schema mismatch")
+        if (
+            required_expanded_target_digest
+            and expanded_targets.get("digest")
+            != required_expanded_target_digest
+        ):
+            raise ValueError("expert expanded strategic target digest mismatch")
+        if int(expanded_targets.get("decisions", -1)) != decisions:
+            raise ValueError(
+                "expert expanded strategic target decision count mismatch"
+            )
+        coverage = dict(expanded_targets.get("head_coverage") or {})
+        for name in required_expanded_heads:
+            row = dict(coverage.get(name) or {})
+            labeled = int(row.get("labeled_rows", -1))
+            masked = int(row.get("masked_rows", -1))
+            total = int(row.get("total_rows", -1))
+            if total != decisions or labeled < 0 or masked < 0:
+                raise ValueError(
+                    f"expert expanded target coverage is invalid for {name}"
+                )
+            if labeled + masked != total:
+                raise ValueError(
+                    f"expert expanded target coverage does not partition {name}"
+                )
+            if labeled <= 0:
+                raise ValueError(
+                    f"expert expanded target has no labeled rows for {name}"
+                )
     return ExpertManifestIdentity(
         path=str(manifest_path),
         digest=digest,
         dates=dates,
         decisions=decisions,
         records=records,
+        expanded_strategic_targets=expanded_targets,
     )
 
 
@@ -221,10 +430,19 @@ def _validate_receipt(
     manifest_identity: ExpertManifestIdentity,
     loss_weights: dict[str, Any],
     corpus_split_seed: int,
+    expanded_head_contract: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     from poke_bot.promotion import CheckpointIdentity
 
-    if int(receipt.get("schema", -1)) != REHEARSAL_RECEIPT_SCHEMA_VERSION:
+    expected_expanded = canonical_expanded_rehearsal_contract(
+        expanded_head_contract
+    )
+    expected_schema = (
+        EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+        if expected_expanded
+        else REHEARSAL_RECEIPT_SCHEMA_VERSION
+    )
+    if int(receipt.get("schema", -1)) != expected_schema:
         raise RuntimeError("expert receipt schema mismatch")
     if int(receipt.get("before_iteration", -1)) != int(before_iteration):
         raise RuntimeError("expert receipt iteration mismatch")
@@ -256,6 +474,11 @@ def _validate_receipt(
         raise RuntimeError("expert receipt loss-weight contract mismatch")
     if int(receipt.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("expert receipt corpus split-seed mismatch")
+    if expected_expanded:
+        _validate_expanded_training_record(
+            dict(receipt.get("expanded_head_training") or {}),
+            expected_expanded,
+        )
     return {**receipt, "checkpoint_identity": output.as_dict(), "reused": True}
 
 
@@ -269,6 +492,7 @@ def recover_rehearsal(
     manifest_identity: ExpertManifestIdentity,
     loss_weights: dict[str, Any],
     corpus_split_seed: int,
+    expanded_head_contract: Optional[dict[str, Any]] = None,
 ) -> Optional[dict[str, Any]]:
     """Reuse a receipt, or reconstruct it after checkpoint-before-receipt crash."""
     from poke_bot import checkpoint
@@ -286,6 +510,7 @@ def recover_rehearsal(
             manifest_identity=manifest_identity,
             loss_weights=loss_weights,
             corpus_split_seed=corpus_split_seed,
+            expanded_head_contract=expanded_head_contract,
         )
     if not checkpoint_path.is_file():
         return None
@@ -302,9 +527,13 @@ def recover_rehearsal(
         raise RuntimeError("orphan expert checkpoint learning-rate mismatch")
     if dict(record.get("manifest") or {}) != manifest_identity.as_dict():
         raise RuntimeError("orphan expert checkpoint manifest mismatch")
+    expected_expanded = canonical_expanded_rehearsal_contract(
+        expanded_head_contract
+    )
     try:
-        record_loss_weights = canonical_rehearsal_loss_weights(
-            dict(record.get("loss_weights") or {})
+        record_loss_weights = canonical_checkpoint_rehearsal_loss_weights(
+            dict(record.get("loss_weights") or {}),
+            expected_expanded,
         )
         expected_loss_weights = canonical_rehearsal_loss_weights(loss_weights)
     except ValueError as exc:
@@ -315,9 +544,21 @@ def recover_rehearsal(
         raise RuntimeError("orphan expert checkpoint loss-weight mismatch")
     if int(record.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("orphan expert checkpoint corpus split-seed mismatch")
+    expanded_training = dict(
+        (payload.get("extra") or {}).get("expanded_head_training") or {}
+    )
+    if expected_expanded:
+        _validate_expanded_training_record(
+            expanded_training,
+            expected_expanded,
+        )
     identity = CheckpointIdentity.from_path(checkpoint_path)
     receipt = {
-        "schema": REHEARSAL_RECEIPT_SCHEMA_VERSION,
+        "schema": (
+            EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if expected_expanded
+            else REHEARSAL_RECEIPT_SCHEMA_VERSION
+        ),
         "before_iteration": int(before_iteration),
         "parent_digest": str(parent_digest),
         "checkpoint": identity.path,
@@ -333,6 +574,11 @@ def recover_rehearsal(
             "validation": record.get("validation_metrics"),
         },
         "recovered_after_checkpoint_write": True,
+        **(
+            {"expanded_head_training": expanded_training}
+            if expected_expanded
+            else {}
+        ),
     }
     _write_json_exclusive(receipt_path, receipt)
     return _validate_receipt(
@@ -344,6 +590,7 @@ def recover_rehearsal(
         manifest_identity=manifest_identity,
         loss_weights=loss_weights,
         corpus_split_seed=corpus_split_seed,
+        expanded_head_contract=expanded_head_contract,
     )
 
 
@@ -358,6 +605,7 @@ def commit_rehearsal_receipt(
     loss_weights: dict[str, Any],
     corpus_split_seed: int,
     result: dict[str, Any],
+    expanded_head_contract: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Commit the small durable receipt after the immutable checkpoint exists."""
     from poke_bot.promotion import CheckpointIdentity
@@ -372,14 +620,34 @@ def commit_rehearsal_receipt(
     rehearsal = dict(result.get("rehearsal") or {})
     if dict(rehearsal.get("manifest") or {}) != manifest.as_dict():
         raise RuntimeError("rehearsal result manifest contract mismatch")
-    if canonical_rehearsal_loss_weights(
-        dict(rehearsal.get("loss_weights") or {})
-    ) != expected_loss_weights:
+    expected_expanded = canonical_expanded_rehearsal_contract(
+        expanded_head_contract
+    )
+    try:
+        actual_loss_weights = canonical_checkpoint_rehearsal_loss_weights(
+            dict(rehearsal.get("loss_weights") or {}),
+            expected_expanded,
+        )
+    except ValueError as exc:
+        raise RuntimeError(
+            f"rehearsal result loss contract invalid: {exc}"
+        ) from exc
+    if actual_loss_weights != expected_loss_weights:
         raise RuntimeError("rehearsal result loss-weight contract mismatch")
     if int(rehearsal.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("rehearsal result corpus split-seed mismatch")
+    expanded_training = dict(result.get("expanded_head_training") or {})
+    if expected_expanded:
+        _validate_expanded_training_record(
+            expanded_training,
+            expected_expanded,
+        )
     receipt = {
-        "schema": REHEARSAL_RECEIPT_SCHEMA_VERSION,
+        "schema": (
+            EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if expected_expanded
+            else REHEARSAL_RECEIPT_SCHEMA_VERSION
+        ),
         "before_iteration": int(before_iteration),
         "parent_digest": str(parent_digest),
         "checkpoint": identity.path,
@@ -395,6 +663,11 @@ def commit_rehearsal_receipt(
             "validation": result.get("validation_metrics"),
         },
         "recovered_after_checkpoint_write": False,
+        **(
+            {"expanded_head_training": expanded_training}
+            if expected_expanded
+            else {}
+        ),
     }
     _write_json_exclusive(receipt_path, receipt)
     return _validate_receipt(
@@ -406,6 +679,7 @@ def commit_rehearsal_receipt(
         manifest_identity=manifest,
         loss_weights=expected_loss_weights,
         corpus_split_seed=corpus_split_seed,
+        expanded_head_contract=expanded_head_contract,
     )
 
 
@@ -459,6 +733,9 @@ class ResidentExpertCorpusCache:
         val_frac: float = 0.10,
         max_context: Optional[int] = None,
         belief_card_vocab: Optional[int] = None,
+        pack_workers: int = 1,
+        pack_memory_reserve_gib: float = 12.0,
+        pack_disk_reserve_gib: float = 16.0,
     ) -> Any:
         if (
             self.corpus is not None
@@ -517,6 +794,7 @@ class ResidentExpertCorpusCache:
                     if max_context is not None or belief_card_vocab is not None
                     else None
                 ),
+                workers=max(1, int(pack_workers)),
             )
             try:
                 if plan.decisions != int(identity.decisions):
@@ -533,6 +811,25 @@ class ResidentExpertCorpusCache:
                         flush=True,
                     )
                 train, val = plan.splits()
+                if int(pack_workers) > 1:
+                    from poke_bot.pure_rl.expert_parallel_pack import (
+                        build_parallel_expert_cpu_pack,
+                    )
+
+                    return build_parallel_expert_cpu_pack(
+                        plan,
+                        workers=int(pack_workers),
+                        exact_card_vocab=(
+                            int(belief_card_vocab)
+                            if belief_card_vocab is not None
+                            else None
+                        ),
+                        spool_root=self.cpu_pack_cache.root,
+                        memory_reserve_gib=float(
+                            pack_memory_reserve_gib
+                        ),
+                        disk_reserve_gib=float(pack_disk_reserve_gib),
+                    )
                 return DeviceResidentBootstrapCorpus.from_splits(
                     train,
                     val,

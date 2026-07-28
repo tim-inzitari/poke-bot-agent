@@ -180,6 +180,7 @@ class BeliefMCTS:
         max_depth: int = 256,
         max_context: Optional[int] = None,
         matchup_shadow_router: Optional[ShadowMatchupAdapterRouter] = None,
+        matchup_model_route: int = -1,
     ) -> None:
         if not checkpoint_digest.startswith("sha256:"):
             raise ValueError("trusted search requires an immutable sha256 checkpoint")
@@ -205,8 +206,27 @@ class BeliefMCTS:
             if model is None:
                 raise ValueError("belief MCTS requires a model or leaf backend")
             self.leaf_eval = lambda packets: forward_leaf_batch(model, packets)
+            self.leaf_evaluator_source = (
+                "trained_checkpoint_policy_value_head"
+            )
+            self.leaf_evaluator_checkpoint_digest = checkpoint_digest
         else:
             self.leaf_eval = leaf_backend
+            self.leaf_evaluator_source = str(
+                getattr(leaf_backend, "source", "external_leaf_backend")
+            )
+            self.leaf_evaluator_checkpoint_digest = getattr(
+                leaf_backend, "checkpoint_digest", None
+            )
+            if (
+                self.leaf_evaluator_source
+                == "trained_checkpoint_policy_value_head"
+                and self.leaf_evaluator_checkpoint_digest != checkpoint_digest
+            ):
+                raise ValueError(
+                    "trained leaf evaluator checkpoint digest does not match "
+                    "the searched policy checkpoint"
+                )
         self.puct_c = float(puct_c if puct_c is not None else config.SEARCH.puct_c)
         self.rng = rng or random.Random()
         self.min_trusted_sims = int(min_trusted_sims)
@@ -219,6 +239,9 @@ class BeliefMCTS:
         )
         self._simulator_version = simulator_version()
         self.matchup_shadow_router = matchup_shadow_router
+        if type(matchup_model_route) is not int:
+            raise TypeError("matchup_model_route must be an exact integer")
+        self.matchup_model_route = matchup_model_route
 
     def _telemetry_mark(self):
         marker = getattr(self.leaf_eval, "telemetry_mark", None)
@@ -370,6 +393,10 @@ class BeliefMCTS:
             history_boards=list(branch.boards[actor]),
             history_previous_actions=list(branch.previous_actions[actor]),
             action_combos_override=combos,
+            # Older reconstructed/test engines predate the matchup-adapter
+            # route field.  Their trusted behavior is the same exact dormant
+            # bypass used by a normally constructed engine's default.
+            matchup_route=getattr(self, "matchup_model_route", -1),
         )
 
     def _record_observation(
@@ -531,8 +558,9 @@ class BeliefMCTS:
                 configured_budget,
                 clock.next_move_budget(configured_budget),
             )
-        # Keep 128 as a hard trust floor, but shed optional ramped simulations
-        # when the per-game clock grants less than the configured move slice.
+        # Keep the caller's explicit trust floor, but shed optional ramped
+        # simulations when the per-game clock grants less than the configured
+        # move slice.
         ratio = min(1.0, move_budget / configured_budget)
         adaptive_sims = max(
             self.min_trusted_sims,
@@ -905,6 +933,10 @@ class BeliefMCTS:
             "complete_ordered_action_count": root.total_action_count,
             "trusted": True,
             "search_semantics": "public_history_root_sampled_information_set_mcts",
+            "leaf_evaluator": self.leaf_evaluator_source,
+            "leaf_evaluator_checkpoint_digest": (
+                self.leaf_evaluator_checkpoint_digest
+            ),
             "belief_mode": "anonymous_empirical_deck_particles",
             "chance_mode": "explicit_uniform_coin_sampling",
             "tree_reuse": False,
@@ -993,6 +1025,10 @@ class BeliefMCTS:
                 "tree_reuse": False,
                 "particle_count": self.particle_count,
                 "action_space": "exact_autoregressive_hierarchical_when_large",
+                "leaf_evaluator": self.leaf_evaluator_source,
+                "leaf_evaluator_checkpoint_digest": (
+                    self.leaf_evaluator_checkpoint_digest
+                ),
             },
             "belief_config": self.posterior.config,
             "simulator_version": self._simulator_version,

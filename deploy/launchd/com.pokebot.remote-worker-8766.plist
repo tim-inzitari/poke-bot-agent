@@ -33,12 +33,22 @@
     <string>0.20</string>
     <key>POKEBOT_MPS_EMPTY_CACHE_EVERY_BATCHES</key>
     <string>1</string>
+    <key>OMP_NUM_THREADS</key>
+    <string>1</string>
+    <key>MKL_NUM_THREADS</key>
+    <string>1</string>
+    <key>OPENBLAS_NUM_THREADS</key>
+    <string>1</string>
+    <key>VECLIB_MAXIMUM_THREADS</key>
+    <string>1</string>
+    <key>NUMEXPR_NUM_THREADS</key>
+    <string>1</string>
     <key>POKEBOT_BERT_MAX_GROUP_RSS_MIB</key>
     <string>18432</string>
     <key>POKEBOT_BERT_MIN_FREE_PERCENT</key>
     <string>30</string>
     <key>POKEBOT_BERT_MAX_GROUP_PROCESSES</key>
-    <string>16</string>
+    <string>32</string>
     <key>POKEBOT_BERT_RESTART_WINDOW_S</key>
     <string>3600</string>
     <key>POKEBOT_BERT_RESTART_LIMIT</key>
@@ -48,7 +58,7 @@
     <key>WORKER_RECYCLE_GAMES</key>
     <string>32</string>
     <key>POKEBOT_REMOTE_MAX_CONNECTIONS</key>
-    <string>8</string>
+    <string>150</string>
     <key>POKEBOT_REMOTE_TREE_RSS_LIMIT_GB</key>
     <string>18</string>
     <key>POKEBOT_REMOTE_MIN_FREE_RAM_GB</key>
@@ -72,6 +82,19 @@
   <integer>120</integer>
   <key>ProcessType</key>
   <string>Standard</string>
+  <!-- Bert's queued remote service can hold up to 150 trainer sockets plus
+       multiprocessing pipes. launchd otherwise supplies a 256-descriptor
+       soft limit even when the interactive shell has a larger allowance. -->
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>4096</integer>
+  </dict>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
   <key>ExitTimeOut</key>
   <integer>30</integer>
   <key>AbandonProcessGroup</key>

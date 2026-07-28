@@ -1,0 +1,18 @@
+[Unit]
+Description=Isolated Alakazam-vs-Iono neural rule-teacher candidate
+After=docker.service
+Requires=docker.service
+ConditionPathExists=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint/rule-teacher-candidates/iter_00001.pt
+
+[Service]
+Type=oneshot
+ExecStart=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/bin/run_rule_teacher_candidate_v1.sh
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=10
+TimeoutStartSec=infinity
+StandardOutput=append:/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/rule-teacher-candidate-v1.log
+StandardError=append:/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/rule-teacher-candidate-v1.log
+
+[Install]
+WantedBy=multi-user.target

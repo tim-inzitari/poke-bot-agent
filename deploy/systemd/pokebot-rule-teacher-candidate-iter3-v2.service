@@ -1,0 +1,18 @@
+[Unit]
+Description=Isolated Iono rule-teacher neural candidate from iteration 3
+After=docker.service
+Requires=docker.service
+ConditionPathExists=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint/rule-teacher-candidates/iter_00003.pt
+
+[Service]
+Type=oneshot
+ExecStart=/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/bin/run_rule_teacher_candidate_iter3_v2.sh
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=10
+TimeoutStartSec=infinity
+StandardOutput=append:/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/rule-teacher-candidate-iter3-v2.log
+StandardError=append:/mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs/rule-teacher-candidate-iter3-v2.log
+
+[Install]
+WantedBy=multi-user.target

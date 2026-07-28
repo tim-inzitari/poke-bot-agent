@@ -3,20 +3,64 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+import yaml
+
 from scripts.run_specialist_cycle_handoff import (
     _compatible_prior_cumulative_contract,
     _cumulative_core_contract,
     _generated,
+    _is_expected_additive_gate_successor,
     _required_specialist_ids,
+    _source,
     population_transition_ready,
 )
 from scripts.run_post_starmie_core_handoff import (
     _reusable_core_candidate,
     _reusable_core_regression,
 )
+from scripts.run_starmie_expert_bootstrap import (
+    decision_fusion_handoff_contract,
+    expanded_handoff_training_contract,
+)
+from scripts.run_sequential_specialist_handoff import bootstrap_command
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_handoff_service_uses_stable_boundary_runtime_pointer() -> None:
+    units = (
+        ROOT / "deploy/staging/pokebot-specialist-cycle-handoff-task-graph.service",
+        ROOT / "ops/systemd/pokebot-specialist-cycle-handoff.service",
+    )
+    for unit in units:
+        source = unit.read_text(encoding="utf-8")
+        assert (
+            "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current"
+            in source
+        )
+        assert "pure-rl-resident-v41-specialist-matchup-runtime" not in source
+        assert (
+            "ExecStart=/usr/bin/env "
+            "PYTHONPATH=/home/inzi/poke-bot-agent-deployments/"
+            "specialist-handoff-current "
+        ) in source
+        assert (
+            "Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/"
+            "specialist-handoff-current"
+        ) not in source
+        assert "Restart=on-failure" in source
+        assert "RestartSec=60" in source
+
+
+def test_transition_graph_pins_imports_to_its_own_runtime_root() -> None:
+    source = (
+        ROOT / "scripts/run_specialist_transition_graph.py"
+    ).read_text(encoding="utf-8")
+    assert "sys.path.insert(0, str(ROOT))" in source
+    assert "implementation.is_relative_to(ROOT)" in source
+    assert "specialist handoff implementation escaped" in source
 
 
 def test_cycle_contract_keeps_exact_protocol_for_later_specialists() -> None:
@@ -50,12 +94,32 @@ def test_cycle_contract_keeps_exact_protocol_for_later_specialists() -> None:
     assert result["next_specialist"]["id"] == "dragapult"
     assert result["training"]["supervised_epochs"] == 25
     assert result["training"]["minimum_decisions"] == 20000
+    expanded = result["training"]["expanded_heads"]
+    assert expanded["schema"] == "poke_bot.expanded_head_training/v1"
+    assert expanded["schedule"]["total_epochs"] == 25
+    assert expanded["runtime_enabled_heads"] == []
+    assert expanded["schedule_digest"].startswith("sha256:")
+    assert expanded["target_schema_digest"].startswith("sha256:")
+    fusion = result["training"]["decision_fusion"]
+    assert fusion == decision_fusion_handoff_contract()
+    assert fusion["head_count"] == 17
+    command = bootstrap_command(result)
+    assert "--decision-fusion" in command
+    assert command.index("--decision-fusion") == command.index("--expanded-heads") + 1
     assert result["submission_policy"]["completion_blocks_handoff"] is False
     assert result["runtime_registration"]["handoff_service"] == (
         "pokebot-specialist-cycle-handoff.service"
     )
     assert result["runtime_registration"]["gate_handler_service"] == (
         "pokebot-specialist-passed-gate-handler.service"
+    )
+    fleet = result["runtime_registration"]["matchup_v6"]["fleet"]
+    assert fleet["bert"]["expected_workers"] == 16
+    assert fleet["bert"]["expected_leaves"] == 4
+    assert fleet["elmo"]["expected_workers"] == 36
+    assert fleet["elmo"]["expected_leaves"] == 4
+    assert fleet["elmo"]["image"] == (
+        "poke-bot-truenas-worker:matchup-v38-record-schema-runtime"
     )
     assert result["paths"]["state"].endswith(
         "post-lucario-dragapult-handoff-v1.json"
@@ -75,21 +139,187 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "pokebot-population-round-robin.service"
     )
     assert contract["selection"]["corpus_root"].endswith(
-        "data/bootstrap/current-specialist-latest20"
+        "data/bootstrap/current-specialist-latest20-v6-strategic"
     )
     assert contract["selection"]["corpus_source_receipt"].endswith(
-        "outputs/state/expert-latest20-current.json"
+        "outputs/state/expert-latest20-v6-strategic-sync.json"
     )
-    assert contract["runtime"]["inactive_tree_candidate"] is None
-    assert contract["runtime"]["candidate_audit"] is None
+    assert contract["selection"]["core_corpus"].endswith(
+        "current-specialist-latest20-v6-strategic/"
+        "core-balanced-v6/PROTECTED_CORE_CORPUS.json"
+    )
+    assert contract["prestage"]["required_expanded_target_schema"] == (
+        "poke_bot.expanded_strategic_targets/v2"
+    )
+    assert contract["prestage"]["required_expanded_target_digest"].startswith(
+        "sha256:"
+    )
+    assert contract["runtime"]["inactive_tree_candidate"].endswith(
+        "public-matchup-tree-calibration-roster18-v42.inactive.json"
+    )
+    assert contract["runtime"]["candidate_audit"].endswith(
+        "public-matchup-tree-calibration-roster18-v42.audit.json"
+    )
+    assert contract["runtime"]["future_assets_receipt"].endswith(
+        "rare-route-assets-roster18-v42-ready.json"
+    )
+    assert contract["runtime"]["future_assets_scope"] == "router_only"
     assert contract["selection"]["minimum_decisions_by_specialist"] == {
         "dragapult-dusknoir": 10000,
         "dudunsparce": 2000,
+        "team-rockets-spidops": 630,
     }
     assert contract["selection"]["strict_priority_prefix"] == [
         "dragapult-dusknoir",
         "dudunsparce",
+        "marnie-s-grimmsnarl-ex",
     ]
+
+
+def test_exact_additive_gate_successor_is_resume_safe() -> None:
+    checkpoint = "sha256:" + "a" * 64
+    saved = {
+        "gate_id": "strong+frozen-specialists-r5",
+        "checkpoint_digest": checkpoint,
+        "roster_ids": ["public-a", "specialist-starmie"],
+    }
+    current = {
+        "active_gate_id": "strong+frozen-specialists-r6",
+        "next_gate": {
+            "id": "strong+frozen-specialists-r6",
+            "roster": [
+                {"opponent_id": "public-a"},
+                {"opponent_id": "specialist-starmie"},
+                {
+                    "opponent_id": "specialist-dudunsparce",
+                    "archetype_id": "dudunsparce",
+                    "frozen_specialist": True,
+                    "frozen_checkpoint_digest": checkpoint,
+                },
+            ],
+        },
+    }
+    registry = {
+        "specialists": [
+            {
+                "specialist_id": "dudunsparce",
+                "checkpoint_digest": checkpoint,
+                "frozen": True,
+            }
+        ]
+    }
+
+    assert _is_expected_additive_gate_successor(
+        active_id="dudunsparce",
+        saved_gate=saved,
+        current_gate=current,
+        frozen_registry=registry,
+    )
+    current["next_gate"]["roster"].append({"opponent_id": "unexpected"})
+    assert not _is_expected_additive_gate_successor(
+        active_id="dudunsparce",
+        saved_gate=saved,
+        current_gate=current,
+        frozen_registry=registry,
+    )
+
+
+def test_normal_gate_resume_uses_frozen_evidence_after_additive_successor(
+    tmp_path: Path, monkeypatch
+) -> None:
+    digest = "sha256:" + "a" * 64
+    frozen = tmp_path / "models" / "garchomp-pass"
+    frozen.mkdir(parents=True)
+    (frozen / "manifest.json").write_text("{}\n", encoding="utf-8")
+    current_gate = tmp_path / "gate.json"
+    current_gate.write_text('{"active_gate_id":"successor"}\n', encoding="utf-8")
+    handler_state = tmp_path / "handler.json"
+    frozen_identity = {
+        "family": "garchomp-pass",
+        "model_path": str(frozen / "model.pt"),
+        "checkpoint_digest": digest,
+    }
+    handler_state.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.passed_gate_handler/v1",
+                "phase": "complete_handoff_started",
+                "submission_mode": "queue_and_continue",
+                "gate": {
+                    "contract": str(current_gate),
+                    "contract_sha256": "sha256:historical",
+                    "checkpoint_digest": digest,
+                    "commit_boundary": 5,
+                    "validation": {"exact_gate": True},
+                },
+                "frozen_model": frozen_identity,
+                "queued_submissions": [
+                    {
+                        "copy_number": 1,
+                        "label": "garchomp",
+                        "checkpoint_checksum": digest,
+                        "queued_at": "2026-07-27T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    runtime_registry = tmp_path / "runtime.json"
+    runtime_registry.write_text(
+        json.dumps(
+            {
+                "runtime_root": str(tmp_path),
+                "active_gate_contract": "gate.json",
+                "minimum_terminal_iteration": 5,
+                "specialists": {
+                    "garchomp": {
+                        "status": "ready",
+                        "run_name": "garchomp-run",
+                        "terminal_gate_marker": "PASSED",
+                        "matchup_runtime_tree": str(tmp_path / "tree.json"),
+                        "pass_handler": {
+                            "family": frozen.name,
+                            "state": str(handler_state),
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    frozen_registry = tmp_path / "frozen.json"
+    frozen_registry.write_text('{"specialists":[]}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        "scripts.run_specialist_cycle_handoff.verify_frozen_model",
+        lambda path: frozen_identity,
+    )
+    monkeypatch.setattr(
+        "scripts.run_specialist_cycle_handoff._is_expected_additive_gate_successor",
+        lambda **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "scripts.run_specialist_cycle_handoff.validate_source",
+        lambda contract: (_ for _ in ()).throw(
+            AssertionError("historical result must not be reinterpreted")
+        ),
+    )
+
+    source, evidence = _source(
+        contract={
+            "runtime": {
+                "runtime_registry": str(runtime_registry),
+                "frozen_specialist_registry": str(frozen_registry),
+                "registry_root": str(frozen.parent),
+                "training_service": "trainer.service",
+            }
+        },
+        active_id="garchomp",
+    )
+
+    assert source["id"] == "garchomp"
+    assert evidence["checkpoint_digest"] == digest
+    assert evidence["queued_submission_copies"][0]["copy_number"] == 1
 
 
 def test_lucario_runtime_row_exposes_exact_threshold_transition() -> None:
@@ -153,6 +383,59 @@ def test_accepted_core_is_reused_without_rematerialization(
     assert result[1]["checkpoint_digest"] == digest
 
 
+def test_expanded_core_reuse_requires_complete_shadow_only_schedule(
+    tmp_path: Path, monkeypatch
+) -> None:
+    family = tmp_path / "models" / "core-v6"
+    family.mkdir(parents=True)
+    ready_path = tmp_path / "core-v6-ready.json"
+    digest = "sha256:" + "a" * 64
+    teacher_digests = ["sha256:" + "b" * 64, "sha256:" + "c" * 64]
+    expanded = expanded_handoff_training_contract()
+    expected_heads = expanded["schedule"]["stages"][-1]["enabled_heads"]
+    payload = {
+        "schema": "poke_bot.multi_teacher_core_ready/v1",
+        "status": "candidate_ready_for_gameplay_regression",
+        "checkpoint_digest": digest,
+        "teacher_checkpoint_digests": teacher_digests,
+        "expanded_target_schema_digest": expanded[
+            "target_schema_digest"
+        ],
+        "expanded_schedule_digest": expanded["schedule_digest"],
+        "expanded_heads_trained": expected_heads,
+        "runtime_enabled_heads": [],
+        "epochs_completed": 25,
+    }
+    ready_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        "scripts.run_post_starmie_core_handoff.verify_frozen_model",
+        lambda path: {
+            "family": Path(path).name,
+            "model_path": str(Path(path) / "model.pt"),
+            "checkpoint_digest": digest,
+        },
+    )
+    contract = {
+        "core_refresh": {
+            "family": str(family),
+            "ready_receipt": str(ready_path),
+            "teachers": [
+                {"checksum": teacher_digests[0]},
+                {"checksum": teacher_digests[1]},
+            ],
+            "expanded_heads": expanded,
+        }
+    }
+    assert _reusable_core_candidate(contract=contract) is not None
+
+    payload["runtime_enabled_heads"] = ["action_q"]
+    ready_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(
+        RuntimeError, match="readiness identity changed"
+    ):
+        _reusable_core_candidate(contract=contract)
+
+
 def test_prior_cumulative_contract_accepts_only_additive_selection_controls() -> None:
     current = {
         "trigger": {
@@ -165,13 +448,37 @@ def test_prior_cumulative_contract_accepts_only_additive_selection_controls() ->
                 "dragapult-dusknoir": 10_000
             },
             "strict_priority_prefix": ["dragapult-dusknoir"],
+            "current_deck_guide_required": True,
+        },
+        "runtime": {
+            "inactive_tree_candidate": "/state/tree-v37.json",
+            "candidate_audit": "/state/tree-v37-audit.json",
+            "future_assets_receipt": "/state/rare-route-assets-v38-ready.json",
+            "future_assets_scope": "router_only",
         },
     }
     prior = json.loads(json.dumps(current))
     prior["trigger"].pop("threshold_transition_receipt")
     prior["next_specialist"].pop("minimum_decisions_by_specialist")
     prior["next_specialist"].pop("strict_priority_prefix")
+    prior["next_specialist"].pop("current_deck_guide_required")
+    prior["runtime"]["inactive_tree_candidate"] = None
+    prior["runtime"]["candidate_audit"] = None
+    prior["runtime"]["future_assets_receipt"] = None
+    prior["runtime"].pop("future_assets_scope")
     assert _compatible_prior_cumulative_contract(prior, current)
+    prior_with_assets = json.loads(json.dumps(current))
+    prior_with_assets["runtime"].pop("future_assets_scope")
+    assert _compatible_prior_cumulative_contract(prior_with_assets, current)
+    prior_asset_generation = json.loads(json.dumps(current))
+    prior_asset_generation["runtime"].update(
+        inactive_tree_candidate="/state/tree-v38.json",
+        candidate_audit="/state/tree-v38-audit.json",
+        future_assets_receipt="/state/rare-route-assets-v38-ready.json",
+    )
+    assert _compatible_prior_cumulative_contract(
+        prior_asset_generation, current
+    )
     prior["next_specialist"]["minimum_decisions"] = 9_999
     assert not _compatible_prior_cumulative_contract(prior, current)
 
@@ -189,6 +496,7 @@ def test_accepted_core_regression_survives_controller_only_change(
                     "poke_bot.multi_teacher_core_gameplay_regression/v1"
                 ),
                 "passed": True,
+                "training_eligible": False,
                 "identity": {
                     "contract_digest": "sha256:" + "0" * 64,
                     "candidate": {"digest": digest},
@@ -205,6 +513,17 @@ def test_accepted_core_regression_survives_controller_only_change(
     )
     assert result is not None
     assert result["passed"] is True
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["passed"] = False
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    rejected = _reusable_core_regression(
+        path=path,
+        candidate_digest=digest,
+        teacher_digests=teachers,
+    )
+    assert rejected is not None
+    assert rejected["passed"] is False
 
 
 def test_each_future_specialist_gets_a_new_cumulative_core(
@@ -224,6 +543,10 @@ def test_each_future_specialist_gets_a_new_cumulative_core(
     cycle["runtime"]["state_root"] = str(tmp_path / "state")
     cycle["selection"]["state"] = str(tmp_path / "specialists.yaml")
     cycle["selection"]["corpus_root"] = str(tmp_path / "corpora")
+    core_corpus = tmp_path / "core" / "PROTECTED_CORE_CORPUS.json"
+    core_corpus.parent.mkdir()
+    core_corpus.write_text("{}\n", encoding="utf-8")
+    cycle["selection"]["core_corpus"] = str(core_corpus)
     specialists = {
         specialist_id: {
             "pass_handler": {"family": f"{specialist_id}-pass-v1"}
@@ -261,9 +584,13 @@ def test_each_future_specialist_gets_a_new_cumulative_core(
         current_core={
             "model_path": "/models/deck-core-v2/model.pt",
             "checkpoint_digest": "sha256:" + "c" * 64,
+            "ready": "/state/deck-core-v2-ready.json",
+            "version": 2,
         },
     )
     assert result["core_refresh"]["version"] == 4
+    assert result["core_refresh"]["refresh_attempt"] == 1
+    assert result["core_refresh"]["split_seed"] == 20260723
     assert [
         row["specialist_id"] for row in result["core_refresh"]["teachers"]
     ] == ["alakazam", "hops-trevenant", "lucario", "starmie"]
@@ -273,6 +600,115 @@ def test_each_future_specialist_gets_a_new_cumulative_core(
     )
     assert result["next_specialist"]["hot_start_core_version"] == 4
     assert result["trigger"]["minimum_completed_iteration"] == 5
+    assert result["core_failure_fallback"] == {
+        "enabled": True,
+        "behavior": "continue_with_latest_accepted_core",
+        "continue_refresh_after_each_specialist": True,
+        "version": 2,
+        "family": "/models/deck-core-v2",
+        "checkpoint_digest": "sha256:" + "c" * 64,
+        "ready_receipt": "/state/deck-core-v2-ready.json",
+        "owner_decision": "GOAL.md#/decision-ledger/revision-19",
+    }
+
+
+def test_failed_core_regression_reuses_boundary_and_falls_back(
+    tmp_path: Path, monkeypatch
+) -> None:
+    template = json.loads(
+        (ROOT / "ops/post_starmie_core_v2_handoff_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    cycle = json.loads(
+        (ROOT / "ops/specialist_cycle_handoff_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    cycle["runtime"]["registry_root"] = str(tmp_path / "models")
+    cycle["runtime"]["state_root"] = str(tmp_path / "state")
+    cycle["selection"]["state"] = str(tmp_path / "specialists.yaml")
+    cycle["selection"]["corpus_root"] = str(tmp_path / "corpora")
+    core_corpus = tmp_path / "core" / "PROTECTED_CORE_CORPUS.json"
+    core_corpus.parent.mkdir()
+    core_corpus.write_text("{}\n", encoding="utf-8")
+    cycle["selection"]["core_corpus"] = str(core_corpus)
+    specialists = {
+        specialist_id: {
+            "pass_handler": {"family": f"{specialist_id}-pass-v1"}
+        }
+        for specialist_id in ("alakazam", "hops-trevenant")
+    }
+
+    def frozen(path: Path) -> dict[str, str]:
+        family = Path(path).name
+        return {
+            "family": family,
+            "model_path": str(Path(path) / "model.pt"),
+            "checkpoint_digest": (
+                "sha256:" + family.encode().hex().ljust(64, "0")[:64]
+            ),
+        }
+
+    monkeypatch.setattr(
+        "scripts.run_specialist_cycle_handoff.verify_frozen_model", frozen
+    )
+    source = {
+        "id": "hops-trevenant",
+        "run_dir": "/runs/hops",
+        "training_service": "trainer.service",
+        "gate_contract": "/runtime/gate.json",
+        "gate_marker_name": "SPECIALIST_GATE_PASSED.hops",
+        "minimum_completed_iteration": 5,
+        "passed_family": "/models/hops-pass-v1",
+        "handler_state": "/state/hops-handler.json",
+    }
+    kwargs = {
+        "template": template,
+        "cycle": cycle,
+        "source": source,
+        "completed_ids": {"alakazam", "hops-trevenant"},
+        "runtime_registry": {"specialists": specialists},
+        "current_core": {
+            "model_path": "/models/deck-core-v1/model.pt",
+            "checkpoint_digest": "sha256:" + "c" * 64,
+            "ready": "/state/deck-core-v1-ready.json",
+            "version": 1,
+        },
+    }
+    first = _cumulative_core_contract(**kwargs)
+    teacher_digests = [
+        row["checksum"] for row in first["core_refresh"]["teachers"]
+    ]
+    failed = tmp_path / (
+        "state/deck-agnostic-core-cumulative-v2-fused-v1-"
+        "gameplay-regression.json"
+    )
+    failed.parent.mkdir(exist_ok=True)
+    failed.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.multi_teacher_core_gameplay_regression/v1",
+                "passed": False,
+                "training_eligible": False,
+                "identity": {
+                    "teacher_checkpoint_digests": teacher_digests,
+                },
+                "criteria": {"all_reports_valid": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    resumed = _cumulative_core_contract(**kwargs)
+    assert resumed["core_refresh"]["refresh_attempt"] == 1
+    assert resumed["core_refresh"]["split_seed"] == 20260723
+    assert resumed["core_refresh"]["family"] == first["core_refresh"]["family"]
+    assert (
+        resumed["acceptance"]["regression_result"]
+        == first["acceptance"]["regression_result"]
+    )
+    assert resumed["core_failure_fallback"]["enabled"] is True
+    assert resumed["core_failure_fallback"]["version"] == 1
 
 
 def test_required_specialist_ids_is_exact_canonical_roster() -> None:
@@ -280,6 +716,34 @@ def test_required_specialist_ids_is_exact_canonical_roster() -> None:
     assert len(identifiers) == 18
     assert "starmie" in identifiers
     assert "hops-trevenant" in identifiers
+
+
+def test_required_specialist_ids_rejects_completed_specialist_in_unfinished_order(
+    tmp_path: Path,
+) -> None:
+    state = yaml.safe_load(
+        (ROOT / "state/specialists.yaml").read_text(encoding="utf-8")
+    )
+    completed = next(
+        row["id"]
+        for row in state["specialists"]
+        if row["status"] == "passed_frozen"
+    )
+    state["training_priority"]["ordered_unfinished_ids_after_active"].insert(
+        0, completed
+    )
+    state["current"]["program_progress"]["remaining_unfinished"] += 1
+    state_path = tmp_path / "specialists.yaml"
+    state_path.write_text(yaml.safe_dump(state), encoding="utf-8")
+    (tmp_path / "matchup_adapter_roster.json").write_text(
+        (ROOT / "state/matchup_adapter_roster.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="unfinished priority"):
+        _required_specialist_ids(state_path)
 
 
 def test_starmie_pass_still_leaves_unfinished_roster_before_population() -> None:

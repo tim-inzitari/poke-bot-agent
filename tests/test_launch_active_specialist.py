@@ -7,6 +7,15 @@ import pytest
 import torch
 
 from poke_bot.matchup_adapters import EXPERT_IDS
+from poke_bot.matchup_adapters_v6 import (
+    ADAPTER_CHECKPOINT_FORMAT as V6_ADAPTER_CHECKPOINT_FORMAT,
+    SLOT_CAPACITY,
+    load_slot_registry,
+)
+from poke_bot.model import (
+    DECISION_FUSION_REQUIRED_HEADS,
+    DECISION_FUSION_SCHEMA,
+)
 from scripts.launch_active_specialist import (
     _build_command,
     _load_registry,
@@ -186,6 +195,135 @@ def test_ready_specialist_resolves_one_complete_command(tmp_path: Path) -> None:
     assert command[command.index("--expert-min-decisions") + 1] == "10000"
     assert command.count("--expert-required-target") == 2
     assert "--frozen-specialist-registry" in command
+
+
+def test_successor_runtime_fails_closed_without_exact_17_head_fusion(
+    tmp_path: Path,
+) -> None:
+    path = _fixture(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    row = payload["specialists"]["dragapult-dusknoir"]
+    row["decision_fusion"] = {
+        "schema": DECISION_FUSION_SCHEMA,
+        "required": True,
+        "runtime_enabled": True,
+        "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="mandatory 17-head"):
+        _resolve(_load_registry(path), "dragapult-dusknoir")
+
+    checkpoint = Path(row["initial_checkpoint"])
+    checkpoint_payload = torch.load(
+        checkpoint, map_location="cpu", weights_only=False
+    )
+    checkpoint_payload["model_config"] = {
+        "expanded_heads_enabled": True,
+        "decision_fusion_enabled": True,
+        "decision_fusion_runtime_enabled": True,
+    }
+    checkpoint_payload["provenance"] = {
+        "decision_fusion": {
+            "schema": DECISION_FUSION_SCHEMA,
+            "enabled": True,
+            "runtime_enabled": True,
+            "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
+        }
+    }
+    checkpoint_payload["model_state_dict"][
+        "decision_fusion.residual.2.weight"
+    ] = torch.ones(1)
+    torch.save(checkpoint_payload, checkpoint)
+    row["initial_checkpoint_sha256"] = _sha256(checkpoint)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    _resolve(_load_registry(path), "dragapult-dusknoir")
+
+
+def test_v6_checkpoint_must_bind_exact_runtime_registry(tmp_path: Path) -> None:
+    path = _fixture(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    row = payload["specialists"]["dragapult-dusknoir"]
+    checkpoint = Path(row["initial_checkpoint"])
+    slot_registry = load_slot_registry()
+    torch.save(
+        {
+            "model_state_dict": {
+                f"matchup_adapter_bank.experts.{index}.up.weight": torch.zeros(1)
+                for index in range(SLOT_CAPACITY)
+            },
+            "extra": {
+                "matchup_adapter_config": {
+                    "format": V6_ADAPTER_CHECKPOINT_FORMAT,
+                    "slot_capacity": SLOT_CAPACITY,
+                    "slot_registry": slot_registry,
+                }
+            },
+        },
+        checkpoint,
+    )
+    row["initial_checkpoint_sha256"] = _sha256(checkpoint)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    _resolve(_load_registry(path), "dragapult-dusknoir")
+
+    mismatched = json.loads(json.dumps(slot_registry))
+    mismatched["revision"] = int(mismatched["revision"]) + 1
+    checkpoint_payload = torch.load(
+        checkpoint, map_location="cpu", weights_only=False
+    )
+    checkpoint_payload["extra"]["matchup_adapter_config"][
+        "slot_registry"
+    ] = mismatched
+    torch.save(checkpoint_payload, checkpoint)
+    payload["specialists"]["dragapult-dusknoir"][
+        "initial_checkpoint_sha256"
+    ] = _sha256(checkpoint)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exact runtime registry"):
+        _resolve(_load_registry(path), "dragapult-dusknoir")
+
+
+def test_existing_run_uses_validated_loop_state_not_initial_seed(
+    tmp_path: Path,
+) -> None:
+    registry = _load_registry(_fixture(tmp_path))
+    row, checkpoint, expert, runtime_tree, authorization = _resolve(
+        registry, "dragapult-dusknoir"
+    )
+    loop_state = (
+        Path(registry["runtime_root"])
+        / "outputs"
+        / "pure_rl"
+        / row["run_name"]
+        / "loop_state.json"
+    )
+    loop_state.parent.mkdir(parents=True)
+    loop_state.write_text(
+        json.dumps(
+            {
+                "next_iteration": 0,
+                "learner": {
+                    "path": str(checkpoint),
+                    "digest": f"sha256:{_sha256(checkpoint)}",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    command = _build_command(
+        registry,
+        "dragapult-dusknoir",
+        row,
+        checkpoint,
+        expert,
+        runtime_tree,
+        authorization,
+    )
+
+    assert "--initial-learner-checkpoint" not in command
+    assert command[command.index("--resume") + 1] == "auto"
 
 
 def test_future_specialist_uses_registry_floor_and_ceiling(tmp_path: Path) -> None:

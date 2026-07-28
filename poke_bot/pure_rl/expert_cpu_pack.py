@@ -24,9 +24,23 @@ from poke_bot.device_corpus import (
     DEVICE_CORPUS_PACKING_SCHEMA_VERSION,
     DeviceResidentBootstrapCorpus,
 )
+from poke_bot.strategic_heads import (
+    ACTION_FACTOR_NAMES,
+    ACTION_UTILITY_NAMES,
+    EXPANDED_STRATEGIC_SCHEMA,
+    EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+    EXPANDED_STRATEGIC_SCHEMA_VERSION,
+    GAME_PHASE_NAMES,
+    OPPONENT_RESPONSE_NAMES,
+    OUTCOME_CLASS_NAMES,
+    RESOURCE_FORECAST_NAMES,
+    TACTICAL_HORIZONS,
+    TACTICAL_OUTCOME_NAMES,
+)
 
 
-EXPERT_CPU_PACK_SCHEMA_VERSION = 1
+EXPERT_CPU_PACK_SCHEMA_VERSION = 2
+EXPERT_CPU_PACK_SCHEMA = "poke_bot.expert_cpu_pack/v2"
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _PACK_PREFIX = "expert-pack-"
 
@@ -55,8 +69,11 @@ class ExpertCpuPackKey:
         if context is not None and context <= 0:
             raise ValueError("expert max_context must be positive")
         schema = int(self.packing_schema)
-        if schema <= 0:
-            raise ValueError("expert packing schema must be positive")
+        if schema != DEVICE_CORPUS_PACKING_SCHEMA_VERSION:
+            raise ValueError(
+                "expert packing schema is incompatible: "
+                f"got={schema} expected={DEVICE_CORPUS_PACKING_SCHEMA_VERSION}"
+            )
         card_vocab = (
             None
             if self.belief_card_vocab is None
@@ -75,6 +92,13 @@ class ExpertCpuPackKey:
             "belief_card_vocab": card_vocab,
             "packing_schema": schema,
             "cache_schema": EXPERT_CPU_PACK_SCHEMA_VERSION,
+            "expanded_strategic_schema": EXPANDED_STRATEGIC_SCHEMA,
+            "expanded_strategic_schema_version": (
+                EXPANDED_STRATEGIC_SCHEMA_VERSION
+            ),
+            "expanded_strategic_schema_digest": (
+                EXPANDED_STRATEGIC_SCHEMA_DIGEST
+            ),
         }
 
     @property
@@ -113,7 +137,27 @@ _EXPECTED_DTYPES: dict[str, torch.dtype] = {
     "action_offset": torch.int32,
     "game_decision_offset": torch.int32,
     "game_sample_offset": torch.int32,
+    "strategic_action_q_target": torch.float32,
+    "strategic_action_q_mask": torch.uint8,
+    "strategic_action_factor_mask": torch.uint8,
+    "strategic_action_utility_target": torch.float32,
+    "strategic_action_utility_mask": torch.uint8,
+    "strategic_tactical_outcome_target": torch.float32,
+    "strategic_tactical_outcome_mask": torch.uint8,
+    "strategic_opponent_response_target": torch.float32,
+    "strategic_opponent_response_mask": torch.uint8,
+    "strategic_resource_forecast_target": torch.float32,
+    "strategic_resource_forecast_mask": torch.uint8,
+    "strategic_game_phase_target": torch.int16,
+    "strategic_game_phase_mask": torch.uint8,
+    "strategic_outcome_class_target": torch.int16,
+    "strategic_outcome_class_mask": torch.uint8,
+    "strategic_remaining_turns_target": torch.float32,
+    "strategic_remaining_turns_mask": torch.uint8,
 }
+_STRATEGIC_FIELDS = tuple(
+    name for name in _EXPECTED_DTYPES if name.startswith("strategic_")
+)
 
 
 def _sha256_file(path: Path) -> str:
@@ -178,8 +222,18 @@ def _all_nondecreasing(values: torch.Tensor, *, chunk: int = 4_000_000) -> bool:
     return True
 
 
-def validate_cpu_corpus(corpus: DeviceResidentBootstrapCorpus) -> None:
-    """Validate every packed shape/boundary before trusting cache bytes."""
+def validate_cpu_corpus(
+    corpus: DeviceResidentBootstrapCorpus,
+    *,
+    allow_empty_training_fragment: bool = False,
+) -> None:
+    """Validate every packed shape/boundary before trusting cache bytes.
+
+    A complete durable pack must contain decisions and policy samples. Parallel
+    construction may temporarily persist a valid game fragment whose decisions
+    have no valid policy stage; the explicit fragment-only flag permits those
+    zero-sample/zero-decision rows while preserving every other validation.
+    """
     if corpus.device.type != "cpu":
         raise ExpertCpuPackError(
             f"durable expert pack must be CPU-resident, got {corpus.device}"
@@ -206,7 +260,8 @@ def validate_cpu_corpus(corpus: DeviceResidentBootstrapCorpus) -> None:
     games = train_games + val_games
     if min(train_samples, val_samples, train_games, val_games, decisions) < 0:
         raise ExpertCpuPackError("expert pack has negative counters")
-    if samples <= 0 or games <= 0 or decisions <= 0:
+    empty_training = samples <= 0 or decisions <= 0
+    if games <= 0 or (empty_training and not allow_empty_training_fragment):
         raise ExpertCpuPackError("expert pack has no trainable data")
     if int(corpus.input_bytes) != int(corpus.tensor_bytes):
         raise ExpertCpuPackError(
@@ -264,14 +319,23 @@ def validate_cpu_corpus(corpus: DeviceResidentBootstrapCorpus) -> None:
     ):
         raise ExpertCpuPackError("expert pack sample references an invalid board")
     starts = corpus.option_word_start.to(dtype=torch.int64)
-    if int(starts[0].item()) != 0:
-        raise ExpertCpuPackError("expert pack option prefix does not start at zero")
-    if starts.numel() > 1 and not bool(
-        torch.all(starts[1:] - starts[:-1] == counts[:-1])
-    ):
-        raise ExpertCpuPackError("expert pack option prefixes are discontinuous")
-    if int(starts[-1].item()) + int(counts[-1].item()) != int(counts.sum().item()):
-        raise ExpertCpuPackError("expert pack option prefix total is inconsistent")
+    if samples > 0:
+        if int(starts[0].item()) != 0:
+            raise ExpertCpuPackError(
+                "expert pack option prefix does not start at zero"
+            )
+        if starts.numel() > 1 and not bool(
+            torch.all(starts[1:] - starts[:-1] == counts[:-1])
+        ):
+            raise ExpertCpuPackError(
+                "expert pack option prefixes are discontinuous"
+            )
+        if int(starts[-1].item()) + int(counts[-1].item()) != int(
+            counts.sum().item()
+        ):
+            raise ExpertCpuPackError(
+                "expert pack option prefix total is inconsistent"
+            )
 
     for name, final, split_index, split_value in (
         ("game_decision_offset", decisions, None, None),
@@ -370,6 +434,233 @@ def validate_cpu_corpus(corpus: DeviceResidentBootstrapCorpus) -> None:
         if corpus.sample_aux_class.shape != (samples,):
             raise ExpertCpuPackError("expert pack archetype target shape disagrees")
 
+    strategic = tuple(tensors.get(name) for name in _STRATEGIC_FIELDS)
+    has_any_strategic = any(value is not None for value in strategic)
+    has_all_strategic = all(value is not None for value in strategic)
+    if has_any_strategic and not has_all_strategic:
+        raise ExpertCpuPackError(
+            "expert pack has a partial expanded-strategic target layout"
+        )
+    schema_identity = (
+        str(corpus.expanded_strategic_schema),
+        int(corpus.expanded_strategic_schema_version),
+        str(corpus.expanded_strategic_schema_digest),
+    )
+    if has_all_strategic:
+        expected_identity = (
+            EXPANDED_STRATEGIC_SCHEMA,
+            EXPANDED_STRATEGIC_SCHEMA_VERSION,
+            EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+        )
+        if schema_identity != expected_identity:
+            raise ExpertCpuPackError(
+                "expert pack expanded-strategic schema identity mismatch"
+            )
+        expected_strategic_shapes = {
+            "strategic_action_q_target": (samples,),
+            "strategic_action_q_mask": (samples,),
+            "strategic_action_factor_mask": (
+                samples,
+                len(ACTION_FACTOR_NAMES),
+            ),
+            "strategic_action_utility_target": (
+                samples,
+                len(ACTION_UTILITY_NAMES),
+            ),
+            "strategic_action_utility_mask": (
+                samples,
+                len(ACTION_UTILITY_NAMES),
+            ),
+            "strategic_tactical_outcome_target": (
+                decisions,
+                len(TACTICAL_HORIZONS),
+                len(TACTICAL_OUTCOME_NAMES),
+            ),
+            "strategic_tactical_outcome_mask": (
+                decisions,
+                len(TACTICAL_HORIZONS),
+                len(TACTICAL_OUTCOME_NAMES),
+            ),
+            "strategic_opponent_response_target": (
+                decisions,
+                len(OPPONENT_RESPONSE_NAMES),
+            ),
+            "strategic_opponent_response_mask": (
+                decisions,
+                len(OPPONENT_RESPONSE_NAMES),
+            ),
+            "strategic_resource_forecast_target": (
+                decisions,
+                len(RESOURCE_FORECAST_NAMES),
+            ),
+            "strategic_resource_forecast_mask": (
+                decisions,
+                len(RESOURCE_FORECAST_NAMES),
+            ),
+            "strategic_game_phase_target": (decisions,),
+            "strategic_game_phase_mask": (decisions,),
+            "strategic_outcome_class_target": (decisions,),
+            "strategic_outcome_class_mask": (decisions,),
+            "strategic_remaining_turns_target": (decisions,),
+            "strategic_remaining_turns_mask": (decisions,),
+        }
+        for name, expected_shape in expected_strategic_shapes.items():
+            tensor = tensors[name]
+            if tuple(tensor.shape) != expected_shape:
+                raise ExpertCpuPackError(
+                    f"expert pack expanded-strategic shape mismatch {name}: "
+                    f"got={list(tensor.shape)} expected={list(expected_shape)}"
+                )
+
+        mask_names = (
+            "strategic_action_q_mask",
+            "strategic_action_factor_mask",
+            "strategic_action_utility_mask",
+            "strategic_tactical_outcome_mask",
+            "strategic_opponent_response_mask",
+            "strategic_resource_forecast_mask",
+            "strategic_game_phase_mask",
+            "strategic_outcome_class_mask",
+            "strategic_remaining_turns_mask",
+        )
+        for name in mask_names:
+            mask = tensors[name]
+            if bool(torch.any((mask != 0) & (mask != 1))):
+                raise ExpertCpuPackError(
+                    f"expert pack expanded-strategic mask is not binary: {name}"
+                )
+
+        for target_name, mask_name in (
+            ("strategic_action_q_target", "strategic_action_q_mask"),
+            (
+                "strategic_action_utility_target",
+                "strategic_action_utility_mask",
+            ),
+            (
+                "strategic_tactical_outcome_target",
+                "strategic_tactical_outcome_mask",
+            ),
+            (
+                "strategic_opponent_response_target",
+                "strategic_opponent_response_mask",
+            ),
+            (
+                "strategic_resource_forecast_target",
+                "strategic_resource_forecast_mask",
+            ),
+            (
+                "strategic_remaining_turns_target",
+                "strategic_remaining_turns_mask",
+            ),
+        ):
+            target = tensors[target_name]
+            mask = tensors[mask_name].to(dtype=torch.bool)
+            if not bool(torch.all(torch.isfinite(target))):
+                raise ExpertCpuPackError(
+                    f"expert pack expanded-strategic target is not finite: "
+                    f"{target_name}"
+                )
+            if bool(torch.any(target.masked_select(~mask) != 0)):
+                raise ExpertCpuPackError(
+                    "expert pack expanded-strategic masked target is nonzero: "
+                    f"{target_name}"
+                )
+
+        action_q = tensors["strategic_action_q_target"]
+        action_q_mask = tensors["strategic_action_q_mask"].to(dtype=torch.bool)
+        valid_q = action_q.masked_select(action_q_mask)
+        if valid_q.numel() and bool(
+            torch.any((valid_q != -1.0) & (valid_q != 0.0) & (valid_q != 1.0))
+        ):
+            raise ExpertCpuPackError(
+                "expert pack expanded-strategic action-Q target is not terminal"
+            )
+        remaining = tensors["strategic_remaining_turns_target"]
+        remaining_mask = tensors["strategic_remaining_turns_mask"].to(
+            dtype=torch.bool
+        )
+        if bool(torch.any(remaining.masked_select(remaining_mask) < 0.0)):
+            raise ExpertCpuPackError(
+                "expert pack expanded-strategic remaining-turn target is negative"
+            )
+
+        # Corrected early V2 source shards may retain exact event counts for
+        # prize/KO fields. They are valid training evidence only when they are
+        # finite nonnegative integers; the loss projects count > 0 to the
+        # canonical binary occurrence target. New materialization emits 0/1.
+        for target_name, mask_name, columns in (
+            (
+                "strategic_action_utility_target",
+                "strategic_action_utility_mask",
+                (5,),
+            ),
+            (
+                "strategic_opponent_response_target",
+                "strategic_opponent_response_mask",
+                (1, 2),
+            ),
+        ):
+            target = tensors[target_name]
+            mask = tensors[mask_name].to(dtype=torch.bool)
+            for column in columns:
+                present = target[..., column].masked_select(mask[..., column])
+                if present.numel() and bool(
+                    torch.any(
+                        (present < 0.0)
+                        | (present != torch.round(present))
+                    )
+                ):
+                    raise ExpertCpuPackError(
+                        "expert pack expanded-strategic event count is invalid: "
+                        f"{target_name}[{column}]"
+                    )
+
+        for target_name, mask_name, classes in (
+            (
+                "strategic_game_phase_target",
+                "strategic_game_phase_mask",
+                len(GAME_PHASE_NAMES),
+            ),
+            (
+                "strategic_outcome_class_target",
+                "strategic_outcome_class_mask",
+                len(OUTCOME_CLASS_NAMES),
+            ),
+        ):
+            target = tensors[target_name]
+            mask = tensors[mask_name].to(dtype=torch.bool)
+            if bool(torch.any(target.masked_select(~mask) != -1)):
+                raise ExpertCpuPackError(
+                    "expert pack expanded-strategic masked class is not -1: "
+                    f"{target_name}"
+                )
+            present = target.masked_select(mask)
+            if present.numel() and bool(
+                torch.any((present < 0) | (present >= int(classes)))
+            ):
+                raise ExpertCpuPackError(
+                    "expert pack expanded-strategic class is outside range: "
+                    f"{target_name}"
+                )
+
+        # Action utility is attached only to the completed ordered action, not
+        # to teacher-forcing prefixes. For each decision, only its last packed
+        # policy stage may carry any utility mask.
+        utility_rows = torch.any(
+            tensors["strategic_action_utility_mask"] != 0,
+            dim=1,
+        )
+        if samples > 1:
+            same_decision_next = corpus.sample_board[:-1] == corpus.sample_board[1:]
+            if bool(torch.any(utility_rows[:-1] & same_decision_next)):
+                raise ExpertCpuPackError(
+                    "expert pack action utility appears before a final policy stage"
+                )
+    elif schema_identity != ("", 0, ""):
+        raise ExpertCpuPackError(
+            "expert pack has expanded-strategic schema metadata without targets"
+        )
+
 
 class ExpertCpuPackCache:
     """One-active-pack cache with atomic replacement and strict validation."""
@@ -429,7 +720,7 @@ class ExpertCpuPackCache:
         except (OSError, json.JSONDecodeError) as exc:
             raise ExpertCpuPackError(f"expert CPU pack metadata unavailable: {exc}") from exc
         if (
-            manifest.get("schema") != "poke_bot.expert_cpu_pack/v1"
+            manifest.get("schema") != EXPERT_CPU_PACK_SCHEMA
             or int(manifest.get("schema_version", -1))
             != EXPERT_CPU_PACK_SCHEMA_VERSION
             or str(manifest.get("key") or "") != key.digest
@@ -519,7 +810,7 @@ class ExpertCpuPackCache:
                 handle.flush()
                 os.fsync(handle.fileno())
             manifest = {
-                "schema": "poke_bot.expert_cpu_pack/v1",
+                "schema": EXPERT_CPU_PACK_SCHEMA,
                 "schema_version": EXPERT_CPU_PACK_SCHEMA_VERSION,
                 "created_at": time.time(),
                 "key": key.digest,

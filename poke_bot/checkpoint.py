@@ -256,6 +256,30 @@ def build_checkpoint(
     model_snapshot = _config_snapshot(model_config or config.MODEL)
     search_snapshot = _config_snapshot(config.SEARCH)
     model_state = model.state_dict()
+    inventory_fn = getattr(model, "expanded_head_inventory", None)
+    expanded_head_inventory = (
+        inventory_fn()
+        if callable(inventory_fn)
+        else {
+            "schema": "poke_bot.expanded_strategic_heads/v1",
+            "version": 0,
+            "enabled": False,
+            "runtime_enabled_heads": [],
+            "modules": {},
+        }
+    )
+    fusion_inventory_fn = getattr(model, "decision_fusion_inventory", None)
+    decision_fusion_inventory = (
+        fusion_inventory_fn()
+        if callable(fusion_inventory_fn)
+        else {
+            "schema": "poke_bot.causal_decision_fusion/v1",
+            "enabled": False,
+            "runtime_enabled": False,
+            "required_heads": [],
+            "parameters": 0,
+        }
+    )
     ckpt: dict[str, Any] = {
         "model_state_dict": model_state,
         "step": int(step),
@@ -286,6 +310,14 @@ def build_checkpoint(
             ),
             "warm_started_belief_heads": list(
                 getattr(model, "warm_started_belief_heads", ())
+            ),
+            "expanded_heads": expanded_head_inventory,
+            "decision_fusion": decision_fusion_inventory,
+            "warm_started_expanded_heads": list(
+                getattr(model, "warm_started_expanded_heads", ())
+            ),
+            "warm_started_decision_fusion": bool(
+                getattr(model, "warm_started_decision_fusion", False)
             ),
         },
     }

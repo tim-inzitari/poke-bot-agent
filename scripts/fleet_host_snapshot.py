@@ -80,6 +80,35 @@ def memory_state() -> tuple[int | None, int | None]:
     return int(total) if total is not None else None, available_pages * page_size
 
 
+def cpu_utilization_percent(sample_seconds: float = 0.15) -> float | None:
+    """Return host-wide busy CPU over a short interval, not process lifetime CPU."""
+    if platform.system() != "Linux":
+        return None
+
+    def sample() -> tuple[int, int] | None:
+        try:
+            fields = [int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
+        except (OSError, ValueError, IndexError):
+            return None
+        if len(fields) < 5:
+            return None
+        idle = fields[3] + (fields[4] if len(fields) > 4 else 0)
+        return sum(fields), idle
+
+    first = sample()
+    if first is None:
+        return None
+    time.sleep(max(0.05, float(sample_seconds)))
+    second = sample()
+    if second is None:
+        return None
+    total_delta = second[0] - first[0]
+    idle_delta = second[1] - first[1]
+    if total_delta <= 0:
+        return None
+    return max(0.0, min(100.0, 100.0 * (total_delta - idle_delta) / total_delta))
+
+
 def gpu_state() -> list[dict[str, Any]]:
     binary = shutil.which("nvidia-smi")
     if not binary:
@@ -287,6 +316,7 @@ def main() -> None:
     args = parser.parse_args()
     total, available = memory_state()
     loads = os.getloadavg()
+    cpu_percent = cpu_utilization_percent()
     print(
         json.dumps(
             {
@@ -297,6 +327,7 @@ def main() -> None:
                 "platform": platform.system().lower(),
                 "system": {
                     "cpu_count": os.cpu_count(),
+                    "cpu_utilization_percent": cpu_percent,
                     "load_1m": loads[0],
                     "load_5m": loads[1],
                     "load_15m": loads[2],

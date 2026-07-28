@@ -1,0 +1,348 @@
+{
+  "schema": "poke_bot.current_deck_guide_validation/v1",
+  "created_at_utc": "2026-07-25T16:01:09Z",
+  "status": "expert_corpus_promotion_running",
+  "active_specialist_modified": false,
+  "activation_boundary": "next_specialist_handoff",
+  "generic_implementation": {
+    "registry": {
+      "path": "poke_bot/deck_guides.py",
+      "sha256": "2d82377a0af7e0c0f2faed66765ab8a6d9bd1bd9321faaa41720dc0428d1b928"
+    },
+    "dataset_bridge": {
+      "path": "poke_bot/dataset.py",
+      "sha256": "75fad156bf121e63c56d9bcd412ac25ce906176eaa44201765dc61a525b39ae9"
+    },
+    "trainer": {
+      "path": "scripts/train_pure_rl.py",
+      "sha256": "93d9929c5366b81359a6bc89167bf6909c58870b611461a082155cc987e9887e"
+    },
+    "launcher": {
+      "path": "scripts/launch_active_specialist.py",
+      "sha256": "829213858bd12c303b61a0ed39660383565ca84d6750af6ce012ccfbf518d0b0"
+    },
+    "adaptive_schedule": {
+      "path": "poke_bot/pure_rl/deck_guide_schedule.py",
+      "sha256": "816160d43effa6ea9d2de2db2b62915d20e08a82f95b583de46ac60159ce6c29"
+    },
+    "prestage_gate": {
+      "path": "scripts/prestage_next_specialist.py",
+      "sha256": "74a14b06af5f048cae365fe37a0ca4b05207156033f8074ca7069ba1f7f4be3e"
+    },
+    "authoritative_materializer": {
+      "path": "poke_bot/authoritative_visual_trace.py",
+      "sha256": "8a68ed92c804138a9f2637246db08812ffb970051cb9cecd1e8841c24c6e362e"
+    },
+    "daily_materializer_cli": {
+      "path": "scripts/materialize_authoritative_alakazam_day.py",
+      "sha256": "1360915465f0de5d9e2f0ea8e6c87945f93b8d458c93607166567127b5b3fe7c"
+    },
+    "window_materializer_cli": {
+      "path": "scripts/materialize_authoritative_alakazam_window.py",
+      "sha256": "a67d1ab80d77dc257616c2e8a3ef4686854225f8f2945e546d3736e5153ec80e"
+    },
+    "window_finalizer": {
+      "path": "scripts/finalize_current_deck_guide_window.py",
+      "sha256": "b31b229c86d5da2c785d0b8b1bed86a144165a6ec76abac8eafc0a680ad88342"
+    }
+  },
+  "real_trace_canary": {
+    "status": "passed",
+    "source_date": "2026-07-23",
+    "source_episode_ids": [
+      87556853,
+      87556855,
+      87556857,
+      87556859
+    ],
+    "sequences": 5,
+    "causal_decisions": 478,
+    "guide_rows": 120,
+    "guide_version": "marnie-grimmsnarl-north-star-v1",
+    "receipt": "/mnt/Main/main/poke-bot-agent/archive/expert-guide-canary-v1/marnie-known-2026-07-23.features.receipt.json",
+    "receipt_sha256": "acd008fe0e6e84aca0413a2575045a5ca9be2aa678db3a08f7be8572a705f00c"
+  },
+  "expert_target_materialization": {
+    "status": "ready",
+    "host": "admin@192.168.1.143",
+    "service": "pokebot-grimmsnarl-guide-window-v1.service",
+    "date_start": "2026-07-04",
+    "date_end": "2026-07-23",
+    "days": 20,
+    "workers": 12,
+    "memory_max_gib": 32,
+    "active_trainer_modified": false,
+    "status_receipt": "/mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex/status/window.json",
+    "last_verified_at_utc": "2026-07-25T17:46:37Z",
+    "completed_days": 20,
+    "total_days": 20,
+    "current_date": null,
+    "completed_records": 42155,
+    "completed_decisions": 3776077,
+    "completed_guide_rows": 967241,
+    "completed": [
+      {
+        "date": "2026-07-04",
+        "records": 3076,
+        "decisions": 300154,
+        "guide_rows": 75133,
+        "feature_sha256": "sha256:2ebee461a7935b5a994efaf4563daa3f43b5f713a6c22e02c13754101c75c2b5",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-05",
+        "records": 3052,
+        "decisions": 271145,
+        "guide_rows": 70243,
+        "feature_sha256": "sha256:079c1fa76d7143d58e8d9a43c2f8ca3f5c7e10244430ba519eeb61ce25f04f81",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-06",
+        "records": 2777,
+        "decisions": 229275,
+        "guide_rows": 59406,
+        "feature_sha256": "sha256:094b23c7a94fd71e1c422aa98f0e6b9e0d3f8b72a70eb0a82fd3d8f0a8499a54",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-07",
+        "records": 2099,
+        "decisions": 182797,
+        "guide_rows": 46810,
+        "feature_sha256": "sha256:318c1c1ca4959f745722ed0b68a0a25f06b7a344f38729ac2991345b26ec83f4",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-08",
+        "records": 1727,
+        "decisions": 151384,
+        "guide_rows": 38482,
+        "feature_sha256": "sha256:09d16110e1f9fa529ac0457af371d5154573805a6f7d367116aac5b9283530e1",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-09",
+        "records": 1390,
+        "decisions": 123017,
+        "guide_rows": 32005,
+        "feature_sha256": "sha256:52422fe389b8d60356fd617cd3bdcd5444bb257959fd0c7f2a63fec9573b5bd6",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-10",
+        "records": 1235,
+        "decisions": 108225,
+        "guide_rows": 28503,
+        "feature_sha256": "sha256:ab6492a59e60c71c62735e303b11ec1dedd1f9c2eb6972e498b3309f6649b0d2",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-11",
+        "records": 950,
+        "decisions": 84302,
+        "guide_rows": 22241,
+        "feature_sha256": "sha256:dbc3c33b963678cf5f71fd679d6c9b4beb2e98c75f5ea217626f936a4ba68dab",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-12",
+        "records": 953,
+        "decisions": 86754,
+        "guide_rows": 22261,
+        "feature_sha256": "sha256:86f1d6b37e47e529535159d3f8d2eeef55da84e0e545e597bc422552fce595d6",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-13",
+        "records": 1444,
+        "decisions": 132454,
+        "guide_rows": 34101,
+        "feature_sha256": "sha256:55c475b709078f35217c95636956d06e059436fad4694ada3fda939ba5ed3e7f",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-14",
+        "records": 1375,
+        "decisions": 127462,
+        "guide_rows": 32943,
+        "feature_sha256": "sha256:a3524519756a48b2376180b04cd188ce7411d2fbc34c54a15b7293e6a5c9e1c4",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-15",
+        "records": 1155,
+        "decisions": 101160,
+        "guide_rows": 26237,
+        "feature_sha256": "sha256:1adb7b7251db8dc885d895a1cefc55f536c4747e0fdb192da3cff898888b4d1b",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-16",
+        "records": 1101,
+        "decisions": 94385,
+        "guide_rows": 24381,
+        "feature_sha256": "sha256:0055554c0186928c8b549e839ae3a1f8d4f676cd2717d50380dde1f7e6d91ca2",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-17",
+        "records": 1566,
+        "decisions": 139906,
+        "guide_rows": 36340,
+        "feature_sha256": "sha256:2e7e71b7bc8cdd4862dc87bd88d917870a410dbe0e59fc75759399d01e9ac901",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-18",
+        "records": 2704,
+        "decisions": 240676,
+        "guide_rows": 62416,
+        "feature_sha256": "sha256:760fac5a007c661d0c012710122818483ca5348560e428273d5f05c4c01d7139",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-19",
+        "records": 2474,
+        "decisions": 218609,
+        "guide_rows": 55617,
+        "feature_sha256": "sha256:fb7c61245612ce704c9b7c8ac49bff7f7b0cea9f8b7897389b8dd3c79d7e5703",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-20",
+        "records": 2842,
+        "decisions": 256157,
+        "guide_rows": 64660,
+        "feature_sha256": "sha256:0759f7e28d4215b08314ede94a3d76c995da65d19e2fc6a3603bd0d666326bf0",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-21",
+        "records": 3083,
+        "decisions": 271671,
+        "guide_rows": 69388,
+        "feature_sha256": "sha256:b0a7538afe1e9a2ebe91865c13de8336c60e87af4d49579d89a295037b3f01d3",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-22",
+        "records": 3559,
+        "decisions": 322761,
+        "guide_rows": 81624,
+        "feature_sha256": "sha256:c20fa3c1e4aa0dc3cdb484045905c56b0dd15d5e8ab3e5196337fad827e0980e",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      },
+      {
+        "date": "2026-07-23",
+        "records": 3593,
+        "decisions": 333783,
+        "guide_rows": 84450,
+        "feature_sha256": "sha256:90159ad79b42318de4c98cc2f622ac1ba3c5f540533f4cd71a6ba8faf455679f",
+        "feature_checksum_verified": true,
+        "guide_version": "marnie-grimmsnarl-north-star-v1"
+      }
+    ],
+    "automatic_finalization": {
+      "status": "ready",
+      "service": "pokebot-grimmsnarl-guide-finalize-v1.service",
+      "timer": "pokebot-grimmsnarl-guide-finalize-v1.timer",
+      "poll_interval_seconds": 120,
+      "service_sha256": "5ffbaf2f0a5e79c8b0bc65e6af89642520550de574f5006dc19beeb8c37001cf",
+      "timer_sha256": "cbe972e8664bf968841dbecfc3481d919bd9079416cb8736336710cae5cf51e3",
+      "ready_receipt": "/mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json",
+      "ready_receipt_sha256": "sha256:21c7e69a69a3c381fa514be10fb96a47040878b39238d9087b383dc8173fa42d",
+      "manifest_sha256": "sha256:3f1a6f6c99dbc3592cb3306d14c818fff0bdee5a8549885d2aa1e8d68aeba3d6",
+      "protected_pointer_sha256": "sha256:08bcd3a0d21e301c0b11da09f6c780fda02e80ef71f316da43a66ebd8ed17819",
+      "active_trainer_modified": false
+    }
+  },
+  "inzi_corpus_promotion": {
+    "status": "syncing",
+    "managed_service": "pokebot-grimmsnarl-guide-promote-v1.service",
+    "source_host": "elmo",
+    "bandwidth_limit_kib_per_second": 4000,
+    "state_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-guide-corpus-promotion-v1.json",
+    "destination": "/home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic/marnie-s-grimmsnarl-ex",
+    "promotion_script": "scripts/promote_current_deck_guide_corpus.py",
+    "promotion_script_sha256": "0ed9f6ebb3126aca7ec84af1ff98c85cef8aa0579af569b361dc7eafdb471502",
+    "interrupted_transfer_resumes_same_manifest_partial": true,
+    "atomic_after_all_shard_checksums_pass": true,
+    "active_trainer_modified": false
+  },
+  "future_promotion_contract": {
+    "service_template": "pokebot-current-deck-guide-promote@.service",
+    "service_template_sha256": "43bc449a6ec1269909e28fb9386d3f7eeddecb0cb6f66fa8c67ba63618074bd2",
+    "handoff_contract": "ops/specialist_cycle_handoff_v1.json",
+    "handoff_contract_sha256": "8c1b0b8073cccec522d81783592c7c6a3f0bce379cca7934025164fbf59013a5",
+    "guide_binding_required_before_cpu_pack": true,
+    "active_trainer_modified": false
+  },
+  "prepared_specialist": {
+    "specialist_id": "marnie-s-grimmsnarl-ex",
+    "contract": {
+      "path": "config/deck_guides/marnie-s-grimmsnarl-ex.yaml",
+      "sha256": "7ccc948f2b7c177d8ff2cb6dc40a0c1dd81a9517e38bed7d74de78e72c00e40d"
+    },
+    "teacher": {
+      "path": "poke_bot/grimmsnarl_heuristics.py",
+      "sha256": "c7d858bde821caa7294e93e3b11b57b21ce3e72676996e6e082057f2aa19d16e"
+    },
+    "guide_version": "marnie-grimmsnarl-north-star-v1",
+    "filtered_expert_corpus_guide_rows": 967241
+  },
+  "schedule": {
+    "source": "config/rl_protocol.yaml#/specialist_training/current_deck_guide",
+    "protocol_sha256": "2ab6da728759b493ed7661748dfb1fd900a1d6c785c622f2f7ce37c3ff224467",
+    "bootstrap_ramp": [
+      0.01,
+      0.05
+    ],
+    "maximum_weight": 0.05,
+    "post_bootstrap_behavior": "receipt_backed_hold_or_anneal",
+    "training_games_tune_weight": false,
+    "formal_gate_games_tune_weight": false
+  },
+  "tests": {
+    "environment": "inzi isolated /tmp source copy; production service untouched",
+    "focused_passed": 46,
+    "focused_failed": 0,
+    "commands": [
+      "pytest tests/test_current_deck_guides.py tests/test_alakazam_guide_targets.py selected Alakazam compatibility tests",
+      "pytest tests/test_launch_active_specialist.py tests/test_specialist_archetype_contract.py excluding one pre-existing deployment-path assertion"
+    ],
+    "legacy_alakazam_compatibility_passed": true,
+    "unknown_guide_fails_closed": true,
+    "specialist_selector_mismatch_fails_closed": true,
+    "wrong_deck_signature_masks_targets": true,
+    "adaptive_schedule_is_deterministic": true,
+    "prestage_fails_closed_until_guide_targets_are_materialized": true,
+    "materialization_contract_suite_passed": 27,
+    "guide_handoff_binding_suite_passed": 40,
+    "corpus_promotion_suite_passed": 2
+  },
+  "remaining_activation_checks": [
+    "finish checksum-validating and atomically promoting the guide-labeled corpus on Inzi",
+    "build the derived CPU pack without overlapping the active trainer's memory peak",
+    "bind the exact successor checkpoint, guide contract, and schedule in the handoff receipt"
+  ]
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Resume-safe 25-epoch Alakazam matchup-adapter bootstrap
+After=default.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime
+ExecCondition=/usr/bin/test ! -s /home/inzi/poke-bot-agent/outputs/matchup_adapters/alakazam-iter26-all22-v31/final.pt
+ExecStart=/usr/bin/env PYTHONUNBUFFERED=1 /home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/train_matchup_adapters.py --staged-manifest /home/inzi/poke-bot-agent/data/bootstrap/alakazam-adapter-staged-all22-v31/manifest.json --parent-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721/checkpoints/iter_00026.pt --activation-receipt /home/inzi/poke-bot-agent/outputs/state/alakazam-matchup-adapter-iter26-v31-authorization.json --output-dir /home/inzi/poke-bot-agent/outputs/matchup_adapters/alakazam-iter26-all22-v31 --device cuda:1 --run-name alakazam_iter26_all22_v31 --epochs 25 --games-per-batch 256 --max-decisions-per-batch 32768 --checkpoint-every-steps 25 --log-every-steps 5 --max-process-rss-gib 48 --min-available-ram-gib 12
+Restart=on-failure
+RestartSec=15s
+MemoryHigh=56G
+MemoryMax=64G
+MemorySwapMax=8G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/matchup-adapter-v31.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/matchup-adapter-v31.log
+
+[Install]
+WantedBy=default.target

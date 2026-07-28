@@ -110,11 +110,17 @@ def test_cpu_pack_round_trip_is_durable_and_skips_builder(tmp_path: Path) -> Non
         {"split_seed": 18},
         {"val_frac": 0.2},
         {"max_context": 160},
-        {"packing_schema": DEVICE_CORPUS_PACKING_SCHEMA_VERSION + 1},
     ],
 )
 def test_cpu_pack_key_covers_every_packing_input(overrides: dict) -> None:
     assert _key(**overrides).digest != _key().digest
+
+
+def test_cpu_pack_key_rejects_noncanonical_packing_schema() -> None:
+    with pytest.raises(ValueError, match="packing schema is incompatible"):
+        _key(
+            packing_schema=DEVICE_CORPUS_PACKING_SCHEMA_VERSION + 1
+        ).contract()
 
 
 def test_corrupt_payload_rebuilds_fail_closed(tmp_path: Path) -> None:

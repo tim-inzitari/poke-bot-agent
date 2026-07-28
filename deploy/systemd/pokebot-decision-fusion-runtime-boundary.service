@@ -1,0 +1,17 @@
+[Unit]
+Description=Receipt-backed causal decision-fusion runtime boundary
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1
+EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/scripts/apply_decision_fusion_runtime_managed_boundary.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725 --after-iteration 15 --unit pokebot-pure-rl-trevenant-staged.service --runtime-root /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1 --selector /home/inzi/.config/pokebot/specialist_runtime.env --stop-override /home/inzi/.config/systemd/user/pokebot-pure-rl-trevenant-staged.service.d/zz-decision-fusion-boundary.conf --maintenance-lock /home/inzi/poke-bot-agent/outputs/state/managed-training-maintenance.lock --artifact-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/decision-fusion-runtime-v1 --status /home/inzi/poke-bot-agent/outputs/state/decision-fusion-runtime-boundary-v1.json --protocol /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/config/rl_protocol.yaml --bert-stage /Users/tsinzitari/workspace/poke-bot-agent-decision-fusion-stage-v1/after/poke_bot --gate-contract /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/alakazam_gate_program_v1.json --specialist-archetype dudunsparce --measurement-decks dudunsparce --matchup-runtime-tree /home/inzi/poke-bot-agent/outputs/state/dudunsparce-public-matchup-tree-v33.json --exact-gate-receipt /home/inzi/poke-bot-agent/outputs/state/dudunsparce-decision-fusion-runtime-exact-gate-v1.json --remote-worker-endpoints 192.168.1.143:8765,192.168.1.158:8766 --poll-seconds 0.10 --terminal-boundary
+Restart=no
+TimeoutStartSec=infinity
+LimitNOFILE=65536
+
+[Install]
+WantedBy=default.target

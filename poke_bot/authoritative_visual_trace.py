@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-from . import alakazam_heuristics, archetypes, features
+from . import archetypes, deck_guides, features
 from .dataset import (
     DATASET_CACHE_SCHEMA_VERSION,
     GameSequence,
@@ -51,6 +51,15 @@ from .replay_import import (
     extract_setup_decks,
     seat_value,
 )
+from .strategic_heads import (
+    EXPANDED_STRATEGIC_SCHEMA,
+    TARGET_SCHEMA_DIGEST,
+    StrategicTargetContractError,
+    attach_expanded_strategic_labels,
+    expanded_strategic_sequence_coverage,
+    masked_expanded_strategic_coverage,
+    merge_expanded_strategic_coverages,
+)
 
 
 VISUAL_TRACE_SCHEMA = "pokebot-authoritative-visual-trace/v1"
@@ -66,10 +75,17 @@ TARGET_CONSUMER_CONTRACT = {
         "opp_hidden_remainder": "opp_remainder_head masked BCE",
         "lethal_threat": "lethal_threat_head masked BCE",
         "prize_race": "prize_race_head masked smooth-L1",
+        "current_deck_guide": "policy-logit sparse teacher cross-entropy",
     },
     # These exact private fields are retained for provenance/future audited
     # tasks. They are not inputs and the current trainer has no matching loss.
     "stored_without_loss": ["acting_archetype", "own_prizes"],
+    "expanded_strategic_targets": {
+        "schema": EXPANDED_STRATEGIC_SCHEMA,
+        "digest": TARGET_SCHEMA_DIGEST,
+        "location": "DecisionSample.aux_labels.expanded_strategic",
+        "policy_observation_eligible": False,
+    },
 }
 
 
@@ -516,6 +532,13 @@ def convert_visual_episode(
                 "select_max_count": int(select.get("maxCount", 0)),
                 "legal_action_count": len(options),
                 "aux_labels": aux,
+                # The visual trace's current state is the authoritative full
+                # post-action state for this decision. The strategic target
+                # builder reduces it to a bounded public snapshot and removes
+                # this temporary field before serialization.
+                "transition_after": {
+                    "current": copy.deepcopy(row.get("current")),
+                },
             }
         )
         exact_target_rows[actor] += 1
@@ -535,6 +558,16 @@ def convert_visual_episode(
                 f"{requested} seat {seat} has no validated acting decisions"
             )
         _attach_strategy_labels(seat_steps[seat])
+        try:
+            strategic_contract = attach_expanded_strategic_labels(
+                seat_steps[seat],
+                game_value=seat_value(winner, seat),
+                terminal_complete=True,
+            )
+        except StrategicTargetContractError as exc:
+            raise VisualTraceError(
+                "expanded strategic target construction rejected validated trace"
+            ) from exc
         opponent = 1 - seat
         records.append(
             {
@@ -558,6 +591,7 @@ def convert_visual_episode(
                     "schema": VISUAL_TRACE_SCHEMA,
                     "hidden_targets": HIDDEN_TARGET_SOURCE,
                     "alignment": "pre_full=v[i-1].current;masked_input=v[i].obs",
+                    "expanded_strategic_targets": strategic_contract,
                 },
             }
         )
@@ -579,17 +613,34 @@ def convert_visual_episode(
 
 
 @contextmanager
-def _guide_targets_enabled() -> Iterator[None]:
-    key = "POKEBOT_ALAKAZAM_GUIDE_TARGETS"
-    previous = os.environ.get(key)
-    os.environ[key] = "1"
+def _guide_targets_enabled(guide_id: Optional[str]) -> Iterator[None]:
+    keys = (
+        "POKEBOT_CURRENT_DECK_GUIDE",
+        "POKEBOT_CURRENT_DECK_GUIDE_TARGETS",
+        "POKEBOT_ALAKAZAM_GUIDE_TARGETS",
+    )
+    previous = {key: os.environ.get(key) for key in keys}
+    selected = str(guide_id or "").strip().casefold()
+    if selected:
+        if selected not in deck_guides.supported_ids():
+            raise VisualTraceError(f"unsupported current-deck guide: {selected!r}")
+        os.environ["POKEBOT_CURRENT_DECK_GUIDE"] = selected
+        os.environ["POKEBOT_CURRENT_DECK_GUIDE_TARGETS"] = "1"
+        if selected == "alakazam":
+            os.environ["POKEBOT_ALAKAZAM_GUIDE_TARGETS"] = "1"
+        else:
+            os.environ.pop("POKEBOT_ALAKAZAM_GUIDE_TARGETS", None)
+    else:
+        for key in keys:
+            os.environ.pop(key, None)
     try:
         yield
     finally:
-        if previous is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = previous
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 _ZIP_HANDLES: dict[str, zipfile.ZipFile] = {}
@@ -649,6 +700,7 @@ def _materialize_member_job(
     source: str,
     max_context: int,
     required_archetype: str,
+    guide_id: Optional[str],
 ) -> dict[str, Any]:
     classifier = _WORKER_CLASSIFIER
     if classifier is None:
@@ -669,7 +721,7 @@ def _materialize_member_job(
         sequences: list[GameSequence] = []
         details_total = Counter()
         coverage = Counter()
-        with _guide_targets_enabled():
+        with _guide_targets_enabled(guide_id):
             for record in result.records:
                 sequence, details = _record_to_temporal_sequence(
                     record, max_context=max_context
@@ -714,6 +766,9 @@ def _materialize_member_job(
             "sequences": [],
             "conversion": {},
             "coverage": {},
+            "expanded_strategic_targets": (
+                masked_expanded_strategic_coverage(0)
+            ),
         }
     return {
         "member": member,
@@ -726,6 +781,12 @@ def _materialize_member_job(
         "sequences": sequences,
         "conversion": dict(details_total),
         "coverage": dict(coverage),
+        "expanded_strategic_targets": merge_expanded_strategic_coverages(
+            tuple(
+                expanded_strategic_sequence_coverage(sequence.decisions)
+                for sequence in sequences
+            )
+        ),
     }
 
 
@@ -770,6 +831,8 @@ def _validate_resume(
     max_context: int,
     max_episodes: int,
     required_archetype: str,
+    guide_id: Optional[str],
+    guide_version: Optional[str],
 ) -> Optional[dict[str, Any]]:
     if (
         not output_path.exists()
@@ -800,6 +863,13 @@ def _validate_resume(
         == COMPACT_MODE_TEMPORAL_EXPERT
         and int((receipt.get("schemas") or {}).get("max_context", -1))
         == int(max_context)
+        and (receipt.get("schemas") or {}).get(
+            "expanded_strategic_targets"
+        )
+        == {
+            "schema": EXPANDED_STRATEGIC_SCHEMA,
+            "digest": TARGET_SCHEMA_DIGEST,
+        }
         and receipt.get("target_consumer_contract") == TARGET_CONSUMER_CONTRACT
         and int((receipt.get("selection") or {}).get("max_episodes", -1))
         == int(max_episodes)
@@ -807,6 +877,9 @@ def _validate_resume(
             (receipt.get("selection") or {}).get("acting_seat_archetype") or ""
         ).strip().casefold()
         == required_archetype
+        and (receipt.get("selection") or {}).get("current_deck_guide")
+        == guide_id
+        and (receipt.get("schemas") or {}).get("guide") == guide_version
     )
     if not expected:
         raise VisualTraceError("existing receipt contract does not match this run")
@@ -825,8 +898,32 @@ def _validate_resume(
         or metadata.get("classifier_sha256") != classifier_digest
         or metadata.get("visual_trace_schema") != VISUAL_TRACE_SCHEMA
         or metadata.get("target_consumer_contract") != TARGET_CONSUMER_CONTRACT
+        or metadata.get("expanded_strategic_targets")
+        != {
+            "schema": EXPANDED_STRATEGIC_SCHEMA,
+            "digest": TARGET_SCHEMA_DIGEST,
+        }
+        or (metadata.get("stats") or {}).get(
+            "expanded_strategic_targets"
+        )
+        != (receipt.get("stats") or {}).get("expanded_strategic_targets")
     ):
         raise VisualTraceError("existing feature metadata contract is invalid")
+    expanded = (receipt.get("stats") or {}).get(
+        "expanded_strategic_targets"
+    )
+    try:
+        validated_expanded = merge_expanded_strategic_coverages((expanded,))
+    except StrategicTargetContractError as exc:
+        raise VisualTraceError(
+            "existing expanded strategic target coverage is invalid"
+        ) from exc
+    if int(validated_expanded["decisions"]) != int(
+        (receipt.get("stats") or {}).get("decisions_kept", -1)
+    ):
+        raise VisualTraceError(
+            "existing expanded strategic target coverage count is invalid"
+        )
     expected_records = int((receipt.get("stats") or {}).get("records_kept", -1))
     if sum(1 for _ in iter_feature_shard(output_path)) != expected_records:
         raise VisualTraceError("existing feature shard count is invalid")
@@ -847,6 +944,7 @@ def materialize_day(
     min_available_bytes: int = 8 * 1024**3,
     min_records: int = 1,
     required_archetype: str = REQUIRED_ARCHETYPE,
+    current_deck_guide: Optional[str] = "alakazam",
 ) -> dict[str, Any]:
     """Build one immutable, checksummed, bounded-memory feature shard."""
     archive_path = Path(archive_path).resolve()
@@ -854,6 +952,21 @@ def materialize_day(
     receipt_path = _receipt_path(output_path)
     metadata_path = _metadata_path(output_path)
     requested = str(required_archetype).strip().casefold()
+    guide_id = str(current_deck_guide or "").strip().casefold() or None
+    if guide_id is not None and guide_id not in deck_guides.supported_ids():
+        raise ValueError(f"unsupported current-deck guide: {guide_id!r}")
+    previous_guide = os.environ.get("POKEBOT_CURRENT_DECK_GUIDE")
+    try:
+        if guide_id is None:
+            os.environ.pop("POKEBOT_CURRENT_DECK_GUIDE", None)
+        else:
+            os.environ["POKEBOT_CURRENT_DECK_GUIDE"] = guide_id
+        guide_version = deck_guides.guide_version()
+    finally:
+        if previous_guide is None:
+            os.environ.pop("POKEBOT_CURRENT_DECK_GUIDE", None)
+        else:
+            os.environ["POKEBOT_CURRENT_DECK_GUIDE"] = previous_guide
     if not requested:
         raise ValueError("required_archetype cannot be empty")
     if not archive_path.is_file():
@@ -875,6 +988,8 @@ def materialize_day(
             max_context=max_context,
             max_episodes=max_episodes,
             required_archetype=requested,
+            guide_id=guide_id,
+            guide_version=guide_version,
         )
         if reused is not None:
             return {**reused, "resumed": True}
@@ -928,6 +1043,7 @@ def materialize_day(
         "drop_reasons": {},
         "drop_reason_examples": {},
         "target_coverage": {},
+        "expanded_strategic_targets": masked_expanded_strategic_coverage(0),
         "seat_labels": {},
         "label_methods": {},
     }
@@ -947,8 +1063,13 @@ def materialize_day(
         "visual_trace_schema": VISUAL_TRACE_SCHEMA,
         "classifier_sha256": classifier_digest,
         "max_context": int(max_context),
-        "guide_version": alakazam_heuristics.GUIDE_VERSION,
+        "guide_id": guide_id,
+        "guide_version": guide_version,
         "target_consumer_contract": TARGET_CONSUMER_CONTRACT,
+        "expanded_strategic_targets": {
+            "schema": EXPANDED_STRATEGIC_SCHEMA,
+            "digest": TARGET_SCHEMA_DIGEST,
+        },
     }
 
     def account(result: dict[str, Any], stream: Any) -> None:
@@ -1000,6 +1121,14 @@ def materialize_day(
         for key, value in result["coverage"].items():
             coverage = stats["target_coverage"]
             coverage[key] = int(coverage.get(key, 0)) + int(value)
+        stats["expanded_strategic_targets"] = (
+            merge_expanded_strategic_coverages(
+                (
+                    stats["expanded_strategic_targets"],
+                    result["expanded_strategic_targets"],
+                )
+            )
+        )
 
     try:
         with partial.open("xb") as stream:
@@ -1009,7 +1138,12 @@ def materialize_day(
                 for member in members:
                     account(
                         _materialize_member_job(
-                            str(archive_path), member, source, max_context, requested
+                            str(archive_path),
+                            member,
+                            source,
+                            max_context,
+                            requested,
+                            guide_id,
                         ),
                         stream,
                     )
@@ -1034,6 +1168,7 @@ def materialize_day(
                                 source,
                                 max_context,
                                 requested,
+                                guide_id,
                             )
                         )
                         next_member += 1
@@ -1097,11 +1232,16 @@ def materialize_day(
                 "feature": features.FEATURE_SCHEMA_VERSION,
                 "compact_mode": COMPACT_MODE_TEMPORAL_EXPERT,
                 "max_context": int(max_context),
-                "guide": alakazam_heuristics.GUIDE_VERSION,
+                "guide": guide_version,
+                "expanded_strategic_targets": {
+                    "schema": EXPANDED_STRATEGIC_SCHEMA,
+                    "digest": TARGET_SCHEMA_DIGEST,
+                },
             },
             "selection": {
                 "acting_seat_archetype": requested,
                 "max_episodes": int(max_episodes),
+                "current_deck_guide": guide_id,
             },
             "target_consumer_contract": TARGET_CONSUMER_CONTRACT,
             "output": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import random
 import sys
@@ -149,6 +150,7 @@ class PolicyAgent:
     game_watchdog_reserve_s: float = 30.0
     expected_search_decisions: int = 64
     max_sims: Optional[int] = None
+    min_trusted_sims: Optional[int] = None
     move_time_s: Optional[float] = None
     rng: random.Random = field(default_factory=random.Random)
     last_result: Optional[MCTSResult] = None
@@ -176,6 +178,9 @@ class PolicyAgent:
     _previous_action_token: Optional[features.SparseVector] = None
     _fail_closed_logged: bool = False
     _matchup_shadow_failed_logged: bool = False
+    #: Set only when trusted deployment search failed and the exact same
+    #: information state was re-run through the frozen greedy policy.
+    last_search_fallback_reason: Optional[str] = None
     belief_history: PublicBeliefHistory = field(default_factory=PublicBeliefHistory)
     #: Behavior-inert public-prefix audit. Recognized routes are traced per game
     #: and per search branch, but every model invocation remains explicitly -1.
@@ -193,6 +198,14 @@ class PolicyAgent:
     def __post_init__(self) -> None:
         if int(self.expected_search_decisions) < 1:
             raise ValueError("expected_search_decisions must be positive")
+        if self.min_trusted_sims is not None:
+            if int(self.min_trusted_sims) < 1:
+                raise ValueError("min_trusted_sims must be positive")
+            if (
+                self.max_sims is not None
+                and int(self.min_trusted_sims) > int(self.max_sims)
+            ):
+                raise ValueError("min_trusted_sims cannot exceed max_sims")
         if self.device is None:
             if self.model is not None:
                 self.device = next(self.model.parameters()).device
@@ -286,6 +299,84 @@ class PolicyAgent:
             return router.snapshot()
         return router.audit.snapshot()
 
+    def trusted_search_or_greedy_select(
+        self,
+        obs_dict: dict,
+        *,
+        search: bool,
+    ) -> list[int]:
+        """Run trusted search transactionally, falling back to greedy policy.
+
+        Belief search mutates temporal/public-history state before it can know
+        whether the minimum trusted simulation floor will fit its deadline.
+        Snapshotting that small per-game state lets a deadline or search error
+        replay the same information state through the frozen greedy policy,
+        rather than returning a random legal action or double-appending the
+        observation to temporal history.
+        """
+
+        if not search or not self.use_mcts:
+            prior_use_mcts = self.use_mcts
+            self.use_mcts = False
+            self.last_search_fallback_reason = None
+            try:
+                return self(obs_dict)
+            finally:
+                self.use_mcts = prior_use_mcts
+
+        snapshot = {
+            "board_history": list(self.board_history),
+            "previous_action_history": list(self.previous_action_history),
+            "kv_cache": self._kv_cache,
+            "previous_action_token": copy.deepcopy(self._previous_action_token),
+            "last_result": self.last_result,
+            "belief_history": copy.deepcopy(self.belief_history),
+            "router": self._matchup_adapter_shadow_router.fork(),
+            "clock": copy.deepcopy(self.clock),
+            "targets_length": len(self.targets),
+            "fail_closed_count": self.fail_closed_count,
+            "fail_closed_logged": self._fail_closed_logged,
+            "matchup_shadow_failed_logged": self._matchup_shadow_failed_logged,
+            "rng_state": self.rng.getstate(),
+        }
+        prior_strict = self.strict_runtime
+        self.strict_runtime = True
+        self.last_search_fallback_reason = None
+        try:
+            return self(obs_dict)
+        except Exception as exc:
+            self.board_history = snapshot["board_history"]
+            self.previous_action_history = snapshot[
+                "previous_action_history"
+            ]
+            self._kv_cache = snapshot["kv_cache"]
+            self._previous_action_token = snapshot["previous_action_token"]
+            self.last_result = snapshot["last_result"]
+            self.belief_history = snapshot["belief_history"]
+            self._matchup_adapter_shadow_router = snapshot["router"]
+            self.clock = snapshot["clock"]
+            del self.targets[snapshot["targets_length"] :]
+            self.fail_closed_count = snapshot["fail_closed_count"]
+            self._fail_closed_logged = snapshot["fail_closed_logged"]
+            self._matchup_shadow_failed_logged = snapshot[
+                "matchup_shadow_failed_logged"
+            ]
+            self.rng.setstate(snapshot["rng_state"])
+            self.last_search_fallback_reason = (
+                f"{type(exc).__name__}: {exc}"
+            )
+            prior_use_mcts = self.use_mcts
+            self.use_mcts = False
+            try:
+                # Keep strict runtime enabled for the frozen-policy fallback.
+                # If greedy inference itself fails, propagate to the outer
+                # submission fail-safe rather than silently choosing random.
+                return self(obs_dict)
+            finally:
+                self.use_mcts = prior_use_mcts
+        finally:
+            self.strict_runtime = prior_strict
+
     def _matchup_model_route(self) -> int:
         """Return a causal public route; checkpoint config remains final gate."""
 
@@ -364,9 +455,10 @@ class PolicyAgent:
         root_seat = int(obs.current.yourIndex)
         cached_state = None
         cached_spatial = None
+        cached_fusion_state = None
 
         def score(candidates: list[list[int]]) -> list[float]:
-            nonlocal cached_state, cached_spatial
+            nonlocal cached_state, cached_spatial, cached_fusion_state
             options = features.build_option_tokens(obs_dict, candidates)
             matchup_route = self._matchup_model_route()
             if self.leaf_backend is not None:
@@ -421,6 +513,7 @@ class PolicyAgent:
                 cached_state = self.model.matchup_policy_value_state(
                     model_out["state_vec"], [matchup_route]
                 )
+                cached_fusion_state = model_out["state_vec"]
                 cached_spatial = model_out["spatial_memory"]
                 logits = model_out["policy_logits"][0, : len(candidates)]
             else:
@@ -429,6 +522,7 @@ class PolicyAgent:
                     cached_spatial,
                     cached_state,
                     n_options=[len(candidates)],
+                    decision_fusion_state_vec=cached_fusion_state,
                 )[0, : len(candidates)]
             probs = torch.softmax(logits.float(), dim=-1)
             return [float(v) for v in probs.cpu().tolist()]
@@ -548,6 +642,11 @@ class PolicyAgent:
         self.board_history = self.board_history[-max_context:]
         self.previous_action_history = self.previous_action_history[-max_context:]
         max_sims = int(self.max_sims or max(128, config.SEARCH.sims_per_move))
+        min_trusted_sims = int(
+            self.min_trusted_sims
+            if self.min_trusted_sims is not None
+            else min(128, max_sims)
+        )
         configured_move_time = float(
             self.move_time_s
             if self.move_time_s is not None
@@ -565,7 +664,7 @@ class PolicyAgent:
             device=self.device,
             leaf_backend=self.leaf_backend,
             rng=self.rng,
-            min_trusted_sims=128,
+            min_trusted_sims=min_trusted_sims,
             max_context=max_context,
             matchup_shadow_router=(
                 self._matchup_adapter_shadow_router.fork()
@@ -665,9 +764,14 @@ class PolicyAgent:
             self.fail_closed_count += 1
             if not self._fail_closed_logged:
                 self._fail_closed_logged = True
+                fallback = (
+                    "raising for transactional frozen-greedy fallback"
+                    if self.strict_runtime
+                    else "using random legal select"
+                )
                 print(
                     f"[PolicyAgent] FAIL-CLOSED (no search/leaf): "
-                    f"{type(exc).__name__}: {exc} — using random legal select. "
+                    f"{type(exc).__name__}: {exc} — {fallback}. "
                     f"use_mcts={self.use_mcts} leaf_backend="
                     f"{type(self.leaf_backend).__name__ if self.leaf_backend else None}",
                     file=sys.stderr,
@@ -710,8 +814,27 @@ def play_game(
             seat = int(cur.get("yourIndex", 0))
             agent = agent0 if seat == 0 else agent1
             try:
+                target_rows = getattr(agent, "targets", None)
+                target_count_before = (
+                    len(target_rows) if isinstance(target_rows, list) else None
+                )
                 select = agent(obs)
-                obs = cg_env.battle_select(select)
+                next_obs = cg_env.battle_select(select)
+                if (
+                    target_count_before is not None
+                    and isinstance(target_rows, list)
+                    and len(target_rows) == target_count_before + 1
+                ):
+                    # Training-only transition evidence.  The strategic target
+                    # builder consumes this exact post-action public snapshot
+                    # before records are serialized; it is never a policy
+                    # feature and is deleted after target materialization.
+                    from .strategic_heads import public_transition_snapshot
+
+                    target_rows[-1]["transition_after"] = (
+                        public_transition_snapshot(next_obs, actor_seat=seat)
+                    )
+                obs = next_obs
             except BaseException as exc:  # noqa: BLE001 - includes TimeoutError/alarm
                 failed_seat = seat
                 error = f"{type(exc).__name__}: {exc}"

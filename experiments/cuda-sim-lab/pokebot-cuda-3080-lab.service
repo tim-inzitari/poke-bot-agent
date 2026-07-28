@@ -1,0 +1,21 @@
+[Unit]
+Description=RTX 3080 Ti CUDA simulator parity and throughput lab (OUT OF FLEET)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/cuda-sim-lab
+Environment=CUDA_VISIBLE_DEVICES=GPU-72bf89ff-6e52-01d4-a49b-90a7addfd632
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/cuda-sim-lab/cuda_simulator_stage2.py --json-out /home/inzi/cuda-sim-lab/outputs/status.json --sizes 1048576,4194304,8388608 --steps 64 --parity-states 2048 --parity-steps 96
+Restart=always
+RestartSec=3
+MemoryHigh=6G
+MemoryMax=8G
+CPUQuota=200%%
+CPUWeight=50
+IOWeight=50
+StandardOutput=append:/home/inzi/cuda-sim-lab/outputs/cuda-sim-lab.log
+StandardError=append:/home/inzi/cuda-sim-lab/outputs/cuda-sim-lab.log
+
+[Install]
+WantedBy=default.target

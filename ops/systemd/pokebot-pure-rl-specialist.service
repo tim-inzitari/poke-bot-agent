@@ -8,6 +8,7 @@ StartLimitBurst=3
 # `restart` requests from competing controllers; genuine process failures and
 # the trainer's normal terminal exit remain unaffected.
 RefuseManualStop=yes
+OnSuccess=pokebot-specialist-passed-gate-handler.service
 
 [Service]
 Type=simple
@@ -18,6 +19,11 @@ EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
 # full command from the single runtime registry. No trainer arguments belong in
 # this unit or in systemd drop-ins.
 ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist.py --check
+# A specialist is not production-ready unless its terminal pass can be
+# frozen, packaged, submitted, and handed off. Validate that path before
+# spending any RL iterations so a missing transition input cannot strand a
+# successfully completed specialist.
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist_gate_handler.py --check
 ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist.py
 
 Restart=on-failure

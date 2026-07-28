@@ -1,0 +1,390 @@
+{
+  "acceptance": {
+    "aggregate_gate_threshold": 0.4,
+    "all_teacher_identities_required": true,
+    "balanced_corpus_identity_required": true,
+    "checksum_required": true,
+    "confidence": 0.9,
+    "confidence_intervals_diagnostic_only": true,
+    "fail_closed": true,
+    "games_per_teacher": 80,
+    "gate_threshold": 0.35,
+    "gate_thresholds_authoritative_source": "config/rl_protocol.yaml#/shared_core_refresh/acceptance/gameplay_regression",
+    "neutral_adapter_audit_required": true,
+    "protected_checkpoint_required": true,
+    "regression_evaluation_against_each_teacher_required": true,
+    "regression_result": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v7-fused-v1-attempt5-gameplay-regression.json",
+    "reproducibility_receipt_required": true
+  },
+  "core_failure_fallback": {
+    "enabled": true,
+    "behavior": "continue_with_latest_accepted_core",
+    "continue_refresh_after_each_specialist": true,
+    "version": 6,
+    "family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6",
+    "checkpoint_digest": "sha256:e1966ea311657c9a68f918da0f9276df6d74258216f38837a294d1f9c1cb2490",
+    "ready_receipt": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v6-ready.json",
+    "owner_decision": "GOAL.md#/decision-ledger/revision-19"
+  },
+  "core_refresh": {
+    "balanced_corpus": {
+      "checksum": "sha256:1c175a51cb06e9d95474ffcda642435f2bb7472afe4bcdadaad585ac00106892",
+      "pointer": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/core-balanced-v6/PROTECTED_CORE_CORPUS.json"
+    },
+    "cpu_pack_root": "/home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/deck-agnostic-core-cumulative-v7",
+    "decision_fusion": {
+      "absent_deck_guide_behavior": "exact_bypass",
+      "canonical_config": "config/rl_protocol.yaml#/specialist_training/decision_fusion",
+      "canonical_config_sha256": "sha256:9e3e28444c2cbed83d5a532adb66e0aa0a0711f29c688f7d55c2460940e8a896",
+      "future_specialists_required": true,
+      "head_count": 17,
+      "matchup_adapter_behavior": "causal_route_gated",
+      "required_heads": [
+        "value",
+        "archetype",
+        "opponent_hand",
+        "opponent_remainder",
+        "lethal_threat",
+        "prize_race",
+        "action_q",
+        "action_type",
+        "action_target",
+        "action_resource",
+        "action_utility",
+        "tactical_outcomes",
+        "opponent_response",
+        "resource_forecast",
+        "game_phase",
+        "outcome_distribution",
+        "remaining_turns"
+      ],
+      "runtime_required_after_bootstrap_validation": true,
+      "schema": "poke_bot.causal_decision_fusion/v1",
+      "source_digest": "sha256:f89c30dc0ccc6c424973b649b91a0e544ae21e4dad1f50a46f85518131b16347",
+      "training_mode": "joint_full_model"
+    },
+    "direct_checkpoint_tensor_sources_exclude": [],
+    "early_stop_min_delta": 0.0001,
+    "early_stop_patience": 5,
+    "episode_disjoint_validation": true,
+    "expanded_heads": {
+      "activation_boundary": "next_safe_v6_cumulative_core_and_specialist_handoff",
+      "architecture_schema": "poke_bot.expanded_strategic_heads/v1",
+      "canonical_config": "config/rl_protocol.yaml#/specialist_training/expanded_strategic_heads",
+      "canonical_config_sha256": "sha256:9e3e28444c2cbed83d5a532adb66e0aa0a0711f29c688f7d55c2460940e8a896",
+      "checkpoint_and_receipt_metadata_required": true,
+      "current_live_v5_must_remain_unchanged": true,
+      "exact_bootstrap_epochs": 25,
+      "flat_policy_remains_authoritative": true,
+      "initial_runtime_mode": "shadow_only",
+      "runtime_enabled_heads": [],
+      "schedule": {
+        "checkpoint_contract_schema": "poke_bot.expanded_head_training/v1",
+        "exact_epoch_count_may_not_be_shortened": true,
+        "existing_enabled_heads_train_in_every_epoch": true,
+        "schema": "poke_bot.expanded_head_schedule/v1",
+        "stages": [
+          {
+            "enabled_heads": [
+              "action_q",
+              "action_type",
+              "action_target",
+              "action_resource",
+              "action_utility"
+            ],
+            "epochs": [
+              1,
+              5
+            ],
+            "index": 1
+          },
+          {
+            "enabled_heads": [
+              "action_q",
+              "action_type",
+              "action_target",
+              "action_resource",
+              "action_utility",
+              "tactical_outcome",
+              "opponent_response"
+            ],
+            "epochs": [
+              6,
+              10
+            ],
+            "index": 2
+          },
+          {
+            "enabled_heads": [
+              "action_q",
+              "action_type",
+              "action_target",
+              "action_resource",
+              "action_utility",
+              "tactical_outcome",
+              "opponent_response",
+              "resource_forecast",
+              "game_phase"
+            ],
+            "epochs": [
+              11,
+              15
+            ],
+            "index": 3
+          },
+          {
+            "enabled_heads": [
+              "action_q",
+              "action_type",
+              "action_target",
+              "action_resource",
+              "action_utility",
+              "tactical_outcome",
+              "opponent_response",
+              "resource_forecast",
+              "game_phase",
+              "outcome_distribution",
+              "remaining_turns"
+            ],
+            "epochs": [
+              16,
+              20
+            ],
+            "index": 4
+          },
+          {
+            "enabled_heads": [
+              "action_q",
+              "action_type",
+              "action_target",
+              "action_resource",
+              "action_utility",
+              "tactical_outcome",
+              "opponent_response",
+              "resource_forecast",
+              "game_phase",
+              "outcome_distribution",
+              "remaining_turns"
+            ],
+            "epochs": [
+              21,
+              25
+            ],
+            "index": 5
+          }
+        ],
+        "target_schema": "poke_bot.expanded_strategic_targets/v2",
+        "total_epochs": 25,
+        "weights": {
+          "action_q": 0.1,
+          "action_resource": 0.025,
+          "action_target": 0.025,
+          "action_type": 0.05,
+          "action_utility": 0.05,
+          "game_phase": 0.025,
+          "opponent_response": 0.05,
+          "outcome_distribution": 0.05,
+          "remaining_turns": 0.025,
+          "resource_forecast": 0.025,
+          "tactical_outcome": 0.05
+        }
+      },
+      "schedule_digest": "sha256:e471f58915df0cbe88b837de6fbe532e6416aa028a538b92a11ec788621f45dc",
+      "schedule_is_cumulative": true,
+      "schedule_schema": "poke_bot.expanded_head_schedule/v1",
+      "schema": "poke_bot.expanded_head_training/v1",
+      "source_digest": "sha256:bdbc788291d317954923460a85cf47e5c9c4b3a0ca8d28fddbb4c668cbd99ab0",
+      "target_schema": "poke_bot.expanded_strategic_targets/v2",
+      "target_schema_digest": "sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f"
+    },
+    "family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v7_fused_v1_attempt5",
+    "initialization": {
+      "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6/model.pt",
+      "checksum": "sha256:e1966ea311657c9a68f918da0f9276df6d74258216f38837a294d1f9c1cb2490"
+    },
+    "matchup_adapter_policy": "zero_output_bit_identical",
+    "max_epochs": 25,
+    "minimum_decisions": 500000,
+    "ready_receipt": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v7-fused-v1-attempt5-ready.json",
+    "refresh_attempt": 5,
+    "requested_decisions_per_batch": 12288,
+    "run_dir": "/home/inzi/poke-bot-agent/outputs/bootstrap/deck-agnostic-core-cumulative-v7-fused-v1-attempt5",
+    "run_name": "deck_agnostic_core_cumulative_v7_fused_v1_attempt5_20260723",
+    "split_seed": 20260727,
+    "teacher_balance": "as_evenly_as_integer_counts_permit",
+    "teacher_behavior_distillation": {
+      "causal_inputs_only": true,
+      "enabled": true,
+      "loss_weight": 0.5,
+      "parameter_space_diagnostics": [
+        {
+          "checksum": "sha256:d28c8604c7e32c7d9367f69c6ab81468d36b278094588c639692944d00b4d91d",
+          "path": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v7-fused-v1-attempt4-parent-diagnostic-gameplay-regression.json"
+        },
+        {
+          "checksum": "sha256:a85dfc926b55425fd2f621974192224b8265422d705b8f9429252fc15a528604",
+          "path": "/home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v7-fused-v1-attempt4-grim-anchor-diagnostic-gameplay-regression.json"
+        }
+      ],
+      "schema": "poke_bot.teacher_behavior_distillation/v1",
+      "target": "matching_archetype_frozen_teacher_greedy_action"
+    },
+    "teachers": [
+      {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/alakazam-owner-accepted-iter39-v1/model.pt",
+        "checksum": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+        "mode": "frozen_inference_only",
+        "specialist_id": "alakazam"
+      },
+      {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir-protocol-gate-pass-v1/model.pt",
+        "checksum": "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef",
+        "mode": "frozen_inference_only",
+        "specialist_id": "dragapult-dusknoir"
+      },
+      {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce-protocol-gate-pass-v1/model.pt",
+        "checksum": "sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a",
+        "mode": "frozen_inference_only",
+        "specialist_id": "dudunsparce"
+      },
+      {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/hops-trevenant-protocol-gate-pass-v1/model.pt",
+        "checksum": "sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1",
+        "mode": "frozen_inference_only",
+        "specialist_id": "hops-trevenant"
+      },
+      {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/lucario-protocol-gate-pass-v1/model.pt",
+        "checksum": "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd",
+        "mode": "frozen_inference_only",
+        "specialist_id": "lucario"
+      },
+      {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex-protocol-gate-pass-v1/model.pt",
+        "checksum": "sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac",
+        "mode": "frozen_inference_only",
+        "specialist_id": "marnie-s-grimmsnarl-ex"
+      },
+      {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/starmie-protocol-gate-pass-v1/model.pt",
+        "checksum": "sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8",
+        "mode": "frozen_inference_only",
+        "specialist_id": "starmie"
+      }
+    ],
+    "version": 7
+  },
+  "current_specialist_is_unchanged": true,
+  "gate_materialization": {
+    "base_frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/frozen_specialist_registry_v1.json",
+    "base_gate_contract": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/alakazam_gate_program_v1.json",
+    "baseline_manifest": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/baselines/manifest.json",
+    "baseline_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/baselines",
+    "fleet_sync": [
+      {
+        "baseline_root": "/mnt/Main/main/poke-bot-agent/baselines",
+        "container": "poke-bot-truenas-worker",
+        "host": "elmo"
+      },
+      {
+        "baseline_root": "/Users/tsinzitari/workspace/poke-bot-agent/baselines",
+        "container": null,
+        "host": "192.168.1.158"
+      }
+    ],
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-splus-gate-materialization.json"
+  },
+  "next_specialist": {
+    "bootstrap_epochs": 25,
+    "corpus_root": "/home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic",
+    "generated_handoff_contract": "/home/inzi/poke-bot-agent/outputs/state/post-marnie-s-grimmsnarl-ex-garchomp-core-v6-sequential-handoff.json",
+    "hot_start_core_version": 6,
+    "id": null,
+    "minimum_decisions": 20000,
+    "minimum_decisions_by_specialist": {
+      "dragapult-dusknoir": 10000,
+      "dudunsparce": 2000
+    },
+    "prestage_receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
+    "selection": "refresh_meta_then_choose_next_unfinished_specialist",
+    "selection_receipt": "/home/inzi/poke-bot-agent/outputs/state/post-marnie-s-grimmsnarl-ex-next-specialist-selection-core-v6-fallback.json",
+    "start_blocked_until_core_ready_receipt": true,
+    "state": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/specialists.yaml",
+    "strict_priority_prefix": [
+      "dragapult-dusknoir",
+      "dudunsparce",
+      "marnie-s-grimmsnarl-ex"
+    ]
+  },
+  "runtime": {
+    "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster18-v39.audit.json",
+    "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/frozen_specialist_registry_v1.json",
+    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-roster18-v39-ready.json",
+    "future_assets_scope": "router_only",
+    "gate_handler_service": "pokebot-specialist-passed-gate-handler.service",
+    "handoff_service": "pokebot-specialist-cycle-handoff.service",
+    "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster18-v39.inactive.json",
+    "lock": "/home/inzi/.local/state/pokebot/post-marnie-s-grimmsnarl-ex-core-v6-fallback-handoff.lock",
+    "matchup_v6": {
+      "enabled": true,
+      "family_suffix": "_matchup_v6",
+      "fleet": {
+        "bert": {
+          "endpoint": "192.168.1.158:8766",
+          "expected_leaves": 4,
+          "expected_workers": 16,
+          "host": "192.168.1.158",
+          "runtime_root": "/Users/tsinzitari/workspace/poke-bot-agent",
+          "service_label": "com.pokebot.remote-worker-8766"
+        },
+        "elmo": {
+          "compose_files": [
+            "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.host.yml",
+            "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.production.yml"
+          ],
+          "container": "poke-bot-truenas-worker",
+          "endpoint": "192.168.1.143:8765",
+          "expected_leaves": 4,
+          "expected_workers": 36,
+          "host": "elmo",
+          "image": "poke-bot-truenas-worker:matchup-v38-record-schema-runtime",
+          "service": "worker"
+        },
+        "receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v1.json",
+        "registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/matchup_adapter_roster.json",
+        "source_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1"
+      },
+      "receipt_root": "/home/inzi/poke-bot-agent/outputs/state",
+      "registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/matchup_adapter_roster.json",
+      "staging_root": "/home/inzi/poke-bot-agent/outputs/staging/matchup-v6-runtime-families"
+    },
+    "next_handoff_service": "pokebot-specialist-cycle-handoff.service",
+    "population_handoff_service": "pokebot-population-round-robin-handoff.service",
+    "population_training_service": "pokebot-population-round-robin.service",
+    "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
+    "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
+    "runtime_registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/specialist_runtime_registry_v1.json",
+    "runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/trevenant-public-matchup-tree-iter5-v1.json",
+    "selector_env": "/home/inzi/.config/pokebot/specialist_runtime.env",
+    "state": "/home/inzi/poke-bot-agent/outputs/state/post-marnie-s-grimmsnarl-ex-core-v6-fallback-handoff.json",
+    "state_root": "/home/inzi/poke-bot-agent/outputs/state",
+    "training_service": "pokebot-pure-rl-trevenant-staged.service"
+  },
+  "schema": "poke_bot.post_specialist_core_refresh_handoff/v1",
+  "status": "staged",
+  "trigger": {
+    "completion_authority": "measured_gate_pass",
+    "gate_contract": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/alakazam_gate_program_v1.json",
+    "gate_marker_name": "SPECIALIST_GATE_PASSED.marnie-s-grimmsnarl-ex-splus-v1",
+    "handler_state": "/home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-passed-gate-handler-v1.json",
+    "minimum_completed_iteration": 5,
+    "passed_family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex-protocol-gate-pass-v1",
+    "requires_exact_frozen_checkpoint": true,
+    "requires_exact_frozen_passing_checkpoint": true,
+    "requires_training_complete": true,
+    "run_dir": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_marnie-s-grimmsnarl-ex_temporal1_8k_v1_20260723",
+    "specialist_id": "marnie-s-grimmsnarl-ex",
+    "training_service": "pokebot-pure-rl-trevenant-staged.service"
+  }
+}

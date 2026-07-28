@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a resumable date window of authoritative Alakazam expert shards."""
+"""Build a resumable date window of authoritative specialist expert shards."""
 
 from __future__ import annotations
 
@@ -68,6 +68,12 @@ def main() -> int:
     parser.add_argument("--max-context", type=int, default=config.MODEL.max_context)
     parser.add_argument("--memory-floor-gib", type=float, default=16.0)
     parser.add_argument("--min-records", type=int, default=1)
+    parser.add_argument("--required-archetype", default="alakazam")
+    parser.add_argument(
+        "--current-deck-guide",
+        default="alakazam",
+        help="Guide registry ID, or an empty string to generate no guide targets.",
+    )
     args = parser.parse_args()
 
     days = _dates(args.start, args.end)
@@ -105,7 +111,7 @@ def main() -> int:
         try:
             for day in days:
                 archive = archive_dir / f"pokemon-tcg-ai-battle-episodes-{day}.zip"
-                output = out_dir / f"alakazam-{day}.features"
+                output = out_dir / f"{args.required_archetype}-{day}.features"
                 if not archive.is_file():
                     raise FileNotFoundError(archive)
                 _atomic_json(
@@ -128,6 +134,8 @@ def main() -> int:
                     resume=True,
                     min_available_bytes=int(args.memory_floor_gib * 1024**3),
                     min_records=int(args.min_records),
+                    required_archetype=args.required_archetype,
+                    current_deck_guide=args.current_deck_guide or None,
                 )
                 completed.append(
                     {

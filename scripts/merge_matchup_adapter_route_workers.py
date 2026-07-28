@@ -139,6 +139,7 @@ def main() -> int:
     if source_step < 0:
         raise ValueError("source checkpoint has no optimizer step")
     final_payload: dict[str, Any] | None = None
+    best_payload: dict[str, Any] = copy.deepcopy(source)
 
     for worker in workers:
         worker_routes = {int(route) for route in worker.get("routes") or ()}
@@ -266,7 +267,7 @@ def main() -> int:
         payload["extra"] = payload_extra
         checkpoint.atomic_torch_save(payload, output / "latest.pt")
         if improved:
-            checkpoint.atomic_torch_save(payload, output / "best.pt")
+            best_payload = copy.deepcopy(payload)
         final_payload = payload
         print(
             f"[adapter-fleet-merge] epoch={epoch_after}/{target_epoch} "
@@ -276,6 +277,10 @@ def main() -> int:
 
     if final_payload is None:
         raise RuntimeError("fleet merge produced no remaining epochs")
+    # `best.pt` is part of the publication transaction even when no post-source
+    # epoch beats the checksum-pinned boundary checkpoint. Always emit the
+    # actual best payload rather than leaving a missing or stale file behind.
+    checkpoint.atomic_torch_save(best_payload, output / "best.pt")
     checkpoint.atomic_torch_save(final_payload, output / "final.pt")
     for name, value in original_base.items():
         if not torch.equal(final_payload["model_state_dict"][name], value):

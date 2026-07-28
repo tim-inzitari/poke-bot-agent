@@ -59,6 +59,9 @@ def main() -> int:
     parser.add_argument("--belief-card-vocab", type=int, required=True)
     parser.add_argument("--min-decisions", type=int, default=100_000)
     parser.add_argument("--archetype", default="alakazam")
+    parser.add_argument("--pack-workers", type=int, default=1)
+    parser.add_argument("--pack-memory-reserve-gib", type=float, default=12.0)
+    parser.add_argument("--pack-disk-reserve-gib", type=float, default=16.0)
     parser.add_argument(
         "--allow-unprotected",
         action="store_true",
@@ -84,6 +87,9 @@ def main() -> int:
         val_frac=float(args.val_frac),
         max_context=int(args.max_context),
         belief_card_vocab=int(args.belief_card_vocab),
+        pack_workers=int(args.pack_workers),
+        pack_memory_reserve_gib=float(args.pack_memory_reserve_gib),
+        pack_disk_reserve_gib=float(args.pack_disk_reserve_gib),
     )
     validate_cpu_corpus(corpus)
     if not corpus.has_temporal_layout or not corpus.has_exact_targets:
@@ -100,6 +106,9 @@ def main() -> int:
         "val_frac": float(args.val_frac),
         "max_context": int(args.max_context),
         "belief_card_vocab": int(args.belief_card_vocab),
+        "pack_workers": int(args.pack_workers),
+        "pack_memory_reserve_gib": float(args.pack_memory_reserve_gib),
+        "pack_disk_reserve_gib": float(args.pack_disk_reserve_gib),
         "train_games": int(corpus.train_games),
         "val_games": int(corpus.val_games),
         "decisions": int(corpus.decisions),

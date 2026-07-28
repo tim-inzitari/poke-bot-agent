@@ -4,8 +4,10 @@ import pytest
 import torch
 
 from poke_bot import checkpoint, config
+from poke_bot.matchup_adapters_v6 import load_slot_registry
 from poke_bot.model import build_model
 from poke_bot.train import load_model_from_checkpoint
+from poke_bot.worker_pool import WorkerPool
 
 
 def _config() -> config.ModelConfig:
@@ -22,6 +24,21 @@ def _config() -> config.ModelConfig:
         kv_cache=True,
         dropout=0.0,
     )
+
+
+def _spawn_load_checkpoint(path: str) -> dict[str, object]:
+    """Exercise the same clean-interpreter loader used by gameplay gates."""
+
+    from poke_bot import config as worker_config
+    from poke_bot.train import load_model_from_checkpoint as worker_load
+
+    loaded = worker_load(path, device=torch.device("cpu"))
+    return {
+        "config_path": str(Path(worker_config.__file__).resolve()),
+        "expanded_heads_enabled": bool(loaded.cfg.expanded_heads_enabled),
+        "matchup_adapter_format": str(loaded.cfg.matchup_adapter_format),
+        "matchup_adapter_registry": loaded.cfg.matchup_adapter_registry,
+    }
 
 
 def test_checkpoint_reconstructs_saved_model_config(tmp_path: Path) -> None:
@@ -78,3 +95,28 @@ def test_checkpoint_rejects_incompatible_model_config(tmp_path: Path) -> None:
     path = checkpoint.atomic_torch_save(payload, tmp_path / "bad.pt")
     with pytest.raises(ValueError, match="unsupported model_config"):
         load_model_from_checkpoint(path, device=torch.device("cpu"))
+
+
+def test_v6_checkpoint_loads_in_gameplay_gate_spawn_worker(
+    tmp_path: Path,
+) -> None:
+    cfg = _config()
+    cfg.expanded_heads_enabled = True
+    cfg.matchup_adapter_format = "poke-bot-matchup-adapter-bank-v6"
+    cfg.matchup_adapter_registry = load_slot_registry()
+    model = build_model(
+        cfg,
+        aux_archetype_classes=2,
+        encoder_vocab=16,
+        decoder_vocab=16,
+    )
+    payload = checkpoint.build_checkpoint(model=model, model_config=cfg)
+    path = checkpoint.atomic_torch_save(payload, tmp_path / "v6.pt")
+
+    with WorkerPool(num_workers=1, recycle_games=1) as pool:
+        result = next(pool.imap_unordered(_spawn_load_checkpoint, [str(path)]))
+
+    assert result["config_path"] == str(Path(config.__file__).resolve())
+    assert result["expanded_heads_enabled"] is True
+    assert result["matchup_adapter_format"] == "poke-bot-matchup-adapter-bank-v6"
+    assert result["matchup_adapter_registry"] == cfg.matchup_adapter_registry

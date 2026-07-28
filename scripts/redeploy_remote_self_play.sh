@@ -43,7 +43,8 @@ esac
 # or checkpoint replacement. A digest alone does not prove that the new source
 # can reconstruct the model or that its feature schema/profile matches.
 log "preflight checkpoint load + trusted schema + pure-RL model profile"
-EXPECTED_DIGEST="$BOOT_DIGEST" "$PYTHON" - "$BOOTSTRAP" <<'PY'
+EXPECTED_DIGEST="$BOOT_DIGEST" PREFLIGHT_PROFILE="$PREFLIGHT_PROFILE" \
+  "$PYTHON" - "$BOOTSTRAP" <<'PY'
 import os
 import sys
 from dataclasses import asdict
@@ -75,7 +76,7 @@ if feature_schema != features.FEATURE_SCHEMA_VERSION:
 model = load_model_from_checkpoint(path, device=torch.device("cpu"))
 actual_profile = asdict(model.cfg)
 expected_profile = model_config_dict()
-if actual_profile != expected_profile:
+if os.environ["PREFLIGHT_PROFILE"] != "none" and actual_profile != expected_profile:
     keys = sorted(
         key
         for key in set(actual_profile) | set(expected_profile)
@@ -96,6 +97,7 @@ fi
 sync_paths=(
   poke_bot
   scripts/run_remote_worker.py
+  scripts/seed_remote_active_checkpoint.py
   scripts/train_round_robin.py
 )
 bert_service_paths=(
@@ -139,6 +141,8 @@ marker="/tmp/pokebot_activation_${deploy_id}.marker"
 [[ -f "$marker" ]] || exit 0
 checkpoint_backup="${host_checkpoint}.before_${deploy_id}"
 code_backup="/tmp/pokebot_workspace_before_${deploy_id}.tar"
+active_pointer_backup="/tmp/pokebot_active_checkpoint_before_${deploy_id}.json"
+active_pointer_existed="/tmp/pokebot_active_checkpoint_before_${deploy_id}.exists"
 [[ -f "$checkpoint_backup" ]] || {
   echo "missing Elmo checkpoint rollback artifact $checkpoint_backup" >&2
   exit 40
@@ -152,6 +156,42 @@ cp -p "$checkpoint_backup" "$restore_tmp"
 mv -f "$restore_tmp" "$host_checkpoint"
 docker exec "$container" rm -rf /workspace/poke_bot
 docker exec "$container" tar -xf "$code_backup" -C /workspace
+
+# The supervisor's durable pointer is authoritative over model.pt at startup.
+# Restore it as part of the same transaction, before restarting the old code.
+mount_record="$(docker inspect --format '{{range .Mounts}}{{println .Destination "|" .Source "|" .RW}}{{end}}' "$container")"
+active_checkpoint_file="$(
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container" |
+    sed -n 's/^POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE=//p' | tail -n 1
+)"
+runtime_logs_host="$(
+  awk -F ' \\| ' '$1 == "/workspace/runtime-logs" { print $2 }' <<<"$mount_record"
+)"
+case "$active_checkpoint_file" in
+  /workspace/runtime-logs/*)
+    [[ -n "$runtime_logs_host" ]] || {
+      echo "cannot locate Elmo runtime-logs bind for active pointer rollback" >&2
+      exit 42
+    }
+    active_checkpoint_host="${runtime_logs_host}/${active_checkpoint_file#/workspace/runtime-logs/}"
+    ;;
+  *)
+    echo "unexpected Elmo active checkpoint file: $active_checkpoint_file" >&2
+    exit 42
+    ;;
+esac
+mkdir -p "$(dirname "$active_checkpoint_host")"
+if [[ -f "$active_pointer_existed" ]]; then
+  [[ -f "$active_pointer_backup" ]] || {
+    echo "missing Elmo active-pointer rollback artifact $active_pointer_backup" >&2
+    exit 43
+  }
+  active_restore_tmp="${active_checkpoint_host}.rollback.${deploy_id}"
+  cp -p "$active_pointer_backup" "$active_restore_tmp"
+  mv -f "$active_restore_tmp" "$active_checkpoint_host"
+else
+  rm -f "$active_checkpoint_host"
+fi
 docker restart "$container" >/dev/null
 rm -f "$marker"
 ELMOROLLBACK
@@ -177,6 +217,9 @@ checkpoint_current="$repo/outputs/checkpoints/pure_rl_bootstrap_current.pt"
 service_wrapper="$repo/scripts/run_bert_remote_worker_supervised.sh"
 service_plist_source="$repo/deploy/launchd/${service_label}.plist"
 active_pgid_file="$repo/outputs/state/bert_worker_supervisor/active.pgid"
+active_checkpoint_file="$repo/outputs/state/bert_worker_supervisor/active-checkpoint.json"
+failure_file="$repo/outputs/state/bert_worker_supervisor/failures.epoch"
+arm_file="$repo/outputs/state/REMOTE_WORKER_ARMED"
 rollback_worker_groups="$service_snapshot/rollback_worker_pgids"
 
 worker_group_exists() {
@@ -299,6 +342,7 @@ capture_worker_groups "$rollback_worker_groups" || exit 51
 
 # A KeepAlive job must be removed from launchd before killing its worker.  A
 # plain kill would let launchd race the code/checkpoint rollback with a restart.
+launchctl disable "$service_target"
 launchctl bootout "$service_target" >/dev/null 2>&1 || true
 terminate_worker_groups "$rollback_worker_groups" "rollback termination" || exit 51
 rm -rf "$repo/poke_bot"
@@ -317,6 +361,21 @@ rm -f "$checkpoint_current"
 if [[ -f "$service_snapshot/checkpoint_current.present" ]]; then
   cp -Pp "$service_snapshot/checkpoint_current" "$checkpoint_current"
 fi
+mkdir -p "$(dirname "$active_checkpoint_file")"
+rm -f "$active_checkpoint_file"
+if [[ -f "$service_snapshot/active_checkpoint.present" ]]; then
+  active_checkpoint_restore="${active_checkpoint_file}.rollback.${deploy_id}"
+  cp -p "$service_snapshot/active_checkpoint" "$active_checkpoint_restore"
+  mv -f "$active_checkpoint_restore" "$active_checkpoint_file"
+fi
+rm -f "$failure_file"
+if [[ -f "$service_snapshot/failure_file.present" ]]; then
+  cp -p "$service_snapshot/failure_file" "$failure_file"
+fi
+rm -f "$arm_file"
+if [[ -f "$service_snapshot/arm_file.present" ]]; then
+  cp -p "$service_snapshot/arm_file" "$arm_file"
+fi
 
 previous_mode="$(cat "$service_snapshot/mode")"
 previous_enable_state="$(cat "$service_snapshot/enable_state")"
@@ -331,7 +390,7 @@ if [[ "$previous_mode" == "launchd" ]]; then
   }
   # Never revive a pre-guard 20-worker service merely to make rollback look
   # successful. A stopped Bert is safer than rolling back into host-wide OOM.
-  if ! grep -Fq 'POKEBOT_BERT_MEMORY_GUARD_V1' "$service_wrapper" || \
+  if ! grep -Eq 'POKEBOT_BERT_MEMORY_GUARD_V(1|2)' "$service_wrapper" || \
      ! grep -Fq 'PYTORCH_MPS_HIGH_WATERMARK_RATIO' "$agent_plist"; then
     launchctl disable "$service_target"
     echo "refusing to restore Bert launchd service without memory guard" >&2
@@ -541,7 +600,7 @@ scp -o BatchMode=yes "$BOOTSTRAP" "$ELMO_HOST:$BOOT_COPY"
 ELMO_ACTIVATION_ATTEMPTED=1
 ssh -o BatchMode=yes "$ELMO_HOST" bash -s -- \
   "$CONTAINER" "$BUNDLE" "$BOOT_COPY" "$DEPLOY_ID" \
-  "$ELMO_CHECKPOINT_HOST" "$BOOT_DIGEST" <<'ELMO'
+  "$ELMO_CHECKPOINT_HOST" "$BOOT_DIGEST" "$PREFLIGHT_PROFILE" <<'ELMO'
 set -euo pipefail
 container="$1"
 bundle="$2"
@@ -549,6 +608,7 @@ bootstrap="$3"
 deploy_id="$4"
 host_checkpoint="$5"
 expected_digest="$6"
+preflight_profile="$7"
 stage="/tmp/pokebot_remote_preflight_${deploy_id}"
 
 [[ -f "$host_checkpoint" ]] || {
@@ -569,6 +629,36 @@ if ! grep -Fq "/workspace/checkpoint/model.pt | $host_checkpoint | false" <<<"$m
   fi
 fi
 
+# Snapshot the durable startup pointer before any mutation.  It lives on the
+# writable runtime-logs bind and must be committed/rolled back with model.pt.
+active_checkpoint_file="$(
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container" |
+    sed -n 's/^POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE=//p' | tail -n 1
+)"
+runtime_logs_host="$(
+  awk -F ' \\| ' '$1 == "/workspace/runtime-logs" { print $2 }' <<<"$mount_record"
+)"
+case "$active_checkpoint_file" in
+  /workspace/runtime-logs/*)
+    [[ -n "$runtime_logs_host" ]] || {
+      echo "cannot locate Elmo runtime-logs bind for active pointer activation" >&2
+      exit 21
+    }
+    active_checkpoint_host="${runtime_logs_host}/${active_checkpoint_file#/workspace/runtime-logs/}"
+    ;;
+  *)
+    echo "unexpected Elmo active checkpoint file: $active_checkpoint_file" >&2
+    exit 21
+    ;;
+esac
+active_pointer_backup="/tmp/pokebot_active_checkpoint_before_${deploy_id}.json"
+active_pointer_existed="/tmp/pokebot_active_checkpoint_before_${deploy_id}.exists"
+rm -f "$active_pointer_backup" "$active_pointer_existed"
+if [[ -f "$active_checkpoint_host" ]]; then
+  cp -p "$active_checkpoint_host" "$active_pointer_backup"
+  touch "$active_pointer_existed"
+fi
+
 # Target-side preflight uses the staged source, not the currently resident
 # /workspace modules. Nothing persistent is changed until this load succeeds.
 docker cp "$bundle" "$container:/tmp/remote_sync_${deploy_id}.tar"
@@ -577,7 +667,8 @@ docker exec "$container" mkdir -p "$stage"
 docker exec "$container" tar -xf "/tmp/remote_sync_${deploy_id}.tar" -C "$stage"
 docker cp "$bootstrap" "$container:$stage/bootstrap.pt"
 docker exec "$container" python -m py_compile "$stage/scripts/run_remote_worker.py"
-docker exec -i -w "$stage" -e PYTHONPATH="$stage" -e EXPECTED_DIGEST="$expected_digest" \
+docker exec -i -w "$stage" -e PYTHONPATH="$stage" \
+  -e EXPECTED_DIGEST="$expected_digest" -e PREFLIGHT_PROFILE="$preflight_profile" \
   "$container" python - "$stage/bootstrap.pt" <<'PY'
 import os
 import sys
@@ -596,7 +687,7 @@ schema = trusted["provenance"].get("feature_schema")
 if schema != features.FEATURE_SCHEMA_VERSION:
     raise SystemExit(f"feature schema mismatch: {schema} != {features.FEATURE_SCHEMA_VERSION}")
 model = load_model_from_checkpoint(path, device=torch.device("cpu"))
-if asdict(model.cfg) != model_config_dict():
+if os.environ["PREFLIGHT_PROFILE"] != "none" and asdict(model.cfg) != model_config_dict():
     raise SystemExit("pure-RL model profile mismatch")
 validate_param_budget(count_params(model))
 print(f"elmo_preflight_ok digest={actual} schema={schema}")
@@ -625,6 +716,22 @@ mv -f "$tmp" "$host_checkpoint"
 # the coherent source/checkpoint pair.
 docker exec "$container" rm -rf /workspace/poke_bot
 docker exec "$container" tar -xf "/tmp/remote_sync_${deploy_id}.tar" -C /workspace
+# Atomically make the new bound checkpoint the supervisor's durable selection.
+# _persist_active_checkpoint re-hashes the file and validates that it remains
+# inside POKEBOT_REMOTE_CHECKPOINT_ROOT before publishing the JSON pointer.
+docker exec -i -w /workspace -e EXPECTED_DIGEST="$expected_digest" \
+  "$container" python - /workspace/checkpoint/model.pt <<'PY'
+import os
+import sys
+
+sys.path.insert(0, os.environ["POKEBOT_REMOTE_CHECKPOINT_ROOT"])
+from scripts.run_remote_worker import _persist_active_checkpoint
+
+published = _persist_active_checkpoint(sys.argv[1], os.environ["EXPECTED_DIGEST"])
+if published is None:
+    raise SystemExit("Elmo did not configure a durable active checkpoint file")
+print(f"elmo_active_checkpoint_published={published}")
+PY
 docker restart "$container" >/dev/null
 ELMO
 
@@ -671,7 +778,7 @@ scp -o BatchMode=yes "$BOOTSTRAP" "$BERT_HOST:$BOOT_COPY"
 BERT_ACTIVATION_ATTEMPTED=1
 ssh -o BatchMode=yes "$BERT_HOST" bash -s -- \
   "$BERT_REPO" "$BUNDLE" "$BERT_SERVICE_BUNDLE" "$BOOT_COPY" \
-  "$BOOT_SHORT" "$BOOT_DIGEST" "$DEPLOY_ID" <<'BERT'
+  "$BOOT_SHORT" "$BOOT_DIGEST" "$DEPLOY_ID" "$PREFLIGHT_PROFILE" <<'BERT'
 set -euo pipefail
 repo="$1"
 bundle="$2"
@@ -680,6 +787,7 @@ bootstrap="$4"
 digest_short="$5"
 expected_digest="$6"
 deploy_id="$7"
+preflight_profile="$8"
 stage="/tmp/pokebot_remote_preflight_${deploy_id}"
 
 # Load with the staged source before stopping or replacing the healthy worker.
@@ -698,6 +806,7 @@ plutil -lint "$stage/deploy/launchd/com.pokebot.remote-worker-8766.plist"
   # runtime explicitly for the target-side model/schema preflight.
   CG_LIB_PATH="$repo/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg" \
     PYTHONPATH="$stage" EXPECTED_DIGEST="$expected_digest" \
+    PREFLIGHT_PROFILE="$preflight_profile" \
     "$repo/.venv/bin/python" - "$stage/bootstrap.pt" <<'PY'
 import os
 import sys
@@ -716,7 +825,7 @@ schema = trusted["provenance"].get("feature_schema")
 if schema != features.FEATURE_SCHEMA_VERSION:
     raise SystemExit(f"feature schema mismatch: {schema} != {features.FEATURE_SCHEMA_VERSION}")
 model = load_model_from_checkpoint(path, device=torch.device("cpu"))
-if asdict(model.cfg) != model_config_dict():
+if os.environ["PREFLIGHT_PROFILE"] != "none" and asdict(model.cfg) != model_config_dict():
     raise SystemExit("pure-RL model profile mismatch")
 validate_param_budget(count_params(model))
 print(f"bert_preflight_ok digest={actual} schema={schema}")
@@ -738,6 +847,9 @@ checkpoint_current="$repo/outputs/checkpoints/pure_rl_bootstrap_current.pt"
 service_wrapper_rel="scripts/run_bert_remote_worker_supervised.sh"
 service_plist_rel="deploy/launchd/${service_label}.plist"
 active_pgid_file="$repo/outputs/state/bert_worker_supervisor/active.pgid"
+active_checkpoint_file="$repo/outputs/state/bert_worker_supervisor/active-checkpoint.json"
+failure_file="$repo/outputs/state/bert_worker_supervisor/failures.epoch"
+arm_file="$repo/outputs/state/REMOTE_WORKER_ARMED"
 activation_worker_groups="$service_snapshot/activation_worker_pgids"
 
 worker_group_exists() {
@@ -895,6 +1007,18 @@ if [[ -e "$checkpoint_current" || -L "$checkpoint_current" ]]; then
   cp -Pp "$checkpoint_current" "$service_snapshot/checkpoint_current"
   touch "$service_snapshot/checkpoint_current.present"
 fi
+if [[ -e "$active_checkpoint_file" || -L "$active_checkpoint_file" ]]; then
+  cp -Pp "$active_checkpoint_file" "$service_snapshot/active_checkpoint"
+  touch "$service_snapshot/active_checkpoint.present"
+fi
+if [[ -e "$failure_file" || -L "$failure_file" ]]; then
+  cp -Pp "$failure_file" "$service_snapshot/failure_file"
+  touch "$service_snapshot/failure_file.present"
+fi
+if [[ -e "$arm_file" || -L "$arm_file" ]]; then
+  cp -Pp "$arm_file" "$service_snapshot/arm_file"
+  touch "$service_snapshot/arm_file.present"
+fi
 : >"$service_snapshot/repo_assets.list"
 for path in "$service_wrapper_rel" "$service_plist_rel"; do
   if [[ -e "$repo/$path" || -L "$repo/$path" ]]; then
@@ -916,17 +1040,35 @@ capture_worker_groups "$activation_worker_groups" || exit 30
 # launchd can restart against the old source while this transaction publishes
 # the new source/checkpoint pair.  The historical detached mode has no service
 # to boot out during its one-time migration.
+bert_was_launchd=0
 if [[ "$(cat "$service_snapshot/mode")" == "launchd" ]]; then
+  bert_was_launchd=1
+  # Disabling first prevents a throttled KeepAlive job from remaining in
+  # launchd's `spawn scheduled` state after bootout.  The recorded prior enable
+  # state is restored below (or by rollback) after publication is complete.
+  launchctl disable "$service_target"
   launchctl bootout "$service_target"
-  if launchctl print "$service_target" >/dev/null 2>&1; then
-    echo "Bert launchd service survived bootout: $service_target" >&2
-    exit 29
-  fi
 fi
 
 # Stop and verify every captured parent/pool/leaf/resource-tracker group. A
 # parent-only kill is forbidden because multiprocessing children are reparented.
 terminate_worker_groups "$activation_worker_groups" "deployment termination" || exit 30
+
+# launchd retains a SIGTERMed job while its process group is still draining.
+# Confirm removal only after the captured worker group has been terminated;
+# waiting before that cleanup creates a circular shutdown on macOS.
+if [[ "$bert_was_launchd" -eq 1 ]]; then
+  for _ in $(seq 1 240); do
+    if ! launchctl print "$service_target" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.25
+  done
+  if launchctl print "$service_target" >/dev/null 2>&1; then
+    echo "Bert launchd service survived bootout and worker drain: $service_target" >&2
+    exit 29
+  fi
+fi
 
 rm -rf "$repo/poke_bot"
 tar -xf "$bundle" -C "$repo"
@@ -951,6 +1093,32 @@ mv -f "$checkpoint_link_tmp" "$checkpoint_current"
   echo "failed to publish Bert stable checkpoint pointer" >&2
   exit 31
 }
+
+# The supervisor's durable active-checkpoint record is authoritative over the
+# stable bootstrap symlink. Publish it transactionally before launchd starts;
+# rollback restores the exact prior JSON record above.
+POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE="$active_checkpoint_file" \
+POKEBOT_REMOTE_CHECKPOINT_ROOT="$repo" EXPECTED_DIGEST="$expected_digest" \
+PYTHONPATH="$repo" \
+  "$repo/.venv/bin/python" - "$checkpoint" <<'PY'
+import os
+import sys
+
+from scripts.run_remote_worker import _persist_active_checkpoint
+
+published = _persist_active_checkpoint(sys.argv[1], os.environ["EXPECTED_DIGEST"])
+if published is None:
+    raise SystemExit("Bert durable active checkpoint file was not configured")
+print(f"bert_active_checkpoint_published={published}")
+PY
+
+# Arm only the exact safety contract already pinned in both the LaunchAgent
+# and worker preflight. The token is runtime state, so it is published
+# atomically and restored (or removed) by rollback with the other Bert state.
+arm_tmp="${arm_file}.tmp.${deploy_id}"
+printf %s '20260717' >"$arm_tmp"
+chmod 0644 "$arm_tmp"
+mv -f "$arm_tmp" "$arm_file"
 
 # Render the repo-path token through plistlib so non-default paths remain
 # valid XML, then atomically install a user-owned LaunchAgent.
@@ -992,6 +1160,7 @@ chmod 0644 "$agent_plist_tmp"
 mv -f "$agent_plist_tmp" "$agent_plist"
 
 launchctl enable "$service_target"
+rm -f "$failure_file"
 launchctl bootstrap "$service_domain" "$agent_plist"
 launchctl print "$service_target" >/dev/null
 echo "restarted Bert worker under $service_target checkpoint=$checkpoint_current"

@@ -26,9 +26,12 @@ def resolve_specialist_assets(
     default_candidate_tree: Path,
     default_candidate_audit: Path,
     promotion_receipt: Path | None,
+    promotion_scope: str = "full_bundle",
 ) -> dict[str, Any]:
     """Return defaults until a complete immutable promotion is available."""
 
+    if promotion_scope not in {"full_bundle", "router_only"}:
+        raise RuntimeError("unknown rare-route promotion scope")
     defaults = {
         "source": "contract_defaults",
         "corpus_root": default_corpus_root.resolve(),
@@ -76,7 +79,13 @@ def resolve_specialist_assets(
         raise RuntimeError("rare-route asset promotion receipt changed")
     return {
         "source": "rare_route_promotion",
-        "corpus_root": corpus_root,
+        "promotion_scope": promotion_scope,
+        "corpus_root": (
+            default_corpus_root.resolve()
+            if promotion_scope == "router_only"
+            else corpus_root
+        ),
+        "promoted_corpus_root": corpus_root,
         "candidate_tree": tree,
         "candidate_audit": audit_path,
         "promotion_receipt": promotion_receipt.resolve(),

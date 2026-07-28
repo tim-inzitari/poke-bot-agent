@@ -83,6 +83,14 @@ def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
         # RL must never activate them merely because a process inherited an
         # ambient MATCHUP_ADAPTERS_ENABLED value.
         matchup_adapters_enabled=False,
+        # Preserve the process-scoped canonical expanded-head architecture.
+        # Explicitly forcing this false made a valid expanded-head champion
+        # unloadable when a zero-safe decision-fusion learner was introduced
+        # at a clean boundary.
+        # Decision fusion follows the same process-scoped architecture rule.
+        # The ordinary selector leaves both flags at their false defaults;
+        # the receipt-backed warmup selector enables architecture/training
+        # while keeping runtime serving disabled.
         dropout=_f("DROPOUT", 0.05),
     )
     for key, value in overrides.items():

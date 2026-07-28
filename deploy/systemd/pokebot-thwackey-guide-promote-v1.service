@@ -1,0 +1,22 @@
+[Unit]
+Description=Promote finalized Thwackey guide corpus from Elmo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate
+ExecCondition=/usr/bin/test -s /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/thwackey/CURRENT_DECK_GUIDE_CORPUS_READY.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/promote_current_deck_guide_corpus.py --specialist-id thwackey --source /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/thwackey --destination /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic/thwackey --state /home/inzi/poke-bot-agent/outputs/state/thwackey-guide-corpus-promotion-v1.json --bwlimit-kib 4000
+ExecStartPost=/usr/bin/systemctl --user start --no-block pokebot-next-specialist-prestage.service
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=5
+MemoryHigh=2G
+MemoryMax=4G
+MemorySwapMax=0
+TimeoutStartSec=6h
+TimeoutStopSec=30
+NoNewPrivileges=yes
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/current-deck-guide-promotion.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/current-deck-guide-promotion.log

@@ -116,6 +116,23 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--archetype-filter",
+        default="",
+        help=(
+            "Keep only records whose acting seat has this exact classified "
+            "archetype (for example: alakazam)."
+        ),
+    )
+    parser.add_argument(
+        "--additive-archetype",
+        action="append",
+        default=[],
+        help=(
+            "Registered archetype to include in the pinned classifier and "
+            "recognized-only output. Repeat for multiple additive families."
+        ),
+    )
+    parser.add_argument(
         "--replace",
         action="store_true",
         help="Atomically replace an existing output after a successful rebuild.",
@@ -123,13 +140,21 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _init_worker(mix: str, representatives: str, card_csv: str) -> None:
+def _init_worker(
+    mix: str,
+    representatives: str,
+    card_csv: str,
+    additive_archetypes: tuple[str, ...],
+) -> None:
     global _WORKER_CLASSIFIER
     # Prevent each CPU conversion worker from creating a BLAS thread team.
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     _WORKER_CLASSIFIER = LadderReplayClassifier.from_paths(
-        mix, representatives, card_csv=card_csv
+        mix,
+        representatives,
+        card_csv=card_csv,
+        additive_registered_ids=additive_archetypes,
     )
 
 
@@ -147,8 +172,8 @@ def _load_payload(ref: str) -> dict[str, Any]:
     return json.loads(archive.read(member).decode("utf-8"))
 
 
-def _convert_ref(job: tuple[str, str, bool]) -> dict[str, Any]:
-    ref, source, recognized_only = job
+def _convert_ref(job: tuple[str, str, bool, str]) -> dict[str, Any]:
+    ref, source, recognized_only, archetype_filter = job
     classifier = _WORKER_CLASSIFIER
     if classifier is None:
         raise RuntimeError("ladder replay worker was not initialized")
@@ -156,14 +181,19 @@ def _convert_ref(job: tuple[str, str, bool]) -> dict[str, Any]:
         payload = _load_payload(ref)
         _decks, labels = classifier.classify_episode(payload)
         label_ids = [label.deck_id for label in labels]
+        recognized_ids = (
+            *classifier.active_ids,
+            *classifier.additive_registered_ids,
+        )
         records = convert_episode_to_records(
             payload,
             source=source,
+            archetype_filter=archetype_filter or None,
             seat_archetypes=label_ids,
             allowed_archetypes=(
-                classifier.active_ids
+                recognized_ids
                 if recognized_only
-                else (*classifier.active_ids, archetypes.UNKNOWN)
+                else (*recognized_ids, archetypes.UNKNOWN)
             ),
             require_complete=True,
             strict_info_set=True,
@@ -242,10 +272,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not 0.0 <= args.min_recognized_seat_frac <= 1.0:
         raise SystemExit("--min-recognized-seat-frac must be in [0, 1]")
 
-    classifier = LadderReplayClassifier.from_paths(
-        args.mix, args.representatives, card_csv=paths.en_card_data_path()
+    additive_archetypes = tuple(
+        dict.fromkeys(str(value).strip().casefold() for value in args.additive_archetype)
     )
-    active_ids = frozenset(classifier.active_ids)
+    classifier = LadderReplayClassifier.from_paths(
+        args.mix,
+        args.representatives,
+        card_csv=paths.en_card_data_path(),
+        additive_registered_ids=additive_archetypes,
+    )
+    active_ids = frozenset(
+        (*classifier.active_ids, *classifier.additive_registered_ids)
+    )
+    archetype_filter = str(args.archetype_filter).strip().casefold()
+    if archetype_filter and archetype_filter not in active_ids:
+        raise SystemExit(
+            f"--archetype-filter {archetype_filter!r} is not in the pinned "
+            "ladder classifier"
+        )
     manifest = load_daily_manifest(ensure_episodes_index())
     if bool(args.start_date) != bool(args.end_date):
         raise SystemExit("--start-date and --end-date must be supplied together")
@@ -269,7 +313,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"requested {args.days} days but manifest has {len(days)}"
             )
 
-    jobs: list[tuple[str, str, bool]] = []
+    jobs: list[tuple[str, str, bool, str]] = []
     source_rows: list[dict[str, Any]] = []
     EPISODES_RAW_DIR.mkdir(parents=True, exist_ok=True)
     for entry in days:
@@ -287,7 +331,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             }
         )
         jobs.extend(
-            (str(ref), entry.slug, bool(args.recognized_only))
+            (
+                str(ref),
+                entry.slug,
+                bool(args.recognized_only),
+                archetype_filter,
+            )
             for _episode_id, ref in refs
         )
     if args.max_episodes > 0:
@@ -327,6 +376,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     str(args.mix),
                     str(args.representatives),
                     str(paths.en_card_data_path()),
+                    additive_archetypes,
                 ),
             ) as pool:
                 pending: deque[Future[dict[str, Any]]] = deque()
@@ -382,9 +432,21 @@ def main(argv: Optional[list[str]] = None) -> int:
             "sources": source_rows,
             "classifier": classifier.contract,
             "policy_scope": (
-                "recognized_families_only"
+                "acting_seat_archetype_exact"
+                if archetype_filter
+                else "recognized_families_only"
                 if args.recognized_only
                 else "all_valid_top_ladder_seats"
+            ),
+            "selection": (
+                {
+                    "field": "record.archetype",
+                    "operator": "exact_casefold",
+                    "value": archetype_filter,
+                    "seat_semantics": "acting_seat_only",
+                }
+                if archetype_filter
+                else None
             ),
             "quality_gates": {
                 "min_sequences": int(args.min_sequences),

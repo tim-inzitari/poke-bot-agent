@@ -25,6 +25,11 @@ from poke_bot.feature_shards import (
     SHARD_FORMAT_VERSION,
     SUPPORTED_COMPACT_MODES,
 )
+from poke_bot.strategic_heads import (
+    StrategicTargetContractError,
+    masked_expanded_strategic_coverage,
+    merge_expanded_strategic_coverages,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -133,6 +138,14 @@ def main() -> int:
         action="store_true",
         help="Write an immutable PROTECTED_EXPERT_CORPUS.json beside the manifest.",
     )
+    parser.add_argument(
+        "--allow-empty-shards",
+        action="store_true",
+        help=(
+            "Count checksum-valid zero-record shards toward expected date coverage "
+            "without adding them to the training manifest."
+        ),
+    )
     args = parser.parse_args()
 
     staging = args.staging_dir.resolve()
@@ -166,7 +179,9 @@ def main() -> int:
         raise SystemExit("--seal-protected requires --required-archetype")
     rows: list[dict] = []
     actual_dates: list[str] = []
+    empty_dates: list[str] = []
     target_coverage: Counter[str] = Counter()
+    expanded_strategic_targets = masked_expanded_strategic_coverage(0)
     for sidecar in sorted(staging.glob("*.features.json")):
         metadata = json.loads(sidecar.read_text(encoding="utf-8"))
         if metadata.get("format") != SHARD_FORMAT:
@@ -205,15 +220,71 @@ def main() -> int:
             raise SystemExit(f"overlapping shard dates: {sorted(overlap)}")
         actual_dates.extend(dates)
         stats = dict(metadata.get("stats") or {})
-        if int(stats.get("records_kept", 0)) <= 0:
-            raise SystemExit(f"empty feature shard: {shard}")
         total = int(stats.get("records_total", 0))
         kept = int(stats.get("records_kept", 0))
+        shard_decisions = int(stats.get("decisions_kept", 0))
+        if kept <= 0:
+            if not args.allow_empty_shards:
+                raise SystemExit(f"empty feature shard: {shard}")
+            empty_target_coverage = dict(stats.get("target_coverage") or {})
+            if (
+                total != 0
+                or kept != 0
+                or shard_decisions != 0
+                or any(int(value or 0) != 0 for value in empty_target_coverage.values())
+            ):
+                raise SystemExit(
+                    f"invalid zero-record feature shard metadata: {shard}"
+                )
+            shard_expanded = stats.get("expanded_strategic_targets")
+            if shard_expanded is not None:
+                try:
+                    normalized_expanded = merge_expanded_strategic_coverages(
+                        (shard_expanded,)
+                    )
+                except StrategicTargetContractError as exc:
+                    raise SystemExit(
+                        "invalid expanded strategic target coverage in "
+                        f"{sidecar}: {exc}"
+                    ) from exc
+                if int(normalized_expanded["decisions"]) != 0:
+                    raise SystemExit(
+                        f"zero-record shard has nonzero expanded targets: {sidecar}"
+                    )
+            empty_dates.extend(dates)
+            continue
         if total <= 0 or kept / total < 0.98:
             raise SystemExit(
                 f"usable-record gate failed for {shard}: kept={kept} total={total}"
             )
         target_coverage.update(dict(stats.get("target_coverage") or {}))
+        shard_expanded = stats.get("expanded_strategic_targets")
+        if shard_expanded is None:
+            # Legacy/missing target metadata means target absence.  Preserve
+            # those rows as masked rather than implying numerical zero labels.
+            shard_expanded = masked_expanded_strategic_coverage(
+                shard_decisions
+            )
+        try:
+            normalized_expanded = merge_expanded_strategic_coverages(
+                (shard_expanded,)
+            )
+            if int(normalized_expanded["decisions"]) != shard_decisions:
+                raise StrategicTargetContractError(
+                    "expanded target decisions do not match decisions_kept"
+                )
+            expanded_strategic_targets = (
+                merge_expanded_strategic_coverages(
+                    (
+                        expanded_strategic_targets,
+                        normalized_expanded,
+                    )
+                )
+            )
+        except StrategicTargetContractError as exc:
+            raise SystemExit(
+                f"invalid expanded strategic target coverage in {sidecar}: {exc}"
+            ) from exc
         rows.append(
             {
                 "path": shard.name,
@@ -257,7 +328,9 @@ def main() -> int:
             if args.expected_max_context is not None
             else None
         ),
+        "empty_dates": sorted(empty_dates),
         "shards": rows,
+        "expanded_strategic_targets": expanded_strategic_targets,
         "totals": {
             "bytes": sum(int(row["bytes"]) for row in rows),
             "records_total": sum(
@@ -271,9 +344,12 @@ def main() -> int:
         },
     }
     if required_archetype:
+        wildcard = required_archetype == "*"
         payload["selection"] = {
             "field": "GameSequence.archetype",
-            "operator": "exact_casefold",
+            "operator": (
+                "registered_non_unknown" if wildcard else "exact_casefold"
+            ),
             "value": required_archetype,
             "seat_semantics": "acting_seat_only",
         }
@@ -281,10 +357,13 @@ def main() -> int:
             "passed": True,
             "nonempty": total_decisions > 0,
             "checksummed": True,
-            "acting_seat_archetype_exact": True,
+            "acting_seat_archetype_exact": not wildcard,
+            "acting_seat_archetype_recognized": wildcard,
             "max_context_exact": args.expected_max_context is not None,
             "required_target_rows_complete": not incomplete_targets,
             "required_target_names": list(required_targets),
+            "empty_expected_dates_allowed": bool(args.allow_empty_shards),
+            "empty_dates": sorted(empty_dates),
             "hidden_targets_are_aux_only": True,
         }
     out = args.out.resolve()

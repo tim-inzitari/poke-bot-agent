@@ -1,0 +1,17 @@
+[Unit]
+Description=Pokemon RL live public-mix win-rate telemetry
+After=pokebot-pure-rl-alakazam.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/.local/libexec/pokebot-track-public-mix-winrate.py --root /home/inzi/poke-bot-agent --service pokebot-pure-rl-alakazam.service --poll-seconds 1 --status /home/inzi/poke-bot-agent/outputs/state/public_mix_live_wr.json
+Restart=always
+RestartSec=2
+Nice=15
+IOSchedulingClass=idle
+MemoryMax=512M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

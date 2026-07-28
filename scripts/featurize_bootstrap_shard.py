@@ -13,7 +13,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from poke_bot import config
-from poke_bot.feature_shards import write_feature_shard
+from poke_bot.feature_shards import (
+    COMPACT_MODE,
+    SUPPORTED_COMPACT_MODES,
+    write_feature_shard,
+)
 
 
 def main() -> int:
@@ -25,6 +29,16 @@ def main() -> int:
     parser.add_argument("--max-in-flight", type=int, default=0)
     parser.add_argument("--max-records", type=int, default=0)
     parser.add_argument("--max-context", type=int, default=config.MODEL.max_context)
+    parser.add_argument(
+        "--compact-mode",
+        choices=sorted(SUPPORTED_COMPACT_MODES),
+        default=COMPACT_MODE,
+    )
+    parser.add_argument(
+        "--required-archetype",
+        default="",
+        help="Fail-filter records to one exact acting-seat archetype.",
+    )
     args = parser.parse_args()
     metadata = write_feature_shard(
         args.jsonl,
@@ -35,6 +49,8 @@ def main() -> int:
         max_in_flight=args.max_in_flight,
         max_records=args.max_records,
         verify_info_set=True,
+        compact_mode=args.compact_mode,
+        required_archetype=args.required_archetype,
     )
     print(json.dumps(metadata, indent=2, sort_keys=True), flush=True)
     return 0

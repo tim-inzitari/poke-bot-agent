@@ -17,6 +17,7 @@ from typing import Any
 AUTH_SCHEMA = "poke_bot.kaggle_submission_authorization/v1"
 QUEUE_SCHEMA = "poke_bot.kaggle_submission_queue/v1"
 PRE_NETWORK_BLOCK = "no matching unused one-shot explicit authorization"
+STANDING_OWNER_DECISION = "GOAL.md#/decision-ledger/revision-18"
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -91,6 +92,7 @@ def main() -> int:
             "schema": AUTH_SCHEMA,
             "explicit_user_approval": True,
             "approval_text": args.approval_text,
+            "standing_owner_decision_source": STANDING_OWNER_DECISION,
             "remaining_uses": 1,
             "nonce": nonce,
             "expires_at_epoch": time.time() + float(args.expires_seconds),
@@ -101,6 +103,11 @@ def main() -> int:
             "conditional_checkpoint_digest": str(
                 entry.get("checkpoint_checksum") or ""
             ),
+            "specialist_id": str(entry.get("specialist_id") or ""),
+            "frozen_checkpoint_checksum": str(
+                entry.get("checkpoint_checksum") or ""
+            ),
+            "submission_file_checksum": digest,
             "recovery_reason": (
                 "The prior queue invocation was rejected by the local "
                 "authorization guard before Kaggle network I/O."
@@ -115,6 +122,9 @@ def main() -> int:
         entry["retry_count"] = int(entry.get("retry_count") or 0) + 1
         entry["pre_network_retry_authorized_at"] = now.isoformat()
         entry["pre_network_retry_nonce"] = nonce
+        queue["automatic_one_shot_authorization_on_training_complete"] = True
+        queue["one_shot_authorization_uses"] = 1
+        queue["standing_owner_decision_source"] = STANDING_OWNER_DECISION
         queue["updated_at_utc"] = now.isoformat()
         _atomic_json(queue_path, queue)
         print(

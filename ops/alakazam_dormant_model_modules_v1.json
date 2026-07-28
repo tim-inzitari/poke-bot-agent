@@ -1,0 +1,50 @@
+{
+  "schema": "poke_bot.dormant_model_modules/v1",
+  "model_family": "alakazam_temporal1",
+  "status": "deployed_dormant_router_shadow_active_after_iteration_15",
+  "modules": [
+    {
+      "id": "matchup_adapter_bank_v2",
+      "label": "Ten matchup residual MLPs (including Alakazam, Lucario, and Archaludon ex)",
+      "status": "deployed_dormant",
+      "present_in_active_checkpoint": true,
+      "first_persisted_checkpoint_iteration": 16,
+      "activation_boundary_completed_iteration": 15,
+      "runtime_enabled": false,
+      "optimizer_active": false,
+      "zero_output": true,
+      "router_shadow_active": true,
+      "router_model_application_enabled": false,
+      "router_mode": "causal_public_prefix_shadow",
+      "router_first_eligible_iteration": 16,
+      "parameter_count": 16400,
+      "expert_count": 10,
+      "architecture": "10 × 96→8→96 residual MLP",
+      "hidden_dim": 96,
+      "bottleneck_dim": 8,
+      "residual_scale": 0.25,
+      "expert_ids": [
+        "crustle",
+        "marnie-s-grimmsnarl-ex",
+        "garchomp",
+        "cornerstone-ogerpon",
+        "rockets-mewtwo",
+        "starmie",
+        "hammer-pult",
+        "alakazam",
+        "lucario",
+        "archaludon-ex"
+      ],
+      "routing": "causal public-prefix recognizer active in shadow; model route and abstentions exact-bypass",
+      "router_eligible": true,
+      "pilot_weights_eligible": false,
+      "old_checkpoint_behavior": "exact-no-op",
+      "source": "poke_bot/matchup_adapters.py",
+      "source_sha256": "cc341d9243a4d9ee71b717a9e4574f31e3d3ac511f324cf69402126e58177217",
+      "router_source": "poke_bot/matchup_adapter_activation.py",
+      "router_source_sha256": "c8ace34e58775206767cd0366d3b8cc29286ede48a1e708255db008a60a880e2",
+      "deployment_root": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v27-adapter-training",
+      "handoff_sha256": "ea85e5e56f33492e60ff728049e2b8cb2333be1893472b5ddf6f6e8a2e5a30e8"
+    }
+  ]
+}

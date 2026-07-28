@@ -1,0 +1,23 @@
+[Unit]
+Description=Freeze exact Trevenant pass, queue one copy, and hand off to Starmie
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-gate-handler-v42
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-gate-handler-v42/scripts/handle_passed_gate.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_hops_trevenant_temporal1_8k_v2_20260723 --contract /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists/ops/alakazam_gate_program_v1.json --marker-name SPECIALIST_GATE_PASSED.hops-trevenant-splus-v1 --minimum-completed-iteration 25 --registry-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models --family hops-trevenant-protocol-gate-pass-v1 --display-name "Hop's Trevenant Exact Protocol Gate Champion" --representatives /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists/data/training_mixes/specialist_representatives.v1.json --archetype hops-trevenant --submission-root /home/inzi/poke-bot-agent/outputs/submissions/hops-trevenant-protocol-gate-pass-v1 --state /home/inzi/poke-bot-agent/outputs/state/hops-trevenant-passed-gate-handler-v1.json --lock /home/inzi/.local/state/pokebot/hops-trevenant-passed-gate-handler-v1.lock --competition pokemon-tcg-ai-battle --submission-count 1 --submission-mode queue_and_continue --submission-queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --kaggle /home/inzi/miniconda3/envs/poke-bot-agent/bin/kaggle --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --authorization /home/inzi/.config/pokebot/kaggle-submission-authorization.json --submission-receipts /home/inzi/.local/state/pokebot/kaggle-submission-attempts --training-service pokebot-pure-rl-trevenant-staged.service --recover-status-143-before-gate --handoff-service pokebot-post-trevenant-starmie-handoff.service --continue-drop-in-source /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists/deploy/systemd/pokebot-pure-rl-alakazam.service.d/zz-continue-after-exact-gate.conf --continue-drop-in-target /home/inzi/.config/systemd/user/pokebot-pure-rl-trevenant-staged.service.d/zz-continue-after-exact-gate.conf --poll-seconds 15 --upload-timeout-seconds 900
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=30s
+KillMode=control-group
+LimitNOFILE=4096
+MemoryHigh=8G
+MemoryMax=12G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/hops-trevenant-passed-gate-handler-v1.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/hops-trevenant-passed-gate-handler-v1.log
+
+[Install]
+WantedBy=default.target

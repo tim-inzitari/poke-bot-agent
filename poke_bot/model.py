@@ -36,9 +36,183 @@ import torch.nn.functional as F
 
 from . import config, features
 from .features import SparseVector
+from .matchup_adapters import (
+    ADAPTER_CHECKPOINT_FORMAT as MATCHUP_ADAPTER_V5_FORMAT,
+)
 from .matchup_adapters import MatchupAdapterBank
+from .matchup_adapters_v6 import (
+    ADAPTER_CHECKPOINT_FORMAT as MATCHUP_ADAPTER_V6_FORMAT,
+)
+from .matchup_adapters_v6 import MatchupAdapterBankV6
 
 Tensor = torch.Tensor
+
+# Additive V6 auxiliary-head contract.  These modules are absent unless the
+# serialized ModelConfig explicitly opts in, so a V5 checkpoint keeps its
+# original architecture and serving cost.
+EXPANDED_HEAD_SCHEMA = "poke_bot.expanded_strategic_heads/v1"
+EXPANDED_HEAD_SCHEMA_VERSION = 1
+EXPANDED_HEAD_INIT_SEED = 0x56_2026_07
+EXPANDED_HEAD_SPECS: tuple[tuple[str, str, int], ...] = (
+    ("action_q_head", "option", 1),
+    ("action_type_head", "option", 1),
+    ("action_target_head", "option", 1),
+    ("action_resource_head", "option", 1),
+    ("action_utility_head", "option", 6),
+    ("tactical_outcome_head", "state", 3 * 6),
+    ("opponent_response_head", "state", 7),
+    ("resource_forecast_head", "state", 6),
+    ("game_phase_head", "state", 5),
+    ("outcome_distribution_head", "state", 3),
+    ("remaining_turns_head", "state", 1),
+)
+EXPANDED_HEAD_NAMES: tuple[str, ...] = tuple(
+    name for name, _source, _outputs in EXPANDED_HEAD_SPECS
+)
+EXPANDED_HEAD_KEY_PREFIXES: tuple[str, ...] = tuple(
+    f"{name}." for name in EXPANDED_HEAD_NAMES
+)
+DECISION_FUSION_SCHEMA = "poke_bot.causal_decision_fusion/v1"
+DECISION_FUSION_REQUIRED_HEADS: tuple[str, ...] = (
+    "value",
+    "archetype",
+    "opponent_hand",
+    "opponent_remainder",
+    "lethal_threat",
+    "prize_race",
+    "action_q",
+    "action_type",
+    "action_target",
+    "action_resource",
+    "action_utility",
+    "tactical_outcomes",
+    "opponent_response",
+    "resource_forecast",
+    "game_phase",
+    "outcome_distribution",
+    "remaining_turns",
+)
+DECISION_FUSION_KEY_PREFIX = "decision_fusion."
+
+
+class CausalDecisionFusion(nn.Module):
+    """Learned bounded residual over the flat policy.
+
+    Every required head has a distinct projection or option feature, so no
+    source can be silently omitted. The final layer starts at exact zero:
+    architecture migration is behavior-preserving until joint training gives
+    the residual evidence-backed weight.
+    """
+
+    _STATE_DIMS = {
+        "value": 1,
+        "lethal_threat": 1,
+        "prize_race": 2,
+        "tactical_outcomes": 18,
+        "opponent_response": 7,
+        "resource_forecast": 6,
+        "game_phase": 5,
+        "outcome_distribution": 3,
+        "remaining_turns": 1,
+    }
+    _OPTION_DIMS = {
+        "action_q": 1,
+        "action_type": 1,
+        "action_target": 1,
+        "action_resource": 1,
+        "action_utility": 6,
+    }
+
+    def __init__(
+        self,
+        *,
+        d_model: int,
+        width: int,
+        archetype_classes: int,
+        belief_card_vocab: int,
+    ) -> None:
+        super().__init__()
+        if width <= 0:
+            raise ValueError("decision fusion width must be positive")
+        state_dims = {
+            **self._STATE_DIMS,
+            "archetype": int(archetype_classes),
+            "opponent_hand": int(belief_card_vocab),
+            "opponent_remainder": int(belief_card_vocab),
+        }
+        self.state_projections = nn.ModuleDict(
+            {
+                name: nn.Linear(input_dim, width, bias=False)
+                for name, input_dim in state_dims.items()
+            }
+        )
+        self.state_gates = nn.ParameterDict(
+            {name: nn.Parameter(torch.ones(())) for name in state_dims}
+        )
+        self.state_norm = nn.LayerNorm(width)
+        option_width = sum(self._OPTION_DIMS.values())
+        hidden = max(width, d_model // 2)
+        self.residual = nn.Sequential(
+            nn.Linear(d_model + width + option_width, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, 1),
+        )
+        nn.init.zeros_(self.residual[-1].weight)
+        nn.init.zeros_(self.residual[-1].bias)
+
+    @staticmethod
+    def _bounded(value: Tensor) -> Tensor:
+        return torch.tanh(value.float()).to(dtype=value.dtype)
+
+    def forward(
+        self,
+        option_hidden: Tensor,
+        base_logits: Tensor,
+        *,
+        state_sources: dict[str, Tensor],
+        option_sources: dict[str, Tensor],
+    ) -> Tensor:
+        missing = [
+            name
+            for name in DECISION_FUSION_REQUIRED_HEADS
+            if name not in state_sources and name not in option_sources
+        ]
+        if missing:
+            raise RuntimeError(
+                f"causal decision fusion missing required heads: {missing}"
+            )
+        state_terms: list[Tensor] = []
+        for name, projection in self.state_projections.items():
+            value = state_sources[name]
+            if value.dim() == 1:
+                value = value.unsqueeze(-1)
+            value = value.reshape(value.size(0), -1)
+            state_terms.append(
+                self.state_gates[name] * self._bounded(projection(self._bounded(value)))
+            )
+        context = self.state_norm(torch.stack(state_terms, dim=0).mean(dim=0))
+        context = context.unsqueeze(1).expand(-1, option_hidden.size(1), -1)
+        option_terms: list[Tensor] = []
+        for name in self._OPTION_DIMS:
+            value = option_sources[name]
+            if value.dim() == 2:
+                value = value.unsqueeze(-1)
+            option_terms.append(self._bounded(value))
+        option_features = torch.cat(option_terms, dim=-1)
+        residual = self.residual(
+            torch.cat([option_hidden, context, option_features], dim=-1)
+        ).squeeze(-1)
+        return base_logits + residual
+
+    def inventory(self, *, runtime_enabled: bool) -> dict[str, object]:
+        return {
+            "schema": DECISION_FUSION_SCHEMA,
+            "enabled": True,
+            "runtime_enabled": bool(runtime_enabled),
+            "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
+            "parameters": int(sum(p.numel() for p in self.parameters())),
+            "zero_safe_initialization": True,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -563,10 +737,85 @@ class TemporalCabtTransformer(nn.Module):
         # module so adding the bank cannot perturb fresh base initialization via
         # RNG consumption.  Its parameters are opt-in trainable; the dedicated
         # bootstrap path below the model explicitly re-enables only this bank.
-        self.matchup_adapter_bank = MatchupAdapterBank(
-            enabled=bool(getattr(cfg, "matchup_adapters_enabled", False))
+        adapter_format = str(
+            getattr(cfg, "matchup_adapter_format", MATCHUP_ADAPTER_V5_FORMAT)
+        )
+        if adapter_format == MATCHUP_ADAPTER_V5_FORMAT:
+            adapter_bank_type = MatchupAdapterBank
+            adapter_bank_kwargs = {}
+        elif adapter_format == MATCHUP_ADAPTER_V6_FORMAT:
+            adapter_bank_type = MatchupAdapterBankV6
+            serialized_registry = getattr(cfg, "matchup_adapter_registry", None)
+            if not isinstance(serialized_registry, dict):
+                raise ValueError(
+                    "V6 model config requires an immutable matchup adapter registry"
+                )
+            adapter_bank_kwargs = {"registry": serialized_registry}
+        else:
+            raise ValueError(
+                f"unsupported matchup adapter checkpoint format: {adapter_format}"
+            )
+        self.matchup_adapter_bank = adapter_bank_type(
+            enabled=bool(getattr(cfg, "matchup_adapters_enabled", False)),
+            **adapter_bank_kwargs,
         )
         self.matchup_adapter_bank.requires_grad_(False)
+
+        # Expanded strategic heads are constructed last and under a forked,
+        # fixed RNG.  Consequently:
+        #   * enabling them cannot perturb initialization of any V5 tensor;
+        #   * missing-head warm starts are reproducible across processes; and
+        #   * construction does not advance the caller's global RNG stream.
+        self.expanded_heads_enabled = bool(
+            getattr(cfg, "expanded_heads_enabled", False)
+        )
+        self.expanded_head_schema_version = (
+            EXPANDED_HEAD_SCHEMA_VERSION if self.expanded_heads_enabled else 0
+        )
+        if self.expanded_heads_enabled:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(EXPANDED_HEAD_INIT_SEED)
+                for name, _source, outputs in EXPANDED_HEAD_SPECS:
+                    setattr(self, name, nn.Linear(cfg.d_model, outputs))
+            self.aux_heads_present = (
+                *self.aux_heads_present,
+                *EXPANDED_HEAD_NAMES,
+            )
+        else:
+            # Explicit None attributes make feature detection predictable
+            # without registering parameters in an immutable V5 state dict.
+            for name in EXPANDED_HEAD_NAMES:
+                setattr(self, name, None)
+        self.warm_started_expanded_heads: tuple[str, ...] = ()
+        self.decision_fusion_enabled = bool(
+            getattr(cfg, "decision_fusion_enabled", False)
+        )
+        self.decision_fusion_runtime_enabled = bool(
+            getattr(cfg, "decision_fusion_runtime_enabled", False)
+        )
+        if self.decision_fusion_enabled and not self.expanded_heads_enabled:
+            raise ValueError(
+                "causal decision fusion requires expanded strategic heads"
+            )
+        if (
+            self.decision_fusion_runtime_enabled
+            and not self.decision_fusion_enabled
+        ):
+            raise ValueError(
+                "decision_fusion_runtime_enabled requires decision_fusion_enabled"
+            )
+        if self.decision_fusion_enabled:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(EXPANDED_HEAD_INIT_SEED + 1)
+                self.decision_fusion = CausalDecisionFusion(
+                    d_model=cfg.d_model,
+                    width=int(getattr(cfg, "decision_fusion_width", 16)),
+                    archetype_classes=aux_archetype_classes,
+                    belief_card_vocab=self.belief_card_vocab,
+                )
+        else:
+            self.decision_fusion = None
+        self.warm_started_decision_fusion = False
 
     def _load_from_state_dict(
         self,
@@ -640,6 +889,171 @@ class TemporalCabtTransformer(nn.Module):
             "opp_remainder_logits": self.opp_remainder_head(state_vec),
             "lethal_threat_logits": self.lethal_threat_head(state_vec).squeeze(-1),
             "prize_race_pred": self.prize_race_head(state_vec),
+        }
+
+    def expanded_head_inventory(self) -> dict[str, object]:
+        """Return the checkpoint-safe expanded-head tensor contract.
+
+        The inventory describes architecture only. Training receipts own loss
+        weights, target coverage, and whether a head has received an optimizer
+        step; the model must not infer those facts merely from non-zero bytes.
+        """
+        modules: dict[str, object] = {}
+        if self.expanded_heads_enabled:
+            for name, source, outputs in EXPANDED_HEAD_SPECS:
+                module = getattr(self, name)
+                if not isinstance(module, nn.Linear):
+                    raise RuntimeError(f"expanded head {name} is not Linear")
+                tensors = {
+                    tensor_name: {
+                        "shape": list(tensor.shape),
+                        "dtype": str(tensor.dtype).removeprefix("torch."),
+                        "numel": int(tensor.numel()),
+                    }
+                    for tensor_name, tensor in module.state_dict().items()
+                }
+                modules[name] = {
+                    "input": source,
+                    "outputs": int(outputs),
+                    "parameters": int(
+                        sum(parameter.numel() for parameter in module.parameters())
+                    ),
+                    "tensors": tensors,
+                }
+        return {
+            "schema": EXPANDED_HEAD_SCHEMA,
+            "version": int(self.expanded_head_schema_version),
+            "enabled": bool(self.expanded_heads_enabled),
+            # Initial rollout is auxiliary/shadow-only. No expanded head is
+            # allowed to alter the production action/value path.
+            "runtime_enabled_heads": [],
+            "modules": modules,
+        }
+
+    def decision_fusion_inventory(self) -> dict[str, object]:
+        if not isinstance(self.decision_fusion, CausalDecisionFusion):
+            return {
+                "schema": DECISION_FUSION_SCHEMA,
+                "enabled": False,
+                "runtime_enabled": False,
+                "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
+                "parameters": 0,
+            }
+        return self.decision_fusion.inventory(
+            runtime_enabled=self.decision_fusion_runtime_enabled
+        )
+
+    def fused_policy_logits(
+        self,
+        option_hidden: Tensor,
+        state_vec: Tensor,
+        base_logits: Tensor,
+    ) -> Tensor:
+        """Apply the all-head residual in training or after runtime activation.
+
+        A boundary-migrated active learner first receives zero-safe fusion
+        tensors with serving disabled.  Its next ordinary full-model update
+        must nevertheless train those tensors; otherwise no nonzero influence
+        receipt could exist before serving activation.  Evaluation/inference
+        remains an exact flat-policy bypass until the separately receipted
+        runtime flag is enabled.
+        """
+
+        fusion_training = bool(self.training and self.decision_fusion_enabled)
+        if not self.decision_fusion_runtime_enabled and not fusion_training:
+            return base_logits
+        if not isinstance(self.decision_fusion, CausalDecisionFusion):
+            raise RuntimeError(
+                "decision fusion policy path is enabled without fusion tensors"
+            )
+        belief = self.belief_aux_logits(state_vec)
+        expanded_state = self.expanded_state_logits(state_vec)
+        expanded_option = self.expanded_option_logits(option_hidden)
+        state_sources = {
+            "value": torch.tanh(self.value_head(state_vec)),
+            "archetype": belief["aux_logits"],
+            "opponent_hand": belief["opp_hand_logits"],
+            "opponent_remainder": belief["opp_remainder_logits"],
+            "lethal_threat": belief["lethal_threat_logits"],
+            "prize_race": belief["prize_race_pred"],
+            "tactical_outcomes": expanded_state["tactical_outcome"],
+            "opponent_response": expanded_state["opponent_response"],
+            "resource_forecast": expanded_state["resource_forecast"],
+            "game_phase": expanded_state["game_phase"],
+            "outcome_distribution": expanded_state["outcome_distribution"],
+            "remaining_turns": expanded_state["remaining_turns"],
+        }
+        return self.decision_fusion(
+            option_hidden,
+            base_logits,
+            state_sources=state_sources,
+            option_sources=expanded_option,
+        )
+
+    def expanded_option_logits(self, option_hidden: Tensor) -> dict[str, Tensor]:
+        """Evaluate all option-conditioned V6 heads on shared decoder states.
+
+        ``option_hidden`` is the second value returned by
+        :meth:`decode_options` / :meth:`decode_options_packed` when
+        ``return_hidden=True``. Padding is intentionally not transformed here;
+        the caller already owns the exact ``n_options`` vector and must apply
+        target-specific masks.
+        """
+        if not self.expanded_heads_enabled:
+            raise RuntimeError("expanded strategic heads are disabled")
+        if option_hidden.size(-1) != self.d_model:
+            raise ValueError(
+                "option hidden width mismatch: "
+                f"got={option_hidden.size(-1)} expected={self.d_model}"
+            )
+        outputs: dict[str, Tensor] = {}
+        for key, name in (
+            ("action_q", "action_q_head"),
+            ("action_type", "action_type_head"),
+            ("action_target", "action_target_head"),
+            ("action_resource", "action_resource_head"),
+            ("action_utility", "action_utility_head"),
+        ):
+            module = getattr(self, name)
+            if not isinstance(module, nn.Linear):
+                raise RuntimeError(f"expanded head {name} is unavailable")
+            value = module(option_hidden)
+            outputs[key] = value.squeeze(-1) if value.size(-1) == 1 else value
+        return outputs
+
+    def expanded_state_logits(self, state_vec: Tensor) -> dict[str, Tensor]:
+        """Evaluate state-conditioned V6 strategic auxiliary heads.
+
+        Tactical output is grouped as three same-seat horizons × six targets.
+        All values are raw logits/regressions: the typed loss layer decides
+        which columns receive BCE, Smooth-L1, CE, or a positive transform.
+        """
+        if not self.expanded_heads_enabled:
+            raise RuntimeError("expanded strategic heads are disabled")
+        if state_vec.dim() == 1:
+            state_vec = state_vec.unsqueeze(0)
+        if state_vec.size(-1) != self.d_model:
+            raise ValueError(
+                "state hidden width mismatch: "
+                f"got={state_vec.size(-1)} expected={self.d_model}"
+            )
+
+        def run(name: str) -> Tensor:
+            module = getattr(self, name)
+            if not isinstance(module, nn.Linear):
+                raise RuntimeError(f"expanded head {name} is unavailable")
+            return module(state_vec)
+
+        tactical = run("tactical_outcome_head")
+        return {
+            "tactical_outcome": tactical.reshape(
+                *tactical.shape[:-1], 3, 6
+            ),
+            "opponent_response": run("opponent_response_head"),
+            "resource_forecast": run("resource_forecast_head"),
+            "game_phase": run("game_phase_head"),
+            "outcome_distribution": run("outcome_distribution_head"),
+            "remaining_turns": run("remaining_turns_head"),
         }
 
     # ----- encode primitives -----
@@ -1096,7 +1510,11 @@ class TemporalCabtTransformer(nn.Module):
             state_vec, matchup_routes
         )
         logits = self.decode_options(
-            options, spatial_memory, policy_value_state, n_options=n_options
+            options,
+            spatial_memory,
+            policy_value_state,
+            n_options=n_options,
+            decision_fusion_state_vec=state_vec,
         )
         out = {
             "policy_logits": logits,
@@ -1115,8 +1533,16 @@ class TemporalCabtTransformer(nn.Module):
         state_vec: Tensor,
         *,
         n_options: Optional[Sequence[int]] = None,
-    ) -> Tensor:
-        """Score option SparseVector(s) → logits ``[B, max_N]`` (pad with -inf)."""
+        return_hidden: bool = False,
+        decision_fusion_state_vec: Optional[Tensor] = None,
+    ) -> Union[Tensor, tuple[Tensor, Tensor]]:
+        """Score option vectors, optionally returning shared decoder states.
+
+        The default remains the historical logits-only Tensor API. With
+        ``return_hidden=True`` the result is ``(policy_logits, option_hidden)``,
+        where ``option_hidden`` is ``[B, max_N, d_model]`` and can feed the
+        expanded action heads without a second option-decoder pass.
+        """
         if isinstance(option_svs, SparseVector):
             option_svs = [option_svs]
         device = next(self.parameters()).device
@@ -1159,6 +1585,8 @@ class TemporalCabtTransformer(nn.Module):
             spatial_memory,
             state_vec,
             n_options=n_options,
+            return_hidden=return_hidden,
+            decision_fusion_state_vec=decision_fusion_state_vec,
         )
 
     def decode_options_packed(
@@ -1169,8 +1597,10 @@ class TemporalCabtTransformer(nn.Module):
         *,
         n_options: Union[Sequence[int], Tensor],
         batch_size: int,
-    ) -> Tensor:
-        """Decode a device-resident packed option batch without CPU lists."""
+        return_hidden: bool = False,
+        decision_fusion_state_vec: Optional[Tensor] = None,
+    ) -> Union[Tensor, tuple[Tensor, Tensor]]:
+        """Decode a packed option batch, optionally returning decoder states."""
         b = int(batch_size)
         if b <= 0:
             raise ValueError("packed option batch must be non-empty")
@@ -1200,6 +1630,8 @@ class TemporalCabtTransformer(nn.Module):
             spatial_memory,
             state_vec,
             n_options=n_options,
+            return_hidden=return_hidden,
+            decision_fusion_state_vec=decision_fusion_state_vec,
         )
 
     def _decode_option_tokens(
@@ -1209,7 +1641,9 @@ class TemporalCabtTransformer(nn.Module):
         state_vec: Tensor,
         *,
         n_options: Union[Sequence[int], Tensor],
-    ) -> Tensor:
+        return_hidden: bool = False,
+        decision_fusion_state_vec: Optional[Tensor] = None,
+    ) -> Union[Tensor, tuple[Tensor, Tensor]]:
         """Shared option decoder after sparse bags have already been embedded."""
         device = opt_tokens.device
         b, max_n, _ = opt_tokens.shape
@@ -1244,13 +1678,22 @@ class TemporalCabtTransformer(nn.Module):
         for layer in self.option_decoder:
             h = layer(h, memory)
         logits = self.policy_head(h).squeeze(-1)  # [B, max_N]
+        fusion_state = (
+            state_vec
+            if decision_fusion_state_vec is None
+            else decision_fusion_state_vec
+        )
+        logits = self.fused_policy_logits(h, fusion_state, logits)
 
         # Mask padded options.
         counts = torch.as_tensor(n_options, device=device, dtype=torch.long).reshape(-1)
         if counts.numel() != b:
             raise ValueError("option count vector does not match batch size")
         padding = torch.arange(max_n, device=device).unsqueeze(0) >= counts.unsqueeze(1)
-        return logits.masked_fill(padding, float("-inf"))
+        policy_logits = logits.masked_fill(padding, float("-inf"))
+        if return_hidden:
+            return policy_logits, h
+        return policy_logits
 
     # ----- high-level API -----
 
@@ -1300,7 +1743,11 @@ class TemporalCabtTransformer(nn.Module):
             state_vec, matchup_routes
         )
         logits = self.decode_options(
-            options, spatial, policy_value_state, n_options=n_options
+            options,
+            spatial,
+            policy_value_state,
+            n_options=n_options,
+            decision_fusion_state_vec=state_vec,
         )
         value = torch.tanh(self.value_head(policy_value_state)).squeeze(-1)
         out: dict[str, Union[Tensor, Optional[TemporalKVCache]]] = {

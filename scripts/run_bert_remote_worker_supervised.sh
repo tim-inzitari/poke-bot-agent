@@ -21,20 +21,25 @@ cg_lib="$repo/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submis
 export REMOTE_REQUEST_TIMEOUT_S="120"
 export POKEBOT_REMOTE_REQUEST_TIMEOUT_S="120"
 export POKEBOT_REMOTE_WORKER_SAFETY_VERSION="20260717"
+export PYTORCH_MPS_HIGH_WATERMARK_RATIO="0.25"
+export PYTORCH_MPS_LOW_WATERMARK_RATIO="0.20"
+export POKEBOT_MPS_EMPTY_CACHE_EVERY_BATCHES="1"
 
 # One thread per inference process prevents BLAS oversubscription. Sixteen
-# simulator processes and two policy leaves are a bounded M4 saturation trial; the supervisor
-# still enforces the same 18 GiB tree cap and 30% free-memory floor.
+# simulator processes and four CPU policy leaves keep the 14-core M4 supplied
+# while the supervisor retains the 18 GiB tree cap and 30% free-memory floor.
+# Environment overrides make fleet tuning a service-owned configuration change
+# instead of another source edit.
 export OMP_NUM_THREADS="1"
 export MKL_NUM_THREADS="1"
 export OPENBLAS_NUM_THREADS="1"
 export VECLIB_MAXIMUM_THREADS="1"
 export NUMEXPR_NUM_THREADS="1"
-sim_workers=16
-default_workers=16
-leaf_servers=2
-leaf_max_batch=32
-leaf_queue_depth=64
+sim_workers="${POKEBOT_BERT_SIM_WORKERS:-16}"
+default_workers="${POKEBOT_BERT_DEFAULT_WORKERS:-16}"
+leaf_servers="${POKEBOT_BERT_LEAF_SERVERS:-4}"
+leaf_max_batch="${POKEBOT_BERT_LEAF_MAX_BATCH:-32}"
+leaf_queue_depth="${POKEBOT_BERT_LEAF_QUEUE_DEPTH:-8}"
 # Keep four complete waves admitted to the local process queue while a second
 # bounded set of request handlers may be returning trajectories to Inzi.  The
 # launchd plist owns the cap so changing it cannot be silently ignored here.
@@ -45,8 +50,8 @@ max_service_jobs=0
 # Whole-service job-count rotation is disabled: closing admission while active
 # games drained made the trainer exhaust retries.  Per-process recycling,
 # per-batch MPS cache release, and the hard memory watchdog remain authoritative.
-export POKEBOT_WORKER_RECYCLE_GAMES="256"
-export WORKER_RECYCLE_GAMES="256"
+export POKEBOT_WORKER_RECYCLE_GAMES="32"
+export WORKER_RECYCLE_GAMES="32"
 
 max_group_rss_mib="${POKEBOT_BERT_MAX_GROUP_RSS_MIB:-18432}"
 min_free_percent="${POKEBOT_BERT_MIN_FREE_PERCENT:-30}"
@@ -69,6 +74,8 @@ seed_checkpoint_script="$repo/scripts/seed_remote_active_checkpoint.py"
 checkpoint_root="/Users/tsinzitari/workspace/poke-bot-agent"
 export POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE="$active_checkpoint_file"
 export POKEBOT_REMOTE_CHECKPOINT_ROOT="$checkpoint_root"
+runtime_marker_source="${POKEBOT_MATCHUP_RUNTIME_MARKER_SOURCE:-}"
+runtime_tree_source="${POKEBOT_PUBLIC_MATCHUP_TREE_SOURCE:-}"
 worker_pid=""
 worker_pgid=""
 stop_requested=0
@@ -317,6 +324,60 @@ if ! "$python" "$seed_checkpoint_script" --checkpoint "$checkpoint"; then
   log "durable active-checkpoint seed/validation failed"
   record_failure
   exit 78
+fi
+
+# The trainer content-addresses Bert checkpoints inside their original run
+# directory. Runtime routing is armed by an adjacent, checksum-verified marker,
+# so materialize the canonical marker/tree beside the durable active checkpoint
+# before the worker imports Torch or spawns any simulator.
+if [[ -n "$runtime_marker_source" || -n "$runtime_tree_source" ]]; then
+  if [[ -z "$runtime_marker_source" || -z "$runtime_tree_source" ]]; then
+    log "both matchup runtime companion sources must be configured"
+    record_failure
+    exit 78
+  fi
+  if ! "$python" - "$active_checkpoint_file" "$checkpoint_root" \
+      "$runtime_marker_source" "$runtime_tree_source" <<'PY'
+import hashlib
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+state_file, root_raw, marker_raw, tree_raw = map(Path, sys.argv[1:])
+root = root_raw.expanduser().resolve(strict=True)
+state = json.loads(state_file.read_text(encoding="utf-8"))
+checkpoint = Path(str(state.get("path") or "")).expanduser().resolve(strict=True)
+checkpoint.relative_to(root)
+marker_source = marker_raw.expanduser().resolve(strict=True)
+tree_source = tree_raw.expanduser().resolve(strict=True)
+marker = json.loads(marker_source.read_text(encoding="utf-8"))
+tree_digest = "sha256:" + hashlib.sha256(tree_source.read_bytes()).hexdigest()
+if not (
+    marker.get("schema") == "poke_bot.remote_matchup_runtime_activation/v1"
+    and marker.get("runtime_enabled") is True
+    and marker.get("continuous_reevaluation") is True
+    and marker.get("one_route_per_decision") is True
+    and marker.get("tree_digest") == tree_digest
+    and marker.get("tree_file") == tree_source.name
+):
+    raise SystemExit("invalid matchup runtime companion contract")
+for source, name in (
+    (tree_source, tree_source.name),
+    (marker_source, "matchup-runtime-activation.json"),
+):
+    destination = checkpoint.parent / name
+    temporary = destination.with_name(destination.name + f".partial.{os.getpid()}")
+    shutil.copy2(source, temporary)
+    os.replace(temporary, destination)
+PY
+  then
+    log "failed to stage matchup runtime companions beside active checkpoint"
+    record_failure
+    exit 78
+  fi
+  log "staged digest-verified matchup runtime companions beside active checkpoint"
 fi
 
 trap 'handle_stop TERM' TERM

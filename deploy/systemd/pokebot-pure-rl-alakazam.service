@@ -1,5 +1,5 @@
 [Unit]
-Description=Pokemon Alakazam specialist continuous RL (8k temporal1 teacher-seeded v16/v9 adaptive)
+Description=Pokemon Alakazam specialist continuous RL (8k temporal1 expert-warmstarted v15/v7 adaptive)
 Wants=network-online.target
 After=network-online.target pokebot-pure-rl-alakazam-bootstrap.service
 Requires=pokebot-pure-rl-alakazam-bootstrap.service
@@ -8,7 +8,7 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v9
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v7
 Environment=PYTHONUNBUFFERED=1
 Environment=POKEBOT_TRAINING_SAFETY_VERSION=20260717
 Environment=POKEBOT_TRAINING_ARM_FILE=/home/inzi/poke-bot-agent/outputs/state/TRAINING_ARMED
@@ -72,10 +72,10 @@ Environment=POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S=90
 Environment="POKEBOT_TRUENAS_CHECKPOINT_SMB=/run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint"
 ExecStartPre=/usr/bin/test -d /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint
 ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/engines/libcg_hidden_inzi_v1.so
-ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/alakazam_teacher_ep3_8d0396e2.pt
-ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/alakazam_teacher_ep3_official1000.json
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/alakazam_expert_bootstrap.pt
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/alakazam_temporal1_expert_v15_seed.pt
 ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json
-ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_pure_rl.py --run-name pure_rl_alakazam_temporal1_8k_teacher_v16_20260721 --mode specialist --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --preflight-profile none --allow-single-gpu --multi-env-per-worker 4 --stall-minutes 20 --log outputs/logs/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721.log -- --specialist-archetype alakazam --base-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/alakazam_teacher_ep3_8d0396e2.pt --initial-learner-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/alakazam_teacher_ep3_8d0396e2.pt --initial-heldout-evidence /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/alakazam_teacher_ep3_official1000.json --official-collect-frac 0.50 --official-exploit-opponents iono --official-exploit-frac 1.00 --official-exploit-temperature 0.35 --archetype-aux-loss-weight 0.05 --opp-hand-loss-weight 0.05 --opp-remainder-loss-weight 0.05 --lethal-threat-loss-weight 0.025 --prize-race-loss-weight 0.025 --alakazam-guide-loss-weight 0.05 --iterations 100 --games-per-iter 8192 --train-epochs 2 --train-games-per-batch 240 --train-max-decisions-per-batch 8192 --train-warmup-max-decisions-per-batch 8192 --train-warmup-iterations 30 --measurement-decks alakazam --heldout-games 1000 --heldout-remotes --gate-wr 0.50 --heldout-per-opponent-floor 0.50 --promotion-games 80 --game-timeout-s 600 --min-usable-game-frac 0.98 --remote-worker-endpoints 192.168.1.143:8765,bert.local:8766 --expert-rehearsal-every 5 --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json --expert-rehearsal-epochs 5 --expert-rehearsal-batch-size 12288 --expert-min-decisions 100000 --continuous-learner-min-wr 0.35 --artifact-history-iterations 5 --min-free-disk-gb 100 --resume auto
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_pure_rl.py --run-name pure_rl_alakazam_temporal1_8k_v15_20260721 --mode specialist --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --preflight-profile none --allow-single-gpu --multi-env-per-worker 4 --stall-minutes 20 --log outputs/logs/pure_rl_alakazam_temporal1_8k_v15_20260721.log -- --specialist-archetype alakazam --initial-learner-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/alakazam_temporal1_expert_v15_seed.pt --official-collect-frac 0.50 --official-exploit-opponents iono --official-exploit-frac 1.00 --official-exploit-temperature 0.35 --archetype-aux-loss-weight 0.05 --opp-hand-loss-weight 0.05 --opp-remainder-loss-weight 0.05 --lethal-threat-loss-weight 0.025 --prize-race-loss-weight 0.025 --alakazam-guide-loss-weight 0.05 --iterations 100 --games-per-iter 8192 --train-epochs 2 --train-games-per-batch 240 --train-max-decisions-per-batch 8192 --train-warmup-max-decisions-per-batch 8192 --train-warmup-iterations 30 --measurement-decks alakazam --heldout-games 1000 --heldout-remotes --gate-wr 0.50 --heldout-per-opponent-floor 0.50 --promotion-games 80 --game-timeout-s 600 --min-usable-game-frac 0.98 --remote-worker-endpoints 192.168.1.143:8765,bert.local:8766 --expert-rehearsal-every 5 --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json --expert-rehearsal-epochs 5 --expert-rehearsal-batch-size 12288 --expert-min-decisions 100000 --continuous-learner-min-wr 0.35 --artifact-history-iterations 5 --min-free-disk-gb 100 --resume auto
 Restart=on-failure
 RestartSec=60
 RestartPreventExitStatus=75 78
@@ -86,8 +86,8 @@ MemoryHigh=96G
 MemoryMax=112G
 MemorySwapMax=0
 OOMPolicy=stop
-StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721.launcher.log
-StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_alakazam_temporal1_8k_teacher_v16_20260721.launcher.log
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_alakazam_temporal1_8k_v15_20260721.launcher.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_alakazam_temporal1_8k_v15_20260721.launcher.log
 
 [Install]
 WantedBy=default.target

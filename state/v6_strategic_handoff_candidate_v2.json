@@ -1,0 +1,103 @@
+{
+  "schema": "poke_bot.v6_strategic_handoff_candidate/v2",
+  "status": "ready_for_safe_boundary_not_activated",
+  "validated_at_utc": "2026-07-25T20:17:32Z",
+  "candidate_runtime_root": "/home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate",
+  "goal_revision": 16,
+  "goal_sha256": "sha256:47411cd681efe4ca3cf9f8d5e40c9eff8be8ac4b1de573104261e0c82af2e101",
+  "human_protocol_sha256": "sha256:31d05e8044d5bcc633fd0e333e4d7b395401aa78eb16428b6427a40c516e36d9",
+  "protocol_sha256": "sha256:9cb7aff1dc7c9526b2534e4ac13acab1194305327e5172d2ee1a71685bc9d616",
+  "mutable_state_observed_sha256": "sha256:7a67244ed729f034bbf0a9da9b62d7c4924adeec41cf4b8b8d0278c358f5212d",
+  "cycle_contract_sha256": "sha256:93afaecd46783dfba9098e3b9e2d08c58c6b4855c9f0495b28347f192ea30539",
+  "transition_graph_sha256": "sha256:95e5a420c10f53f7429e8ca5dd503aa95c42b43c06fe38c426d9f4ab3efd1c84",
+  "frozen_specialist_registry_sha256": "sha256:a9edd6860f0cb8b966a963af2e62d6d83a9c16da16e12f8c4fec762d0047fcf8",
+  "implementation_validation_receipt": "state/expanded_strategic_heads_validation_v1.json",
+  "implementation_validation_receipt_sha256": "sha256:09b68c32424cef5f960040a4dc66dc2e83bd85b417d0d9b3b7d33e759b8228bf",
+  "decision_fusion_validation_receipt": "state/causal_decision_fusion_validation_v1.json",
+  "decision_fusion_validation_receipt_sha256": "sha256:a22c8d11afa995c68a96045704224408f87e4cbd80d92517b62f3fd802a73cf6",
+  "active_training": {
+    "specialist_id": "dudunsparce",
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "service_state": "active/running",
+    "iteration": 10,
+    "live_training_modified": false,
+    "preempted_for_handoff_preparation": false
+  },
+  "next_specialist": {
+    "specialist_id": "marnie-s-grimmsnarl-ex",
+    "prestage_receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
+    "prestage_receipt_sha256": "sha256:66793609408bc4d90874b130365f16b096038ebcd1b0b44c6e0ad7b5cee2fa44",
+    "prestage_status": "ready",
+    "selection_identity_sha256": "sha256:680e3b3bf293ed7fa67907805c23b1d732c7bd8c2e0851b40f68a78cab0b2d19",
+    "blockers": [],
+    "expert_corpus": {
+      "window_start": "2026-07-04",
+      "window_end": "2026-07-23",
+      "calendar_days": 20,
+      "records": 42155,
+      "decisions": 3776077,
+      "manifest_sha256": "sha256:3f1a6f6c99dbc3592cb3306d14c818fff0bdee5a8549885d2aa1e8d68aeba3d6",
+      "pointer_sha256": "sha256:08bcd3a0d21e301c0b11da09f6c780fda02e80ef71f316da43a66ebd8ed17819",
+      "expanded_target_schema": "poke_bot.expanded_strategic_targets/v2",
+      "expanded_target_schema_sha256": "sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f"
+    },
+    "current_deck_guide": {
+      "status": "ready",
+      "contract": "config/deck_guides/marnie-s-grimmsnarl-ex.yaml",
+      "contract_sha256": "sha256:7ccc948f2b7c177d8ff2cb6dc40a0c1dd81a9517e38bed7d74de78e72c00e40d",
+      "expert_writeup": "docs/deck_guides/marnie-s-grimmsnarl-ex-expert-brief.txt",
+      "expert_writeup_sha256": "sha256:6563a6cd0eec11a741a4259b620b4e221d90ce414796c84b645f06bdabb73bea",
+      "expert_writeup_words": 5434,
+      "filtered_expert_rows": 967241
+    },
+    "cpu_pack": {
+      "status": "ready",
+      "cache_hit_on_final_validation": true,
+      "key": "b9960575e317d1c2033e34ba548cd4a4eb6d332c22dfe9e8f7b39b1e3d17937c",
+      "bytes": 6144562603,
+      "payload_sha256": "sha256:b4252f5f303aafa04c9098ea206d02e1b1e1a074c1ec231db50ce834d4eac20e",
+      "manifest_sha256": "sha256:8a04d2b88b965c93c65179d8f71b3df0e9d8f87c8f83234dd7250d3eda018594"
+    }
+  },
+  "architecture": {
+    "schema": "poke_bot.expanded_strategic_heads/v1",
+    "target_schema": "poke_bot.expanded_strategic_targets/v2",
+    "target_schema_digest": "sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f",
+    "schedule_digest": "sha256:e471f58915df0cbe88b837de6fbe532e6416aa028a538b92a11ec788621f45dc",
+    "head_count": 11,
+    "bootstrap_epochs": 25,
+    "runtime_enabled_heads": [],
+    "decision_fusion": {
+      "schema": "poke_bot.causal_decision_fusion/v1",
+      "required_head_count": 17,
+      "status": "implementation_validated_activation_pending",
+      "applies_to_current_and_every_successor_specialist": true,
+      "current_iteration_action_path_unchanged": true,
+      "safe_boundary_activation_receipt": null
+    }
+  },
+  "orchestration": {
+    "independent_tasks_parallel_by_default": true,
+    "healthy_training_may_be_preempted_for_preparation": false,
+    "transition_execution_requires_stopped_training_boundary": true,
+    "dry_run_status": "passed_without_actions",
+    "dry_run_graph_id": "canonical-specialist-transition",
+    "dry_run_transition_id": "sha256:ad1e832abfa7b58e5e0cff36d18175f0c6e934561d1717e9304597d1b13ebaaf",
+    "dry_run_nodes_pending": 3
+  },
+  "validation": {
+    "handoff_regression_tests_passed": 65,
+    "handoff_regression_tests_failed": 0,
+    "dashboard_required_sources_current": 19,
+    "dashboard_required_sources_total": 19,
+    "dashboard_integrity_failures": []
+  },
+  "activation": {
+    "allowed_now": false,
+    "reason": "healthy_active_specialist_training_has_not_reached_a_terminal_gate_boundary",
+    "boundary": "next_safe_v6_cumulative_core_and_specialist_handoff",
+    "selector_changed": false,
+    "live_service_changed": false,
+    "live_checkpoint_changed": false
+  }
+}

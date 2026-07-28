@@ -2,13 +2,16 @@
 
 This file is the durable operator memory for the active training objective.
 
-- Active gate ID: `alakazam-strong-public-roster-v1`
+- Active gate ID: `alakazam-strong-public-roster-lc55-v2`
 - Gate roster: the eight package-deduplicated strong public agents in
   `ops/alakazam_gate_program_v1.json`
 - Exact allocation: 250 games per public opponent, 125 games in each seat,
   for 2,000 gate games total
 - Gate policy: greedy, one pinned checkpoint digest, fixed disjoint seeds,
   every matchup complete, and no early-stop or partial gate result
+- Pass threshold: the skill-weighted 90% lower-confidence bound must be at
+  least 55.00%. The iteration-20 v1 result (50.35% lower bound) remains
+  archived but does not pass this active gate.
 - The original four baselines (Iono, Dragapult ex, Mega Abomasnow ex, and
   Mega Lucario ex) are 250-game-per-opponent research controls only. Their
   gate weight is exactly zero.

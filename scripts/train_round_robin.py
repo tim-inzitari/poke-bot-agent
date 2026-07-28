@@ -557,6 +557,7 @@ def _worker_play(job: dict) -> dict:
             "archetype": job.get("archetype"),
             "checkpoint_digest": job.get("checkpoint_digest"),
             "action_selection": "sampled" if sampled else "greedy",
+            "matchup_runtime_audit": None,
             "record_json": None,
             "error": None,
         }
@@ -719,6 +720,7 @@ def _worker_play(job: dict) -> dict:
 
         winner = result["winner"]
         value = 0.0 if winner == 2 else (1.0 if winner == our_seat else -1.0)
+        matchup_runtime_audit = agent.matchup_adapter_shadow_snapshot()
         # Aggregate optional experimental-search diagnostics.
         sims_run_total = 0
         sims_plan_peak = 0
@@ -775,7 +777,10 @@ def _worker_play(job: dict) -> dict:
                 opp_id=opp_id,
                 archetype=job.get("archetype", "hammer-pult"),
                 seed=int(job["seed"]),
-                target_provenance=dict(job.get("target_provenance") or {}),
+                target_provenance={
+                    **dict(job.get("target_provenance") or {}),
+                    "matchup_runtime_audit": matchup_runtime_audit,
+                },
                 opp_archetype=(
                     str(job.get("opp_archetype") or "") or None
                 ),
@@ -820,6 +825,7 @@ def _worker_play(job: dict) -> dict:
             "action_selection": (
                 "sampled" if bool(job.get("sample_actions", not (oracle or belief))) else "greedy"
             ),
+            "matchup_runtime_audit": matchup_runtime_audit,
             "seed": job["seed"],
             "pair_id": job.get("pair_id"),
             "baseline_failed": False,
@@ -1007,28 +1013,40 @@ def _build_selfplay_record(
     if not targets:
         return None
     from poke_bot import features as _features
-    target_sources = {
-        str(
+    def _target_source(target: dict) -> str:
+        return str(
             target.get("target_source")
             or (target.get("diagnostics") or {}).get("target_source")
             or ""
         )
-        for target in targets
-    }
-    if len(target_sources) != 1:
-        raise ValueError("mixed target sources within one game")
-    target_source = next(iter(target_sources))
+
+    target_sources = {_target_source(target) for target in targets}
+    policy_sources = target_sources - {"forced_go_first_contract"}
+    if len(policy_sources) != 1 or not policy_sources:
+        raise ValueError(
+            "mixed target sources within one game: "
+            f"{sorted(target_sources)!r}"
+        )
+    # Choosing who goes first is an engine-mandated deterministic setup row,
+    # not a second behavior policy.  Preserve that temporal step while binding
+    # the game's training provenance to its one actual policy/search source.
+    target_source = next(iter(policy_sources))
     if target_source == "belief_mcts":
         from poke_bot.core_pipeline import validate_search_target_identity
 
-        provenances = [dict(target.get("provenance") or {}) for target in targets]
+        policy_targets = [
+            target for target in targets if _target_source(target) == target_source
+        ]
+        provenances = [
+            dict(target.get("provenance") or {}) for target in policy_targets
+        ]
         first_provenance = provenances[0]
         if any(provenance != first_provenance for provenance in provenances[1:]):
             raise ValueError("mixed model/belief/search provenance within game")
         incumbent = dict(target_provenance.get("incumbent_checkpoint") or {})
         validate_search_target_identity(
             first_provenance,
-            [dict(target.get("diagnostics") or {}) for target in targets],
+            [dict(target.get("diagnostics") or {}) for target in policy_targets],
             expected_checkpoint_digest=str(incumbent.get("digest") or ""),
             expected_model_generation=int(
                 target_provenance.get("model_generation", -1)
@@ -1054,11 +1072,25 @@ def _build_selfplay_record(
         recorded_stages = list(t.get("factorized_stages") or [])
         rows: list[dict] = []
         for stage_i, (combos, target_index) in enumerate(canonical_stages):
-            recorded = (
-                dict(recorded_stages[stage_i])
-                if stage_i < len(recorded_stages)
-                else {}
-            )
+            if _target_source(t) == "forced_go_first_contract":
+                # The runtime contract deliberately bypasses model inference
+                # for this setup choice.  Reconstruct its exact behavior
+                # policy against the canonical legal-option ordering so the
+                # temporal row is trusted and, when both choices are offered,
+                # teaches the submission preference for going first.
+                recorded = {
+                    "action_combos": [list(combo) for combo in combos],
+                    "policy": [
+                        1.0 if index == int(target_index) else 0.0
+                        for index in range(len(combos))
+                    ],
+                }
+            else:
+                recorded = (
+                    dict(recorded_stages[stage_i])
+                    if stage_i < len(recorded_stages)
+                    else {}
+                )
             recorded_combos = [
                 list(c) for c in (recorded.get("action_combos") or [])
             ]
@@ -1077,23 +1109,36 @@ def _build_selfplay_record(
                     "selected_index": int(target_index),
                 }
             )
-        steps.append(
-            {
-                "observation": obs,
-                "action": action,
-                "env_step": i,
-                "aux_labels": dict(t.get("aux_labels") or {}),
-            }
-        )
+        step = {
+            "observation": obs,
+            "action": action,
+            "env_step": i,
+            "aux_labels": dict(t.get("aux_labels") or {}),
+        }
+        if t.get("transition_after") is not None:
+            step["transition_after"] = dict(t["transition_after"])
+        steps.append(step)
         factorized_policy_targets.append(rows)
 
     if not steps:
         return None
+    from poke_bot.strategic_heads import attach_expanded_strategic_labels
+
+    strategic_contract = attach_expanded_strategic_labels(
+        steps,
+        game_value=float(value),
+        terminal_complete=not bool(
+            target_provenance.get("terminal_policy_failure", False)
+        ),
+    )
     opponent_archetype_id = str(opp_archetype or opp_id)
     target_provenance = {
         **dict(target_provenance),
+        "target_source": target_source,
+        "trusted": True,
         "opponent_id": str(opp_id),
         "opponent_archetype_id": opponent_archetype_id,
+        "expanded_strategic_targets": strategic_contract,
     }
     return {
         "episode_id": f"rl-{archetype}-{opp_id}-{our_seat}-{seed}",

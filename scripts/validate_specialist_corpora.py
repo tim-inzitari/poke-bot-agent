@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -15,10 +16,18 @@ if str(ROOT) not in sys.path:
 
 from poke_bot.pure_rl.expert_rehearsal import resolve_expert_manifest
 from scripts.filter_feature_manifest import sha256
-from scripts.run_starmie_expert_bootstrap import TARGETS
 from scripts.split_expert_manifest_by_archetype import (
     READY_SCHEMA,
     UNAVAILABLE_SCHEMA,
+)
+
+REQUIRED_TARGETS = (
+    "temporal_action_rows",
+    "opponent_hand_rows",
+    "opponent_remainder_rows",
+    "opponent_private_prize_rows",
+    "lethal_threat_rows",
+    "prize_race_rows",
 )
 
 
@@ -27,7 +36,7 @@ def validate_corpora(
     *,
     required_archetypes: tuple[str, ...] | list[str],
     required_compact_mode: str = "temporal-expert-v1",
-    required_target_coverage: tuple[str, ...] = TARGETS,
+    required_target_coverage: tuple[str, ...] = REQUIRED_TARGETS,
 ) -> dict[str, Any]:
     ready_path = Path(ready_path).expanduser().resolve()
     payload = json.loads(ready_path.read_text(encoding="utf-8"))
@@ -129,11 +138,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ready", type=Path, required=True)
     parser.add_argument("--archetype", action="append", required=True)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     result = validate_corpora(
         args.ready,
         required_archetypes=args.archetype,
     )
+    if args.output is not None:
+        output = args.output.expanduser().resolve()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
+        with temporary.open("x", encoding="utf-8") as stream:
+            json.dump(result, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, output)
     print(json.dumps(result, indent=2, sort_keys=True), flush=True)
     return 0
 

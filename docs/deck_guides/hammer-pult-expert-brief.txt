@@ -1,0 +1,615 @@
+HAMMER DRAGAPULT
+PRACTICAL PILOT GUIDE FOR EXPERT REVIEW
+
+Specialist ID: hammer-pult
+Guide version: hammer-pult-north-star-v1
+Prepared: 2026-07-28
+Audience: world-champion and equivalent Pokémon TCG subject-matter experts
+Status: research pilot; not yet expert-approved
+
+
+SCOPE AND EVIDENCE LABELS
+
+This is a human how-to-play guide for the disruption-heavy Dragapult ex deck
+that combines Crushing Hammer, Budew, Munkidori, and Unfair Stamp. The project
+calls that card-signature family Hammer Dragapult or Hammer-Pult. It is not the
+same specialist as Dragapult/Dusknoir, Dragapult/Blaziken, or a generic
+Dragapult list merely because all of them use Dreepy, Drakloak, and Dragapult
+ex.
+
+The concrete project representative is the modal 60-card Hammer-Pult list from
+the official Pokémon TCG AI Battle top-episode export for July 12, 2026. It has
+four Dreepy, four Drakloak, three Dragapult ex, two Munkidori, two Budew, one
+Fezandipiti ex, three Crushing Hammer, Unfair Stamp, and ten Basic Energy. The
+closest strong public physical-tournament reference is Cássio Moraes's
+fourth-place Campinas Regional list, which used four Crushing Hammer plus a
+2-2 Dunsparce/Dudunsparce engine. The official 2026 NAIC Masters page also
+publishes a successful 4-Hammer Dragapult/Dudunsparce list. Confirm your exact
+registered 60 before using any LIST CHECK line.
+
+Labels:
+
+SOURCE means printed card text, an official list, a published tournament list,
+public aggregate results, or player-authored strategy directly supports the
+statement.
+
+INFERENCE means practical play reasoning from those facts. It is offered for
+expert review, not presented as an official ruling or controlled causal result.
+
+LIST CHECK means the advice depends on a slot that can differ between current
+Hammer Dragapult lists.
+
+SME CHECK marks a point where matchup specialists should correct or sharpen
+the recommendation.
+
+
+THE DECK IN ONE SENTENCE
+
+Build several Dreepy into a Drakloak draw engine, use Budew and Hammer to steal
+development turns, then make every Phantom Dive solve the current Active while
+placing six counters that predetermine a later multi-Prize turn.
+
+Hammer Dragapult wins through the interaction of three clocks:
+
+1. Development clock: how quickly you reach a powered Dragapult while retaining
+   another evolving Dreepy.
+2. Denial clock: how many useful opposing turns are lost to Itchy Pollen,
+   Crushing Hammer, Judge, Special Red Card, Xerosic, or Unfair Stamp.
+3. Prize clock: how quickly 200 Active damage, six placed counters, and
+   Adrena-Brain produce six prizes.
+
+Do not maximize one clock while ignoring the others. Four Hammers do not make
+a weak board good. A fast Phantom Dive that places counters without a prize
+map may be less valuable than a setup turn. Conversely, endless disruption
+without preparing two typed Energy on Dragapult eventually gives the opponent
+time to draw out.
+
+
+REFERENCE LISTS
+
+Project modal representative, reconstructed from the bound internal card IDs:
+
+Pokémon - 16
+
+4 Dreepy
+4 Drakloak
+3 Dragapult ex
+2 Munkidori
+2 Budew
+1 Fezandipiti ex
+
+Trainers - 34
+
+4 Lillie's Determination
+3 Boss's Orders
+3 Crispin
+4 Buddy-Buddy Poffin
+4 Poké Pad
+4 Ultra Ball
+3 Crushing Hammer
+2 Night Stretcher
+1 Unfair Stamp
+1 Special Red Card
+1 Xerosic's Machinations
+1 Judge
+1 Dawn
+2 Risky Ruins
+
+Energy - 10
+
+4 Fire Energy
+4 Psychic Energy
+2 Darkness Energy
+
+Ordered internal projection:
+sha256:f07b5469a0bc36d80348b5d8301f86a6a6c3e6753fe26c9cd4ec07ff4d8021c4
+
+Canonical multiset:
+sha256:1081d5d8b961c8e7171b1e18844ef2b10cc2c032432e51041b80c4309d72379e
+
+SOURCE: Cássio Moraes's fourth-place Campinas list used a 4-4-3 Dragapult
+line, a 2-2 Dunsparce/Dudunsparce line, two Munkidori, one Budew, one Meowth
+ex, one Fezandipiti ex, four Crushing Hammer, four Poffin, four Poké Pad, four
+Ultra Ball, Unfair Stamp, two Risky Ruins, and eight Energy. The official NAIC
+list likewise used four Hammer and the same central Dragapult/Munkidori/Budew
+shell, but only a 1-1 Dudunsparce line and nine Energy.
+
+INFERENCE: Those differences change your bench and recovery calculations, not
+the deck's central play pattern. The project list exchanges the Dudunsparce
+draw loop for a second Budew, an extra Basic Energy, and additional disruption.
+Do not imagine a Run Away Draw line when piloting the project representative.
+
+
+QUICK START
+
+If you have only one minute before a round:
+
+1. Prefer going second when a meaningful turn-one Itchy Pollen is likely to
+   deny opposing Items. Reconsider against a matchup where evolving first or
+   attacking Budew changes little.
+2. Open Budew when the lock matters and you can bench Dreepy. Otherwise open a
+   low-liability single-Prizer and pivot; avoid donating Fezandipiti ex.
+3. Establish two Dreepy before optional support Pokémon. Three is appropriate
+   against gust, spread, or a matchup that can remove one before it evolves.
+4. Attach every turn with the next two attacks in mind. Phantom Dive needs one
+   Fire and one Psychic; Darkness belongs on Munkidori only when Adrena-Brain
+   will earn real damage or repair an attacker.
+5. Evolve through Drakloak whenever practical. Recon Directive is the engine,
+   and a Drakloak left behind a Dragapult is your next attacker seed.
+6. Play Hammer when a heads result removes Energy that matters. Do not treat a
+   coin flip as part of your plan until the coin has actually resolved.
+7. Before Phantom Dive, map all six counters. Ask which exact later attack,
+   Adrena-Brain, or Boss turn converts each counter into a prize.
+8. Use Unfair Stamp after the opponent takes a knockout, ideally when your board
+   can immediately attack or lock Items. Disruption without pressure is merely
+   a smaller hand that gets another turn.
+9. Expose Fezandipiti ex only when Flip the Script materially changes the turn.
+   It is a two-Prize liability in a deck otherwise capable of forcing awkward
+   prizes.
+10. End every turn naming the next attacker, both Energy it needs, and the
+    intended recipient of the next six Phantom Dive counters.
+
+
+SETUP AND SEQUENCING
+
+Opening board
+
+SOURCE: Current public strategy describes the early game as establishing Dreepy
+and using Budew's Itchy Pollen to Item-lock the opponent. Current aggregate
+lists consistently play four Dreepy, four Drakloak, and multiple search cards.
+
+INFERENCE: A normal desirable opening is Budew Active, two Dreepy Benched, and
+an attachment that advances a future Dragapult. A third Dreepy is valuable when
+the opponent can gust, place Bench damage, or take a quick single Prize. One
+Dreepy is a failure point. Four Dreepy can crowd out Munkidori and Fezandipiti,
+so fill the final spaces only after planning the matchup.
+
+Prioritize Poffin targets by missing board function, not by a fixed memorized
+order:
+
+- first live Dreepy;
+- second live Dreepy;
+- Budew when it will be Active and lock useful Items;
+- third Dreepy when the opponent can break a single line;
+- another Budew only when a second lock turn or easy pivot matters.
+
+Do not bench Fezandipiti ex merely because it is available. Its Ability matters
+only after one of your Pokémon was Knocked Out during the opponent's previous
+turn, and it gives up two prizes. Munkidori is also not an automatic opening
+bench. It needs Darkness attached and damage on your own Pokémon before
+Adrena-Brain produces value.
+
+Evolution order
+
+SOURCE: Drakloak's Recon Directive looks at the top two cards and puts one into
+hand; Dragapult ex is the 320-HP Stage 2 attacker whose Phantom Dive deals 200
+and places six counters on the opposing Bench.
+
+INFERENCE: Evolve enough Dreepy to Drakloak that your hand can continue, then
+promote only the Drakloak that can attack or must become durable. A common
+mistake is evolving every Drakloak immediately and deleting the draw engine.
+Another is leaving a powered line as fragile Dreepy while using Recon Directive
+elsewhere. Each evolution decision should answer:
+
+- Does this become the current attacker?
+- Do I still have a Drakloak to draw?
+- Is this Dreepy at risk before next turn?
+- Does my hand need Recon Directive before I play a shuffle-draw Supporter?
+
+Use every legal, useful Recon Directive before replacing that Drakloak with
+Dragapult or ending the turn. If a later shuffle effect is planned, draw first
+when seeing an extra card improves the decision; sequence differently only
+when preserving known top cards or hand size has an exact reason.
+
+
+GOING FIRST AND GOING SECOND
+
+Going second
+
+SOURCE: Budew's attack is the deck's immediate pressure option, and public
+player discussion and current strategy articles describe turn-one Itchy Pollen
+as a reason to choose second.
+
+INFERENCE: Default to second against Item-dependent evolution and search decks.
+The target turn is not "attack with Budew at all costs." It is:
+
+- bench two Dreepy;
+- attach toward Dragapult;
+- thin or refresh the hand without discarding irreplaceable pieces;
+- play any Hammer whose heads result affects the next opposing attack; and
+- use Itchy Pollen when the opponent's next Item denial is worth more than
+  passing or an alternative attack.
+
+Going first
+
+INFERENCE: Going first trades away immediate Budew pressure for the earliest
+natural Drakloak turn. Choose it when the matchup develops mainly through
+Supporters or Abilities, when the opponent can ignore Item lock, or when
+evolving before their first attack is essential. Build redundant Dreepy and
+attach. Avoid benching a two-Prizer simply to improve an otherwise complete
+setup.
+
+SME CHECK: Exact first/second selection should be reviewed matchup by matchup
+for the current event. The generic aggregate does not isolate Hammer lists or
+randomized choice, so it cannot establish a causal going-first win rate.
+
+
+ENERGY AND ATTACK PLANNING
+
+SOURCE: Phantom Dive costs Fire plus Psychic. Munkidori's Adrena-Brain requires
+a Darkness Energy attached. The public competitive lists use a small
+three-type Basic Energy package and Crispin.
+
+Treat each attachment as one of three jobs:
+
+- first Phantom Dive color on the current line;
+- second Phantom Dive color on the current or next line;
+- Darkness enabling one Munkidori.
+
+Never attach Darkness speculatively when doing so delays Phantom Dive. Never
+attach both attack colors to one vulnerable Dreepy if splitting them across
+Drakloak preserves two credible attackers and Crispin can finish either. But do
+not split Energy so widely that no attacker comes online.
+
+Before Crispin, count the exact Basic Energy still accessible, the types in
+hand, and whether the attachment portion has a legal and useful destination.
+Before Ultra Ball, identify whether discarding an Energy leaves enough copies
+for two attacks and a Munkidori. Before Night Stretcher, decide whether the
+needed recovery is a Pokémon or Basic Energy.
+
+Attack choice
+
+Jet Headbutt's 70 is a fallback. Phantom Dive is the plan because its 200 plus
+six counters creates simultaneous pressure. Yet Phantom Dive is not
+automatically correct if the Active damage is blanked, the Bench is protected,
+or another attacker wins immediately. Verify all effects before declaring the
+line.
+
+
+PHANTOM DIVE AND PRIZE MAPPING
+
+SOURCE: Phantom Dive places six damage counters on opposing Benched Pokémon in
+any way. Damage-counter placement is not the same as attack damage. Munkidori
+can move up to three counters from one of your Pokémon to one opposing Pokémon
+when Darkness Energy is attached.
+
+Count in tens, but plan in knockouts.
+
+Useful six-counter patterns include:
+
+- 60 on one evolving Basic that will be Knocked Out by the next spread or
+  Adrena-Brain;
+- 30/30 on two targets that each become future 200+30 thresholds;
+- 40/20 when one target needs exactly four counters and the remainder has a
+  named future use;
+- all six on a support Pokémon that must evolve or retreat from danger.
+
+The best placement is the one that survives the opponent's legal responses.
+Ask whether the target can evolve out of range, heal, be recovered, gain HP,
+leave play, gain Bench protection, or become inaccessible. Prefer counters that
+create more than one live prize route, forcing the opponent to solve several
+problems.
+
+Prize map before attacking:
+
+1. Record both players' prizes.
+2. Identify every opposing one- and two-Prize target.
+3. Calculate Active damage after Weakness, Resistance, Tools, and effects.
+4. Name the target of each placed counter.
+5. State the next attack or Adrena-Brain that cashes those counters.
+6. Check whether Boss's Orders is required; if so, preserve it.
+7. Check whether taking the current prize enables or disables a comeback card.
+
+INFERENCE: Phantom Dive often seeks a 2-2-2 route against Pokémon ex, but
+Hammer-Pult's stronger lines frequently interleave a one-Prize Bench knockout
+with Active damage. Do not insist on three clean ex knockouts when spread can
+remove an engine Pokémon and reduce the opponent's future options.
+
+
+DISRUPTION PLANNING
+
+Crushing Hammer
+
+SOURCE: Crushing Hammer flips a coin; on heads it discards an Energy attached
+to an opposing Pokémon.
+
+The correct pre-flip question is: "If heads, which visible Energy produces the
+largest immediate loss of options?" Usually prioritize:
+
+- the only Energy on the next attacker;
+- a difficult-to-replace type;
+- a Special Energy carrying multiple units or a protective effect;
+- Energy on a pivot whose Retreat plan matters; then
+- surplus Energy only when no better target exists.
+
+Do not condition your sequence on heads before the flip. Play search, draw, or
+attachments in the order that remains legal and useful under both outcomes.
+After tails, rebuild the turn from the actual state. After heads, exploit the
+tempo by attacking, locking, or disrupting the hand; otherwise the opponent
+may simply reattach.
+
+Unfair Stamp and hand disruption
+
+SOURCE: The successful public lists pair Hammer with Unfair Stamp and other
+hand disruption. Public strategy describes Dragapult as pressure plus
+disruption, not damage alone.
+
+INFERENCE: The premium Stamp window is after the opponent takes a knockout and
+before you apply a board state they must answer immediately. Combine it with
+Phantom Dive or Itchy Pollen where possible. Judge, Special Red Card, or
+Xerosic should be evaluated against the visible hand size and board, not played
+merely because they are "disruption." A large hand is not automatically a good
+target if it contains known dead cards; a small hand may still be perfect.
+
+Risky Ruins
+
+LIST CHECK: The project representative and Campinas list use Risky Ruins.
+Sequence Stadium replacement around both players' likely damage. Do not play
+it automatically if it provides the opponent the decisive counter math before
+it creates yours.
+
+
+BENCH MANAGEMENT AND RECOVERY
+
+A six-space plan should assign jobs:
+
+- Active Budew or Dragapult;
+- current Drakloak/Dragapult attacker;
+- next Dreepy/Drakloak;
+- draw-engine Drakloak;
+- one Munkidori when live;
+- one flexible slot for a third line, second Munkidori, or Fezandipiti ex.
+
+This is not a prescription to fill all spaces. Preserve one slot when Night
+Stretcher, an emergency Dreepy, or Fezandipiti may become necessary.
+
+Recovery priorities:
+
+1. The only card that restores the next legal attacker.
+2. The missing typed Energy for Phantom Dive.
+3. A Dragapult line piece needed for the remaining prize map.
+4. Munkidori when an exact three-counter move changes prizes.
+5. Budew when another Item-lock turn is actually meaningful.
+
+Night Stretcher creates either/or tension. Name the target before playing
+search and discard effects. Do not recover a glamorous Stage 2 while lacking a
+Basic to evolve, or recover Darkness for Munkidori when the next Dragapult
+cannot attack.
+
+
+MATCHUP PLANS
+
+These plans combine public aggregate results with mechanical inference.
+Aggregate Dragapult data mixes variants, pilots, list choices, and event
+conditions. Treat percentages as context, never as causal claims about this
+exact Hammer list.
+
+Dragapult mirror
+
+Public commentary identifies Hammer as especially impactful in the mirror.
+Both players need typed attachments every turn, and both threaten Bench
+counters.
+
+- establish three Dreepy when possible;
+- attach so one Hammer does not strand the only attacker;
+- preserve Darkness only when Munkidori can reverse counter math;
+- spread counters onto Drakloak/Dreepy that cannot all evolve away;
+- avoid volunteering Fezandipiti ex unless its draw wins the current race;
+- save Stamp for a knockout turn that also presents pressure.
+
+Alakazam/Dudunsparce
+
+Current CRI aggregate Dragapult data is favorable against Alakazam Dudunsparce,
+but that is not Hammer-only evidence.
+
+- pressure Abra/Kadabra before the Stage 2 engine stabilizes;
+- map Bench counters around Dudunsparce draw cycling and recovery;
+- Hammer an Energy that changes an immediate attack, not a harmless spare;
+- preserve Boss for an exposed engine target;
+- avoid over-benching two-Prizers into Powerful Hand prize math.
+
+Cynthia's Garchomp
+
+Current CRI and POR aggregates show Dragapult performing poorly into Cynthia's
+Garchomp.
+
+- use Budew to delay Item-driven setup when relevant;
+- establish extra Dreepy against fast pressure;
+- Hammer the attachment that breaks the next attack or acceleration chain;
+- place counters on evolving support lines, not merely the largest HP target;
+- accept that a denial turn must advance your own attacker to matter.
+
+Marnie's Grimmsnarl/Froslass
+
+Aggregate results are format-dependent; the current CRI page is slightly
+favorable for generic Dragapult, while older data differs.
+
+- limit Abilities and bench slots that donate Froslass counters without value;
+- use Munkidori to move exact public counters into prize thresholds;
+- recognize that opposing Munkidori can undo careless spread;
+- attack the Energy and evolution engine, not only the current wall;
+- recalculate after every damage-moving Ability.
+
+Crustle and defensive walls
+
+Older broad data was unfavorable, and player discussion emphasizes Mist or
+other Special Energy and protection interactions.
+
+- Hammer protective Special Energy when that makes damage placement legal;
+- do not assume Active damage will land; verify the current prevention text;
+- use Phantom Dive's Bench counters and Munkidori only where effects allow;
+- preserve alternate single-Prize attacks if the registered list has them;
+- avoid deck-out by using optional draw deliberately.
+
+Festival Lead and other low-HP single-Prize boards
+
+- Item-lock early before multiple evolution lines appear;
+- Phantom Dive should create two future knockouts whenever protection is absent;
+- attack the Thwackey search engine or evolving Applin, not a replaceable Active
+  by habit;
+- track whether Bench-protection Pokémon invalidate placement;
+- do not lose the six-prize race by exposing unnecessary Pokémon ex.
+
+Rocket's Mewtwo and Energy-dense decks
+
+- Hammer Energy whose removal crosses the exact Erasure Ball or retreat
+  threshold;
+- spread onto low-HP Team Rocket support Pokémon when Articuno or other
+  protection does not stop the effect;
+- preserve Boss for a two-Prize target that actually closes the map;
+- expect Energy movement and recompute after every public attachment.
+
+
+RECOVERY LINES FROM BAD STARTS
+
+Budew prized or unavailable:
+
+Build two Dreepy immediately. Use Hammer and hand disruption as substitute
+tempo, but do not pretend they recreate Item lock. Prioritize Drakloak draw.
+
+Only one Dreepy:
+
+Bench another before optional support Pokémon. Evolve the threatened line when
+possible, but retain enough Drakloak access to continue drawing.
+
+Missing one Phantom Dive color:
+
+Use Recon Directive before shuffle-draw, search with Crispin if legal, and
+count every remaining copy. Attach the color that keeps both current and next
+turn live. Jet Headbutt is acceptable when it preserves the board and the
+follow-up is named.
+
+Behind on prizes:
+
+Seek a combined Active-plus-Bench prize turn. Stamp after a knockout, then
+force an answer. Boss only if the gust improves the total prize clock, not
+merely because a damaged target is available.
+
+Ahead on prizes:
+
+Reduce variance. Avoid unnecessary two-Prize benches, preserve the next
+attacker, and place counters toward the simplest legal close. Hammer the
+opponent's only comeback attacker rather than a remote resource.
+
+
+COMMON MISTAKES
+
+1. Keeping a one-Dreepy board because Budew bought one turn.
+2. Evolving every Drakloak and losing Recon Directive.
+3. Attaching Darkness before two Phantom Dive colors are secured.
+4. Playing Hammer as if heads were guaranteed.
+5. Removing the Energy with the largest printed value instead of the Energy
+   that changes the next action.
+6. Placing six counters without naming their later conversion.
+7. Spreading damage into protection or a clean evolution escape.
+8. Benching Fezandipiti ex before Flip the Script is live.
+9. Playing Stamp without immediate attack or lock pressure.
+10. Using Boss for a modest hit and losing the final gust.
+11. Recovering a Stage 2 without a Basic or Stage 1 line.
+12. Filling the bench before deciding whether Munkidori or a replacement Dreepy
+    will be needed.
+13. Treating generic Dragapult aggregate percentages as exact Hammer-Pult
+    matchup truth.
+14. Forgetting that this project representative has no Dudunsparce despite the
+    closest physical-event reference lists using it.
+
+
+DECISION CHECKLISTS
+
+Opening:
+
+- First or second, and what exact turn is gained?
+- Can I make two Dreepy?
+- Does Budew deny meaningful Items?
+- Which Energy begins the first Phantom Dive?
+- Which bench slot must remain open?
+
+Before each main phase:
+
+- Use Recon Directive before evolving it away?
+- Current and next attacker?
+- Exact Fire/Psychic/Darkness count?
+- Does Hammer heads change the next opposing attack?
+- Is hand disruption stronger before or after other thinning?
+- What happens under both Hammer outcomes?
+
+Before Phantom Dive:
+
+- Is 200 damage modified or prevented?
+- Where do all six counters go?
+- Which later action converts each group?
+- Can the targets evolve, heal, gain HP, or gain protection?
+- Does this attack preserve a second attacker?
+- What is the full remaining prize map?
+
+End of turn:
+
+- Opponent's best gust target?
+- Opponent's best way to remove an Energy?
+- Next attacker and both Energy?
+- Remaining Boss, recovery, and Stamp?
+- Am I offering an unnecessary two-Prize target?
+
+
+SHORT TRAINING-AUDIT APPENDIX
+
+The machine teacher is deliberately much narrower than this human guide. It
+may label only fully observed legal stages: Budew/Dreepy opening preferences,
+redundant Dreepy from an exact Poffin prompt, visible Drakloak/Dragapult
+evolutions, a legal Recon Directive activation, and playing Crushing Hammer
+when an opposing attached Energy is publicly visible.
+
+It masks attacks, Phantom Dive counter placement, Adrena-Brain targets,
+Supporter choice, recovery, matchup plans, coin outcomes, future draws, hidden
+cards, and any incomplete legal stage. It never treats a future heads result or
+eventual win as a label. It has no serving authority and cannot override the
+learned policy.
+
+
+PUBLIC SOURCES REVIEWED
+
+1. Cássio Moraes, Dragapult Dudunsparce, 4th Place Regional Campinas,
+   Limitless TCG.
+   https://limitlesstcg.com/decks/list/27145
+
+2. 2026 Pokémon North America International Championships, TCG Masters
+   Division, official Pokémon published deck lists.
+   https://www.pokemon.com/uk/play-pokemon/internationals/2026/north-america/tcg-masters
+
+3. Jac Carter, "Enter the Dragapult — The New Format and Its Top Decks,"
+   PokeBeach, May 7, 2026.
+   https://www.pokebeach.com/2026/05/enter-the-dragapult-the-new-format-and-its-top-decks
+
+4. Dragapult Deck Guide — Pokémon TCG Live Standard, Simbozz, updated
+   June 12, 2026. Aggregate of 363 recent lists across 42 tournaments.
+   https://simbozz.gg/tcg-live/decks/dragapult
+
+5. Dragapult deck overview and tournament history, Limitless TCG, variant 12.
+   https://limitlesstcg.com/decks/284?variant=12
+
+6. Dragapult CRI Standard 2026 matchup aggregate, Play! Limitless.
+   https://play.limitlesstcg.com/decks/dragapult-ex/matchups/?format=standard&rotation=2026&set=CRI
+
+7. Dragapult POR Standard 2026 matchup aggregate, Play! Limitless.
+   https://play.limitlesstcg.com/decks/dragapult-ex/matchups/?format=standard&rotation=2026&set=POR
+
+8. Dragapult ex, Twilight Masquerade 130, Limitless card record.
+   https://limitlesstcg.com/cards/en/TWM/130
+
+9. Drakloak, Twilight Masquerade 129, Limitless card record.
+   https://limitlesstcg.com/cards/en/TWM/129
+
+10. Munkidori, Twilight Masquerade 95, Limitless card record.
+    https://limitlesstcg.com/cards/en/TWM/95
+
+11. Budew, Prismatic Evolutions 4, Limitless card record.
+    https://limitlesstcg.com/cards/en/PRE/4
+
+12. Crushing Hammer, official Pokémon TCG card database.
+    https://www.pokemon.com/uk/pokemon-tcg/pokemon-cards/xy-series/xy0/34/
+
+13. Project source evidence: official Pokémon TCG AI Battle top-episode export
+    for July 12, 2026, bound locally by
+    data/training_mixes/top_ladder.v1.json and
+    data/training_mixes/top_ladder_representatives.v1.json.
+    https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-2026-07-12

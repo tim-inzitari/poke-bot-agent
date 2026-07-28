@@ -6,7 +6,36 @@ import json
 from pathlib import Path
 import tarfile
 
-from scripts.materialize_frozen_specialist_gate import materialize_from_contract
+from scripts.materialize_frozen_specialist_gate import (
+    _build_gate,
+    _sync_one_remote,
+    materialize_from_contract,
+)
+
+
+def test_production_handoffs_materialize_into_live_runtime_baselines() -> None:
+    root = Path(__file__).resolve().parents[1]
+    live_runtime = Path(
+        "/home/inzi/poke-bot-agent-deployments/"
+        "pure-rl-resident-v41-specialist-matchup-runtime"
+    )
+    for relative, section in (
+        ("ops/specialist_cycle_handoff_v1.json", "gate_materialization"),
+        ("ops/post_starmie_core_v2_handoff_v1.json", "gate_materialization"),
+        ("ops/post_trevenant_starmie_handoff_v1.json", "gate_materialization"),
+        ("ops/population_round_robin_v1.json", "paths"),
+    ):
+        payload = json.loads((root / relative).read_text(encoding="utf-8"))
+        configured = payload[section]
+        expected_baseline_root = (
+            root / "baselines"
+            if relative == "ops/specialist_cycle_handoff_v1.json"
+            else live_runtime / "baselines"
+        )
+        assert Path(configured["baseline_root"]) == expected_baseline_root
+        assert Path(configured["baseline_manifest"]) == (
+            expected_baseline_root / "manifest.json"
+        )
 
 
 def _digest(data: bytes) -> str:
@@ -172,7 +201,7 @@ def test_exact_passing_specialist_is_added_to_every_future_s_plus_gate(
     contract = {
         "source_specialist": {
             "handler_state": str(handler),
-            "minimum_completed_iteration": 25,
+            "minimum_completed_iteration": 5,
         },
         "next_specialist": {
             "gate_contract": str(target_gate),
@@ -192,7 +221,7 @@ def test_exact_passing_specialist_is_added_to_every_future_s_plus_gate(
         "specialist_id": "hops-trevenant",
         "checkpoint_digest": checkpoint,
         "gate": {
-            "iteration": 25,
+            "iteration": 5,
             "checkpoint_digest": checkpoint,
         },
     }
@@ -232,3 +261,175 @@ def test_exact_passing_specialist_is_added_to_every_future_s_plus_gate(
     assert registry["specialists"][-1]["matchup_tree_checksum"].startswith(
         "sha256:"
     )
+    assert registry["specialists"][-1]["kaggle_submission_eligible"] is False
+
+
+def test_frozen_lucario_supersedes_only_external_lucario_holdouts() -> None:
+    public = [
+        {
+            "opponent_id": f"lucario-{index}",
+            "archetype_id": "lucario",
+        }
+        for index in range(5)
+    ] + [
+        {
+            "opponent_id": f"other-{index}",
+            "archetype_id": f"other-{index}",
+        }
+        for index in range(3)
+    ]
+    base = {
+        "active_gate_id": "strong+frozen-specialists-r1",
+        "active_gate_semantics": {},
+        "fallback_transition": {
+            "id": "fallback+frozen-specialists-r1",
+        },
+        "next_gate": {
+            "id": "strong+frozen-specialists-r1",
+            "evaluation": {},
+            "roster": public,
+            "exact_result_pointer": "frozen_r1_result.json",
+        },
+    }
+    frozen = {
+        "policy": {
+            "external_premium_archetype_supersession": {
+                "enabled": True,
+                "scope": "premium_holdout_external_opponents",
+                "preserve_historical_results": True,
+                "keep_triggering_frozen_specialist": True,
+                "rules": [
+                    {
+                        "trigger_specialist_id": "lucario",
+                        "external_archetype_id": "lucario",
+                        "remove_external_opponents": True,
+                    }
+                ],
+            }
+        },
+        "specialists": [
+            {
+                "specialist_id": "lucario",
+                "opponent_id": "specialist-lucario",
+                "archetype_id": "lucario",
+                "archetype_label": "Frozen Lucario specialist",
+                "source": "exact frozen Lucario",
+                "checkpoint_digest": _digest(b"lucario-model"),
+                "content_digest": _digest(b"lucario-package"),
+                "frozen": True,
+            }
+        ],
+    }
+
+    gate = _build_gate(
+        base=base,
+        registry=frozen,
+        timestamp="2026-07-23T00:00:00Z",
+    )
+    roster = gate["next_gate"]["roster"]
+    assert [row["opponent_id"] for row in roster] == [
+        "other-0",
+        "other-1",
+        "other-2",
+        "specialist-lucario",
+    ]
+    assert gate["next_gate"]["evaluation"]["games_total"] == 1000
+    assert gate["active_gate_semantics"][
+        "superseded_external_premium_archetypes"
+    ] == ["lucario"]
+    assert gate["active_gate_semantics"][
+        "superseded_external_premium_opponent_ids"
+    ] == [f"lucario-{index}" for index in range(5)]
+    assert roster[-1]["frozen_specialist"] is True
+
+
+def test_container_sync_updates_read_only_bind_sources(
+    tmp_path: Path, monkeypatch
+) -> None:
+    package = tmp_path / "dudunsparce-gate-iter15"
+    package.mkdir()
+    (package / "model.pt").write_bytes(b"model")
+    manifest = tmp_path / "manifest.json"
+    _write_json(manifest, {"agents": []})
+    commands: list[list[str]] = []
+
+    def fake_checked(argv: list[str]) -> None:
+        commands.append(argv)
+
+    def fake_capture(argv: list[str]) -> str:
+        commands.append(argv)
+        return json.dumps(
+            [
+                {
+                    "Mounts": [
+                        {
+                            "Destination": "/workspace/baselines/manifest.json",
+                            "Source": (
+                                "/mnt/Main/Elmo/baseline-sync/manifest.json"
+                            ),
+                        },
+                        {
+                            "Destination": "/workspace/baselines/specialists",
+                            "Source": (
+                                "/mnt/Main/Elmo/baseline-sync/specialists"
+                            ),
+                        },
+                    ]
+                }
+            ]
+        )
+
+    monkeypatch.setattr(
+        "scripts.materialize_frozen_specialist_gate._run_checked", fake_checked
+    )
+    monkeypatch.setattr(
+        "scripts.materialize_frozen_specialist_gate._run_capture", fake_capture
+    )
+    waited: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        "scripts.materialize_frozen_specialist_gate._wait_tcp_endpoint",
+        lambda host, port: waited.append((host, port)),
+    )
+
+    receipt = _sync_one_remote(
+        host="elmo",
+        remote_root="/mnt/Main/archive/baselines",
+        package=package,
+        manifest=manifest,
+        container="poke-bot-truenas-worker",
+    )
+
+    flattened = [" ".join(command) for command in commands]
+    assert not any(" docker cp " in f" {command} " for command in flattened)
+    assert not any(
+        "docker exec poke-bot-truenas-worker mkdir" in command
+        for command in flattened
+    )
+    assert any(
+        "sudo -n rsync -a --delete "
+        "/mnt/Main/archive/baselines/specialists/dudunsparce-gate-iter15/ "
+        "/mnt/Main/Elmo/baseline-sync/specialists/dudunsparce-gate-iter15/"
+        in command
+        for command in flattened
+    )
+    assert any(
+        "sudo -n install -m 0644 "
+        "/mnt/Main/archive/baselines/manifest.json "
+        "/mnt/Main/Elmo/baseline-sync/manifest.json"
+        in command
+        for command in flattened
+    )
+    assert any(
+        "sudo -n docker restart poke-bot-truenas-worker" in command
+        for command in flattened
+    )
+    assert waited == [("elmo", 8765)]
+    assert receipt["container_manifest_reloaded"] is True
+    assert receipt["container_mounts"] == {
+        "/workspace/baselines/manifest.json": (
+            "/mnt/Main/Elmo/baseline-sync/manifest.json"
+        ),
+        "/workspace/baselines/specialists": (
+            "/mnt/Main/Elmo/baseline-sync/specialists"
+        ),
+    }

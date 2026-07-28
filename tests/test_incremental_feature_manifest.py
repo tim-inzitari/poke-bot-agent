@@ -15,6 +15,11 @@ from poke_bot.feature_shards import (
     SHARD_FORMAT,
     SHARD_FORMAT_VERSION,
 )
+from poke_bot.strategic_heads import (
+    EXPANDED_STRATEGIC_SCHEMA,
+    TARGET_SCHEMA_DIGEST,
+)
+from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +98,73 @@ def test_per_day_verification_cache_feeds_final_manifest(tmp_path: Path) -> None
     assert len(payload["shards"]) == 2
     assert payload["totals"]["records_kept"] == 198
     assert payload["totals"]["decisions_kept"] == 1000
+    expanded = payload["expanded_strategic_targets"]
+    assert expanded["schema"] == EXPANDED_STRATEGIC_SCHEMA
+    assert expanded["digest"] == TARGET_SCHEMA_DIGEST
+    assert expanded["decisions"] == 1000
+    assert set(expanded["head_coverage"]) == set(EXPANDED_HEAD_IDS)
+    assert all(
+        row == {
+            "labeled_rows": 0,
+            "masked_rows": 1000,
+            "total_rows": 1000,
+        }
+        for row in expanded["head_coverage"].values()
+    )
+
+
+def test_expanded_target_coverage_is_validated_and_aggregated(
+    tmp_path: Path,
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    days = ["2026-07-21", "2026-07-22"]
+    for day in days:
+        _write_shard(staging, day)
+        sidecar = staging / f"top_ladder_all_{day}.features.json"
+        metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+        metadata["stats"]["expanded_strategic_targets"] = {
+            "schema": EXPANDED_STRATEGIC_SCHEMA,
+            "digest": TARGET_SCHEMA_DIGEST,
+            "decisions": 500,
+            "head_coverage": {
+                head_id: {
+                    "labeled_rows": 400,
+                    "masked_rows": 100,
+                    "total_rows": 500,
+                }
+                for head_id in EXPANDED_HEAD_IDS
+            },
+        }
+        sidecar.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+
+    manifest = staging / "manifest.json"
+    _assemble(staging, manifest, days)
+    expanded = json.loads(manifest.read_text(encoding="utf-8"))[
+        "expanded_strategic_targets"
+    ]
+    assert expanded == {
+        "schema": EXPANDED_STRATEGIC_SCHEMA,
+        "digest": TARGET_SCHEMA_DIGEST,
+        "decisions": 1000,
+        "head_coverage": {
+            head_id: {
+                "labeled_rows": 800,
+                "masked_rows": 200,
+                "total_rows": 1000,
+            }
+            for head_id in EXPANDED_HEAD_IDS
+        },
+    }
+
+    sidecar = staging / f"top_ladder_all_{days[0]}.features.json"
+    malformed = json.loads(sidecar.read_text(encoding="utf-8"))
+    malformed["stats"]["expanded_strategic_targets"]["head_coverage"][
+        "action_q"
+    ]["masked_rows"] = 99
+    sidecar.write_text(json.dumps(malformed) + "\n", encoding="utf-8")
+    with pytest.raises(subprocess.CalledProcessError):
+        _assemble(staging, tmp_path / "invalid.json", days)
 
 
 def test_authoritative_manifest_is_protected_only_with_complete_targets(

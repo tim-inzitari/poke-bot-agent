@@ -34,3 +34,15 @@ def test_rare_route_expert_shards_are_additive_and_bounded() -> None:
     ).read_text()
     assert "ExecStopPost=" in unit
     assert "--filter name=pokebot-rare-expert-" in unit
+
+
+def test_public_history_is_not_rejected_for_missing_private_labels() -> None:
+    source = Path("scripts/prepare_rare_route_expert_shards_elmo.py").read_text()
+    mixed_assembly = source.split(
+        "# Split all additive evidence days once", 1
+    )[1]
+    assert '"--require-target-coverage temporal_action_rows; "' in mixed_assembly
+    assert (
+        '"--require-target-coverage opponent_private_prize_rows "'
+        not in mixed_assembly
+    )

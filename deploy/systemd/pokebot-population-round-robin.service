@@ -1,0 +1,27 @@
+[Unit]
+Description=Pokemon 22-specialist own-model population round robin
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_population_round_robin.py --contract ops/population_round_robin_v1.json --check
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_population_round_robin.py --contract ops/population_round_robin_v1.json
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=60
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=110G
+MemoryMax=116G
+MemorySwapMax=16G
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/population-round-robin.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/population-round-robin.log
+
+[Install]
+WantedBy=default.target

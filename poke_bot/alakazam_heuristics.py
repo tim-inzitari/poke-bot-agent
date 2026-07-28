@@ -782,13 +782,14 @@ def guide_scores(
     action_combos: Sequence[Sequence[int]],
     *,
     deck: Iterable[int],
+    force_enabled: bool = False,
 ) -> Optional[list[float]]:
     """Return aligned guide scores, or ``None`` when no safe ranking exists.
 
     The output is intentionally sparse/masked.  Equal or near-equal rows do not
     create a loss, preventing generic choices from being labelled by guesswork.
     """
-    if not enabled() or not is_alakazam_deck(deck):
+    if (not force_enabled and not enabled()) or not is_alakazam_deck(deck):
         return None
     if not isinstance(obs, dict) or not action_combos:
         return None

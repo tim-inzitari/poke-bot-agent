@@ -4,9 +4,11 @@ from pathlib import Path
 from poke_bot.matchup_adapters import (
     ACTIVE_EXPERT_IDS_V5,
     EXPERT_IDS,
+    LEGACY_EXPERT_IDS_V4,
     RETIRED_EXPERT_IDS_V5,
     STAGED_EXPERT_IDS_V5,
 )
+from scripts.migrate_active_matchup_roster import migrate_validation
 
 
 def test_v5_roster_is_the_stable_canonical_physical_roster() -> None:
@@ -35,3 +37,24 @@ def test_v5_removed_routes_cannot_count_as_required_specialists() -> None:
     assert roster["migration_from_v4"]["rename_expert_ids"] == {
         "festival-lead": "thwackey"
     }
+
+
+def test_router_validation_migration_preserves_renamed_route_evidence() -> None:
+    old_names = (*LEGACY_EXPERT_IDS_V4, "unknown")
+    old_index = {name: index for index, name in enumerate(old_names)}
+    matrix = [[0.0 for _ in old_names] for _ in old_names]
+    matrix[old_index["festival-lead"]][old_index["festival-lead"]] = 68_674
+    matrix[old_index["gardevoir"]][old_index["gardevoir"]] = 24_447
+    matrix[old_index["unknown"]][old_index["unknown"]] = 10_000
+
+    migrated = migrate_validation(
+        {"confusion_matrix": matrix}, LEGACY_EXPERT_IDS_V4
+    )
+
+    assert migrated["weighted_observations"] == 103_121
+    assert migrated["classes"]["thwackey"]["weighted_support"] == 68_674
+    assert migrated["classes"]["thwackey"]["precision"] == 1.0
+    assert migrated["classes"]["thwackey"]["recall"] == 1.0
+    assert migrated["classes"]["team-rockets-spidops"]["weighted_support"] == 0
+    assert migrated["classes"]["unknown"]["weighted_support"] == 34_447
+    assert len(migrated["confusion_matrix"]) == len(EXPERT_IDS) + 1

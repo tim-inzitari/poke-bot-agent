@@ -58,13 +58,16 @@ def _audit(ids: list[str], *, digest: str) -> dict:
     }
 
 
-def test_active_contract_is_base_eight_plus_frozen_s_plus_gate() -> None:
+def test_active_contract_is_superseded_external_plus_frozen_s_plus_gate() -> None:
     contract = load_active_gate_contract(CONTRACT_PATH)
     gate = contract["next_gate"]
-    assert len(gate["roster"]) == 9
-    assert gate["evaluation"]["games_total"] == 2250
-    assert gate["roster"][-1]["tier"] == "S+"
-    assert gate["roster"][-1]["frozen_specialist"] is True
+    external = [row for row in gate["roster"] if not row.get("frozen_specialist")]
+    frozen = [row for row in gate["roster"] if row.get("frozen_specialist")]
+    assert len(external) == 3
+    assert len(frozen) == 4
+    assert len(gate["roster"]) == 7
+    assert gate["evaluation"]["games_total"] == 1750
+    assert all(row["tier"] == "S+" for row in frozen)
     assert len(gate["research_measurements"]) == 4
 
 
@@ -77,7 +80,7 @@ def test_package_digest_validation_fails_closed() -> None:
         verify_roster_content(gate, installed)
 
 
-def test_strong_gate_uses_base_eight_plus_specialists_and_zero_weight_research() -> None:
+def test_strong_gate_uses_active_roster_plus_specialists_and_zero_weight_research() -> None:
     contract = load_active_gate_contract(CONTRACT_PATH)
     gate = contract["next_gate"]
     ids = [row["opponent_id"] for row in gate["roster"]]
@@ -99,8 +102,8 @@ def test_strong_gate_uses_base_eight_plus_specialists_and_zero_weight_research()
         bootstrap_resamples=200,
     )
     assert result["passed"] is True
-    assert result["games"] == 2250
-    assert len(result["matchups"]) == 9
+    assert result["games"] == gate["evaluation"]["games_total"]
+    assert len(result["matchups"]) == len(gate["roster"])
     assert result["research_controls"]["games"] == 1000
     assert result["research_controls"]["gate_weight"] == 0.0
     assert result["research_controls"]["included_in_skill_weighted_wr"] is False
@@ -136,7 +139,11 @@ def test_s_plus_frozen_specialist_counts_in_s_tier_floor() -> None:
         gate_seed=9_030_000,
         bootstrap_resamples=100,
     )
-    assert result["s_tier_mean"] == pytest.approx(0.30)
+    s_rows = [row for row in gate["roster"] if row.get("tier") in {"S", "S+"}]
+    expected_s_tier_mean = sum(
+        rates[row["opponent_id"]] * float(row["weight"]) for row in s_rows
+    ) / sum(float(row["weight"]) for row in s_rows)
+    assert result["s_tier_mean"] == pytest.approx(expected_s_tier_mean)
     assert result["checks"]["s_tier_mean_floor"] is False
 
 
@@ -206,9 +213,7 @@ def test_partial_or_cross_contaminated_gate_cannot_pass() -> None:
 
 def test_contract_json_remains_machine_readable() -> None:
     contract = json.loads(CONTRACT_PATH.read_text())
-    assert contract["active_gate_id"] == (
-        "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r1"
-    )
+    assert contract["active_gate_id"] == contract["next_gate"]["id"]
     assert (
         contract["next_gate"]["pass_criteria"][
             "skill_weighted_confidence_lower"
@@ -217,13 +222,13 @@ def test_contract_json_remains_machine_readable() -> None:
     )
 
 
-def test_lc50_fallback_stays_dormant_before_iteration_25_floor_or_after_pass() -> None:
+def test_lc50_fallback_stays_dormant_before_iteration_5_floor_or_after_pass() -> None:
     contract = load_active_gate_contract(CONTRACT_PATH)
     assert materialize_fallback_gate_contract(
-        contract, completed_iteration=23, prior_gate_passed=False
+        contract, completed_iteration=3, prior_gate_passed=False
     ) is None
     assert materialize_fallback_gate_contract(
-        contract, completed_iteration=24, prior_gate_passed=True
+        contract, completed_iteration=4, prior_gate_passed=True
     ) is None
 
 
@@ -232,12 +237,12 @@ def test_lc50_fallback_changes_only_identity_label_status_and_lower_bound(
 ) -> None:
     contract = load_active_gate_contract(CONTRACT_PATH)
     fallback = materialize_fallback_gate_contract(
-        contract, completed_iteration=30, prior_gate_passed=False
+        contract, completed_iteration=4, prior_gate_passed=False
     )
     assert fallback is not None
     assert fallback["active_gate_id"] == (
-        "specialist-strong-public-roster-lc50-at-iter25-v1"
-        "+frozen-specialists-r1"
+        "specialist-strong-public-roster-lc50-at-iter5-v1"
+        "+frozen-specialists-r4"
     )
     assert fallback["next_gate"]["pass_criteria"][
         "skill_weighted_confidence_lower"
@@ -245,10 +250,10 @@ def test_lc50_fallback_changes_only_identity_label_status_and_lower_bound(
     assert fallback["next_gate"]["activation"] == {
         "schema": "poke_bot.iteration_gate_fallback_activation/v1",
         "prior_gate_id": (
-            "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r1"
+            "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r4"
         ),
-        "activate_after_completed_iteration": 24,
-        "observed_completed_iteration": 30,
+        "activate_after_completed_iteration": 4,
+        "observed_completed_iteration": 4,
         "prior_gate_passed": False,
         "only_changed_criterion": "skill_weighted_confidence_lower",
         "prior_confidence_lower": 0.55,

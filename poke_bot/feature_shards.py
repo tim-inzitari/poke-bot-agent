@@ -27,6 +27,11 @@ from .dataset import (
     GameSequence,
     convert_record,
 )
+from .strategic_heads import (
+    expanded_strategic_sequence_coverage,
+    masked_expanded_strategic_coverage,
+    merge_expanded_strategic_coverages,
+)
 
 
 SHARD_FORMAT = "pokebot-bootstrap-feature-shard"
@@ -36,6 +41,7 @@ MANIFEST_FORMAT_VERSION = 1
 COMPACT_MODE = "stateless-core-v1"
 COMPACT_MODE_TEMPORAL_EXPERT = "temporal-expert-v1"
 SUPPORTED_COMPACT_MODES = frozenset({COMPACT_MODE, COMPACT_MODE_TEMPORAL_EXPERT})
+MATCHUP_ADAPTER_LEGACY_DATASET_SCHEMA = 4
 
 
 def _sha256(path: Path) -> str:
@@ -229,6 +235,7 @@ def _new_stats(compact_mode: str = COMPACT_MODE) -> dict[str, Any]:
             "prize_race_rows": 0,
             "guide_rows": 0,
         },
+        "expanded_strategic_targets": masked_expanded_strategic_coverage(0),
     }
 
 
@@ -255,6 +262,14 @@ def _account(
     coverage = stats["target_coverage"]
     for key, count in _target_coverage(sequence).items():
         coverage[key] = int(coverage.get(key, 0)) + int(count)
+    stats["expanded_strategic_targets"] = (
+        merge_expanded_strategic_coverages(
+            (
+                stats["expanded_strategic_targets"],
+                expanded_strategic_sequence_coverage(sequence.decisions),
+            )
+        )
+    )
     return sequence
 
 
@@ -388,7 +403,11 @@ def iter_feature_shard(path: Path) -> Iterator[GameSequence]:
             raise ValueError(f"invalid feature shard header: {path}")
         if int(header.get("format_version", -1)) != SHARD_FORMAT_VERSION:
             raise ValueError(f"unsupported feature shard version: {path}")
-        if int(header.get("dataset_schema", -1)) != DATASET_CACHE_SCHEMA_VERSION:
+        dataset_schema = int(header.get("dataset_schema", -1))
+        if dataset_schema not in {
+            DATASET_CACHE_SCHEMA_VERSION,
+            MATCHUP_ADAPTER_LEGACY_DATASET_SCHEMA,
+        }:
             raise ValueError(f"dataset schema mismatch: {path}")
         if int(header.get("feature_schema", -1)) != features.FEATURE_SCHEMA_VERSION:
             raise ValueError(f"feature schema mismatch: {path}")
@@ -409,6 +428,18 @@ def iter_feature_shard(path: Path) -> Iterator[GameSequence]:
                 return
             if not isinstance(item, GameSequence):
                 raise ValueError(f"unexpected feature shard item: {type(item)!r}")
+            if dataset_schema == MATCHUP_ADAPTER_LEGACY_DATASET_SCHEMA:
+                # Schema 5 added only dormant matchup-adapter routing fields.
+                # A schema-4 expert shard contains no audited routing ticket,
+                # so migrate it fail-closed to UNKNOWN/no-ticket.  All policy,
+                # temporal, belief, lethal, and prize targets are unchanged.
+                if not hasattr(item, "matchup_adapter_training_ticket"):
+                    item.matchup_adapter_training_ticket = {}
+                for decision in item.decisions:
+                    if not hasattr(decision, "matchup_adapter_oracle_route"):
+                        decision.matchup_adapter_oracle_route = -1
+                    if not hasattr(decision, "matchup_adapter_public_route"):
+                        decision.matchup_adapter_public_route = -1
             count += 1
             yield item
 
@@ -459,6 +490,15 @@ def load_feature_manifest(
         combined_coverage = combined["target_coverage"]
         for key, count in dict(stats.get("target_coverage") or {}).items():
             combined_coverage[key] = int(combined_coverage.get(key, 0)) + int(count)
+        decisions = int(stats.get("decisions_kept", 0))
+        expanded = stats.get("expanded_strategic_targets")
+        if expanded is None:
+            expanded = masked_expanded_strategic_coverage(decisions)
+        combined["expanded_strategic_targets"] = (
+            merge_expanded_strategic_coverages(
+                (combined["expanded_strategic_targets"], expanded)
+            )
+        )
         expected = int(stats.get("records_kept", 0))
         before = len(sequences)
         for sequence in tqdm(

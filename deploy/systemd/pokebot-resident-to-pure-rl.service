@@ -1,0 +1,29 @@
+[Unit]
+Description=Validate resident warm start and hand off to search-free pure RL
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/continue_latest10_to_core_rl.py --bootstrap-service pokemon-privileged-belief-full-blackwell-v1.service --bootstrap-run state_core_privileged_belief_20k_resident_v1 --rl-run pure_rl_core_exact20k_resident_v1_20260719 --rl-service pokebot-pure-rl-top-ladder-10day-hotstart.service --poll-seconds 15 --wait-seconds 14400 --eval-workers 12 --seed 20260719
+# This is a one-time lineage handoff. Once pure RL is enabled, remove this
+# waiter from future boots so it cannot race the persistent RL service.
+ExecStartPost=/usr/bin/systemctl --user disable pokebot-resident-to-pure-rl.service
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=infinity
+TimeoutStopSec=180
+KillMode=control-group
+MemoryHigh=16G
+MemoryMax=24G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/resident-to-pure-rl.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/resident-to-pure-rl.log
+
+[Install]
+WantedBy=default.target

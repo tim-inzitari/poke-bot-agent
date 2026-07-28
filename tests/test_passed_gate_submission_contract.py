@@ -43,6 +43,82 @@ def test_handler_defaults_to_one_submission_copy(
     assert handler._parse_args().submission_count == 1
 
 
+def test_status_143_recovery_does_not_mask_real_training_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        calls.append(tuple(command))
+        if "show" in command:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    "Result=exit-code\nExecMainStatus=143\n"
+                    "ActiveState=failed\nSubState=failed\n"
+                ),
+            )
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(handler.subprocess, "run", fake_run)
+    result = handler._recover_status_143_stop("trainer.service")
+    assert result["recovered"] is True
+    assert any("reset-failed" in command for command in calls)
+    assert any("start" in command for command in calls)
+
+    calls.clear()
+
+    def real_failure(command: list[str], **_: object) -> SimpleNamespace:
+        calls.append(tuple(command))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                "Result=exit-code\nExecMainStatus=1\n"
+                "ActiveState=failed\nSubState=failed\n"
+            ),
+        )
+
+    monkeypatch.setattr(handler.subprocess, "run", real_failure)
+    result = handler._recover_status_143_stop("trainer.service")
+    assert result["recovered"] is False
+    assert len(calls) == 1
+
+
+def test_status_143_recovery_respects_valid_managed_boundary_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    lock = tmp_path / "maintenance.json"
+    _write(
+        lock,
+        {
+            "schema": "poke_bot.managed_training_maintenance/v1",
+            "training_service": "trainer.service",
+            "owner_pid": 123,
+            "expires_at_epoch": 9_999_999_999.0,
+        },
+    )
+    monkeypatch.setenv("POKEBOT_MANAGED_MAINTENANCE_LOCK", str(lock))
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        calls.append(tuple(command))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                "Result=exit-code\nExecMainStatus=143\n"
+                "ActiveState=failed\nSubState=failed\n"
+            ),
+        )
+
+    monkeypatch.setattr(handler.subprocess, "run", fake_run)
+
+    result = handler._recover_status_143_stop("trainer.service")
+
+    assert result["recovered"] is False
+    assert result["managed_maintenance"]["owner_pid"] == 123
+    assert len(calls) == 1
+
+
 def _attempt_record(
     tmp_path: Path,
     *,
@@ -136,6 +212,8 @@ def test_pending_copies_are_persistent_idempotent_and_checkpoint_bound(
                 "deck_cards_sha256": "sha256:" + "c" * 64,
                 "representatives_sha256": "sha256:" + "d" * 64,
                 "matchup_tree_sha256": "sha256:" + "e" * 64,
+                "search_config_sha256": "sha256:" + "f" * 64,
+                "belief_decks_sha256": "sha256:" + "1" * 64,
             }
         )
     queue_path = tmp_path / "submission-queue.json"
@@ -164,6 +242,12 @@ def test_pending_copies_are_persistent_idempotent_and_checkpoint_bound(
     payload = json.loads(queue_path.read_text(encoding="utf-8"))
     assert payload["schema"] == handler.SUBMISSION_QUEUE_SCHEMA
     assert payload["daily_submission_limit"] == 5
+    assert payload["automatic_one_shot_authorization_on_training_complete"] is True
+    assert payload["one_shot_authorization_uses"] == 1
+    assert (
+        payload["standing_owner_decision_source"]
+        == "GOAL.md#/decision-ledger/revision-18"
+    )
     assert payload["queue_order"] == "oldest_first"
     assert len(payload["queue"]) == 2
     assert first == second
@@ -173,6 +257,14 @@ def test_pending_copies_are_persistent_idempotent_and_checkpoint_bound(
     assert all(row["deck_file_checksum"] == "sha256:" + "b" * 64 for row in first)
     assert all(
         row["matchup_tree_checksum"] == "sha256:" + "e" * 64
+        for row in first
+    )
+    assert all(
+        row["search_config_checksum"] == "sha256:" + "f" * 64
+        for row in first
+    )
+    assert all(
+        row["belief_decks_checksum"] == "sha256:" + "1" * 64
         for row in first
     )
     assert all(row["gate_id"] == "alakazam-strong-public-gate" for row in first)

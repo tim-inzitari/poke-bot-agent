@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 import time
 import zipfile
@@ -26,7 +27,29 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--start-date", required=True)
     parser.add_argument("--end-date", required=True)
     parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument(
+        "--require-default-interface",
+        default="",
+        help=(
+            "Fail closed unless the host default route uses this interface "
+            "(for Bert Kaggle ingress this must be en1/Wi-Fi)."
+        ),
+    )
     return parser.parse_args()
+
+
+def _default_interface() -> str:
+    completed = subprocess.run(
+        ["/sbin/route", "-n", "get", "default"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    for line in completed.stdout.splitlines():
+        key, separator, value = line.strip().partition(":")
+        if separator and key == "interface":
+            return value.strip()
+    raise RuntimeError("default route did not report an interface")
 
 
 def _validate_archive(path: Path, expected: int) -> int:
@@ -44,6 +67,14 @@ def _validate_archive(path: Path, expected: int) -> int:
 
 def main() -> int:
     args = _parse_args()
+    required_interface = str(args.require_default_interface).strip()
+    if required_interface:
+        observed_interface = _default_interface()
+        if observed_interface != required_interface:
+            raise RuntimeError(
+                "Kaggle ingress route mismatch: "
+                f"required={required_interface} observed={observed_interface}"
+            )
     if args.start_date > args.end_date:
         raise SystemExit("--start-date must not be after --end-date")
     rows = [

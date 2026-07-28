@@ -20,6 +20,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model  # noqa: E402
+from scripts.handle_passed_gate import (  # noqa: E402
+    validate_two_successful_submission_attempts,
+)
 
 
 SCHEMA = "poke_bot.passed_system_elmo_archive/v1"
@@ -165,24 +168,29 @@ def _write_runtime_contracts(stage: Path, source_root: Path, services: list[str]
 
 
 def _validate_handler(state: dict[str, Any], frozen: dict[str, Any]) -> None:
-    attempts = [row for row in state.get("submission_attempts") or [] if isinstance(row, dict)]
-    slots = {int(row.get("slot", -1)) for row in attempts if row.get("attempted") is True}
     gate = dict(state.get("gate") or {})
     bundle = dict(state.get("submission_bundle") or {})
     if (
         state.get("phase")
         not in {
-            "two_submissions_attempted",
+            "two_submissions_succeeded",
             "waiting_for_terminal_trainer_before_handoff",
             "complete_handoff_started",
         }
         or state.get("approved_submission_count") != 2
-        or slots != {1, 2}
         or state.get("automatic_retries") is not False
+        or state.get("all_submissions_succeeded") is not True
+        or state.get("successful_submission_count") != 2
         or gate.get("checkpoint_digest") != frozen.get("checkpoint_digest")
         or bundle.get("sha256") is None
     ):
-        raise RuntimeError("handler state is not a verified exact-pass/two-attempt handoff")
+        raise RuntimeError(
+            "handler state is not a verified exact-pass/two-success handoff"
+        )
+    validate_two_successful_submission_attempts(
+        state.get("submission_attempts"),
+        expected_bundle_sha256=str(bundle["sha256"]),
+    )
 
 
 def _hash_rows(stage: Path) -> list[dict[str, Any]]:
@@ -319,6 +327,8 @@ def main() -> int:
         "frozen_model": frozen,
         "gate": handler.get("gate"),
         "submission_attempts": handler.get("submission_attempts"),
+        "all_submissions_succeeded": True,
+        "successful_submission_count": 2,
         "submission_bundle": handler.get("submission_bundle"),
         "source_snapshot_includes_dirty_and_untracked": True,
         "large_training_data_and_replay_shards_excluded": True,
@@ -381,6 +391,8 @@ mv "$P" "$F"
         "checkpoint_digest": frozen["checkpoint_digest"],
         "local_manifest_sha256": sha256(stage / "ARCHIVE_MANIFEST.json"),
         "submitted_slots": [1, 2],
+        "successful_submission_slots": [1, 2],
+        "all_submissions_succeeded": True,
         "automatic_retries": False,
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
     }

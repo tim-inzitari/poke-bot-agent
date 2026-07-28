@@ -36,7 +36,7 @@ if str(ROOT) not in sys.path:
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 os.environ.setdefault("POKEBOT_BLACKWELL_STRATEGY_HEADS", "0")
 
-from poke_bot import alakazam_heuristics, config, paths  # noqa: E402
+from poke_bot import alakazam_heuristics, config, deck_guides, paths  # noqa: E402
 from poke_bot.dataset import BootstrapDataset  # noqa: E402
 from poke_bot.matchup_adapters import (  # noqa: E402
     EXPERT_IDS,
@@ -467,13 +467,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Masked public prize-race state regression loss.",
     )
     p.add_argument(
+        "--current-deck-guide-loss-weight",
         "--alakazam-guide-loss-weight",
+        dest="alakazam_guide_loss_weight",
         type=float,
-        default=float(os.environ.get("PURE_RL_ALAKAZAM_GUIDE_LOSS_WEIGHT", "0")),
+        default=float(
+            os.environ.get(
+                "PURE_RL_CURRENT_DECK_GUIDE_LOSS_WEIGHT",
+                os.environ.get("PURE_RL_ALAKAZAM_GUIDE_LOSS_WEIGHT", "0"),
+            )
+        ),
         help=(
             "Small training-only confidence-weighted CE for the versioned "
-            "Alakazam action guide. Valid only for that specialist; core "
-            "stays exactly 0."
+            "current-specialist action guide. Core stays exactly 0. The "
+            "Alakazam option name remains a backward-compatible alias."
         ),
     )
     p.add_argument(
@@ -1108,18 +1115,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             p.error(f"{option} cannot be negative")
     guide_weight = float(args.alakazam_guide_loss_weight)
     if guide_weight < 0.0:
-        p.error("--alakazam-guide-loss-weight cannot be negative")
-    if guide_weight > 0.0 and not (
-        args.mode == "specialist" and specialist == "alakazam"
-    ):
+        p.error("--current-deck-guide-loss-weight cannot be negative")
+    if guide_weight > 0.0 and args.mode != "specialist":
         p.error(
-            "--alakazam-guide-loss-weight is valid only for "
-            "--mode specialist --specialist-archetype alakazam"
+            "--current-deck-guide-loss-weight is valid only for "
+            "--mode specialist"
         )
-    if guide_weight > 0.0 and not alakazam_heuristics.enabled():
+    if guide_weight > 0.0 and not deck_guides.enabled():
         p.error(
-            "nonzero --alakazam-guide-loss-weight requires "
-            "POKEBOT_ALAKAZAM_GUIDE_TARGETS=1"
+            "nonzero --current-deck-guide-loss-weight requires an authorized "
+            "POKEBOT_CURRENT_DECK_GUIDE and "
+            "POKEBOT_CURRENT_DECK_GUIDE_TARGETS=1"
+        )
+    if guide_weight > 0.0 and deck_guides.selected_id() != specialist:
+        p.error(
+            "current-deck guide selector must equal --specialist-archetype"
         )
     adapter_epochs = int(args.dormant_matchup_adapter_epochs)
     if adapter_epochs < 0:
@@ -1790,7 +1800,12 @@ def _deck_distribution_contract(
     return contract
 
 
-def _checkpoint_contract(path: Path, *, smoke: bool) -> dict[str, Any]:
+def _checkpoint_contract(
+    path: Path,
+    *,
+    smoke: bool,
+    allow_legacy_inference_profile: bool = False,
+) -> dict[str, Any]:
     """Fail closed unless a checkpoint is the exact intended trusted profile."""
     from poke_bot import checkpoint, features
 
@@ -1809,19 +1824,46 @@ def _checkpoint_contract(path: Path, *, smoke: bool) -> dict[str, Any]:
     # Legacy checkpoints predate the dormant-bank flag. Missing and explicit
     # false are the same inactive contract; true remains a real profile change.
     actual.setdefault("matchup_adapters_enabled", False)
+    # Decision fusion is an additive, zero-safe architecture introduced after
+    # this lineage began.  Legacy inference-role checkpoints omit these fields;
+    # omission is exactly the disabled/default contract, just as it is for the
+    # dormant matchup bank above.  A true value remains a real profile change.
+    actual.setdefault("decision_fusion_enabled", False)
+    actual.setdefault("decision_fusion_runtime_enabled", False)
+    actual.setdefault("decision_fusion_width", 16)
     expected_cfg = pure_rl_model_config(**({"dropout": 0.0} if smoke else {}))
     expected = model_config_dict(expected_cfg)
     expected.setdefault("matchup_adapters_enabled", False)
+    changed = sorted(
+        key
+        for key in set(actual) | set(expected)
+        if actual.get(key) != expected.get(key)
+    )
+    legacy_fusion_differences = {
+        "decision_fusion_enabled",
+        *(
+            {"decision_fusion_runtime_enabled"}
+            if expected.get("decision_fusion_runtime_enabled") is True
+            else set()
+        ),
+    }
+    state_dict = payload.get("model_state_dict") or {}
+    legacy_inference_profile = bool(
+        allow_legacy_inference_profile
+        and expected.get("decision_fusion_enabled") is True
+        and actual.get("decision_fusion_enabled") is False
+        and actual.get("decision_fusion_runtime_enabled") is False
+        and changed == sorted(legacy_fusion_differences)
+        and not any(
+            str(key).startswith("decision_fusion.") for key in state_dict
+        )
+    )
     if actual != expected:
-        changed = sorted(
-            key
-            for key in set(actual) | set(expected)
-            if actual.get(key) != expected.get(key)
-        )
-        raise RuntimeError(
-            f"checkpoint does not match exact intended pure-RL model profile at "
-            f"{path}; changed_fields={changed}"
-        )
+        if not legacy_inference_profile:
+            raise RuntimeError(
+                f"checkpoint does not match exact intended pure-RL model profile at "
+                f"{path}; changed_fields={changed}"
+            )
     provenance = dict(payload.get("provenance") or {})
     feature_schema = provenance.get("feature_schema")
     if feature_schema != features.FEATURE_SCHEMA_VERSION:
@@ -1829,7 +1871,6 @@ def _checkpoint_contract(path: Path, *, smoke: bool) -> dict[str, Any]:
             f"checkpoint feature schema mismatch at {path}: "
             f"checkpoint={feature_schema!r} runtime={features.FEATURE_SCHEMA_VERSION!r}"
         )
-    state_dict = payload.get("model_state_dict") or {}
     if any(str(key).startswith("matchup_adapter_bank.") for key in state_dict):
         from poke_bot.dormant_adapter_compat import (
             validate_zero_dormant_checkpoint,
@@ -1860,12 +1901,26 @@ def _checkpoint_contract(path: Path, *, smoke: bool) -> dict[str, Any]:
         "pure_rl": True,
         "smoke": bool(smoke),
         "trusted_policy": trusted,
-        "model_profile": actual,
-        "decision_context": str(actual.get("decision_context")),
-        "max_context": int(actual.get("max_context", 0)),
+        # A pre-fusion champion may remain the immutable promotion incumbent
+        # while the active learner is migrated.  In that one explicitly
+        # declared inference role, report the process's intended learner
+        # profile to the design contract while preserving the old checkpoint
+        # bytes and loading it with its own serialized flat-policy config.
+        "model_profile": expected if legacy_inference_profile else actual,
+        "decision_context": str(
+            (expected if legacy_inference_profile else actual).get(
+                "decision_context"
+            )
+        ),
+        "max_context": int(
+            (expected if legacy_inference_profile else actual).get(
+                "max_context", 0
+            )
+        ),
         "feature_schema": feature_schema,
         "trainable_parameters": int(parameter_count),
         "rl_iteration": int(payload.get("rl_iteration", 0)),
+        "legacy_inference_profile": legacy_inference_profile,
     }
 
 
@@ -2078,6 +2133,10 @@ def _design_contract(
             "alakazam_guide_loss_weight": float(
                 args.alakazam_guide_loss_weight
             ),
+            "current_deck_guide_loss_weight": float(
+                args.alakazam_guide_loss_weight
+            ),
+            "current_deck_guide_archetype": deck_guides.selected_id(),
             "dormant_matchup_adapter": {
                 "epochs": int(args.dormant_matchup_adapter_epochs),
                 "learning_rate": float(args.dormant_matchup_adapter_lr),
@@ -2098,6 +2157,8 @@ def _design_contract(
                 ],
             },
             "alakazam_guide_targets_enabled": bool(alakazam_heuristics.enabled()),
+            "current_deck_guide_targets_enabled": bool(deck_guides.enabled()),
+            "current_deck_guide_version": deck_guides.guide_version(),
             "profile": dict(checkpoint_profile["model_profile"]),
             "trainable_parameters": int(
                 checkpoint_profile["trainable_parameters"]
@@ -2445,6 +2506,113 @@ _BOUNDARY_MIGRATABLE_DESIGN_PATHS = frozenset(
 )
 
 
+_DECISION_FUSION_WARMUP_MIGRATION_PATHS = frozenset(
+    {
+        "learner.current_deck_guide_archetype",
+        "learner.current_deck_guide_loss_weight",
+        "learner.current_deck_guide_targets_enabled",
+        "learner.current_deck_guide_version",
+        "learner.profile.decision_fusion_enabled",
+        "learner.profile.decision_fusion_runtime_enabled",
+        "learner.profile.decision_fusion_width",
+    }
+)
+
+_DECISION_FUSION_RUNTIME_MIGRATION_PATHS = frozenset(
+    {"learner.profile.decision_fusion_runtime_enabled"}
+)
+
+
+def _safe_decision_fusion_warmup_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only the exact zero-safe, runtime-disabled fusion boundary."""
+    if str(reason or "").strip() != "receipt_backed_decision_fusion_warmup_v1":
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if not _DECISION_FUSION_WARMUP_MIGRATION_PATHS.issubset(non_source):
+        return False
+    # A receipt-backed fusion boundary may coincide with an independently safe
+    # operational migration (for example a batch-size adjustment). Requiring
+    # the fusion paths to equal the entire change set made those two strict
+    # validators conflict. Permit only paths already accepted by the general
+    # boundary allowlist; this does not broaden either contract.
+    extra_paths = non_source - _DECISION_FUSION_WARMUP_MIGRATION_PATHS
+    if any(
+        not any(
+            path == allowed or path.startswith(allowed + ".")
+            for allowed in _BOUNDARY_MIGRATABLE_DESIGN_PATHS
+        )
+        for path in extra_paths
+    ):
+        return False
+    before = dict(stored.get("learner") or {})
+    after = dict(current.get("learner") or {})
+    before_profile = dict(before.get("profile") or {})
+    after_profile = dict(after.get("profile") or {})
+    if (
+        bool(before_profile.get("decision_fusion_enabled", False))
+        or bool(before_profile.get("decision_fusion_runtime_enabled", False))
+        or after_profile.get("decision_fusion_enabled") is not True
+        or after_profile.get("decision_fusion_runtime_enabled") is not False
+        or int(after_profile.get("decision_fusion_width", -1)) != 16
+        or after_profile.get("expanded_heads_enabled") is not True
+    ):
+        return False
+    # The guide fields are compatibility aliases only at this migration. They
+    # must exactly mirror the already-authoritative legacy guide contract.
+    if (
+        after.get("current_deck_guide_loss_weight")
+        != after.get("alakazam_guide_loss_weight")
+        or after.get("current_deck_guide_targets_enabled")
+        != after.get("alakazam_guide_targets_enabled")
+        or after.get("current_deck_guide_archetype") is not None
+        or after.get("current_deck_guide_version") is not None
+    ):
+        return False
+    return True
+
+
+def _safe_decision_fusion_runtime_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only audited serving activation of an already-trained fusion."""
+    if str(reason or "").strip() != "receipt_backed_decision_fusion_runtime_v1":
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if not _DECISION_FUSION_RUNTIME_MIGRATION_PATHS.issubset(non_source):
+        return False
+    extra_paths = non_source - _DECISION_FUSION_RUNTIME_MIGRATION_PATHS
+    if any(
+        not any(
+            path == allowed or path.startswith(allowed + ".")
+            for allowed in _BOUNDARY_MIGRATABLE_DESIGN_PATHS
+        )
+        for path in extra_paths
+    ):
+        return False
+    before_profile = dict((stored.get("learner") or {}).get("profile") or {})
+    after_profile = dict((current.get("learner") or {}).get("profile") or {})
+    return bool(
+        before_profile.get("expanded_heads_enabled") is True
+        and before_profile.get("decision_fusion_enabled") is True
+        and before_profile.get("decision_fusion_runtime_enabled") is False
+        and after_profile.get("expanded_heads_enabled") is True
+        and after_profile.get("decision_fusion_enabled") is True
+        and after_profile.get("decision_fusion_runtime_enabled") is True
+        and int(before_profile.get("decision_fusion_width", -1)) == 16
+        and int(after_profile.get("decision_fusion_width", -1)) == 16
+    )
+
+
 def _changed_design_paths(before: Any, after: Any, prefix: str = "") -> set[str]:
     if isinstance(before, dict) and isinstance(after, dict):
         changed: set[str] = set()
@@ -2561,6 +2729,18 @@ def _validate_or_migrate_design_fingerprint(
         and next_iteration >= 0
         and next_iteration < current_iterations < stored_iterations
     )
+    safe_decision_fusion_warmup = _safe_decision_fusion_warmup_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason=migration_reason,
+    )
+    safe_decision_fusion_runtime = _safe_decision_fusion_runtime_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason=migration_reason,
+    )
     disallowed = [
         path
         for path in changed
@@ -2570,6 +2750,14 @@ def _validate_or_migrate_design_fingerprint(
         )
         and not path.startswith("source.")
         and not (path == "run.iterations" and safe_ceiling_reduction)
+        and not (
+            safe_decision_fusion_warmup
+            and path in _DECISION_FUSION_WARMUP_MIGRATION_PATHS
+        )
+        and not (
+            safe_decision_fusion_runtime
+            and path in _DECISION_FUSION_RUNTIME_MIGRATION_PATHS
+        )
     ]
     if disallowed:
         raise RuntimeError(
@@ -2581,6 +2769,10 @@ def _validate_or_migrate_design_fingerprint(
         and last_completed == -1
         and str(migration_reason).strip()
         == "receipt_backed_completed_collection_resume_v1"
+    )
+    initial_empty_run = bool(
+        initial_collection_resume
+        and not list(state.get("history") or ())
     )
     if (
         not initial_collection_resume
@@ -2626,6 +2818,22 @@ def _validate_or_migrate_design_fingerprint(
         and str(latest_preserved_collection.get("checkpoint_digest") or "")
         == str(preserved_collection.get("checkpoint_digest") or "")
     )
+    # A zero-safe decision-fusion warmup may be committed while the completed
+    # N+1 transaction is temporarily quarantined.  In that case migration N
+    # cannot record ``preserved_completed_collection`` even though the
+    # checksum-bound warmup receipt proves that the new learner is an exact
+    # legacy-policy child of the behavior checkpoint that generated the shard.
+    # A later source-only fix must not strand or recollect that transaction.
+    collection_is_verified_zero_safe_parent = bool(
+        preserved_collection is not None
+        and _completed_collection_checkpoint_matches_state(
+            run_dir=Path(run_dir),
+            state=state,
+            collection_digest=str(
+                preserved_collection.get("checkpoint_digest") or ""
+            ),
+        )
+    )
     artifacts_are_preserved_collection = bool(
         preserved_collection is not None
         and (
@@ -2636,6 +2844,7 @@ def _validate_or_migrate_design_fingerprint(
                 and (
                     preserved_collection_fingerprint == stored_digest
                     or collection_was_carried_to_stored_design
+                    or collection_is_verified_zero_safe_parent
                 )
             )
         )
@@ -2687,7 +2896,15 @@ def _validate_or_migrate_design_fingerprint(
         (not initial_collection_resume and not commit_path.is_file())
         or (next_artifacts and not artifacts_are_preserved_transaction)
         or (
+            initial_empty_run
+            and (
+                next_artifacts
+                or preserved_collection is not None
+            )
+        )
+        or (
             initial_collection_resume
+            and not initial_empty_run
             and (
                 preserved_collection is None
                 or int(preserved_collection.get("iteration", -1)) != 0
@@ -3003,8 +3220,11 @@ def _verified_completed_collection_receipt(
             or _completed_collection_digest(shard)
             != str(shard_row.get("sha256") or "")
             or int(receipt.get("requested_games", -1)) != expected
-            or str(receipt.get("checkpoint_digest") or "")
-            != str(learner.get("digest") or "")
+            or not _completed_collection_checkpoint_matches_state(
+                run_dir=run_dir,
+                state=state,
+                collection_digest=str(receipt.get("checkpoint_digest") or ""),
+            )
             or retained != expected
             or int(shard_row.get("games", -1)) <= 0
             or int(shard_row.get("decisions", -1)) <= 0
@@ -3029,6 +3249,67 @@ def _verified_completed_collection_receipt(
         return {**receipt, "receipt_path": str(receipt_path)}
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
+
+
+def _completed_collection_checkpoint_matches_state(
+    *,
+    run_dir: Path,
+    state: dict[str, Any],
+    collection_digest: str,
+) -> bool:
+    """Allow a zero-safe fusion child to train on its parent's finished shard."""
+    learner = dict(state.get("learner") or state.get("champion") or {})
+    learner_digest = str(learner.get("digest") or "")
+    if collection_digest == learner_digest:
+        return True
+    activation = dict(state.get("decision_fusion_activation") or {})
+    receipt_path = Path(str(activation.get("receipt") or "")).expanduser()
+    if not (
+        activation.get("schema")
+        == "poke_bot.causal_decision_fusion_boundary_warmup/v1"
+        and activation.get("phase") == "training_warmup"
+        and activation.get("runtime_enabled") is False
+        and activation.get("serving_eligible") is False
+        and int(activation.get("boundary_next_iteration", -1))
+        == int(state.get("next_iteration", -2))
+        and str(activation.get("learner_digest") or "") == learner_digest
+        and receipt_path.is_file()
+        and _sha256_file(receipt_path)
+        == str(activation.get("receipt_digest") or "")
+    ):
+        return False
+    boundary = json.loads(receipt_path.read_text(encoding="utf-8"))
+    material_row = dict(boundary.get("materialization_receipt") or {})
+    material_path = Path(str(material_row.get("path") or "")).expanduser()
+    if not (
+        boundary.get("schema")
+        == "poke_bot.causal_decision_fusion_boundary_warmup/v1"
+        and Path(str(boundary.get("run_dir") or "")).resolve()
+        == Path(run_dir).resolve()
+        and int((boundary.get("boundary") or {}).get("next_iteration", -1))
+        == int(state.get("next_iteration", -2))
+        and str((boundary.get("parent_learner") or {}).get("digest") or "")
+        == collection_digest
+        and str((boundary.get("warmup_learner") or {}).get("digest") or "")
+        == learner_digest
+        and material_path.is_file()
+        and _sha256_file(material_path) == str(material_row.get("digest") or "")
+    ):
+        return False
+    material = json.loads(material_path.read_text(encoding="utf-8"))
+    proof = dict(material.get("proof") or {})
+    return bool(
+        material.get("schema")
+        == "poke_bot.causal_decision_fusion_checkpoint_migration/v1"
+        and str(material.get("parent_checkpoint_digest") or "")
+        == collection_digest
+        and str(material.get("migrated_checkpoint_digest") or "")
+        == learner_digest
+        and proof.get("legacy_tensors_bit_identical") is True
+        and proof.get("optimizer_existing_state_preserved") is True
+        and proof.get("zero_safe_initialization") is True
+        and (material.get("decision_fusion") or {}).get("runtime_enabled") is False
+    )
 
 
 def _commit_completed_collection_receipt(
@@ -4224,7 +4505,13 @@ def _smoke_dataset(n: int, seed: int):
     return BootstrapDataset(sequences=seqs)
 
 
-def _ensure_pure_rl_checkpoint(path: Path, seed: int, *, smoke: bool = False) -> Path:
+def _ensure_pure_rl_checkpoint(
+    path: Path,
+    seed: int,
+    *,
+    smoke: bool = False,
+    allow_legacy_inference_profile: bool = False,
+) -> Path:
     """Build or validate a fresh small Pure-RL seed (not AZ / not starter prior)."""
     import torch
     from poke_bot.checkpoint import atomic_torch_save, build_checkpoint
@@ -4242,7 +4529,11 @@ def _ensure_pure_rl_checkpoint(path: Path, seed: int, *, smoke: bool = False) ->
             "use a fresh small pure_rl seed (Abhyuday: starter is terrible)"
         )
     if path.is_file():
-        _checkpoint_contract(path, smoke=smoke)
+        _checkpoint_contract(
+            path,
+            smoke=smoke,
+            allow_legacy_inference_profile=allow_legacy_inference_profile,
+        )
         model = load_model_from_checkpoint(path, device=torch.device("cpu"))
         n = count_params(model)
         print(f"[pure_rl] loaded checkpoint params={n} path={path}", flush=True)
@@ -4724,16 +5015,29 @@ def _our_decks(
                     f"specialist representative {requested!r} is not exactly "
                     "one valid 60-card integer list"
                 )
-            canonical = ",".join(str(card_id) for card_id in sorted(cards)).encode(
-                "ascii"
-            )
-            canonical_digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
-            if canonical_digest != str(row.get("canonical_multiset_sha256") or ""):
+            sorted_cards = sorted(cards)
+            legacy_canonical = ",".join(
+                str(card_id) for card_id in sorted_cards
+            ).encode("ascii")
+            json_canonical = json.dumps(
+                sorted_cards, separators=(",", ":")
+            ).encode("utf-8")
+            canonical_digests = {
+                "sha256:" + hashlib.sha256(legacy_canonical).hexdigest(),
+                "sha256:" + hashlib.sha256(json_canonical).hexdigest(),
+            }
+            if str(row.get("canonical_multiset_sha256") or "") not in canonical_digests:
                 raise ValueError(
                     f"specialist representative {requested!r} multiset digest mismatch"
                 )
             classified = classify_deck(cards)
-            if classified != requested:
+            source_deck_id = str(row.get("source_deck_id") or "")
+            from poke_bot.matchup_adapters import LOGICAL_EXPERT_ALIASES_V5
+
+            aliased_identity = (
+                LOGICAL_EXPERT_ALIASES_V5.get(source_deck_id) == requested
+            )
+            if classified != requested and not aliased_identity:
                 raise ValueError(
                     f"specialist representative {requested!r} classifies as "
                     f"{classified!r}"
@@ -8390,8 +8694,17 @@ def _collect_wave(
     stats["matchup_runtime"] = _summarize_matchup_runtime_rows(
         valid_runtime_rows
     )
+    self_play_runtime_rows = [
+        row for row in valid_runtime_rows if bool(row.get("self_play"))
+    ]
     stats["matchup_runtime_self_play"] = _summarize_matchup_runtime_rows(
-        [row for row in valid_runtime_rows if bool(row.get("self_play"))]
+        self_play_runtime_rows
+    )
+    stats["opponent_matchup_runtime_self_play"] = (
+        _summarize_matchup_runtime_rows(
+            self_play_runtime_rows,
+            field="opponent_matchup_runtime_audit",
+        )
     )
     stats["matchup_runtime_public_mix"] = _summarize_matchup_runtime_rows(
         [row for row in valid_runtime_rows if not bool(row.get("self_play"))]
@@ -8403,11 +8716,15 @@ def _collect_wave(
         "POKEBOT_MATCHUP_ADAPTER_RUNTIME", ""
     ).strip().lower() in {"1", "true", "yes", "on"}
     runtime_audit = dict(stats["matchup_runtime"])
+    mirror_runtime_audit = _combine_self_play_matchup_runtime_audits(
+        stats["matchup_runtime_self_play"],
+        stats["opponent_matchup_runtime_self_play"],
+    )
     enforcement = _matchup_runtime_collection_enforcement(
         runtime_audit,
         valid_games=len(valid_runtime_rows),
         required=runtime_required,
-        self_play_audit=dict(stats["matchup_runtime_self_play"]),
+        self_play_audit=mirror_runtime_audit,
         required_mirror_archetype=required_mirror_archetype,
     )
     stats["matchup_runtime_enforcement"] = enforcement
@@ -8755,6 +9072,28 @@ def _matchup_runtime_collection_enforcement(
         "assertions": assertions,
         "passed": (not required) or all(assertions.values()),
     }
+
+
+def _combine_self_play_matchup_runtime_audits(
+    acting_seat_audit: dict[str, Any],
+    opponent_seat_audit: dict[str, Any],
+) -> dict[str, Any]:
+    """Combine route observations from both independently audited mirror seats."""
+
+    combined = dict(acting_seat_audit)
+    observations = {
+        str(archetype_id): int(count)
+        for archetype_id, count in dict(
+            acting_seat_audit.get("per_archetype_observations") or {}
+        ).items()
+    }
+    for archetype_id, count in dict(
+        opponent_seat_audit.get("per_archetype_observations") or {}
+    ).items():
+        key = str(archetype_id)
+        observations[key] = int(observations.get(key, 0)) + int(count)
+    combined["per_archetype_observations"] = observations
+    return combined
 
 
 def _audit_heldout_rows(
@@ -9828,7 +10167,12 @@ def run_full_loop(args: argparse.Namespace) -> int:
         ckpt, start_iteration = _validate_resume_state(
             args=args, run_dir=run_dir, state=loop_state
         )
-        ckpt = _ensure_pure_rl_checkpoint(ckpt, args.seed, smoke=False)
+        ckpt = _ensure_pure_rl_checkpoint(
+            ckpt,
+            args.seed,
+            smoke=False,
+            allow_legacy_inference_profile=True,
+        )
         print(
             f"[pure_rl] RESUME next_iteration={start_iteration} "
             f"champion={ckpt}",
@@ -10150,7 +10494,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
 
     live_pool_on = live_pool_enabled()
 
-    checkpoint_profile = _checkpoint_contract(ckpt, smoke=False)
+    checkpoint_profile = _checkpoint_contract(
+        ckpt,
+        smoke=False,
+        allow_legacy_inference_profile=resumed,
+    )
     initial_replay_shards = [
         Path(path).expanduser().resolve() for path in args.initial_replay_shard
     ]
@@ -11186,6 +11534,52 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 parent.path
             )
             parent_profile = dict(trusted_parent.get("model_config") or {})
+            parent_checkpoint = checkpoint_mod.load_checkpoint(
+                parent.path, map_location="cpu"
+            )
+            parent_expanded_training = dict(
+                (parent_checkpoint.get("extra") or {}).get(
+                    "expanded_head_training"
+                )
+                or {}
+            )
+            expanded_head_contract: dict[str, Any] = {}
+            if bool(parent_profile.get("expanded_heads_enabled", False)):
+                if (
+                    parent_expanded_training.get("schema")
+                    != "poke_bot.expanded_head_training/v1"
+                    or parent_expanded_training.get("runtime_enabled_heads")
+                    != []
+                ):
+                    raise RuntimeError(
+                        "expanded specialist parent lacks its shadow-only "
+                        "training contract"
+                    )
+                expanded_head_contract = {
+                    "schema": "poke_bot.expanded_head_schedule/v1",
+                    "target_schema": str(
+                        parent_expanded_training.get(
+                            "target_schema_version"
+                        )
+                        or ""
+                    ),
+                    "target_schema_digest": str(
+                        parent_expanded_training.get(
+                            "target_schema_digest"
+                        )
+                        or ""
+                    ),
+                    "schedule_digest": str(
+                        parent_expanded_training.get("schedule_digest") or ""
+                    ),
+                    "epoch": 25,
+                    "stage_index": 5,
+                    "loss_weights": dict(
+                        parent_expanded_training.get("loss_weights") or {}
+                    ),
+                    "runtime_enabled_heads": [],
+                    "rehearsal_iteration": int(it),
+                }
             rehearsal_context = (
                 int(parent_profile.get("max_context") or 0)
                 if trusted_parent.get("decision_context") == "history"
@@ -11204,16 +11598,13 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     args.lethal_threat_loss_weight,
                     args.prize_race_loss_weight,
                 )
-            )
+            ) or bool(expanded_head_contract)
             rehearsal_belief_card_vocab: Optional[int] = None
             if exact_rehearsal_enabled:
                 # ``assert_trusted_policy_checkpoint`` deliberately returns
                 # only validated metadata.  Read tensors from the already
                 # trusted checkpoint instead of assuming the metadata view
                 # contains ``model_state_dict``.
-                parent_checkpoint = checkpoint_mod.load_checkpoint(
-                    parent.path, map_location="cpu"
-                )
                 parent_state = dict(
                     parent_checkpoint.get("model_state_dict") or {}
                 )
@@ -11246,6 +11637,19 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 required_compact_mode=COMPACT_MODE_TEMPORAL_EXPERT,
                 required_max_context=rehearsal_context,
                 required_target_coverage=expert_required_targets,
+                required_expanded_target_schema=str(
+                    expanded_head_contract.get("target_schema") or ""
+                ),
+                required_expanded_target_digest=str(
+                    expanded_head_contract.get("target_schema_digest") or ""
+                ),
+                required_expanded_heads=tuple(
+                    str(name)
+                    for name, weight in dict(
+                        expanded_head_contract.get("loss_weights") or {}
+                    ).items()
+                    if float(weight) > 0.0
+                ),
             )
             record = recover_rehearsal(
                 run_dir,
@@ -11256,6 +11660,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 manifest_identity=manifest_identity,
                 loss_weights=loss_weights,
                 corpus_split_seed=corpus_split_seed,
+                expanded_head_contract=expanded_head_contract,
             )
             if record is None:
                 print(
@@ -11305,6 +11710,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     alakazam_guide_loss_weight=float(
                         args.alakazam_guide_loss_weight
                     ),
+                    expanded_head_loss_weights=dict(
+                        expanded_head_contract.get("loss_weights") or {}
+                    ),
+                    expanded_head_schedule=expanded_head_contract,
                     output_archetype_id=(
                         "core"
                         if args.mode == "core"
@@ -11324,6 +11733,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     loss_weights=loss_weights,
                     corpus_split_seed=corpus_split_seed,
                     result=rehearsal_result,
+                    expanded_head_contract=expanded_head_contract,
                 )
             prepared = _verified_checkpoint_identity(record["checkpoint_identity"])
             print(

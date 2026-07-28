@@ -269,6 +269,9 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         while not all(finished):
             actions: list[Optional[Action]] = [None] * n
+            acting_agents: list[Optional[PolicyAgent]] = [None] * n
+            acting_seats: list[Optional[int]] = [None] * n
+            target_counts_before: list[Optional[int]] = [None] * n
             any_active = False
             for i in range(n):
                 if finished[i]:
@@ -303,6 +306,9 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             ),
                         }
                     actions[i] = list(agent(obs))
+                    acting_agents[i] = agent
+                    acting_seats[i] = seat
+                    target_counts_before[i] = target_count_before
                     if privileged_aux is not None:
                         if len(agent.targets) != target_count_before + 1:
                             raise RuntimeError(
@@ -326,6 +332,24 @@ def run_self_play_multi(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if actions[i] is not None:
                     steps[i] += 1
                 obs_list[i] = e.obs
+                acted = acting_agents[i]
+                target_count_before = target_counts_before[i]
+                if (
+                    acted is not None
+                    and acting_seats[i] is not None
+                    and target_count_before is not None
+                    and len(acted.targets) == target_count_before + 1
+                ):
+                    from poke_bot.strategic_heads import (
+                        public_transition_snapshot,
+                    )
+
+                    acted.targets[-1]["transition_after"] = (
+                        public_transition_snapshot(
+                            e.obs,
+                            actor_seat=int(acting_seats[i]),
+                        )
+                    )
                 if e.done:
                     finished[i] = True
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=Finalize iteration-26 matchup adapters and resume Alakazam iteration 27
+After=default.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v31-matchup-runtime
+ExecStart=/bin/bash scripts/finalize_matchup_runtime_v31.sh
+Restart=on-failure
+RestartSec=20s
+MemoryMax=4G
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=default.target

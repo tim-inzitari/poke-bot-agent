@@ -88,6 +88,18 @@ shared_core_refresh:
     requested_decisions_per_batch: 12288
     episode_disjoint_validation: true
     balance_teacher_contributions_as_evenly_as_integer_counts_permit: true
+    teacher_behavior_repair:
+      allowed_only_after_bounded_parameter_space_failures: true
+      maximum_parameter_space_attempts: 4
+      maximum_behavior_repair_attempts: 1
+      target: matching_archetype_frozen_teacher_greedy_action
+      causal_inputs_only: true
+      teacher_checkpoint_immutable: true
+      teacher_gradients_allowed: false
+      nonmatching_archetype_rows_masked: true
+      loss_weight: 0.5
+      exact_25_epoch_schedule_unchanged: true
+      gameplay_gate_thresholds_unchanged: true
     train_policy: true
     train_value: true
     train_archetype_auxiliary: true
@@ -119,16 +131,36 @@ shared_core_refresh:
   next_specialist_handoff:
     refresh_core_before_bootstrap: true
     fixed_historical_core_reuse_for_later_specialists: false
-    refreshed_core_required_before_bootstrap: true
-    fail_closed_if_refresh_not_validated: true
+    refreshed_core_required_before_bootstrap: false
+    fail_closed_if_refresh_not_validated: false
+    rejected_refresh_candidate_behavior: preserve_rejected_and_continue
+    fallback_core_selection: latest_checksum_accepted_core
+    fallback_current_version: 6
+    fallback_current_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6/model.pt
+    fallback_current_checkpoint_checksum: sha256:e1966ea311657c9a68f918da0f9276df6d74258216f38837a294d1f9c1cb2490
+    fallback_current_ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v6-ready.json
+    continue_refresh_after_every_completed_specialist: true
+    fallback_does_not_weaken_refresh_acceptance_gate: true
     select_next_unfinished_specialist_after_meta_refresh: true
-    hot_start_from_refreshed_core: true
+    hot_start_from_refreshed_core_or_latest_accepted_fallback: true
     pre_stage_while_active_specialist_trains: true
     pre_stage_is_read_only_to_live_training: true
     pre_stage_may_build_derived_cpu_tensor_pack: true
     pre_stage_may_not_update_selector_or_runtime_registry: true
     pre_stage_may_not_control_training_services: true
     pre_stage_receipt_schema: poke_bot.next_specialist_prestage/v1
+    clean_transition:
+      required: true
+      preflight_before_specialist_start: true
+      preflight_training_launch_path: true
+      preflight_terminal_freeze_package_submission_handoff_path: true
+      exact_logical_specialist_representative_required: true
+      representative_card_count: 60
+      deterministic_transition_input_error_timing: before_rl_training
+      successful_trainer_exit_action: start_idempotent_gate_handler
+      periodic_gate_supervisor_role: recovery_only
+      periodic_gate_supervisor_is_normal_transition_path: false
+      submission_completion_blocks_handoff: false
     boundary_only_steps:
       - freeze_and_register_passing_specialist
       - distill_and_validate_cumulative_core
@@ -138,6 +170,26 @@ shared_core_refresh:
 
 specialist_training:
   concurrency: 1
+  orchestration:
+    objective: maximize_completed_iterations_per_wall_clock_hour
+    independent_tasks_parallel_by_default: true
+    serialize_only_on_explicit_dependency: true
+    allowed_sequential_dependencies:
+      - artifact_input_not_ready
+      - checksum_or_immutable_receipt_not_committed
+      - safe_selector_transition_boundary
+      - single_active_specialist_model_update
+    overlap_with_healthy_active_training:
+      - source_download_and_validation
+      - per_day_featurization
+      - corpus_assembly
+      - current_deck_guide_preparation
+      - derived_cpu_pack_construction
+      - dashboard_validation
+      - next_specialist_readiness_validation
+    healthy_training_may_be_preempted_for_preparation: false
+    obey_memory_guards: true
+    active_training_starvation_allowed: false
   expert_corpus:
     source_window_unit: calendar_day
     source_window_days: 20
@@ -215,10 +267,162 @@ specialist_training:
     meta_share_changes_gate_thresholds: false
     meta_share_training_eligible: false
     authoritative_runtime_values: state/specialists.yaml#/training_priority
+  meta_analysis:
+    authoritative_source: https://ptcgreplay.netlify.app/
+    retired_source: https://ptcg-ladder-meta.vercel.app/strategies
+    retired_source_must_not_be_used: true
+    access:
+      authentication: site_published_config_with_supabase_rls
+      credentials_may_be_committed: false
+      rendered_chart_scraping_allowed: false
+    data_contract:
+      completed_ingest_table: ingest_runs
+      archetype_table: archetypes
+      deck_table: decks
+      per_match_rpc: match_facts
+      aggregation_semantics: ptcgreplay_side_aware_browser_aggregation
+      play_order_unknown_rows: exclude_when_filtering_by_play_order
+      mirror_matchup_rate: even_by_definition
+    governs:
+      - archetype_prevalence
+      - matchup_analysis
+      - play_order_analysis
+      - deck_list_analysis
+      - unfinished_specialist_priority
+    must_not_govern:
+      - training_examples
+      - expert_replay_labels
+      - official_or_premium_holdouts
+      - gate_thresholds
+      - checkpoint_acceptance
+    refresh_before_specialist_handoff: true
+    immutable_snapshot_receipt_required: true
+    authoritative_runtime_snapshot: state/specialists.yaml#/training_priority/source
   hot_start_from_shared_core: true
   generate_archetype_head: true
   generate_game_plan_heads: true
   generate_matchup_heads: true
+  current_deck_guide:
+    required_for_every_new_specialist: true
+    design_reference: validated_alakazam_masked_policy_guide
+    implementation: generic_sparse_teacher_over_existing_policy_logits
+    separate_parameterized_action_head: false
+    goal_path_guidance:
+      owner_vision_required: true
+      purpose: realized_win_contribution_weighted_strategy_north_star
+      bootstrap_behavior: ramp_in
+      positive_contribution_behavior: hold
+      internalized_or_nonpositive_behavior: anneal_toward_zero
+      evidence_source: training_ineligible_guide_on_guide_off_evaluation_pairs
+      training_outcomes_may_control_weight: false
+      formal_gate_games_may_control_weight: false
+      silent_removal_or_fixed_weight_replacement_allowed: false
+    contract_schema: poke_bot.current_deck_guide/v1
+    contract_root: config/deck_guides
+    exactly_one_contract_per_specialist: true
+    build_during_dependency_free_prestage: true
+    cited_public_strategy_sources_required: true
+    source_retrieval_timestamp_required: true
+    source_checksum_or_canonical_url_required: true
+    expert_writeup:
+      required: true
+      format: utf8_text_or_markdown
+      root: docs/deck_guides
+      maximum_words: 10000
+      intended_audience: world_champion_subject_matter_experts
+      primary_document_type: practical_human_deck_pilot_guide
+      how_to_play_is_primary: true
+      required_play_sections:
+        - strategic_identity
+        - deck_variants_and_card_roles
+        - setup_and_opening_priorities
+        - going_first_plan
+        - going_second_plan
+        - turn_by_turn_sequencing
+        - resource_and_energy_planning
+        - attack_selection
+        - bench_management
+        - prize_mapping
+        - matchup_plans
+        - recovery_lines
+        - common_mistakes
+        - decision_checklists
+        - expert_review_questions
+      evidence_limited_sections_may_state_uncertainty: true
+      unsupported_exact_mechanics_may_be_invented: false
+      heuristic_audit_location: short_appendix_only
+      heuristic_audit_may_be_primary_content: false
+      same_strategy_source_set_as_guide_contract_required: true
+      guide_identity_required: true
+      path_checksum_and_word_count_required_in_guide_contract: true
+      checksum_validation_required_before_prestage_ready: true
+    research_execution:
+      executor: dedicated_subagent
+      reasoning_tier: highest_available
+      exact_task_scope:
+        - expert_facing_guide
+        - causal_heuristic_extraction
+      additional_tasks_allowed: false
+      production_runtime_mutation_allowed: false
+      production_controller_role:
+        - validate_returned_artifacts
+        - integrate_validated_artifacts
+    specialist_deck_signature_required: true
+    causal_public_state_only: true
+    hidden_or_future_information_allowed: false
+    sparse_high_confidence_targets_only: true
+    missing_or_ambiguous_target_behavior: mask
+    full_legal_stage_coverage_required: true
+    corpus_binding:
+      ready_receipt_schema: poke_bot.current_deck_guide_corpus_ready/v1
+      selected_expert_manifest_checksum_required: true
+      selected_protected_pointer_checksum_required: true
+      guide_version_match_required: true
+      specialist_identity_match_required: true
+      decisions_match_required: true
+      nonzero_guide_rows_required: true
+      contract_guide_rows_must_equal_selected_manifest_guide_rows: true
+      all_daily_shard_checksums_required_before_atomic_promotion: true
+      cpu_pack_build_allowed_before_binding_ready: false
+      active_training_modification_allowed: false
+    action_path_authority: flat_policy
+    runtime_action_override_allowed: false
+    initial_loss_weight: 0.05
+    maximum_loss_weight: 0.05
+    bootstrap:
+      ramp_epochs: [1, 5]
+      ramp_start_weight: 0.01
+      ramp_end_weight: 0.05
+      hold_through_epoch: 25
+    adaptive_annealing:
+      enabled_after_bootstrap: true
+      statistic: guide_policy_agreement_lift_in_wins_vs_nonwins
+      estimator: exponentially_weighted_separate_evaluation
+      positive_importance_boundary: 0.0
+      hold_when_lower_confidence_bound_above_boundary: true
+      decay_when_consecutive_nonpositive_evaluations: 2
+      decay_multiplier: 0.8
+      minimum_nonzero_weight: 0.005
+      zero_weight_when_below_minimum: true
+      weight_increase_after_bootstrap_allowed: false
+      formal_gate_games_may_tune_weight: false
+      training_games_may_tune_weight: false
+      calibration_games_training_eligible: false
+      calibration_games_replay_eligible: false
+      first_second_balance_required: true
+      per_matchup_reporting_required: true
+      schedule_receipt_required: true
+      checkpoint_metrics_require:
+        - guide_rows
+        - guide_loss
+        - guide_policy_agreement
+        - win_agreement
+        - nonwin_agreement
+        - agreement_lift
+        - current_weight
+    prepared_contracts:
+      alakazam: legacy_validated
+      marnie-s-grimmsnarl-ex: config/deck_guides/marnie-s-grimmsnarl-ex.yaml
   matchup_heads:
     required_for_every_specialist: true
     runtime_enabled_by_default_at_specialist_launch: true
@@ -227,13 +431,15 @@ specialist_training:
     applies_from_specialist: starmie
     applies_to_all_future_specialists: true
     canonical_roster_required_in_every_checkpoint: true
-    canonical_roster_source: state/matchup_adapter_roster.json#/expert_ids
-    checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+    canonical_roster_source: state/matchup_adapter_roster.json#/active_expert_ids
+    checkpoint_format: poke-bot-matchup-adapter-bank-v6
     adapter_count:
-      derivation: length_of_canonical_roster_expert_ids
+      derivation: fixed_physical_slot_capacity
+      physical_slot_capacity: 64
+      logical_active_count_derivation: length_of_active_expert_ids
       hard_coded_total_allowed: false
     parameter_expectation:
-      derivation: canonical_adapter_count_times_instantiated_per_head_parameter_count
+      derivation: physical_slot_capacity_times_instantiated_per_slot_parameter_count
       per_head_architecture_source: checkpoint_declared_matchup_adapter_config
       hard_coded_total_allowed: false
     active_specialist_route_required: true
@@ -260,29 +466,240 @@ specialist_training:
       failure_behavior: preserve_collection_stop_before_next_iteration
     canonical_roster_migration:
       source: state/matchup_adapter_roster.json
-      status: deployed
-      checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+      status: v6_staged_pending_safe_boundary
+      live_format_until_activation: poke-bot-matchup-adapter-bank-v5-roster18
+      checkpoint_format: poke-bot-matchup-adapter-bank-v6
+      physical_slot_capacity: 64
+      legacy_v5_prefix_length: 18
+      stable_slot_identity_required: true
+      roster_change_requires_checkpoint_format_change: false
+      retired_slots_are_tombstoned: true
+      retired_slot_reuse_allowed: false
+      preserve_v5_physical_rows: true
       preserve_v4_physical_rows: false
       retained_rows_preserve_weights_by_route_identity: true
-      retired_rows_are_deleted: true
-      migrated_adapter_optimizer_state_is_discarded: true
-      append_routes:
-        - team-rockets-spidops
-      logical_route_aliases:
-        thwackey: festival-lead
-      retire_routes:
-        - cornerstone-ogerpon
-        - lopunny
-        - gardevoir
-        - ns-zoroark
-        - raging-bolt
+      retained_v5_optimizer_state_preserved_by_parameter_name: true
+      unused_slots_exact_zero_and_optimizer_free: true
+      activation_boundary: next_safe_receipt_backed_boundary
+      live_training_must_not_be_interrupted_for_staging: true
       required_active_route_count_after_activation: 18
-      physical_checkpoint_row_count_after_activation: 18
+      physical_checkpoint_row_count_after_activation: 64
+      v5_projection:
+        allowed_only_when_no_v6_only_active_or_trained_slot_would_be_lost: true
+        otherwise: fail_closed
+    meta_crosswalk:
+      authoritative_source: state/matchup_adapter_roster.json#/meta_analysis_source
+      identity_key: numeric_source_archetype_id
+      exact_source_name_guard_required: true
+      card_signature_classifier_allowed: true
+      fuzzy_display_name_matching_allowed: false
+      priority_eligible_statuses: [exact, card_signature]
+      non_priority_statuses: [aggregate, ambiguous, missing]
+      scope: meta_analysis_and_specialist_priority_only
     dashboard:
       list_complete_canonical_roster: true
       show_zero_observation_routes: true
       distinguish_materialized_runtime_enabled_and_observed: true
       materialized_route_does_not_imply_observed_activation: true
+  expanded_strategic_heads:
+    schema: poke_bot.expanded_strategic_heads/v1
+    target_schema: poke_bot.expanded_strategic_targets/v2
+    checkpoint_contract_schema: poke_bot.expanded_head_training/v1
+    activation:
+      architecture_presence_source: checkpoint_declared_expanded_head_contract
+      present_in_current_v5_compatible_learner: true
+      present_in_v6_and_later: true
+      training_active_from_specialist: dudunsparce
+      training_activation: full_model_rl_and_scheduled_expert_rehearsal
+      train_every_head_with_valid_causal_labels: true
+      zero_valid_label_behavior: mask_without_optimizer_contribution
+      current_inflight_iteration_action_path_must_remain_unchanged: true
+      pre_fusion_runtime_mode: shadow_only
+      flat_policy_authoritative_until_decision_fusion_activation: true
+      runtime_enabled_heads: []
+      decision_fusion_activation_requires_validated_receipt: true
+    heads:
+      action_q:
+        output: scalar_per_legal_candidate
+        selected_target: terminal_monte_carlo_return
+        unselected_target_requires_audited_counterfactual_provenance: true
+        loss: smooth_l1
+        weight: 0.10
+      action_type:
+        output: scalar_per_legal_candidate
+        target_source: canonical_factorized_action_stage_option_type
+        loss: masked_cross_entropy
+        weight: 0.05
+      action_target:
+        output: scalar_per_legal_candidate
+        target_source: canonical_decoder_target_binding
+        loss: masked_cross_entropy
+        weight: 0.025
+      action_resource:
+        output: scalar_per_legal_candidate
+        target_source: canonical_decoder_source_tool_energy_binding
+        loss: masked_cross_entropy
+        weight: 0.025
+      action_utility:
+        dimensions: [damage_dealt, cards_drawn, energy_delta, open_bench_delta, prize_delta, knockout]
+        immediate_post_action_transition_required: true
+        loss: masked_smooth_l1_and_bce
+        weight: 0.05
+      tactical_outcomes:
+        horizons_in_same_seat_decision_frames: [1, 2, 3]
+        dimensions: [own_prize, opponent_prize, own_knockout, opponent_knockout, net_damage, net_prize]
+        loss: masked_bce_and_smooth_l1
+        weight: 0.05
+      opponent_response:
+        interval: after_selected_action_before_next_same_seat_decision
+        dimensions: [attack, prize, knockout, active_change, hand_reduction, board_energy_increase, end_without_attack]
+        loss: masked_binary_cross_entropy
+        weight: 0.05
+      resource_forecast:
+        target: next_same_seat_decision
+        dimensions: [hand_size, deck_size, attached_energy, open_bench_slots, energy_attachment_available, retreat_available]
+        loss: masked_smooth_l1_and_bce
+        weight: 0.025
+      game_phase:
+        classes: [setup, stabilize, pressure, prize_race, closeout]
+        precedence: [closeout, prize_race, stabilize, setup, pressure]
+        unknown_required_fields_are_masked: true
+        loss: masked_cross_entropy
+        weight: 0.025
+      outcome_distribution:
+        classes: [loss, draw, win]
+        loss: cross_entropy
+        diagnostics: [brier_score, expected_calibration_error, entropy]
+        weight: 0.05
+      remaining_turns:
+        target: log1p_remaining_complete_game_turns
+        incomplete_or_truncated_trajectory_is_masked: true
+        loss: smooth_l1
+        weight: 0.025
+    bootstrap_stage_schedule:
+      total_epochs: 25
+      stages:
+        - {epochs: [1, 5], enable: [action_q, action_type, action_target, action_resource, action_utility]}
+        - {epochs: [6, 10], add: [tactical_outcomes, opponent_response]}
+        - {epochs: [11, 15], add: [resource_forecast, game_phase]}
+        - {epochs: [16, 20], add: [outcome_distribution, remaining_turns]}
+        - {epochs: [21, 25], enable_all: true}
+      existing_enabled_heads_train_in_every_epoch: true
+      exact_epoch_count_may_not_be_shortened: true
+    baseline_rl_and_rehearsal_schedule:
+      enabled: true
+      applies_to_active_specialist_only: true
+      enable_all_architecture_present_heads: true
+      train_during_every_full_model_rl_epoch: true
+      train_during_every_scheduled_expert_rehearsal_epoch: true
+      exact_causal_label_required_per_row: true
+      masked_rows_contribute_zero_loss_and_zero_gradient: true
+      per_head_labeled_and_masked_counts_required_in_checkpoint_metrics: true
+      runtime_enabled_heads_remain_independently_controlled: true
+    target_contract:
+      labels_are_training_only: true
+      labels_never_enter_policy_observation: true
+      derive_before_context_truncation: true
+      unavailable_or_right_censored_targets_are_masked: true
+      absent_target_is_not_zero_target: true
+      malformed_present_target_fails_closed: true
+      target_schema_and_digest_required_in_shards_checkpoints_and_receipts: true
+    compatibility:
+      deterministic_missing_head_initialization: true
+      inherited_v5_tensors_must_remain_byte_identical: true
+      frozen_checkpoints_may_not_be_rewritten: true
+      local_and_remote_schema_digests_must_match: true
+      zero_weight_heads_must_not_change_legacy_outputs: true
+      completed_specialist_retrofit:
+        allowed_after: first_expanded_head_cumulative_core_frozen_and_registered
+        artifact_type: separately_registered_compatibility_derivative
+        original_passing_checkpoint_immutable: true
+        original_checkpoint_replacement_allowed: false
+        original_checkpoint_refreeze_allowed: false
+        added_head_initialization: deterministic_dormant
+        initial_runtime_enabled_heads: []
+        runtime_behavior_must_match_source_checkpoint: true
+        architecture_migration_counts_as_training_complete: false
+        architecture_migration_counts_as_gate_pass: false
+        later_training_requires_explicit_retrofit_phase: true
+        only_active_retrofit_specialist_may_update: true
+        bootstrap_epochs: 25
+        bootstrap_schedule: expanded_strategic_heads.bootstrap_stage_schedule
+        activation_requires_separate_validation_and_receipt: true
+        source_checkpoint_checksum_required: true
+        cumulative_core_checksum_required: true
+        target_and_schedule_digests_required: true
+        initialization_seed_and_method_required: true
+        derivative_checksum_required: true
+        original_runtime_package_remains_authoritative_until_activation: true
+    acceptance:
+      gameplay_gates_unchanged: true
+      rollout_throughput_regression_allowed_percent: 0
+      maximum_training_sps_regression_percent: 10
+      oom_allowed: false
+  decision_fusion:
+    schema: poke_bot.causal_decision_fusion/v1
+    required: true
+    applies_to_active_specialist: true
+    applies_to_every_successor_specialist: true
+    authoritative_action_path_after_activation: fused_policy
+    implementation: learned_checksum_bound_residual_over_flat_policy
+    required_causal_head_inputs:
+      - value
+      - archetype
+      - opponent_hand
+      - opponent_remainder
+      - lethal_threat
+      - prize_race
+      - action_q
+      - action_type
+      - action_target
+      - action_resource
+      - action_utility
+      - tactical_outcomes
+      - opponent_response
+      - resource_forecast
+      - game_phase
+      - outcome_distribution
+      - remaining_turns
+    conditional_inputs:
+      matchup_adapter:
+        behavior: use_only_when_causal_router_selects_exactly_one_valid_route
+        bypass_when_unrouted: true
+      current_deck_guide:
+        behavior: use_only_when_checksum_bound_guide_is_present_and_enabled
+        bypass_when_absent: true
+    training:
+      active_specialist_only: true
+      joint_full_model_update: true
+      train_during_every_rl_epoch: true
+      train_during_every_scheduled_rehearsal_epoch: true
+      missing_direct_head_targets_remain_masked: true
+      masked_direct_target_contributes_zero_direct_head_loss: true
+      policy_path_gradient_through_fusion_allowed: true
+      future_or_hidden_information_allowed: false
+    activation:
+      status: staged
+      current_iteration_action_path_unchanged: true
+      boundary: next_safe_checkpoint_boundary
+      required_receipts:
+        - checkpoint_checksum_and_architecture
+        - deterministic_local_remote_logit_parity
+        - every_required_head_influence_nonzero
+        - causal_information_audit
+        - rollout_throughput_and_memory
+      fail_closed_if_required_head_missing: true
+      applies_to_future_specialists_without_new_code_version: true
+      performance_acceptance:
+        benchmark_device: blackwell_cuda
+        minimum_fused_decisions_per_second: 50000
+        maximum_additional_peak_allocated_bytes: 67108864
+        oom_allowed: false
+        relative_microbenchmark_regression_diagnostic_only: true
+        exact_premium_and_official_runtime_gate_required: true
+        authoritative_basis: >-
+          measured Dudunsparce serving audit on 2026-07-25; 56,470 fused
+          decisions/second, zero additional peak allocation, and no OOM
   bootstrap:
     source: relevant_expert_top_ladder_replays
     supervised_epochs: 25
@@ -358,6 +775,10 @@ research_evaluations:
     - rehearsal_data
     - model_update_paths
   official:
+    roster_policy: fixed_official_four_only
+    canonical_registry: ops/research_control_registry_v1.json
+    frozen_specialists_allowed: false
+    dynamic_growth_from_frozen_specialist_registry: false
     agents: 4
     games_total: 1000
     games_per_agent: 250
@@ -372,13 +793,18 @@ research_evaluations:
       accepted_official_holdout_non_regression: 0.50
     authoritative_threshold_source: ops/alakazam_gate_program_v1.json#/next_gate/pass_criteria/accepted_official_holdout_non_regression
   premium_competition:
-    base_agents: 8
+    catalog_agents_before_supersession: 8
     frozen_specialists_added: all_registered_completed_specialists
-    current_frozen_specialists: 4
+    eligible_frozen_specialists_remain_required: true
+    current_frozen_specialists: 9
+    current_frozen_specialists_source: ops/frozen_specialist_registry_v1.json#/specialists[frozen=true]
+    superseded_external_agents: 5
+    active_external_agents_after_supersession: 3
     current_agents: 12
-    base_games_total: 2000
+    catalog_games_before_supersession: 2000
+    active_external_games_total: 750
     current_games_total: 3000
-    games_total_formula: 2000_plus_250_per_frozen_specialist
+    games_total_formula: 250_times_active_external_agents_after_supersession_plus_current_frozen_specialists
     games_per_agent: 250
     going_first_per_agent: 125
     going_second_per_agent: 125
@@ -408,7 +834,7 @@ research_evaluations:
       effective_after_completed_specialist: lucario
       effective_after_completed_iteration: 9
       applies_to_lucario_iteration_10: true
-      current_active_specialist: dragapult-dusknoir
+      current_active_specialist: rockets-mewtwo
       completed_iteration_9_individual_opponent_floor: 0.25
       completed_iteration_9_decision_unchanged: true
       future_individual_opponent_floor: 0.15
@@ -418,7 +844,7 @@ research_evaluations:
       authorization: operator-directed future-gate change
     authoritative_threshold_source: config/rl_protocol.yaml#/research_evaluations/premium_competition/gate_threshold
   current_all_holdouts_games_total: 4000
-  all_holdouts_games_total_formula: 3000_plus_250_per_frozen_specialist
+  all_holdouts_games_total_formula: 1000_official_plus_current_premium_competition_games
   use_established_thresholds_only: true
   allow_threshold_weakening: false
 
@@ -452,6 +878,16 @@ kaggle:
   daily_submission_limit: 5
   minimum_hours_between_submissions: 4
   required_copies_per_passing_specialist: 1
+  automatic_one_shot_authorization_on_training_complete: true
+  one_shot_authorization_uses: 1
+  standing_owner_decision_source: GOAL.md#/decision-ledger/revision-18
+  one_shot_authorization_must_bind:
+    - specialist_id
+    - frozen_checkpoint_checksum
+    - submission_file_checksum
+    - competition
+    - label
+  pre_network_authorization_block_behavior: repair_oldest_first_and_continue
   identical_passing_checkpoint_required: true
   clearly_labeled_copies_required: true
   record_submission_ids_timestamps_and_scores: true

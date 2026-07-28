@@ -1,0 +1,17 @@
+[Unit]
+Description=Canonical active-specialist gate handler
+After=pokebot-pure-rl-trevenant-staged.service
+StartLimitIntervalSec=900
+StartLimitBurst=5
+
+[Service]
+Type=simple
+EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
+Environment=POKEBOT_MANAGED_MAINTENANCE_LOCK=/home/inzi/poke-bot-agent/outputs/state/managed-training-maintenance.lock
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist_gate_handler.py --check
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u ${POKEBOT_SPECIALIST_RUNTIME_ROOT}/scripts/launch_active_specialist_gate_handler.py
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=default.target

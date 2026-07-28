@@ -11,11 +11,14 @@ Hard constraints:
 from __future__ import annotations
 
 import os
+import json
 import random
 import sys
+import time
 from pathlib import Path
 
 
+_PROCESS_STARTED = time.monotonic()
 _AGENT_DIR_CANDIDATES = (
     Path.cwd(),
     Path("/kaggle_simulations/agent"),
@@ -48,6 +51,9 @@ _DECK: list[int] | None = None
 _MODEL = None
 _CLOCK = None
 _POLICY = None
+_SEARCH_BUDGET = None
+_SEARCH_CONFIG = None
+_GAME_COUNT = 0
 _RNG = random.Random(0)
 
 
@@ -83,7 +89,7 @@ def _ensure_agent_path() -> None:
 
 
 def _ensure_runtime():
-    global _DECK, _MODEL, _CLOCK, _POLICY
+    global _DECK, _MODEL, _CLOCK, _POLICY, _SEARCH_BUDGET, _SEARCH_CONFIG
     if _DECK is None:
         _DECK = _read_deck()
     if _MODEL is None:
@@ -94,7 +100,12 @@ def _ensure_runtime():
         os.environ.setdefault("CG_LIB_PATH", str(_agent_dir()))
         import torch
         from poke_bot.agent import PolicyAgent
-        from poke_bot.checkpoint import assert_trusted_policy_checkpoint
+        from poke_bot.belief import EmpiricalDeckPosterior
+        from poke_bot.checkpoint import (
+            assert_trusted_policy_checkpoint,
+            checkpoint_digest,
+        )
+        from poke_bot.submission_budget import SubmissionSearchBudget
         from poke_bot.train import load_model_from_checkpoint
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -112,8 +123,85 @@ def _ensure_runtime():
         model = load_model_from_checkpoint(checkpoint, device=device)
         model.eval()
         _MODEL = model
-        _POLICY = PolicyAgent(model=model, deck=_DECK, use_mcts=False)
-        _CLOCK = None
+        search_config_path = _agent_dir() / "search_config.json"
+        belief_decks_path = _agent_dir() / "belief_decks.json"
+        search_enabled = (
+            os.environ.get("POKEBOT_SUBMISSION_SEARCH_DISABLE", "0") != "1"
+            and search_config_path.is_file()
+            and belief_decks_path.is_file()
+        )
+        if search_enabled:
+            _SEARCH_CONFIG = json.loads(search_config_path.read_text())
+            _SEARCH_BUDGET = SubmissionSearchBudget.from_config(
+                _SEARCH_CONFIG,
+                started_at=_PROCESS_STARTED,
+            )
+            if _SEARCH_CONFIG.get("enabled") is not True:
+                # Canonical competition mode is the frozen policy-only path.
+                # The digest-bound belief-MCTS implementation below remains
+                # dormant for a separately validated future experiment.
+                _POLICY = PolicyAgent(model=model, deck=_DECK, use_mcts=False)
+                _CLOCK = None
+            else:
+                belief_payload = json.loads(belief_decks_path.read_text())
+                deck_hypotheses = belief_payload.get("deck_lists") or ()
+                if (
+                    _SEARCH_CONFIG.get("algorithm")
+                    != "public_history_root_sampled_belief_mcts"
+                    or _SEARCH_CONFIG.get("leaf_evaluator")
+                    != "trained_checkpoint_policy_value_head"
+                    or _SEARCH_CONFIG.get("leaf_evaluator_checkpoint")
+                    != "submission_model_pt"
+                    or _SEARCH_CONFIG.get("require_trained_state_evaluator")
+                    is not True
+                    or _SEARCH_CONFIG.get("search_failure_behavior")
+                    != "greedy_current_decision_then_retry"
+                    or _SEARCH_CONFIG.get(
+                        "game_wide_greedy_only_for_time_budget"
+                    )
+                    is not True
+                    or _SEARCH_CONFIG.get("fallback")
+                    != "frozen_model_greedy_policy"
+                    or _SEARCH_CONFIG.get("oracle_inputs_allowed") is not False
+                    or belief_payload.get("schema")
+                    != "poke_bot.submission_belief_decks/v1"
+                    or belief_payload.get("anonymous") is not True
+                    or belief_payload.get("contains_opponent_identity") is not False
+                    or int(belief_payload.get("deck_count") or 0)
+                    != len(deck_hypotheses)
+                    or len(deck_hypotheses) < 8
+                    or any(
+                        len(deck) != 60
+                        or any(int(card) <= 0 for card in deck)
+                        for deck in deck_hypotheses
+                    )
+                ):
+                    raise RuntimeError("submission belief-deck prior changed")
+                posterior = EmpiricalDeckPosterior(deck_hypotheses)
+                model_digest = checkpoint_digest(checkpoint)
+                _POLICY = PolicyAgent(
+                    model=model,
+                    deck=_DECK,
+                    use_mcts=True,
+                    belief_mcts=True,
+                    belief_posterior=posterior,
+                    checkpoint_digest=model_digest,
+                    model_generation=0,
+                    game_time_budget_s=float(
+                        _SEARCH_CONFIG["total_search_budget_s"]
+                    ),
+                    game_watchdog_reserve_s=0.0,
+                    expected_search_decisions=int(
+                        _SEARCH_CONFIG["expected_search_decisions"]
+                    ),
+                    max_sims=int(_SEARCH_CONFIG["minimum_sims"]),
+                    min_trusted_sims=int(_SEARCH_CONFIG["minimum_sims"]),
+                    move_time_s=float(_SEARCH_CONFIG["maximum_move_s"]),
+                )
+                _CLOCK = _POLICY.clock
+        else:
+            _POLICY = PolicyAgent(model=model, deck=_DECK, use_mcts=False)
+            _CLOCK = None
     return _DECK, _MODEL, _POLICY
 
 
@@ -146,6 +234,7 @@ def _fail_closed(obs_dict: dict, preferred: list[int]) -> list[int]:
 def agent(obs_dict: dict) -> list[int]:
     """Kaggle entry point."""
 
+    global _GAME_COUNT
     go_first = _go_first_choice(obs_dict)
     if go_first is not None:
         return _fail_closed(obs_dict, go_first)
@@ -158,10 +247,45 @@ def agent(obs_dict: dict) -> list[int]:
     if observation.select is None:
         if policy is not None:
             policy.reset_game()
+        if _SEARCH_BUDGET is not None:
+            if _GAME_COUNT > 0:
+                _SEARCH_BUDGET.reset()
+            _GAME_COUNT += 1
         return list(deck)
 
     try:
-        action = policy.greedy_select(obs_dict)
+        if _SEARCH_BUDGET is None:
+            action = policy.trusted_search_or_greedy_select(
+                obs_dict,
+                search=False,
+            )
+        else:
+            plan = _SEARCH_BUDGET.plan(obs_dict)
+            policy.max_sims = plan.max_sims or policy.max_sims
+            policy.move_time_s = plan.move_time_s or policy.move_time_s
+            prior_result = policy.last_result
+            started = time.monotonic()
+            action = policy.trusted_search_or_greedy_select(
+                obs_dict,
+                search=plan.search,
+            )
+            elapsed = time.monotonic() - started
+            if plan.search:
+                result = (
+                    policy.last_result
+                    if policy.last_result is not prior_result
+                    else None
+                )
+                _SEARCH_BUDGET.record_search(
+                    elapsed_s=elapsed,
+                    completed_sims=(
+                        int(result.sims_run) if result is not None else 0
+                    ),
+                    succeeded=(
+                        result is not None
+                        and policy.last_search_fallback_reason is None
+                    ),
+                )
     except Exception:
         action = []
     return _fail_closed(obs_dict, action)

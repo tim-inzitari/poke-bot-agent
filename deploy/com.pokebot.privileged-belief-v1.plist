@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pokebot.privileged-belief-v1</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-dimsu</string>
+    <string>/Users/tsinzitari/workspace/poke-bot-agent/.venv/bin/python</string>
+    <string>-u</string>
+    <string>scripts/collect_privileged_belief_selfplay.py</string>
+    <string>--checkpoint</string>
+    <string>outputs/checkpoints/canary/state_core_latest10_step4475_20260719T141539.trusted.pt</string>
+    <string>--engine-lib</string>
+    <string>outputs/engines/libcg_hidden_bert_v1.dylib</string>
+    <string>--engine-source-dir</string>
+    <string>.private/engine-source/ptcg_engine_v1</string>
+    <string>--output-dir</string>
+    <string>outputs/privileged_belief/exact_core_20k_v1/bert</string>
+    <string>--games</string>
+    <string>512</string>
+    <string>--games-per-shard</string>
+    <string>128</string>
+    <string>--workers</string>
+    <string>4</string>
+    <string>--multi-env</string>
+    <string>4</string>
+    <string>--seed</string>
+    <string>202607380000</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/tsinzitari/workspace/poke-bot-privileged-collector-v1</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CG_LIB_PATH</key>
+    <string>/Users/tsinzitari/workspace/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission</string>
+    <key>OMP_NUM_THREADS</key><string>1</string>
+    <key>MKL_NUM_THREADS</key><string>1</string>
+    <key>OPENBLAS_NUM_THREADS</key><string>1</string>
+    <key>VECLIB_MAXIMUM_THREADS</key><string>1</string>
+    <key>CUDA_VISIBLE_DEVICES</key><string></string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>Nice</key>
+  <integer>5</integer>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/tsinzitari/workspace/poke-bot-privileged-collector-v1/outputs/logs/privileged-belief-bert.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/tsinzitari/workspace/poke-bot-privileged-collector-v1/outputs/logs/privileged-belief-bert.log</string>
+</dict>
+</plist>

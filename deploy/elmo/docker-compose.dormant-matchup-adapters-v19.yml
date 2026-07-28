@@ -1,0 +1,5 @@
+name: poke-bot-truenas-worker
+
+services:
+  worker:
+    image: poke-bot-truenas-worker:dormant-matchup-adapters-v19-r2

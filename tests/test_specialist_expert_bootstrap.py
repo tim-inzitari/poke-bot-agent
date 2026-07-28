@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 import torch
 
-from poke_bot import archetypes, checkpoint
+from poke_bot import archetypes, checkpoint, config
+from poke_bot.model import build_model
+from poke_bot.train import load_model_from_checkpoint
 from scripts import run_starmie_expert_bootstrap as bootstrap
 
 
@@ -66,7 +69,10 @@ def test_rehearsal_expands_historical_archetype_head_before_training() -> None:
     )
     optimizer = source.index("optimizer = torch.optim.AdamW(", expand)
     assert load < expand < optimizer
-    assert "if warm_started_heads_before or aux_head_expanded:" in source
+    assert "warm_started_heads_before" in source[optimizer:]
+    assert "warm_started_expanded_before" in source[optimizer:]
+    assert "warm_started_fusion_before" in source[optimizer:]
+    assert "or aux_head_expanded" in source[optimizer:]
 
 
 def test_generic_entrypoint_uses_the_audited_bootstrap() -> None:
@@ -187,3 +193,227 @@ def test_specialist_hot_start_expands_cumulative_v4_archetype_order(
     assert torch.equal(state["aux_head.3.bias"][-1], old_bias[-1])
     assert expansion["source_archetype_ids"] == old_ids
     assert expansion["unknown_row_moved_to_final"] is True
+
+
+def test_v6_hot_start_opts_in_without_changing_inherited_tensors(
+    tmp_path: Path,
+) -> None:
+    target_classes = len(archetypes.archetype_ids()) + 1
+    core = tmp_path / "core-v5.pt"
+    original = {
+        "aux_head.3.weight": torch.arange(
+            target_classes * 4, dtype=torch.float32
+        ).reshape(target_classes, 4),
+        "aux_head.3.bias": torch.arange(
+            target_classes, dtype=torch.float32
+        ),
+        "shared.weight": torch.arange(12, dtype=torch.float32).reshape(3, 4),
+    }
+    checkpoint.atomic_torch_save(
+        {
+            "model_state_dict": original,
+            "model_config": {"expanded_heads_enabled": False},
+            "optimizer_state_dict": {"legacy": True},
+        },
+        core,
+    )
+    _raw, identity = bootstrap.load_expanded_head_contract()
+
+    hot_start, _, expansion = bootstrap._specialist_hot_start_from_core(
+        core,
+        run_dir=tmp_path / "run",
+        archetype="dragapult-dusknoir",
+        enable_expanded_heads=True,
+        expanded_identity=identity,
+    )
+
+    payload = checkpoint.load_checkpoint(hot_start, map_location="cpu")
+    assert payload["model_config"]["expanded_heads_enabled"] is True
+    assert set(payload["model_state_dict"]) == set(original)
+    for key, value in original.items():
+        assert torch.equal(payload["model_state_dict"][key], value)
+    migration = payload["extra"]["expanded_head_migration"]
+    assert migration["schema"] == "poke_bot.expanded_head_migration/v1"
+    assert migration["source_checkpoint_digest"] == checkpoint.checkpoint_digest(
+        core
+    )
+    assert migration["target_schema_digest"] == (
+        identity["target_schema_digest"]
+    )
+    assert migration["schedule_digest"] == identity["schedule_digest"]
+    assert migration["runtime_enabled_heads"] == []
+    assert migration["append_expanded_tensor_keys"] == []
+    assert expansion["expanded_head_migration"] == migration
+    assert "optimizer_state_dict" not in payload
+
+
+def test_expanded_manifest_coverage_allows_masks_but_not_zero_labels(
+    tmp_path: Path,
+) -> None:
+    _, identity = bootstrap.load_expanded_head_contract()
+    rows = {
+        head_id: {
+            "labeled_rows": 1,
+            "masked_rows": 9,
+            "total_rows": 10,
+        }
+        for head_id in bootstrap.EXPANDED_HEAD_IDS
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        json.dumps(
+            {
+                "expanded_strategic_targets": {
+                    "schema": identity["target_schema"],
+                    "digest": identity["target_schema_digest"],
+                    "decisions": 10,
+                    "head_coverage": rows,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = bootstrap._manifest_expanded_targets(path, decisions=10)
+    assert result["head_coverage"]["remaining_turns"]["labeled_rows"] == 1
+
+    rows["remaining_turns"]["labeled_rows"] = 0
+    rows["remaining_turns"]["masked_rows"] = 10
+    path.write_text(
+        json.dumps(
+            {
+                "expanded_strategic_targets": {
+                    "schema": identity["target_schema"],
+                    "digest": identity["target_schema_digest"],
+                    "decisions": 10,
+                    "head_coverage": rows,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="zero labeled rows"):
+        bootstrap._manifest_expanded_targets(path, decisions=10)
+
+
+def test_canonical_expanded_handoff_pins_exact_cumulative_schedule() -> None:
+    contract = bootstrap.expanded_handoff_training_contract()
+    schedule = contract["schedule"]
+
+    assert contract["schema"] == "poke_bot.expanded_head_training/v1"
+    assert contract["target_schema_digest"].startswith("sha256:")
+    assert contract["schedule_digest"].startswith("sha256:")
+    assert contract["runtime_enabled_heads"] == []
+    assert schedule["total_epochs"] == 25
+    assert schedule["stages"][0]["epochs"] == [1, 5]
+    assert schedule["stages"][-1]["epochs"] == [21, 25]
+    assert set(schedule["stages"][-1]["enabled_heads"]) == set(
+        bootstrap.EXPANDED_HEAD_IDS
+    )
+
+
+def test_v6_hot_start_preserves_head_tensors_but_resets_specialist_telemetry(
+    tmp_path: Path,
+) -> None:
+    target_classes = len(archetypes.archetype_ids()) + 1
+    state = {
+        "aux_head.3.weight": torch.zeros(target_classes, 2),
+        "aux_head.3.bias": torch.zeros(target_classes),
+    }
+    for index, head_id in enumerate(bootstrap.EXPANDED_HEAD_IDS):
+        state[f"{head_id}_head.weight"] = torch.full(
+            (1, 2), float(index)
+        )
+        state[f"{head_id}_head.bias"] = torch.full((1,), float(index))
+    core = tmp_path / "core-v6.pt"
+    checkpoint.atomic_torch_save(
+        {
+            "model_state_dict": state,
+            "model_config": {"expanded_heads_enabled": True},
+            "extra": {
+                "expanded_head_training": {
+                    "schema": "poke_bot.expanded_head_training/v1",
+                    "trained_heads": list(bootstrap.EXPANDED_HEAD_IDS),
+                }
+            },
+        },
+        core,
+    )
+    _, identity = bootstrap.load_expanded_head_contract()
+
+    hot_start, _, _ = bootstrap._specialist_hot_start_from_core(
+        core,
+        run_dir=tmp_path / "run",
+        archetype="dudunsparce",
+        enable_expanded_heads=True,
+        expanded_identity=identity,
+    )
+    payload = checkpoint.load_checkpoint(hot_start, map_location="cpu")
+
+    assert "expanded_head_training" not in payload["extra"]
+    migration = payload["extra"]["expanded_head_migration"]
+    assert migration["source_expanded_heads_enabled"] is True
+    assert migration["source_expanded_tensor_count"] == (
+        2 * len(bootstrap.EXPANDED_HEAD_IDS)
+    )
+    assert migration["specialist_training_metadata_reset"] is True
+    for key, value in state.items():
+        assert torch.equal(payload["model_state_dict"][key], value)
+
+
+def test_v6_hot_start_loader_materializes_only_missing_expanded_heads(
+    tmp_path: Path,
+) -> None:
+    cfg = config.ModelConfig(
+        d_model=16,
+        spatial_layers=1,
+        temporal_layers=1,
+        option_decoder_layers=1,
+        n_heads=4,
+        ff_dim=32,
+        max_context=8,
+        temporal_pos="rope",
+        decision_context="history",
+        kv_cache=True,
+        dense_card2vec=False,
+        dropout=0.0,
+        expanded_heads_enabled=False,
+    )
+    source_model = build_model(
+        cfg,
+        device=torch.device("cpu"),
+        aux_archetype_classes=len(archetypes.archetype_ids()) + 1,
+        encoder_vocab=64,
+        decoder_vocab=64,
+        belief_card_vocab=64,
+    )
+    source_payload = checkpoint.build_checkpoint(
+        model=source_model,
+        model_config=cfg,
+        archetype_id="unknown",
+    )
+    core = checkpoint.atomic_torch_save(
+        source_payload, tmp_path / "real-core-v5.pt"
+    )
+    _, identity = bootstrap.load_expanded_head_contract()
+    hot_start, _, _ = bootstrap._specialist_hot_start_from_core(
+        core,
+        run_dir=tmp_path / "run",
+        archetype="dragapult-dusknoir",
+        enable_expanded_heads=True,
+        expanded_identity=identity,
+    )
+
+    loaded = load_model_from_checkpoint(
+        hot_start,
+        device=torch.device("cpu"),
+    )
+    loaded_state = loaded.state_dict()
+
+    assert loaded.expanded_heads_enabled is True
+    assert set(loaded.warm_started_expanded_heads) == {
+        f"{head_id}_head" for head_id in bootstrap.EXPANDED_HEAD_IDS
+    }
+    for key, source_tensor in source_payload["model_state_dict"].items():
+        assert bootstrap._tensor_bytes_equal(
+            loaded_state[key], source_tensor
+        )

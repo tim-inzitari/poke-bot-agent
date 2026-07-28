@@ -20,14 +20,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional, Union
 
-from . import alakazam_heuristics, config, features
+from . import config, deck_guides, features
 from .replay_import import assert_info_set, InfoSetViolation
 
 
-# v5 invalidates cached/sharded decisions built before official JSON enum-name
+# v5 invalidated cached/sharded decisions built before official JSON enum-name
 # scalars (for example "IsFirst" / "Yes" / "Hand") were normalized to the
-# same feature rows as their IntEnum values.
-DATASET_CACHE_SCHEMA_VERSION = 5
+# same feature rows as their IntEnum values. v6 attaches expanded strategic
+# targets from the complete trajectory before context truncation.
+DATASET_CACHE_SCHEMA_VERSION = 6
 
 
 @dataclass
@@ -37,7 +38,7 @@ class PolicyStage:
     options: features.SparseVector
     action_combos: list[list[int]]
     target_index: int
-    #: Training-only Alakazam guide target collapsed from transient scorer
+    #: Training-only current-deck guide target collapsed from transient scorer
     #: output. ``-1`` masks the stage. Keeping two scalars rather than a Python
     #: score list per legal action prevents large rollout windows from growing
     #: by multiple GiB.
@@ -134,12 +135,12 @@ def featurize_step(
     for combos, target_index in stage_defs:
         stage_combos = [list(combo) for combo in combos]
         raw_guide = (
-            alakazam_heuristics.guide_scores(
+            deck_guides.guide_scores(
                 obs,
                 stage_combos,
                 deck=deck,
             )
-            if alakazam_heuristics.enabled()
+            if deck_guides.enabled()
             else None
         )
         guide_target_index = -1
@@ -252,6 +253,31 @@ def convert_record(
                 : len(original_steps)
             ]
 
+    # Future-derived labels must see the complete acting-seat trajectory.
+    # Construct them before selecting the model context window; doing this
+    # afterwards silently turns valid events beyond the window into negatives.
+    from .blackwell_heads import attach_blackwell_strategy_labels
+    from .strategic_heads import (
+        StrategicTargetContractError,
+        attach_expanded_strategic_labels,
+    )
+
+    attach_blackwell_strategy_labels(original_steps)
+    terminal_complete = not bool(
+        record.get("incomplete")
+        or (record.get("target_provenance") or {}).get(
+            "terminal_policy_failure"
+        )
+    )
+    try:
+        strategic_contract = attach_expanded_strategic_labels(
+            original_steps,
+            game_value=float(record.get("value", 0.0)),
+            terminal_complete=terminal_complete,
+        )
+    except StrategicTargetContractError:
+        return None, "malformed_strategic_targets", details
+
     start = max(0, len(original_steps) - max_ctx)
     steps = original_steps[start:]
     details["decisions_truncated"] = start
@@ -263,12 +289,6 @@ def convert_record(
         factorized_policy_targets = factorized_policy_targets[start:]
         if len(factorized_policy_targets) != len(steps):
             raise AssertionError("step/factorized target truncation lost alignment")
-
-    # Ensure Scope-B labels exist for older JSONL that predate replay_import
-    # attachment. Public prize_race + post-hoc lethal; losses mask if absent.
-    from .blackwell_heads import attach_blackwell_strategy_labels
-
-    attach_blackwell_strategy_labels(steps)
 
     decisions: list[DecisionSample] = []
     for step in steps:
@@ -286,6 +306,8 @@ def convert_record(
     if not decisions:
         return None, "no_decisions", details
 
+    target_provenance = dict(record.get("target_provenance") or {})
+    target_provenance["expanded_strategic_targets"] = strategic_contract
     return GameSequence(
         episode_id=str(record.get("episode_id", "")),
         seat=int(record.get("seat", 0)),
@@ -298,7 +320,7 @@ def convert_record(
         source=str(record.get("source", "")),
         policy_targets=policy_targets,
         factorized_policy_targets=factorized_policy_targets,
-        target_provenance=dict(record.get("target_provenance") or {}),
+        target_provenance=target_provenance,
     ), None, details
 
 

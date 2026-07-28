@@ -1,0 +1,10 @@
+{
+  "schema": "poke_bot.kaggle_submission_authorization/v1",
+  "explicit_user_approval": true,
+  "remaining_uses": 1,
+  "nonce": "trevenant-iter10-parity-copy2-20260723T225033Z",
+  "expires_at_epoch": 1784847933,
+  "competition": "pokemon-tcg-ai-battle",
+  "file_sha256": "sha256:6229e3dd9840268e5cd35b18516a56dc97440cd36d3372f8bc108a0536fb9231",
+  "message": "Trevenant iter10 frozen parity copy 2 462f201f8de6"
+}

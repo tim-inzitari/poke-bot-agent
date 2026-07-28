@@ -1,0 +1,12 @@
+[Unit]
+Description=Seal completed Grimmsnarl current-deck-guide corpus
+After=pokebot-grimmsnarl-guide-window-v1.service
+
+[Service]
+Type=oneshot
+User=admin
+WorkingDirectory=/home/admin/pokebot-expert-guide-src-v1
+ExecStart=/usr/bin/python3 scripts/finalize_current_deck_guide_window.py --status /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex/status/window.json --out-dir /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex --start 2026-07-04 --end 2026-07-23 --specialist-id marnie-s-grimmsnarl-ex --guide-version marnie-grimmsnarl-north-star-v1 --expected-max-context 320
+CPUQuota=400%
+MemoryMax=8G
+Nice=10

@@ -10,7 +10,9 @@ are reported as deferred; they are never silently removed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,9 @@ UNFINISHED = {
     "bootstrap_complete",
     "blocked",
 }
+LATEST20_DAYS = 20
+PRIMARY_SOURCE_MODE = "latest20_primary"
+FALLBACK_SOURCE_MODE = "historical_validated_shard_fallback"
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -41,6 +46,344 @@ def _load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+            digest.update(block)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _is_sha256(value: Any) -> bool:
+    raw = str(value or "")
+    return bool(
+        raw.startswith("sha256:")
+        and len(raw) == len("sha256:") + 64
+        and all(character in "0123456789abcdef" for character in raw[7:])
+    )
+
+
+def _manifest_from_pointer(pointer: Path, payload: dict[str, Any]) -> Path:
+    raw = str(payload.get("manifest") or "").strip()
+    if not raw:
+        raise RuntimeError("protected expert corpus manifest is missing")
+    manifest = (pointer.parent / raw).resolve()
+    if manifest.parent != pointer.parent.resolve() or not manifest.is_file():
+        raise RuntimeError("protected expert corpus manifest escaped its directory")
+    if payload.get("manifest_sha256") != _sha256(manifest):
+        raise RuntimeError("protected expert corpus manifest checksum changed")
+    return manifest
+
+
+def _guide_latest20_evidence(
+    manifest_path: Path,
+    *,
+    specialist_id: str,
+) -> dict[str, Any]:
+    """Validate the specialized guide-corpus latest-20 receipt chain.
+
+    Guide corpora are assembled from one independently receipted feature shard
+    per calendar day. Their compact manifest intentionally omits the ordinary
+    ``source_window`` projection, so selection reconstructs that projection
+    only from the checksum-bound ready receipt and all 20 authoritative daily
+    receipts. This is not a weaker alternate path: every guide shard and every
+    source archive must be identified by SHA-256.
+    """
+
+    root = manifest_path.parent
+    ready_path = root / "CURRENT_DECK_GUIDE_CORPUS_READY.json"
+    if not ready_path.is_file():
+        raise RuntimeError(
+            "expert corpus is not an exact latest-20 calendar-day "
+            "window filtered after selection"
+        )
+    ready = _load_json(ready_path)
+    raw_dates = [str(value) for value in (ready.get("dates") or ())]
+    try:
+        parsed_dates = [date.fromisoformat(value) for value in raw_dates]
+    except ValueError as exc:
+        raise RuntimeError(
+            "guide latest20 ready receipt contains an invalid date"
+        ) from exc
+    expected_dates = (
+        [parsed_dates[0] + timedelta(days=index) for index in range(LATEST20_DAYS)]
+        if parsed_dates
+        else []
+    )
+    daily_rows = list(ready.get("daily_shards") or ())
+    daily_by_date = {
+        str(row.get("date") or ""): dict(row)
+        for row in daily_rows
+        if isinstance(row, dict)
+    }
+    if (
+        ready.get("schema") != "poke_bot.current_deck_guide_corpus_ready/v1"
+        or ready.get("status") != "ready"
+        or ready.get("specialist_id") != specialist_id
+        or int(ready.get("days") or 0) != LATEST20_DAYS
+        or len(raw_dates) != LATEST20_DAYS
+        or len(set(raw_dates)) != LATEST20_DAYS
+        or parsed_dates != expected_dates
+        or set(daily_by_date) != set(raw_dates)
+        or ready.get("manifest_sha256") != _sha256(manifest_path)
+    ):
+        raise RuntimeError("guide corpus latest20 ready receipt is invalid")
+
+    source_days: list[dict[str, Any]] = []
+    for source_date in raw_dates:
+        row = daily_by_date[source_date]
+        receipt_path = (
+            root
+            / f"{specialist_id}-{source_date}.features.receipt.json"
+        )
+        feature_path = root / f"{specialist_id}-{source_date}.features"
+        if not receipt_path.is_file() or not feature_path.is_file():
+            raise RuntimeError(
+                f"guide latest20 daily artifact is missing: {source_date}"
+            )
+        receipt = _load_json(receipt_path)
+        selection = dict(receipt.get("selection") or {})
+        source_archive = dict(receipt.get("source_archive") or {})
+        output = dict(receipt.get("output") or {})
+        stats = dict(receipt.get("stats") or {})
+        feature_sha256 = _sha256(feature_path)
+        archive_sha256 = str(source_archive.get("sha256") or "")
+        if (
+            receipt.get("format")
+            != "pokebot-authoritative-visual-day-receipt"
+            or receipt.get("source_date") != source_date
+            or selection.get("acting_seat_archetype") != specialist_id
+            or output.get("sha256") != feature_sha256
+            or row.get("sha256") != feature_sha256
+            or row.get("receipt_sha256") != _sha256(receipt_path)
+            or not _is_sha256(archive_sha256)
+            or int(row.get("records") or 0)
+            != int(stats.get("records_kept") or 0)
+            or int(row.get("decisions") or 0)
+            != int(stats.get("decisions_kept") or 0)
+        ):
+            raise RuntimeError(
+                f"guide latest20 daily receipt is invalid: {source_date}"
+            )
+        source_days.append(
+            {
+                "date": source_date,
+                "source_feature_validated": True,
+                "source_feature_sha256": feature_sha256,
+                "source_archive_validated": True,
+                "source_archive_sha256": archive_sha256,
+                "matching_games": int(row.get("records") or 0),
+                "matching_decisions": int(row.get("decisions") or 0),
+            }
+        )
+    return {
+        "days": LATEST20_DAYS,
+        "dates": raw_dates,
+        "date_start": raw_dates[0],
+        "date_end": raw_dates[-1],
+        "matching_games": sum(row["matching_games"] for row in source_days),
+        "matching_decisions": sum(
+            row["matching_decisions"] for row in source_days
+        ),
+        "filter_applied_after_window_selection": True,
+        "filter_archetype": specialist_id,
+        "all_dates_represented": True,
+        "evidence_source": (
+            "current_deck_guide_ready_receipt_and_daily_receipts"
+        ),
+        "ready_receipt": str(ready_path),
+        "ready_receipt_sha256": _sha256(ready_path),
+    }
+
+
+def _latest20_evidence(
+    manifest: dict[str, Any],
+    *,
+    specialist_id: str,
+    manifest_path: Path | None = None,
+) -> dict[str, Any]:
+    window = dict(manifest.get("source_window") or {})
+    rows = list(manifest.get("source_days") or ())
+    raw_dates = [str(value) for value in window.get("dates") or ()]
+    try:
+        parsed_dates = [date.fromisoformat(value) for value in raw_dates]
+    except ValueError as exc:
+        raise RuntimeError("latest20 source window contains an invalid date") from exc
+    expected_dates = (
+        [parsed_dates[0] + timedelta(days=index) for index in range(LATEST20_DAYS)]
+        if parsed_dates
+        else []
+    )
+    row_by_date = {
+        str(row.get("date") or ""): dict(row)
+        for row in rows
+        if isinstance(row, dict)
+    }
+    if not window and not rows and manifest_path is not None:
+        return _guide_latest20_evidence(
+            manifest_path,
+            specialist_id=specialist_id,
+        )
+    if (
+        window.get("unit") != "calendar_day"
+        or window.get("selection")
+        != "latest_available_fully_validated_daily_sources"
+        or int(window.get("days") or 0) != LATEST20_DAYS
+        or len(raw_dates) != LATEST20_DAYS
+        or len(set(raw_dates)) != LATEST20_DAYS
+        or parsed_dates != expected_dates
+        or window.get("filter_applied_after_window_selection") is not True
+        or str(window.get("filter_archetype") or "") != specialist_id
+        or len(rows) != LATEST20_DAYS
+        or set(row_by_date) != set(raw_dates)
+        or str((manifest.get("selection") or {}).get("value") or "")
+        != specialist_id
+    ):
+        raise RuntimeError(
+            "expert corpus is not an exact latest-20 calendar-day "
+            "window filtered after selection"
+        )
+    for source_date in raw_dates:
+        row = row_by_date[source_date]
+        if (
+            row.get("source_feature_validated") is not True
+            or not _is_sha256(row.get("source_feature_sha256"))
+            or row.get("source_archive_validated") is not True
+            or not _is_sha256(row.get("source_archive_sha256"))
+            or int(row.get("matching_games") or 0) < 0
+            or int(row.get("matching_decisions") or 0) < 0
+        ):
+            raise RuntimeError(
+                f"latest20 source day is not checksum-validated: {source_date}"
+            )
+    return {
+        "days": LATEST20_DAYS,
+        "dates": raw_dates,
+        "date_start": raw_dates[0],
+        "date_end": raw_dates[-1],
+        "matching_games": sum(
+            int(row_by_date[value].get("matching_games") or 0)
+            for value in raw_dates
+        ),
+        "matching_decisions": sum(
+            int(row_by_date[value].get("matching_decisions") or 0)
+            for value in raw_dates
+        ),
+        "filter_applied_after_window_selection": True,
+        "filter_archetype": specialist_id,
+        "all_dates_represented": True,
+    }
+
+
+def _validated_historical_shards(
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    *,
+    specialist_id: str,
+) -> int:
+    quality = dict(manifest.get("quality_gates") or {})
+    shards = list(manifest.get("shards") or ())
+    if (
+        str((manifest.get("selection") or {}).get("value") or "")
+        != specialist_id
+        or quality.get("passed") is not True
+        or quality.get("checksummed") is not True
+        or not shards
+    ):
+        raise RuntimeError("historical fallback is not a validated shard corpus")
+    for row in shards:
+        if not isinstance(row, dict):
+            raise RuntimeError("historical fallback shard row is invalid")
+        raw_path = Path(str(row.get("path") or ""))
+        shard = (
+            raw_path.resolve()
+            if raw_path.is_absolute()
+            else (manifest_path.parent / raw_path).resolve()
+        )
+        if (
+            not shard.is_file()
+            or row.get("sha256") != _sha256(shard)
+            or int(row.get("bytes") or -1) != shard.stat().st_size
+        ):
+            raise RuntimeError("historical fallback shard checksum changed")
+    return len(shards)
+
+
+def validate_corpus_source_contract(
+    pointer: Path,
+    *,
+    specialist_id: str,
+) -> dict[str, Any]:
+    """Validate latest20 primary data or its one explicit zero-match fallback."""
+
+    pointer = pointer.expanduser().resolve()
+    payload = _load_json(pointer)
+    if (
+        payload.get("schema") != "poke_bot.pinned_expert_corpus/v1"
+        or payload.get("protected") is not True
+    ):
+        raise RuntimeError("protected expert corpus pointer contract changed")
+    manifest_path = _manifest_from_pointer(pointer, payload)
+    manifest = _load_json(manifest_path)
+    policy = dict(payload.get("source_policy") or {})
+    mode = str(policy.get("mode") or PRIMARY_SOURCE_MODE)
+    if mode == PRIMARY_SOURCE_MODE:
+        latest20 = _latest20_evidence(
+            manifest,
+            specialist_id=specialist_id,
+            manifest_path=manifest_path,
+        )
+        return {
+            "mode": PRIMARY_SOURCE_MODE,
+            "manifest": str(manifest_path),
+            "manifest_sha256": _sha256(manifest_path),
+            "latest20": latest20,
+            "historical_fallback": False,
+            "masquerades_as_latest20": False,
+        }
+    if mode != FALLBACK_SOURCE_MODE:
+        raise RuntimeError(f"unknown expert corpus source mode: {mode}")
+    validated_shards = _validated_historical_shards(
+        manifest_path,
+        manifest,
+        specialist_id=specialist_id,
+    )
+    evidence_raw = str(policy.get("latest20_zero_match_manifest") or "").strip()
+    evidence_path = (pointer.parent / evidence_raw).resolve()
+    if (
+        not evidence_raw
+        or evidence_path.parent != pointer.parent
+        or not evidence_path.is_file()
+        or policy.get("latest20_zero_match_manifest_sha256")
+        != _sha256(evidence_path)
+        or policy.get("reason") != "latest20_matching_games_exactly_zero"
+        or policy.get("fallback_is_latest20") is not False
+    ):
+        raise RuntimeError(
+            "historical fallback lacks explicit checksum-bound latest20 evidence"
+        )
+    latest20 = _latest20_evidence(
+        _load_json(evidence_path),
+        specialist_id=specialist_id,
+        manifest_path=evidence_path,
+    )
+    if int(latest20["matching_games"]) != 0:
+        raise RuntimeError(
+            "historical fallback is forbidden when latest20 has matching games"
+        )
+    return {
+        "mode": FALLBACK_SOURCE_MODE,
+        "manifest": str(manifest_path),
+        "manifest_sha256": _sha256(manifest_path),
+        "latest20_zero_match_manifest": str(evidence_path),
+        "latest20_zero_match_manifest_sha256": _sha256(evidence_path),
+        "latest20": latest20,
+        "historical_fallback": True,
+        "validated_historical_shards": validated_shards,
+        "masquerades_as_latest20": False,
+    }
+
+
 def select(
     *,
     state_path: Path,
@@ -55,6 +398,21 @@ def select(
     state_path = state_path.expanduser().resolve()
     corpus_root = corpus_root.expanduser().resolve()
     state = _load_yaml(state_path)
+    roster_path = state_path.parent / "matchup_adapter_roster.json"
+    roster = _load_json(roster_path)
+    roster_ids = [
+        str(value)
+        for value in (roster.get("expert_ids") or [])
+        if str(value)
+    ]
+    if (
+        not roster_ids
+        or len(roster_ids) != len(set(roster_ids))
+        or int(roster.get("required_specialist_count") or 0) != len(roster_ids)
+        or int(roster.get("physical_checkpoint_rows") or 0) != len(roster_ids)
+    ):
+        raise RuntimeError("canonical matchup-adapter roster is invalid")
+    roster_id_set = set(roster_ids)
     rows = {
         str(row.get("id") or ""): dict(row)
         for row in (state.get("specialists") or [])
@@ -68,22 +426,72 @@ def select(
             "ordered_unfinished_ids_after_active"
         ) or [])
     )
+    staged_successor = str(
+        ((state.get("current") or {}).get("staged_successor_specialist") or "")
+    ).strip()
+    completed = {str(value) for value in (completed_ids or set())}
+    active = str(active_id or "")
+    # A passing checkpoint is registered before the mutable priority
+    # projection is reconciled.  Normalize only checksum-verified completed
+    # IDs (and the outgoing active ID) so that this receipt-backed boundary
+    # cannot burn a service retry while still rejecting every other roster
+    # inconsistency.
+    boundary_exclusions = completed | ({active} if active else set())
+    effective_order = [
+        specialist_id
+        for specialist_id in order
+        if specialist_id not in boundary_exclusions
+    ]
     progress = dict((state.get("current") or {}).get("program_progress") or {})
+    remaining_projection = progress.get("remaining_after_active")
+    if remaining_projection is None:
+        # Canonical state calls this value ``remaining_unfinished`` whenever
+        # no specialist is active at a handoff boundary. Older live-state
+        # projections used ``remaining_after_active``. They are the same
+        # count at that boundary; accept either spelling without weakening
+        # the roster/set checks below.
+        remaining_projection = progress.get("remaining_unfinished")
     unfinished_ids = {
         specialist_id
         for specialist_id, row in rows.items()
         if str(row.get("status") or "") in UNFINISHED
     }
+    effective_unfinished_ids = unfinished_ids - boundary_exclusions
     if (
-        expected_total != 22
+        expected_total != len(roster_ids)
         or len(rows) != expected_total
-        or int(progress.get("remaining_after_active", -1)) != len(order)
+        or set(rows) != roster_id_set
+        or int(remaining_projection if remaining_projection is not None else -1)
+        not in {len(order), len(effective_order)}
         or len(set(order)) != len(order)
         or not set(order).issubset(rows)
-        or not unfinished_ids.issubset(set(order))
+        or not effective_unfinished_ids.issubset(set(effective_order))
     ):
         raise RuntimeError(
-            "canonical 22-specialist unfinished priority roster drifted"
+            "canonical specialist unfinished priority roster drifted from "
+            f"{roster_path}"
+        )
+    order = effective_order
+    # Once the controller has staged a concrete successor, both background
+    # pre-stage and the terminal handoff must resolve that same identity.
+    # Otherwise a newly arriving higher-priority corpus can race an already
+    # prepared successor and make the terminal transition disagree with the
+    # receipt that was validated while production was live.  A stale pin that
+    # names the active or a completed specialist is ignored so the next
+    # one-ahead cycle can begin before the mutable projection catches up.
+    effective_staged_successor = (
+        staged_successor
+        if staged_successor
+        and staged_successor not in boundary_exclusions
+        else None
+    )
+    if (
+        effective_staged_successor is not None
+        and effective_staged_successor not in order
+    ):
+        raise RuntimeError(
+            "staged successor is not in the canonical unfinished priority "
+            f"projection: {effective_staged_successor}"
         )
     minimum_overrides = {
         str(key): int(value)
@@ -100,8 +508,6 @@ def select(
 
     deferred: list[dict[str, Any]] = []
     eligible: list[dict[str, Any]] = []
-    completed = {str(value) for value in (completed_ids or set())}
-    active = str(active_id or "")
     routable = (
         {str(value) for value in routable_ids}
         if routable_ids is not None
@@ -141,6 +547,22 @@ def select(
         required_decisions = minimum_overrides.get(
             specialist_id, int(minimum_decisions)
         )
+        try:
+            source_contract = validate_corpus_source_contract(
+                pointer,
+                specialist_id=specialist_id,
+            )
+        except RuntimeError as exc:
+            deferred.append(
+                {
+                    "specialist_id": specialist_id,
+                    "priority_rank": rank,
+                    "reason": "expert_corpus_source_contract_invalid",
+                    "detail": str(exc),
+                    "pointer": str(pointer),
+                }
+            )
+            continue
         if (
             payload.get("schema") != "poke_bot.pinned_expert_corpus/v1"
             or payload.get("protected") is not True
@@ -164,10 +586,34 @@ def select(
                 "decisions": decisions,
                 "minimum_decisions": required_decisions,
                 "pointer": str(pointer),
+                "source_contract": source_contract,
             }
         )
 
-    selected = eligible[0] if eligible else None
+    if effective_staged_successor is not None:
+        selected = next(
+            (
+                row
+                for row in eligible
+                if row["specialist_id"] == effective_staged_successor
+            ),
+            None,
+        )
+        if selected is None:
+            reason = next(
+                (
+                    str(row["reason"])
+                    for row in deferred
+                    if row["specialist_id"] == effective_staged_successor
+                ),
+                "not_eligible",
+            )
+            raise RuntimeError(
+                "staged successor "
+                f"{effective_staged_successor} is not executable: {reason}"
+            )
+    else:
+        selected = eligible[0] if eligible else None
     if selected is None:
         raise RuntimeError(
             "no unfinished specialist currently has a protocol-valid corpus"
@@ -209,6 +655,7 @@ def select(
         "minimum_decisions": int(minimum_decisions),
         "minimum_decisions_by_specialist": minimum_overrides,
         "strict_priority_prefix": strict_prefix,
+        "staged_successor_specialist": effective_staged_successor,
         "completed_specialist_ids": sorted(completed),
         "active_specialist_id": active or None,
         "routable_specialist_ids": (

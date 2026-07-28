@@ -9,6 +9,7 @@ from poke_bot.belief import (
     EmpiricalDeckPosterior,
     PublicBeliefHistory,
     _basic_pokemon_ids,
+    simulator_version,
 )
 from poke_bot.belief_mcts import (
     _BranchHistory,
@@ -77,6 +78,22 @@ def test_public_history_rejects_opponent_private_hand() -> None:
     leaked["current"]["players"][1]["deckOrder"] = [10] * 47
     with pytest.raises(ValueError, match="privileged fields"):
         PublicBeliefHistory().observe(leaked)
+
+
+def test_simulator_version_uses_packaged_cg_runtime(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = tmp_path / "agent"
+    cg = runtime / "cg"
+    cg.mkdir(parents=True)
+    (cg / "api.py").write_bytes(b"packaged api")
+    (cg / "sim.py").write_bytes(b"packaged sim")
+    (cg / "libcg.so").write_bytes(b"packaged native")
+    monkeypatch.setenv("CG_LIB_PATH", str(runtime))
+
+    digest = simulator_version()
+
+    assert digest.startswith("competition-libcg-sha256:")
 
 
 def test_empirical_posterior_conditions_on_public_history_and_conserves_cards() -> None:

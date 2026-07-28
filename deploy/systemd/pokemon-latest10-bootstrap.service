@@ -1,0 +1,34 @@
+[Unit]
+Description=Blackwell state-core bootstrap on latest ten ladder days
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/inzi/poke-bot-agent/data/bootstrap/latest10-20260709-20260718/manifest.json
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=inzi
+Group=inzi
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=CUDA_VISIBLE_DEVICES=1
+Environment=PYTHONUNBUFFERED=1
+Environment=OMP_NUM_THREADS=8
+Environment=MKL_NUM_THREADS=8
+ExecStart=/bin/bash scripts/run_latest10_bootstrap.sh
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/bootstrap.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/bootstrap.log
+MemoryAccounting=yes
+MemoryHigh=70G
+MemoryMax=84G
+MemorySwapMax=0
+OOMPolicy=stop
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=120
+KillMode=control-group
+Nice=-5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply Pokemon RL 96-worker profile after iteration 1 commits
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecStart=/usr/bin/python3 /home/inzi/poke-bot-agent/scripts/apply_capacity_at_iteration.py --state /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_core_exact20k_resident_fleet72_v2_20260719/loop_state.json --status /home/inzi/poke-bot-agent/outputs/state/capacity96-at-iter2.status.json --unit pokebot-pure-rl-top-ladder-10day-hotstart.service --target-next-iteration 2 --expected-workers 96 --poll-seconds 2
+Restart=on-failure
+RestartSec=30
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

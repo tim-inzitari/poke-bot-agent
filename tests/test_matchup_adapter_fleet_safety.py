@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -73,3 +74,51 @@ def test_fleet_publication_is_checksum_guarded_and_preserves_backups() -> None:
     assert worker.count("pack_temporal_games=True") == 2
     assert '"active_epoch": epoch + 1' in worker
     assert '"active_route": route_id' in worker
+
+
+def test_fleet_merge_always_materializes_a_best_checkpoint() -> None:
+    source = Path(merger.__file__).read_text(encoding="utf-8")
+    assert "best_payload: dict[str, Any] = copy.deepcopy(source)" in source
+    assert 'checkpoint.atomic_torch_save(best_payload, output / "best.pt")' in source
+
+
+def test_published_fleet_finalizer_requires_a_digest_verified_epoch_25(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_dir = tmp_path / "source"
+    fleet_dir = tmp_path / "fleet"
+    source_dir.mkdir()
+    fleet_dir.mkdir()
+    final_path = source_dir / "final.pt"
+    payload = {
+        "epoch": 25,
+        "extra": {
+            "matchup_adapter_fit_complete": True,
+            "streaming_matchup_adapter_state": {
+                "epoch": 25,
+                "complete": True,
+            },
+        },
+    }
+    torch.save(payload, final_path)
+    status = fleet_dir / "fleet-finalizer.json"
+    status.write_text(
+        json.dumps(
+            {
+                "phase": "published",
+                "final_checkpoint": str(final_path),
+                "final_checkpoint_digest": finalizer.checkpoint.checkpoint_digest(
+                    final_path
+                ),
+            }
+        )
+    )
+    monkeypatch.setattr(finalizer, "SOURCE_DIR", source_dir)
+    monkeypatch.setattr(finalizer, "FLEET_DIR", fleet_dir)
+    monkeypatch.setattr(finalizer, "STATUS", status)
+    assert finalizer._published_checkpoint_is_valid()
+
+    payload["epoch"] = 24
+    torch.save(payload, final_path)
+    assert not finalizer._published_checkpoint_is_valid()

@@ -8,15 +8,143 @@ import pytest
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.handle_passed_gate import (
     _canonical_digest,
+    _decision_fusion_runtime_ready,
     freeze_exact_pass,
     materialize_pinned_specialist_deck,
     validate_exact_pass,
+    validate_runtime_exact_gate,
 )
+from poke_bot.model import DECISION_FUSION_REQUIRED_HEADS
 
 
 def _write(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _successor_fusion_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path]:
+    outputs = tmp_path / "outputs"
+    run_dir = outputs / "pure_rl" / "successor-run"
+    checkpoint_path = run_dir / "checkpoints" / "iter_00005.pt"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(b"successor-fused-checkpoint")
+    digest = "sha256:" + "5" * 64
+    bootstrap_digest = "sha256:" + "6" * 64
+    fingerprint = "sha256:" + "7" * 64
+    learner = {"path": str(checkpoint_path.resolve()), "digest": digest}
+    publish = {
+        "checkpoint": str(checkpoint_path.resolve()),
+        "digest": digest,
+        "local_ok": True,
+        "remote_ok": True,
+    }
+    commit = {
+        "last_completed_iteration": 5,
+        "next_iteration": 6,
+        "design_fingerprint": fingerprint,
+        "learner": learner,
+        "history": [
+            {
+                "iteration": 5,
+                "completed": True,
+                "candidate": learner,
+                "learner_after": learner,
+                "next_collection_publish": publish,
+            }
+        ],
+    }
+    _write(run_dir / "loop_state.json", commit)
+    _write(run_dir / "commits" / "iter_00005.json", commit)
+    _write(
+        run_dir / "manifest.json",
+        {
+            "specialist_archetype": "test-specialist",
+            "design_fingerprint": fingerprint,
+            "initial_learner_checkpoint": {"digest": bootstrap_digest},
+        },
+    )
+    required = list(DECISION_FUSION_REQUIRED_HEADS)
+    _write(
+        outputs
+        / "state"
+        / "test-specialist-specialist-rl-activation-v1.json",
+        {
+            "schema": "poke_bot.specialist_rl_activation/v2",
+            "status": "ready",
+            "identity": {
+                "next_specialist_bootstrap": {
+                    "specialist_id": "test-specialist",
+                    "checkpoint_digest": bootstrap_digest,
+                    "decision_fusion": {
+                        "schema": "poke_bot.causal_decision_fusion/v1",
+                        "runtime_enabled": True,
+                        "required_heads": required,
+                    },
+                },
+                "runtime_registration": {
+                    "specialist_id": "test-specialist",
+                    "runtime_row": {
+                        "initial_checkpoint_sha256": bootstrap_digest,
+                        "decision_fusion": {
+                            "schema": "poke_bot.causal_decision_fusion/v1",
+                            "required": True,
+                            "runtime_enabled": True,
+                            "required_heads": required,
+                        },
+                    },
+                },
+            },
+        },
+    )
+    payload = {
+        "archetype_id": "test-specialist",
+        "model_config": {
+            "decision_fusion_enabled": True,
+            "decision_fusion_runtime_enabled": True,
+        },
+        "provenance": {
+            "decision_fusion": {
+                "schema": "poke_bot.causal_decision_fusion/v1",
+                "runtime_enabled": True,
+                "required_heads": required,
+            }
+        },
+    }
+    monkeypatch.setattr(
+        "scripts.handle_passed_gate.checkpoint.checkpoint_digest",
+        lambda _path: digest,
+    )
+    monkeypatch.setattr(
+        "scripts.handle_passed_gate.checkpoint.load_checkpoint",
+        lambda _path, map_location=None: payload,
+    )
+    return run_dir, run_dir / "commits" / "iter_00005.json"
+
+
+def test_generated_successor_fusion_descendant_is_terminal_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, _commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    ready, reason = _decision_fusion_runtime_ready(run_dir)
+    assert ready is True
+    assert "verified successor fused descendant" in reason
+
+
+def test_generated_successor_fusion_requires_fleet_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    commit = json.loads(commit_path.read_text(encoding="utf-8"))
+    commit["history"][0]["next_collection_publish"]["remote_ok"] = False
+    _write(commit_path, commit)
+    ready, reason = _decision_fusion_runtime_ready(run_dir)
+    assert ready is False
+    assert "not published fleet-wide" in reason
 
 
 def _publish_exact_pointer(run_dir: Path, contract_path: Path) -> None:
@@ -166,6 +294,153 @@ def _exact_gate_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     return run_dir, contract_path, checkpoint
 
 
+def _runtime_exact_gate_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, Path]:
+    run_dir, contract_path, checkpoint = _exact_gate_fixture(tmp_path)
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    gate = contract["next_gate"]
+    official_ids = [f"official-{index}" for index in range(4)]
+    gate["research_measurements"] = [
+        {"opponent_id": opponent_id, "games": 250}
+        for opponent_id in official_ids
+    ]
+    gate["pass_criteria"]["accepted_official_holdout_non_regression"] = 0.5
+    _write(contract_path, contract)
+
+    commit_path = run_dir / "commits" / "iter_00007.json"
+    digest = sha256(checkpoint)
+    activation_path = tmp_path / "runtime-activation.json"
+    _write(
+        activation_path,
+        {
+            "schema": "poke_bot.causal_decision_fusion_runtime_boundary/v1",
+            "boundary": {
+                "last_completed_iteration": 7,
+                "next_iteration": 8,
+                "commit": str(commit_path.resolve()),
+                "commit_digest": sha256(commit_path),
+            },
+            "runtime_learner": {
+                "path": str(checkpoint.resolve()),
+                "digest": digest,
+            },
+            "decision_fusion": {
+                "runtime_enabled": True,
+                "serving_eligible": True,
+            },
+        },
+    )
+    result = json.loads(
+        (run_dir / "commits" / "iter_00007.json").read_text(encoding="utf-8")
+    )["history"][-1]["active_gate_result"]
+    result["research_checks"] = {
+        "research_control_audit": True,
+        "accepted_official_holdout_non_regression": True,
+    }
+    official_allocation = {
+        opponent_id: {"games": 250, "seat0": 125, "seat1": 125}
+        for opponent_id in official_ids
+    }
+    result["research_controls"] = {
+        "games": 1000,
+        "pooled_wr": 0.55,
+        "gate_weight": 0.0,
+        "included_in_skill_weighted_wr": False,
+        "matchups": [
+            {"opponent_id": opponent_id, **counts}
+            for opponent_id, counts in official_allocation.items()
+        ],
+        "audit": {
+            "passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "greedy_required": True,
+            "valid_games": 1000,
+            "rows": 1000,
+            "requested_games": 1000,
+            "checkpoint_digest": digest,
+            "per_opponent": official_allocation,
+        },
+    }
+    receipt_path = tmp_path / "runtime-exact-gate.json"
+    _write(
+        receipt_path,
+        {
+            "schema": "poke_bot.causal_decision_fusion_exact_gate/v1",
+            "complete": True,
+            "training_eligible": False,
+            "replay_eligible": False,
+            "run_dir": str(run_dir.resolve()),
+            "iteration": 7,
+            "boundary": {
+                "commit": str(commit_path.resolve()),
+                "commit_digest": sha256(commit_path),
+            },
+            "activation_receipt": {
+                "path": str(activation_path.resolve()),
+                "digest": sha256(activation_path),
+            },
+            "checkpoint": {
+                "path": str(checkpoint.resolve()),
+                "digest": digest,
+            },
+            "contract": {
+                "path": str(contract_path.resolve()),
+                "digest": sha256(contract_path),
+                "canonical_digest": _canonical_digest(contract),
+                "gate_id": gate["id"],
+            },
+            "premium_gate_complete": True,
+            "official_gate_complete": True,
+            "premium_gate_passed": True,
+            "official_gate_passed": True,
+            "both_gates_passed": True,
+            "completion_authority": "measured_both_gates_pass",
+            "result": result,
+            "result_digest": _canonical_digest(result),
+        },
+    )
+    return run_dir, contract_path, checkpoint, receipt_path
+
+
+def test_runtime_exact_gate_binds_both_gates_to_serving_child(
+    tmp_path: Path,
+) -> None:
+    run_dir, contract, checkpoint, receipt = _runtime_exact_gate_fixture(tmp_path)
+    plan = validate_runtime_exact_gate(
+        run_dir,
+        contract,
+        receipt,
+        accept_ceiling=True,
+        ceiling_iteration=7,
+    )
+    assert plan["checkpoint"] == str(checkpoint.resolve())
+    assert plan["checkpoint_digest"] == sha256(checkpoint)
+    assert plan["completion_authority"] == "measured_both_gates_pass"
+    assert plan["complete_holdouts"] == {
+        "premium": {"games": 2000, "passed": True},
+        "official": {"games": 1000, "passed": True},
+    }
+
+
+def test_runtime_exact_gate_rejects_flat_parent_substitution(
+    tmp_path: Path,
+) -> None:
+    run_dir, contract, _checkpoint, receipt = _runtime_exact_gate_fixture(tmp_path)
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    payload["checkpoint"]["digest"] = "sha256:" + "0" * 64
+    _write(receipt, payload)
+    with pytest.raises(RuntimeError, match="runtime exact gate validation failed"):
+        validate_runtime_exact_gate(
+            run_dir,
+            contract,
+            receipt,
+            accept_ceiling=True,
+            ceiling_iteration=7,
+        )
+
+
 def test_exact_gate_pass_validates_and_freezes(tmp_path: Path) -> None:
     run_dir, contract, checkpoint = _exact_gate_fixture(tmp_path)
     plan = validate_exact_pass(run_dir, contract)
@@ -187,6 +462,31 @@ def test_exact_gate_pass_validates_and_freezes(tmp_path: Path) -> None:
         "exact_result_pointer"
     ]
     assert verify_frozen_model(Path(frozen["model_path"]).parent) == frozen
+
+
+def test_exact_gate_pass_accepts_current_s_plus_floor_allowance_check(
+    tmp_path: Path,
+) -> None:
+    run_dir, contract_path, _checkpoint = _exact_gate_fixture(tmp_path)
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["next_gate"]["pass_criteria"].update(
+        {
+            "s_plus_individual_floor": 0.30,
+            "s_plus_below_floor_allowance": 2,
+        }
+    )
+    _write(contract_path, contract)
+
+    def add_current_check(commit: dict) -> None:
+        result = commit["history"][-1]["active_gate_result"]
+        result["checks"]["s_plus_matchup_floor_allowance"] = True
+        result["s_plus_below_floor_allowance"] = 2
+        result["s_plus_below_floor_count"] = 2
+
+    _rewrite_commit(run_dir, contract_path, add_current_check)
+    plan = validate_exact_pass(run_dir, contract_path)
+    assert plan["validation"]["gate_criteria_set"] is True
+    assert plan["validation"]["all_gate_criteria"] is True
 
 
 def test_exact_gate_pass_supports_a_versioned_marker(tmp_path: Path) -> None:
@@ -308,7 +608,6 @@ def test_gate_handler_requires_canonical_exact_pointer_binding(tmp_path: Path) -
 @pytest.mark.parametrize(
     "field,value,match",
     [
-        ("pipeline_gate_passed", False, "pipeline_gate_passed"),
         ("passed", False, "active_gate_passed"),
     ],
 )
@@ -325,6 +624,28 @@ def test_gate_handler_refuses_nonpassing_result(
     )
     with pytest.raises(RuntimeError, match=match):
         validate_exact_pass(run_dir, contract)
+
+
+def test_gate_handler_accepts_formal_pass_when_incumbent_h2h_fails(
+    tmp_path: Path,
+) -> None:
+    run_dir, contract, checkpoint = _exact_gate_fixture(tmp_path)
+
+    def record_diagnostic_h2h_failure(state: dict) -> None:
+        row = state["history"][0]
+        row["stage_gate"]["passed"] = False
+        row["stage_gate"]["reason"] = "candidate_not_promoted"
+        row["active_gate_result"]["pipeline_gate_passed"] = False
+        row["active_gate_result"]["pipeline_gate_reason"] = (
+            "candidate_not_promoted"
+        )
+        row["active_gate_result"]["promotion_passed"] = False
+
+    _rewrite_commit(run_dir, contract, record_diagnostic_h2h_failure)
+    plan = validate_exact_pass(run_dir, contract)
+    assert plan["checkpoint_digest"] == sha256(checkpoint)
+    assert plan["result"]["passed"] is True
+    assert plan["result"]["promotion_passed"] is False
 
 
 def test_gate_handler_refuses_partial_seat_allocation(tmp_path: Path) -> None:

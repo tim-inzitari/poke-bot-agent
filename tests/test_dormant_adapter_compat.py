@@ -16,7 +16,12 @@ from poke_bot.dormant_adapter_compat import (
     validate_zero_dormant_checkpoint,
 )
 from poke_bot.matchup_adapter_activation import ZERO_DORMANT_CHECKPOINT_SCHEMA
-from poke_bot.matchup_adapters import MatchupAdapterBank
+from poke_bot.matchup_adapters import (
+    EXPERT_IDS,
+    LEGACY_EXPERT_IDS_V4,
+    RETIRED_EXPERT_IDS_V5,
+    MatchupAdapterBank,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _zero_checkpoint(tmp_path: Path) -> Path:
     bank = MatchupAdapterBank(enabled=False)
+    parameter_count = sum(value.numel() for value in bank.state_dict().values())
     state = {
         "base.weight": torch.arange(6).reshape(2, 3),
         **{
@@ -48,7 +54,7 @@ def _zero_checkpoint(tmp_path: Path) -> Path:
                 "optimizer_included": False,
                 "frozen": True,
                 "zero_output": True,
-                "parameter_count": 16_400,
+                "parameter_count": parameter_count,
                 "adapter_config": bank.config_dict(),
             },
         },
@@ -115,7 +121,13 @@ def test_zero_checkpoint_validation_rejects_nonzero_or_runtime_active_bank(
     tmp_path: Path,
 ) -> None:
     model = _zero_checkpoint(tmp_path)
-    assert validate_zero_dormant_checkpoint(model)["parameter_count"] == 16_400
+    expected_parameter_count = sum(
+        value.numel() for value in MatchupAdapterBank(enabled=False).state_dict().values()
+    )
+    assert (
+        validate_zero_dormant_checkpoint(model)["parameter_count"]
+        == expected_parameter_count
+    )
     payload = checkpoint.load_checkpoint(model)
     nonzero = copy.deepcopy(payload)
     nonzero["model_state_dict"][
@@ -130,6 +142,60 @@ def test_zero_checkpoint_validation_rejects_nonzero_or_runtime_active_bank(
     active_path = checkpoint.atomic_torch_save(active, tmp_path / "active.pt")
     with pytest.raises(RuntimeError, match="not an explicit frozen"):
         validate_zero_dormant_checkpoint(active_path)
+
+
+def test_trained_roster_migration_accepts_audited_optimizer_reset_only(
+    tmp_path: Path,
+) -> None:
+    model = _zero_checkpoint(tmp_path)
+    payload = checkpoint.load_checkpoint(model)
+    bank = MatchupAdapterBank(enabled=False)
+    parameter_count = sum(value.numel() for value in bank.state_dict().values())
+    payload["model_state_dict"]["matchup_adapter_bank.experts.0.up.bias"].fill_(1.0)
+    payload["extra"]["dormant_matchup_adapter_bank"].update(
+        schema="poke_bot.trained_dormant_matchup_adapter/v1",
+        zero_output=False,
+        parameter_count=parameter_count,
+    )
+    payload["extra"]["dormant_matchup_adapter_fit"] = {
+        "schema": "poke_bot.dormant_matchup_adapter_fit/v1",
+        "runtime_enabled": False,
+        "base_frozen": True,
+        "optimizer_scope": "matchup_adapter_bank_only",
+        "steps": 3,
+        "rows": 17,
+        "optimizer_state_restored": False,
+        "roster_migration": "v4_22_to_canonical_v5_18",
+    }
+    payload["extra"]["roster_migration"] = {
+        "schema": "poke_bot.matchup_adapter_roster_migration/v1",
+        "source_checkpoint_digest": "sha256:" + "a" * 64,
+        "source_expert_ids": list(LEGACY_EXPERT_IDS_V4),
+        "target_expert_ids": list(EXPERT_IDS),
+        "removed_expert_ids": sorted(RETIRED_EXPERT_IDS_V5),
+        "renamed_expert_ids": {"festival-lead": "thwackey"},
+        "zero_initialized_expert_ids": ["team-rockets-spidops"],
+        "retained_rows_byte_identical": True,
+    }
+    payload["extra"].pop("dormant_matchup_adapter_optimizer_state", None)
+    migrated = checkpoint.atomic_torch_save(payload, tmp_path / "migrated.pt")
+
+    validated = validate_zero_dormant_checkpoint(migrated, allow_trained=True)
+    assert validated["trained"] is True
+    assert validated["parameter_count"] == parameter_count
+
+    for field, bad_value in (
+        ("retained_rows_byte_identical", False),
+        ("source_checkpoint_digest", "sha256:not-a-checksum"),
+        ("target_expert_ids", list(EXPERT_IDS[:-1])),
+    ):
+        tampered = copy.deepcopy(payload)
+        tampered["extra"]["roster_migration"][field] = bad_value
+        path = checkpoint.atomic_torch_save(
+            tampered, tmp_path / f"tampered-{field}.pt"
+        )
+        with pytest.raises(RuntimeError, match="not an explicit frozen"):
+            validate_zero_dormant_checkpoint(path, allow_trained=True)
 
 
 def test_fleet_receipt_requires_all_four_roles(tmp_path: Path) -> None:

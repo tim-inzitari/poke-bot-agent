@@ -15,10 +15,16 @@
 
 ## Goal resumption
 
-- Before acting on a resumed long-running goal, read
-  `ops/current_goal_requirements.json` completely.
-- Its `replacement_goal_objective` supersedes stale product goal prose that
-  mentions Starmie as active or says 19 specialists remain.
+- Before acting on a resumed long-running goal, read `GOAL.md` completely,
+  followed by every canonical source it identifies as required for the current
+  action.
+- `GOAL.md` supersedes stale product goal prose. The
+  `ops/current_goal_requirements.json` file is a compatibility projection for
+  older controllers and must not override `GOAL.md`.
+- When the owner explicitly defines a design change, record it in `GOAL.md`,
+  update the one typed canonical source that owns it, and activate it at the
+  next safe receipt-backed boundary unless immediate activation is explicitly
+  ordered.
 - Runtime truth comes from the one canonical selector, immutable receipts, and
   managed-service state. Planning prose and dashboard labels never override it.
 - Never restart or preempt healthy active training merely to reconcile planning

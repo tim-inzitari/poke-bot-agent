@@ -1,0 +1,84 @@
+[Unit]
+Description=Pokemon search-free pure-RL from exact 20k resident replay warm start
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-streamcache-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=POKEBOT_TRAINING_SAFETY_VERSION=20260717
+Environment=POKEBOT_TRAINING_ARM_FILE=/home/inzi/poke-bot-agent/outputs/state/TRAINING_ARMED
+Environment=POKEBOT_LIVE_POOL=0
+Environment=POKEBOT_WORKER_RECYCLE_GAMES=256
+Environment=WORKER_RECYCLE_GAMES=256
+# Proven CPU-native fast path: four independent libcg battle handles share
+# each OS worker. This is not the unvalidated StepBatch/CUDA fork.
+Environment=POKEBOT_MULTI_ENV=1
+Environment=POKEBOT_MULTI_ENV_PER_WORKER=4
+# Pin collection to the exact original Linux competition simulator. Explicitly
+# clear the private hidden-engine override and fail the launch canary on drift.
+Environment=POKEBOT_LIBCG_PATH=
+Environment=POKEBOT_EXPECTED_LIBCG_SHA256=ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c
+# The former 85/15 self-play/public mix plateaued at 10.7% official WR across
+# 186 iterations. Keep this phase search-free and on-policy, but give the
+# learner enough diverse external reward signal to escape twin-policy drift.
+# Official four remain excluded from collect and are held out for evaluation.
+Environment=PURE_RL_SELF_PLAY_FRAC=0.50
+# Operator-isolated CUDA lab profile: production inference is Blackwell-only,
+# leaving GPU0 (3080 Ti) exclusively available for the simulator experiment.
+Environment=PURE_RL_SIM_WORKERS=96
+Environment=PURE_RL_GAMES_IN_FLIGHT=96
+Environment=PURE_RL_ALLOW_SINGLE_GPU=1
+Environment=PURE_RL_LEAF_GPU0_REPLICAS=0
+Environment=PURE_RL_LEAF_GPU1_REPLICAS=24
+Environment=PURE_RL_REBALANCE_MAX_WORKERS=96
+Environment=PURE_RL_PER_WORKER_RSS_GB=1.3
+# Shared, chunked work queue: each host refills after completing a chunk, so
+# faster hosts receive more games and the fleet converges on one finish time.
+# A 55% remote floor reflects the observed remote/local completion ratio; the
+# scheduler can refine it from live wall-clock completion without killing any
+# in-flight game. Physical socket caps keep slow Elmo chunks from owning a
+# large tail while retaining its full 5900X throughput.
+Environment=PURE_RL_MID_ITER_SCHEDULER=1
+Environment=PURE_RL_REBALANCE_MIN_WORKERS=96
+Environment=PURE_RL_REBALANCE_MIN_LOCAL_FRAC=0.35
+Environment=PURE_RL_REBALANCE_PREFER_LOCAL_FRAC=0.45
+Environment=PURE_RL_REBALANCE_MAX_REMOTE_FRAC=0.65
+Environment=PURE_RL_REBALANCE_MIN_REMOTE_FRAC=0.55
+Environment="POKEBOT_REMOTE_MAX_WORKERS=192.168.1.143:8765=24,bert.local:8766=8"
+Environment=PURE_RL_REMOTE_DISPATCH_CHUNK=16
+Environment="POKEBOT_REMOTE_ENDPOINT_CHUNKS=192.168.1.143:8765=48,bert.local:8766=16"
+Environment=PURE_RL_REPLAY_STREAM_CACHE=1
+Environment=PURE_RL_REPLAY_FEATURIZE_WORKERS=8
+Environment=PURE_RL_REPLAY_STREAM_CHUNK_MIB=64
+Environment=PURE_RL_REPLAY_CACHE_PARALLEL_MIN_MIB=64
+Environment=PURE_RL_REPLAY_CACHE_KEEP_SHARDS=3
+Environment=PURE_RL_LOCAL_STRAGGLER_STALE_S=30
+Environment=POKEBOT_WORKER_CAPACITY_RECOVERY_GRACE_S=60
+Environment=POKEBOT_REMOTE_JOB_RETRIES=8
+Environment=POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S=90
+Environment="POKEBOT_TRUENAS_CHECKPOINT_SMB=/run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint"
+ExecStartPre=/usr/bin/test -d /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint
+# Activation creates seed.pt from the validated resident replay checkpoint.
+# train_pure_rl hardcodes this phase to policy self-play (agent_mode=policy,
+# mcts_sims=0); restarts follow the append-only ledger and selected champion.
+# Bert is temporarily excluded from production dispatch while its Apple-native
+# path is profiled in isolation. Inzi + Elmo remain the production fleet.
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_pure_rl.py --run-name pure_rl_core_streamcache_fleet_v2_20260719 --mode core --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --preflight-profile none --allow-single-gpu --multi-env-per-worker 4 --stall-minutes 20 --log outputs/logs/pure_rl_core_streamcache_fleet_v2_20260719.log -- --base-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_handoff/streamcache_champion.pt --iterations 1000 --games-per-iter 2048 --train-epochs 2 --heldout-games 200 --promotion-games 80 --game-timeout-s 600 --min-usable-game-frac 0.98 --remote-worker-endpoints 192.168.1.143:8765,bert.local:8766 --resume auto
+Restart=on-failure
+RestartSec=60
+RestartPreventExitStatus=75 78
+TimeoutStopSec=45
+KillMode=control-group
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_core_streamcache_fleet_v2_20260719.launcher.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/pure_rl_core_streamcache_fleet_v2_20260719.launcher.log
+
+[Install]
+WantedBy=default.target

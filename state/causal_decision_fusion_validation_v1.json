@@ -1,0 +1,114 @@
+{
+  "schema": "poke_bot.causal_decision_fusion_validation/v1",
+  "status": "implementation_validated_activation_pending",
+  "owner_decision_revision": 16,
+  "validated_at_utc": "2026-07-25T21:02:06Z",
+  "architecture": {
+    "schema": "poke_bot.causal_decision_fusion/v1",
+    "implementation": "learned_checksum_bound_residual_over_flat_policy",
+    "required_head_count": 17,
+    "required_heads": [
+      "value",
+      "archetype",
+      "opponent_hand",
+      "opponent_remainder",
+      "lethal_threat",
+      "prize_race",
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility",
+      "tactical_outcomes",
+      "opponent_response",
+      "resource_forecast",
+      "game_phase",
+      "outcome_distribution",
+      "remaining_turns"
+    ],
+    "matchup_adapter_behavior": "causal_route_gated",
+    "absent_deck_guide_behavior": "exact_bypass",
+    "zero_safe_initialization": true,
+    "current_temporal1_d96_total_parameters": 1683877,
+    "decision_fusion_parameters": 47677
+  },
+  "implementation_checks": {
+    "zero_initialized_migration_preserves_flat_logits_bit_exact": true,
+    "policy_loss_reaches_every_required_head": true,
+    "missing_required_head_fails_closed": true,
+    "checkpoint_inventory_declares_required_heads": true,
+    "explicit_migration_contract_required": true,
+    "future_specialist_bootstrap_flag_required": true,
+    "future_selector_enables_fusion": true,
+    "zero_safe_live_learner_materialization_verified": true,
+    "existing_optimizer_state_preserved_and_new_parameters_fresh": true,
+    "two_phase_runtime_activation_fails_closed": true,
+    "managed_boundary_uses_only_declared_service_managers": true,
+    "elmo_v38_derived_fusion_image_validated": true,
+    "bert_before_after_rollback_bundle_validated": true,
+    "current_healthy_iteration_interrupted": false
+  },
+  "validation": {
+    "host": "inzi",
+    "isolated_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
+    "focused_tests_passed": 48,
+    "focused_tests_failed": 0,
+    "commands": [
+      "python -m pytest -q tests/test_decision_fusion_managed_boundary.py tests/test_decision_fusion_boundary.py tests/test_expanded_strategic_heads.py tests/test_specialist_cycle_handoff.py tests/test_specialist_expert_bootstrap.py tests/test_launch_active_specialist.py",
+      "python scripts/materialize_decision_fusion_checkpoint.py --parent <live-iter8-learner> --output /tmp/decision-fusion-live-parent-dry-run/warmup.pt --receipt /tmp/decision-fusion-live-parent-dry-run/receipt.json --fusion-width 16"
+    ],
+    "live_parent_dry_run": {
+      "parent_checkpoint_digest": "sha256:032783f85a6743c7b3c3e00a490dd317cbefeb7a316460c881f53b0cca4b7ca8",
+      "migrated_checkpoint_digest": "sha256:ce843ee33359e1009d73945e29b4ba9212b318efa197d1cdf4a8b7e4f7d93d54",
+      "existing_trainable_parameters": 171,
+      "added_trainable_parameters": 30,
+      "fusion_parameters": 47677,
+      "legacy_tensors_bit_identical": true,
+      "optimizer_existing_state_preserved": true
+    },
+    "fleet_stage": {
+      "inzi_runtime": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
+      "elmo_image": "sha256:b0459b302adeeb2e2293bd57660ed89987ad11e081dde986506faa57b1fdbdbb",
+      "bert_stage": "/Users/tsinzitari/workspace/poke-bot-agent-decision-fusion-stage-v1",
+      "selector_preflight_passed": true
+    }
+  },
+  "source_checksums": {
+    "poke_bot/model.py": "sha256:909949db8479e3290850c04454e5700f5c8745fbf4076c01bf4b0924b2d7c441",
+    "poke_bot/config.py": "sha256:e6d31f76f0cb4ccea3f1444722c29b55ac97c3af5fc7e6ccd1d4e42b2dfcfaf8",
+    "poke_bot/train.py": "sha256:0530ac42c49c97fbd207d1e3ccebcbda8fcf9909ff5bf475d3de79ed377e303a",
+    "poke_bot/checkpoint.py": "sha256:4d683d5a38febe8ca48eba90a27d07c0e45077dc92097662928af7ba99c64a93",
+    "poke_bot/agent.py": "sha256:65fdc5207b05c7621150b3ed563ff02baf638469a656c7d362d0b0d715e4fa87",
+    "poke_bot/pure_rl/model_profile.py": "sha256:7b6478ac6ae27902d599a7af4548db2a4fd41b9ca447b3a07a7f73d89d4b1f2f",
+    "scripts/materialize_decision_fusion_checkpoint.py": "sha256:12c3132a4d92621bb1c9aeecacb84428ff1f78ec86fda6bc65b5a64d1d19a553",
+    "scripts/audit_decision_fusion_checkpoint.py": "sha256:89ecb6c55be551f6da5ccceb755223906dea8258aa55360aae86096eb7297a19",
+    "scripts/build_decision_fusion_activation_validation.py": "sha256:ef5be6c3b0b1a49ef4f7f9443c18fbf5806cf62b47bd25d8135fec00d718c525",
+    "scripts/materialize_decision_fusion_runtime_checkpoint.py": "sha256:48659b2c43d31ad78b1f9429ce29c1579c79e85491ff00b248e5aa924c898910",
+    "scripts/apply_decision_fusion_at_boundary.py": "sha256:4cd994f6cd786b1968f31fd45e1f41f33dba6ad9b4b5cc6fd814877847b3bd74",
+    "scripts/apply_decision_fusion_runtime_at_boundary.py": "sha256:8474c5a850b1cbfb9901a7874d9626ad6ebea75393f4a017aa55bf0875e1d6f3",
+    "scripts/apply_decision_fusion_warmup_managed_boundary.py": "sha256:dad3e6e7d2dd14d3975adcbb11dd70f9183bd70d21fb96bdd53b425630da32ff",
+    "deploy/systemd/pokebot-decision-fusion-warmup-boundary.service": "sha256:c6f7e48690b926aa6fac5d9c914801a98149825ff3070913dccfbb13905c5834",
+    "scripts/run_starmie_expert_bootstrap.py": "sha256:6c01a1e0ef67e96085ffa549bffc8598614ece9e1c9b451e14ceacf6c6cd8bcf",
+    "scripts/run_specialist_cycle_handoff.py": "sha256:867116fac8cfb21405ac226dfb18a135c80e356bf2dcf98fb25752a9a316e7b9",
+    "scripts/run_sequential_specialist_handoff.py": "sha256:6155a9dc258906c6b6d14ade0e6ebc36610a04778fb1ee6794dbcb924941384a",
+    "scripts/register_next_specialist_runtime.py": "sha256:8fc1d8eb1d50a1589e33fe592eaa04ec5dfdc83b551fcd4d71461f98ffb88ab6",
+    "config/rl_protocol.yaml": "sha256:9cb7aff1dc7c9526b2534e4ac13acab1194305327e5172d2ee1a71685bc9d616",
+    "GOAL.md": "sha256:47411cd681efe4ca3cf9f8d5e40c9eff8be8ac4b1de573104261e0c82af2e101",
+    "tests/test_expanded_strategic_heads.py": "sha256:db41023babdf0b4a8e0b6a2ca3fde9e02b3598c830d423b2a5d6a89db0f442d3",
+    "tests/test_decision_fusion_boundary.py": "sha256:68b5ad2b7f5f0de2f971e6a5a55f6622628e3ef052d546a39f3a25020046396c",
+    "tests/test_decision_fusion_managed_boundary.py": "sha256:73aaf4cfa754e59fd06ad587368bec5e5e0152bb4b2b16a995b315cbbda7ba03"
+  },
+  "runtime_activation": {
+    "status": "managed_warmup_boundary_armed",
+    "warmup_boundary_after_iteration": 11,
+    "warmup_boundary_service": "pokebot-decision-fusion-warmup-boundary.service",
+    "warmup_boundary_status": "/home/inzi/poke-bot-agent/outputs/state/decision-fusion-warmup-boundary-v1.json",
+    "activation_receipt": null,
+    "required_before_activation": [
+      "trained_nonzero_fusion_checkpoint",
+      "deterministic_local_remote_logit_parity",
+      "causal_information_audit",
+      "rollout_throughput_and_memory_measurement"
+    ]
+  }
+}

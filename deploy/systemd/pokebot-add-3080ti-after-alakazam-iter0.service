@@ -1,0 +1,16 @@
+[Unit]
+Description=Conditionally add RTX 3080 Ti policy leaves after Alakazam iteration 0
+After=network-online.target pokebot-deck-agnostic-transition.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/enable_3080ti_after_alakazam_iteration.py --transition-state /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-transition.json --loop-state-glob /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_public64k_v*_20260720/loop_state.json --service pokebot-pure-rl-alakazam.service --drop-in /home/inzi/.config/systemd/user/pokebot-pure-rl-alakazam.service.d/3080ti-fallback.conf --status /home/inzi/poke-bot-agent/outputs/state/3080ti-post-transition.json --after-specialist-iteration 0 --gpu0-replicas 10 --gpu0-fraction 0.30 --gpu0-client-fraction 0.38 --cuda-report /home/inzi/cuda-sim-lab/outputs/*cuda*.json --cuda-report /home/inzi/cuda-sim-lab/outputs/status.json --poll-seconds 0.20 --timeout-seconds 604800
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=infinity
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

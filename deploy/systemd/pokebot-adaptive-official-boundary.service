@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply adaptive official-baseline targeting at the next committed RL boundary
+After=pokebot-pure-rl-alakazam.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v7
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-ops/apply_adaptive_official_at_boundary.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_alakazam_temporal1_8k_v15_20260721 --service pokebot-pure-rl-alakazam.service --target-next-iteration 4 --staged-root /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v7 --staged-unit /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v7/deploy/systemd/pokebot-pure-rl-alakazam.service --active-unit /home/inzi/.config/systemd/user/pokebot-pure-rl-alakazam.service --status /home/inzi/poke-bot-agent/outputs/state/adaptive-official-boundary/status.json --log /home/inzi/poke-bot-agent/outputs/logs/pure_rl_alakazam_temporal1_8k_v15_20260721.log --migration-reason adaptive-official-targeting-v1-after-iter3 --expected-source-sha256 1cd10fbdd6c465051f966281da02a6816ab68e2f5907ee42ecfbadb3dc9de80a --expected-unit-sha256 f54632d8b8fd0de210651a2692f6367af6aa33af2d2d70c584d18152a6ea0bf1 --poll-seconds 0.05
+TimeoutStartSec=infinity
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/adaptive-official-boundary.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/adaptive-official-boundary.log
+
+[Install]
+WantedBy=default.target

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build bounded temporal-expert shards for six rare-route history days.
+"""Build bounded temporal-expert shards for rare-route evidence days.
 
 This runs in a separate capped container on Elmo.  It never changes the live
 worker image or active expert corpus.  Each completed day is checksum-backed
@@ -28,6 +28,10 @@ ARCHETYPES = ROOT / "src/poke_bot/archetypes_v33.py"
 COLLECTOR = ROOT / "src/scripts/collect_top_ladder_replays.py"
 FEATURIZER = ROOT / "src/scripts/featurize_bootstrap_shard.py"
 FEATURE_SHARDS = ROOT / "src/poke_bot/feature_shards.py"
+MATCHUP_ADAPTERS = ROOT / "src/poke_bot/matchup_adapters.py"
+ASSEMBLER = ROOT / "src/scripts/assemble_feature_manifest.py"
+SPLITTER = ROOT / "src/scripts/split_expert_manifest_by_archetype.py"
+FILTER = ROOT / "src/scripts/filter_feature_manifest.py"
 TRAINING_MIX_ROOT = Path(
     "/mnt/Main/main/poke-bot-agent/privileged-collector-v1/"
     "data/training_mixes"
@@ -43,6 +47,10 @@ DAYS = (
     "2026-06-29",
     "2026-06-30",
     "2026-07-01",
+    # The refreshed index and already-downloaded archives add the newest
+    # evidence without replacing the protected 20-day corpus.
+    "2026-07-22",
+    "2026-07-23",
 )
 RARE_ARCHETYPES = (
     "dragapult-blaziken",
@@ -59,6 +67,8 @@ EXPECTED_ADDITIVE_BY_DAY = {
     "2026-06-29": ("dragapult-dusknoir", "walrein"),
     "2026-06-30": ("dragapult-dusknoir", "walrein"),
     "2026-07-01": (),
+    "2026-07-22": (),
+    "2026-07-23": ("dragapult-blaziken", "ns-zoroark"),
 }
 MIN_RECOGNIZED_RECORDS_PER_DAY = 5000
 COLLECTOR_CONTRACT = "additive_allowed_archetypes_v2"
@@ -113,7 +123,11 @@ def _validated_day(day: str) -> dict[str, Any] | None:
         )
         or identity.get("shard_sha256") != payload.get("sha256")
     ):
-        raise RuntimeError(f"rare-route expert shard identity failed: {day}")
+        # A prior collector contract may have produced an otherwise valid
+        # feature shard without the additive specialist seats.  Treat that as
+        # a cache miss so the caller can discard and rebuild it under the
+        # current contract; it is not a terminal service failure.
+        return None
     return {
         "day": day,
         "shard": str(shard),
@@ -173,6 +187,10 @@ def main() -> int:
         COLLECTOR,
         FEATURIZER,
         FEATURE_SHARDS,
+        MATCHUP_ADAPTERS,
+        ASSEMBLER,
+        SPLITTER,
+        FILTER,
         TRAINING_MIX_ROOT / "top_ladder.v1.json",
         TRAINING_MIX_ROOT / "top_ladder_representatives.v1.json",
         EPISODES_INDEX_ROOT / "manifest.csv",
@@ -303,7 +321,7 @@ def main() -> int:
         )
         completed.append(_validated_day(day) or {})
 
-    # Split the six additive days once, on Elmo, before anything crosses the
+    # Split all additive evidence days once, on Elmo, before anything crosses the
     # LAN.  The resulting per-archetype shards are much smaller than the mixed
     # feature set and can be merged with the protected 20-day corpora on Inzi.
     mixed_manifest = OUTPUT_ROOT / "manifest.json"
@@ -322,12 +340,11 @@ def main() -> int:
             f"{expected_dates} "
             "--compact-mode temporal-expert-v1 "
             "--expected-max-context 320 "
-            "--require-target-coverage temporal_action_rows "
-            "--require-target-coverage opponent_hand_rows "
-            "--require-target-coverage opponent_remainder_rows "
-            "--require-target-coverage opponent_private_prize_rows "
-            "--require-target-coverage lethal_threat_rows "
-            "--require-target-coverage prize_race_rows; "
+            # Historical public episodes always preserve demonstrated
+            # temporal actions, but some older exports omit private auxiliary
+            # labels.  Retain those rows as valid policy supervision; the
+            # later merge audits auxiliary coverage separately.
+            "--require-target-coverage temporal_action_rows; "
             "python -u scripts/split_expert_manifest_by_archetype.py "
             f"--source-manifest /history/{mixed_manifest.name} "
             "--output-root /history/specialists-v1 "
@@ -357,6 +374,28 @@ def main() -> int:
                 f"{OUTPUT_ROOT}:/history",
                 "-v",
                 f"{ARCHETYPES}:/workspace/poke_bot/archetypes.py:ro",
+                "-v",
+                f"{FEATURE_SHARDS}:/workspace/poke_bot/feature_shards.py:ro",
+                "-v",
+                (
+                    f"{MATCHUP_ADAPTERS}:"
+                    "/workspace/poke_bot/matchup_adapters.py:ro"
+                ),
+                "-v",
+                (
+                    f"{ASSEMBLER}:"
+                    "/workspace/scripts/assemble_feature_manifest.py:ro"
+                ),
+                "-v",
+                (
+                    f"{SPLITTER}:"
+                    "/workspace/scripts/split_expert_manifest_by_archetype.py:ro"
+                ),
+                "-v",
+                (
+                    f"{FILTER}:"
+                    "/workspace/scripts/filter_feature_manifest.py:ro"
+                ),
                 "-w",
                 "/workspace",
                 "--entrypoint",

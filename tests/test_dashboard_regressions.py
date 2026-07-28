@@ -23,6 +23,7 @@ from dashboard.lan.server import (
     rendered_index,
 )
 from scripts.dashboard_snapshot import (
+    canonical_next_prestage_overlay,
     COMPETITION_GATE_PROGRAM,
     _active_curriculum_services,
     _metric_iteration_wall_seconds,
@@ -42,11 +43,13 @@ from scripts.dashboard_snapshot import (
     expert_rehearsal_state,
     learner_model_state,
     latest_committed_active_gate_result,
+    latest_committed_formal_holdout_state,
     latest_committed_official_heldout_state,
     latest_committed_research_control_result,
     iteration_timing_state,
     matchup_runtime_collection_state,
     parse_curriculum_progress,
+    prestage_receipt_is_current,
     reconcile_frozen_specialist_label,
     reconcile_canonical_router_candidate,
     reconcile_completed_train_epoch,
@@ -61,9 +64,72 @@ from scripts.dashboard_snapshot import (
 )
 
 
+def test_canonical_v6_prestage_blocks_legacy_v5_ready_projection() -> None:
+    payload = {
+        "expert_corpus_archive": {
+            "canonical_policy": {
+                "next_specialist_prestage": {
+                    "status": "blocked_waiting_for_expanded_v6_corpus",
+                    "blocker": "protocol_valid_expert_corpus_not_ready",
+                    "intended_next_specialist_after_corpus_validation": (
+                        "dudunsparce"
+                    ),
+                    "receipt": "/state/next-specialist-prestage-v1.json",
+                    "cpu_pack_status": "not_built",
+                }
+            }
+        }
+    }
+
+    state = canonical_next_prestage_overlay(payload)
+
+    assert state == {
+        "status": "blocked_waiting_for_expanded_v6_corpus",
+        "blocker": "protocol_valid_expert_corpus_not_ready",
+        "intended_specialist": "dudunsparce",
+        "blocks_v6_handoff": True,
+        "receipt": "/state/next-specialist-prestage-v1.json",
+        "cpu_pack_status": "not_built",
+    }
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_blocked_prestage_receipt_is_current_without_stale_selection() -> None:
+    blocked = {
+        "schema": "poke_bot.next_specialist_prestage/v1",
+        "status": "blocked",
+        "active_specialist": "dragapult-dusknoir",
+        "selected_specialist": None,
+        "selection": None,
+        "blockers": ["protocol_valid_expert_corpus_not_ready"],
+    }
+    assert prestage_receipt_is_current(blocked, "dragapult-dusknoir")
+    assert not prestage_receipt_is_current(blocked, "starmie")
+
+
+def test_ready_prestage_receipt_requires_selected_specialist() -> None:
+    ready = {
+        "schema": "poke_bot.next_specialist_prestage/v1",
+        "status": "ready",
+        "active_specialist": "dragapult-dusknoir",
+        "selected_specialist": None,
+    }
+    assert not prestage_receipt_is_current(ready, "dragapult-dusknoir")
+    ready["selected_specialist"] = "dudunsparce"
+    assert prestage_receipt_is_current(ready, "dragapult-dusknoir")
+
+
+def test_latest20_dashboard_names_atomic_sync_state() -> None:
+    source = (
+        Path(__file__).parents[1] / "scripts/dashboard_snapshot.py"
+    ).read_text(encoding="utf-8")
+    assert "Inzi checksum sync active" in source
+    assert "atomic pointer withheld until " in source
+    assert '"validation"' in source
 
 
 def test_curriculum_worker_reads_effective_environment_file_topology(
@@ -1045,6 +1111,99 @@ def test_official_gateline_uses_reconciled_heldout_champion(tmp_path: Path) -> N
     ]
 
 
+def test_official_gateline_accepts_committed_premium_gate_v1_shape(
+    tmp_path: Path,
+) -> None:
+    """The premium gate stores its aggregate/rows under the v1 field names."""
+
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    (run_dir / "commits" / "iter_00008.json").write_text("{}")
+    digest = "sha256:" + "8" * 64
+    rates = {
+        "archaludon-ex": 0.416,
+        "lucifer19-battlecore": 0.480,
+        "pilkwang-meta-20260708": 0.324,
+        "specialist-alakazam": 0.148,
+        "specialist-dragapult-dusknoir": 0.780,
+        "specialist-hops-trevenant": 0.192,
+        "specialist-lucario": 0.172,
+        "specialist-starmie": 0.416,
+    }
+    weighted_wr = 0.35428571428571426
+    audit_rows = {
+        opponent_id: {"games": 250, "seat0": 125, "seat1": 125}
+        for opponent_id in rates
+    }
+    loop = {
+        "heldout_champion": {
+            "path": "/checkpoints/iter_00008.pt",
+            "digest": digest,
+        },
+        "heldout_champion_evidence": {
+            "iteration": 8,
+            "checkpoint_digest": digest,
+            "games": 2000,
+            "win_rate": weighted_wr,
+            "confidence_lower": 0.33885714285714286,
+            "confidence_upper": 0.37057142857142855,
+        },
+        "history": [
+            {
+                "iteration": 8,
+                "candidate": {"digest": digest},
+                "heldout_audit": {
+                    "passed": True,
+                    "checkpoint_digest": digest,
+                    "valid_games": 2000,
+                    "exact_distribution": True,
+                    "exact_weights": True,
+                    "greedy_required": True,
+                    "per_opponent": audit_rows,
+                },
+                "raw_heldout_gate": {
+                    "schema": "poke_bot.public_agent_gate_result/v1",
+                    "games": 2000,
+                    "skill_weighted_wr": weighted_wr,
+                    "passed": False,
+                    "reason": "s_plus_matchup_floor_allowance",
+                    "matchups": [
+                        {
+                            "opponent_id": opponent_id,
+                            "games": 250,
+                            "wr": wr,
+                            "wins": int(wr * 250),
+                            "draws": 0,
+                            "losses": 250 - int(wr * 250),
+                            "seat0": 125,
+                            "seat1": 125,
+                        }
+                        for opponent_id, wr in rates.items()
+                    ],
+                },
+            }
+        ],
+    }
+
+    result = committed_official_heldout_state(loop, run_dir)
+
+    assert result["available"] is True
+    assert result["iteration"] == 8
+    assert result["games"] == 2000
+    assert result["wr"] == weighted_wr
+    assert result["audit_passed"] is True
+    assert result["opponent_count"] == 8
+    assert {row["opponent_id"] for row in result["matchups"]} == set(rates)
+    assert sum(int(row["games"]) for row in result["matchups"]) == 2000
+    assert sum(int(row["seat0"]) for row in result["matchups"]) == 1000
+    assert sum(int(row["seat1"]) for row in result["matchups"]) == 1000
+    assert next(
+        row
+        for row in result["matchups"]
+        if row["opponent_id"] == "specialist-dragapult-dusknoir"
+    )["wr"] == 0.780
+
+
 def test_official_gateline_refuses_unreconciled_evidence(tmp_path: Path) -> None:
     loop = {
         "heldout_champion": {"path": "/checkpoints/iter_00025.pt", "digest": "sha256:a"},
@@ -1171,6 +1330,83 @@ def test_baseline_card_separates_latest_attempt_from_protected_champion() -> Non
     assert "exact research-control games" in html
     assert 'data-widget="protocol"' in html
     assert "protocol=d.specialist_protocol||{}" in html
+
+
+def test_latest_formal_holdout_displays_failed_gate_when_audit_passed(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    (run_dir / "commits" / "iter_00009.json").write_text("{}")
+    digest = "sha256:" + "b" * 64
+    ids = tuple(f"premium-{index}" for index in range(8))
+    audit_rows = {
+        opponent_id: {"games": 250, "seat0": 125, "seat1": 125}
+        for opponent_id in ids
+    }
+    matchups = [
+        {
+            "opponent_id": opponent_id,
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 83,
+            "draws": 0,
+            "losses": 167,
+            "wr": 0.332,
+        }
+        for opponent_id in ids
+    ]
+    loop = {
+        "heldout_champion": {"digest": "sha256:" + "a" * 64},
+        "history": [
+            {
+                "iteration": 9,
+                "completed": True,
+                "candidate": {"digest": digest, "path": "/checkpoints/iter_00009.pt"},
+                "heldout_audit": {
+                    "passed": True,
+                    "checkpoint_digest": digest,
+                    "valid_games": 2000,
+                    "exact_distribution": True,
+                    "exact_weights": True,
+                    "greedy_required": True,
+                    "per_opponent": audit_rows,
+                },
+                "active_gate_result": {
+                    "games": 2000,
+                    "skill_weighted_wr": 0.332,
+                    "confidence_lower": 0.3163,
+                    "confidence_upper": 0.348,
+                    "passed": False,
+                    "pipeline_gate_reason": "active_gate_criteria_failed",
+                    "matchups": matchups,
+                },
+                "learner_after": {"digest": digest},
+                "heldout_champion_updated": False,
+            }
+        ],
+    }
+
+    state = latest_committed_formal_holdout_state(loop, run_dir)
+
+    assert state["available"] is True
+    assert state["iteration"] == 9
+    assert state["games"] == 2000
+    assert state["wr"] == 0.332
+    assert state["passed"] is False
+    assert state["audit_passed"] is True
+    assert state["protected_champion"] is False
+    assert len(state["matchups"]) == 8
+
+
+def test_outcomes_panel_prefers_latest_formal_holdout() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert "latestFormal=c.latest_formal_holdout||{}" in html
+    assert "committedHoldout=latestFormalComplete?latestFormal:" in html
 
 
 def test_latest_official_panel_prefers_new_committed_research_controls(
@@ -1398,6 +1634,14 @@ def test_specialist_protocol_state_validates_roster_and_restart(
         row for row in runtime_state["specialists"] if row["id"] == "alakazam"
     )["active"] is False
 
+    same_identity_state = specialist_protocol_state(
+        path,
+        runtime_specialist_id="alakazam",
+        runtime_run_name="pure_rl_alakazam_live",
+    )
+    assert same_identity_state["runtime_identity_reconciled"] is False
+    assert same_identity_state["canonical_pointer_stale"] is False
+
     payload["current"] = {
         "phase": "shared_core_derivation",
         "active_specialist": None,
@@ -1471,11 +1715,33 @@ def test_active_specialist_commit_overlay_supersedes_stale_yaml_counters(
                     if iteration == 2
                     else None
                 ),
+                "incumbent_after": candidate,
+                "heldout_champion_updated": iteration == 2,
+                "promoted": iteration == 2,
+                "promotion": {
+                    "continuous_learner": {
+                        "exact_gate_regression": {
+                            "enabled": True,
+                            "streak": 1,
+                            "patience": 2,
+                        }
+                    }
+                },
             }
         )
     _write_json(
         run_dir / "commits/iter_00002.json",
-        {"history": history},
+        {
+            "history": history,
+            "champion": {
+                "path": str(checkpoint),
+                "digest": digest,
+            },
+            "learner": {
+                "path": str(checkpoint),
+                "digest": digest,
+            },
+        },
     )
     _write_json(
         run_dir / "research_controls/iter_00002.json",
@@ -1492,9 +1758,55 @@ def test_active_specialist_commit_overlay_supersedes_stale_yaml_counters(
     assert overlay["last_completed_iteration"] == 2
     assert overlay["next_iteration"] == 3
     assert overlay["rl_iterations_completed"] == 3
+    assert overlay["learner_checkpoint"] == str(checkpoint)
+    assert overlay["learner_digest"] == digest
     assert overlay["premium_holdout"]["games"] == 2250
     assert overlay["official_research"]["games"] == 1000
     assert overlay["checkpoint_digest"] == digest
+    assert overlay["protected_champion"]["digest"] == digest
+    assert overlay["candidate_promoted"] is True
+    assert overlay["heldout_champion_updated"] is True
+    assert overlay["exact_gate_regression"]["streak"] == 1
+
+
+def test_active_specialist_commit_overlay_preserves_rolled_back_learner(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "active-run"
+    candidate_digest = "sha256:" + "a" * 64
+    learner_digest = "sha256:" + "b" * 64
+    learner = {
+        "path": str(run_dir / "checkpoints/iter_00001.pt"),
+        "digest": learner_digest,
+    }
+    _write_json(
+        run_dir / "loop_state.json",
+        {"last_completed_iteration": 2, "next_iteration": 3},
+    )
+    _write_json(
+        run_dir / "commits/iter_00002.json",
+        {
+            "history": [
+                {
+                    "iteration": 2,
+                    "completed": True,
+                    "candidate": {
+                        "path": str(run_dir / "checkpoints/iter_00002.pt"),
+                        "digest": candidate_digest,
+                    },
+                    "learner_after": learner,
+                }
+            ],
+            "learner": learner,
+        },
+    )
+
+    overlay = active_specialist_commit_overlay({"path": str(run_dir)})
+
+    assert overlay["available"] is True
+    assert overlay["checkpoint_digest"] == candidate_digest
+    assert overlay["learner_digest"] == learner_digest
+    assert overlay["learner_checkpoint"].endswith("iter_00001.pt")
 
 
 def test_active_specialist_commit_overlay_rejects_cross_checkpoint_results(
@@ -1561,17 +1873,67 @@ def test_active_gate_is_current_public_roster_plus_s_plus_and_research_is_separa
     )
 
 
-def test_dashboard_has_one_committed_holdout_percent_and_specialist_mix_panel() -> None:
+def test_dashboard_has_committed_holdout_by_deck_and_specialist_mix_panel() -> None:
     html = (
         Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
     ).read_text(encoding="utf-8")
 
     assert 'data-card="outcomes"' in html
-    assert "Last iteration's holdout results" in html
+    assert "Latest completed formal holdout" in html
+    assert "Latest completed holdout by opponent deck" in html
     assert 'id="last-holdout-percent"' in html
-    assert "latestAttemptAvailable?nextExact:null" in html
+    assert 'id="last-holdout-rows"' in html
+
+
+def test_dashboard_head_loss_panel_is_driven_by_canonical_head_registry() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'id="head-loss-grid"' in html
+    assert "Object.entries(heads)" in html
+    assert "renderAllHeadLosses(model,m)" in html
+    for head_id in (
+        "policy",
+        "value",
+        "archetype",
+        "opponent_hand",
+        "opponent_remainder",
+        "lethal_threat",
+        "prize_race",
+        "action_q",
+        "action_type",
+        "action_target",
+        "action_resource",
+        "action_utility",
+        "tactical_outcome",
+        "opponent_response",
+        "resource_forecast",
+        "game_phase",
+        "outcome_distribution",
+        "remaining_turns",
+    ):
+        assert head_id in html
+
+
+def test_existing_gate_roster_cards_fall_back_to_latest_committed_holdout() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert "committedGateById" in html
+    assert "displayCommittedGate" in html
+    assert "committed iteration " in html
+    assert "formalHoldoutComplete=!!(heldout.available" in html
+    assert (
+        "committedHoldout=latestFormalComplete?latestFormal:"
+        "formalHoldoutComplete?heldout" in html
+    )
+    assert "gateRosterById=new Map" in html
+    assert "exact greedy games" in html
+    assert "candidate first/second" in html
     assert "NO COMMITTED RESULT" in html
-    assert "immutable active-gate result" in html
+    assert "immutable completed active-gate result" in html
     assert 'id="specialist-mix-summary"' in html
     assert 'id="specialist-mix-rows"' in html
     assert "AWAITING NEXT ITERATION" in html
@@ -1931,6 +2293,27 @@ def test_competition_gate_program_reconciles_accepted_and_sampled_evidence(
     assert sum(row["games"] for row in next_gate["research_measurements"]) == 1000
     assert all(row["gate_weight"] == 0 for row in next_gate["research_measurements"])
     assert all(row["archetype_label"] for row in next_gate["research_measurements"])
+
+    fallback_state = competition_gate_program_state(
+        official,
+        public_mix,
+        contract_path=contract_path,
+        registry_path=registry_path,
+        exact_result_override={},
+        completed_iteration=4,
+    )
+    fallback_gate = fallback_state["next_gate"]
+    assert fallback_gate["fallback_active"] is True
+    assert fallback_gate["effective_gate_id"] == (
+        contract["fallback_transition"]["id"]
+    )
+    assert fallback_gate["pass_criteria"][
+        "skill_weighted_confidence_lower"
+    ] == 0.55
+    assert fallback_gate["effective_pass_criteria"][
+        "skill_weighted_confidence_lower"
+    ] == 0.50
+    assert fallback_gate["threshold_transition"]["status"] == "active"
 
     # The archived accepted milestone reconciles against its immutable model
     # registry, not whichever newer active-gate checkpoint the curriculum has.
@@ -2707,6 +3090,8 @@ def test_dashboard_separates_accepted_holdout_next_gate_and_sampled_progress() -
     html = (
         Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
     ).read_text(encoding="utf-8")
+    assert "effective_pass_criteria" in html
+    assert "LC50 fallback active from iteration 5" in html
 
     assert 'data-widget-toggle="nextgate"' in html
     assert 'data-card="nextgate"' in html
@@ -2774,7 +3159,7 @@ def test_dashboard_separates_accepted_holdout_next_gate_and_sampled_progress() -
     assert "activeGateSeat0=Number(nextEval.seat0_games_per_opponent||0)" in html
     assert "activeGateSeat1=Number(nextEval.seat1_games_per_opponent||0)" in html
     assert "candidate-first + '+activeGateSeat1+' candidate-second" in html
-    assert "${activeGateSeat0} candidate-first + ${activeGateSeat1} candidate-second" in html
+    assert "${row.seat0??activeGateSeat0} candidate-first + ${row.seat1??activeGateSeat1} candidate-second" in html
     assert "exact greedy gate games" in html
     assert "no early stop" in html
     assert "original-four research excluded" in html
@@ -4335,6 +4720,239 @@ def test_expert_refresh_reports_all_twenty_days(tmp_path: Path, monkeypatch) -> 
     assert state["percent"] == 30.0
 
 
+def test_expert_refresh_overlays_live_elmo_daily_materialization(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    days = [f"2026-07-{day:02d}" for day in range(4, 24)]
+    current = tmp_path / "expert-latest20-current.json"
+    _write_json(
+        current,
+        {
+            "schema": "poke_bot.expert_latest20_receipt/v1",
+            "status": "ready",
+            "days": 20,
+            "committed_at": "2026-07-24T20:00:00Z",
+            "archives": [
+                {
+                    "date": day,
+                    "bytes": 1_000,
+                    "episode_count": 10,
+                    "sha256": "sha256:" + "a" * 64,
+                    "validated": True,
+                }
+                for day in days
+            ],
+        },
+    )
+    remote_status = "".join(
+        json.dumps(
+            {
+                "schema": "pokebot-authoritative-archetype-window-status/v1",
+                "state": "running",
+                "current_date": day,
+                "date_window": {"start": day, "end": day, "days": 1},
+                "completed": [],
+            }
+        )
+        for day in days[:2]
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "EXPERT20_CURRENT_RECEIPT",
+        current,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "LATEST20_SPECIALIST_SYNC_STATE",
+        tmp_path / "missing-specialist-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "LATEST20_SPECIALIST_CURRENT",
+        tmp_path / "missing-specialist-current",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_SYNC_STATE",
+        tmp_path / "missing-v6-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_CURRENT",
+        tmp_path / "missing-v6-current",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "run",
+        lambda *_args, **_kwargs: remote_status,
+    )
+
+    state = dashboard_snapshot_module.expert_refresh_state()
+
+    assert state["active"] is True
+    assert state["stage"] == "featurizing"
+    assert state["phase"] == "parallel_daily_materialization"
+    assert state["archive_ready_days"] == 20
+    assert state["feature_ready_days"] == 0
+    assert state["daily_materialization"] == {
+        "selected_days": 2,
+        "completed_days": 0,
+        "running_days": 2,
+        "failed_days": 0,
+        "ready": False,
+        "finalization_pending": False,
+        "finalization_ready": False,
+    }
+    assert "0/2 selected missing daily features complete" in state["latest_line"]
+    assert len(state["days"]) == 20
+    assert [row["stage"] for row in state["days"][:2]] == [
+        "featurizing",
+        "featurizing",
+    ]
+    assert all(row["service"]["active"] for row in state["days"][:2])
+    assert all(
+        row["stage"] == "archive_ready" for row in state["days"][2:]
+    )
+
+
+def test_v6_strategic_corpus_progress_is_separate_and_receipt_backed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    days = [f"2026-07-{day:02d}" for day in range(4, 24)]
+    statuses = {
+        day: {
+            "state": "complete" if index < 2 else "running" if index < 4 else "waiting",
+            "completed": [{"date": day}] if index < 2 else [],
+        }
+        for index, day in enumerate(days)
+    }
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_SYNC_STATE",
+        tmp_path / "missing-v6-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_CURRENT",
+        tmp_path / "missing-v6-current",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_elmo_latest20_daily_materialization",
+        lambda status_glob=dashboard_snapshot_module.EXPERT20_ELMO_DAILY_STATUS_GLOB: (
+            statuses
+            if status_glob
+            == dashboard_snapshot_module.EXPERT20_V6_STRATEGIC_ELMO_DAILY_STATUS_GLOB
+            else {}
+        ),
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "run",
+        lambda command, **_kwargs: (
+            "active\n"
+            if command[:3] == ["systemctl", "--user", "is-active"]
+            and command[-1]
+            == dashboard_snapshot_module.V6_STRATEGIC_SPECIALIST_SYNC_SERVICE
+            else ""
+        ),
+    )
+
+    state = dashboard_snapshot_module.v6_strategic_corpus_state(days)
+
+    assert state["available"] is True
+    assert state["active"] is True
+    assert state["complete"] is False
+    assert state["phase"] == "parallel_daily_materialization"
+    assert state["completed_days"] == 2
+    assert state["running_days"] == 2
+    assert state["total_days"] == 20
+    assert state["target_schema"] == "poke_bot.expanded_strategic_targets/v2"
+    assert state["target_digest"].startswith("sha256:")
+    assert "2/20 daily feature shards ready" in state["latest_line"]
+
+
+def test_expert_refresh_uses_finalized_sync_receipt_for_twenty_days(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    days = [f"2026-07-{day:02d}" for day in range(4, 24)]
+    current = tmp_path / "expert-latest20-current.json"
+    sync = tmp_path / "expert-latest20-specialist-sync.json"
+    pointer = tmp_path / "current-specialist-latest20"
+    _write_json(
+        current,
+        {
+            "schema": "poke_bot.expert_latest20_receipt/v1",
+            "status": "ready",
+            "days": 20,
+            "committed_at": "2026-07-24T20:00:00Z",
+            "archives": [
+                {
+                    "date": day,
+                    "bytes": 1_000,
+                    "episode_count": 10,
+                    "sha256": "sha256:" + "a" * 64,
+                    "validated": True,
+                }
+                for day in days
+            ],
+        },
+    )
+    _write_json(
+        sync,
+        {
+            "schema": "poke_bot.latest20_specialist_sync/v1",
+            "status": "syncing",
+            "dates": days,
+            "specialist_count": 18,
+            "source_bytes": 1_000,
+            "copied_bytes": 400,
+            "bandwidth_limit_kib_per_second": 8_000,
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "EXPERT20_CURRENT_RECEIPT",
+        current,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "LATEST20_SPECIALIST_SYNC_STATE",
+        sync,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "LATEST20_SPECIALIST_CURRENT",
+        pointer,
+    )
+
+    def fake_run(command, **_kwargs):
+        if command[:3] == ["systemctl", "--user", "is-active"]:
+            return "activating\n"
+        return ""
+
+    monkeypatch.setattr(dashboard_snapshot_module, "run", fake_run)
+
+    state = dashboard_snapshot_module.expert_refresh_state()
+
+    assert state["active"] is True
+    assert state["complete"] is False
+    assert state["stage"] == "syncing_specialist_corpora"
+    assert state["phase"] == "atomic_checksum_sync_to_inzi"
+    assert state["archive_ready_days"] == 20
+    assert state["feature_ready_days"] == 20
+    assert state["completed_days"] == 20
+    assert state["percent"] == 85.0
+    assert all(row["stage"] == "feature_ready" for row in state["days"])
+    assert state["specialist_sync"]["current_bytes"] == 400
+    assert state["specialist_sync"]["total_bytes"] == 1_000
+    assert state["specialist_sync"]["percent"] == 40.0
+    assert "400/1,000 bytes (40.0%)" in state["latest_line"]
+
+
 def test_live_curriculum_outranks_durable_bootstrap_marker(monkeypatch) -> None:
     def stale_bootstrap_must_not_run() -> dict:
         raise AssertionError("completed bootstrap shadowed live curriculum")
@@ -4865,6 +5483,88 @@ def test_dashboard_source_integrity_keeps_canonical_protocol_current_while_stopp
     assert integrity["rows"]["pure"]["current"] is False
 
 
+def test_dashboard_source_integrity_accepts_fresh_receipt_backed_handoff_interval() -> None:
+    now = time.time()
+    payload = {
+        "observed_at": now,
+        "dashboard_sampled_at": now,
+        "service": {
+            "active": False,
+            "pid": 0,
+            "restart_count": 0,
+            "name": "production.service",
+        },
+        "specialist_handoff": {
+            "active": True,
+            "pid": 321,
+            "updated_at": now,
+            "phase": "source_specialist_verified",
+            "stage": "deck_agnostic_cumulative_core_training",
+            "source": "/state/post-source-core-handoff.json",
+            "source_specialist_id": "source-deck",
+            "next_specialist_id": "target-deck",
+            "service": {"name": "specialist-handoff.service"},
+        },
+        "training": {
+            "mode": "specialist_handoff",
+            "source": "/state/post-source-core-handoff.json",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": True,
+            "runtime_identity_reconciled": False,
+            "runtime_active_specialist": None,
+            "canonical_active_specialist": "source-deck",
+            "active_specialist": "",
+            "required_target_count": 2,
+            "program_progress": {"completed_specialist_ids": []},
+            "specialists": [
+                {
+                    "id": "source-deck",
+                    "active": True,
+                    "frozen": False,
+                    "public_mix_eligible": False,
+                },
+                {
+                    "id": "target-deck",
+                    "active": False,
+                    "frozen": False,
+                    "public_mix_eligible": False,
+                },
+            ],
+            "frozen_inference_opponents": [],
+            "source": "/state/specialists.yaml",
+        },
+        "curriculum": {
+            "active": False,
+            "run": "source-run",
+            "iteration": 5,
+            "stage": "measure:research_controls",
+        },
+        "model": {
+            "checkpoint_structure": {"adapter_expert_count": 2},
+        },
+        "gpus": [{"index": 1}],
+        "fleet": {
+            "inzi": {"reachable": True, "worker": {"active": False}},
+            "elmo": {"reachable": True, "worker": {"active": True}},
+            "bert": {"reachable": True, "worker": {"active": True}},
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    assert integrity["rows"]["stage"]["current"] is True
+    assert integrity["rows"]["progress"]["current"] is True
+    assert integrity["rows"]["protocol"]["current"] is True
+    assert integrity["rows"]["protocol"]["checks"]["canonical_pointer"] is True
+    assert integrity["rows"]["protocol"]["checks"]["specialist_roster"] is True
+    assert integrity["rows"]["handoff"]["current"] is True
+    assert "protocol" not in integrity["failed"]
+    assert "handoff" not in integrity["failed"]
+
+
 def test_dashboard_source_integrity_rejects_live_protocol_specialist_mismatch() -> None:
     payload = {
         "dashboard_sampled_at": time.time(),
@@ -5058,6 +5758,14 @@ def test_active_expert_card_uses_run_pinned_specialist_corpus(
             "window_start": "2026-07-02",
             "window_end": "2026-07-21",
             "complete": True,
+            "days": [
+                {
+                    "day": f"2026-07-{day:02d}",
+                    "stage": "archive_ready",
+                    "percent": 50.0,
+                }
+                for day in range(2, 22)
+            ],
         },
     )
 
@@ -5079,6 +5787,9 @@ def test_active_expert_card_uses_run_pinned_specialist_corpus(
         row["specialist_id"] == "dragapult-dusknoir"
         and row["matching_status"] == "filter_receipt_missing"
         for row in result["days"]
+    )
+    assert all(
+        row["stage"] == "source_ready_unfiltered" for row in result["days"]
     )
     assert result["historical_fallback"]["used"] is False
     assert result["historical_fallback"]["not_latest20"] is True
@@ -5176,6 +5887,102 @@ def test_active_expert_card_preserves_all_20_calendar_days_after_filtering(
         for row in result["days"][1:]
     )
     assert result["historical_fallback"]["used"] is False
+
+
+def test_active_expert_card_displays_finalized_next_boundary_window(
+    tmp_path: Path,
+) -> None:
+    corpus_dir = tmp_path / "historical-bound-corpus"
+    corpus_dir.mkdir()
+    shard = corpus_dir / "bound.features"
+    shard.write_bytes(b"immutable-bound-corpus")
+    manifest = corpus_dir / "manifest.json"
+    _write_json(
+        manifest,
+        {
+            "format": "pokebot-bootstrap-feature-manifest",
+            "selection": {"value": "dragapult-dusknoir"},
+            "quality_gates": {"passed": True},
+            "shards": [
+                {
+                    "path": shard.name,
+                    "bytes": shard.stat().st_size,
+                    "sha256": (
+                        "sha256:"
+                        + hashlib.sha256(shard.read_bytes()).hexdigest()
+                    ),
+                    "stats": {"records_kept": 27, "decisions_kept": 2_581},
+                }
+            ],
+            "totals": {"records_kept": 27, "decisions_kept": 2_581},
+        },
+    )
+    protected = corpus_dir / "PROTECTED_EXPERT_CORPUS.json"
+    _write_json(
+        protected,
+        {
+            "schema": "poke_bot.pinned_expert_corpus/v1",
+            "protected": True,
+            "manifest": manifest.name,
+            "manifest_sha256": (
+                "sha256:" + hashlib.sha256(manifest.read_bytes()).hexdigest()
+            ),
+        },
+    )
+    days = [
+        (date(2026, 7, 4) + timedelta(days=offset)).isoformat()
+        for offset in range(20)
+    ]
+    refresh = {
+        "available": True,
+        "active": True,
+        "complete": False,
+        "archive_window_ready": True,
+        "stage": "syncing_specialist_corpora",
+        "phase": "atomic_checksum_sync_to_inzi",
+        "window_start": days[0],
+        "window_end": days[-1],
+        "feature_ready_days": 20,
+        "local_feature_ready_days": 0,
+        "total_days": 20,
+        "percent": 86.0,
+        "latest_line": "20/20 finalized; checksum sync active",
+        "days": [
+            {
+                "day": day,
+                "stage": "feature_ready",
+                "percent": 100.0,
+                "service": {"active": False},
+            }
+            for day in days
+        ],
+    }
+
+    result = dashboard_snapshot_module.active_expert_corpus_state(
+        {
+            "expert_rehearsal": {
+                "manifest": str(protected),
+                "active": False,
+                "state": "scheduled",
+            }
+        },
+        refresh,
+    )
+
+    assert result["stage"] == "syncing_specialist_corpora"
+    assert result["phase"] == "atomic_checksum_sync_to_inzi"
+    assert result["current"] == 20
+    assert result["total"] == 20
+    assert result["feature_ready_days"] == 20
+    assert result["percent"] == 86.0
+    assert all(
+        row["binding_status"] == "staged_for_next_safe_boundary"
+        for row in result["days"]
+    )
+    assert result["active_bound_corpus"]["records_kept"] == 27
+    assert result["active_bound_corpus"]["decisions_kept"] == 2_581
+    assert result["active_bound_corpus"]["immutable_until_safe_boundary"] is True
+    assert "immutable run binding retained" in result["latest_line"]
 
 
 def test_active_expert_card_separates_receipted_all_zero_historical_fallback(
@@ -5345,6 +6152,9 @@ def test_live_post_starmie_handoff_reports_remaining_program(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
+    # Keep the historical-service fixture isolated from any reusable cycle
+    # receipts present on the machine running the test.
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", tmp_path)
     state = tmp_path / "post-starmie.json"
     log = tmp_path / "post-starmie.log"
     roster = tmp_path / "matchup-adapter-roster.json"
@@ -5391,11 +6201,22 @@ def test_live_post_starmie_handoff_reports_remaining_program(
     monkeypatch.setattr(
         dashboard_snapshot_module,
         "unit_state",
-        lambda *_args, **_kwargs: {
+        lambda service, **_kwargs: {
             "load_state": "loaded",
-            "active": True,
-            "active_state": "activating",
-            "pid": 123,
+            "active": service
+            == dashboard_snapshot_module.POST_STARMIE_HANDOFF_SERVICE,
+            "active_state": (
+                "activating"
+                if service
+                == dashboard_snapshot_module.POST_STARMIE_HANDOFF_SERVICE
+                else "inactive"
+            ),
+            "pid": (
+                123
+                if service
+                == dashboard_snapshot_module.POST_STARMIE_HANDOFF_SERVICE
+                else 0
+            ),
             "memory_bytes": 456,
         },
     )
@@ -5568,6 +6389,406 @@ def test_new_core_version_does_not_reuse_prior_version_tqdm(
     assert "MISS/REBUILD" in result["latest_line"]
 
 
+def test_live_cycle_selects_newest_transition_by_receipt_not_sorted_digest(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "agent"
+    state_root = root / "outputs/state"
+    log_root = root / "outputs/logs"
+    state_root.mkdir(parents=True)
+    log_root.mkdir(parents=True)
+    _write_json(
+        state_root / "specialist-transition-graph.json",
+        {
+            "transitions": {
+                "sha256:zzzz": {
+                    "active_specialist": "dragapult-dusknoir",
+                    "receipts": {
+                        "specialist_transition": {
+                            "failed_at": "2026-07-25T04:00:00+00:00"
+                        }
+                    },
+                },
+                "sha256:0000": {
+                    "active_specialist": "dudunsparce",
+                    "receipts": {
+                        "specialist_transition": {
+                            "failed_at": "2026-07-26T02:15:50+00:00"
+                        }
+                    },
+                },
+            }
+        },
+    )
+    _write_json(
+        state_root / "post-dudunsparce-core-v6-handoff.json",
+        {
+            "schema": "poke_bot.post_starmie_core_handoff_state/v1",
+            "phase": "starmie_pass_verified",
+            "source": {"specialist_id": "dudunsparce"},
+        },
+    )
+    _write_json(
+        state_root / "post-dudunsparce-cumulative-core-v6-handoff.json",
+        {
+            "schema": "poke_bot.post_specialist_core_refresh_handoff/v1",
+            "core_refresh": {"max_epochs": 25},
+        },
+    )
+    log_path = log_root / "specialist-transition-graph.log"
+    log_path.write_text(
+        "[core-refresh] loading protected balanced corpus records=10 "
+        "decisions=100 archetypes=2 teachers=6 device=cuda:1\n"
+        "pack Blackwell corpus:  40%|####| 4/10 "
+        "[00:01<00:01, 4.00game/s]\n",
+        encoding="utf-8",
+    )
+    frozen = tmp_path / "frozen.json"
+    _write_json(frozen, {"specialists": []})
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", root)
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "SPECIALIST_TRANSITION_GRAPH_STATE",
+        state_root / "specialist-transition-graph.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "SPECIALIST_CYCLE_HANDOFF_LOG", log_path
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "FROZEN_SPECIALIST_REGISTRY", frozen
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, **_kwargs: {
+            "name": name,
+            "load_state": "loaded",
+            "active": True,
+            "active_state": "activating",
+            "pid": 123,
+        },
+    )
+
+    result = dashboard_snapshot_module.post_starmie_specialist_handoff_state()
+
+    assert result["source_specialist_id"] == "dudunsparce"
+    assert result["source"].endswith("post-dudunsparce-core-v6-handoff.json")
+    assert result["stage"] == "deck_agnostic_cumulative_core_corpus_pack"
+    assert result["current"] == 4
+    assert result["total"] == 10
+
+
+def test_cycle_autorestart_reports_v6_sync_instead_of_stale_handoff(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "agent"
+    state_root = root / "outputs/state"
+    log_root = root / "outputs/logs"
+    state_root.mkdir(parents=True)
+    log_root.mkdir(parents=True)
+    transition = state_root / "specialist-transition-graph.json"
+    _write_json(
+        transition,
+        {
+            "transitions": {
+                "receipt": {
+                    "active_specialist": "dragapult-dusknoir",
+                    "status": "failed",
+                    "receipts": {
+                        "specialist_transition": {
+                            "status": "failed",
+                            "error": (
+                                "expanded cumulative-core corpus is not "
+                                "atomically promoted"
+                            ),
+                        }
+                    },
+                }
+            }
+        },
+    )
+    sync = state_root / "expert-latest20-v6-strategic-sync.json"
+    _write_json(
+        sync,
+        {
+            "status": "syncing_balanced_core",
+            "copied_bytes": 80,
+            "source_bytes": 100,
+            "percent": 80.0,
+            "bandwidth_limit_kib_per_second": 8000,
+        },
+    )
+    frozen = tmp_path / "frozen.json"
+    _write_json(
+        frozen,
+        {
+            "specialists": [
+                {"specialist_id": "alakazam"},
+                {"specialist_id": "hops-trevenant"},
+                {"specialist_id": "lucario"},
+                {"specialist_id": "starmie"},
+            ]
+        },
+    )
+    roster = tmp_path / "roster.json"
+    _write_json(roster, {"required_specialist_count": 18})
+    prestage = state_root / "next-specialist-prestage-v1.json"
+    _write_json(
+        prestage,
+        {
+            "status": "blocked",
+            # Current receipts use the compact scalar identity. The dashboard
+            # also accepts the older object-shaped identity.
+            "selected_specialist": "dudunsparce",
+        },
+    )
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", root)
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "SPECIALIST_TRANSITION_GRAPH_STATE", transition
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "V6_STRATEGIC_SPECIALIST_SYNC_STATE", sync
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_CURRENT",
+        root / "data/bootstrap/current-specialist-latest20-v6-strategic",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "FROZEN_SPECIALIST_REGISTRY", frozen
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "CANONICAL_MATCHUP_ADAPTER_ROSTER", roster
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "NEXT_SPECIALIST_PRESTAGE_STATE", prestage
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "SPECIALIST_CYCLE_HANDOFF_LOG",
+        log_root / "specialist-transition-graph.log",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, **_kwargs: {
+            "name": name,
+            "load_state": "loaded",
+            "active": False,
+            "active_state": "activating",
+            "sub_state": "auto-restart",
+            "pid": 0,
+        },
+    )
+
+    result = dashboard_snapshot_module.post_starmie_specialist_handoff_state()
+
+    assert result["active"] is True
+    assert result["phase"] == "waiting_for_v6_corpus_sync"
+    assert result["stage"] == "atomic_checksum_sync_to_inzi"
+    assert result["source_specialist_id"] == "dragapult-dusknoir"
+    assert result["completed_specialists_after_starmie"] == 5
+    assert result["next_specialist_id"] == "dudunsparce"
+    assert result["current"] == 80
+    assert result["total"] == 100
+    assert result["percent"] == 80.0
+    assert "80.0% complete" in result["latest_line"]
+
+
+def test_inactive_cycle_surfaces_latest_failed_core_gate(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "agent"
+    state_root = root / "outputs/state"
+    log_root = root / "outputs/logs"
+    state_root.mkdir(parents=True)
+    log_root.mkdir(parents=True)
+    transition = state_root / "specialist-transition-graph.json"
+    _write_json(
+        transition,
+        {
+            "transitions": {
+                "receipt": {
+                    "active_specialist": "marnie-s-grimmsnarl-ex",
+                    "status": "failed",
+                    "receipts": {
+                        "specialist_transition": {
+                            "status": "failed",
+                            "failed_at": "2026-07-26T16:27:01+00:00",
+                            "error": (
+                                "refreshed core failed established gameplay "
+                                "regression"
+                            ),
+                        }
+                    },
+                }
+            }
+        },
+    )
+    _write_json(
+        state_root / "post-marnie-s-grimmsnarl-ex-core-v7-handoff.json",
+        {
+            "phase": "core_gameplay_regression_complete",
+            "source": {"specialist_id": "marnie-s-grimmsnarl-ex"},
+            "core_gameplay_regression": {
+                "schema": "poke_bot.multi_teacher_core_gameplay_regression/v1",
+                "passed": False,
+                "criteria": {
+                    "all_reports_valid": True,
+                    "aggregate_raw_win_rate": 0.5044642857142858,
+                    "aggregate_raw_win_rate_minimum": 0.4,
+                    "per_teacher_raw_win_rate_minimum": 0.35,
+                },
+                "results": [
+                    {
+                        "specialist_id": "alakazam",
+                        "report": {"games": 80, "wr": 0.725},
+                    },
+                    {
+                        "specialist_id": "marnie-s-grimmsnarl-ex",
+                        "report": {"games": 80, "wr": 0.325},
+                    },
+                ],
+            },
+        },
+    )
+    _write_json(
+        state_root
+        / "post-marnie-s-grimmsnarl-ex-cumulative-core-v7-handoff.json",
+        {"core_refresh": {"max_epochs": 25}},
+    )
+    frozen = tmp_path / "frozen.json"
+    _write_json(frozen, {"specialists": []})
+    roster = tmp_path / "roster.json"
+    _write_json(roster, {"required_specialist_count": 18})
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", root)
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "SPECIALIST_TRANSITION_GRAPH_STATE",
+        transition,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "SPECIALIST_CYCLE_HANDOFF_LOG",
+        log_root / "specialist-transition-graph.log",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "FROZEN_SPECIALIST_REGISTRY", frozen
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "CANONICAL_MATCHUP_ADAPTER_ROSTER",
+        roster,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, **_kwargs: {
+            "name": name,
+            "load_state": "loaded",
+            "active": False,
+            "active_state": "inactive",
+            "sub_state": "dead",
+            "pid": 0,
+        },
+    )
+
+    result = dashboard_snapshot_module.post_starmie_specialist_handoff_state()
+
+    assert result["active"] is False
+    assert result["terminal_failure"] is True
+    assert result["phase"] == "core_gameplay_regression_failed"
+    assert result["stage"] == "deck_agnostic_cumulative_core_gate_failed"
+    assert result["current"] == 160
+    assert result["total"] == 160
+    assert result["percent"] == 100.0
+    assert result["core_gameplay_regression"]["failed_teachers"] == [
+        {
+            "specialist_id": "marnie-s-grimmsnarl-ex",
+            "games": 80,
+            "win_rate": 0.325,
+        }
+    ]
+    assert "aggregate 50.45%" in result["latest_line"]
+    assert "marnie-s-grimmsnarl-ex 32.50%" in result["latest_line"]
+
+
+def test_authoritative_training_prefers_terminal_handoff_failure() -> None:
+    result = dashboard_snapshot_module.authoritative_training_state(
+        {
+            "run": "stale-run",
+            "active": False,
+            "progress": {"stage": "measure:research_controls"},
+        },
+        {},
+        {
+            "active": False,
+            "terminal_failure": True,
+            "source": "/state/current-handoff.json",
+            "log": "/logs/current-handoff.log",
+            "latest_line": "Cumulative core gameplay gate failed closed.",
+            "stage": "deck_agnostic_cumulative_core_gate_failed",
+            "current": 560,
+            "total": 560,
+            "percent": 100.0,
+            "core_gameplay_regression": {"passed": False},
+        },
+    )
+
+    assert result["status"] == "failed"
+    assert result["mode"] == "specialist_handoff"
+    assert result["phase"] == "deck_agnostic_cumulative_core_gate_failed"
+    assert result["service"]["active"] is False
+    assert result["terminal_failure"] is True
+    assert result["core_gameplay_regression"] == {"passed": False}
+
+
+def test_reconcile_preserves_inactive_terminal_handoff_failure() -> None:
+    result = dashboard_snapshot_module.reconcile_current_specialist_handoff(
+        {
+            "available": True,
+            "active": False,
+            "terminal_failure": True,
+            "phase": "core_gameplay_regression_failed",
+            "stage": "deck_agnostic_cumulative_core_gate_failed",
+            "latest_line": "Cumulative core gameplay gate failed closed.",
+        },
+        active_specialist="marnie-s-grimmsnarl-ex",
+        program_progress={
+            "completed_frozen": 7,
+            "remaining_after_active": 11,
+        },
+        next_specialist="garchomp",
+    )
+
+    assert result["terminal_failure"] is True
+    assert result["phase"] == "core_gameplay_regression_failed"
+    assert result["stage"] == "deck_agnostic_cumulative_core_gate_failed"
+    assert result["latest_line"] == (
+        "Cumulative core gameplay gate failed closed."
+    )
+
+
+def test_active_handoff_inherits_canonical_next_specialist() -> None:
+    result = dashboard_snapshot_module.reconcile_current_specialist_handoff(
+        {
+            "active": True,
+            "completed_specialists_after_starmie": 5,
+            "remaining_specialists_after_starmie": 13,
+            "next_specialist_id": None,
+        },
+        active_specialist="dragapult-dusknoir",
+        next_specialist="dudunsparce",
+    )
+
+    assert result["next_specialist_id"] == "dudunsparce"
+    assert result["completed_specialists"] == 5
+    assert result["remaining_specialists_after_active"] == 13
+
+
 def test_active_handoff_supersedes_stale_protocol_next_action() -> None:
     protocol = {
         "available": True,
@@ -5576,6 +6797,10 @@ def test_active_handoff_supersedes_stale_protocol_next_action() -> None:
         "canonical_active_specialist": "starmie",
         "shared_core_status": "ready",
         "next_action": "continue Starmie training",
+        "program_progress": {
+            "required_specialists_total": 18,
+            "completed_frozen": 5,
+        },
     }
     handoff = {
         "active": True,
@@ -5595,6 +6820,7 @@ def test_active_handoff_supersedes_stale_protocol_next_action() -> None:
     assert result["shared_core_status"] == "refreshing"
     assert result["handoff_reconciled"] is True
     assert result["canonical_pointer_stale"] is True
+    assert result["program_progress"]["remaining_after_active"] == 13
     assert "continue Starmie training" not in result["next_action"]
     assert "Epoch 12/25" in result["next_action"]
     assert "materialize every frozen predecessor" in result["next_action"]
@@ -5649,3 +6875,898 @@ def test_dashboard_exposes_rare_route_boundary_preparation() -> None:
     ).read_text(encoding="utf-8")
     assert "pokebot-rare-route-assets-v37-import.service" in snapshot_source
     assert "rare-route-assets-v37-ready.json" in snapshot_source
+
+
+class _DashboardFakeTensor:
+    def __init__(self, *shape: int) -> None:
+        self.shape = shape
+
+    def numel(self) -> int:
+        result = 1
+        for dimension in self.shape:
+            result *= dimension
+        return result
+
+
+def _verified_expanded_head_contract() -> dict:
+    state_dict = {
+        f"{module}.weight": _DashboardFakeTensor(3, 4)
+        for module in dashboard_snapshot_module.EXPANDED_HEAD_MODULES.values()
+    }
+    contract = {
+        "schema": dashboard_snapshot_module.EXPANDED_HEAD_CONTRACT_SCHEMA,
+        "architecture_present_heads": list(
+            dashboard_snapshot_module.EXPANDED_HEAD_MODULES.values()
+        ),
+        "trained_heads": ["action_q_head", "action_type"],
+        "gradient_enabled_heads": ["action_q_head"],
+        "runtime_enabled_heads": ["action_q_head"],
+        "loss_weights": {"action_q_head": 0.25},
+        "heads": {
+            "action_q_head": {
+                "train_loss": 0.125,
+                "validation_loss": 0.25,
+                "labeled_rows": 80,
+                "masked_rows": 20,
+                "total_rows": 100,
+            }
+        },
+        "stage": "action_heads",
+        "epoch": 5,
+        "epochs_total": 25,
+    }
+    return dashboard_snapshot_module._expanded_head_checkpoint_contract(
+        state_dict,
+        {"expanded_head_training": contract},
+    )
+
+
+class _DashboardFakeNonzero:
+    def item(self) -> int:
+        return 1
+
+
+class _DashboardFakeFusionTensor(_DashboardFakeTensor):
+    def count_nonzero(self) -> _DashboardFakeNonzero:
+        return _DashboardFakeNonzero()
+
+
+def test_decision_fusion_checkpoint_contract_requires_exact_all_head_inventory() -> None:
+    required = list(dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS)
+    result = dashboard_snapshot_module._decision_fusion_checkpoint_contract(
+        {
+            "decision_fusion.residual.2.weight": _DashboardFakeFusionTensor(4, 4),
+            "decision_fusion.residual.2.bias": _DashboardFakeFusionTensor(4),
+        },
+        {
+            "model_config": {
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": True,
+            },
+            "provenance": {
+                "decision_fusion": {
+                    "schema": dashboard_snapshot_module.DECISION_FUSION_SCHEMA,
+                    "required_heads": required,
+                    "runtime_enabled": True,
+                }
+            },
+        },
+    )
+
+    assert result["verified"] is True
+    assert result["phase"] == "runtime_active"
+    assert result["serving_eligible"] is True
+    assert result["trained_nonzero"] is True
+    assert result["required_head_count"] == 17
+
+
+def test_decision_fusion_checkpoint_contract_fails_closed_if_successor_drops_head() -> None:
+    required = list(dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS)
+    result = dashboard_snapshot_module._decision_fusion_checkpoint_contract(
+        {
+            "decision_fusion.residual.2.weight": _DashboardFakeFusionTensor(4, 4),
+        },
+        {
+            "model_config": {
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": False,
+            },
+            "provenance": {
+                "decision_fusion": {
+                    "schema": dashboard_snapshot_module.DECISION_FUSION_SCHEMA,
+                    "required_heads": required[:-1],
+                    "runtime_enabled": False,
+                }
+            },
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["phase"] == "contract_mismatch"
+    assert result["serving_eligible"] is False
+
+
+def test_dashboard_renders_checksum_bound_all_head_decision_path() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'id="model-fusion-status"' in html
+    assert 'id="model-fusion-heads"' in html
+    assert "FUSED POLICY ACTIVE" in html
+    assert "TRAINING WARMUP · RUNTIME FLAT" in html
+    assert "loop_activation_bound" in html
+    assert "successor_activation_bound" in html
+
+
+def test_live_curriculum_reconciles_stale_specialist_boundary_projection() -> None:
+    result = dashboard_snapshot_module.reconcile_protocol_with_live_curriculum(
+        {
+            "available": True,
+            "preparation": {
+                "terminal_protocol_active": False,
+                "current_premium_gate_games": 1750,
+                "current_official_research_games": 1000,
+                "current_total_evaluation_games": 2750,
+            },
+        },
+        service={
+            "active": True,
+            "name": "pokebot-pure-rl-trevenant-staged.service",
+            "command": (
+                "python train.py --minimum-terminal-iteration 5 "
+                "--iterations 16"
+            ),
+        },
+        curriculum={
+            "run": "pure_rl_marnie",
+            "latest_official_heldout": {"games": 1000},
+            "gate_program": {
+                "active_gate_id": "frozen-specialists-r6",
+                "next_gate": {
+                    "evaluation": {"games_total": 2250},
+                    "research_measurements": [
+                        {"opponent_id": f"official-{index}", "games": 250}
+                        for index in range(4)
+                    ],
+                },
+            },
+        },
+    )
+
+    prep = result["preparation"]
+    assert prep["terminal_protocol_active"] is True
+    assert prep["terminal_active_gate_id"] == "frozen-specialists-r6"
+    assert prep["current_premium_gate_games"] == 2250
+    assert prep["current_official_research_games"] == 1000
+    assert prep["current_total_evaluation_games"] == 3250
+    assert prep["gate_handler_minimum_completed_iteration"] == 5
+    assert prep["terminal_iteration_ceiling"] == 15
+    assert prep["gate_handler_source"] == "live_service_and_gate_program"
+
+
+def test_successor_fusion_activation_binds_exact_bootstrap_checkpoint(
+    tmp_path: Path,
+) -> None:
+    digest = "sha256:" + "a" * 64
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    receipt_path = (
+        state_root
+        / "marnie-s-grimmsnarl-ex-specialist-rl-activation-v6.json"
+    )
+    fusion = {
+        "schema": dashboard_snapshot_module.DECISION_FUSION_SCHEMA,
+        "runtime_enabled": True,
+        "required_heads": list(
+            dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS
+        ),
+    }
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.specialist_rl_activation/v2",
+                "status": "ready",
+                "identity": {
+                    "next_specialist_bootstrap": {
+                        "specialist_id": "marnie-s-grimmsnarl-ex",
+                        "checkpoint_digest": digest,
+                        "decision_fusion": fusion,
+                    },
+                    "runtime_registration": {
+                        "specialist_id": "marnie-s-grimmsnarl-ex",
+                        "runtime_row": {
+                            "initial_checkpoint_sha256": digest,
+                            "decision_fusion": {
+                                **fusion,
+                                "required": True,
+                            },
+                        },
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = dashboard_snapshot_module._successor_decision_fusion_activation(
+        state_root=state_root,
+        specialist_id="marnie-s-grimmsnarl-ex",
+        checkpoint_digest=digest,
+    )
+
+    assert result["runtime_enabled"] is True
+    assert result["training_action_eligible"] is True
+    assert result["terminal_serving_eligible"] is False
+    assert result["checkpoint_digest"] == digest
+
+
+def test_successor_fusion_activation_rejects_wrong_checkpoint(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    (
+        state_root / "garchomp-specialist-rl-activation-v7.json"
+    ).write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.specialist_rl_activation/v2",
+                "status": "ready",
+                "identity": {
+                    "next_specialist_bootstrap": {
+                        "specialist_id": "garchomp",
+                        "checkpoint_digest": "sha256:" + "b" * 64,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert not dashboard_snapshot_module._successor_decision_fusion_activation(
+        state_root=state_root,
+        specialist_id="garchomp",
+        checkpoint_digest="sha256:" + "c" * 64,
+    )
+
+
+def test_successor_fusion_activation_accepts_committed_nonchampion_descendant(
+    tmp_path: Path,
+) -> None:
+    seed_digest = "sha256:" + "a" * 64
+    learner_digest = "sha256:" + "b" * 64
+    fingerprint = "sha256:" + "c" * 64
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    fusion = {
+        "schema": dashboard_snapshot_module.DECISION_FUSION_SCHEMA,
+        "runtime_enabled": True,
+        "required_heads": list(
+            dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS
+        ),
+    }
+    (
+        state_root / "garchomp-specialist-rl-activation-v7.json"
+    ).write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.specialist_rl_activation/v2",
+                "status": "ready",
+                "identity": {
+                    "next_specialist_bootstrap": {
+                        "specialist_id": "garchomp",
+                        "checkpoint_digest": seed_digest,
+                        "decision_fusion": fusion,
+                    },
+                    "runtime_registration": {
+                        "specialist_id": "garchomp",
+                        "runtime_row": {
+                            "initial_checkpoint_sha256": seed_digest,
+                            "decision_fusion": {
+                                **fusion,
+                                "required": True,
+                            },
+                        },
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "commits/iter_00000.json").write_text(
+        json.dumps(
+            {
+                "design_fingerprint": fingerprint,
+                # Continuous-learner safety carry can publish the exact fused
+                # descendant while retaining the prior heldout champion.
+                "champion": {"digest": seed_digest},
+                "history": [
+                    {
+                        "completed": True,
+                        "candidate": {"digest": learner_digest},
+                        "learner_before": {"digest": seed_digest},
+                        "learner_after": {"digest": learner_digest},
+                        "next_collection_publish": {
+                            "digest": learner_digest,
+                            "local_ok": True,
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = dashboard_snapshot_module._successor_decision_fusion_activation(
+        state_root=state_root,
+        specialist_id="garchomp",
+        checkpoint_digest=learner_digest,
+        run_dir=run_dir,
+        design_fingerprint=fingerprint,
+        initial_checkpoint_digest=seed_digest,
+    )
+
+    assert result["runtime_enabled"] is True
+    assert result["checkpoint_digest"] == learner_digest
+    assert result["bootstrap_checkpoint_digest"] == seed_digest
+    assert result["activation_scope"] == "successor_committed_descendant"
+    assert result["lineage_commit"].endswith("iter_00000.json")
+
+
+def test_successor_initial_learner_digest_precedes_materialized_seed() -> None:
+    bootstrap_digest = "sha256:" + "a" * 64
+    seed_digest = "sha256:" + "b" * 64
+
+    assert (
+        dashboard_snapshot_module._initial_learner_checkpoint_digest(
+            {},
+            {
+                "initial_learner_checkpoint": {
+                    "digest": bootstrap_digest,
+                },
+                "checkpoint_digest": seed_digest,
+            },
+        )
+        == bootstrap_digest
+    )
+
+
+def test_dashboard_runtime_root_follows_canonical_selector(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "active-runtime"
+    selector = tmp_path / "specialist_runtime.env"
+    selector.write_text(
+        "\n".join(
+            [
+                "POKEBOT_ACTIVE_SPECIALIST=rockets-mewtwo",
+                f"POKEBOT_SPECIALIST_RUNTIME_ROOT={runtime_root}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        dashboard_snapshot_module._selected_specialist_runtime_root(
+            selector,
+            tmp_path / "stale-fallback",
+        )
+        == runtime_root
+    )
+
+
+def test_successor_fusion_activation_rejects_descendant_design_mismatch(
+    tmp_path: Path,
+) -> None:
+    seed_digest = "sha256:" + "a" * 64
+    learner_digest = "sha256:" + "b" * 64
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    fusion = {
+        "schema": dashboard_snapshot_module.DECISION_FUSION_SCHEMA,
+        "runtime_enabled": True,
+        "required_heads": list(
+            dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS
+        ),
+    }
+    (state_root / "garchomp-specialist-rl-activation-v7.json").write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.specialist_rl_activation/v2",
+                "status": "ready",
+                "identity": {
+                    "next_specialist_bootstrap": {
+                        "specialist_id": "garchomp",
+                        "checkpoint_digest": seed_digest,
+                        "decision_fusion": fusion,
+                    },
+                    "runtime_registration": {
+                        "specialist_id": "garchomp",
+                        "runtime_row": {
+                            "initial_checkpoint_sha256": seed_digest,
+                            "decision_fusion": {**fusion, "required": True},
+                        },
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "commits/iter_00000.json").write_text(
+        json.dumps(
+            {
+                "completed": True,
+                "design_fingerprint": "sha256:" + "d" * 64,
+                "champion": {"digest": learner_digest},
+                "candidate": {"digest": learner_digest},
+                "learner_before": {"digest": seed_digest},
+                "learner_after": {"digest": learner_digest},
+                "next_collection_publish": {
+                    "digest": learner_digest,
+                    "local_ok": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert not dashboard_snapshot_module._successor_decision_fusion_activation(
+        state_root=state_root,
+        specialist_id="garchomp",
+        checkpoint_digest=learner_digest,
+        run_dir=run_dir,
+        design_fingerprint="sha256:" + "c" * 64,
+        initial_checkpoint_digest=seed_digest,
+    )
+
+
+def test_expanded_head_checkpoint_contract_inventories_exact_tensors_and_metrics() -> None:
+    result = _verified_expanded_head_contract()
+
+    assert result["verified"] is True
+    assert result["legacy_v5"] is False
+    assert result["stage"] == "action_heads"
+    assert len(result["heads"]) == len(
+        dashboard_snapshot_module.EXPANDED_HEAD_MODULES
+    )
+    action_q = next(row for row in result["heads"] if row["id"] == "action_q")
+    assert action_q["module"] == "action_q_head"
+    assert action_q["present"] is True
+    assert action_q["declared_present"] is True
+    assert action_q["trained"] is True
+    assert action_q["gradient_enabled"] is True
+    assert action_q["runtime_enabled"] is True
+    assert action_q["parameter_count"] == 12
+    assert action_q["loss_weight"] == pytest.approx(0.25)
+    assert action_q["train_loss"] == pytest.approx(0.125)
+    assert action_q["validation_loss"] == pytest.approx(0.25)
+    assert action_q["labeled_rows"] == 80
+    assert action_q["masked_rows"] == 20
+    assert action_q["total_rows"] == 100
+    assert action_q["coverage"] == pytest.approx(0.8)
+
+
+def test_expanded_head_checkpoint_contract_fails_closed_on_metadata_tensor_drift() -> None:
+    result = dashboard_snapshot_module._expanded_head_checkpoint_contract(
+        {"action_q_head.weight": _DashboardFakeTensor(2, 2)},
+        {
+            "expanded_head_training": {
+                "schema": (
+                    dashboard_snapshot_module.EXPANDED_HEAD_CONTRACT_SCHEMA
+                ),
+                "architecture_present_heads": ["action_type_head"],
+                "heads": {"invented_head": {"trained": True}},
+            }
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["missing_tensor_heads"] == ["action_type"]
+    assert result["undeclared_tensor_heads"] == ["action_q"]
+    assert result["unknown_declared_heads"] == ["invented_head"]
+    assert all(row["contract_valid"] is False for row in result["heads"])
+
+
+def test_expanded_head_checkpoint_contract_keeps_legacy_v5_valid() -> None:
+    result = dashboard_snapshot_module._expanded_head_checkpoint_contract(
+        {"policy_head.weight": _DashboardFakeTensor(2, 2)},
+        {},
+    )
+
+    assert result["available"] is False
+    assert result["verified"] is True
+    assert result["legacy_v5"] is True
+    assert result["heads"] == []
+
+
+def test_live_model_exposes_only_checksum_bound_expanded_heads() -> None:
+    checkpoint = "/run/iter_00012.pt"
+    digest = "sha256:" + "c" * 64
+    expanded = _verified_expanded_head_contract()
+    model = learner_model_state(
+        {
+            "run_name": "expanded-head-test",
+            "design_contract": {
+                "learner": {
+                    "profile": {"d_model": 96, "temporal_layers": 1},
+                }
+            },
+        },
+        {"learner": {"path": checkpoint, "digest": digest}},
+        checkpoint_structure={
+            "verified": True,
+            "checkpoint": checkpoint,
+            "checkpoint_digest": digest,
+            "model_parameters": 2_000_000,
+            "expanded_head_training": expanded,
+        },
+    )
+
+    assert model["expanded_head_training"]["verified"] is True
+    assert model["heads"]["action_q"]["expanded"] is True
+    assert model["heads"]["action_q"]["scope"] == (
+        "active_committed_checkpoint"
+    )
+    assert model["heads"]["action_q"]["trained"] is True
+    assert model["heads"]["action_q"]["runtime_enabled"] is True
+
+
+def test_live_model_marks_every_fusion_input_as_used_in_decisions() -> None:
+    checkpoint = "/run/iter_00012.pt"
+    digest = "sha256:" + "c" * 64
+    expanded = _verified_expanded_head_contract()
+    required = list(dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS)
+    model = learner_model_state(
+        {
+            "run_name": "expanded-head-fusion-test",
+            "design_contract": {
+                "learner": {
+                    "profile": {"d_model": 96, "temporal_layers": 1},
+                }
+            },
+        },
+        {"learner": {"path": checkpoint, "digest": digest}},
+        checkpoint_structure={
+            "verified": True,
+            "checkpoint": checkpoint,
+            "checkpoint_digest": digest,
+            "model_parameters": 2_000_000,
+            "expanded_head_training": expanded,
+            "decision_fusion": {
+                "verified": True,
+                "runtime_enabled": True,
+                "serving_eligible": True,
+                "required_heads": required,
+            },
+        },
+    )
+    model["decision_fusion"]["activation_bound"] = True
+
+    # The helper receives activation receipts separately in production.  This
+    # unit-level fixture verifies the per-head projection using an exact bound
+    # fusion contract on a second call.
+    structure = dict(model["checkpoint_structure"])
+    structure["decision_fusion"] = {
+        **structure["decision_fusion"],
+        "activation_bound": True,
+    }
+    model = learner_model_state(
+        {
+            "run_name": "expanded-head-fusion-test",
+            "design_contract": {
+                "learner": {
+                    "profile": {"d_model": 96, "temporal_layers": 1},
+                }
+            },
+        },
+        {
+            "learner": {"path": checkpoint, "digest": digest},
+            "decision_fusion_activation": {
+                "schema": "poke_bot.causal_decision_fusion_activation/v1",
+                "learner_digest": digest,
+                "runtime_enabled": True,
+            },
+        },
+        checkpoint_structure=structure,
+    )
+
+    assert model["decision_fusion"]["activation_bound"] is True
+    assert all(
+        model["heads"][head_id]["used_in_decisions"] is True
+        for head_id in (
+            "value",
+            "archetype",
+            "opponent_hand",
+            "opponent_remainder",
+            "lethal_threat",
+            "prize_race",
+            "action_q",
+            "action_type",
+            "action_target",
+            "action_resource",
+            "action_utility",
+            "tactical_outcome",
+            "opponent_response",
+            "resource_forecast",
+            "game_phase",
+            "outcome_distribution",
+            "remaining_turns",
+        )
+    )
+
+
+def test_staged_head_schedule_never_becomes_an_active_runtime_claim() -> None:
+    result = dashboard_snapshot_module.staged_expanded_head_training_state(
+        {},
+        {
+            "next_specialist": {"id": "dudunsparce"},
+            "training": {
+                "expanded_head_training": {
+                    "schedule_version": "expanded-heads-v1",
+                }
+            },
+        },
+    )
+
+    assert result["scope"] == "staged_next_specialist"
+    assert result["specialist_id"] == "dudunsparce"
+    assert result["available"] is True
+    assert result["verified"] is False
+    assert result["checkpoint_pending"] is True
+    assert result["heads"] == []
+
+
+def test_transition_heads_prefer_checksum_bound_active_core(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "core"
+    run_dir.mkdir()
+    checkpoint = run_dir / "checkpoints" / "epoch_03.pt"
+    checkpoint.parent.mkdir()
+    checkpoint.write_bytes(b"checkpoint")
+    digest = "sha256:" + "a" * 64
+    (run_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "status": "training",
+                "history": [
+                    {
+                        "epoch": 3,
+                        "checkpoint": str(checkpoint),
+                        "checkpoint_digest": digest,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_file_sha256_matches",
+        lambda *_args, **_kwargs: True,
+    )
+    expanded = _verified_expanded_head_contract()
+    expanded["schema"] = "poke_bot.expanded_head_training/v1"
+    expanded["architecture_present_heads"] = [
+        str(value["id"]) for value in expanded["heads"]
+    ]
+    expanded["heads"] = {
+        str(value["id"]): {**value, "present": True}
+        for value in expanded["heads"]
+    }
+    (run_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "status": "training",
+                "history": [
+                    {
+                        "epoch": 3,
+                        "checkpoint": str(checkpoint),
+                        "checkpoint_digest": digest,
+                        "expanded_head_training": expanded,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = dashboard_snapshot_module.staged_expanded_head_training_state(
+        {},
+        {
+            "next_specialist": {"id": "dudunsparce"},
+            "training": {"expanded_head_training": {"future": True}},
+        },
+        cumulative_core_contract={
+            "core_refresh": {
+                "run_dir": str(run_dir),
+                "max_epochs": 25,
+            }
+        },
+    )
+
+    assert result["scope"] == "active_cumulative_core_refresh"
+    assert result["specialist_id"] == "deck-agnostic-core"
+    assert result["verified"] is True
+    assert result["checkpoint_pending"] is False
+    assert result["checkpoint"] == str(checkpoint)
+    assert result["checkpoint_digest"] == digest
+    assert result["epoch"] == 3
+    assert result["epochs_target"] == 25
+    assert result["source"] == str(run_dir / "state.json")
+
+
+def test_live_specialist_bootstrap_supersedes_completed_core_heads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    core_dir = tmp_path / "core"
+    specialist_dir = tmp_path / "grimmsnarl"
+    core_dir.mkdir()
+    specialist_dir.mkdir()
+    core_checkpoint = core_dir / "epoch_25.pt"
+    specialist_checkpoint = specialist_dir / "epoch_06.pt"
+    core_checkpoint.write_bytes(b"core")
+    specialist_checkpoint.write_bytes(b"specialist")
+    core_digest = "sha256:" + "a" * 64
+    specialist_digest = "sha256:" + "b" * 64
+    (core_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "status": "complete",
+                "history": [
+                    {
+                        "epoch": 25,
+                        "checkpoint": str(core_checkpoint),
+                        "checkpoint_digest": core_digest,
+                        "expanded_head_training": {
+                            "schema": (
+                                dashboard_snapshot_module
+                                .EXPANDED_HEAD_CONTRACT_SCHEMA
+                            ),
+                            "architecture_present_heads": ["action_q"],
+                            "heads": {
+                                "action_q": {
+                                    "present": True,
+                                    "trained": True,
+                                }
+                            },
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (specialist_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "status": "training",
+                "history": [
+                    {
+                        "epoch": 6,
+                        "checkpoint": str(specialist_checkpoint),
+                        "checkpoint_digest": specialist_digest,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_file_sha256_matches",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "checkpoint_structure_telemetry",
+        lambda path, digest, **_kwargs: {
+            "expanded_head_training": {
+                "schema": (
+                    dashboard_snapshot_module.EXPANDED_HEAD_CONTRACT_SCHEMA
+                ),
+                "verified": True,
+                "epoch": 6,
+                "heads": {
+                    "action_q": {"trained": True},
+                    "tactical_outcome": {"trained": True},
+                },
+            }
+        },
+    )
+
+    result = dashboard_snapshot_module.staged_expanded_head_training_state(
+        {"phase": "next_specialist_selected"},
+        {
+            "next_specialist": {
+                "id": "marnie-s-grimmsnarl-ex",
+                "run_dir": str(specialist_dir),
+            },
+            "training": {"expanded_head_training": {"future": True}},
+        },
+        cumulative_core_contract={
+            "core_refresh": {
+                "run_dir": str(core_dir),
+                "max_epochs": 25,
+            }
+        },
+    )
+
+    assert result["scope"] == "staged_next_specialist"
+    assert result["specialist_id"] == "marnie-s-grimmsnarl-ex"
+    assert result["checkpoint"] == str(specialist_checkpoint)
+    assert result["checkpoint_digest"] == specialist_digest
+    assert result["epoch"] == 6
+    assert set(result["heads"]) == {"action_q", "tactical_outcome"}
+
+
+def test_dashboard_integrity_allows_legacy_v5_and_rejects_expanded_head_drift() -> None:
+    checkpoint = "/run/iter_00012.pt"
+    digest = "sha256:" + "d" * 64
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "model": {
+            "active_checkpoint": checkpoint,
+            "active_checkpoint_digest": digest,
+            "checkpoint_structure": {
+                "verified": True,
+                "checkpoint": checkpoint,
+                "checkpoint_digest": digest,
+                "expanded_head_training": {
+                    "available": False,
+                    "verified": True,
+                    "legacy_v5": True,
+                    "actual_tensor_heads": [],
+                },
+            },
+        },
+    }
+    SnapshotCache._annotate_source_integrity(payload)
+    legacy = payload["source_integrity"]["rows"]["expanded_heads"]
+    assert legacy["required"] is False
+    assert legacy["current"] is True
+    assert (
+        payload["source_integrity"]["rows"]["model"]["checks"][
+            "legacy_v5_allowed"
+        ]
+        is True
+    )
+
+    payload["model"]["checkpoint_structure"].update(
+        {
+            "verified": False,
+            "expanded_head_training": {
+                "available": True,
+                "verified": False,
+                "legacy_v5": False,
+                "actual_tensor_heads": ["action_q"],
+                "reason": "metadata/tensor mismatch",
+            },
+        }
+    )
+    SnapshotCache._annotate_source_integrity(payload)
+    expanded = payload["source_integrity"]["rows"]["expanded_heads"]
+    assert expanded["required"] is True
+    assert expanded["current"] is False
+    assert "expanded_heads" in payload["source_integrity"]["failed"]
+
+
+def test_dashboard_renders_dynamic_active_and_staged_head_observability() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert 'id="model-expanded-heads"' in html
+    assert 'id="model-staged-expanded-heads"' in html
+    assert "model.expanded_head_training||{}" in html
+    assert "model.staged_expanded_head_training||{}" in html
+    assert "CONTRACT MISMATCH · FAIL CLOSED" in html
+    assert "TRAINED · SHADOW" in html
+    assert "STAGED ONLY · RUNTIME FLAG RECORDED" in html
+    assert "coverage ${coverage}" in html
+    assert "masked ${masked===null?'—'" in html

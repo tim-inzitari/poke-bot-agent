@@ -33,6 +33,14 @@ DRAGAPULT_LINE = {119, 120, 121}          # Dreepy / Drakloak / Dragapult ex
 DUDUNSPARCE_LINE = {65, 66, 305, 306}     # Dunsparce / Dudunsparce (+ ex variants)
 DUSKNOIR_LINE = {131, 132, 133}           # Duskull / Dusclops / Dusknoir
 BLAZIKEN_LINE = {324, 325, 326, 410, 411, 412}  # Torchic / Combusken / Blaziken(+ex)
+MARNIE_GRIMMSNARL_LINE = {646, 647, 648}
+TEAM_ROCKETS_TAROUNTULA = 400
+TEAM_ROCKETS_SPIDOPS = 401
+TEAM_ROCKETS_MEWTWO_EX = 431
+THWACKEY_GROOKEY = 89
+THWACKEY = 90
+THWACKEY_DIPPLIN = 93
+FESTIVAL_GROUNDS = 1245
 
 #: Minimum Crushing Hammers for the Hammer-Pult signature (list runs 3-4).
 CRUSHING_HAMMER_MIN = 3
@@ -263,13 +271,37 @@ def classify_deck(card_ids: Iterable[int]) -> str:
         if has_line(c, DUDUNSPARCE_LINE):
             return "dragapult-dudunsparce"
         return "dragapult"
-    # Main-attacker signatures for additive post-snapshot families. Check the
-    # distinctive attacker before Dudunsparce because some lists use the
+    # Main-attacker signatures for additive post-snapshot families. Check each
+    # distinctive attacker before Dudunsparce because several lists use the
     # Dunsparce line as a support engine.
+    if c.get(648, 0) > 0 and has_line(c, MARNIE_GRIMMSNARL_LINE):
+        return "marnie-s-grimmsnarl-ex"
+    # The standalone Team Rocket's Spidops family uses the same 4-4
+    # Tarountula/Spidops engine as Rocket's Mewtwo, so the line alone is not
+    # distinctive.  Require a real multi-copy Spidops attacker line and at
+    # most one Mewtwo ex.  The pinned Rocket's Mewtwo representative has two
+    # Mewtwo ex and therefore remains in its established family.
+    if (
+        c.get(TEAM_ROCKETS_TAROUNTULA, 0) >= 2
+        and c.get(TEAM_ROCKETS_SPIDOPS, 0) >= 2
+        and c.get(TEAM_ROCKETS_MEWTWO_EX, 0) <= 1
+    ):
+        return "team-rockets-spidops"
     if c.get(879, 0) > 0:
         return "hops-trevenant"
     if c.get(943, 0) > 0:
         return "walrein"
+    # The canonical specialist name is ``thwackey`` even though historical
+    # source lists used the physical ``festival-lead`` label. Require the full
+    # multi-copy Boom Boom Groove/Festival Lead engine so ordinary grass decks
+    # cannot be captured by a single support card.
+    if (
+        c.get(THWACKEY_GROOKEY, 0) >= 3
+        and c.get(THWACKEY, 0) >= 3
+        and c.get(THWACKEY_DIPPLIN, 0) >= 2
+        and c.get(FESTIVAL_GROUNDS, 0) >= 2
+    ):
+        return "thwackey"
     if c.get(306, 0) > 0 or c.get(997, 0) > 0:
         return "dudunsparce"
     return UNKNOWN

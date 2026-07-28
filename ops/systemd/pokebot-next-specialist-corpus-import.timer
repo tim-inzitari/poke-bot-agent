@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll for the checksum-bound one-ahead specialist corpus
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=pokebot-next-specialist-corpus-import.service
+
+[Install]
+WantedBy=timers.target

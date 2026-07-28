@@ -1,0 +1,56 @@
+[Unit]
+Description=Pokemon pure-RL core from top-ladder hot start
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=POKEBOT_TRAINING_SAFETY_VERSION=20260717
+Environment=POKEBOT_TRAINING_ARM_FILE=/home/inzi/poke-bot-agent/outputs/state/TRAINING_ARMED
+Environment=POKEBOT_LIVE_POOL=0
+Environment=POKEBOT_WORKER_RECYCLE_GAMES=256
+Environment=WORKER_RECYCLE_GAMES=256
+Environment=PURE_RL_SIM_WORKERS=40
+Environment=PURE_RL_GAMES_IN_FLIGHT=40
+# Keep several simulator clients behind each resident model so leaf requests
+# coalesce into useful GPU batches. More replicas than local clients merely
+# duplicate the policy in VRAM and turn the workload into batch-1 microkernels.
+Environment=PURE_RL_LEAF_GPU0_REPLICAS=3
+Environment=PURE_RL_LEAF_GPU1_REPLICAS=6
+Environment=PURE_RL_REBALANCE_MAX_WORKERS=40
+Environment=PURE_RL_PER_WORKER_RSS_GB=1.3
+Environment=PURE_RL_MID_ITER_SCHEDULER=1
+Environment=PURE_RL_REBALANCE_MIN_WORKERS=40
+Environment=PURE_RL_REMOTE_DISPATCH_CHUNK=16
+# Next-lineage scheduler: keep two local waves queued and assign larger refill
+# chunks to fast Elmo than to four-worker Bert. These are inert on older source.
+Environment=PURE_RL_LOCAL_DISPATCH_CHUNK=80
+Environment="POKEBOT_REMOTE_ENDPOINT_CHUNKS=192.168.1.143:8765=32,bert.local:8766=8"
+Environment=PURE_RL_LOCAL_STRAGGLER_STALE_S=86400
+Environment=POKEBOT_WORKER_CAPACITY_RECOVERY_GRACE_S=60
+Environment=POKEBOT_REMOTE_JOB_RETRIES=8
+Environment=POKEBOT_REMOTE_JOB_TIMEOUT_BUFFER_S=90
+Environment="POKEBOT_TRUENAS_CHECKPOINT_SMB=/run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint"
+ExecStartPre=/usr/bin/test -d /run/user/1000/gvfs/smb-share:server=192.168.1.143,share=main,user=inzi/poke-bot-agent/containers/truenas-worker/checkpoint
+# training.log is deliberately independent of run name/version and append-only.
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_pure_rl.py --run-name pure_rl_core_top_ladder_5day_hotstart_v1_20260719 --mode core --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --preflight-profile none --stall-minutes 20 --log outputs/logs/training.log -- --iterations 1000 --games-per-iter 2048 --train-epochs 2 --heldout-games 200 --promotion-games 80 --game-timeout-s 600 --min-usable-game-frac 0.98 --remote-worker-endpoints 192.168.1.143:8765,bert.local:8766 --resume auto
+Restart=on-failure
+RestartSec=60
+RestartPreventExitStatus=75 78
+TimeoutStopSec=45
+KillMode=control-group
+MemoryHigh=60G
+MemoryMax=68G
+MemorySwapMax=0
+OOMPolicy=stop
+# Launcher diagnostics and training events share the permanent event stream;
+# tqdm remains isolated in training.progress.log.
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/training.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/training.log
+
+[Install]
+WantedBy=default.target

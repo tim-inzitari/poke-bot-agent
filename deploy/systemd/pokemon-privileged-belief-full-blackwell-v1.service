@@ -1,0 +1,36 @@
+[Unit]
+Description=Blackwell full-model AWR and exact hidden-state continuation
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/privileged_belief/exact_core_20k_v1/manifest.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/checkpoints/canary/state_core_latest10_epoch23_20260719T1500.bootstrap-source.pt
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=inzi
+Group=inzi
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=CUDA_VISIBLE_DEVICES=1
+Environment=PYTHONUNBUFFERED=1
+Environment=OMP_NUM_THREADS=8
+Environment=MKL_NUM_THREADS=8
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ExecStart=/bin/bash scripts/run_privileged_belief_full_blackwell.sh
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/privileged-belief-full-blackwell.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/privileged-belief-full-blackwell.log
+MemoryAccounting=yes
+MemoryHigh=48G
+MemoryMax=64G
+MemorySwapMax=0
+OOMPolicy=stop
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=180
+KillMode=control-group
+Nice=-5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

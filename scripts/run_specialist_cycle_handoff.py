@@ -9,6 +9,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 from typing import Any
 
@@ -24,10 +25,17 @@ from scripts.run_sequential_specialist_handoff import (
 from scripts.select_next_specialist import select as select_next_specialist
 from scripts.resolve_specialist_assets import resolve_specialist_assets
 from scripts.run_post_starmie_core_handoff import run as run_core_refresh_handoff
+from scripts.run_starmie_expert_bootstrap import (
+    decision_fusion_handoff_contract,
+    expanded_handoff_training_contract,
+)
 
 
 SCHEMA = "poke_bot.specialist_cycle_handoff_contract/v1"
 SELECTOR = "POKEBOT_ACTIVE_SPECIALIST"
+GATE_REVISION = re.compile(
+    r"^(?P<prefix>.+\+frozen-specialists-r)(?P<revision>\d+)$"
+)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -57,18 +65,80 @@ def _compatible_prior_cumulative_contract(
     variants: list[dict[str, Any]] = []
     for remove_transition in (False, True):
         for remove_selection_controls in (False, True):
-            candidate = copy.deepcopy(current)
-            if remove_transition:
-                candidate["trigger"].pop(
-                    "threshold_transition_receipt", None
-                )
-            if remove_selection_controls:
-                next_specialist = candidate["next_specialist"]
-                next_specialist.pop(
-                    "minimum_decisions_by_specialist", None
-                )
-                next_specialist.pop("strict_priority_prefix", None)
-            variants.append(candidate)
+            for remove_boundary_scope in (False, True):
+                for remove_boundary_assets in (False, True):
+                    candidate = copy.deepcopy(current)
+                    if remove_transition:
+                        candidate["trigger"].pop(
+                            "threshold_transition_receipt", None
+                        )
+                    if remove_selection_controls:
+                        next_specialist = candidate["next_specialist"]
+                        next_specialist.pop(
+                            "minimum_decisions_by_specialist", None
+                        )
+                        next_specialist.pop("strict_priority_prefix", None)
+                    if remove_boundary_scope and "runtime" in candidate:
+                        candidate["runtime"].pop(
+                            "future_assets_scope", None
+                        )
+                    if remove_boundary_assets and "runtime" in candidate:
+                        runtime = candidate["runtime"]
+                        runtime["inactive_tree_candidate"] = None
+                        runtime["candidate_audit"] = None
+                        runtime["future_assets_receipt"] = None
+                        runtime.pop("future_assets_scope", None)
+                    guide_variants = [candidate]
+                    prior_without_required_guide = copy.deepcopy(candidate)
+                    prior_without_required_guide["next_specialist"].pop(
+                        "current_deck_guide_required", None
+                    )
+                    guide_variants.append(prior_without_required_guide)
+                    for guide_candidate in guide_variants:
+                        variants.append(guide_candidate)
+                        prior_without_nonblocking_fallback = copy.deepcopy(
+                            guide_candidate
+                        )
+                        prior_without_nonblocking_fallback.pop(
+                            "core_failure_fallback", None
+                        )
+                        variants.append(prior_without_nonblocking_fallback)
+                        prior_gate_path = copy.deepcopy(guide_candidate)
+                        if (
+                            isinstance(existing.get("trigger"), dict)
+                            and "gate_contract" in existing["trigger"]
+                        ):
+                            prior_gate_path["trigger"]["gate_contract"] = (
+                                existing["trigger"]["gate_contract"]
+                            )
+                            variants.append(prior_gate_path)
+                    if (
+                        isinstance(candidate.get("runtime"), dict)
+                        and isinstance(existing.get("runtime"), dict)
+                    ):
+                        prior_assets = copy.deepcopy(candidate)
+                        for key in (
+                            "inactive_tree_candidate",
+                            "candidate_audit",
+                            "future_assets_receipt",
+                            "future_assets_scope",
+                        ):
+                            if key in existing["runtime"]:
+                                prior_assets["runtime"][key] = existing[
+                                    "runtime"
+                                ][key]
+                            else:
+                                prior_assets["runtime"].pop(key, None)
+                        variants.append(prior_assets)
+                        if (
+                            isinstance(existing.get("trigger"), dict)
+                            and "gate_contract" in existing["trigger"]
+                        ):
+                            prior_assets_and_gate = copy.deepcopy(prior_assets)
+                            prior_assets_and_gate["trigger"][
+                                "gate_contract"
+                            ] = existing["trigger"]["gate_contract"]
+                            variants.append(prior_assets_and_gate)
     return existing in variants
 
 
@@ -168,13 +238,49 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
     identifiers = {
         str(value) for value in (roster.get("expert_ids") or []) if str(value)
     }
+    rows = {
+        str(row.get("id") or ""): dict(row)
+        for row in (state.get("specialists") or [])
+        if isinstance(row, dict) and str(row.get("id") or "")
+    }
+    order = [
+        str(value)
+        for value in (
+            (state.get("training_priority") or {}).get(
+                "ordered_unfinished_ids_after_active"
+            )
+            or []
+        )
+    ]
+    progress = dict((state.get("current") or {}).get("program_progress") or {})
+    remaining = progress.get("remaining_after_active")
+    if remaining is None:
+        remaining = progress.get("remaining_unfinished")
+    unfinished_statuses = {
+        "unstarted",
+        "restart_required",
+        "bootstrap_partial",
+        "bootstrap_complete",
+        "blocked",
+    }
+    unfinished = {
+        specialist_id
+        for specialist_id, row in rows.items()
+        if str(row.get("status") or "") in unfinished_statuses
+    }
     if (
         expected != len(identifiers)
         or int(roster.get("required_specialist_count") or 0) != len(identifiers)
         or int(roster.get("physical_checkpoint_rows") or 0) != len(identifiers)
         or "" in identifiers
+        or set(rows) != identifiers
+        or len(order) != len(set(order))
+        or set(order) != unfinished
+        or int(remaining if remaining is not None else -1) != len(order)
     ):
-        raise RuntimeError("canonical specialist roster changed")
+        raise RuntimeError(
+            "canonical specialist roster or unfinished priority projection changed"
+        )
     return identifiers
 
 
@@ -191,6 +297,65 @@ def population_transition_ready(
             "frozen registry contains specialists outside canonical roster"
         )
     return completed_ids == required_ids
+
+
+def _is_expected_additive_gate_successor(
+    *,
+    active_id: str,
+    saved_gate: dict[str, Any],
+    current_gate: dict[str, Any],
+    frozen_registry: dict[str, Any],
+) -> bool:
+    """Recognize only the idempotent local half of a materialization retry."""
+
+    checkpoint_digest = str(saved_gate.get("checkpoint_digest") or "")
+    if not checkpoint_digest.startswith("sha256:"):
+        return False
+    saved_gate_id = str(saved_gate.get("gate_id") or "")
+    current_gate_id = str(current_gate.get("active_gate_id") or "")
+    saved_revision = GATE_REVISION.fullmatch(saved_gate_id)
+    current_revision = GATE_REVISION.fullmatch(current_gate_id)
+    if (
+        saved_revision is None
+        or current_revision is None
+        or saved_revision.group("prefix") != current_revision.group("prefix")
+        or int(current_revision.group("revision"))
+        != int(saved_revision.group("revision")) + 1
+    ):
+        return False
+    next_gate = dict(current_gate.get("next_gate") or {})
+    if str(next_gate.get("id") or "") != current_gate_id:
+        return False
+    saved_roster = {
+        str(value) for value in (saved_gate.get("roster_ids") or []) if str(value)
+    }
+    current_roster = {
+        str(row.get("opponent_id") or "")
+        for row in (next_gate.get("roster") or [])
+        if str(row.get("opponent_id") or "")
+    }
+    matching_rows = [
+        row
+        for row in (next_gate.get("roster") or [])
+        if row.get("frozen_specialist") is True
+        and str(row.get("archetype_id") or "") == active_id
+        and str(row.get("frozen_checkpoint_digest") or "") == checkpoint_digest
+    ]
+    if (
+        len(matching_rows) != 1
+        or not saved_roster
+        or not saved_roster.issubset(current_roster)
+        or len(current_roster) != len(saved_roster) + 1
+    ):
+        return False
+    registry_rows = [
+        row
+        for row in (frozen_registry.get("specialists") or [])
+        if str(row.get("specialist_id") or "") == active_id
+        and row.get("frozen") is True
+        and str(row.get("checkpoint_digest") or "") == checkpoint_digest
+    ]
+    return len(registry_rows) == 1
 
 
 def _start_population_handoff(runtime: dict[str, Any]) -> None:
@@ -218,16 +383,56 @@ def _source(
     handler = dict(row.get("pass_handler") or {})
     if row.get("status") != "ready" or not handler:
         raise RuntimeError("active specialist runtime row is not ready")
+    handler_state = _read(Path(str(handler["state"])).expanduser().resolve())
+    saved_gate = dict(handler_state.get("gate") or {})
+    saved_gate_contract = str(saved_gate.get("contract") or "").strip()
+    saved_gate_path = Path(saved_gate_contract).expanduser().resolve()
+    exact_contract_unchanged = (
+        bool(saved_gate_contract)
+        and saved_gate_path.is_file()
+        and saved_gate.get("contract_sha256") == sha256(saved_gate_path)
+    )
+    expected_additive_successor = False
+    if (
+        not exact_contract_unchanged
+        and handler_state.get("phase") == "complete_handoff_started"
+        and saved_gate_path.is_file()
+    ):
+        expected_additive_successor = _is_expected_additive_gate_successor(
+            active_id=active_id,
+            saved_gate=saved_gate,
+            current_gate=_read(saved_gate_path),
+            frozen_registry=_read(
+                _path(runtime, "frozen_specialist_registry")
+            ),
+        )
+    if (
+        saved_gate.get("completion_authority")
+        == "explicit_owner_ceiling_acceptance"
+    ):
+        if not exact_contract_unchanged and not expected_additive_successor:
+            raise RuntimeError(
+                "saved ceiling-acceptance gate contract changed"
+            )
+        gate_contract = str(saved_gate_path)
+    elif expected_additive_successor:
+        # Materializing a newly frozen specialist deliberately extends the
+        # shared additive S+ roster.  Resume from the handler's checksum-bound
+        # passing evidence instead of reinterpreting that historical result
+        # under the successor roster that now includes itself.
+        gate_contract = str(saved_gate_path)
+    else:
+        gate_contract = str(
+            Path(str(registry["runtime_root"]))
+            / str(registry["active_gate_contract"])
+        )
     source = {
         "id": active_id,
         "run_dir": (
             "/home/inzi/poke-bot-agent/outputs/pure_rl/" + str(row["run_name"])
         ),
         "training_service": runtime["training_service"],
-        "gate_contract": str(
-            Path(str(registry["runtime_root"]))
-            / str(registry["active_gate_contract"])
-        ),
+        "gate_contract": gate_contract,
         "gate_marker_name": row["terminal_gate_marker"],
         "minimum_completed_iteration": int(
             row.get(
@@ -246,7 +451,54 @@ def _source(
     ).strip()
     if transition_receipt:
         source["threshold_transition_receipt"] = transition_receipt
-    evidence = validate_source({"source_specialist": source})
+    if expected_additive_successor:
+        frozen_path = Path(source["passed_family"]).expanduser().resolve()
+        frozen = verify_frozen_model(frozen_path)
+        queued = [
+            dict(value)
+            for value in (handler_state.get("queued_submissions") or [])
+        ]
+        validation = dict(saved_gate.get("validation") or {})
+        if (
+            handler_state.get("schema")
+            != "poke_bot.passed_gate_handler/v1"
+            or handler_state.get("phase") != "complete_handoff_started"
+            or handler_state.get("submission_mode") != "queue_and_continue"
+            or not validation
+            or not all(value is True for value in validation.values())
+            or handler_state.get("frozen_model") != frozen
+            or [int(value.get("copy_number", -1)) for value in queued] != [1]
+            or any(
+                value.get("checkpoint_checksum")
+                != saved_gate.get("checkpoint_digest")
+                for value in queued
+            )
+            or frozen.get("checkpoint_digest")
+            != saved_gate.get("checkpoint_digest")
+            or int(saved_gate.get("commit_boundary", -1))
+            < int(source["minimum_completed_iteration"])
+        ):
+            raise RuntimeError(
+                "saved post-materialization source evidence changed"
+            )
+        evidence = {
+            "specialist_id": active_id,
+            "gate": saved_gate,
+            "frozen_family": str(frozen_path),
+            "frozen_manifest_sha256": sha256(frozen_path / "manifest.json"),
+            "checkpoint_digest": frozen["checkpoint_digest"],
+            "queued_submission_copies": [
+                {
+                    "copy_number": int(value["copy_number"]),
+                    "label": value["label"],
+                    "checkpoint_checksum": value["checkpoint_checksum"],
+                    "queued_at": value["queued_at"],
+                }
+                for value in queued
+            ],
+        }
+    else:
+        evidence = validate_source({"source_specialist": source})
     completion_authority = str(
         (evidence.get("gate") or {}).get("completion_authority") or ""
     ).strip()
@@ -267,6 +519,8 @@ def _generated(
     runtime = dict(contract["runtime"])
     gate = dict(contract["gate_materialization"])
     training = dict(contract["training"])
+    training["expanded_heads"] = expanded_handoff_training_contract()
+    training["decision_fusion"] = decision_fusion_handoff_contract()
     specialist_id = str(selected["specialist_id"])
     source_id = str(source["id"])
     state_root = _path(runtime, "state_root")
@@ -279,6 +533,10 @@ def _generated(
         "handoff_service": runtime["handoff_service"],
         "gate_handler_service": runtime["gate_handler_service"],
     }
+    if runtime.get("matchup_v6") is not None:
+        runtime_registration["matchup_v6"] = copy.deepcopy(
+            runtime["matchup_v6"]
+        )
     if runtime.get("inactive_tree_candidate"):
         candidate_tree = candidate_tree or _path(
             runtime, "inactive_tree_candidate"
@@ -380,6 +638,11 @@ def _cumulative_core_contract(
         raise RuntimeError("cumulative core refresh requires at least two teachers")
 
     registry_root = _path(dict(cycle["runtime"]), "registry_root")
+    core_corpus = _path(dict(cycle["selection"]), "core_corpus")
+    if not core_corpus.is_file():
+        raise RuntimeError(
+            "expanded cumulative-core corpus is not atomically promoted"
+        )
     specialist_rows = dict(runtime_registry.get("specialists") or {})
     frozen_family_overrides = dict(
         (cycle.get("shared_core") or {}).get("frozen_family_overrides") or {}
@@ -409,8 +672,55 @@ def _cumulative_core_contract(
 
     version = len(teachers)
     state_root = _path(dict(cycle["runtime"]), "state_root")
-    family_name = f"deck_agnostic_core_cumulative_v{version}"
-    run_stem = f"deck-agnostic-core-cumulative-v{version}"
+    # Revision 17 requires the same learned 17-input action path in every
+    # successor lineage. The cumulative core therefore has its own explicit
+    # fused architecture identity instead of silently evaluating a legacy
+    # flat-policy core against fused frozen teachers.
+    base_family_name = (
+        f"deck_agnostic_core_cumulative_v{version}_fused_v1"
+    )
+    base_run_stem = (
+        f"deck-agnostic-core-cumulative-v{version}-fused-v1"
+    )
+    teacher_digests = [str(row["checksum"]) for row in teachers]
+    attempt = 1
+    # A completed regression is authoritative at this boundary. A rejection
+    # must immediately select the latest accepted core and advance production;
+    # the next completed specialist creates the next cumulative-core version.
+    # Never spend inter-deck wall time on same-boundary split-seed retries.
+    for completed_attempt in range(1, 6):
+        completed_suffix = (
+            "" if completed_attempt == 1 else f"-attempt{completed_attempt}"
+        )
+        regression_path = state_root / (
+            base_run_stem
+            + completed_suffix
+            + "-gameplay-regression.json"
+        )
+        if not regression_path.is_file():
+            attempt = completed_attempt
+            break
+        regression = _read(regression_path)
+        identity = dict(regression.get("identity") or {})
+        criteria = dict(regression.get("criteria") or {})
+        if (
+            regression.get("schema")
+            != "poke_bot.multi_teacher_core_gameplay_regression/v1"
+            or regression.get("passed") not in {True, False}
+            or regression.get("training_eligible") is not False
+            or identity.get("teacher_checkpoint_digests") != teacher_digests
+            or criteria.get("all_reports_valid") is not True
+        ):
+            raise RuntimeError(
+                "existing cumulative-core regression is not a valid "
+                "retry authority"
+            )
+        attempt = completed_attempt
+        break
+    suffix = "" if attempt == 1 else f"_attempt{attempt}"
+    run_suffix = "" if attempt == 1 else f"-attempt{attempt}"
+    family_name = base_family_name + suffix
+    run_stem = base_run_stem + run_suffix
     contract = copy.deepcopy(template)
     contract["status"] = "staged"
     contract["trigger"] = {
@@ -461,12 +771,70 @@ def _cumulative_core_contract(
             ),
             "cpu_pack_root": (
                 "/home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/"
-                + run_stem
+                + f"deck-agnostic-core-cumulative-v{version}"
             ),
+            "balanced_corpus": {
+                "pointer": str(core_corpus),
+                "checksum": sha256(core_corpus),
+            },
+            "expanded_heads": expanded_handoff_training_contract(),
+            "decision_fusion": decision_fusion_handoff_contract(),
             "direct_checkpoint_tensor_sources_exclude": [],
+            "refresh_attempt": attempt,
+            "split_seed": 20260723 + attempt - 1,
         }
     )
+    if attempt == 5:
+        diagnostic_names = (
+            f"{base_run_stem}-attempt4-parent-diagnostic-"
+            "gameplay-regression.json",
+            f"{base_run_stem}-attempt4-grim-anchor-diagnostic-"
+            "gameplay-regression.json",
+        )
+        diagnostic_receipts: list[dict[str, Any]] = []
+        for name in diagnostic_names:
+            path = state_root / name
+            if not path.is_file():
+                raise RuntimeError(
+                    "teacher-behavior repair requires both failed "
+                    f"parameter-space diagnostics: missing={path}"
+                )
+            payload = _read(path)
+            criteria = dict(payload.get("criteria") or {})
+            if (
+                payload.get("schema")
+                != "poke_bot.multi_teacher_core_gameplay_regression/v1"
+                or payload.get("passed") is not False
+                or payload.get("training_eligible") is not False
+                or criteria.get("all_reports_valid") is not True
+            ):
+                raise RuntimeError(
+                    "parameter-space diagnostic is not valid repair evidence"
+                )
+            diagnostic_receipts.append(
+                {"path": str(path), "checksum": sha256(path)}
+            )
+        core["teacher_behavior_distillation"] = {
+            "schema": "poke_bot.teacher_behavior_distillation/v1",
+            "enabled": True,
+            "target": (
+                "matching_archetype_frozen_teacher_greedy_action"
+            ),
+            "causal_inputs_only": True,
+            "loss_weight": 0.5,
+            "parameter_space_diagnostics": diagnostic_receipts,
+        }
     contract["core_refresh"] = core
+    contract["core_failure_fallback"] = {
+        "enabled": True,
+        "behavior": "continue_with_latest_accepted_core",
+        "continue_refresh_after_each_specialist": True,
+        "version": int(current_core["version"]),
+        "family": str(Path(str(current_core["model_path"])).parent),
+        "checkpoint_digest": str(current_core["checkpoint_digest"]),
+        "ready_receipt": str(current_core["ready"]),
+        "owner_decision": "GOAL.md#/decision-ledger/revision-19",
+    }
     contract["acceptance"]["regression_result"] = str(
         state_root / f"{run_stem}-gameplay-regression.json"
     )
@@ -493,6 +861,9 @@ def _cumulative_core_contract(
             ),
             "prestage_receipt": str(
                 _path(dict(cycle["prestage"]), "receipt")
+            ),
+            "current_deck_guide_required": bool(
+                cycle["prestage"].get("current_deck_guide_required", False)
             ),
         }
     )
@@ -568,7 +939,26 @@ def run(contract_path: Path) -> int:
         core_version = int(cumulative["core_refresh"]["version"])
         generated_path = (
             _path(runtime, "state_root")
-            / f"post-{active_id}-cumulative-core-v{core_version}-handoff.json"
+            / (
+                f"post-{active_id}-cumulative-core-v{core_version}"
+                + "-fused-v1"
+                + (
+                    ""
+                    if int(cumulative["core_refresh"].get("refresh_attempt", 1))
+                    == 1
+                    else (
+                        "-attempt"
+                        + str(
+                            int(
+                                cumulative["core_refresh"][
+                                    "refresh_attempt"
+                                ]
+                            )
+                        )
+                    )
+                )
+                + "-handoff.json"
+            )
         )
         if generated_path.is_file():
             existing = _read(generated_path)
@@ -584,12 +974,31 @@ def run(contract_path: Path) -> int:
         pointer_raw = str(core_section.get("latest_pointer") or "").strip()
         if not pointer_raw:
             raise RuntimeError("latest cumulative core pointer is not configured")
-        _publish_latest_core_pointer(
-            Path(pointer_raw).expanduser().resolve(),
-            family=_path(dict(cumulative["core_refresh"]), "family"),
-            ready_path=_path(dict(cumulative["core_refresh"]), "ready_receipt"),
-            previous_digest=str(core["checkpoint_digest"]),
-        )
+        refreshed = dict(cumulative["core_refresh"])
+        refreshed_ready_path = _path(refreshed, "ready_receipt")
+        refreshed_ready = _read(refreshed_ready_path)
+        if (
+            refreshed_ready.get("status") == "ready"
+            and refreshed_ready.get("gameplay_regression_passed") is True
+        ):
+            _publish_latest_core_pointer(
+                Path(pointer_raw).expanduser().resolve(),
+                family=_path(refreshed, "family"),
+                ready_path=refreshed_ready_path,
+                previous_digest=str(core["checkpoint_digest"]),
+            )
+        else:
+            # A rejected refresh remains immutable diagnostic evidence.  The
+            # handoff has already continued with the checksum-accepted fallback,
+            # so the canonical latest-core pointer must remain unchanged.
+            resolved_after_fallback = _resolve_current_core(core_section)
+            if (
+                resolved_after_fallback["checkpoint_digest"]
+                != core["checkpoint_digest"]
+            ):
+                raise RuntimeError(
+                    "latest accepted core changed during fallback handoff"
+                )
     return 0
 
 

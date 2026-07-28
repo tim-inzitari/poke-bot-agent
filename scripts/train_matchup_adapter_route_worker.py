@@ -21,6 +21,7 @@ import json
 import os
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
 
@@ -33,6 +34,7 @@ if str(ROOT) not in sys.path:
 
 from poke_bot import checkpoint
 from poke_bot.dataset import GameSequence
+from poke_bot.device_corpus import DeviceResidentBootstrapCorpus
 from poke_bot.feature_shards import iter_feature_shard
 from poke_bot.matchup_adapter_activation import (
     ActivationReceipt,
@@ -53,9 +55,11 @@ from poke_bot.train import (
     assert_matchup_adapter_training_contract,
     batch_losses,
     build_matchup_adapter_optimizer,
+    device_temporal_batch_losses,
     load_model_from_checkpoint,
     matchup_adapter_base_state,
     prepare_matchup_adapter_isolation_guard,
+    prepare_matchup_adapter_route_isolation_guard,
 )
 
 
@@ -140,6 +144,138 @@ def _route_batches(
         decisions += count
     if batch:
         yield tuple(batch)
+
+
+class _RouteShardIterable:
+    """Re-iterable, sized feature-shard stream for the resident packer."""
+
+    def __init__(self, path: Path, route: int, count: int):
+        self.path = path
+        self.route = int(route)
+        self.count = int(count)
+
+    def __len__(self) -> int:
+        return self.count
+
+    def __iter__(self) -> Iterator[GameSequence]:
+        observed = 0
+        for sequence in iter_feature_shard(self.path):
+            if _validated_sequence_route(sequence) != self.route:
+                raise ValueError(
+                    f"route shard {self.route} contains another route"
+                )
+            observed += 1
+            yield sequence
+        if observed != self.count:
+            raise ValueError(
+                f"route shard count changed expected={self.count} actual={observed}"
+            )
+
+
+@dataclass(frozen=True)
+class _ResidentRouteCorpus:
+    corpus: DeviceResidentBootstrapCorpus
+    train_batches: tuple[tuple[int, ...], ...]
+    val_batches: tuple[tuple[int, ...], ...]
+    sample_offsets: tuple[int, ...]
+
+
+def _route_shard_iterable(
+    manifest: dict[str, Any], root: Path, split: str, route: int
+) -> _RouteShardIterable:
+    rows = [
+        row
+        for row in manifest.get("shards") or ()
+        if row.get("split") == split and int(row.get("route", -1)) == route
+    ]
+    if len(rows) != 1:
+        raise ValueError(f"manifest has {len(rows)} {split} shards for route {route}")
+    row = rows[0]
+    count = int(dict(row.get("stats") or {}).get("records_kept", -1))
+    if count <= 0:
+        raise ValueError(f"resident route {route} has no {split} sequences")
+    return _RouteShardIterable(root / str(row["path"]), route, count)
+
+
+def _resident_game_batches(
+    offsets: Sequence[int],
+    start: int,
+    end: int,
+    *,
+    games_cap: int,
+    decisions_cap: int,
+) -> tuple[tuple[int, ...], ...]:
+    batches: list[tuple[int, ...]] = []
+    batch: list[int] = []
+    decisions = 0
+    for game_id in range(int(start), int(end)):
+        count = int(offsets[game_id + 1]) - int(offsets[game_id])
+        if count <= 0 or count > decisions_cap:
+            raise ValueError("resident route has an invalid game decision count")
+        if batch and (len(batch) >= games_cap or decisions + count > decisions_cap):
+            batches.append(tuple(batch))
+            batch = []
+            decisions = 0
+        batch.append(game_id)
+        decisions += count
+    if batch:
+        batches.append(tuple(batch))
+    return tuple(batches)
+
+
+def _build_resident_route(
+    manifest: dict[str, Any],
+    root: Path,
+    route: int,
+    *,
+    device: torch.device,
+    games_cap: int,
+    decisions_cap: int,
+    min_free_gib: float,
+) -> _ResidentRouteCorpus:
+    train = _route_shard_iterable(manifest, root, "train", route)
+    val = _route_shard_iterable(manifest, root, "val", route)
+    corpus = DeviceResidentBootstrapCorpus.from_splits(
+        train,
+        val,
+        device=device,
+        min_free_gib=float(min_free_gib),
+        matchup_adapter_route=route,
+    )
+    if not corpus.has_temporal_layout:
+        raise RuntimeError("resident adapter corpus lost its temporal layout")
+    assert corpus.game_decision_offset is not None
+    assert corpus.game_sample_offset is not None
+    decision_offsets = tuple(
+        int(value)
+        for value in corpus.game_decision_offset.detach().cpu().tolist()
+    )
+    sample_offsets = tuple(
+        int(value)
+        for value in corpus.game_sample_offset.detach().cpu().tolist()
+    )
+    train_batches = _resident_game_batches(
+        decision_offsets,
+        0,
+        corpus.train_games,
+        games_cap=games_cap,
+        decisions_cap=decisions_cap,
+    )
+    val_batches = _resident_game_batches(
+        decision_offsets,
+        corpus.train_games,
+        corpus.train_games + corpus.val_games,
+        games_cap=games_cap,
+        decisions_cap=decisions_cap,
+    )
+    if not train_batches or not val_batches:
+        raise RuntimeError("resident adapter route has an empty split")
+    return _ResidentRouteCorpus(
+        corpus=corpus,
+        train_batches=train_batches,
+        val_batches=val_batches,
+        sample_offsets=sample_offsets,
+    )
 
 
 def _microbatches(
@@ -247,6 +383,7 @@ def _run_batch(
                 prize_race_weight=0.0,
                 history_identity_weight=0.0,
                 matchup_adapter_training=True,
+                pack_temporal_games=True,
             )
         if metrics.n_matchup_adapter_rows != metrics.n_decisions:
             raise RuntimeError("microbatch lost its causal adapter rows")
@@ -290,6 +427,106 @@ def _validate_batch(
                 prize_race_weight=0.0,
                 history_identity_weight=0.0,
                 matchup_adapter_training=True,
+                pack_temporal_games=True,
+            )
+        aggregate.add(metrics)
+    return aggregate.result()
+
+
+def _resident_rows(
+    resident: _ResidentRouteCorpus, game_ids: Sequence[int]
+) -> int:
+    return sum(
+        resident.sample_offsets[game_id + 1]
+        - resident.sample_offsets[game_id]
+        for game_id in game_ids
+    )
+
+
+def _run_resident_batch(
+    model,
+    optimizer,
+    scaler,
+    resident: _ResidentRouteCorpus,
+    game_ids: tuple[int, ...],
+    route: int,
+    *,
+    cfg: dict[str, Any],
+    microbatch_games: int,
+    use_amp: bool,
+    amp_dtype: torch.dtype,
+) -> dict[str, Any]:
+    total_rows = _resident_rows(resident, game_ids)
+    if total_rows <= 0:
+        raise RuntimeError("resident route batch has no active adapter rows")
+    optimizer.zero_grad(set_to_none=True)
+    guard = prepare_matchup_adapter_route_isolation_guard(
+        model, optimizer, route
+    )
+    aggregate = _MetricsAccumulator()
+    for start in range(0, len(game_ids), max(1, int(microbatch_games))):
+        micro_ids = game_ids[start : start + max(1, int(microbatch_games))]
+        ids = torch.tensor(
+            micro_ids,
+            device=resident.corpus.device,
+            dtype=torch.long,
+        )
+        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            loss, metrics = device_temporal_batch_losses(
+                model,
+                resident.corpus,
+                ids,
+                value_weight=float(cfg["value_loss_weight"]),
+                matchup_adapter_route=route,
+            )
+        if metrics.n_matchup_adapter_rows != metrics.n_decisions:
+            raise RuntimeError("resident microbatch lost its causal adapter rows")
+        weight = float(metrics.n_decisions) / float(total_rows)
+        scaler.scale(loss * weight).backward()
+        aggregate.add(metrics)
+    assert_matchup_adapter_isolation_guard(
+        model, optimizer, guard, after_step=False
+    )
+    if float(cfg["grad_clip"]) > 0.0:
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(
+            model.matchup_adapter_bank.parameters(), float(cfg["grad_clip"])
+        )
+    scaler.step(optimizer)
+    scaler.update()
+    assert_matchup_adapter_isolation_guard(
+        model, optimizer, guard, after_step=True
+    )
+    return aggregate.result()
+
+
+@torch.no_grad()
+def _validate_resident_batch(
+    model,
+    resident: _ResidentRouteCorpus,
+    game_ids: tuple[int, ...],
+    route: int,
+    *,
+    cfg: dict[str, Any],
+    microbatch_games: int,
+    use_amp: bool,
+    amp_dtype: torch.dtype,
+) -> dict[str, Any]:
+    aggregate = _MetricsAccumulator()
+    for start in range(0, len(game_ids), max(1, int(microbatch_games))):
+        micro_ids = game_ids[start : start + max(1, int(microbatch_games))]
+        ids = torch.tensor(
+            micro_ids,
+            device=resident.corpus.device,
+            dtype=torch.long,
+        )
+        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            _loss, metrics = device_temporal_batch_losses(
+                model,
+                resident.corpus,
+                ids,
+                value_weight=float(cfg["value_loss_weight"]),
+                matchup_adapter_route=route,
             )
         aggregate.add(metrics)
     return aggregate.result()
@@ -304,6 +541,12 @@ def main() -> int:
     parser.add_argument("--device", type=_device, required=True)
     parser.add_argument("--microbatch-games", type=int, default=256)
     parser.add_argument("--target-epochs", type=int, default=25)
+    parser.add_argument(
+        "--device-resident",
+        action="store_true",
+        help="pack each assigned route once and keep its sparse corpus on-device",
+    )
+    parser.add_argument("--resident-min-free-gib", type=float, default=2.0)
     parser.add_argument(
         "--fleet-trust-source-checkpoint",
         action="store_true",
@@ -384,6 +627,7 @@ def main() -> int:
     snapshots: list[dict[str, Any]] = []
     total_steps = 0
     start_epoch = source_epoch
+    elapsed_before_resume = 0.0
     if output.is_file():
         prior = torch.load(output, map_location="cpu", weights_only=False)
         if (
@@ -399,10 +643,32 @@ def main() -> int:
             _restore_route_snapshot(model, optimizer, snapshots[-1])
             start_epoch = int(snapshots[-1]["epoch"])
             total_steps = int(snapshots[-1]["steps_cumulative"])
+        try:
+            prior_progress = json.loads(
+                output.with_suffix(output.suffix + ".progress.json").read_text()
+            )
+            elapsed_before_resume = max(
+                0.0, float(prior_progress.get("elapsed_seconds") or 0.0)
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            elapsed_before_resume = 0.0
         if prior.get("complete") is True and start_epoch == int(args.target_epochs):
             print(f"[adapter-fleet] already complete routes={prior['route_ids']}", flush=True)
             return 0
     started = time.monotonic()
+    resident_routes: dict[int, _ResidentRouteCorpus] = {}
+    if args.device_resident:
+        root = Path(args.staged_manifest).resolve().parent
+        for route in routes:
+            resident_routes[route] = _build_resident_route(
+                manifest,
+                root,
+                route,
+                device=device,
+                games_cap=int(cfg["games_per_batch"]),
+                decisions_cap=int(cfg["max_decisions_per_batch"]),
+                min_free_gib=float(args.resident_min_free_gib),
+            )
 
     for epoch in range(start_epoch, int(args.target_epochs)):
         train_by_route: dict[str, dict[str, Any]] = {}
@@ -411,22 +677,50 @@ def main() -> int:
         for route in routes:
             route_id = EXPERT_IDS[route]
             aggregate = _MetricsAccumulator()
-            path = _route_file(manifest, Path(args.staged_manifest).resolve().parent, "train", route)
-            for batch in _route_batches(
-                path,
-                route,
-                games_cap=int(cfg["games_per_batch"]),
-                decisions_cap=int(cfg["max_decisions_per_batch"]),
-            ):
-                metrics = _run_batch(
-                    model,
-                    optimizer,
-                    scaler,
-                    batch,
-                    cfg=cfg,
-                    microbatch_games=args.microbatch_games,
-                    use_amp=use_amp,
-                    amp_dtype=amp_dtype,
+            active_route_games = 0
+            active_route_decisions = 0
+            active_route_batches = 0
+            resident = resident_routes.get(route)
+            if resident is not None:
+                train_batches: Iterable[Any] = resident.train_batches
+            else:
+                path = _route_file(
+                    manifest,
+                    Path(args.staged_manifest).resolve().parent,
+                    "train",
+                    route,
+                )
+                train_batches = _route_batches(
+                    path,
+                    route,
+                    games_cap=int(cfg["games_per_batch"]),
+                    decisions_cap=int(cfg["max_decisions_per_batch"]),
+                )
+            for batch in train_batches:
+                metrics = (
+                    _run_resident_batch(
+                        model,
+                        optimizer,
+                        scaler,
+                        resident,
+                        batch,
+                        route,
+                        cfg=cfg,
+                        microbatch_games=args.microbatch_games,
+                        use_amp=use_amp,
+                        amp_dtype=amp_dtype,
+                    )
+                    if resident is not None
+                    else _run_batch(
+                        model,
+                        optimizer,
+                        scaler,
+                        batch,
+                        cfg=cfg,
+                        microbatch_games=args.microbatch_games,
+                        use_amp=use_amp,
+                        amp_dtype=amp_dtype,
+                    )
                 )
                 aggregate.add(type("Metrics", (), {
                     "n_games": metrics["n_games"],
@@ -437,24 +731,78 @@ def main() -> int:
                     "value_loss": metrics["value_loss"],
                     "policy_acc": metrics["policy_acc"],
                 })())
+                active_route_games += int(metrics["n_games"])
+                active_route_decisions += int(metrics["n_decisions"])
+                active_route_batches += 1
                 epoch_steps += 1
                 total_steps += 1
+                if active_route_batches == 1 or active_route_batches % 5 == 0:
+                    _atomic_json(
+                        {
+                            "schema": SCHEMA,
+                            "routes": [EXPERT_IDS[value] for value in routes],
+                            "epoch": epoch,
+                            "active_epoch": epoch + 1,
+                            "active_route": route_id,
+                            "active_route_games": active_route_games,
+                            "active_route_decisions": active_route_decisions,
+                            "active_route_batches": active_route_batches,
+                            "target_epochs": int(args.target_epochs),
+                            "steps": total_steps,
+                            "run_start_epoch": start_epoch,
+                            "execution_backend": (
+                                "device_resident_temporal/v1"
+                                if args.device_resident
+                                else "packed_temporal/v1"
+                            ),
+                            "elapsed_seconds": (
+                                elapsed_before_resume
+                                + time.monotonic()
+                                - started
+                            ),
+                            "complete": False,
+                            "updated_at": time.time(),
+                        },
+                        output.with_suffix(output.suffix + ".progress.json"),
+                    )
             train_by_route[route_id] = aggregate.result()
             val_aggregate = _MetricsAccumulator()
-            val_path = _route_file(manifest, Path(args.staged_manifest).resolve().parent, "val", route)
-            for batch in _route_batches(
-                val_path,
-                route,
-                games_cap=int(cfg["games_per_batch"]),
-                decisions_cap=int(cfg["max_decisions_per_batch"]),
-            ):
-                metrics = _validate_batch(
-                    model,
-                    batch,
-                    cfg=cfg,
-                    microbatch_games=args.microbatch_games,
-                    use_amp=use_amp,
-                    amp_dtype=amp_dtype,
+            if resident is not None:
+                val_batches: Iterable[Any] = resident.val_batches
+            else:
+                val_path = _route_file(
+                    manifest,
+                    Path(args.staged_manifest).resolve().parent,
+                    "val",
+                    route,
+                )
+                val_batches = _route_batches(
+                    val_path,
+                    route,
+                    games_cap=int(cfg["games_per_batch"]),
+                    decisions_cap=int(cfg["max_decisions_per_batch"]),
+                )
+            for batch in val_batches:
+                metrics = (
+                    _validate_resident_batch(
+                        model,
+                        resident,
+                        batch,
+                        route,
+                        cfg=cfg,
+                        microbatch_games=args.microbatch_games,
+                        use_amp=use_amp,
+                        amp_dtype=amp_dtype,
+                    )
+                    if resident is not None
+                    else _validate_batch(
+                        model,
+                        batch,
+                        cfg=cfg,
+                        microbatch_games=args.microbatch_games,
+                        use_amp=use_amp,
+                        amp_dtype=amp_dtype,
+                    )
                 )
                 val_aggregate.add(type("Metrics", (), {
                     "n_games": metrics["n_games"],
@@ -488,6 +836,11 @@ def main() -> int:
             "canonical_config": cfg,
             "microbatch_games": int(args.microbatch_games),
             "device": str(device),
+            "execution_backend": (
+                "device_resident_temporal/v1"
+                if args.device_resident
+                else "packed_temporal/v1"
+            ),
             "snapshots": snapshots,
             "complete": epoch + 1 == int(args.target_epochs),
         }
@@ -499,7 +852,15 @@ def main() -> int:
                 "epoch": epoch + 1,
                 "target_epochs": int(args.target_epochs),
                 "steps": total_steps,
-                "elapsed_seconds": time.monotonic() - started,
+                "run_start_epoch": start_epoch,
+                "execution_backend": (
+                    "device_resident_temporal/v1"
+                    if args.device_resident
+                    else "packed_temporal/v1"
+                ),
+                "elapsed_seconds": (
+                    elapsed_before_resume + time.monotonic() - started
+                ),
                 "complete": payload["complete"],
                 "updated_at": time.time(),
             },
@@ -508,7 +869,7 @@ def main() -> int:
         print(
             f"[adapter-fleet] routes={','.join(payload['route_ids'])} "
             f"epoch={epoch + 1}/{args.target_epochs} steps={total_steps} "
-            f"elapsed={time.monotonic() - started:.1f}s",
+            f"elapsed={elapsed_before_resume + time.monotonic() - started:.1f}s",
             flush=True,
         )
         gc.collect()

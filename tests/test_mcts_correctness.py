@@ -6,13 +6,22 @@ import pytest
 from poke_bot import config, features
 from poke_bot.agent import PolicyAgent
 from poke_bot.batched_infer import LeafPacket
+from poke_bot.matchup_adapter_activation import ShadowMatchupAdapterRouter
+from poke_bot.matchup_adapters import UNKNOWN_ROUTE, route_for_archetype
 from poke_bot.mcts import Child, LeafEvaluator, MCTS, Node
 
 
-def _state(actor: int, search_id: int = 0, result: int = -1):
+def _state(
+    actor: int,
+    search_id: int = 0,
+    result: int = -1,
+    *,
+    visible: tuple[int, ...] = (),
+):
     obs = SimpleNamespace(
         current=SimpleNamespace(yourIndex=actor, result=result),
         select=SimpleNamespace(option=[object(), object()], minCount=1, maxCount=1),
+        visible=visible,
     )
     return SimpleNamespace(observation=obs, searchId=search_id)
 
@@ -58,6 +67,54 @@ def test_leaf_deck_routes_by_simulated_actor() -> None:
     )
     assert evaluator.packet(_state(0).observation).your_deck == root_deck
     assert evaluator.packet(_state(1).observation).your_deck == opponent_deck
+
+
+def test_search_branch_shadow_routers_fork_without_reaching_model(monkeypatch) -> None:
+    import poke_bot.matchup_adapter_activation as activation
+
+    monkeypatch.setattr(
+        activation,
+        "visible_opponent_card_ids",
+        lambda obs: frozenset(getattr(obs, "visible", ())),
+    )
+    shadow = ShadowMatchupAdapterRouter()
+    root_obs = _state(0, visible=(646,)).observation
+    assert shadow.observe(root_obs).route == UNKNOWN_ROUTE
+    root = Node(
+        state=_state(0),
+        matchup_shadow_router=shadow.fork(),
+    )
+    engine = MCTS(
+        None,
+        [1] * 60,
+        leaf_backend=lambda packets: packets,
+        oracle_mode=True,
+        matchup_shadow_router=shadow.fork(),
+    )
+    first = engine._shadow_router_for_state(
+        root,
+        _state(0, visible=(646,)).observation,
+        root_seat=0,
+    )
+    second = engine._shadow_router_for_state(
+        root,
+        _state(0, visible=(646,)).observation,
+        root_seat=0,
+    )
+    assert first is not None and second is not None
+    expected = route_for_archetype("marnie-s-grimmsnarl-ex")
+    assert first.game_router.recognizer.last_decision.route == expected
+    assert second.game_router.recognizer.last_decision.route == expected
+    assert first.model_route == second.model_route == UNKNOWN_ROUTE
+    # An opponent-actor branch is deliberately not observed through the root
+    # agent's recognizer because `yourIndex` would invert the matchup.
+    opponent = engine._shadow_router_for_state(
+        root,
+        _state(1, visible=(646,)).observation,
+        root_seat=0,
+    )
+    assert opponent is not None
+    assert opponent.game_router.recognizer.last_decision.route == UNKNOWN_ROUTE
 
 
 def test_single_tree_search_evaluates_before_next_selection(monkeypatch) -> None:

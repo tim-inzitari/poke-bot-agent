@@ -1,0 +1,29 @@
+[Unit]
+Description=Bootstrap Starmie from the frozen shared core after Trevenant passes
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=1
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists/ops/post_trevenant_starmie_handoff_v1.json
+ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-20260702-20260721/starmie-v2/PROTECTED_EXPERT_CORPUS.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_sequential_specialist_handoff.py run --contract /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists/ops/post_trevenant_starmie_handoff_v1.json
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=36h
+TimeoutStopSec=90
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/post-trevenant-starmie-handoff-v1.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/post-trevenant-starmie-handoff-v1.log

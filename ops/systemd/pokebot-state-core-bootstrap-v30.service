@@ -1,0 +1,25 @@
+[Unit]
+Description=Pokemon RL state-core full-five-day bootstrap (30 epoch ceiling)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/state-core-v1
+Environment=PYTHONUNBUFFERED=1
+Environment=CUDA_VISIBLE_DEVICES=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/train_bootstrap.py --jsonl /home/inzi/poke-bot-agent/data/bootstrap/top_ladder_all_2026-07-03_to_2026-07-07.jsonl --archetype top-ladder-core --run-name state_core_top_ladder_5day_full_20260719 --model-profile pure-rl --epochs 30 --lr 5e-5 --games-per-batch 16 --max-decisions-per-batch 2048 --val-frac 0.10 --split-by-episode --patience 4 --aux-loss-weight 0 --opp-hand-loss-weight 0 --opp-remainder-loss-weight 0 --min-usable-record-frac 0.98 --min-decisions 2400000 --seed 20260725 --resume auto --init-checkpoint /home/inzi/poke-bot-agent/outputs/checkpoints/state_core_top_ladder_5day_20260719.latest.pt
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=90
+OOMPolicy=stop
+MemoryAccounting=true
+MemoryHigh=72G
+MemoryMax=84G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/bootstrap.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/bootstrap.log
+
+[Install]
+WantedBy=default.target

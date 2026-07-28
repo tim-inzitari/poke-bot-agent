@@ -18,7 +18,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 from . import archetypes
 from .ladder_deck_mix import (
@@ -76,6 +76,7 @@ class LadderReplayClassifier:
         *,
         card_csv: Optional[Path] = None,
         additive_registered_ids: Sequence[str] = (),
+        logical_aliases: Mapping[str, str] | None = None,
     ) -> None:
         bound = representatives.bind(mix)
         self.mix = mix
@@ -90,6 +91,19 @@ class LadderReplayClassifier:
             )
         self.additive_registered_ids = additive
         self._additive_registered = frozenset(additive)
+        aliases = {
+            str(source).strip().casefold(): str(target).strip().casefold()
+            for source, target in dict(logical_aliases or {}).items()
+        }
+        known = set(archetypes.archetype_ids())
+        invalid_aliases = sorted(
+            (source, target)
+            for source, target in aliases.items()
+            if not source or not target or source not in known or target not in known
+        )
+        if invalid_aliases:
+            raise ValueError(f"invalid logical ladder aliases: {invalid_aliases}")
+        self.logical_aliases = dict(sorted(aliases.items()))
 
         exact: dict[tuple[int, ...], str] = {}
         for entry in bound:
@@ -147,12 +161,14 @@ class LadderReplayClassifier:
         *,
         card_csv: Optional[str | Path] = None,
         additive_registered_ids: Sequence[str] = (),
+        logical_aliases: Mapping[str, str] | None = None,
     ) -> "LadderReplayClassifier":
         return cls(
             load_ladder_deck_mix(mix_path),
             load_ladder_deck_representatives(representatives_path),
             card_csv=Path(card_csv) if card_csv is not None else None,
             additive_registered_ids=additive_registered_ids,
+            logical_aliases=logical_aliases,
         )
 
     @property
@@ -164,6 +180,7 @@ class LadderReplayClassifier:
             ),
             "active_deck_ids": list(self.active_ids),
             "additive_registered_ids": list(self.additive_registered_ids),
+            "logical_aliases": self.logical_aliases,
             "derived_ace_ids": {
                 key: list(value)
                 for key, value in sorted(self._derived_ace_ids.items())
@@ -176,21 +193,26 @@ class LadderReplayClassifier:
         cards = [int(card_id) for card_id in card_ids]
         exact = self._exact.get(canonical_deck_fingerprint(cards))
         if exact is not None:
-            return LadderReplayLabel(exact, "representative_exact")
+            return self._logical_label(exact, "representative_exact")
 
         registered = archetypes.classify_deck(cards)
         if registered in self._active or registered in self._additive_registered:
-            return LadderReplayLabel(registered, "registered_signature")
+            return self._logical_label(registered, "registered_signature")
 
         present = set(cards)
         for entry in self._signature_rows:
             if all(present.intersection(group) for group in entry.signature_groups):
-                return LadderReplayLabel(entry.deck_id, "artifact_signature")
+                return self._logical_label(entry.deck_id, "artifact_signature")
 
         for deck_id, ace_ids in self._derived_ace_ids.items():
             if present.intersection(ace_ids):
-                return LadderReplayLabel(deck_id, "derived_primary_ace")
+                return self._logical_label(deck_id, "derived_primary_ace")
         return LadderReplayLabel(archetypes.UNKNOWN, "unrecognized")
+
+    def _logical_label(self, deck_id: str, method: str) -> LadderReplayLabel:
+        logical = self.logical_aliases.get(str(deck_id).casefold(), str(deck_id))
+        suffix = "+logical_alias" if logical != deck_id else ""
+        return LadderReplayLabel(logical, method + suffix)
 
     def classify_episode(
         self, payload: dict[str, Any]

@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Pokemon production pipeline every minute
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
+Persistent=true
+Unit=pokebot-production-supervisor.service
+
+[Install]
+WantedBy=timers.target

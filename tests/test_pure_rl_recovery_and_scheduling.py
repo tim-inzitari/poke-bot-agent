@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -11,6 +12,502 @@ import torch
 
 from poke_bot.pure_rl.eval_public import OFFICIAL_BASELINE_IDS, aggregate_heldout_wr
 from scripts import train_pure_rl
+
+
+def test_exact_regression_rollback_uses_runtime_activated_anchor(
+    tmp_path: Path,
+) -> None:
+    parent_path = tmp_path / "iter26.pt"
+    activated_path = tmp_path / "iter26_matchup.pt"
+    behavior_path = tmp_path / "iter29.pt"
+    parent_path.write_bytes(b"protected exact anchor")
+    activated_path.write_bytes(b"protected exact anchor plus runtime adapters")
+    behavior_path.write_bytes(b"current behavior")
+    parent = train_pure_rl._verified_checkpoint_identity(
+        {
+            "path": str(parent_path),
+            "digest": "sha256:"
+            + hashlib.sha256(parent_path.read_bytes()).hexdigest(),
+        }
+    )
+    activated = train_pure_rl._verified_checkpoint_identity(
+        {
+            "path": str(activated_path),
+            "digest": "sha256:"
+            + hashlib.sha256(activated_path.read_bytes()).hexdigest(),
+        }
+    )
+    behavior = train_pure_rl._verified_checkpoint_identity(
+        {
+            "path": str(behavior_path),
+            "digest": "sha256:"
+            + hashlib.sha256(behavior_path.read_bytes()).hexdigest(),
+        }
+    )
+    receipt = tmp_path / "runtime-boundary.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.matchup_runtime_boundary_activation/v1",
+                "parent_learner": parent.as_dict(),
+                "activated_learner": activated.as_dict(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    chosen, source = train_pure_rl._exact_regression_rollback_identity(
+        {
+            "matchup_runtime_activation": {
+                "receipt": str(receipt),
+                "learner_digest": activated.digest,
+            }
+        },
+        exact_anchor=parent,
+        behavior_before=behavior,
+    )
+    assert chosen == activated
+    assert source == "runtime_activated_exact_anchor"
+
+
+def test_exact_regression_rollback_preserves_behavior_if_receipt_is_invalid(
+    tmp_path: Path,
+) -> None:
+    anchor_path = tmp_path / "anchor.pt"
+    behavior_path = tmp_path / "behavior.pt"
+    anchor_path.write_bytes(b"anchor")
+    behavior_path.write_bytes(b"behavior")
+    anchor = train_pure_rl._verified_checkpoint_identity(
+        {
+            "path": str(anchor_path),
+            "digest": "sha256:"
+            + hashlib.sha256(anchor_path.read_bytes()).hexdigest(),
+        }
+    )
+    behavior = train_pure_rl._verified_checkpoint_identity(
+        {
+            "path": str(behavior_path),
+            "digest": "sha256:"
+            + hashlib.sha256(behavior_path.read_bytes()).hexdigest(),
+        }
+    )
+    chosen, source = train_pure_rl._exact_regression_rollback_identity(
+        {
+            "matchup_runtime_activation": {
+                "receipt": str(tmp_path / "missing.json"),
+                "learner_digest": "sha256:" + "0" * 64,
+            }
+        },
+        exact_anchor=anchor,
+        behavior_before=behavior,
+    )
+    assert chosen == behavior
+    assert source == "runtime_receipt_invalid_preserve_behavior"
+
+
+def test_self_play_refill_capacity_is_bounded_and_seed_disjoint() -> None:
+    jobs = [
+        {
+            "job_index": index,
+            "seed": 1_000 + index,
+            "target_provenance": {"self_play": True},
+        }
+        for index in range(8)
+    ]
+
+    refill = train_pure_rl._self_play_refill_capacity_jobs(jobs, fraction=0.5)
+
+    assert len(refill) == 4
+    assert [job["job_index"] for job in refill] == [8, 9, 10, 11]
+    assert {job["seed"] for job in refill}.isdisjoint(
+        {job["seed"] for job in jobs}
+    )
+    assert all(
+        job["target_provenance"]["replacement_capacity"] is True
+        for job in refill
+    )
+    assert train_pure_rl._self_play_refill_capacity_jobs(
+        jobs, fraction=2.0
+    )
+    assert len(
+        train_pure_rl._self_play_refill_capacity_jobs(jobs, fraction=2.0)
+    ) == len(jobs)
+    globally_disjoint = train_pure_rl._self_play_refill_capacity_jobs(
+        jobs,
+        fraction=0.5,
+        first_job_index=100,
+    )
+    assert [job["job_index"] for job in globally_disjoint] == [100, 101, 102, 103]
+
+
+def _collection_result(
+    job_index: int,
+    *,
+    replacement_for: int | None = None,
+    failed: bool = False,
+) -> dict:
+    provenance = {"collect": "self_play", "self_play": True}
+    if replacement_for is not None:
+        provenance.update(
+            replacement_capacity=True,
+            replacement_for_job_index=replacement_for,
+        )
+    return {
+        "job_index": job_index,
+        "self_play": True,
+        "our_failed": failed,
+        "record_json": (
+            None
+            if failed
+            else json.dumps(
+                {
+                    "episode_id": f"episode-{job_index}",
+                    "seat": 0,
+                    "archetype": "alakazam",
+                    "opp_archetype": "alakazam",
+                    "deck": [1] * 60,
+                    "value": 1.0,
+                    "steps": [
+                        {
+                            "env_step": 0,
+                            "action": [1],
+                            "observation": {},
+                        }
+                    ],
+                    "target_provenance": provenance,
+                }
+            )
+        ),
+    }
+
+
+def test_spare_results_are_isolated_and_only_replace_missing_primary(
+    tmp_path: Path,
+) -> None:
+    shard = tmp_path / "iter_00001.jsonl"
+    spool = tmp_path / "iter_00001.replacements.jsonl"
+    writer = train_pure_rl.CompactShardWriter(shard)
+    stats = {
+        "ok": 0,
+        "baseline_failed": 0,
+        "our_failed": 0,
+        "resource_error": 0,
+        "with_record": 0,
+        "self_play": 0,
+        "leaf_remote": 0,
+        "multi_env_games": 0,
+        "leaf_modes": {},
+    }
+    retained: set[int] = set()
+    runtime_rows: list[dict[str, object]] = []
+    train_pure_rl._consume_results(
+        iter(
+            [
+                _collection_result(0),
+                _collection_result(1, failed=True),
+                _collection_result(2, replacement_for=0),
+                _collection_result(3, replacement_for=1),
+            ]
+        ),
+        writer,
+        runtime_rows,
+        stats,
+        replacement_spool=spool,
+        retained_job_indices=retained,
+    )
+
+    assert retained == {0}
+    assert writer.n_games == 1
+    assert stats["with_record"] == 1
+    assert stats["replacement_capacity_staged_source_games"] == 2
+    assert [row["job_index"] for row in runtime_rows] == [0]
+
+    promoted = train_pure_rl._promote_replacement_spool(
+        spool,
+        missing_job_indices={1},
+        writer=writer,
+    )
+    assert promoted["promoted_job_indices"] == {1}
+    assert promoted["promoted_source_games"] == 1
+    assert len(promoted["promoted_runtime_audit_rows"]) == 1
+    promoted_audit = promoted["promoted_runtime_audit_rows"][0]
+    assert promoted_audit["job_index"] == 1
+    assert promoted_audit["replacement_attempt_job_index"] == 3
+    assert promoted_audit["promoted_replacement"] is True
+    assert writer.n_games == 2
+    assert not spool.exists()
+    rows = [json.loads(line) for line in shard.read_text().splitlines()]
+    assert [row["episode_id"] for row in rows] == ["episode-0", "episode-3"]
+    assert rows[1]["target_provenance"]["replacement_for_job_index"] == 1
+
+
+def test_spare_can_fill_a_contract_equivalent_missing_schedule_cell(
+    tmp_path: Path,
+) -> None:
+    shard = tmp_path / "iter_00001.jsonl"
+    spool = tmp_path / "iter_00001.replacements.jsonl"
+    writer = train_pure_rl.CompactShardWriter(shard)
+    stats = {
+        "ok": 0,
+        "baseline_failed": 0,
+        "our_failed": 0,
+        "resource_error": 0,
+        "with_record": 0,
+        "self_play": 0,
+        "leaf_remote": 0,
+        "multi_env_games": 0,
+        "leaf_modes": {},
+    }
+    train_pure_rl._consume_results(
+        iter([_collection_result(2, replacement_for=0)]),
+        writer,
+        [],
+        stats,
+        replacement_spool=spool,
+        retained_job_indices=set(),
+    )
+    primary_jobs = [
+        {
+            "job_index": index,
+            "our_seat": -1,
+            "opponent_id": "",
+            "archetype": "alakazam",
+            "opp_archetype": "alakazam",
+            "target_provenance": {"self_play": True},
+        }
+        for index in (0, 1)
+    ]
+
+    promoted = train_pure_rl._promote_replacement_spool(
+        spool,
+        missing_job_indices={1},
+        writer=writer,
+        primary_jobs=primary_jobs,
+    )
+
+    assert promoted["promoted_job_indices"] == {1}
+    assert writer.n_games == 1
+    row = json.loads(shard.read_text().strip())
+    provenance = row["target_provenance"]
+    assert provenance["replacement_for_job_index"] == 1
+    assert provenance["replacement_original_for_job_index"] == 0
+    audit = promoted["promoted_runtime_audit_rows"][0]
+    assert audit["job_index"] == 1
+    assert audit["replacement_original_for_job_index"] == 0
+
+
+def test_explicit_mirror_failover_can_fill_its_original_missing_cell(
+    tmp_path: Path,
+) -> None:
+    shard = tmp_path / "iter.jsonl"
+    spool = tmp_path / "iter.replacements.jsonl"
+    writer = train_pure_rl.CompactShardWriter(shard)
+    current_digest = "sha256:" + "c" * 64
+    record = {
+        "episode_id": "mirror-retry",
+        "seat": 1,
+        "archetype": "alakazam",
+        "opp_archetype": "alakazam",
+        "deck": [1] * 60,
+        "value": 1.0,
+        "steps": [{"env_step": 0, "action": [1], "observation": {}}],
+        "target_provenance": {
+            "self_play": True,
+            "replacement_capacity": True,
+            "replacement_for_job_index": 7,
+            "replacement_rescheduled_inapplicable_opponent": True,
+            "opponent_checkpoint_digest": current_digest,
+        },
+    }
+    train_pure_rl._append_replacement_spool(
+        spool,
+        replacement_for_job_index=7,
+        records=[record],
+        runtime_audit_row={
+            "job_index": 101,
+            "our_seat": 1,
+            "opponent_id": "self:current.pt",
+            "archetype": "alakazam",
+            "invalid": False,
+        },
+        schedule_contract={
+            "our_seat": 1,
+            "opponent_id": "self:current.pt",
+            "archetype": "alakazam",
+            "opp_archetype": "alakazam",
+            "opponent_checkpoint_digest": current_digest,
+            "opponent_content_digest": "",
+            "opponent_training_group": "",
+        },
+    )
+    original_job = {
+        "job_index": 7,
+        "our_seat": 1,
+        "opponent_id": "self:broken-history.pt",
+        "archetype": "alakazam",
+        "opp_archetype": "alakazam",
+        "opponent_checkpoint_digest": "sha256:" + "b" * 64,
+        "target_provenance": {"self_play": True},
+    }
+
+    promoted = train_pure_rl._promote_replacement_spool(
+        spool,
+        missing_job_indices={7},
+        writer=writer,
+        primary_jobs=[original_job],
+    )
+
+    assert promoted["promoted_job_indices"] == {7}
+    assert writer.n_games == 1
+    audit = promoted["promoted_runtime_audit_rows"][0]
+    assert audit["job_index"] == 7
+    assert audit["replacement_attempt_job_index"] == 101
+
+
+def test_spare_result_fails_closed_without_isolated_spool(tmp_path: Path) -> None:
+    writer = train_pure_rl.CompactShardWriter(tmp_path / "iter.jsonl")
+    stats = {
+        "ok": 0,
+        "baseline_failed": 0,
+        "our_failed": 0,
+        "resource_error": 0,
+        "with_record": 0,
+        "self_play": 0,
+        "leaf_remote": 0,
+        "multi_env_games": 0,
+        "leaf_modes": {},
+    }
+    with pytest.raises(RuntimeError, match="isolated replacement spool"):
+        train_pure_rl._consume_results(
+            iter([_collection_result(2, replacement_for=0)]),
+            writer,
+            [],
+            stats,
+        )
+
+
+def test_targeted_replacements_preserve_schedule_cell_and_use_disjoint_seed() -> None:
+    primary = [
+        {
+            "job_index": index,
+            "seed": 2_700_000 + index,
+            "our_seat": index % 2,
+            "opponent_id": f"opponent-{index % 3}",
+            "target_provenance": {
+                "collection_job_index": index,
+                "self_play": bool(index < 2),
+            },
+        }
+        for index in range(4)
+    ]
+
+    retries = train_pure_rl._targeted_replacement_jobs(
+        primary,
+        missing_job_indices={1, 3},
+        retry_round=2,
+        first_job_index=100,
+    )
+
+    assert [job["job_index"] for job in retries] == [100, 101]
+    assert [job["seed"] for job in retries] == [2_780_001, 2_780_003]
+    assert [job["our_seat"] for job in retries] == [1, 1]
+    assert [job["opponent_id"] for job in retries] == [
+        "opponent-1",
+        "opponent-0",
+    ]
+    assert [
+        job["target_provenance"]["replacement_for_job_index"]
+        for job in retries
+    ] == [1, 3]
+    assert all(
+        job["target_provenance"]["replacement_round"] == 3
+        for job in retries
+    )
+
+
+def test_second_self_play_retry_reschedules_only_to_current_mirror() -> None:
+    target = {
+        "job_index": 7,
+        "seed": 2_700_007,
+        "our_seat": 1,
+        "checkpoint": "/models/current.pt",
+        "checkpoint_digest": "sha256:" + "c" * 64,
+        "opponent_checkpoint": "/models/broken-history.pt",
+        "opponent_checkpoint_digest": "sha256:" + "b" * 64,
+        "opponent_id": "self:broken-history.pt",
+        "archetype": "alakazam",
+        "opp_archetype": "alakazam",
+        "target_provenance": {"self_play": True},
+    }
+
+    original_retry = train_pure_rl._targeted_replacement_jobs(
+        [target],
+        missing_job_indices={7},
+        retry_round=0,
+        first_job_index=100,
+    )[0]
+    mirror_retry = train_pure_rl._targeted_replacement_jobs(
+        [target],
+        missing_job_indices={7},
+        retry_round=1,
+        first_job_index=101,
+    )[0]
+
+    assert original_retry["opponent_checkpoint"] == "/models/broken-history.pt"
+    assert (
+        original_retry["target_provenance"][
+            "replacement_rescheduled_inapplicable_opponent"
+        ]
+        is False
+    )
+    assert mirror_retry["opponent_checkpoint"] == "/models/current.pt"
+    assert mirror_retry["opponent_checkpoint_digest"] == "sha256:" + "c" * 64
+    assert mirror_retry["opponent_id"] == "self:current.pt"
+    assert mirror_retry["collect_both_seats"] is True
+    provenance = mirror_retry["target_provenance"]
+    assert provenance["replacement_for_job_index"] == 7
+    assert provenance["replacement_rescheduled_inapplicable_opponent"] is True
+    assert provenance["replacement_original_opponent"] == {
+        "opponent_id": "self:broken-history.pt",
+        "opponent_checkpoint": "/models/broken-history.pt",
+        "opponent_checkpoint_digest": "sha256:" + "b" * 64,
+    }
+def test_targeted_replacement_uses_different_exact_contract_source() -> None:
+    primary = [
+        {
+            "job_index": index,
+            "seed": 2_700_000 + index,
+            "our_seat": 0,
+            "opponent_id": "self:learner.pt",
+            "archetype": "alakazam",
+            "opp_archetype": "alakazam",
+            "checkpoint_digest": "learner",
+            "opponent_checkpoint_digest": "learner",
+            "our_deck": [1] * 60,
+            "opp_deck": [1] * 60,
+            "collect_both_seats": True,
+            "target_provenance": {
+                "collection_job_index": index,
+                "self_play": True,
+            },
+        }
+        for index in range(4)
+    ]
+
+    [retry] = train_pure_rl._targeted_replacement_jobs(
+        primary,
+        missing_job_indices={1},
+        retry_round=0,
+        first_job_index=100,
+    )
+
+    assert retry["job_index"] == 100
+    assert retry["target_provenance"]["replacement_for_job_index"] == 1
+    assert retry["target_provenance"]["collection_job_index"] == 1
+    assert retry["target_provenance"]["replacement_retry_source_job_index"] != 1
+    assert train_pure_rl._replacement_schedule_contract_from_job(retry) == (
+        train_pure_rl._replacement_schedule_contract_from_job(primary[1])
+    )
+    assert retry["seed"] not in {job["seed"] for job in primary}
 from scripts.apply_archetype_label_integrity_at_boundary import (
     load_v17_migration_receipt_chain,
     validate_v17_migration_receipt,
@@ -687,6 +1184,164 @@ def test_new_lineage_replaces_global_result_pointer_from_prior_gate(
         )
 
 
+def test_same_lineage_publishes_owner_authorized_lc55_gate_revision(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    roster = [f"opponent-{index}" for index in range(8)]
+    result = {
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "gate_id": "alakazam-strong-public-roster-lc55-v2",
+        "iteration": 21,
+        "checkpoint_digest": "sha256:" + "f" * 64,
+        "matchups": [{"opponent_id": opponent} for opponent in roster],
+        "passed": False,
+    }
+    committed = {
+        "version": train_pure_rl.LOOP_STATE_VERSION,
+        "run_name": "run",
+        "mode": "specialist",
+        "next_iteration": 22,
+        "last_completed_iteration": 21,
+        "history": [
+            {
+                "iteration": 21,
+                "completed": True,
+                "active_gate_result": result,
+            }
+        ],
+    }
+    train_pure_rl._atomic_json(run_dir / "loop_state.json", committed)
+    commit_path = run_dir / "commits" / "iter_00021.json"
+    commit_path.write_text(json.dumps(committed), encoding="utf-8")
+    pointer = tmp_path / "gate-result.json"
+    train_pure_rl._atomic_json(
+        pointer,
+        {
+            **result,
+            "gate_id": "alakazam-strong-public-roster-v1",
+            "iteration": 20,
+            "commit": str(run_dir / "commits" / "iter_00020.json"),
+            "matchups": [{"opponent_id": opponent} for opponent in roster],
+            "committed": True,
+        },
+    )
+    active_gate = {
+        "id": "alakazam-strong-public-roster-lc55-v2",
+        "roster": [{"opponent_id": opponent} for opponent in roster],
+        "evaluation": {"games_total": 2000, "games_per_opponent": 250},
+        "pass_criteria": {"skill_weighted_confidence_lower": 0.55},
+    }
+
+    assert train_pure_rl._publish_committed_active_gate_result(
+        run_dir=run_dir,
+        active_gate=active_gate,
+        result_pointer=pointer,
+    ) == (pointer.resolve(), commit_path.resolve())
+    published = json.loads(pointer.read_text(encoding="utf-8"))
+    assert published["gate_id"] == "alakazam-strong-public-roster-lc55-v2"
+    assert published["iteration"] == 21
+
+
+def test_same_lineage_publishes_owner_authorized_lc50_after_iter30(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    roster = [f"opponent-{index}" for index in range(8)]
+    result = {
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "gate_id": "alakazam-strong-public-roster-lc50-after-iter30-v1",
+        "iteration": 31,
+        "checkpoint_digest": "sha256:" + "f" * 64,
+        "matchups": [{"opponent_id": opponent} for opponent in roster],
+        "passed": False,
+    }
+    committed = {
+        "version": train_pure_rl.LOOP_STATE_VERSION,
+        "run_name": "run",
+        "mode": "specialist",
+        "next_iteration": 32,
+        "last_completed_iteration": 31,
+        "history": [
+            {"iteration": 31, "completed": True, "active_gate_result": result}
+        ],
+    }
+    train_pure_rl._atomic_json(run_dir / "loop_state.json", committed)
+    commit_path = run_dir / "commits" / "iter_00031.json"
+    commit_path.write_text(json.dumps(committed), encoding="utf-8")
+    pointer = tmp_path / "gate-result.json"
+    train_pure_rl._atomic_json(
+        pointer,
+        {
+            **result,
+            "gate_id": "alakazam-strong-public-roster-lc55-v2",
+            "iteration": 30,
+            "commit": str(run_dir / "commits" / "iter_00030.json"),
+            "matchups": [{"opponent_id": opponent} for opponent in roster],
+            "committed": True,
+        },
+    )
+    active_gate = {
+        "id": "alakazam-strong-public-roster-lc50-after-iter30-v1",
+        "roster": [{"opponent_id": opponent} for opponent in roster],
+        "evaluation": {"games_total": 2000, "games_per_opponent": 250},
+        "pass_criteria": {"skill_weighted_confidence_lower": 0.50},
+        "activation": {
+            "schema": "poke_bot.iteration_gate_fallback_activation/v1",
+            "prior_gate_id": "alakazam-strong-public-roster-lc55-v2",
+            "activate_after_completed_iteration": 30,
+            "observed_completed_iteration": 30,
+            "prior_gate_passed": False,
+            "only_changed_criterion": "skill_weighted_confidence_lower",
+            "prior_confidence_lower": 0.55,
+            "active_confidence_lower": 0.50,
+        },
+    }
+
+    assert train_pure_rl._publish_committed_active_gate_result(
+        run_dir=run_dir,
+        active_gate=active_gate,
+        result_pointer=pointer,
+    ) == (pointer.resolve(), commit_path.resolve())
+    assert json.loads(pointer.read_text())["gate_id"] == active_gate["id"]
+
+
+def test_lc50_fallback_is_a_terminal_child_of_requested_lc55() -> None:
+    contract = json.loads(
+        (Path(__file__).resolve().parents[1] / "ops/alakazam_gate_program_v1.json")
+        .read_text(encoding="utf-8")
+    )
+    assert train_pure_rl._terminal_gate_target_matches(
+        requested_gate_id=contract["active_gate_id"],
+        passed_gate_id=contract["fallback_transition"]["id"],
+        base_contract=contract,
+    )
+    assert not train_pure_rl._terminal_gate_target_matches(
+        requested_gate_id="alakazam-strong-public-roster-lc55-v2",
+        passed_gate_id="unrelated-gate",
+        base_contract=contract,
+    )
+
+
+def test_gate_history_pass_check_respects_iteration_boundary() -> None:
+    state = {
+        "history": [
+            {
+                "iteration": 30,
+                "active_gate_result": {"gate_id": "lc55", "passed": True},
+            }
+        ]
+    }
+    assert not train_pure_rl._gate_passed_in_history(
+        state, gate_id="lc55", through_iteration=29
+    )
+    assert train_pure_rl._gate_passed_in_history(
+        state, gate_id="lc55", through_iteration=30
+    )
+
+
 def test_immutable_json_refuses_overwrite(tmp_path: Path) -> None:
     path = tmp_path / "iter.json"
     train_pure_rl._write_json_exclusive(path, {"iteration": 1})
@@ -762,6 +1417,198 @@ def test_interrupted_iteration_is_quarantined_and_can_retry(tmp_path: Path) -> N
     assert train_pure_rl._recover_interrupted_iteration(tmp_path, state) is None
     for path in partials:
         assert not path.exists()
+
+
+def test_receipted_orphan_candidate_is_preserved_for_promotion_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("shards", "checkpoints", "metrics", "eval", "commits"):
+        (tmp_path / name).mkdir()
+    shard = tmp_path / "shards" / "iter_00001.jsonl"
+    candidate = tmp_path / "checkpoints" / "iter_00001.pt"
+    shard.write_bytes(b"complete shard")
+    candidate.write_bytes(b"complete candidate")
+    contract = {"source": {"source_tree_sha256": "sha256:test"}}
+    contract_digest = train_pure_rl._design_fingerprint(contract)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "design_contract": contract,
+                "design_fingerprint": contract_digest,
+            }
+        ),
+        encoding="utf-8",
+    )
+    state = {
+        "next_iteration": 1,
+        "learner": {"digest": "sha256:parent"},
+    }
+    design_fingerprint = "sha256:" + "d" * 64
+    receipt = {
+        "checkpoint_digest": "sha256:parent",
+        "design_fingerprint_at_collection": design_fingerprint,
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_receipt",
+        lambda *_args, **_kwargs: receipt,
+    )
+    observed = {}
+
+    def verify(path: Path, **kwargs):
+        observed.update({"path": path, **kwargs})
+        return {"candidate_digest": "sha256:candidate"}
+
+    monkeypatch.setattr(
+        train_pure_rl, "_verified_orphan_candidate_result", verify
+    )
+
+    assert train_pure_rl._recover_interrupted_iteration(tmp_path, state) is None
+    assert shard.is_file()
+    assert candidate.is_file()
+    assert observed["path"] == candidate.resolve()
+    assert observed["parent_digest"] == "sha256:parent"
+    assert observed["behavior_digest"] == "sha256:parent"
+    assert observed["design_fingerprint"] == (design_fingerprint,)
+
+
+def test_receipted_candidate_and_research_result_are_preserved_for_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "shards",
+        "checkpoints",
+        "metrics",
+        "eval",
+        "commits",
+        "research_controls",
+    ):
+        (tmp_path / name).mkdir()
+    shard = tmp_path / "shards" / "iter_00001.jsonl"
+    candidate = tmp_path / "checkpoints" / "iter_00001.pt"
+    research = tmp_path / "research_controls" / "iter_00001.json"
+    shard.write_bytes(b"complete shard")
+    candidate.write_bytes(b"complete candidate")
+    candidate_digest = train_pure_rl._sha256_file(candidate)
+    research_result = {
+        "schema": train_pure_rl.RESEARCH_CONTROL_RESULT_SCHEMA,
+        "iteration": 1,
+        "checkpoint_digest": candidate_digest,
+        "training_eligible": False,
+        "replay_eligible": False,
+        "diagnostic_only": True,
+        "included_in_gate_pass": False,
+        "gate_weight": 0.0,
+        "formal_eval": False,
+        "action_selection": "greedy",
+        "games": 1000,
+        "audit": {
+            "passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "seed_disjoint": True,
+            "package_disjoint_from_active_gate": True,
+            "replay_records_written": 0,
+            "measurement_plan": {"iteration": 1},
+        },
+        "result_path": str(research.resolve()),
+    }
+    research.write_text(json.dumps(research_result), encoding="utf-8")
+    contract = {"source": {"source_tree_sha256": "sha256:test"}}
+    contract_digest = train_pure_rl._design_fingerprint(contract)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "design_contract": contract,
+                "design_fingerprint": contract_digest,
+            }
+        ),
+        encoding="utf-8",
+    )
+    state = {
+        "next_iteration": 1,
+        "learner": {"digest": "sha256:parent"},
+    }
+    receipt = {
+        "checkpoint_digest": "sha256:parent",
+        "design_fingerprint_at_collection": contract_digest,
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_receipt",
+        lambda *_args, **_kwargs: receipt,
+    )
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_orphan_candidate_result",
+        lambda *_args, **_kwargs: {"candidate_digest": candidate_digest},
+    )
+    assert train_pure_rl._recover_interrupted_iteration(tmp_path, state) is None
+    assert shard.is_file()
+    assert candidate.is_file()
+    assert research.is_file()
+
+
+def test_unsafe_research_result_is_not_preserved_with_orphan_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "shards",
+        "checkpoints",
+        "metrics",
+        "eval",
+        "commits",
+        "research_controls",
+    ):
+        (tmp_path / name).mkdir()
+    shard = tmp_path / "shards" / "iter_00001.jsonl"
+    candidate = tmp_path / "checkpoints" / "iter_00001.pt"
+    research = tmp_path / "research_controls" / "iter_00001.json"
+    shard.write_bytes(b"complete shard")
+    candidate.write_bytes(b"complete candidate")
+    research.write_text(
+        json.dumps(
+            {
+                "schema": train_pure_rl.RESEARCH_CONTROL_RESULT_SCHEMA,
+                "iteration": 1,
+                "checkpoint_digest": train_pure_rl._sha256_file(candidate),
+                "training_eligible": True,
+                "audit": {"measurement_plan": {"iteration": 1}},
+                "result_path": str(research.resolve()),
+            }
+        ),
+        encoding="utf-8",
+    )
+    contract = {"source": {"source_tree_sha256": "sha256:test"}}
+    contract_digest = train_pure_rl._design_fingerprint(contract)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {"design_contract": contract, "design_fingerprint": contract_digest}
+        ),
+        encoding="utf-8",
+    )
+    state = {"next_iteration": 1, "learner": {"digest": "sha256:parent"}}
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_receipt",
+        lambda *_args, **_kwargs: {
+            "checkpoint_digest": "sha256:parent",
+            "design_fingerprint_at_collection": contract_digest,
+        },
+    )
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_orphan_candidate_result",
+        lambda *_args, **_kwargs: {
+            "candidate_digest": train_pure_rl._sha256_file(candidate)
+        },
+    )
+
+    failure = train_pure_rl._recover_interrupted_iteration(tmp_path, state)
+    assert failure is not None and failure.is_file()
+    assert not shard.exists()
+    assert not candidate.exists()
+    assert not research.exists()
 
 
 def test_completed_collection_is_receipted_and_resumed_without_recollection(
@@ -850,6 +1697,7 @@ def test_completed_collection_is_receipted_and_resumed_without_recollection(
     assert shard.is_file()
     bundle = train_pure_rl._completed_collection_bundle(tmp_path, state, contract)
     assert bundle is not None and bundle["recovered"] is True
+    assert bundle["design_fingerprint_at_collection"] == design_fingerprint
     assert bundle["writer"].n_games == 2
     assert bundle["writer"].n_decisions == 2
     behavior = train_pure_rl._collection_behavior_identity(bundle)
@@ -1126,6 +1974,53 @@ def test_continue_after_gate_preserves_first_committed_pass(tmp_path: Path) -> N
     assert json.loads(marker.read_text(encoding="utf-8")) == first_payload
 
 
+def test_current_protocol_marker_does_not_replace_historical_marker(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "candidate.pt"
+    checkpoint_path.write_bytes(b"current protocol pass")
+    from poke_bot.promotion import CheckpointIdentity
+
+    candidate = CheckpointIdentity.from_path(checkpoint_path)
+    state = {
+        "version": train_pure_rl.LOOP_STATE_VERSION,
+        "run_name": "current-protocol",
+        "mode": "specialist",
+        "champion": candidate.as_dict(),
+        "history": [
+            {
+                "iteration": 30,
+                "completed": True,
+                "candidate": candidate.as_dict(),
+                "stage_gate": {
+                    "passed": True,
+                    "win_rate": 0.61,
+                    "confidence_lower": 0.56,
+                    "games": 2000,
+                },
+            }
+        ],
+    }
+    historical = tmp_path / "SPECIALIST_GATE_PASSED"
+    historical.write_text('{"iteration": 20}\n', encoding="utf-8")
+    current_name = "SPECIALIST_GATE_PASSED.alakazam-lc55-v2"
+
+    current = train_pure_rl._ensure_terminal_gate_marker(
+        tmp_path,
+        state,
+        preserve_first=True,
+        marker_name=current_name,
+    )
+
+    assert current == tmp_path / current_name
+    assert json.loads(current.read_text(encoding="utf-8"))["iteration"] == 30
+    assert historical.read_text(encoding="utf-8") == '{"iteration": 20}\n'
+    with pytest.raises(ValueError, match="safe filename"):
+        train_pure_rl._ensure_terminal_gate_marker(
+            tmp_path, state, marker_name="../unsafe"
+        )
+
+
 def test_continue_after_gate_rejects_uncommitted_marker(tmp_path: Path) -> None:
     checkpoint_path = tmp_path / "candidate.pt"
     checkpoint_path.write_bytes(b"candidate")
@@ -1187,6 +2082,51 @@ def test_resume_rejects_design_drift() -> None:
             manifest=manifest,
             current={"games": {"per_iteration": 512}, "seed": 7},
         )
+
+
+def test_initial_empty_run_allows_receipted_source_migration(
+    tmp_path: Path,
+) -> None:
+    stored = {
+        "learner": {
+            "games_per_batch": 96,
+            "max_decisions_per_batch": 8192,
+        },
+        "source": {"loader_contract": "sha256:old"},
+        "run": {"iterations": 16},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 0,
+        "last_completed_iteration": -1,
+        "history": [],
+    }
+    manifest = {
+        "design_fingerprint": stored_digest,
+        "design_contract": stored,
+    }
+    current = {
+        "learner": {
+            "games_per_batch": 96,
+            "max_decisions_per_batch": 8192,
+        },
+        "source": {"loader_contract": "sha256:new"},
+        "run": {"iterations": 16},
+    }
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="receipt_backed_completed_collection_resume_v1",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    assert state["design_fingerprint"] == digest
+    assert len(list((tmp_path / "design_migrations").glob("*.json"))) == 1
 
 
 def test_clean_boundary_migration_audits_operational_batch_update(
@@ -1260,6 +2200,657 @@ def test_clean_boundary_migration_audits_operational_batch_update(
     )
     assert digest_again == train_pure_rl._design_fingerprint(current_again)
     assert len(list((tmp_path / "design_migrations").glob("migration_*.json"))) == 2
+
+
+def test_clean_boundary_migration_allows_exact_zero_safe_decision_fusion(
+    tmp_path: Path,
+) -> None:
+    stored = {
+        "learner": {
+            "alakazam_guide_loss_weight": 0.0,
+            "alakazam_guide_targets_enabled": False,
+            "games_per_batch": 240,
+            "max_decisions_per_batch": 8192,
+            "profile": {"expanded_heads_enabled": True},
+        },
+        "source": {"source_tree_sha256": "sha256:old"},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 14,
+        "last_completed_iteration": 13,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00013.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    current = json.loads(json.dumps(stored))
+    current["learner"].update(
+        current_deck_guide_archetype=None,
+        current_deck_guide_loss_weight=0.0,
+        current_deck_guide_targets_enabled=False,
+        current_deck_guide_version=None,
+    )
+    current["learner"]["profile"].update(
+        decision_fusion_enabled=True,
+        decision_fusion_runtime_enabled=False,
+        decision_fusion_width=16,
+    )
+    current["source"]["source_tree_sha256"] = "sha256:fusion"
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="receipt_backed_decision_fusion_warmup_v1",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    receipt = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert set(receipt["changed_paths"]) == {
+        *train_pure_rl._DECISION_FUSION_WARMUP_MIGRATION_PATHS,
+        "source.source_tree_sha256",
+    }
+
+
+def test_decision_fusion_warmup_composes_with_allowed_operational_change() -> None:
+    stored = {
+        "learner": {
+            "games_per_batch": 120,
+            "alakazam_guide_loss_weight": 0.0,
+            "alakazam_guide_targets_enabled": False,
+            "profile": {"expanded_heads_enabled": True},
+        }
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"].update(
+        games_per_batch=240,
+        current_deck_guide_archetype=None,
+        current_deck_guide_loss_weight=0.0,
+        current_deck_guide_targets_enabled=False,
+        current_deck_guide_version=None,
+    )
+    current["learner"]["profile"].update(
+        decision_fusion_enabled=True,
+        decision_fusion_runtime_enabled=False,
+        decision_fusion_width=16,
+    )
+    changed = sorted(train_pure_rl._changed_design_paths(stored, current))
+
+    assert train_pure_rl._safe_decision_fusion_warmup_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="receipt_backed_decision_fusion_warmup_v1",
+    )
+
+    current["learner"]["epochs"] = 2
+    changed = sorted(train_pure_rl._changed_design_paths(stored, current))
+    assert not train_pure_rl._safe_decision_fusion_warmup_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="receipt_backed_decision_fusion_warmup_v1",
+    )
+
+
+def test_decision_fusion_runtime_activation_is_exact_and_fail_closed() -> None:
+    stored = {
+        "learner": {
+            "profile": {
+                "expanded_heads_enabled": True,
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": False,
+                "decision_fusion_width": 16,
+            }
+        }
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"]["profile"]["decision_fusion_runtime_enabled"] = True
+    changed = sorted(train_pure_rl._changed_design_paths(stored, current))
+    assert train_pure_rl._safe_decision_fusion_runtime_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="receipt_backed_decision_fusion_runtime_v1",
+    )
+
+    current["learner"]["profile"]["decision_fusion_width"] = 32
+    changed = sorted(train_pure_rl._changed_design_paths(stored, current))
+    assert not train_pure_rl._safe_decision_fusion_runtime_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="receipt_backed_decision_fusion_runtime_v1",
+    )
+
+
+def test_completed_collection_survives_zero_safe_fusion_warmup(
+    tmp_path: Path,
+) -> None:
+    parent = "sha256:" + "1" * 64
+    warmup = "sha256:" + "2" * 64
+    material_path = tmp_path / "materialization.json"
+    material_path.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.causal_decision_fusion_checkpoint_migration/v1",
+                "parent_checkpoint_digest": parent,
+                "migrated_checkpoint_digest": warmup,
+                "decision_fusion": {"runtime_enabled": False},
+                "proof": {
+                    "legacy_tensors_bit_identical": True,
+                    "optimizer_existing_state_preserved": True,
+                    "zero_safe_initialization": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    boundary_path = tmp_path / "boundary.json"
+    boundary_path.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.causal_decision_fusion_boundary_warmup/v1",
+                "run_dir": str(tmp_path),
+                "boundary": {"next_iteration": 15},
+                "parent_learner": {"digest": parent},
+                "warmup_learner": {"digest": warmup},
+                "materialization_receipt": {
+                    "path": str(material_path),
+                    "digest": train_pure_rl._sha256_file(material_path),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    state = {
+        "next_iteration": 15,
+        "learner": {"digest": warmup},
+        "decision_fusion_activation": {
+            "schema": "poke_bot.causal_decision_fusion_boundary_warmup/v1",
+            "phase": "training_warmup",
+            "boundary_next_iteration": 15,
+            "learner_digest": warmup,
+            "runtime_enabled": False,
+            "serving_eligible": False,
+            "receipt": str(boundary_path),
+            "receipt_digest": train_pure_rl._sha256_file(boundary_path),
+        },
+    }
+    assert train_pure_rl._completed_collection_checkpoint_matches_state(
+        run_dir=tmp_path,
+        state=state,
+        collection_digest=parent,
+    )
+
+    material = json.loads(material_path.read_text(encoding="utf-8"))
+    material["proof"]["legacy_tensors_bit_identical"] = False
+    material_path.write_text(json.dumps(material), encoding="utf-8")
+    assert not train_pure_rl._completed_collection_checkpoint_matches_state(
+        run_dir=tmp_path,
+        state=state,
+        collection_digest=parent,
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    [
+        (
+            lambda current: current["learner"]["profile"].update(
+                decision_fusion_runtime_enabled=True
+            ),
+            "receipt_backed_decision_fusion_warmup_v1",
+        ),
+        (
+            lambda current: current["learner"].update(
+                current_deck_guide_loss_weight=0.1
+            ),
+            "receipt_backed_decision_fusion_warmup_v1",
+        ),
+        (lambda _current: None, "generic migration"),
+    ],
+)
+def test_clean_boundary_decision_fusion_migration_fails_closed(
+    tmp_path: Path,
+    mutation: Any,
+    reason: str,
+) -> None:
+    stored = {
+        "learner": {
+            "alakazam_guide_loss_weight": 0.0,
+            "alakazam_guide_targets_enabled": False,
+            "games_per_batch": 240,
+            "max_decisions_per_batch": 8192,
+            "profile": {"expanded_heads_enabled": True},
+        }
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"].update(
+        current_deck_guide_archetype=None,
+        current_deck_guide_loss_weight=0.0,
+        current_deck_guide_targets_enabled=False,
+        current_deck_guide_version=None,
+    )
+    current["learner"]["profile"].update(
+        decision_fusion_enabled=True,
+        decision_fusion_runtime_enabled=False,
+        decision_fusion_width=16,
+    )
+    mutation(current)
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 14,
+        "last_completed_iteration": 13,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00013.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+
+    with pytest.raises(RuntimeError, match="non-operational fields"):
+        train_pure_rl._validate_or_migrate_design_fingerprint(
+            run_dir=tmp_path,
+            state=state,
+            manifest=manifest,
+            current=current,
+            allow_clean_boundary_migration=True,
+            migration_reason=reason,
+        )
+
+
+def test_clean_boundary_migration_allows_only_safe_ceiling_reduction(
+    tmp_path: Path,
+) -> None:
+    stored = {
+        "run": {"iterations": 100},
+        "learner": {
+            "games_per_batch": 240,
+            "max_decisions_per_batch": 8192,
+        },
+        "collection": {
+            "strong_public_practice": {
+                "seed_contract": {"iterations": 100}
+            }
+        },
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 6,
+        "last_completed_iteration": 5,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00005.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    current = json.loads(json.dumps(stored))
+    current["run"]["iterations"] = 36
+    current["collection"]["strong_public_practice"]["seed_contract"][
+        "iterations"
+    ] = 36
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="enforce specialist ceiling 35",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    receipt = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert receipt["changed_paths"] == [
+        "collection.strong_public_practice.seed_contract.iterations",
+        "run.iterations",
+    ]
+
+
+@pytest.mark.parametrize("iterations", [6, 101])
+def test_clean_boundary_migration_rejects_unsafe_ceiling_change(
+    tmp_path: Path,
+    iterations: int,
+) -> None:
+    stored = {"run": {"iterations": 100}}
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 6,
+        "last_completed_iteration": 5,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00005.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    current = {"run": {"iterations": iterations}}
+
+    with pytest.raises(RuntimeError, match="non-operational fields"):
+        train_pure_rl._validate_or_migrate_design_fingerprint(
+            run_dir=tmp_path,
+            state=state,
+            manifest=manifest,
+            current=current,
+            allow_clean_boundary_migration=True,
+            migration_reason="unsafe ceiling change",
+        )
+
+
+def test_source_only_migration_preserves_verified_completed_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = {
+        "learner": {"games_per_batch": 96, "max_decisions_per_batch": 8192},
+        "source": {"source_tree_sha256": "sha256:old", "git_head": None},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 1,
+        "last_completed_iteration": 0,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits" / "iter_00000.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    (tmp_path / "shards").mkdir()
+    (tmp_path / "shards" / "iter_00001.jsonl").write_text("{}\n", encoding="utf-8")
+    receipt = {
+        "iteration": 1,
+        "checkpoint_digest": "sha256:behavior",
+        "design_fingerprint_at_collection": stored_digest,
+        "receipt_path": str(tmp_path / "collection_receipts" / "iter_00001.json"),
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (receipt, {}),
+    )
+    current = json.loads(json.dumps(stored))
+    current["source"]["source_tree_sha256"] = "sha256:new"
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="resume receipt-verified collection after source-only fix",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    migration = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert migration["preserved_completed_collection"]["iteration"] == 1
+
+    # A second source-only correction at the same interrupted boundary must
+    # carry the already verified collection through the prior migration.  The
+    # collection was generated under the original fingerprint, so requiring it
+    # to equal only the immediately previous fingerprint would strand a valid
+    # append-only recovery after two independent code fixes.
+    current_again = json.loads(json.dumps(current))
+    current_again["source"]["source_tree_sha256"] = "sha256:newer"
+    digest_again = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current_again,
+        allow_clean_boundary_migration=True,
+        migration_reason="second source-only fix over the same collection",
+    )
+
+    assert digest_again == train_pure_rl._design_fingerprint(current_again)
+    migrations = sorted(
+        (tmp_path / "design_migrations").glob("migration_*.json")
+    )
+    assert len(migrations) == 2
+    carried = json.loads(migrations[-1].read_text())
+    assert carried["preserved_completed_collection"]["iteration"] == 1
+
+
+def test_source_only_fix_preserves_collection_after_quarantined_fusion_warmup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = {
+        "learner": {"games_per_batch": 96, "max_decisions_per_batch": 8192},
+        "source": {"source_tree_sha256": "sha256:original", "git_head": None},
+    }
+    warmup = json.loads(json.dumps(original))
+    warmup["learner"]["profile"] = {
+        "expanded_heads_enabled": True,
+        "decision_fusion_enabled": True,
+        "decision_fusion_runtime_enabled": False,
+        "decision_fusion_width": 16,
+    }
+    current = json.loads(json.dumps(warmup))
+    current["source"]["source_tree_sha256"] = "sha256:source-fix"
+    original_digest = train_pure_rl._design_fingerprint(original)
+    warmup_digest = train_pure_rl._design_fingerprint(warmup)
+    state = {
+        "design_fingerprint": warmup_digest,
+        "next_iteration": 15,
+        "last_completed_iteration": 14,
+    }
+    manifest = {
+        "design_fingerprint": original_digest,
+        "design_contract": original,
+    }
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00014.json").write_text(
+        json.dumps(
+            {
+                "next_iteration": 15,
+                "design_fingerprint": original_digest,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "shards").mkdir()
+    (tmp_path / "shards/iter_00015.jsonl").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "design_migrations").mkdir()
+    (tmp_path / "design_migrations/migration_0001.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "receipt": str(
+                    tmp_path / "design_migrations/migration_0001.json"
+                ),
+                "boundary_next_iteration": 15,
+                "previous_fingerprint": original_digest,
+                "current_fingerprint": warmup_digest,
+                "previous_contract": original,
+                "current_contract": warmup,
+                # Deliberately absent: the shard was quarantined during the
+                # warmup migration and therefore could not be recorded here.
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = {
+        "iteration": 15,
+        "checkpoint_digest": "sha256:behavior-parent",
+        "design_fingerprint_at_collection": original_digest,
+        "receipt_path": str(
+            tmp_path / "collection_receipts/iter_00015.json"
+        ),
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (receipt, original),
+    )
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_completed_collection_checkpoint_matches_state",
+        lambda **_kwargs: True,
+    )
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="source-only fix after zero-safe fusion warmup",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    migrations = sorted(
+        (tmp_path / "design_migrations").glob("migration_*.json")
+    )
+    assert len(migrations) == 2
+    carried = json.loads(migrations[-1].read_text())
+    assert carried["preserved_completed_collection"]["iteration"] == 15
+
+
+def test_source_only_migration_preserves_candidate_and_research_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = {
+        "learner": {"games_per_batch": 96, "max_decisions_per_batch": 8192},
+        "source": {"source_tree_sha256": "sha256:old", "git_head": None},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 1,
+        "last_completed_iteration": 0,
+        "learner": {"digest": "sha256:parent"},
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    for name in ("commits", "shards", "checkpoints", "research_controls"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "commits" / "iter_00000.json").write_text(
+        json.dumps({**state, "next_iteration": 1}), encoding="utf-8"
+    )
+    shard = tmp_path / "shards" / "iter_00001.jsonl"
+    candidate = tmp_path / "checkpoints" / "iter_00001.pt"
+    research = tmp_path / "research_controls" / "iter_00001.json"
+    shard.write_text("{}\n", encoding="utf-8")
+    candidate.write_bytes(b"candidate")
+    candidate_digest = train_pure_rl._sha256_file(candidate)
+    research.write_text(
+        json.dumps(
+            {
+                "schema": train_pure_rl.RESEARCH_CONTROL_RESULT_SCHEMA,
+                "iteration": 1,
+                "checkpoint_digest": candidate_digest,
+                "training_eligible": False,
+                "replay_eligible": False,
+                "diagnostic_only": True,
+                "included_in_gate_pass": False,
+                "gate_weight": 0.0,
+                "formal_eval": False,
+                "action_selection": "greedy",
+                "games": 1000,
+                "audit": {
+                    "passed": True,
+                    "exact_distribution": True,
+                    "exact_weights": True,
+                    "seed_disjoint": True,
+                    "package_disjoint_from_active_gate": True,
+                    "replay_records_written": 0,
+                    "measurement_plan": {"iteration": 1},
+                },
+                "result_path": str(research.resolve()),
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = {
+        "iteration": 1,
+        "checkpoint_digest": "sha256:behavior",
+        "design_fingerprint_at_collection": stored_digest,
+        "receipt_path": str(tmp_path / "collection_receipts" / "iter_00001.json"),
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (receipt, {}),
+    )
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_orphan_candidate_result",
+        lambda *_args, **_kwargs: {"candidate_digest": candidate_digest},
+    )
+    current = json.loads(json.dumps(stored))
+    current["source"]["source_tree_sha256"] = "sha256:new"
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="preserve completed candidate research transaction",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    assert shard.is_file() and candidate.is_file() and research.is_file()
+    migration = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert migration["preserved_completed_collection"]["iteration"] == 1
+
+
+def test_completed_collection_does_not_mask_non_source_design_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = {
+        "learner": {"games_per_batch": 96, "max_decisions_per_batch": 8192},
+        "source": {"source_tree_sha256": "sha256:old", "git_head": None},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 1,
+        "last_completed_iteration": 0,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits" / "iter_00000.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    (tmp_path / "shards").mkdir()
+    (tmp_path / "shards" / "iter_00001.jsonl").write_text("{}\n", encoding="utf-8")
+    receipt = {
+        "iteration": 1,
+        "checkpoint_digest": "sha256:behavior",
+        "design_fingerprint_at_collection": stored_digest,
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (receipt, {}),
+    )
+    current = json.loads(json.dumps(stored))
+    current["source"]["source_tree_sha256"] = "sha256:new"
+    current["learner"]["games_per_batch"] = 192
+
+    with pytest.raises(RuntimeError, match="clean boundary"):
+        train_pure_rl._validate_or_migrate_design_fingerprint(
+            run_dir=tmp_path,
+            state=state,
+            manifest=manifest,
+            current=current,
+            allow_clean_boundary_migration=True,
+            migration_reason="must remain fail closed",
+        )
 
 
 def test_clean_boundary_migration_allows_explicit_measurement_deck_change(
@@ -1359,6 +2950,25 @@ def test_clean_boundary_migration_allows_versioned_expert_contract() -> None:
     )
     assert (
         "expert_rehearsal.loss_weights"
+        in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
+    )
+    assert (
+        "expert_rehearsal.matchup_adapters"
+        in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
+    )
+    assert (
+        "learner.profile.matchup_adapters_enabled"
+        in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
+    )
+
+
+def test_clean_boundary_migration_allows_explicit_opponent_scope_schema() -> None:
+    assert (
+        "collection.training_opponent_scope"
+        in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
+    )
+    assert (
+        "collection.external_agents_training_eligible"
         in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
     )
 
@@ -1761,6 +3371,138 @@ def test_checkpoint_contract_requires_pure_rl_and_exact_profile(
 
     payload["extra"] = {"pure_rl": False, "smoke": False}
     with pytest.raises(RuntimeError, match="not explicitly pure_rl"):
+        train_pure_rl._checkpoint_contract(path, smoke=False)
+
+
+def test_checkpoint_contract_accepts_legacy_disabled_fusion_omission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A legacy inference opponent may omit only disabled/default fusion fields."""
+
+    from poke_bot import checkpoint, features
+
+    path = tmp_path / "legacy-champion.pt"
+    path.write_bytes(b"checkpoint bytes")
+    model_config = train_pure_rl.model_config_dict(
+        train_pure_rl.pure_rl_model_config()
+    )
+    for key in (
+        "decision_fusion_enabled",
+        "decision_fusion_runtime_enabled",
+        "decision_fusion_width",
+    ):
+        model_config.pop(key)
+    payload = {
+        "model_config": model_config,
+        "provenance": {"feature_schema": features.FEATURE_SCHEMA_VERSION},
+        "extra": {"pure_rl": True, "smoke": False},
+    }
+    monkeypatch.setattr(checkpoint, "load_checkpoint", lambda *_a, **_k: payload)
+    monkeypatch.setattr(
+        checkpoint,
+        "assert_trusted_policy_checkpoint",
+        lambda *_a, **_k: {
+            "decision_context": "stateless",
+            "provenance": payload["provenance"],
+            "model_config": payload["model_config"],
+        },
+    )
+
+    contract = train_pure_rl._checkpoint_contract(path, smoke=False)
+
+    assert contract["model_profile"]["decision_fusion_enabled"] is False
+    assert contract["model_profile"]["decision_fusion_runtime_enabled"] is False
+    assert contract["model_profile"]["decision_fusion_width"] == 16
+
+
+def test_checkpoint_contract_allows_only_declared_legacy_inference_role_during_fusion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A frozen flat incumbent may coexist with, but never impersonate, the learner."""
+
+    from poke_bot import checkpoint, features
+
+    path = tmp_path / "legacy-inference-champion.pt"
+    path.write_bytes(b"checkpoint bytes")
+    legacy_config = train_pure_rl.model_config_dict(
+        train_pure_rl.pure_rl_model_config()
+    )
+    legacy_config["decision_fusion_enabled"] = False
+    legacy_config["decision_fusion_runtime_enabled"] = False
+    payload = {
+        "model_config": legacy_config,
+        "model_state_dict": {"policy.weight": torch.zeros(3, 4)},
+        "provenance": {"feature_schema": features.FEATURE_SCHEMA_VERSION},
+        "extra": {"pure_rl": True, "smoke": False},
+    }
+    expected_cfg = train_pure_rl.pure_rl_model_config()
+    expected_cfg.decision_fusion_enabled = True
+    expected_cfg.decision_fusion_runtime_enabled = False
+    monkeypatch.setattr(
+        train_pure_rl,
+        "pure_rl_model_config",
+        lambda **_kwargs: expected_cfg,
+    )
+    monkeypatch.setattr(checkpoint, "load_checkpoint", lambda *_a, **_k: payload)
+    monkeypatch.setattr(
+        checkpoint,
+        "assert_trusted_policy_checkpoint",
+        lambda *_a, **_k: {
+            "decision_context": "stateless",
+            "provenance": payload["provenance"],
+            "model_config": payload["model_config"],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="decision_fusion_enabled"):
+        train_pure_rl._checkpoint_contract(path, smoke=False)
+
+    contract = train_pure_rl._checkpoint_contract(
+        path,
+        smoke=False,
+        allow_legacy_inference_profile=True,
+    )
+    assert contract["legacy_inference_profile"] is True
+    assert contract["model_profile"]["decision_fusion_enabled"] is True
+    assert contract["model_profile"]["decision_fusion_runtime_enabled"] is False
+
+    payload["model_config"]["dropout"] = 0.25
+    with pytest.raises(RuntimeError, match="dropout"):
+        train_pure_rl._checkpoint_contract(
+            path,
+            smoke=False,
+            allow_legacy_inference_profile=True,
+        )
+
+
+def test_checkpoint_contract_rejects_enabled_fusion_when_profile_is_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from poke_bot import checkpoint, features
+
+    path = tmp_path / "wrong-role.pt"
+    path.write_bytes(b"checkpoint bytes")
+    model_config = train_pure_rl.model_config_dict(
+        train_pure_rl.pure_rl_model_config()
+    )
+    model_config["decision_fusion_enabled"] = True
+    payload = {
+        "model_config": model_config,
+        "provenance": {"feature_schema": features.FEATURE_SCHEMA_VERSION},
+        "extra": {"pure_rl": True, "smoke": False},
+    }
+    monkeypatch.setattr(checkpoint, "load_checkpoint", lambda *_a, **_k: payload)
+    monkeypatch.setattr(
+        checkpoint,
+        "assert_trusted_policy_checkpoint",
+        lambda *_a, **_k: {
+            "decision_context": "stateless",
+            "provenance": payload["provenance"],
+            "model_config": payload["model_config"],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="decision_fusion_enabled"):
         train_pure_rl._checkpoint_contract(path, smoke=False)
 
 

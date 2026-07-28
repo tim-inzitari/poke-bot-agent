@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically repatriate swap when Pokebot has safe RAM headroom
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=true
+Unit=pokebot-safe-swap-repatriate.service
+
+[Install]
+WantedBy=timers.target

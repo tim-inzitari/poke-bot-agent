@@ -59,8 +59,13 @@ def test_service_has_one_environment_file_and_one_selector_launcher() -> None:
     assert dummy_env["POKEBOT_ACTIVE_SPECIALIST"] == "dummy-specialist"
     assert unit.count("EnvironmentFile=") == 1
     assert unit.count("\nExecStart=") == 1
-    assert unit.count("\nExecStartPre=") == 1
+    assert unit.count("\nExecStartPre=") == 2
     assert "launch_active_specialist.py" in unit
+    assert "launch_active_specialist_gate_handler.py --check" in unit
+    assert (
+        "OnSuccess=pokebot-specialist-passed-gate-handler.service"
+        in unit
+    )
     assert ".service.d" not in unit
 
 
@@ -72,3 +77,4 @@ def test_live_selector_references_a_registry_record() -> None:
     )
     selected = _env()["POKEBOT_ACTIVE_SPECIALIST"]
     assert selected in registry["specialists"]
+    assert _env()["POKEBOT_EXPANDED_HEADS_ENABLED"] == "1"

@@ -1,0 +1,23 @@
+[Unit]
+Description=Finalize latest-ten ladder shards through Bert
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=inzi
+Group=inzi
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/finalize_latest10.py
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/latest10-finalize.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/latest10-finalize.log
+MemoryHigh=8G
+MemoryMax=12G
+MemorySwapMax=0
+OOMPolicy=stop
+Restart=on-failure
+RestartSec=20
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

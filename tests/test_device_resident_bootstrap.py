@@ -21,10 +21,12 @@ from poke_bot.train import (
     batch_losses,
     is_allowed_missing_belief_head_key,
     device_batch_losses,
+    device_temporal_greedy_policy_targets,
     device_temporal_batch_losses,
     device_exact_batch_losses,
     device_exact_value_predictions,
     supervised_rehearsal_step,
+    temporal_batches_for_game_ids,
 )
 
 
@@ -100,7 +102,7 @@ def _exact_temporal_game(*, include_hand: bool = True) -> GameSequence:
 
 
 def test_resident_aux_packer_uses_strict_shared_label_contract() -> None:
-    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 3
+    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 4
     hand, has_hand, remainder, has_remainder, lethal, race = (
         _validated_exact_aux_targets(
             {
@@ -365,6 +367,45 @@ def test_temporal_resident_rehearsal_trains_every_available_head() -> None:
     )
     (guide_total - base_total).backward()
     assert _gradient_norm(model.policy_head) > 0.0
+
+
+def test_temporal_resident_teacher_policy_targets_are_masked_and_weighted() -> None:
+    model = _history_model(seed=29)
+    model.eval()
+    corpus = DeviceResidentBootstrapCorpus.from_splits(
+        [_game()], [], device=torch.device("cpu")
+    )
+    game_ids = torch.tensor([0])
+    base, _ = device_temporal_batch_losses(model, corpus, game_ids)
+    sample_ids, greedy = device_temporal_greedy_policy_targets(
+        model, corpus, game_ids
+    )
+    assert sample_ids.tolist() == list(range(corpus.total_samples))
+    assert bool((greedy < corpus.n_options.to(dtype=torch.long)).all())
+    explicit_batches = temporal_batches_for_game_ids(
+        corpus, game_ids, batch_size=2
+    )
+    assert [value for batch in explicit_batches for value in batch.tolist()] == [
+        0
+    ]
+    teacher_targets = torch.zeros(
+        corpus.total_samples, dtype=torch.long
+    )
+    teacher_targets[-1] = -1
+    total, metrics = device_temporal_batch_losses(
+        model,
+        corpus,
+        game_ids,
+        teacher_policy_targets=teacher_targets,
+        teacher_policy_weight=0.5,
+    )
+    assert metrics.n_teacher_policy_rows == corpus.total_samples - 1
+    assert metrics.teacher_policy_loss > 0.0
+    assert total.detach().item() == pytest.approx(
+        base.detach().item() + 0.5 * metrics.teacher_policy_loss,
+        rel=1e-5,
+        abs=1e-6,
+    )
 
 
 def test_expert_rehearsal_materializes_and_trains_legacy_missing_heads(

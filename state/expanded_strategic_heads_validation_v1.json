@@ -1,0 +1,59 @@
+{
+  "schema": "poke_bot.expanded_strategic_heads_validation/v1",
+  "status": "staged_implementation_validated",
+  "validated_at_utc": "2026-07-25T02:38:28Z",
+  "scope": "next_safe_v6_cumulative_core_and_specialist_handoff",
+  "live_v5_modified": false,
+  "runtime_enabled_heads": [],
+  "flat_policy_remains_authoritative": true,
+  "architecture_schema": "poke_bot.expanded_strategic_heads/v1",
+  "target_schema": "poke_bot.expanded_strategic_targets/v2",
+  "target_schema_digest": "sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f",
+  "schedule_schema": "poke_bot.expanded_strategic_schedule/v1",
+  "schedule_digest": "sha256:e471f58915df0cbe88b837de6fbe532e6416aa028a538b92a11ec788621f45dc",
+  "bootstrap_epochs": 25,
+  "architecture_present_heads": [
+    "action_q",
+    "action_type",
+    "action_target",
+    "action_resource",
+    "action_utility",
+    "tactical_outcomes",
+    "opponent_response",
+    "resource_forecast",
+    "game_phase",
+    "outcome_distribution",
+    "remaining_turns"
+  ],
+  "validation": {
+    "focused_v6_tests": {
+      "passed": 108,
+      "failed": 0
+    },
+    "dashboard_projection_tests": {
+      "passed": 7,
+      "failed": 0
+    },
+    "device_resident_gradient_test": "passed",
+    "stage_scoped_rehearsal_test": "passed",
+    "yaml_and_json_contract_parse": "passed",
+    "python_compile": "passed"
+  },
+  "verified_invariants": {
+    "v5_hot_start_tensors_byte_identical": true,
+    "missing_v6_heads_initialized_deterministically": true,
+    "targets_derived_before_context_truncation": true,
+    "missing_targets_masked": true,
+    "malformed_present_targets_fail_closed": true,
+    "option_heads_are_sample_aligned": true,
+    "state_heads_are_unique_decision_aligned": true,
+    "disabled_stage_heads_remain_byte_identical": true,
+    "checkpoint_and_rehearsal_receipts_bind_schema_digests": true,
+    "runtime_activation_requires_separate_receipt": true
+  },
+  "activation": {
+    "ready_to_modify_live_v5": false,
+    "next_allowed_boundary": "next_safe_v6_cumulative_core_and_specialist_handoff",
+    "performance_acceptance_pending_at_boundary": true
+  }
+}

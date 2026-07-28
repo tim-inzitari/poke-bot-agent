@@ -1,0 +1,24 @@
+[Unit]
+Description=Process frozen-specialist Kaggle submissions without blocking training
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v33-frozen-specialists
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/process_kaggle_submission_queue.py --queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --kaggle /home/inzi/miniconda3/envs/poke-bot-agent/bin/kaggle --competition pokemon-tcg-ai-battle --poll-seconds 60
+Restart=always
+RestartSec=15
+TimeoutStopSec=30
+KillMode=control-group
+LimitNOFILE=1024
+MemoryHigh=512M
+MemoryMax=1G
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/kaggle-submission-queue.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/kaggle-submission-queue.log
+
+[Install]
+WantedBy=default.target

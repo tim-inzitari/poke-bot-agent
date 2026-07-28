@@ -1,0 +1,206 @@
+{
+  "schema": "poke_bot.v6_strategic_handoff_candidate/v1",
+  "status": "validated_corpus_finalized_syncing_to_inzi",
+  "validated_at_utc": "2026-07-25T05:42:20Z",
+  "candidate_runtime_root": "/home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate",
+  "goal_revision": 6,
+  "goal_sha256": "sha256:5137606b31e92273b98c2172d6108ab71bc80a24af1fcff2d7653e9b882a752c",
+  "human_protocol_sha256": "sha256:5f0fb04b828cbceeb1504875345a0077d5cbfe27c3f7e640036007449c9c2ef5",
+  "protocol_sha256": "sha256:3d18809f697e17cdb217bca14820b3d87cb0f54bbd48dbfaedf0606551c582c6",
+  "implementation_validation_receipt": "state/expanded_strategic_heads_validation_v1.json",
+  "implementation_validation_receipt_sha256": "sha256:09b68c32424cef5f960040a4dc66dc2e83bd85b417d0d9b3b7d33e759b8228bf",
+  "cycle_contract_sha256": "sha256:0771e0e6fe218537f3ec032cd160fb1336778fd603243b119a964bf8f177ad73",
+  "transition_graph_sha256": "sha256:95e5a420c10f53f7429e8ca5dd503aa95c42b43c06fe38c426d9f4ab3efd1c84",
+  "frozen_specialist_registry_sha256": "sha256:852c95f226c64a8dc122bd87cfc746065ca4f8835909337567edc3698551cbc6",
+  "architecture": {
+    "schema": "poke_bot.expanded_strategic_heads/v1",
+    "target_schema": "poke_bot.expanded_strategic_targets/v2",
+    "target_schema_digest": "sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f",
+    "schedule_schema": "poke_bot.expanded_strategic_schedule/v1",
+    "schedule_digest": "sha256:e471f58915df0cbe88b837de6fbe532e6416aa028a538b92a11ec788621f45dc",
+    "head_count": 11,
+    "bootstrap_epochs": 25,
+    "runtime_enabled_heads": []
+  },
+  "validation": {
+    "focused_and_handoff_tests": {
+      "passed": 133,
+      "failed": 0
+    },
+    "authoritative_visual_materializer_repair": {
+      "status": "validated_and_finalized",
+      "root_cause": "direct temporal feature construction bypassed expanded strategic label attachment",
+      "source_sha256": "sha256:54ebda910715a919036351aea43e1742ee675a2cfa1403d319330f63c0421791",
+      "targeted_tests": {
+        "passed": 25,
+        "failed": 0
+      },
+      "post_repair_strategic_handoff_and_dashboard_tests": {
+        "passed": 231,
+        "failed": 0
+      },
+      "post_projection_dashboard_regressions": {
+        "passed": 154,
+        "failed": 0,
+        "host": "inzi"
+      },
+      "post_projection_boundary_handoff_regressions": {
+        "passed": 52,
+        "failed": 0,
+        "host": "inzi"
+      },
+      "real_archive_smoke": {
+        "source_date": "2026-07-04",
+        "episodes": 2,
+        "decisions": 362,
+        "all_11_heads_have_nonzero_labeled_rows": true,
+        "serialized_decisions_checked": 94,
+        "serialized_decisions_with_expanded_labels": 94
+      },
+      "corrected_daily_receipts": {
+        "status": "all_twenty_validated_and_finalized",
+        "completed": 20,
+        "total": 20,
+        "decisions": 14426019,
+        "feature_hashes_verified": true,
+        "metadata_and_receipt_coverage_equal": true,
+        "target_schema_and_digest_exact": true,
+        "exactly_11_canonical_heads": true,
+        "all_11_heads_nonzero_on_each_completed_day": true,
+        "labeled_plus_masked_equals_total_decisions": true,
+        "serialized_first_sequence_labels_verified_each_day": true,
+        "days": [
+          {"date": "2026-07-04", "decisions": 730108, "feature_checksum": "sha256:5b65a8d0db8dc189e6022dbac98b0638c18dd020ac6346c8ad5dd569bba0161e"},
+          {"date": "2026-07-05", "decisions": 744596, "feature_checksum": "sha256:e50aa769ca8ff8c18a33de11c1207e5990287c387e4736b5c9b8e7ed33fd7d88"},
+          {"date": "2026-07-06", "decisions": 725921, "feature_checksum": "sha256:a891f4368781585fe53530f7fbad19d5dabfd9100ee594f35b5c92afa6ab0ca8"},
+          {"date": "2026-07-07", "decisions": 699015, "feature_checksum": "sha256:f28226f547e949991a1d1344738c603e99184e3b8313d6849f561bab4d1580c0"},
+          {"date": "2026-07-08", "decisions": 708416, "feature_checksum": "sha256:14444cfb052b360ded21774e2281bf17a81ab0241158cb399b7ec10b4ecea53c"},
+          {"date": "2026-07-09", "decisions": 706348, "feature_checksum": "sha256:61859cd72895bce2087000383f9493a74613c35506a404b07efc97fc1313063c"},
+          {"date": "2026-07-10", "decisions": 717893, "feature_checksum": "sha256:bb10f6bc12627a59dd2106b1dd0ecc87183ef0aaf40499f0ad688a82f346c6f1"},
+          {"date": "2026-07-11", "decisions": 709557, "feature_checksum": "sha256:1f150f823eb52f41a0e83e609992206d510dbbb1452842061b901b306d99f4e3"},
+          {"date": "2026-07-12", "decisions": 711111, "feature_checksum": "sha256:dcc3d24b49e6cc0f410a0c6e6a0ba0abcd629ba394d03db66b44690a9685d0dc"},
+          {"date": "2026-07-13", "decisions": 725146, "feature_checksum": "sha256:0760484dda26493e7d2f47ddfe4d2e9c0dd6d85f37b27d0e28c48c22104d9d30"},
+          {"date": "2026-07-14", "decisions": 718703, "feature_checksum": "sha256:aa1c91561b39a86aa8720281dfeea26d19a0fcf811c43fca8dd9b56f25fb74ea"},
+          {"date": "2026-07-15", "decisions": 719201, "feature_checksum": "sha256:40ba45002a00824b0478e30e677370cb164854b873661eecb2c1f702348c92d1"},
+          {"date": "2026-07-16", "decisions": 705997, "feature_checksum": "sha256:00bddca7bd078cc189de7d847d5a4b26951580b1b2dfbf10c188e96dea97fb5f"},
+          {"date": "2026-07-17", "decisions": 706541, "feature_checksum": "sha256:94b8ebff2c9fc66e0a388c0adcc51f48b1f6ca6e56a823585e2c7f5ba9906a74"},
+          {"date": "2026-07-18", "decisions": 738733, "feature_checksum": "sha256:3e4c0465de3244b57319f8b3b0b87b2e3cfed7109a74c389f172dc52b1769d0d"},
+          {"date": "2026-07-19", "decisions": 712964, "feature_checksum": "sha256:83e49486a564318d837da298540d5e246cd687362ef9c78f29399538e4b00e73"},
+          {"date": "2026-07-20", "decisions": 719864, "feature_checksum": "sha256:2961dbdca129df35fdc69bd4dbba6f8dd3bba2ba18a65b2a1ea07bffb2caf56b"},
+          {"date": "2026-07-21", "decisions": 740627, "feature_checksum": "sha256:1644b9fa6e543a92ab71fc636b1c7e508718b874c06346abb01f1782b3046ede"},
+          {"date": "2026-07-22", "decisions": 746559, "feature_checksum": "sha256:be138e86d059a53b72a019bccab5d5c730b4a1f2bc9f8ffdb37a8787955b513b"},
+          {"date": "2026-07-23", "decisions": 738719, "feature_checksum": "sha256:73645bbadf5d6221d0423999064acc5a64b023b8044cdae9701a6257ffeed4bb"}
+        ]
+      },
+      "invalid_output_quarantine": "/mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v6-strategic.invalid-missing-expanded-20260725T033133Z",
+      "historical_v5_corpus_modified": false,
+      "live_v5_training_modified": false
+    },
+    "frozen_v5_derivatives_verified": 4,
+    "elmo_pipeline_shell_parse": "passed",
+    "transition_status_and_dry_run": "passed_without_state_creation_or_mutation",
+    "stable_handoff_service": {
+      "status": "deployed_verified_inactive",
+      "stable_runtime_pointer": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current",
+      "resolved_candidate": "/home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate",
+      "v6_corpus_contract_selected": true,
+      "required_target_schema": "poke_bot.expanded_strategic_targets/v2",
+      "systemd_unit_validation": "passed",
+      "focused_tests_passed": 24,
+      "dry_run_status": "passed_all_three_nodes_pending_without_mutation",
+      "dry_run_transition_id": "sha256:d6f1b135fce14f691b6f1d53a105fb4c3fcee12f49926b81ef5bfa8e9cc31381",
+      "live_training_modified": false
+    },
+    "elmo_finalization": {
+      "status": "checksum_validated_ready",
+      "ready_receipt": "/mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v6-strategic/LATEST20_SPECIALIST_CORPORA_READY.json",
+      "ready_receipt_sha256": "sha256:8a37a2504d9a8526e7cd7b214664dca125285e219c338442b48660ed9d924c2a",
+      "roster_records": 18,
+      "ready_specialist_corpora": 16,
+      "unavailable_specialist_corpora": [
+        "thwackey",
+        "team-rockets-spidops"
+      ],
+      "dudunsparce_ready": true,
+      "balanced_core_decisions": 2385683,
+      "balanced_core_pointer_sha256": "sha256:1c175a51cb06e9d95474ffcda642435f2bb7472afe4bcdadaad585ac00106892",
+      "balanced_core_manifest_sha256": "sha256:468f985d7fdc46d8977850fb5ade1f420635eedd22a51075e4d8714a0e140e6b",
+      "head_count": 11,
+      "head_coverage_nonzero_and_accounted": true
+    },
+    "inzi_sync": {
+      "status": "syncing",
+      "started_at_utc": "2026-07-25T05:35:29.899728+00:00",
+      "source_bytes": 41444291956,
+      "destination": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic",
+      "atomic_pointer_promoted": false
+    },
+    "expanded_cumulative_core_pipeline": {
+      "status": "corpus_validated_syncing_to_inzi",
+      "protected_core_pointer": "/home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic/core-balanced-v6/PROTECTED_CORE_CORPUS.json",
+      "balanced_builder_preserves_exact_expanded_target_contract": true,
+      "core_refresh_exact_epochs": 25,
+      "selection_requires_all_11_heads": true,
+      "runtime_enabled_heads": [],
+      "flat_policy_remains_authoritative": true,
+      "matchup_adapters_bit_identical_and_dormant": true,
+      "focused_tests": {
+        "passed": 97,
+        "failed": 0,
+        "host": "inzi"
+      },
+      "live_training_modified": false
+    },
+    "prestage_dry_run": {
+      "status": "blocked_as_expected",
+      "reason": "protocol_valid_expert_corpus_not_ready",
+      "receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
+      "receipt_sha256": "sha256:021069b8c558067cd7278ae45a201ee3ffcbbcf152a3cff29a1c2f7f6fcc0f5f",
+      "receipt_created_at_utc": "2026-07-25T05:42:20.512714+00:00",
+      "service_working_directory": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current",
+      "v6_contract_sha256": "sha256:0771e0e6fe218537f3ec032cd160fb1336778fd603243b119a964bf8f177ad73",
+      "focused_fail_closed_tests_passed": 28,
+      "preserved_v5_ready_receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.v5-ready-20260724T225948Z.json",
+      "preserved_v5_ready_receipt_sha256": "sha256:b0eb9aea6a33766292678eada822c0e85100ac6f2c6dddf83c6cab015951c2f8",
+      "live_training_modified": false
+    },
+    "handoff_retry": {
+      "status": "deployed",
+      "service": "pokebot-specialist-cycle-handoff.service",
+      "restart": "on-failure",
+      "restart_seconds": 60,
+      "service_checksum": "sha256:f294228a5f573f216c31660ac1508c29a5fc20d8c2e3fd4cfa461fc8db2b6d33",
+      "focused_handoff_tests_passed": 28,
+      "purpose": "retry a fail-closed boundary handoff after the atomic V6 corpus promotion without resuming the terminal trainer",
+      "live_training_modified": false
+    },
+    "live_selector_changed": false,
+    "live_service_changed": false,
+    "live_checkpoint_changed": false
+  },
+  "next_specialist": {
+    "specialist_id": "dudunsparce",
+    "existing_v5_prestage_status": "ready",
+    "existing_v5_corpus_has_expanded_strategic_targets": false,
+    "v6_bootstrap_ready": false,
+    "required_action": "wait for the active checksum-validating Inzi sync to atomically promote the V6 corpus pointer, then rerun Dudunsparce prestage"
+  },
+  "activation": {
+    "allowed_now": false,
+    "boundary": "next_safe_v6_cumulative_core_and_specialist_handoff",
+    "requires_expanded_corpus_receipt": true,
+    "requires_performance_acceptance": true,
+    "requires_separate_runtime_activation_receipt": true,
+    "flat_policy_remains_authoritative": true
+  },
+  "completed_specialist_retrofit": {
+    "status": "staged_not_started",
+    "eligible_after": "first_expanded_head_cumulative_core_frozen_and_registered",
+    "artifact_type": "separately_registered_compatibility_derivative",
+    "original_passing_checkpoints_immutable": true,
+    "added_heads_initially_dormant": true,
+    "runtime_enabled_heads": [],
+    "training_requires_explicit_retrofit_phase": true,
+    "activation_requires_separate_validation_and_receipt": true
+  }
+}

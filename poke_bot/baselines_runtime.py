@@ -5,9 +5,13 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import os
 import sys
+import threading
 import types
+from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -16,6 +20,46 @@ from . import deck_pool, paths
 AgentFn = Callable[[dict], list[int]]
 
 BASELINE_JOB_CONTRACT_SCHEMA = "poke_bot.portable_baseline_spec/v1"
+
+# Submitted specialist packages lazily configure their own matchup router through
+# process-global environment variables.  Baselines run in the same long-lived
+# simulator process as the active candidate, so those writes must be scoped to
+# the baseline call or a frozen opponent can silently replace the active
+# specialist's tree for every subsequently constructed PolicyAgent.
+_BASELINE_ENV_KEYS = (
+    "CG_LIB_PATH",
+    "POKEBOT_MATCHUP_ADAPTER_RUNTIME",
+    "POKEBOT_PUBLIC_MATCHUP_TREE_PATH",
+    "POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE",
+)
+_BASELINE_ENV_LOCK = threading.RLock()
+_ENV_MISSING = object()
+
+
+@contextmanager
+def _isolated_baseline_environment():
+    """Restore candidate-owned runtime variables after importing/calling a baseline."""
+    with _BASELINE_ENV_LOCK:
+        previous = {key: os.environ.get(key, _ENV_MISSING) for key in _BASELINE_ENV_KEYS}
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                if value is _ENV_MISSING:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+
+def _isolate_baseline_agent(agent_fn: AgentFn) -> AgentFn:
+    """Wrap untrusted/frozen opponent code without changing its package bytes."""
+
+    @wraps(agent_fn)
+    def isolated(obs: dict) -> list[int]:
+        with _isolated_baseline_environment():
+            return agent_fn(obs)
+
+    return isolated
 
 
 @dataclass(frozen=True)
@@ -216,10 +260,13 @@ def load_baseline_agent(spec: BaselineSpec) -> tuple[AgentFn, list[int]]:
     """Return ``(agent_fn, deck)`` for a baseline spec."""
     path = Path(spec.path)
     deck = deck_pool.read_deck(path / "deck.csv")
-    mod = _load_module(path / "main.py", f"poke_bot_baseline_{spec.id.replace('-', '_')}")
+    with _isolated_baseline_environment():
+        mod = _load_module(
+            path / "main.py", f"poke_bot_baseline_{spec.id.replace('-', '_')}"
+        )
     if not hasattr(mod, "agent"):
         raise AttributeError(f"{path / 'main.py'} has no agent()")
-    agent_fn: AgentFn = getattr(mod, "agent")
+    agent_fn: AgentFn = _isolate_baseline_agent(getattr(mod, "agent"))
     return agent_fn, deck
 
 

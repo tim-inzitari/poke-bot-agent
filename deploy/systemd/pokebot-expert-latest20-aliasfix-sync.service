@@ -1,0 +1,20 @@
+[Unit]
+Description=Promote alias-correct latest-20 specialist corpora from Elmo
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+OnSuccess=pokebot-next-specialist-prestage.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/sync_latest20_specialist_corpora_from_elmo.py --remote-root /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v6-strategic-aliasfix-v2 --local-parent /home/inzi/poke-bot-agent/data/bootstrap --current /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20 --roster /home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate/state/matchup_adapter_roster.json --state /home/inzi/poke-bot-agent/outputs/state/expert-latest20-specialist-aliasfix-v2-sync.json --bwlimit-kib 8000 --poll-seconds 30 --version-suffix roster18-v6-strategic-aliasfix-v2 --required-expanded-target-schema poke_bot.expanded_strategic_targets/v2 --required-expanded-target-digest sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f
+TimeoutStartSec=36h
+TimeoutStopSec=30
+KillMode=control-group
+MemoryHigh=2G
+MemoryMax=4G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/expert-latest20-specialist-aliasfix-sync.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/expert-latest20-specialist-aliasfix-sync.log

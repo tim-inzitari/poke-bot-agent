@@ -1,0 +1,36 @@
+--- a/scripts/train_pure_rl.py
++++ b/scripts/train_pure_rl.py
+@@ -965,18 +965,20 @@ def _checkpoint_contract(path: Path, *, smoke: bool) -> dict[str, Any]:
+             f"checkpoint={feature_schema!r} runtime={features.FEATURE_SCHEMA_VERSION!r}"
+         )
+     state_dict = payload.get("model_state_dict") or {}
+-    parameter_count = extra.get("param_count")
+-    try:
+-        parameter_count = int(parameter_count)
+-    except (TypeError, ValueError):
+-        # State dicts include the feature-schema scalar buffer; it is not a
+-        # trainable parameter. The production profile has no other persistent
+-        # non-parameter tensors, and every remaining value is shape-countable.
+-        parameter_count = sum(
+-            int(value.numel())
+-            for key, value in state_dict.items()
+-            if hasattr(value, "numel")
+-            and not str(key).endswith("_feature_schema_version")
+-        )
++    # The state dict is the architecture authority. ``extra.param_count`` is
++    # training-time telemetry and can be smaller when heads were temporarily
++    # frozen while saving a checkpoint. Trusting it makes a valid checkpoint's
++    # immutable model contract change across a restart.
++    #
++    # State dicts include the feature-schema scalar buffer; it is not a
++    # trainable parameter. The production profile has no other persistent
++    # non-parameter tensors, and every remaining value is shape-countable.
++    parameter_count = sum(
++        int(value.numel())
++        for key, value in state_dict.items()
++        if hasattr(value, "numel")
++        and not str(key).endswith("_feature_schema_version")
++    )
+     return {
+         "path": str(path),
+         "digest": checkpoint.checkpoint_digest(path),

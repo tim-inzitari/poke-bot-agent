@@ -26,7 +26,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from poke_bot import checkpoint  # noqa: E402
 from poke_bot.pure_rl.expert_rehearsal import resolve_expert_manifest  # noqa: E402
+from poke_bot.matchup_adapters import EXPERT_IDS  # noqa: E402
 from poke_bot.pure_rl.model_registry import (  # noqa: E402
     FAMILY_MARKER,
     sha256,
@@ -36,6 +38,7 @@ from scripts.handle_passed_gate import (  # noqa: E402
     HANDLER_SCHEMA,
     validate_ceiling_completion,
     validate_exact_pass,
+    validate_runtime_exact_gate,
 )
 from scripts.accept_gate_threshold_transition import (  # noqa: E402
     validate_threshold_transition_receipt,
@@ -49,7 +52,21 @@ from scripts.activate_public_matchup_tree import (  # noqa: E402
 from scripts.register_next_specialist_runtime import (  # noqa: E402
     register as register_specialist_runtime,
 )
-from scripts.run_starmie_expert_bootstrap import TARGETS  # noqa: E402
+from scripts.materialize_matchup_v6_runtime_family import (  # noqa: E402
+    materialize_runtime_family,
+    validate_runtime_family,
+)
+from scripts.activate_matchup_v6_fleet import (  # noqa: E402
+    activate_fleet as activate_matchup_v6_fleet,
+    validate_fleet as validate_matchup_v6_fleet,
+)
+from scripts.run_starmie_expert_bootstrap import (  # noqa: E402
+    TARGETS,
+    _manifest_expanded_targets,
+    current_deck_guide_handoff_contract,
+    decision_fusion_handoff_contract,
+    validate_expanded_handoff_training_contract,
+)
 
 
 CONTRACT_SCHEMA = "poke_bot.sequential_specialist_handoff_contract/v1"
@@ -63,8 +80,11 @@ ALLOWED_HANDLER_PHASES = {
     "complete_handoff_started",
 }
 RESUMABLE_PREFLIGHT_PHASES = {
+    "source_preflight_verified",
     "preflight_verified",
     "next_specialist_bootstrap_frozen",
+    "next_specialist_runtime_checkpoint_frozen",
+    "matchup_v6_fleet_activated",
     "next_specialist_runtime_tree_bound",
     "next_specialist_runtime_registered",
     "next_specialist_rl_armed",
@@ -87,6 +107,51 @@ def canonical_digest(value: Any) -> str:
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def compatible_ceiling_acceptance_plan(
+    saved: dict[str, Any],
+    current: dict[str, Any],
+) -> bool:
+    """Allow only a checksum-identical gate-contract path alias.
+
+    The safe-boundary runtime pointer changes the absolute repository prefix
+    while preserving the immutable gate contract.  Path spelling is not model
+    identity, but every other receipt field and both file checksums remain
+    exact.
+    """
+
+    if saved == current:
+        return True
+    if (
+        saved.get("schema") != "poke_bot.ceiling_acceptance_archive_plan/v1"
+        or current.get("schema") != saved.get("schema")
+        or saved.get("completion_authority")
+        != "explicit_owner_ceiling_acceptance"
+        or current.get("completion_authority")
+        != saved.get("completion_authority")
+    ):
+        return False
+    try:
+        saved_contract = Path(str(saved["contract"])).expanduser().resolve()
+        current_contract = Path(str(current["contract"])).expanduser().resolve()
+    except (KeyError, TypeError, ValueError):
+        return False
+    expected = str(saved.get("contract_sha256") or "")
+    if (
+        not expected.startswith("sha256:")
+        or current.get("contract_sha256") != expected
+        or not saved_contract.is_file()
+        or not current_contract.is_file()
+        or sha256(saved_contract) != expected
+        or sha256(current_contract) != expected
+    ):
+        return False
+    saved_identity = dict(saved)
+    current_identity = dict(current)
+    saved_identity.pop("contract", None)
+    current_identity.pop("contract", None)
+    return saved_identity == current_identity
 
 
 def atomic_json(path: Path, value: dict[str, Any], *, immutable: bool = False) -> None:
@@ -138,6 +203,42 @@ def load_contract(path: Path) -> tuple[dict[str, Any], str]:
         or submission.get("queue_order") != "oldest_first"
     ):
         raise RuntimeError("sequential specialist handoff contract changed")
+    if training.get("expanded_heads") is not None:
+        validate_expanded_handoff_training_contract(
+            training["expanded_heads"]
+        )
+        if training.get("decision_fusion") != decision_fusion_handoff_contract():
+            raise RuntimeError(
+                "generated successor lacks the canonical causal decision-fusion "
+                "contract"
+            )
+    elif training.get("decision_fusion") is not None:
+        raise RuntimeError(
+            "causal decision fusion requires the expanded strategic-head contract"
+        )
+    guide = training.get("current_deck_guide")
+    if guide is not None:
+        if not isinstance(guide, dict):
+            raise RuntimeError("generated successor guide contract is invalid")
+        expected_guide = current_deck_guide_handoff_contract(
+            specialist_id=target_id,
+            contract_path=Path(str(guide.get("contract") or "")),
+            expected_contract_sha256=str(
+                guide.get("contract_sha256") or ""
+            ),
+            guide_version=str(guide.get("guide_version") or ""),
+            corpus_ready_receipt=Path(
+                str(guide.get("corpus_ready_receipt") or "")
+            ),
+            expected_corpus_ready_sha256=str(
+                guide.get("corpus_ready_receipt_sha256") or ""
+            ),
+            protocol_path=ROOT / "config/rl_protocol.yaml",
+        )
+        if guide != expected_guide:
+            raise RuntimeError(
+                "generated successor current-deck guide contract changed"
+            )
     for section, keys in {
         "source_specialist": (
             "run_dir",
@@ -206,7 +307,157 @@ def load_contract(path: Path) -> tuple[dict[str, Any], str]:
             )
         ):
             raise RuntimeError("runtime registration contract changed")
+        matchup_v6 = registration.get("matchup_v6")
+        if matchup_v6 is not None:
+            if (
+                not isinstance(matchup_v6, dict)
+                or matchup_v6.get("enabled") is not True
+                or str(matchup_v6.get("family_suffix") or "")
+                != "_matchup_v6"
+            ):
+                raise RuntimeError("Matchup Adapter V6 handoff contract changed")
+            for key in ("registry", "staging_root", "receipt_root"):
+                raw = str(matchup_v6.get(key) or "").strip()
+                if not raw or not Path(raw).expanduser().is_absolute():
+                    raise RuntimeError(
+                        f"Matchup Adapter V6 handoff path is invalid: {key}"
+                    )
+            fleet = matchup_v6.get("fleet")
+            if not isinstance(fleet, dict):
+                raise RuntimeError("Matchup Adapter V6 fleet contract is missing")
+            for key in ("source_root", "registry", "receipt"):
+                raw = str(fleet.get(key) or "").strip()
+                if not raw or not Path(raw).expanduser().is_absolute():
+                    raise RuntimeError(
+                        f"Matchup Adapter V6 fleet path is invalid: {key}"
+                    )
+            for endpoint_id in ("bert", "elmo"):
+                endpoint = fleet.get(endpoint_id)
+                if (
+                    not isinstance(endpoint, dict)
+                    or not str(endpoint.get("host") or "").strip()
+                    or not str(endpoint.get("endpoint") or "").strip()
+                    or int(endpoint.get("expected_workers") or 0) <= 0
+                    or int(endpoint.get("expected_leaves") or 0) <= 0
+                ):
+                    raise RuntimeError(
+                        f"Matchup Adapter V6 fleet endpoint is invalid: "
+                        f"{endpoint_id}"
+                    )
     return contract, sha256(path)
+
+
+def runtime_bootstrap(
+    contract: dict[str, Any],
+    bootstrap: dict[str, Any],
+    *,
+    materialize: bool,
+) -> dict[str, Any]:
+    """Resolve the immutable runtime checkpoint without changing bootstrap proof."""
+
+    registration = dict(contract.get("runtime_registration") or {})
+    matchup_v6 = registration.get("matchup_v6")
+    if matchup_v6 is None:
+        return bootstrap
+    matchup_v6 = dict(matchup_v6)
+    source_family = Path(str(bootstrap["family"])).expanduser().resolve()
+    target_family = source_family.with_name(
+        source_family.name + str(matchup_v6["family_suffix"])
+    )
+    specialist_id = str(bootstrap["specialist_id"])
+    receipt_path = (
+        Path(str(matchup_v6["receipt_root"])).expanduser().resolve()
+        / f"{specialist_id}-matchup-v6-runtime-family.json"
+    )
+    kwargs = {
+        "source_family": source_family,
+        "target_family": target_family,
+        "registry_path": Path(str(matchup_v6["registry"])),
+        "receipt_path": receipt_path,
+    }
+    if materialize:
+        receipt = materialize_runtime_family(
+            **kwargs,
+            staging_root=Path(str(matchup_v6["staging_root"])),
+        )
+    else:
+        receipt = validate_runtime_family(**kwargs)
+    frozen = verify_frozen_model(target_family)
+    if (
+        receipt.get("target_checkpoint_sha256")
+        != frozen.get("checkpoint_digest")
+        or receipt.get("source_checkpoint_sha256")
+        != bootstrap.get("checkpoint_digest")
+    ):
+        raise RuntimeError("V6 runtime bootstrap lineage changed")
+    return {
+        **bootstrap,
+        "family": str(target_family),
+        "family_manifest_sha256": sha256(target_family / "manifest.json"),
+        "protection_sha256": sha256(target_family / FAMILY_MARKER),
+        "checkpoint_digest": frozen["checkpoint_digest"],
+        "matchup_v6_runtime_receipt": str(receipt_path),
+        "matchup_v6_runtime_receipt_sha256": sha256(receipt_path),
+        "source_v5_bootstrap": {
+            "family": bootstrap["family"],
+            "checkpoint_digest": bootstrap["checkpoint_digest"],
+            "family_manifest_sha256": bootstrap["family_manifest_sha256"],
+        },
+    }
+
+
+def runtime_fleet(
+    contract: dict[str, Any],
+    *,
+    training_service: str,
+    materialize: bool,
+) -> dict[str, Any] | None:
+    """Activate or verify the V6 loader fleet at the stopped handoff boundary."""
+
+    registration = dict(contract.get("runtime_registration") or {})
+    matchup_v6 = registration.get("matchup_v6")
+    if matchup_v6 is None:
+        return None
+    fleet = dict(dict(matchup_v6).get("fleet") or {})
+    receipt_path = Path(str(fleet["receipt"])).expanduser().resolve()
+    if materialize:
+        receipt = activate_matchup_v6_fleet(
+            config=fleet,
+            training_service=training_service,
+            receipt_path=receipt_path,
+        )
+    else:
+        receipt = validate_matchup_v6_fleet(
+            config=fleet,
+            receipt_path=receipt_path,
+        )
+    return {
+        "receipt": str(receipt_path),
+        "receipt_sha256": sha256(receipt_path),
+        "schema": receipt["schema"],
+        "status": receipt["status"],
+        "registry_digest": receipt["registry_digest"],
+        "loader_source_contract": receipt["loader_source_contract"],
+    }
+
+
+def canonical_matchup_target_ids(contract: dict[str, Any]) -> tuple[str, ...]:
+    """Resolve the handoff's routing roster without a version-sized literal."""
+
+    canonical = tuple(str(value) for value in EXPERT_IDS)
+    configured = dict(contract.get("runtime_registration") or {}).get(
+        "matchup_target_ids"
+    )
+    if configured is not None:
+        declared = tuple(str(value) for value in configured)
+        if declared != canonical:
+            raise RuntimeError(
+                "runtime registration matchup roster differs from canonical "
+                "EXPERT_IDS"
+            )
+    if not canonical or len(canonical) != len(set(canonical)):
+        raise RuntimeError("canonical matchup roster is empty or duplicated")
+    return canonical
 
 
 def prepare_runtime_tree(
@@ -230,7 +481,8 @@ def prepare_runtime_tree(
         != "poke_bot.public_matchup_tree_candidate_audit/v1"
         or audit.get("runtime_enabled") is not False
         or audit.get("artifact_sha256") != sha256(candidate)
-        or int(audit.get("target_count") or 0) != 22
+        or int(audit.get("target_count") or 0)
+        != len(canonical_matchup_target_ids(contract))
         or int(audit.get("accepted_count") or 0) < 1
         or float(audit.get("minimum_precision") or 0.0) != 0.93
         or int(audit.get("minimum_weighted_support") or 0) != 10_000
@@ -318,12 +570,26 @@ def validate_source(contract: dict[str, Any]) -> dict[str, Any]:
                 != "explicit_owner_ceiling_acceptance"
             ):
                 raise
-            plan = validate_ceiling_completion(
-                path_value(contract, "source_specialist", "run_dir"),
-                path_value(contract, "source_specialist", "gate_contract"),
-                int(saved_plan.get("commit_boundary", -1)),
-            )
-            if saved_plan != plan:
+            runtime_exact_receipt = str(
+                saved_plan.get("exact_result_pointer") or ""
+            ).strip()
+            if runtime_exact_receipt:
+                plan = validate_runtime_exact_gate(
+                    path_value(contract, "source_specialist", "run_dir"),
+                    path_value(contract, "source_specialist", "gate_contract"),
+                    Path(runtime_exact_receipt),
+                    accept_ceiling=True,
+                    ceiling_iteration=int(
+                        saved_plan.get("commit_boundary", -1)
+                    ),
+                )
+            else:
+                plan = validate_ceiling_completion(
+                    path_value(contract, "source_specialist", "run_dir"),
+                    path_value(contract, "source_specialist", "gate_contract"),
+                    int(saved_plan.get("commit_boundary", -1)),
+                )
+            if not compatible_ceiling_acceptance_plan(saved_plan, plan):
                 raise RuntimeError("saved ceiling-acceptance plan changed")
     frozen_path = path_value(contract, "source_specialist", "passed_family")
     frozen = verify_frozen_model(frozen_path)
@@ -333,7 +599,10 @@ def validate_source(contract: dict[str, Any]) -> dict[str, Any]:
         handler.get("schema") != HANDLER_SCHEMA
         or handler.get("phase") not in ALLOWED_HANDLER_PHASES
         or handler.get("submission_mode") != "queue_and_continue"
-        or handler.get("gate") != plan
+        or not compatible_ceiling_acceptance_plan(
+            dict(handler.get("gate") or {}),
+            plan,
+        )
         or handler.get("frozen_model") != frozen
         or [int(row.get("copy_number", -1)) for row in queued] != [1]
         or any(
@@ -491,6 +760,12 @@ def validate_core(contract: dict[str, Any]) -> dict[str, Any]:
 def validate_corpus(contract: dict[str, Any]) -> dict[str, Any]:
     target = dict(contract["next_specialist"])
     training = dict(contract["training"])
+    expanded_contract = training.get("expanded_heads")
+    expanded_expected = (
+        validate_expanded_handoff_training_contract(expanded_contract)
+        if expanded_contract is not None
+        else None
+    )
     pointer = path_value(contract, "next_specialist", "expert_corpus")
     corpus = resolve_expert_manifest(
         pointer,
@@ -502,6 +777,29 @@ def validate_corpus(contract: dict[str, Any]) -> dict[str, Any]:
         required_target_coverage=tuple(
             training.get("required_target_coverage") or TARGETS
         ),
+        **(
+            {
+                "required_expanded_target_schema": expanded_expected[
+                    "target_schema"
+                ],
+                "required_expanded_target_digest": expanded_expected[
+                    "target_schema_digest"
+                ],
+                "required_expanded_heads": tuple(
+                    expanded_expected["schedule"]["weights"]
+                ),
+            }
+            if expanded_expected is not None
+            else {}
+        ),
+    )
+    expanded_targets = (
+        _manifest_expanded_targets(
+            Path(corpus.path),
+            decisions=corpus.decisions,
+        )
+        if expanded_contract is not None
+        else None
     )
     return {
         "pointer": str(pointer),
@@ -511,6 +809,11 @@ def validate_corpus(contract: dict[str, Any]) -> dict[str, Any]:
         "records": corpus.records,
         "decisions": corpus.decisions,
         "acting_seat_archetype": target["id"],
+        **(
+            {"expanded_strategic_targets": expanded_targets}
+            if expanded_targets is not None
+            else {}
+        ),
     }
 
 
@@ -623,6 +926,41 @@ def bootstrap_command(contract: dict[str, Any]) -> list[str]:
     ]
     for target_name in training.get("required_target_coverage") or TARGETS:
         command.extend(["--required-target", str(target_name)])
+    expanded = training.get("expanded_heads")
+    if expanded is not None:
+        validated = validate_expanded_handoff_training_contract(expanded)
+        if training.get("decision_fusion") != decision_fusion_handoff_contract():
+            raise RuntimeError(
+                "generated handoff causal decision-fusion contract changed"
+            )
+        command.extend(
+            [
+                "--expanded-heads",
+                "--decision-fusion",
+                "--rl-protocol",
+                str(ROOT / "config/rl_protocol.yaml"),
+                "--expected-expanded-schedule-digest",
+                str(validated["schedule_digest"]),
+                "--expected-expanded-target-digest",
+                str(validated["target_schema_digest"]),
+            ]
+        )
+    guide = training.get("current_deck_guide")
+    if guide is not None:
+        command.extend(
+            [
+                "--current-deck-guide-contract",
+                str(guide["contract"]),
+                "--expected-current-deck-guide-sha256",
+                str(guide["contract_sha256"]),
+                "--current-deck-guide-version",
+                str(guide["guide_version"]),
+                "--current-deck-guide-corpus-ready",
+                str(guide["corpus_ready_receipt"]),
+                "--expected-current-deck-guide-corpus-ready-sha256",
+                str(guide["corpus_ready_receipt_sha256"]),
+            ]
+        )
     return command
 
 
@@ -639,6 +977,85 @@ def validate_bootstrap(
     ready_path = path_value(contract, "next_specialist", "ready")
     ready = read_json(ready_path)
     provenance = dict(frozen.get("provenance") or {})
+    expanded = contract["training"].get("expanded_heads")
+    expanded_expected = (
+        validate_expanded_handoff_training_contract(expanded)
+        if expanded is not None
+        else None
+    )
+    expanded_ready = dict(ready.get("expanded_head_training") or {})
+    expanded_provenance = dict(
+        provenance.get("expanded_head_training") or {}
+    )
+    fusion_expected = contract["training"].get("decision_fusion")
+    fusion_ready = dict(ready.get("decision_fusion") or {})
+    fusion_provenance = dict(provenance.get("decision_fusion") or {})
+    fusion_provenance_source = "frozen_family_manifest"
+    if fusion_expected is not None and not fusion_provenance:
+        frozen_payload = checkpoint.load_checkpoint(
+            Path(str(frozen["model_path"])).expanduser().resolve(),
+            map_location="cpu",
+        )
+        fusion_provenance = dict(
+            (frozen_payload.get("provenance") or {}).get(
+                "decision_fusion"
+            )
+            or {}
+        )
+        fusion_provenance_source = "checksum_verified_frozen_checkpoint"
+    fusion_valid = (
+        fusion_expected is None
+        or (
+            fusion_expected == decision_fusion_handoff_contract()
+            and fusion_ready.get("schema") == fusion_expected["schema"]
+            and fusion_ready.get("runtime_enabled") is True
+            and fusion_ready.get("required_heads")
+            == fusion_expected["required_heads"]
+            and fusion_provenance.get("schema") == fusion_expected["schema"]
+            and fusion_provenance.get("runtime_enabled") is True
+            and fusion_provenance.get("required_heads")
+            == fusion_expected["required_heads"]
+        )
+    )
+    guide_expected = contract["training"].get("current_deck_guide")
+    guide_ready = ready.get("current_deck_guide")
+    guide_provenance = provenance.get("current_deck_guide")
+    guide_valid = (
+        guide_expected is None
+        or (
+            guide_ready == guide_expected
+            and guide_provenance == guide_expected
+        )
+    )
+    expanded_valid = (
+        expanded_expected is None
+        or (
+            ready.get("expanded_target_schema_digest")
+            == expanded_expected["target_schema_digest"]
+            and ready.get("expanded_schedule_digest")
+            == expanded_expected["schedule_digest"]
+            and set(ready.get("expanded_heads_trained") or ())
+            == set(expanded_expected["schedule"]["weights"])
+            and ready.get("runtime_enabled_heads") == []
+            and expanded_ready.get("schema")
+            == expanded_expected["schema"]
+            and expanded_ready.get("target_schema_digest")
+            == expanded_expected["target_schema_digest"]
+            and expanded_ready.get("schedule_digest")
+            == expanded_expected["schedule_digest"]
+            and provenance.get("expanded_target_schema_digest")
+            == expanded_expected["target_schema_digest"]
+            and provenance.get("expanded_schedule_digest")
+            == expanded_expected["schedule_digest"]
+            and expanded_provenance.get("schema")
+            == expanded_expected["schema"]
+            and expanded_provenance.get("runtime_enabled_heads") == []
+            and (corpus.get("expanded_strategic_targets") or {}).get(
+                "digest"
+            )
+            == expanded_expected["target_schema_digest"]
+        )
+    )
     if (
         ready.get("schema") != "poke_bot.specialist_expert_bootstrap_ready/v1"
         or ready.get("status") != "ready"
@@ -651,6 +1068,9 @@ def validate_bootstrap(
         != corpus["manifest_sha256"]
         or provenance.get("trained_target_coverage")
         != list(contract["training"].get("required_target_coverage") or TARGETS)
+        or not expanded_valid
+        or not fusion_valid
+        or not guide_valid
     ):
         raise RuntimeError("next specialist bootstrap identity changed")
     return {
@@ -664,6 +1084,36 @@ def validate_bootstrap(
         "ready_sha256": sha256(ready_path),
         "corpus_manifest_sha256": corpus["manifest_sha256"],
         "supervised_epochs": 25,
+        **(
+            {
+                "expanded_head_training": expanded_ready,
+                "expanded_target_schema_digest": expanded_expected[
+                    "target_schema_digest"
+                ],
+                "expanded_schedule_digest": expanded_expected[
+                    "schedule_digest"
+                ],
+                "runtime_enabled_heads": [],
+            }
+            if expanded_expected is not None
+            else {}
+        ),
+        **(
+            {
+                "decision_fusion": fusion_ready,
+                "decision_fusion_runtime_enabled": True,
+                "decision_fusion_provenance_source": (
+                    fusion_provenance_source
+                ),
+            }
+            if fusion_expected is not None
+            else {}
+        ),
+        **(
+            {"current_deck_guide": guide_ready}
+            if guide_expected is not None
+            else {}
+        ),
     }
 
 
@@ -719,6 +1169,10 @@ def validate_runtime_registration(
         for line in selector.read_text(encoding="utf-8").splitlines()
         if line.startswith("POKEBOT_ACTIVE_SPECIALIST=")
     ]
+    selector_rows = set(selector.read_text(encoding="utf-8").splitlines())
+    expected_fusion = decision_fusion_handoff_contract()
+    row_fusion = dict(row.get("decision_fusion") or {})
+    guide = contract["training"].get("current_deck_guide")
     if (
         receipt.get("schema") != "poke_bot.specialist_runtime_registration/v1"
         or receipt.get("specialist_id") != target["id"]
@@ -730,6 +1184,25 @@ def validate_runtime_registration(
         or row.get("matchup_runtime_tree_sha256")
         != sha256(expected_runtime_tree).removeprefix("sha256:")
         or selected_rows != [f"POKEBOT_ACTIVE_SPECIALIST={target['id']}"]
+        or row_fusion.get("schema") != expected_fusion["schema"]
+        or row_fusion.get("required") is not True
+        or row_fusion.get("runtime_enabled") is not True
+        or row_fusion.get("required_heads") != expected_fusion["required_heads"]
+        or "POKEBOT_EXPANDED_HEADS_ENABLED=1" not in selector_rows
+        or "POKEBOT_DECISION_FUSION_ENABLED=1" not in selector_rows
+        or "POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=1" not in selector_rows
+        or (
+            guide is not None
+            and (
+                row.get("guide_id") != target["id"]
+                or float(row.get("guide_loss_weight") or 0.0)
+                != float(guide["runtime_initial_weight"])
+                or row.get("guide_contract") != guide["contract"]
+                or row.get("guide_contract_sha256")
+                != str(guide["contract_sha256"]).removeprefix("sha256:")
+                or row.get("guide_version") != guide["guide_version"]
+            )
+        )
         or sha256(path_value(contract, "runtime_registration", "runtime_registry"))
         != receipt.get("runtime_registry_sha256")
         or sha256(selector) != receipt.get("selector_env_sha256")
@@ -852,14 +1325,26 @@ def verify(contract_path: Path) -> dict[str, Any]:
     if service_active(source_service):
         raise RuntimeError("completed source specialist is active; refusing overlap")
     target_service = str(contract["next_specialist"]["training_service"])
-    registration = validate_runtime_registration(contract, bootstrap)
+    runtime_ready = runtime_bootstrap(
+        contract,
+        bootstrap,
+        materialize=False,
+    )
+    fleet = runtime_fleet(
+        contract,
+        training_service=source_service,
+        materialize=False,
+    )
+    if fleet is not None:
+        runtime_ready = {**runtime_ready, "matchup_v6_fleet": fleet}
+    registration = validate_runtime_registration(contract, runtime_ready)
     identity = activation_identity(
         contract_path,
         digest,
         source,
         core,
         corpus,
-        bootstrap,
+        runtime_ready,
         next_gate,
         target_service,
         registration,
@@ -901,6 +1386,8 @@ def run(contract_path: Path) -> int:
             in {
                 "preflight_verified",
                 "next_specialist_bootstrap_frozen",
+                "next_specialist_runtime_checkpoint_frozen",
+                "matchup_v6_fleet_activated",
                 "next_specialist_runtime_tree_bound",
                 "next_specialist_runtime_registered",
                 "next_specialist_rl_armed",
@@ -910,6 +1397,12 @@ def run(contract_path: Path) -> int:
             and isinstance(previous.get("next_specialist_corpus"), dict)
             and isinstance(previous.get("next_specialist_gate_materialization"), dict)
             and isinstance(previous.get("next_specialist_splus_gate"), dict)
+        )
+        source_only_preflight = (
+            str(previous.get("phase") or "") == "source_preflight_verified"
+            and isinstance(previous.get("source_specialist"), dict)
+            and isinstance(previous.get("shared_deck_agnostic_core"), dict)
+            and isinstance(previous.get("next_specialist_corpus"), dict)
         )
         source_service = str(contract["source_specialist"]["training_service"])
         if service_active(source_service):
@@ -922,19 +1415,37 @@ def run(contract_path: Path) -> int:
             next_gate = dict(previous["next_specialist_splus_gate"])
             core = dict(previous["shared_deck_agnostic_core"])
             corpus = dict(previous["next_specialist_corpus"])
-        else:
-            source = validate_source(contract)
+        elif source_only_preflight:
+            source = dict(previous["source_specialist"])
+            core = dict(previous["shared_deck_agnostic_core"])
+            corpus = dict(previous["next_specialist_corpus"])
             materialized_gate = materialize_from_contract(contract, source)
             next_gate = validate_next_specialist_gate(contract, source)
-            core = validate_core(contract)
-            corpus = validate_corpus(contract)
             save_state(
                 contract,
                 "preflight_verified",
                 digest,
+                next_specialist_gate_materialization=materialized_gate,
+                next_specialist_splus_gate=next_gate,
+            )
+        else:
+            source = validate_source(contract)
+            core = validate_core(contract)
+            corpus = validate_corpus(contract)
+            save_state(
+                contract,
+                "source_preflight_verified",
+                digest,
                 source_specialist=source,
                 shared_deck_agnostic_core=core,
                 next_specialist_corpus=corpus,
+            )
+            materialized_gate = materialize_from_contract(contract, source)
+            next_gate = validate_next_specialist_gate(contract, source)
+            save_state(
+                contract,
+                "preflight_verified",
+                digest,
                 next_specialist_gate_materialization=materialized_gate,
                 next_specialist_splus_gate=next_gate,
             )
@@ -947,26 +1458,48 @@ def run(contract_path: Path) -> int:
             digest,
             next_specialist_bootstrap=bootstrap,
         )
+        runtime_ready = runtime_bootstrap(
+            contract,
+            bootstrap,
+            materialize=True,
+        )
+        save_state(
+            contract,
+            "next_specialist_runtime_checkpoint_frozen",
+            digest,
+            next_specialist_runtime_checkpoint=runtime_ready,
+        )
+        fleet = runtime_fleet(
+            contract,
+            training_service=source_service,
+            materialize=True,
+        )
+        if fleet is not None:
+            runtime_ready = {**runtime_ready, "matchup_v6_fleet": fleet}
+            save_state(
+                contract,
+                "matchup_v6_fleet_activated",
+                digest,
+                matchup_v6_fleet=fleet,
+                next_specialist_runtime_checkpoint=runtime_ready,
+            )
 
         registration_contract = contract.get("runtime_registration")
         registration = None
         if registration_contract is not None:
             target = dict(contract["next_specialist"])
-            family = path_value(contract, "paths", "registry_root") / str(
-                target["family_name"]
-            )
-            runtime_tree = prepare_runtime_tree(contract, bootstrap)
+            runtime_tree = prepare_runtime_tree(contract, runtime_ready)
             save_state(
                 contract,
                 "next_specialist_runtime_tree_bound",
                 digest,
                 runtime_tree=str(runtime_tree),
                 runtime_tree_sha256=sha256(runtime_tree),
-                runtime_tree_checkpoint_digest=bootstrap["checkpoint_digest"],
+                runtime_tree_checkpoint_digest=runtime_ready["checkpoint_digest"],
             )
             registration = register_specialist_runtime(
                 specialist_id=str(target["id"]),
-                family=family,
+                family=Path(str(runtime_ready["family"])),
                 expert=path_value(contract, "next_specialist", "expert_corpus"),
                 runtime_tree=runtime_tree,
                 runtime_registry=path_value(
@@ -989,8 +1522,48 @@ def run(contract_path: Path) -> int:
                         "required_target_coverage", ()
                     )
                 ),
+                guide_id=(
+                    str(contract["training"]["current_deck_guide"][
+                        "specialist_id"
+                    ])
+                    if contract["training"].get("current_deck_guide")
+                    is not None
+                    else None
+                ),
+                guide_loss_weight=(
+                    float(contract["training"]["current_deck_guide"][
+                        "runtime_initial_weight"
+                    ])
+                    if contract["training"].get("current_deck_guide")
+                    is not None
+                    else 0.0
+                ),
+                guide_contract=(
+                    Path(str(contract["training"]["current_deck_guide"][
+                        "contract"
+                    ]))
+                    if contract["training"].get("current_deck_guide")
+                    is not None
+                    else None
+                ),
+                guide_contract_sha256=(
+                    str(contract["training"]["current_deck_guide"][
+                        "contract_sha256"
+                    ])
+                    if contract["training"].get("current_deck_guide")
+                    is not None
+                    else ""
+                ),
+                guide_version=(
+                    str(contract["training"]["current_deck_guide"][
+                        "guide_version"
+                    ])
+                    if contract["training"].get("current_deck_guide")
+                    is not None
+                    else ""
+                ),
             )
-            registration = validate_runtime_registration(contract, bootstrap)
+            registration = validate_runtime_registration(contract, runtime_ready)
             save_state(
                 contract,
                 "next_specialist_runtime_registered",
@@ -1005,7 +1578,7 @@ def run(contract_path: Path) -> int:
             source,
             core,
             corpus,
-            bootstrap,
+            runtime_ready,
             next_gate,
             target_service,
             registration,
@@ -1026,31 +1599,6 @@ def run(contract_path: Path) -> int:
         run_checked(
             ["/usr/bin/systemctl", "--user", "is-active", "--quiet", target_service]
         )
-        if registration_contract is not None:
-            gate_handler_service = str(
-                registration_contract["gate_handler_service"]
-            )
-            # The watcher resolves its run directory from the same selector and
-            # registry that were atomically updated above.  Restart it only
-            # after the new trainer is confirmed active so it cannot retain the
-            # completed specialist's run directory across a handoff.
-            run_checked(
-                [
-                    "/usr/bin/systemctl",
-                    "--user",
-                    "restart",
-                    gate_handler_service,
-                ]
-            )
-            run_checked(
-                [
-                    "/usr/bin/systemctl",
-                    "--user",
-                    "is-active",
-                    "--quiet",
-                    gate_handler_service,
-                ]
-            )
         save_state(
             contract,
             "next_specialist_rl_started",
@@ -1058,6 +1606,11 @@ def run(contract_path: Path) -> int:
             service=target_service,
             gate_handler_service=(
                 str(registration_contract["gate_handler_service"])
+                if registration_contract is not None
+                else None
+            ),
+            gate_handler_trigger=(
+                "trainer_on_success"
                 if registration_contract is not None
                 else None
             ),

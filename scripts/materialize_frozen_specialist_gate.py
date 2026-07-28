@@ -17,9 +17,11 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import socket
 import subprocess
 import tarfile
 import tempfile
+import time
 from typing import Any
 
 from poke_bot.baselines_runtime import baseline_content_digest
@@ -385,6 +387,117 @@ def _run_checked(argv: list[str]) -> None:
         raise RuntimeError(f"command failed rc={completed.returncode}: {' '.join(argv)}")
 
 
+def _run_capture(argv: list[str]) -> str:
+    completed = subprocess.run(argv, check=False, capture_output=True, text=True)
+    if completed.returncode:
+        detail = completed.stderr.strip()
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(
+            f"command failed rc={completed.returncode}: {' '.join(argv)}{suffix}"
+        )
+    return completed.stdout
+
+
+def _wait_tcp_endpoint(
+    host: str,
+    port: int,
+    *,
+    attempts: int = 90,
+    interval_s: float = 1.0,
+) -> None:
+    """Wait until a restarted managed worker is accepting new sessions."""
+
+    ssh_host = str(host).rsplit("@", 1)[-1]
+    # Fleet entries are SSH aliases (for example ``elmo``), not necessarily
+    # names that the socket resolver can use.  Resolve the alias through the
+    # same SSH configuration used for the restart before probing its worker
+    # data plane.  This also avoids accidentally selecting an unusable IPv6
+    # address when SSH itself is pinned to the LAN IPv4 address.
+    network_host = ssh_host
+    try:
+        ssh_config = _run_capture(["ssh", "-G", ssh_host])
+        for line in ssh_config.splitlines():
+            key, _, value = line.partition(" ")
+            if key.lower() == "hostname" and value.strip():
+                network_host = value.strip()
+                break
+    except RuntimeError:
+        # Preserve the previous direct-host behavior when an SSH
+        # implementation does not support configuration expansion.
+        pass
+    last_error: OSError | None = None
+    for _attempt in range(max(1, int(attempts))):
+        try:
+            with socket.create_connection(
+                (network_host, int(port)),
+                timeout=min(2.0, max(0.2, float(interval_s))),
+            ):
+                return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(max(0.0, float(interval_s)))
+    raise RuntimeError(
+        f"managed worker did not resume at {network_host}:{int(port)}"
+    ) from last_error
+
+
+def _container_baseline_mounts(*, host: str, container: str) -> dict[str, str]:
+    output = _run_capture(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            host,
+            "sudo",
+            "-n",
+            "docker",
+            "inspect",
+            container,
+        ]
+    )
+    try:
+        rows = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"container {container} returned invalid mount metadata"
+        ) from exc
+    if (
+        not isinstance(rows, list)
+        or len(rows) != 1
+        or not isinstance(rows[0], dict)
+    ):
+        raise RuntimeError(
+            f"container {container} returned invalid mount metadata"
+        )
+    rows = rows[0].get("Mounts")
+    if not isinstance(rows, list):
+        raise RuntimeError(
+            f"container {container} returned invalid mount metadata"
+        )
+    mounts = {
+        str(row.get("Destination") or ""): str(row.get("Source") or "")
+        for row in rows
+        if isinstance(row, dict)
+        and str(row.get("Destination") or "")
+        and str(row.get("Source") or "")
+    }
+    required = {
+        "/workspace/baselines/specialists",
+        "/workspace/baselines/manifest.json",
+    }
+    missing = sorted(required - mounts.keys())
+    if missing:
+        raise RuntimeError(
+            f"container {container} is missing baseline bind mounts: {missing}"
+        )
+    for destination in required:
+        if not PurePosixPath(mounts[destination]).is_absolute():
+            raise RuntimeError(
+                f"container {container} has unsafe bind source for {destination}"
+            )
+    return mounts
+
+
 def _sync_one_remote(
     *,
     host: str,
@@ -422,6 +535,55 @@ def _sync_one_remote(
         ]
     )
     if container:
+        mounts = _container_baseline_mounts(host=host, container=container)
+        container_group_source = mounts[f"/workspace/baselines/{group}"]
+        container_package_source = (
+            f"{container_group_source.rstrip('/')}/{package.name}"
+        )
+        container_manifest_source = mounts["/workspace/baselines/manifest.json"]
+        _run_checked(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                host,
+                "sudo",
+                "-n",
+                "mkdir",
+                "-p",
+                container_package_source,
+            ]
+        )
+        _run_checked(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                host,
+                "sudo",
+                "-n",
+                "rsync",
+                "-a",
+                "--delete",
+                f"{remote_package}/",
+                f"{container_package_source}/",
+            ]
+        )
+        _run_checked(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                host,
+                "sudo",
+                "-n",
+                "install",
+                "-m",
+                "0644",
+                f"{remote_root.rstrip('/')}/manifest.json",
+                container_manifest_source,
+            ]
+        )
         _run_checked(
             [
                 "ssh",
@@ -433,9 +595,9 @@ def _sync_one_remote(
                 "docker",
                 "exec",
                 container,
-                "mkdir",
-                "-p",
-                f"/workspace/baselines/{group}/{package.name}",
+                "test",
+                "-f",
+                f"/workspace/baselines/{group}/{package.name}/model.pt",
             ]
         )
         _run_checked(
@@ -447,11 +609,17 @@ def _sync_one_remote(
                 "sudo",
                 "-n",
                 "docker",
-                "cp",
-                f"{remote_package}/.",
-                f"{container}:/workspace/baselines/{group}/{package.name}/",
+                "exec",
+                container,
+                "test",
+                "-f",
+                "/workspace/baselines/manifest.json",
             ]
         )
+        # The remote worker resolves its baseline manifest once at startup.
+        # Updating the read-only bind source alone leaves its in-memory
+        # registry stale. Rotate only the declared managed container, then
+        # fail closed until its data-plane endpoint accepts new sessions.
         _run_checked(
             [
                 "ssh",
@@ -461,16 +629,18 @@ def _sync_one_remote(
                 "sudo",
                 "-n",
                 "docker",
-                "cp",
-                f"{remote_root.rstrip('/')}/manifest.json",
-                f"{container}:/workspace/baselines/manifest.json",
+                "restart",
+                container,
             ]
         )
+        _wait_tcp_endpoint(host, 8765)
     return {
         "host": host,
         "baseline_root": remote_root,
         "package": remote_package,
         "container": container,
+        "container_mounts": mounts if container else None,
+        "container_manifest_reloaded": bool(container),
     }
 
 
@@ -545,6 +715,10 @@ def materialize_from_contract(
         "frozen": True,
         "public_mix_eligible": True,
         "research_eligible": False,
+        # This registry describes inference opponents. Kaggle eligibility
+        # belongs to the separately checksum-bound passing checkpoint and
+        # persistent submission queue, never to this materialized copy.
+        "kaggle_submission_eligible": False,
         "registered_at_utc": timestamp,
         "source": source_label,
     }

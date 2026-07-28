@@ -1,0 +1,25 @@
+[Unit]
+Description=Build and audit inactive public matchup router v34 after rare-route history download
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/Main/main/poke-adapter-oracle-v29
+ExecStartPre=/bin/sh -c 'while /usr/bin/systemctl is-active --quiet pokebot-rare-route-history-download-v1.service; do /usr/bin/sleep 30; done'
+ExecStart=/usr/bin/python3 /mnt/Main/main/poke-adapter-oracle-v29/src/scripts/retrain_public_matchup_tree_elmo_v34.py
+ExecStartPost=/usr/bin/python3 /mnt/Main/main/poke-adapter-oracle-v29/src/scripts/audit_public_matchup_tree_candidate.py --artifact /mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-v34/public-matchup-tree.json --minimum-precision 0.93 --minimum-weighted-support 10000 --output /mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-v34/public-matchup-tree.audit.json
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=36h
+KillMode=control-group
+LimitNOFILE=16384
+MemoryHigh=24G
+MemoryMax=32G
+OOMPolicy=stop
+StandardOutput=append:/mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-v34.service.log
+StandardError=append:/mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-v34.service.log
+
+[Install]
+WantedBy=multi-user.target

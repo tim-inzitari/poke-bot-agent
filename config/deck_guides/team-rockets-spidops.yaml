@@ -1,0 +1,367 @@
+# Checksum-ready research and causal-target contract for one specialist guide.
+# This proposed staging artifact has no runtime, training, selector, gate, or
+# serving authority.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: team-rockets-spidops
+display_name: "Team Rocket's Spidops"
+status: research_and_sparse_teacher_validated_corpus_targets_pending
+guide_version: team-rockets-spidops-north-star-v1
+teacher_module: poke_bot.team_rockets_spidops_heuristics
+implementation_status: sparse_causal_teacher_validated
+teacher_module_sha256: sha256:26d46c838fcdd9ba0da7aa6d809092f88e4f22b0103024dc895f385961a765d8
+
+project_representative_binding:
+  path: data/training_mixes/specialist_representatives.v1.json
+  json_pointer: /decks/team-rockets-spidops
+  source_deck_path_from_manifest: decks/competitive/the_rest/2026-05_regional-campinas-2026_226th_rockets-spidops.csv
+  source_deck_id: team-rockets-spidops
+  card_count: 60
+  canonical_multiset_sha256: sha256:dfc0139100e56de0989e004c476d62f2474a98cf2dc805bdb6152f68fe4f47c6
+  cards_sha256: sha256:dc32282c1053c83579a22081fde00c6b871e5ca798d2ff4e8f1f854a4ff6b19d
+  selection: exact_project_pinned_Campinas_2026_competitive_list
+
+policy_target:
+  type: sparse_confidence_weighted_legal_action_preference
+  parameterized_head: false
+  target_logits: shared_flat_or_fused_policy
+  serving_authority: false
+  override_authoritative_policy: false
+
+deck_signature:
+  minimum_card_counts:
+    400: 4 # Team Rocket's Tarountula
+    401: 4 # Team Rocket's Spidops
+    414: 2 # Team Rocket's Articuno
+    434: 2 # Team Rocket's Mimikyu
+    464: 1 # Team Rocket's Sneasel
+  maximum_card_counts:
+    431: 1 # Team Rocket's Mewtwo ex; separates the dedicated specialist
+  supporting_card_ids:
+    272: "Lillie's Clefairy ex"
+    1086: "Buddy-Buddy Poffin"
+    1134: "Team Rocket's Transceiver"
+    1175: "Brave Bangle"
+    1216: "Team Rocket's Ariana"
+    1217: "Team Rocket's Archer"
+    1218: "Team Rocket's Giovanni"
+    1220: "Team Rocket's Proton"
+    1257: "Team Rocket's Factory"
+  internal_card_identity_source:
+    path: data/training_mixes/specialist_representatives.v1.json
+    json_pointer: /decks/team-rockets-spidops/card_ids
+    verified_at_utc: 2026-07-28T17:00:00Z
+    unresolved_internal_card_ids: []
+
+strategy_sources:
+  - title: "2026 North America International Championships: Pokémon TCG Masters Division"
+    publisher: The Pokémon Company International
+    url: https://www.pokemon.com/uk/play-pokemon/internationals/2026/north-america/tcg-masters
+    evidence_role: official_top_lists_and_broader_Spidops_Mewtwo_shell
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Rocket's Spidops - Deck Overview"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/338
+    evidence_role: dedicated_archetype_definition_and_major_event_history
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Rocket's Spidops by Pedro Henrique Pereira Calda"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/27314
+    evidence_role: exact_Campinas_list_underlying_project_representative
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Rocket Spidops - CRI Standard Overview"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/decks/rocket-spidops/?format=standard&rotation=2026&set=CRI
+    evidence_role: current_heterogeneous_online_aggregate
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Rocket Spidops - CRI Standard Matchups"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/decks/rocket-spidops/matchups?format=standard&rotation=2026&set=CRI
+    evidence_role: current_heterogeneous_online_matchup_records
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Rocket Spidops - POR Standard Overview"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/decks/rocket-spidops?format=standard&rotation=2026&set=POR
+    evidence_role: prior_format_online_aggregate_for_drift_context
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Nathaniel Alaniz - Rare Candy Club Showdown #31"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/tournament/6a4856e465724db9ded3bc7e/player/trooper02/decklist
+    evidence_role: July_2026_second_place_dedicated_core
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Nathan Schaal - RCC 500 Members Celebration"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/tournament/69b05926f39e6e7096a00d91/player/mrsqueezle/decklist
+    evidence_role: April_2026_winning_dedicated_core
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "The Best Pokémon TCG Decks Right Now - July 2026"
+    publisher: TCGplayer
+    author: Natalie Millar
+    url: https://www.tcgplayer.com/content/article/The-Best-Pok%C3%A9mon-TCG-Decks-Right-Now-July-2026/df18897b-3902-41b9-9eff-3b7fefd93820/
+    evidence_role: current_player_authored_broader_engine_assessment
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "How to Upgrade the Team Rocket's Mewtwo ex League Battle Deck"
+    publisher: TCGplayer
+    author: Natalie Millar
+    url: https://www.tcgplayer.com/content/article/How-to-Upgrade-the-Team-Rocket-s-Mewtwo-ex-League-Battle-Deck-Pok%C3%A9mon-TCG/887d08ad-da0f-41bd-b62d-9ff1ba762b4e/
+    evidence_role: player_authored_Spidops_first_sequencing_older_format
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Spidops"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/my/card-search/detail/19569/
+    evidence_role: official_Spidops_card_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Mewtwo ex"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24660/
+    evidence_role: official_Mewtwo_card_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Energy"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/19713/
+    evidence_role: official_Special_Energy_card_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Articuno"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/ph/card-search/detail/19600/
+    evidence_role: official_Articuno_card_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Mimikyu"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24678/
+    evidence_role: official_Mimikyu_card_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Sneasel"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/ph/card-search/detail/19674/
+    evidence_role: official_Sneasel_card_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Proton"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/ph/card-search/detail/19708/
+    evidence_role: official_first_turn_exception_and_basic_search
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Ariana"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24783/
+    evidence_role: official_conditional_draw_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Giovanni"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24785/
+    evidence_role: official_own_switch_then_opponent_switch_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Archer"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24782/
+    evidence_role: official_post_knockout_disruption_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Petrel"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24788/
+    evidence_role: official_Trainer_search_for_registered_variants
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Transceiver"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/19709/
+    evidence_role: official_Team_Rocket_Supporter_search_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Team Rocket's Factory"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24784/
+    evidence_role: official_conditional_Stadium_draw_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Lillie's Determination"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/card-search/detail/24773/
+    evidence_role: official_conditional_shuffle_draw_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Lillie's Clefairy ex"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/hk-en/card-search/detail/18020/
+    evidence_role: official_Fairy_Zone_and_Full_Moon_Rondo_text
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Advanced Player's Rulebook, version 3.4"
+    publisher: Pokémon TCG Trainers Website
+    url: https://asia.pokemon-card.com/sg/wp-content/uploads/sites/6/2025/10/EN_advanced_manual-2025.pdf
+    evidence_role: official_detailed_rules_and_Team_Rocket_examples
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Maximum Belt - Temporal Forces 154"
+    publisher: Pokémon
+    url: https://www.pokemon.com/us/pokemon-tcg/pokemon-cards/series/sv05/154
+    evidence_role: official_ACE_SPEC_Tool_card_record
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+  - title: "Brave Bangle - White Flare 80"
+    publisher: TCGplayer
+    url: https://www.tcgplayer.com/product/642197/
+    evidence_role: published_Tool_card_record_for_pinned_list
+    reviewed_at_utc: 2026-07-28T17:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/team-rockets-spidops-expert-brief.txt
+  sha256: sha256:3a2a48e48c033b9e83b00189bdff90cca5288b73d9df6106fb4a7326930e3888
+  word_count: 6690
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: team-rockets-spidops
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+high_confidence_principles:
+  - distinguish_the_four_four_single_prize_Spidops_specialist_from_two_Mewtwo_hybrids
+  - establish_redundant_visible_Tarountula_before_one_line_can_be_removed
+  - prefer_a_useful_single_prize_Team_Rocket_board_before_optional_two_prize_Pokemon
+  - use_each_exactly_available_Charging_Up_with_public_basic_energy_before_losing_it
+  - count_Rocket_Rush_from_the_exact_current_Team_Rocket_Pokemon_board
+  - preserve_one_Team_Rockets_Energy_for_an_exact_Sneasel_conversion_line_when_live
+  - use_Mewtwo_only_when_its_exact_threshold_justifies_two_prize_exposure
+  - bench_non_Team_Rocket_Clefairy_only_for_an_exact_current_Psychic_Dragon_threshold
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_predicates:
+    - id: exact_initial_zero_retreat_Mimikyu_active
+      supported_stages:
+        - initial_setup_active
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - current_combo_card_ids
+      preference:
+        prefer_visible_Team_Rockets_Mimikyu_over_less_flexible_core_basics
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+
+    - id: exact_redundant_Tarountula_setup
+      supported_stages:
+        - initial_setup_bench
+        - exact_Buddy_Buddy_Poffin_search_prompt
+        - exact_Team_Rockets_Proton_search_prompt
+      exact_inputs:
+        - select.context
+        - select.effect_or_contextCard
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - current_combo_card_ids
+      preference:
+        establish_up_to_three_visible_Tarountula_then_useful_single_prize_Team_Rocket_basics
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+
+    - id: exact_visible_Spidops_evolution
+      supported_stages:
+        - legal_main_evolution_action
+      exact_inputs:
+        - exact_current_legal_options
+        - resolved_own_hand_card_identity_from_current_legal_option
+      preference:
+        prefer_a_current_legal_Team_Rockets_Spidops_evolution_over_unranked_actions
+      abstain_if:
+        - evolution_destination_unresolved
+        - any_legal_option_unresolved
+
+    - id: exact_visible_Charging_Up_activation
+      supported_stages:
+        - legal_main_ability_selection
+      exact_inputs:
+        - exact_current_legal_options
+        - exact_current_ability_origin_card_identity
+        - own_public_discard_card_ids
+        - exact_known_basic_Grass_or_Psychic_identity
+      preference:
+        prefer_an_exactly_legal_Spidops_Charging_Up_activation_when_a_known_Basic_Energy_is_publicly_available
+      abstain_if:
+        - ability_origin_not_exactly_resolved
+        - no_known_Basic_Energy_in_public_discard
+        - only_Special_Energy_is_publicly_available
+        - any_legal_option_unresolved
+
+  researched_but_intentionally_masked:
+    - Rocket_Rush_attack_and_damage_thresholds
+    - Sneasel_Strike_the_Sleeper_damage_and_Giovanni_conversion
+    - Mewtwo_Erasure_Ball_attack_and_energy_discard_count
+    - Mimikyu_Gemstone_Mimicry_attack_resolution
+    - Giovanni_paired_switch_and_gust
+    - Ariana_Archer_Lillies_Determination_and_Transceiver_supporter_choice
+    - Brave_Bangle_and_Maximum_Belt_attachment
+    - manual_energy_attachment_Energy_Switch_and_recovery
+    - Clefairy_Dragon_Weakness_and_attack
+    - matchup_specific_predictions
+
+categorical_abstentions:
+  - attack_selection_without_complete_exact_damage_and_prize_math
+  - Sneasel_or_Giovanni_without_complete_public_target_and_switch_resolution
+  - Mewtwo_without_complete_Power_Saver_cost_damage_and_prize_resolution
+  - Mimikyu_copy_attack_without_complete_current_attack_resolution
+  - Tool_attachment_without_complete_current_active_ex_threshold
+  - manual_energy_attachment_or_Energy_Switch
+  - recovery_target_selection
+  - supporter_choice_outside_exact_Poffin_or_Proton_style_search_prompt
+  - Clefairy_bench_or_attack_choice
+  - matchup_specific_guidance
+  - future_prize_map_or_future_knockout_prediction
+  - opponent_hidden_hand_deck_or_prize_contents
+  - unknown_non_main_prompt_origin
+  - unresolved_option_or_malformed_or_duplicate_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  full_deck_argument_use: specialist_identity_gate_only
+  own_hidden_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_flat_or_fused_policy: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+corpus_binding_evidence:
+  status: not_materialized
+  date_start: null
+  date_end: null
+  days: null
+  records: null
+  decisions: null
+  guide_rows: null
+  ready_receipt: null
+  all_daily_feature_and_receipt_checksums_verified: false
+  specialist_identity_verified: false
+  guide_version_verified: false
+  active_training_modified: false
+
+validation:
+  research_sources_reviewed: true
+  expert_writeup_under_word_limit: true
+  yaml_parse_required: true
+  unit_tests_passed: true
+  scorer_canary_passed: true
+  focused_tests_passed: 33
+  guide_rows_in_filtered_expert_corpus: null
+  unresolved_evidence_gaps:
+    - no_world_champion_SME_approval_yet
+    - no_controlled_current_first_versus_second_study_found
+    - standalone_physical_event_evidence_is_sparse_and_has_no_major_top_8
+    - current_online_aggregates_mix_players_lists_events_and_skill
+    - many_matchup_samples_are_too_small_for_stable_estimates
+    - pinned_Campinas_Trainer_package_predates_newer_July_variants
+    - current_judge_reviewed_Articuno_interaction_matrix_not_found
+    - no_authoritative_full_matchup_guide_for_exact_pinned_list_found
+    - strongest_official_result_is_a_two_Mewtwo_hybrid_not_this_specialist
+  # An integration receipt should record the checksum of this complete file;
+  # embedding that digest here would be self-referential.
+  contract_checksum: null

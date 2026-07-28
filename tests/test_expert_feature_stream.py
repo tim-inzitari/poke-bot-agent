@@ -50,6 +50,7 @@ def _game(
     seat: int,
     *,
     decisions: int = 2,
+    archetype: str = "alakazam",
 ) -> GameSequence:
     rows: list[DecisionSample] = []
     for index in range(decisions):
@@ -83,7 +84,7 @@ def _game(
     return GameSequence(
         episode_id=episode_id,
         seat=seat,
-        archetype="alakazam",
+        archetype=archetype,
         opp_archetype="alakazam",
         deck=[1] * 60,
         value=1.0 if seat == 0 else -1.0,
@@ -198,6 +199,34 @@ def test_streamed_group_split_exactly_matches_materialized_reference(
         {row.episode_id for row in val}
     )
     assert _identity(list(train)) == _identity(list(train))
+
+
+def test_stream_plan_exposes_archetypes_in_exact_packed_split_order(
+    tmp_path: Path,
+) -> None:
+    source = [
+        _game("a", 0, archetype="alakazam"),
+        _game("b", 0, archetype="starmie"),
+        _game("a", 1, archetype="alakazam"),
+        _game("c", 0, archetype="dudunsparce"),
+    ]
+    manifest, digest = _write_manifest(tmp_path, [source[:2], source[2:]])
+    plan = EpisodeGroupedFeatureManifest.open(
+        manifest,
+        expected_manifest_digest=digest,
+        val_frac=0.25,
+        seed=9,
+        max_context=8,
+        expected_compact_mode=COMPACT_MODE_TEMPORAL_EXPERT,
+    )
+    train, validation = plan.splits()
+    train_archetypes, validation_archetypes = (
+        plan.partition_archetypes()
+    )
+    assert train_archetypes == tuple(row.archetype for row in train)
+    assert validation_archetypes == tuple(
+        row.archetype for row in validation
+    )
 
 
 def test_stream_plan_is_reiterable_bounded_and_rejects_changed_shard(

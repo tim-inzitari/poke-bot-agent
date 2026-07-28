@@ -18,6 +18,7 @@ chunk_jobs = _mod.chunk_jobs
 process_worker_count = _mod.process_worker_count
 pure_rl_leaf_coalesce_ms = _mod.pure_rl_leaf_coalesce_ms
 resolve_multi_env_per_worker = _mod.resolve_multi_env_per_worker
+terminal_policy_failure_outcome = _mod.terminal_policy_failure_outcome
 
 
 def test_resolve_multi_env_default_off(monkeypatch) -> None:
@@ -64,3 +65,10 @@ def test_pure_rl_leaf_coalesce_env_override(monkeypatch) -> None:
     monkeypatch.setenv("PURE_RL_LEAF_COALESCE_MS", "1")
     monkeypatch.setenv("LEAF_SERVER_COALESCE_MS", "4")
     assert pure_rl_leaf_coalesce_ms() == 1.0
+
+
+def test_terminal_policy_failure_retains_correct_win_loss_value() -> None:
+    assert terminal_policy_failure_outcome(failed_seat=0, our_seat=0) == (1, -1.0)
+    assert terminal_policy_failure_outcome(failed_seat=1, our_seat=0) == (0, 1.0)
+    with __import__("pytest").raises(ValueError):
+        terminal_policy_failure_outcome(failed_seat=2, our_seat=0)

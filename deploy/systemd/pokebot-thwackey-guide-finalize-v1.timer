@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically seal the Thwackey guide corpus when ready
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=pokebot-thwackey-guide-finalize-v1.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

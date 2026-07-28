@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import json
 from pathlib import Path
 
@@ -290,3 +291,36 @@ def test_measurement_decks_fail_closed_on_unknown_or_duplicate_ids() -> None:
         train_pure_rl._select_measurement_decks(decks, "lucario,missing")
     with pytest.raises(ValueError, match="duplicate"):
         train_pure_rl._select_measurement_decks(decks, "lucario,lucario")
+
+
+def test_trevenant_specialist_uses_pinned_modal_expert_representative() -> None:
+    from scripts import train_pure_rl
+    from poke_bot.archetypes import classify_deck
+
+    decks = train_pure_rl._our_decks("specialist", "hops-trevenant")
+
+    assert len(decks) == 1
+    name, cards = decks[0]
+    assert name == "hops-trevenant"
+    assert len(cards) == 60
+    assert classify_deck(cards) == "hops-trevenant"
+    assert (
+        "sha256:"
+        + hashlib.sha256(
+            ",".join(str(card_id) for card_id in sorted(cards)).encode("ascii")
+        ).hexdigest()
+        == "sha256:c8b885b3de8097798015812b7389bc497946c5a34e8716da65d30b6b006a9e03"
+    )
+
+
+def test_thwackey_specialist_uses_exact_logical_alias_representative() -> None:
+    from scripts import train_pure_rl
+
+    artifact = json.loads(
+        train_pure_rl.SPECIALIST_DECK_REPRESENTATIVES_PATH.read_text()
+    )
+    expected = artifact["decks"]["thwackey"]["card_ids"]
+
+    assert train_pure_rl._our_decks("specialist", "thwackey") == [
+        ("thwackey", expected)
+    ]

@@ -72,6 +72,76 @@ def migrate_route_mapping(value: Any) -> Any:
     return output
 
 
+def migrate_validation(value: Any, old_targets: tuple[str, ...]) -> dict[str, Any]:
+    """Collapse validation evidence into the canonical roster class order.
+
+    The roster migration is an identity-preserving rename/removal operation,
+    not a new fit.  Validation rows and predictions for retired routes become
+    ``unknown``; Festival Lead becomes Thwackey; and the new Spidops route has
+    exact zero support.  Recomputing the metrics from the collapsed confusion
+    matrix keeps the audit evidence internally consistent.
+    """
+
+    validation = copy.deepcopy(value) if isinstance(value, dict) else {}
+    old_names = (*old_targets, "unknown")
+    matrix = validation.get("confusion_matrix")
+    if (
+        not isinstance(matrix, list)
+        or len(matrix) != len(old_names)
+        or any(
+            not isinstance(row, list) or len(row) != len(old_names)
+            for row in matrix
+        )
+    ):
+        raise RuntimeError("source tree validation confusion matrix changed")
+
+    new_names = (*EXPERT_IDS, "unknown")
+    new_index = {name: index for index, name in enumerate(new_names)}
+
+    def target_name(name: str) -> str:
+        if name in RETIRED or name == "unknown":
+            return "unknown"
+        return "thwackey" if name == "festival-lead" else name
+
+    collapsed = [[0.0 for _ in new_names] for _ in new_names]
+    for old_row, source_row in enumerate(matrix):
+        new_row = new_index[target_name(old_names[old_row])]
+        for old_column, raw_count in enumerate(source_row):
+            new_column = new_index[target_name(old_names[old_column])]
+            collapsed[new_row][new_column] += float(raw_count)
+
+    row_sums = [sum(row) for row in collapsed]
+    column_sums = [
+        sum(collapsed[row][column] for row in range(len(new_names)))
+        for column in range(len(new_names))
+    ]
+    total = sum(row_sums)
+    correct = sum(collapsed[index][index] for index in range(len(new_names)))
+    classes: dict[str, dict[str, float]] = {}
+    for index, name in enumerate(new_names):
+        true_positive = collapsed[index][index]
+        precision = (
+            true_positive / column_sums[index] if column_sums[index] else 0.0
+        )
+        recall = true_positive / row_sums[index] if row_sums[index] else 0.0
+        classes[name] = {
+            "precision": precision,
+            "recall": recall,
+            "f1": (
+                2.0 * precision * recall / (precision + recall)
+                if precision + recall
+                else 0.0
+            ),
+            "weighted_support": row_sums[index],
+        }
+    return {
+        "weighted_accuracy": correct / total if total else 0.0,
+        "weighted_observations": total,
+        "classes": classes,
+        "confusion_matrix": collapsed,
+    }
+
+
 def migrate_fit(value: Any) -> Any:
     fit = copy.deepcopy(value) if isinstance(value, dict) else {}
     for key in (
@@ -95,6 +165,49 @@ def migrate_fit(value: Any) -> Any:
     fit["optimizer_state_restored"] = False
     fit["roster_migration"] = "v4_22_to_canonical_v5_18"
     return fit
+
+
+def preserve_bootstrap_authorization(source: Path, output: Path) -> dict[str, Any]:
+    """Copy an immutable bootstrap authorization without rebinding its parent.
+
+    A roster migration creates a descendant checkpoint, but the specialist
+    bootstrap authorization is evidence about the protected 25-epoch
+    checkpoint named by its manifest.  Repointing only ``parent_checkpoint``
+    makes that evidence internally contradictory and causes every later
+    adapter-only RL phase to fail closed.
+    """
+
+    authorization = json.loads(source.read_text(encoding="utf-8"))
+    protected_manifest = Path(
+        str(authorization.get("protected_manifest") or "")
+    ).expanduser().resolve()
+    if not protected_manifest.is_file():
+        raise RuntimeError("bootstrap authorization protected manifest is missing")
+    manifest = json.loads(protected_manifest.read_text(encoding="utf-8"))
+    parent = Path(
+        str(authorization.get("parent_checkpoint") or "")
+    ).expanduser().resolve()
+    parent_digest = str(authorization.get("parent_checkpoint_digest") or "")
+    if (
+        authorization.get("schema")
+        != "poke_bot.matchup_adapter_specialist_bootstrap_authorization/v1"
+        or Path(str(manifest.get("model_path") or "")).expanduser().resolve()
+        != parent
+        or str(manifest.get("checkpoint_digest") or "") != parent_digest
+        or not parent.is_file()
+        or digest(parent) != parent_digest
+        or digest(protected_manifest)
+        != str(authorization.get("protected_manifest_digest") or "")
+    ):
+        raise RuntimeError("bootstrap authorization is not bound to its manifest")
+    atomic_json(output, authorization)
+    return {
+        "output": str(output),
+        "output_digest": digest(output),
+        "parent_checkpoint": str(parent),
+        "parent_checkpoint_digest": parent_digest,
+        "preserved_immutable_bootstrap_identity": True,
+    }
 
 
 def migrate_checkpoint(source: Path, output: Path) -> dict[str, Any]:
@@ -265,7 +378,13 @@ def migrate_tree(
     runtime["checkpoint"] = str(checkpoint)
     runtime["checkpoint_digest"] = checkpoint_digest
     runtime["source_tree_digest"] = digest(source)
-    rejected = dict(runtime.get("rejected_archetype_ids") or {})
+    rejected = {
+        ("thwackey" if key == "festival-lead" else key): copy.deepcopy(reason)
+        for key, reason in dict(
+            runtime.get("rejected_archetype_ids") or {}
+        ).items()
+        if key not in RETIRED
+    }
     rejected["team-rockets-spidops"] = "no validated visible-card support"
     runtime["rejected_archetype_ids"] = rejected
     migrated["runtime_contract"] = runtime
@@ -286,6 +405,9 @@ def migrate_tree(
         "reason": "no validated visible-card support",
     }
     migrated["runtime_calibration"] = calibration
+    migrated["validation"] = migrate_validation(
+        migrated.get("validation"), old_targets
+    )
     contract = dict(migrated.get("calibration_contract") or {})
     contract["canonical_class_count"] = len(EXPERT_IDS) + 1
     contract["fitted_class_indexes"] = list(range(len(EXPERT_IDS) + 1))
@@ -328,20 +450,14 @@ def main() -> None:
         checkpoint=args.checkpoint_output.resolve(),
         checkpoint_digest=checkpoint_result["output_digest"],
     )
-    authorization = json.loads(args.authorization.read_text(encoding="utf-8"))
-    authorization["parent_checkpoint"] = str(args.checkpoint_output.resolve())
-    authorization["parent_checkpoint_digest"] = checkpoint_result["output_digest"]
-    authorization["roster_source"] = "state/matchup_adapter_roster.json"
-    authorization["roster_expert_ids"] = list(EXPERT_IDS)
-    atomic_json(args.authorization_output.resolve(), authorization)
+    authorization_result = preserve_bootstrap_authorization(
+        args.authorization.resolve(), args.authorization_output.resolve()
+    )
     result = {
         "schema": "poke_bot.active_matchup_roster_migration/v1",
         "checkpoint": checkpoint_result,
         "runtime_tree": tree_result,
-        "authorization": {
-            "output": str(args.authorization_output.resolve()),
-            "output_digest": digest(args.authorization_output.resolve()),
-        },
+        "authorization": authorization_result,
         "loop_state": str(args.loop_state.resolve()),
         "applied_to_loop": bool(args.apply_loop),
     }

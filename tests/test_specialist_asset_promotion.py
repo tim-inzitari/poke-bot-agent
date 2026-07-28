@@ -95,6 +95,61 @@ def test_specialist_assets_accept_checksum_bound_boundary_promotion(
     assert result["candidate_tree"] == tree
 
 
+def test_router_only_scope_keeps_canonical_corpus_generation(
+    tmp_path: Path,
+) -> None:
+    defaults = tmp_path / "latest20-v6"
+    defaults.mkdir()
+    tree = tmp_path / "promoted-tree.json"
+    _write(tree, {"runtime_enabled": False})
+    accepted = ["dudunsparce"]
+    audit = tmp_path / "promoted-audit.json"
+    _write(
+        audit,
+        {
+            "schema": "poke_bot.public_matchup_tree_candidate_audit/v1",
+            "runtime_enabled": False,
+            "artifact_sha256": _sha(tree),
+            "accepted_specialist_ids": accepted,
+            "accepted_count": 1,
+        },
+    )
+    promoted_corpus = tmp_path / "historical-overlay"
+    _write(
+        promoted_corpus / "dudunsparce" / "PROTECTED_EXPERT_CORPUS.json",
+        {"schema": "poke_bot.pinned_expert_corpus/v1"},
+    )
+    receipt = tmp_path / "receipt.json"
+    _write(
+        receipt,
+        {
+            "schema": "poke_bot.rare_route_asset_promotion/v1",
+            "status": "ready",
+            "candidate_tree": str(tree),
+            "candidate_tree_sha256": _sha(tree),
+            "candidate_audit": str(audit),
+            "candidate_audit_sha256": _sha(audit),
+            "accepted_specialist_ids": accepted,
+            "corpus_root": str(promoted_corpus),
+            "ready_rare_archetype_ids": accepted,
+            "live_trainer_modified": False,
+            "activation_policy": "specialist_boundary_only",
+        },
+    )
+
+    result = resolve_specialist_assets(
+        default_corpus_root=defaults,
+        default_candidate_tree=tree,
+        default_candidate_audit=audit,
+        promotion_receipt=receipt,
+        promotion_scope="router_only",
+    )
+
+    assert result["candidate_tree"] == tree
+    assert result["corpus_root"] == defaults
+    assert result["promoted_corpus_root"] == promoted_corpus
+
+
 def test_elmo_builder_splits_only_the_six_additive_rare_routes() -> None:
     source = Path("scripts/prepare_rare_route_expert_shards_elmo.py").read_text()
     for archetype in (
@@ -126,7 +181,7 @@ def test_all22_v35_assets_are_imported_only_for_specialist_boundaries() -> None:
         contract = json.loads(Path(contract_path).read_text())
         receipt = contract["runtime"]["future_assets_receipt"]
         expected = (
-            "/rare-route-assets-v38-ready.json"
+                "/rare-route-assets-roster18-v42-ready.json"
             if contract_path == "ops/specialist_cycle_handoff_v1.json"
             else "/rare-route-assets-v37-ready.json"
         )

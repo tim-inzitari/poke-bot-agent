@@ -117,12 +117,16 @@ class LeafEvaluator:
         device: Optional[torch.device] = None,
         batch_size: Optional[int] = None,
         leaf_backend=None,
+        matchup_model_route: int = -1,
     ):
         self.model = model
         self.root_deck = list(root_deck)
         self.opponent_deck = list(opponent_deck)
         self.root_seat = root_seat
         self.leaf_backend = leaf_backend
+        if type(matchup_model_route) is not int:
+            raise TypeError("matchup_model_route must be an exact integer")
+        self.matchup_model_route = matchup_model_route
         if device is not None:
             self.device = device
         elif model is not None:
@@ -164,6 +168,7 @@ class LeafEvaluator:
             obs=obs,
             your_deck=self.deck_for(obs),
             root_seat=self.root_seat,
+            matchup_route=self.matchup_model_route,
         )
 
     @torch.no_grad()
@@ -231,6 +236,7 @@ class MCTS:
         leaf_backend=None,
         oracle_mode: bool = False,
         matchup_shadow_router: Optional[ShadowMatchupAdapterRouter] = None,
+        matchup_model_route: int = -1,
     ):
         if not oracle_mode:
             raise ValueError(
@@ -265,6 +271,9 @@ class MCTS:
             self.leaf_eval = lambda pkts: forward_leaf_batch(self.model, pkts)
         self.leaf_backend = leaf_backend
         self.matchup_shadow_router = matchup_shadow_router
+        if type(matchup_model_route) is not int:
+            raise TypeError("matchup_model_route must be an exact integer")
+        self.matchup_model_route = matchup_model_route
 
     def _telemetry_mark(self):
         marker = getattr(self.leaf_eval, "telemetry_mark", None)
@@ -525,6 +534,7 @@ class MCTS:
             device=self.device,
             batch_size=self.leaf_batch_size,
             leaf_backend=self.leaf_backend,
+            matchup_model_route=self.matchup_model_route,
         )
 
         if config.SEARCH.leaf_batch_mcts:
@@ -851,6 +861,7 @@ class MultiTreeMCTS:
             device=self.engine.device,
             batch_size=self.engine.leaf_batch_size,
             leaf_backend=self.engine.leaf_backend,
+            matchup_model_route=self.engine.matchup_model_route,
         )
 
         try:

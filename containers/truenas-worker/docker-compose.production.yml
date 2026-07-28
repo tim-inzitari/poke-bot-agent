@@ -7,15 +7,15 @@
 #
 # The in-container supervisor still recognizes reserved exit 75 for rollback
 # compatibility, but routine job-count rotation is disabled. All actual exits
-# consume a durable failure slot. The third
-# failure in one hour opens the circuit with exit 0, so this outer policy
-# cannot restart it. The outer cap exists only for supervisor/container faults.
+# consume a durable failure slot. Twenty failures in one hour open the circuit
+# with exit 0, so this outer policy cannot restart it. The outer cap exists
+# only for supervisor/container faults.
 
 name: poke-bot-truenas-worker
 
 services:
   worker:
-    image: poke-bot-truenas-worker:safety-20260720.8-persistent-workers
+    image: poke-bot-truenas-worker:matchup-v38-record-schema-runtime
     command: ["production"]
     restart: "on-failure:3"
     init: true
@@ -23,12 +23,14 @@ services:
     environment:
       # Elmo's Ryzen 9 5900X may use all 24 logical CPUs. GPU-blocked games can
       # safely oversubscribe CPU threads. The measured 36-worker topology keeps
-      # the RTX 3060 fed while preserving capacity for child replacement.
+      # the RTX 3060 fed while preserving capacity for child replacement. Four
+      # CUDA leaves use the available GPU headroom without adding simulators to
+      # the already oversubscribed CPU.
       SIM_WORKERS: "36"
       SIM_DEFAULT_WORKERS: "36"
       ELMO_SIM_WORKER_CEILING: "48"
       POKEBOT_REMOTE_MAX_CONNECTIONS: "420"
-      LEAF_SERVERS: "2"
+      LEAF_SERVERS: "4"
       LEAF_MAX_BATCH: "256"
 
       # Never close admission for a routine job-count rotation while a trainer
@@ -82,3 +84,8 @@ services:
     volumes:
       - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint:/workspace/checkpoint:ro
       - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs:/workspace/runtime-logs
+      # Frozen-specialist packages are runtime data, not image-local state.
+      # Keeping them on the host prevents a routine container recreation from
+      # silently reverting to the public-only manifest baked into the image.
+      - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/baseline-sync/manifest.json:/workspace/baselines/manifest.json:ro
+      - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/baseline-sync/specialists:/workspace/baselines/specialists:ro

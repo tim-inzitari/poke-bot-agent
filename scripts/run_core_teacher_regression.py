@@ -42,6 +42,23 @@ def _teacher_rows(contract: dict[str, Any]) -> list[dict[str, Any]]:
     rows = list((contract.get("core_refresh") or {}).get("teachers") or [])
     if len(rows) < 2:
         raise RuntimeError("core regression requires at least two frozen teachers")
+    runtime = dict(contract.get("runtime") or {})
+    registry_raw = str(runtime.get("frozen_specialist_registry") or "").strip()
+    registry_path = (
+        Path(registry_raw).expanduser().resolve() if registry_raw else None
+    )
+    registry_rows: dict[str, dict[str, Any]] = {}
+    if registry_path is not None:
+        if not registry_path.is_file():
+            raise RuntimeError("frozen specialist inference registry is missing")
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        if registry.get("schema") != "poke_bot.frozen_specialist_registry/v1":
+            raise RuntimeError("frozen specialist inference registry is invalid")
+        registry_rows = {
+            str(value.get("specialist_id") or ""): dict(value)
+            for value in list(registry.get("specialists") or [])
+            if isinstance(value, dict)
+        }
     resolved: list[dict[str, Any]] = []
     for raw in rows:
         row = dict(raw)
@@ -65,6 +82,88 @@ def _teacher_rows(contract: dict[str, Any]) -> list[dict[str, Any]]:
         # receipt; never accept a missing file or a mismatched pinned digest.
         row["checkpoint"] = str(checkpoint_path)
         row["checksum"] = actual
+        row["evaluation_checkpoint"] = str(checkpoint_path)
+        row["evaluation_checksum"] = actual
+
+        # Historical frozen checkpoints remain byte-for-byte authoritative,
+        # but pre-roster18 adapter banks cannot be loaded by the current
+        # runtime without an explicit compatibility derivative. The frozen
+        # registry binds such a derivative back to the exact source passing
+        # checksum and proves that retained rows are byte-identical. Use that
+        # inference-only representation for gameplay while preserving the
+        # original teacher identity above.
+        specialist_id = str(row["specialist_id"])
+        registered = registry_rows.get(specialist_id)
+        if registered is not None:
+            if (
+                registered.get("frozen") is not True
+                or registered.get("public_mix_eligible") is not True
+                or registered.get("kaggle_submission_eligible") is not False
+            ):
+                raise RuntimeError(
+                    "frozen teacher inference registry policy changed"
+                )
+            receipt_raw = str(
+                registered.get("v5_derivative_receipt") or ""
+            ).strip()
+            registered_source = str(
+                registered.get("source_passing_checkpoint_digest") or ""
+            ).strip()
+            registered_checkpoint = str(
+                registered.get("checkpoint_digest") or ""
+            ).strip()
+            if receipt_raw:
+                if registered_source != actual:
+                    raise RuntimeError(
+                        "frozen teacher inference derivative identity changed"
+                    )
+                receipt_path = Path(receipt_raw).expanduser().resolve()
+                if not receipt_path.is_file():
+                    raise RuntimeError(
+                        "frozen teacher inference derivative receipt is missing"
+                    )
+                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                evaluation_path = Path(
+                    str(receipt.get("derived_checkpoint") or "")
+                ).expanduser().resolve()
+                evaluation_expected = str(
+                    receipt.get("derived_checkpoint_digest") or ""
+                )
+                evaluation_actual = (
+                    checkpoint.checkpoint_digest(evaluation_path)
+                    if evaluation_path.is_file()
+                    else ""
+                )
+                if (
+                    receipt.get("schema")
+                    != "poke_bot.frozen_specialist_roster_v5_derivative/v1"
+                    or receipt.get("specialist_id") != specialist_id
+                    or receipt.get("source_passing_checkpoint_digest") != actual
+                    or Path(
+                        str(receipt.get("source_passing_checkpoint") or "")
+                    ).expanduser().resolve()
+                    != checkpoint_path
+                    or receipt.get("inference_only") is not True
+                    or receipt.get("kaggle_submission_eligible") is not False
+                    or receipt.get("retained_rows_byte_identical") is not True
+                    or evaluation_expected != registered_checkpoint
+                    or evaluation_actual != evaluation_expected
+                ):
+                    raise RuntimeError(
+                        "frozen teacher inference derivative receipt changed"
+                    )
+                row["evaluation_checkpoint"] = str(evaluation_path)
+                row["evaluation_checksum"] = evaluation_actual
+                row["evaluation_derivative_receipt"] = str(receipt_path)
+            elif (
+                registered_checkpoint != actual
+                or (registered_source and registered_source != actual)
+            ):
+                # Current-format frozen specialists are registered directly.
+                # They intentionally have no compatibility-derivative receipt;
+                # their registered checkpoint must be the exact immutable
+                # teacher checkpoint already bound by the handoff contract.
+                raise RuntimeError("frozen teacher direct identity changed")
         resolved.append(row)
     return resolved
 
@@ -127,6 +226,9 @@ def run(
         "contract": str(contract_path),
         "contract_digest": _sha256(contract_path),
         "teacher_checkpoint_digests": [row["checksum"] for row in teachers],
+        "teacher_evaluation_checkpoint_digests": [
+            row["evaluation_checksum"] for row in teachers
+        ],
         "games_per_teacher": int(games),
         "threshold": float(threshold),
         "aggregate_threshold": float(aggregate_threshold),
@@ -156,7 +258,9 @@ def run(
             )
         report, _rows = _promotion_eval(
             candidate=candidate_identity,
-            incumbent=CheckpointIdentity.from_path(teacher["checkpoint"]),
+            incumbent=CheckpointIdentity.from_path(
+                teacher["evaluation_checkpoint"]
+            ),
             decks=matching,
             n_games=int(games),
             n_workers=max(1, int(workers)),
@@ -172,6 +276,15 @@ def run(
                 "specialist_id": specialist_id,
                 "teacher_checkpoint": teacher["checkpoint"],
                 "teacher_checkpoint_digest": teacher["checksum"],
+                "teacher_evaluation_checkpoint": teacher[
+                    "evaluation_checkpoint"
+                ],
+                "teacher_evaluation_checkpoint_digest": teacher[
+                    "evaluation_checksum"
+                ],
+                "teacher_evaluation_derivative_receipt": teacher.get(
+                    "evaluation_derivative_receipt"
+                ),
                 "report": report,
             }
         )

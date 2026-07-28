@@ -25,6 +25,7 @@ CHECKPOINT = "sha256:" + "b" * 64
 
 def _passing_result(contract: dict) -> tuple[dict, dict, str]:
     gate = contract["next_gate"]
+    criteria = gate["pass_criteria"]
     per = int(gate["evaluation"]["games_per_opponent"])
     core = {
         "schema": "poke_bot.public_agent_gate_result/v1",
@@ -41,12 +42,21 @@ def _passing_result(contract: dict) -> tuple[dict, dict, str]:
         "confidence_lower": 0.55,
         "s_tier_mean": 0.60,
         "minimum_opponent_wr": 0.55,
+        "s_plus_below_floor_count": 0,
+        "s_plus_below_floor_allowance": int(
+            criteria.get("s_plus_below_floor_allowance", 0)
+        ),
         "checks": {
             "audit": True,
             "skill_weighted_win_rate": True,
             "skill_weighted_confidence_lower": True,
             "s_tier_mean_floor": True,
             "individual_opponent_floor": True,
+            **(
+                {"s_plus_matchup_floor_allowance": True}
+                if "s_plus_individual_floor" in criteria
+                else {}
+            ),
         },
         "audit": {
             "passed": True,

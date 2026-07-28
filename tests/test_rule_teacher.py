@@ -5,8 +5,11 @@ import json
 import pytest
 
 from poke_bot.rule_teacher import (
+    RULE_TEACHER_SCHEMA,
     build_rule_teacher_jobs,
     deck_digest,
+    file_digest,
+    resolve_protected_teacher_corpus,
     result_metadata,
     summarize_journal,
 )
@@ -113,3 +116,30 @@ def test_summarize_journal_is_seat_aware(tmp_path) -> None:
     assert report["win_rate"] == 0.5
     assert report["seat"]["0"]["win_rate"] == 1.0
     assert report["seat"]["1"]["win_rate"] == 0.0
+
+
+def test_resolve_protected_teacher_corpus_verifies_digest(tmp_path) -> None:
+    corpus = tmp_path / "teacher.jsonl"
+    corpus.write_text('{"episode_id":"one"}\n')
+    report_path = tmp_path / "PROTECTED_RULE_TEACHER_CORPUS.json"
+    report = {
+        "schema": RULE_TEACHER_SCHEMA,
+        "protected": True,
+        "prune_policy": "never",
+        "configuration": {"final_agent_runtime": "neural_only"},
+        "validation": {
+            "records": 1,
+            "decisions": 1,
+            "info_set_ok": True,
+            "conversion_drops": {},
+        },
+        "corpus": {"path": str(corpus), "digest": file_digest(corpus)},
+    }
+    report_path.write_text(json.dumps(report))
+    resolved, loaded = resolve_protected_teacher_corpus(report_path)
+    assert resolved == corpus.resolve()
+    assert loaded["protected"] is True
+
+    corpus.write_text("changed\n")
+    with pytest.raises(ValueError, match="digest mismatch"):
+        resolve_protected_teacher_corpus(report_path)
