@@ -8,7 +8,7 @@ status: research_and_sparse_teacher_validated_corpus_targets_pending
 guide_version: team-rockets-spidops-north-star-v1
 teacher_module: poke_bot.team_rockets_spidops_heuristics
 implementation_status: sparse_causal_teacher_validated
-teacher_module_sha256: sha256:26d46c838fcdd9ba0da7aa6d809092f88e4f22b0103024dc895f385961a765d8
+teacher_module_sha256: sha256:bc0f5f797f11318de77f5297bdeea23dbe1d8314072144dddf1eb2ad6d060f96
 
 project_representative_binding:
   path: data/training_mixes/specialist_representatives.v1.json
@@ -31,11 +31,8 @@ deck_signature:
   minimum_card_counts:
     400: 4 # Team Rocket's Tarountula
     401: 4 # Team Rocket's Spidops
-    414: 2 # Team Rocket's Articuno
-    434: 2 # Team Rocket's Mimikyu
-    464: 1 # Team Rocket's Sneasel
   maximum_card_counts:
-    431: 1 # Team Rocket's Mewtwo ex; separates the dedicated specialist
+    431: 2 # Team Rocket's Mewtwo ex; includes exact public Spidops variants
   supporting_card_ids:
     272: "Lillie's Clefairy ex"
     1086: "Buddy-Buddy Poffin"
@@ -198,8 +195,8 @@ strategy_sources:
 
 expert_writeup:
   path: docs/deck_guides/team-rockets-spidops-expert-brief.txt
-  sha256: sha256:3a2a48e48c033b9e83b00189bdff90cca5288b73d9df6106fb4a7326930e3888
-  word_count: 6690
+  sha256: sha256:0c2e1036e5cdc7a29457f19e5af06a07f355f7fa351d9bf08c81d5c2a8b9b686
+  word_count: 6746
   maximum_words: 10000
   audience: world_champion_subject_matter_experts
   guide_identity: team-rockets-spidops
@@ -207,7 +204,7 @@ expert_writeup:
   primary_document_type: practical_human_deck_pilot_guide
 
 high_confidence_principles:
-  - distinguish_the_four_four_single_prize_Spidops_specialist_from_two_Mewtwo_hybrids
+  - preserve_the_four_four_Spidops_engine_across_one_and_two_Mewtwo_public_variants
   - establish_redundant_visible_Tarountula_before_one_line_can_be_removed
   - prefer_a_useful_single_prize_Team_Rocket_board_before_optional_two_prize_Pokemon
   - use_each_exactly_available_Charging_Up_with_public_basic_energy_before_losing_it
@@ -361,7 +358,7 @@ validation:
     - pinned_Campinas_Trainer_package_predates_newer_July_variants
     - current_judge_reviewed_Articuno_interaction_matrix_not_found
     - no_authoritative_full_matchup_guide_for_exact_pinned_list_found
-    - strongest_official_result_is_a_two_Mewtwo_hybrid_not_this_specialist
+    - strongest_official_result_uses_two_Mewtwo_and_differs_from_the_pinned_one_Mewtwo_representative
   # An integration receipt should record the checksum of this complete file;
   # embedding that digest here would be self-referential.
   contract_checksum: null

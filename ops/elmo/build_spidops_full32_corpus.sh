@@ -4,7 +4,7 @@ set -euo pipefail
 
 source_root="${POKEBOT_GUIDE_SOURCE:-/home/admin/pokebot-expert-guide-src-v1}"
 archive_root="${POKEBOT_EPISODE_ARCHIVE:-/mnt/Main/main/poke-bot-agent/archive/episode-days}"
-output_root="${POKEBOT_SPIDOPS_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v1}"
+output_root="${POKEBOT_SPIDOPS_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v2}"
 cg_runtime="${POKEBOT_CG_RUNTIME:-/mnt/Main/main/poke-bot-agent/engine-runtimes/znver3-v1}"
 catalog_source="$source_root/data/training_mixes/team-rockets-spidops-public-full32.v1.json"
 catalog="$output_root/PUBLIC_DECK_ARCHETYPE_CATALOG.json"

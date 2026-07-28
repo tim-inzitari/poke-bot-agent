@@ -10,12 +10,14 @@ Status: research pilot; not yet expert-approved
 
 HOW TO READ THIS PILOT
 
-This guide covers the dedicated Team Rocket's Spidops specialist, not every
-deck that happens to use the Tarountula/Spidops engine. The defining shell is
-a 4-4 Spidops line, two Team Rocket's Mimikyu, two Team Rocket's Articuno, one
-Team Rocket's Sneasel, and no more than one Team Rocket's Mewtwo ex. Spidops
-is the normal attacker. Sneasel is a public-damage conversion finisher.
-Mewtwo is a one-copy threshold breaker, not the deck's default center.
+This guide covers the public Team Rocket's Spidops archetype, not every deck
+that happens to use the Tarountula/Spidops engine. The checksum-bound public
+corpus identity is a 4-4 Spidops line with no more than two Team Rocket's
+Mewtwo ex; secondary Team Rocket attackers vary. The pinned Campinas
+representative uses two Team Rocket's Mimikyu, two Team Rocket's Articuno, one
+Team Rocket's Sneasel, and one Mewtwo. In that representative, Spidops is the
+normal attacker, Sneasel is a public-damage conversion finisher, and Mewtwo is
+a one-copy threshold breaker rather than the deck's default center.
 
 The concrete project representative is Pedro Henrique Pereira Calda's
 226th-place list from the Campinas Regional on May 16, 2026. Its exact
@@ -52,9 +54,11 @@ Schaal won a 323-player online event in April with that skeleton.
 SOURCE: The strongest official-event evidence for the broader engine is Juho
 Kallama's seventh-place finish at the 2026 North America International
 Championships. That list also played a 4-4 Spidops line, but it played two
-Mewtwo and no Sneasel and was classified as Rocket's Mewtwo. It demonstrates
-that the engine can succeed at the highest level. It must not be misreported
-as a standalone Spidops result.
+Mewtwo and no Sneasel and was classified as Rocket's Mewtwo by that event
+source. The checksum-bound PTCGReplay public corpus uses a different exact-deck
+taxonomy whose Team Rocket's Spidops row includes two-Mewtwo submitted
+variants. The list demonstrates that the engine can succeed at the highest
+level, but its event label must not be silently rewritten.
 
 SOURCE: Standalone physical-event evidence is much weaker. Limitless's
 dedicated Spidops overview records no Regional or International Top 8 for the
@@ -906,8 +910,8 @@ QUESTIONS FOR WORLD-CHAMPION SME REVIEW
     high-level best-of-three physical play?
 11. Which Trainer changes in July online lists materially improve the pinned
     Campinas representative?
-12. Should the specialist identity remain capped at one Mewtwo when lists
-    converge on the same 4-4 Pokémon engine?
+12. When should a two-Mewtwo public variant expose its second copy rather than
+    preserve the pinned representative's single-Prize prize map?
 
 
 SHORT TRAINING-HEURISTIC APPENDIX
@@ -1102,5 +1106,6 @@ EVIDENCE GAPS
 - A current judge-reviewed matrix of all Articuno interactions is still
   needed.
 - No authoritative full matchup guide for the exact pinned list was found.
-- The strongest official result belongs to a two-Mewtwo hybrid, not this
-  one-Mewtwo Sneasel specialist.
+- The strongest official result uses two Mewtwo and differs from the pinned
+  one-Mewtwo Sneasel representative, even though both share the public
+  corpus's 4-4 Spidops engine boundary.

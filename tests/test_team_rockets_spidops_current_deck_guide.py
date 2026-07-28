@@ -137,11 +137,14 @@ def test_signature_accepts_pinned_dedicated_spidops_identity() -> None:
     assert guide.is_team_rockets_spidops_deck(no_mewtwo)
 
 
-def test_signature_rejects_two_mewtwo_hybrid_and_wrong_deck() -> None:
+def test_signature_accepts_two_mewtwo_public_variant_and_rejects_heavier_hybrid() -> None:
     two_mewtwo = list(CANONICAL_DECK)
     two_mewtwo[two_mewtwo.index(1216)] = guide.TEAM_ROCKETS_MEWTWO_EX
+    three_mewtwo = list(two_mewtwo)
+    three_mewtwo[three_mewtwo.index(1217)] = guide.TEAM_ROCKETS_MEWTWO_EX
 
-    assert not guide.is_team_rockets_spidops_deck(two_mewtwo)
+    assert guide.is_team_rockets_spidops_deck(two_mewtwo)
+    assert not guide.is_team_rockets_spidops_deck(three_mewtwo)
     assert not guide.is_team_rockets_spidops_deck([1] * 60)
     assert not guide.is_team_rockets_spidops_deck(CANONICAL_DECK + [999])
 

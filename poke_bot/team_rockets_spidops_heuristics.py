@@ -58,15 +58,15 @@ CTX_TO_BENCH = 5
 CTX_TO_HAND = 7
 
 # Public top-ladder Spidops lists vary substantially in their secondary
-# Team Rocket attackers.  The dedicated deck identity is the invariant 4/4
-# Tarountula/Spidops engine and the absence of a Mewtwo package; requiring
-# Articuno, Mimikyu, or Sneasel incorrectly masked valid expert rows.
+# Team Rocket attackers.  The public archetype identity is the invariant 4/4
+# Tarountula/Spidops engine with at most two Mewtwo; requiring Articuno,
+# Mimikyu, or Sneasel incorrectly masked valid expert rows.
 CORE_SIGNATURE_MINIMUMS = {
     TEAM_ROCKETS_TAROUNTULA: 4,
     TEAM_ROCKETS_SPIDOPS: 4,
 }
 CORE_SIGNATURE_MAXIMUMS = {
-    TEAM_ROCKETS_MEWTWO_EX: 1,
+    TEAM_ROCKETS_MEWTWO_EX: 2,
 }
 TEAM_ROCKET_BASICS = frozenset(
     {
@@ -98,7 +98,7 @@ def enabled() -> bool:
 
 
 def is_team_rockets_spidops_deck(deck: Iterable[int]) -> bool:
-    """Require a 60-card dedicated-Spidops signature, including <=1 Mewtwo."""
+    """Require a 60-card public Spidops signature, including <=2 Mewtwo."""
     try:
         card_ids = [_exact_int(card_id) for card_id in deck]
     except TypeError:
