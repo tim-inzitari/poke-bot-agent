@@ -61,6 +61,43 @@ current:
     diagnostic evidence and prepare the next successor without interrupting
     healthy Spidops training.
   next_successor_prestage:
+    specialist_id: hammer-pult
+    status: ready
+    active_training_modified: false
+    guide_contract: config/deck_guides/hammer-pult.yaml
+    guide_contract_checksum: sha256:8622b4449bb06b4ee953f8c2e38b12d495d7300a7f36a596edd2384941ca11e9
+    guide_version: hammer-pult-north-star-v1
+    teacher_module: poke_bot/hammer_heuristics.py
+    exact_60_card_representative:
+      status: ready
+      logical_specialist_id: hammer-pult
+      checksum: sha256:1081d5d8b961c8e7171b1e18844ef2b10cc2c032432e51041b80c4309d72379e
+    corpus:
+      status: ready_checksum_validated
+      source_mode: latest20_primary
+      date_start: 2026-07-04
+      date_end: 2026-07-23
+      days: 20
+      records: 4386
+      decisions: 434435
+      manifest_checksum: sha256:649fbaa9f35ee783a95f3bc1db967455946182744cf7d568b3a8da6a8448e943
+      ready_receipt_checksum: sha256:b6196d6a8a796f373e5eb0e2128e335647c01409c32aca3076e130e9b5b21d3e
+    runtime_route:
+      status: accepted
+      candidate_tree_checksum: sha256:1d78081bbb76fcaa9e22e63a146c3d58460226306166c3e68b0b8a23a9ed58c5
+      candidate_audit_checksum: sha256:80b9372231f19c9963312cf71368bb19ada9f8efbab8b47ae818f453f68c1608
+    cpu_pack:
+      status: ready
+      key: ad2080d20a87aaa8ff2fcedaa9ff896a387e87ffb9e263083ea93da7e5c1b116
+      manifest_checksum: sha256:ce6cac5edba1cde4c3540aacd8ffc348eff622f13956d938f6f3440a5ac2837b
+      payload_checksum: sha256:2638aa7d5257527c6038694570c74285a64beb6d0dd44ae180eee5c6704dc9ee
+    pre_stage_ready: true
+    pre_stage_receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
+    pre_stage_receipt_checksum: sha256:6a62dd671d90a0dbf644d79f3a56f69244df09cc53ad726a90e487d033cebeb3
+    pre_stage_created_at_utc: 2026-07-28T20:15:35.163734+00:00
+    selection_identity_checksum: sha256:2b1b87c9de6422a2ccd80c9fde2bb88825a31bf438a1e63ea94fe693f7462620
+    blockers: []
+  historical_spidops_prestage:
     specialist_id: team-rockets-spidops
     status: ready
     active_training_modified: false
