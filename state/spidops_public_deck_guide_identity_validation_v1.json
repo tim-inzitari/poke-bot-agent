@@ -1,0 +1,61 @@
+{
+  "schema": "poke_bot.spidops_public_deck_guide_identity_validation/v1",
+  "specialist_id": "team-rockets-spidops",
+  "created_at_utc": "2026-07-28T18:00:29Z",
+  "status": "passed",
+  "public_catalog": {
+    "path": "data/training_mixes/team-rockets-spidops-public-full32.v1.json",
+    "sha256": "sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff",
+    "source": "https://ptcgreplay.netlify.app/",
+    "source_archetype_id": 75,
+    "source_archetype_name": "Team Rocket's Spidops",
+    "source_deck_rows_sha256": "sha256:88ac5cfb8c554bd45b08bd0ffb2adeacff5636c3f92d08ceb4ac13a4013c36ec",
+    "deck_fingerprints": 38,
+    "acting_seat_games": 16639,
+    "window": {
+      "start": "2026-06-26",
+      "end": "2026-07-27",
+      "days": 32
+    }
+  },
+  "independent_public_deck_row_validation": {
+    "access": "site_published_config_with_supabase_rls",
+    "credentials_committed": false,
+    "rows": 38,
+    "exact_60_card_rows": 38,
+    "duplicate_fingerprints": 0,
+    "card_count_ranges": {
+      "team_rockets_tarountula_400": {
+        "minimum": 4,
+        "maximum": 4
+      },
+      "team_rockets_spidops_401": {
+        "minimum": 4,
+        "maximum": 4
+      },
+      "team_rockets_mewtwo_ex_431": {
+        "minimum": 2,
+        "maximum": 2
+      }
+    },
+    "secondary_team_rocket_attackers_vary": true,
+    "secondary_attacker_minimums_are_not_public_identity_requirements": true
+  },
+  "teacher_validation": {
+    "module": "poke_bot/team_rockets_spidops_heuristics.py",
+    "sha256": "sha256:bc0f5f797f11318de77f5297bdeea23dbe1d8314072144dddf1eb2ad6d060f96",
+    "public_rows_tested": 38,
+    "public_rows_accepted": 38,
+    "public_rows_rejected": 0,
+    "pinned_one_mewtwo_representative_accepted": true,
+    "three_mewtwo_negative_canary_rejected": true,
+    "guide_rows_remain_causal_and_abstaining": true
+  },
+  "conclusion": {
+    "public_exact_deck_fingerprints_remain_checksum_authority": true,
+    "guide_identity_matches_every_public_corpus_deck": true,
+    "stale_secondary_attacker_and_one_mewtwo_caps_removed": true,
+    "minimum_full_corpus_records_unchanged": 16639,
+    "active_training_modified": false
+  }
+}
