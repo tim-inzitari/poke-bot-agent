@@ -1,6 +1,6 @@
 # Controller synchronization handoff
 
-Observed at: `2026-07-28T15:40:03Z`
+Observed at: `2026-07-28T15:46:30Z`
 
 This is a coordination snapshot, not a new source of truth. Every controller
 must read `GOAL.md` completely and then use its canonical sources, immutable
@@ -19,8 +19,10 @@ live receipt disagree, the live receipt wins.
 - Active run:
   `pure_rl_thwackey_temporal1_8k_v1_20260723`
 - Observed trainer state: `active/running`, PID `2690510`, zero restarts
-- Observed progress: iteration 1 exact premium holdout, 2,176/3,000 games,
-  51.03% running win rate
+- Observed progress: iteration 1 is receipt-committed; its exact 3,000-game
+  premium holdout recorded 53.73% skill-weighted win rate and passed the
+  audit, but did not pass the full gate. Iteration 2 started normally and was
+  collecting self-play at 416/1,024 games at this snapshot.
 
 Do not stop, restart, replace, or mutate the healthy Thwackey trainer. Do not
 change the selector or create a duplicate trainer.
@@ -37,7 +39,9 @@ change the selector or create a duplicate trainer.
 - Ordinary latest-20 expert corpus: ready
 - Guide contract, teacher, and expert write-up: ready
 - Current guide window is running on Elmo with four independent days in
-  parallel. Completed daily outputs are resumable and checksum-bound.
+  parallel. Four of twenty days are complete and checksum-bound; days
+  2026-07-08 through 2026-07-11 are active. The final ready receipt does not
+  exist yet, so the Inzi promotion timer is correctly blocked.
 
 The armed chain is:
 
@@ -71,6 +75,11 @@ Do not manually perform any later node while an earlier receipt is incomplete.
 
 Branch: `codex/neural-baseline-gate-v13-20260721`
 
+The takeover validation ran the goal-gateway, runtime registration,
+sequential-handoff, cycle-handoff, transition-graph, guide-snapshot, corpus
+import, and next-specialist prestage tests in the canonical Inzi environment:
+68 tests passed.
+
 ## Refresh commands
 
 ```bash
@@ -84,4 +93,3 @@ ssh inzi@192.168.1.151 \
 ssh elmo \
   'cat /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/hammer-pult/status/window.json'
 ```
-
