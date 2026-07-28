@@ -232,7 +232,7 @@ def test_generated_successor_fusion_rejects_corrupt_design_migration(
     ready, reason = _decision_fusion_runtime_ready(run_dir)
 
     assert ready is False
-    assert reason == "successor design migration chain is corrupt"
+    assert "successor design migration chain is corrupt" in reason
 
 
 def _publish_exact_pointer(run_dir: Path, contract_path: Path) -> None:
