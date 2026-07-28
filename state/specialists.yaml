@@ -2850,7 +2850,7 @@ specialists:
     datasets:
       expert_manifest: null
       preparation:
-        status: missing_public_days_downloading_then_full32_featurization
+        status: recent_public_days_downloading_then_full32_featurization
         source_mode: public_full_history_exact_deck_identity
         source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
         required_records: 16639
@@ -2858,7 +2858,12 @@ specialists:
         public_deck_catalog: data/training_mixes/team-rockets-spidops-public-full32.v1.json
         public_deck_catalog_checksum: sha256:5ae34b29539394fbe0624700787713a144792443de67ea592e0b8780143bd4ff
         remote_output_root: /mnt/Main/main/poke-bot-agent/archive/spidops-guide-corpus-full-v1
-        download_service: pokebot-spidops-full32-download-v1.service
+        public_archives_present: 29
+        public_archives_required: 32
+        download_service: pokebot-spidops-full32-download-v2.service
+        guide_service: pokebot-spidops-full32-guide-v2.service
+        july_24_public_archive_audit: state/spidops_public_replay_archive_audit_v1.json
+        july_24_public_archive_audit_checksum: sha256:907d17d583313d1219bbf6f32410de87daa8cb468498045d4e54c938b14ab3a5
         active_training_modified: false
     counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
     checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}

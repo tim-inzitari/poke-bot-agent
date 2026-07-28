@@ -1,0 +1,60 @@
+{
+  "schema": "poke_bot.public_replay_archive_audit/v1",
+  "specialist_id": "team-rockets-spidops",
+  "date": "2026-07-24",
+  "created_at_utc": "2026-07-28T16:46:28Z",
+  "status": "accepted_complete_publicly_available_archive_with_publisher_manifest_gap",
+  "public_dataset": {
+    "page": "https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-2026-07-24",
+    "file_list_api": "https://www.kaggle.com/api/v1/datasets/list/kaggle/pokemon-tcg-ai-battle-episodes-2026-07-24",
+    "license": "CC0-1.0",
+    "current_version": 1,
+    "last_updated_utc": "2026-07-25T00:04:55.353Z",
+    "published_files": 4445,
+    "published_json_replays": 4444,
+    "published_csv_files": [
+      "manifest.csv"
+    ],
+    "episode_87841523_json_published": false
+  },
+  "downloaded_archive": {
+    "path": "/mnt/Main/main/poke-bot-agent/archive/episode-days/pokemon-tcg-ai-battle-episodes-2026-07-24.zip",
+    "sha256": "sha256:68a5c1be539bef579f03b5de29b901a1fab1dc4904af78824fbf7666d73bc8ab",
+    "bytes": 741776272,
+    "zip_members": 4445,
+    "json_replays": 4444,
+    "csv_files": [
+      "manifest.csv"
+    ],
+    "zip_crc_validation_passed": true
+  },
+  "manifest_gap": {
+    "manifest_episode_rows": 4445,
+    "missing_published_json_episode_ids": [
+      "87841523"
+    ],
+    "orphan_json_episode_ids": [],
+    "missing_row": {
+      "episode_id": "87841523",
+      "create_time": "2026-07-24T12:02:56.8316011",
+      "avg_score": "1102.224178",
+      "min_score": "1088.078262",
+      "sum_score": "2204.448356",
+      "agent_count": 2,
+      "size_bytes": 4838992
+    }
+  },
+  "decision": {
+    "accepted_episode_count": 4444,
+    "reason": "The official public file-list API and downloaded ZIP expose exactly 4,444 JSON replays. The unmatched manifest row has no publicly available replay payload.",
+    "synthesize_missing_replay": false,
+    "minimum_full_corpus_records_unchanged": 16639,
+    "active_training_modified": false
+  },
+  "managed_recovery": {
+    "failed_download_service": "pokebot-spidops-full32-download-v1.service",
+    "failed_guide_service": "pokebot-spidops-full32-guide-v1.service",
+    "resumed_download_service": "pokebot-spidops-full32-download-v2.service",
+    "resumed_guide_service": "pokebot-spidops-full32-guide-v2.service"
+  }
+}
