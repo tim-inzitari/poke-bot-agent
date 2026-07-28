@@ -11,7 +11,7 @@
 # not change or block that status.
 schema_version: poke_bot.specialist_state/v1
 protocol_schema_version: poke_bot.rl_protocol/v2
-last_verified_at_utc: 2026-07-24T19:34:28Z
+last_verified_at_utc: 2026-07-28T15:00:00Z
 verification_scope:
   repository: /Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you
   runtime_repository: /home/inzi/poke-bot-agent
@@ -38,52 +38,689 @@ allowed_status_values:
     - accepted_with_waiver
 
 current:
-  phase: specialist_training
-  active_specialist: dragapult-dusknoir
+  phase: specialist_rl
+  active_specialist: thwackey
+  transition_source_specialist: null
+  staged_successor_specialist: hammer-pult
   program_progress:
     required_specialists_total: 18
-    completed_frozen: 4
-    completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario]
+    completed_frozen: 9
+    completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo]
+    boundary_frozen_pending_public_mix_registration: []
     active_specialists: 1
-    active_specialist_ids: [dragapult-dusknoir]
-    remaining_after_active: 13
+    active_specialist_ids: [thwackey]
+    remaining_unfinished: 9
+    remaining_after_active: 8
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Continue the live Dragapult/Dusknoir baseline RL iteration 2 through its
-    established gate or iteration ceiling without restarting the managed
-    trainer. Preserve all four completed specialists frozen and inference-only.
+    Continue Thwackey specialist RL from its accepted cumulative-core-v9
+    25-epoch bootstrap. Preserve the fixed 8,192-game iterations and exact
+    research/gate isolation through the established iteration-5 floor and
+    iteration-15 ceiling. Keep Hammer-Pult staged one specialist ahead,
+    promote its checksum-sealed 20-day guide corpus as soon as the managed
+    Elmo build completes, and do not interrupt healthy Thwackey production.
+  next_successor_prestage:
+    specialist_id: thwackey
+    status: ready
+    active_training_modified: false
+    canonical_logical_identity: thwackey
+    physical_matchup_and_source_identity: festival-lead
+    duplicate_tensor_row_allowed: false
+    dedicated_two_task_research_agent_complete: true
+    guide_contract: config/deck_guides/thwackey.yaml
+    guide_contract_checksum: sha256:831102cc041a72ac27435b8af0c8fcec13d54370ff7404cf9d3837549634fa36
+    guide_version: thwackey-festival-lead-north-star-v1
+    teacher_module: poke_bot/thwackey_heuristics.py
+    teacher_module_checksum: sha256:f8238468c6b24e8addc70be6d1a8224a1ca88fdea018021d62ecf5b40d75d78c
+    expert_writeup: docs/deck_guides/thwackey-expert-brief.txt
+    expert_writeup_checksum: sha256:2db1f570902603ecdbca259292e138c074dcbfe5c2ce56716298b6b9e7376859
+    expert_writeup_words: 3349
+    focused_guide_tests_passed: 7
+    alias_split_tests_passed: 3
+    latest20_alias_rebuild:
+      host: admin@192.168.1.143
+      source_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v6-strategic
+      output_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v6-strategic-aliasfix-v2
+      managed_container: pokebot-expert-latest20-finalizer-aliasfix-v2
+      state: ready_checksum_validated_promoted_on_inzi
+      ready_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v6-strategic-aliasfix-v2/LATEST20_SPECIALIST_CORPORA_READY.json
+      ready_receipt_checksum: sha256:714423109d3ca65d84cd298838b5ca79315366629d156ff98e888b7fa666d90a
+      inzi_sync_service: pokebot-expert-latest20-aliasfix-sync.service
+      inzi_sync_status: ready_atomic_pointer_promoted
+      inzi_sync_receipt: /home/inzi/poke-bot-agent/outputs/state/expert-latest20-specialist-aliasfix-v2-sync.json
+      inzi_sync_receipt_checksum: sha256:62ac4e681fa9e3e5ae740d9e007ab301d14fba8537ac48bd7097ea506db556ce
+      inzi_destination: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic-aliasfix-v2
+      inzi_current_pointer: /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20
+      completed_at_utc: 2026-07-27T22:18:08.460390Z
+      source_bytes: 41836443701
+      copied_bytes: 41836443701
+      specialist_count: 18
+      ready_specialist_corpora: 17
+      unavailable_specialist_corpora: [team-rockets-spidops]
+      atomic_pointer_promoted: true
+      all_specialist_checksums_validated: true
+      balanced_core_decisions: 2385683
+      balanced_core_all_11_heads_nonzero_and_accounted: true
+      required_expanded_target_schema: poke_bot.expanded_strategic_targets/v2
+      required_expanded_target_digest: sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f
+      source_decisions: 14426019
+      source_expanded_heads_nonzero: 11
+      logical_alias: festival-lead=thwackey
+      rejected_candidate:
+        output_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v6-strategic-aliasfix-v1
+        managed_container: pokebot-expert-latest20-finalizer-aliasfix-v1
+        state: rejected_and_stopped
+        ready_receipt_created: false
+        reason: legacy dataset-schema-5 source had zero labeled rows for all 11 expanded strategic heads
+      existing_canonical_archive_immutable: true
+    guide_target_canary:
+      host: admin@192.168.1.143
+      managed_service: pokebot-thwackey-guide-canary-v1.service
+      source_date: 2026-07-15
+      state: passed
+      logical_alias: festival-lead=thwackey
+      records: 272
+      decisions: 20156
+      guide_rows: 3461
+      all_sequence_archetypes_canonical_thwackey: true
+      guide_rows_recount_matches_receipt: true
+    guide_target_materialization:
+      host: admin@192.168.1.143
+      managed_service: pokebot-thwackey-guide-window-v1.service
+      date_start: 2026-07-04
+      date_end: 2026-07-23
+      expected_days: 20
+      day_parallelism: 4
+      workers_per_day: 3
+      maximum_worker_processes: 12
+      state: ready_checksum_validated
+      completed_days: 20
+      current_dates: []
+      records: 2105
+      decisions: 150766
+      guide_rows: 26824
+      logical_alias: festival-lead=thwackey
+      active_training_modified: false
+      ready_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/thwackey/CURRENT_DECK_GUIDE_CORPUS_READY.json
+      ready_receipt_checksum: sha256:b9be62bb91d1055af1e84b19adbe1f2828fa72698e8a5752f3db31581341aff5
+      manifest_checksum: sha256:950d9c8840eb80d604bc13f20360031ee5d8dd5c8480171730466369247245c3
+      protected_pointer_checksum: sha256:4b6d6c58026dfc43ca7f9a18f27974c2fe344184eed2b5e502fb11843d280e9e
+      all_20_daily_feature_and_receipt_checksums_verified: true
+    runtime_route:
+      status: accepted
+      candidate_tree: /home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster18-v40.inactive.json
+      candidate_tree_checksum: sha256:c3881dce5ff35736ce1b9dfa8ae83133f68ca66b5443fb379b140f36a292753b
+      audit: /home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster18-v40.audit.json
+      audit_checksum: sha256:0f0aa4fbae7fedfc4114fa9a498f764aed329960dfc9ed593257993670fbdf9a
+      promotion_receipt: /home/inzi/poke-bot-agent/outputs/state/rare-route-assets-roster18-v40-ready.json
+      promotion_receipt_checksum: sha256:7d005b38087414de9094f55055bb504d2f6d49156a5694c9783ca77bad4d321a
+      minimum_precision: 0.93
+      minimum_weighted_support: 10000
+      thwackey_precision: 1.0
+      thwackey_recall: 0.8996417858286979
+      thwackey_weighted_support: 68674
+      accepted_routes: 17
+      active_training_modified: false
+    cpu_pack:
+      status: ready
+      built_on: admin@192.168.1.143
+      key: f59fa1f2be73e0f60b64cf785b59591811f9421e89886f2bcef3e676297bd3f7
+      decisions: 150766
+      records: 2105
+      bytes: 252570002
+      manifest_checksum: sha256:4637661d3198d90b3405fdb863bd81925d80ba5fd48bf36664a791e9c7cdbb22
+      payload_checksum: sha256:dfb1c62c1d36245ffdec6ae1d349e5586a4edfbeeafaf054f2493ab18674fd40
+      inzi_cache_hit_verified: true
+    pre_stage_ready: true
+    pre_stage_receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
+    pre_stage_receipt_checksum: sha256:8b9b954d967b00a1594842a2bb9421c1b90f1d0758008aecdb68a70624377cc9
+    pre_stage_created_at_utc: 2026-07-27T21:01:47.950704+00:00
+    selection_identity_checksum: sha256:138e96838fd940957b847bbc4cf7e1bd00b37340ba12ca501295115b84685cf0
+    exact_60_card_representative:
+      status: ready
+      logical_specialist_id: thwackey
+      physical_source_id: festival-lead
+      checksum: sha256:44422798f219ccd529d868a61897920c48ef2ae662addf4373c6fd22015e721d
+    blockers: []
+  successor_deck_guide_prestage:
+    status: consumed_by_completed_garchomp_handoff
+    activation_boundary: next_specialist_handoff
+    does_not_modify_active_specialist: true
+    active_specialist_guide_retrofit_authorized: false
+    prepared_next_specialist: garchomp
+    prepared_contract: config/deck_guides/garchomp.yaml
+    prepared_contract_checksum: sha256:e8468a672fae72bed5689824bfa5968971f950007fb98b82c2689a7ef6944eef
+    prepared_teacher_module: poke_bot/garchomp_heuristics.py
+    prepared_teacher_module_checksum: sha256:8d1526886290d59b4cb2b730bf782c496a51efc9f3c86353adb5cf522a83cc6a
+    guide_version: cynthias-garchomp-north-star-v1
+    expert_writeup: docs/deck_guides/garchomp-expert-brief.txt
+    expert_writeup_checksum: sha256:9da747a7b07793c0da251a7712472598d539a37839382a3ad388be2f45947877
+    expert_writeup_words: 4971
+    expert_target_materialization:
+      status: ready_checksum_validated
+      host: admin@192.168.1.143
+      managed_service: pokebot-garchomp-guide-window-v1.service
+      date_start: 2026-07-04
+      date_end: 2026-07-23
+      days: 20
+      records: 12446
+      decisions: 972970
+      guide_rows: 97171
+      ready_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/garchomp/CURRENT_DECK_GUIDE_CORPUS_READY.json
+      ready_receipt_checksum: sha256:91ae9f2e53947926b45dca110830e200007e86d6658969609e4bda8f58e9394b
+      manifest_checksum: sha256:21a86c1d54965a81cc4aaa62615c305527aa6e6609595f8ddd09f2439ea826ea
+      protected_pointer_checksum: sha256:fd2f05f547a8cb1e422eaa0a52f7011726b1e00e6145ae42b57a0cc27f0923c0
+      all_daily_feature_and_receipt_checksums_verified: true
+      modifies_active_trainer: false
+    inzi_corpus_promotion:
+      status: ready
+      managed_service: pokebot-garchomp-guide-promote-v1.service
+      bandwidth_limit_kib_per_second: 4000
+      state_receipt: /home/inzi/poke-bot-agent/outputs/state/garchomp-guide-corpus-promotion-v1.json
+      destination: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/garchomp
+      atomic_after_all_shard_checksums_pass: true
+      modifies_active_trainer: false
+      completed_at_utc: 2026-07-26T06:13:05.696969+00:00
+      manifest_checksum: sha256:21a86c1d54965a81cc4aaa62615c305527aa6e6609595f8ddd09f2439ea826ea
+      protected_pointer_checksum: sha256:fd2f05f547a8cb1e422eaa0a52f7011726b1e00e6145ae42b57a0cc27f0923c0
+      ready_receipt_checksum: sha256:91ae9f2e53947926b45dca110830e200007e86d6658969609e4bda8f58e9394b
+      all_20_daily_feature_and_receipt_checksums_verified: true
+    handoff_prestage:
+      status: ready
+      receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
+      created_at_utc: 2026-07-26T08:31:59.963320+00:00
+      receipt_checksum: sha256:adb11b023540355b7198393d99be72158c3364db7d6fd54d0ae90cd4dbe574e9
+      selection_identity_checksum: sha256:a9d897967efb57ffea5b9509b942f49910375f8b3c59f6da51eccbf39ea9f7a1
+      blockers: []
+      selected_specialist: garchomp
+      live_training_modified: false
+      guide_contract_ready: true
+      guide_contract_checksum: sha256:e8468a672fae72bed5689824bfa5968971f950007fb98b82c2689a7ef6944eef
+      guide_targets_ready: true
+      guide_rows: 97171
+      cpu_pack:
+        status: ready
+        bytes: 1620616799
+        workers: 4
+        elapsed_seconds: 54.85559527389705
+        manifest: /home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/prestaged-specialists/garchomp/expert-pack-bd57c5e7f44f993ba999df4478761739ac831831d39c7593377511f027c37ead.json
+        manifest_checksum: sha256:9beb71bbf0af50448cebcdaa71b5a32492a8d8c273847a1b221e9f20fd6ba7a7
+        payload: /home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/prestaged-specialists/garchomp/expert-pack-bd57c5e7f44f993ba999df4478761739ac831831d39c7593377511f027c37ead.pt
+        payload_checksum: sha256:4a6978866ee4fe005dae5355286ee9c717097ba18c95f1f292acaf0119a2c696
+  following_specialist_guide_research:
+    status: consumed_by_active_rockets_mewtwo_handoff
+    specialist_id: rockets-mewtwo
+    contract: config/deck_guides/rockets-mewtwo.yaml
+    contract_checksum: sha256:c3a9b16d12a37747ac306d064a56b4f77614acca12b9f28e7328cfed0b3237a9
+    guide_version: rockets-mewtwo-north-star-v1
+    expert_writeup: docs/deck_guides/rockets-mewtwo-expert-brief.txt
+    expert_writeup_checksum: sha256:a964c500cad7ba08a6b77d5be693dbf0f5e5b94fc65dad757cd0c105d1f93f47
+    expert_writeup_words: 4829
+    dedicated_two_task_research_agent_complete: true
+    teacher_module: poke_bot/rockets_mewtwo_heuristics.py
+    teacher_module_checksum: sha256:ba1e5f330360f014ae3df34f0f06e101c562e62bc7336560e3d5892f1b5962ad
+    internal_core_card_ids_verified: true
+    focused_tests_passed: 13
+    scorer_canary_passed: true
+    guide_target_materialization_status: complete_and_promoted_to_inzi
+    guide_target_materialization:
+      host: admin@192.168.1.143
+      managed_service: pokebot-rockets-mewtwo-guide-window-v1.service
+      service_state: completed_successfully
+      main_pid: null
+      date_start: 2026-07-04
+      date_end: 2026-07-23
+      expected_days: 20
+      completed_days: 20
+      completed_records: 12024
+      completed_decisions: 868246
+      completed_guide_rows: 40229
+      completed_zero_match_dates: []
+      completed_nonzero_dates:
+        - {date: 2026-07-04, records: 266, decisions: 18970, guide_rows: 728, feature_checksum: "sha256:3d6abcf63f73932138f9ef93bedbf9d31ef60814082dd4f15aa583fa2d36300c"}
+        - {date: 2026-07-05, records: 119, decisions: 8574, guide_rows: 520, feature_checksum: "sha256:1023dc24d609c8278452fae2a3e136254920bcd24c92644c009e848b4e2cdecd"}
+        - {date: 2026-07-06, records: 142, decisions: 10300, guide_rows: 580, feature_checksum: "sha256:0c624d86733dea6675ccc9b2848d1a244d00ec5adcb586906b11c5a76c3439a9"}
+        - {date: 2026-07-07, records: 84, decisions: 6321, guide_rows: 298, feature_checksum: "sha256:1ae1196a421c635237c2c0da41ae0d5a1731ba1d01c72797d9b1a997dbcc83e1"}
+      current_dates: []
+      day_parallelism: 4
+      workers_per_day: 3
+      maximum_worker_processes: 12
+      memory_max_gib: 24
+      zero_match_days_allowed: true
+      aggregate_nonzero_guide_rows_still_required: true
+      retry_reason: >-
+        Corrected the daily guide classifier to preserve the requested
+        specialist as an additive registered route and supplied the required
+        native cg runtime to every managed worker. The prior apparent 13/20
+        zero-match result was invalid because selected Rocket's Mewtwo records
+        were rejected during featurization when CG_LIB_PATH was absent.
+      invalid_output_quarantines:
+        - /mnt/Main/main/poke-bot-agent/archive/quarantine/current-deck-guides-v1/rockets-mewtwo.invalid-missing-additive-classifier-20260726T075014Z
+        - /mnt/Main/main/poke-bot-agent/archive/quarantine/current-deck-guides-v1/rockets-mewtwo.invalid-missing-cg-runtime-20260726T075241Z
+      daily_materializer_script_checksum: sha256:4722453df929c9d429e64a0f5d5e716bf871630d3ce74966bf66dd2e71df6acb
+      managed_launcher: ops/elmo/run_current_deck_guide_window.sh
+      managed_launcher_checksum: sha256:f89f8a9affb705fc3e1e1d7cb19c01c72603eaca09ea4bfcd4d695201a2e5891
+      cg_runtime: /mnt/Main/main/poke-bot-agent/engine-runtimes/znver3-v1
+      parallel_window_script_checksum: sha256:cca74018c84802e11701708222b575ee80bacf28c2f3daf83a30ab433d596d4d
+      finalizer_script_checksum: sha256:67517b545ef43ad500645d8db22a4d0e3379fbaac10f695c1791bb35cf3c924e
+      status_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/rockets-mewtwo/status/window.json
+      modifies_active_trainer: false
+      finalization:
+        status: complete
+        ready_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/rockets-mewtwo/CURRENT_DECK_GUIDE_CORPUS_READY.json
+        ready_receipt_checksum: sha256:af6139c7b534c7665036e2c7a9e6d839bc90eef9a7a8362c497a23e9a6e32292
+        manifest_checksum: sha256:282df215aa7556a671a12d31fa3525d9e8f015af576ea5c70aecfc080690fc37
+        protected_pointer_checksum: sha256:5074af7be4fda236d5f378d893e1248a642b8ea00d962224903aa57d235c1921
+      promotion:
+        status: ready
+        receipt: /home/inzi/poke-bot-agent/outputs/state/rockets-mewtwo-guide-corpus-promotion-v1.json
+        completed_at_utc: 2026-07-26T08:55:15.423564+00:00
+        destination: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/rockets-mewtwo
+        manifest_checksum: sha256:282df215aa7556a671a12d31fa3525d9e8f015af576ea5c70aecfc080690fc37
+        protected_pointer_checksum: sha256:5074af7be4fda236d5f378d893e1248a642b8ea00d962224903aa57d235c1921
+        ready_receipt_checksum: sha256:af6139c7b534c7665036e2c7a9e6d839bc90eef9a7a8362c497a23e9a6e32292
+        active_training_modified: false
+    handoff_prestage_ready: true
+    active_training_modified: false
+  completed_grimmsnarl_deck_guide_prestage:
+    status: expert_corpus_promotion_running
+    activation_boundary: next_specialist_handoff
+    does_not_modify_active_specialist: true
+    active_specialist_guide_retrofit_authorized: false
+    generic_dispatch_module: poke_bot/deck_guides.py
+    legacy_validated_guide: alakazam
+    prepared_next_specialist: marnie-s-grimmsnarl-ex
+    prepared_contract: config/deck_guides/marnie-s-grimmsnarl-ex.yaml
+    prepared_teacher_module: poke_bot/grimmsnarl_heuristics.py
+    guide_contract_checksum: sha256:7ccc948f2b7c177d8ff2cb6dc40a0c1dd81a9517e38bed7d74de78e72c00e40d
+    implementation_validation_receipt: state/current_deck_guide_validation_v1.json
+    implementation_validation_receipt_checksum: sha256:55c51213c80b18c85bcb6ccd249ed4359546301ed3f71022bdc39068216eea66
+    runtime_activation_receipt: null
+    initial_loss_weight: 0.01
+    adaptive_weight_status: not_started
+    current_weight: null
+    latest_importance_evaluation: null
+    real_trace_canary:
+      status: passed
+      source_date: 2026-07-23
+      source_episode_ids: [87556853, 87556855, 87556857, 87556859]
+      sequences: 5
+      causal_decisions: 478
+      guide_rows: 120
+      guide_version: marnie-grimmsnarl-north-star-v1
+      receipt: /mnt/Main/main/poke-bot-agent/archive/expert-guide-canary-v1/marnie-known-2026-07-23.features.receipt.json
+      receipt_checksum: sha256:acd008fe0e6e84aca0413a2575045a5ca9be2aa678db3a08f7be8572a705f00c
+    expert_target_materialization:
+      status: ready
+      host: admin@192.168.1.143
+      managed_service: pokebot-grimmsnarl-guide-window-v1.service
+      date_start: 2026-07-04
+      date_end: 2026-07-23
+      days: 20
+      output_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex
+      status_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex/status/window.json
+      workers: 12
+      memory_max_gib: 32
+      modifies_active_trainer: false
+      last_verified_at_utc: 2026-07-25T17:46:37Z
+      completed_days: 20
+      total_days: 20
+      current_date: null
+      completed_records: 42155
+      completed_decisions: 3776077
+      completed_guide_rows: 967241
+      completed:
+        - {date: 2026-07-04, records: 3076, decisions: 300154, guide_rows: 75133, feature_checksum: "sha256:2ebee461a7935b5a994efaf4563daa3f43b5f713a6c22e02c13754101c75c2b5", checksum_verified: true}
+        - {date: 2026-07-05, records: 3052, decisions: 271145, guide_rows: 70243, feature_checksum: "sha256:079c1fa76d7143d58e8d9a43c2f8ca3f5c7e10244430ba519eeb61ce25f04f81", checksum_verified: true}
+        - {date: 2026-07-06, records: 2777, decisions: 229275, guide_rows: 59406, feature_checksum: "sha256:094b23c7a94fd71e1c422aa98f0e6b9e0d3f8b72a70eb0a82fd3d8f0a8499a54", checksum_verified: true}
+        - {date: 2026-07-07, records: 2099, decisions: 182797, guide_rows: 46810, feature_checksum: "sha256:318c1c1ca4959f745722ed0b68a0a25f06b7a344f38729ac2991345b26ec83f4", checksum_verified: true}
+        - {date: 2026-07-08, records: 1727, decisions: 151384, guide_rows: 38482, feature_checksum: "sha256:09d16110e1f9fa529ac0457af371d5154573805a6f7d367116aac5b9283530e1", checksum_verified: true}
+        - {date: 2026-07-09, records: 1390, decisions: 123017, guide_rows: 32005, feature_checksum: "sha256:52422fe389b8d60356fd617cd3bdcd5444bb257959fd0c7f2a63fec9573b5bd6", checksum_verified: true}
+        - {date: 2026-07-10, records: 1235, decisions: 108225, guide_rows: 28503, feature_checksum: "sha256:ab6492a59e60c71c62735e303b11ec1dedd1f9c2eb6972e498b3309f6649b0d2", checksum_verified: true}
+        - {date: 2026-07-11, records: 950, decisions: 84302, guide_rows: 22241, feature_checksum: "sha256:dbc3c33b963678cf5f71fd679d6c9b4beb2e98c75f5ea217626f936a4ba68dab", checksum_verified: true}
+        - {date: 2026-07-12, records: 953, decisions: 86754, guide_rows: 22261, feature_checksum: "sha256:86f1d6b37e47e529535159d3f8d2eeef55da84e0e545e597bc422552fce595d6", checksum_verified: true}
+        - {date: 2026-07-13, records: 1444, decisions: 132454, guide_rows: 34101, feature_checksum: "sha256:55c475b709078f35217c95636956d06e059436fad4694ada3fda939ba5ed3e7f", checksum_verified: true}
+        - {date: 2026-07-14, records: 1375, decisions: 127462, guide_rows: 32943, feature_checksum: "sha256:a3524519756a48b2376180b04cd188ce7411d2fbc34c54a15b7293e6a5c9e1c4", checksum_verified: true}
+        - {date: 2026-07-15, records: 1155, decisions: 101160, guide_rows: 26237, feature_checksum: "sha256:1adb7b7251db8dc885d895a1cefc55f536c4747e0fdb192da3cff898888b4d1b", checksum_verified: true}
+        - {date: 2026-07-16, records: 1101, decisions: 94385, guide_rows: 24381, feature_checksum: "sha256:0055554c0186928c8b549e839ae3a1f8d4f676cd2717d50380dde1f7e6d91ca2", checksum_verified: true}
+        - {date: 2026-07-17, records: 1566, decisions: 139906, guide_rows: 36340, feature_checksum: "sha256:2e7e71b7bc8cdd4862dc87bd88d917870a410dbe0e59fc75759399d01e9ac901", checksum_verified: true}
+        - {date: 2026-07-18, records: 2704, decisions: 240676, guide_rows: 62416, feature_checksum: "sha256:760fac5a007c661d0c012710122818483ca5348560e428273d5f05c4c01d7139", checksum_verified: true}
+        - {date: 2026-07-19, records: 2474, decisions: 218609, guide_rows: 55617, feature_checksum: "sha256:fb7c61245612ce704c9b7c8ac49bff7f7b0cea9f8b7897389b8dd3c79d7e5703", checksum_verified: true}
+        - {date: 2026-07-20, records: 2842, decisions: 256157, guide_rows: 64660, feature_checksum: "sha256:0759f7e28d4215b08314ede94a3d76c995da65d19e2fc6a3603bd0d666326bf0", checksum_verified: true}
+        - {date: 2026-07-21, records: 3083, decisions: 271671, guide_rows: 69388, feature_checksum: "sha256:b0a7538afe1e9a2ebe91865c13de8336c60e87af4d49579d89a295037b3f01d3", checksum_verified: true}
+        - {date: 2026-07-22, records: 3559, decisions: 322761, guide_rows: 81624, feature_checksum: "sha256:c20fa3c1e4aa0dc3cdb484045905c56b0dd15d5e8ab3e5196337fad827e0980e", checksum_verified: true}
+        - {date: 2026-07-23, records: 3593, decisions: 333783, guide_rows: 84450, feature_checksum: "sha256:90159ad79b42318de4c98cc2f622ac1ba3c5f540533f4cd71a6ba8faf455679f", checksum_verified: true}
+      automatic_finalization:
+        status: ready
+        managed_service: pokebot-grimmsnarl-guide-finalize-v1.service
+        managed_timer: pokebot-grimmsnarl-guide-finalize-v1.timer
+        poll_interval_seconds: 120
+        ready_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/current-deck-guides-v1/marnie-s-grimmsnarl-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json
+        ready_receipt_checksum: sha256:21c7e69a69a3c381fa514be10fb96a47040878b39238d9087b383dc8173fa42d
+        manifest_checksum: sha256:3f1a6f6c99dbc3592cb3306d14c818fff0bdee5a8549885d2aa1e8d68aeba3d6
+        protected_pointer_checksum: sha256:08bcd3a0d21e301c0b11da09f6c780fda02e80ef71f316da43a66ebd8ed17819
+        modifies_active_trainer: false
+    inzi_corpus_promotion:
+      status: syncing
+      managed_service: pokebot-grimmsnarl-guide-promote-v1.service
+      bandwidth_limit_kib_per_second: 4000
+      state_receipt: /home/inzi/poke-bot-agent/outputs/state/marnie-s-grimmsnarl-ex-guide-corpus-promotion-v1.json
+      destination: /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic/marnie-s-grimmsnarl-ex
+      atomic_after_all_shard_checksums_pass: true
+      modifies_active_trainer: false
+  corrected_repair_package:
+    status: validated_iteration_4_committed
+    contaminated_run_promotable: false
+    corrected_corpus:
+      pointer: /home/inzi/poke-bot-agent/data/bootstrap/dudunsparce-verified-visual-schema-v2/PROTECTED_EXPERT_CORPUS.json
+      pointer_checksum: sha256:dba158ccf0e98bec56df2df558008e4a5f8b438661cd59c06f64d6bc5ac25aa8
+      manifest: /home/inzi/poke-bot-agent/data/bootstrap/dudunsparce-verified-visual-schema-v2/manifest.json
+      manifest_checksum: sha256:10b75693518b38b09e8d767090824d89c0484934555bf56c0aecf76c0430f2ee
+      records: 29
+      decisions: 1130
+      forbidden_marnie_line_absent: true
+      all_required_targets_present: true
+      all_expanded_heads_have_nonzero_labels: true
+    corrected_bootstrap:
+      status: ready
+      epochs_completed: 25
+      epochs_required: 25
+      checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce_expert_bootstrap_from_core_v5_corrected_v2/model.pt
+      checkpoint_checksum: sha256:72f2c998f2239378017956269927ce885ada0b5fd30207763f01b3a58552865c
+      protected_manifest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce_expert_bootstrap_from_core_v5_corrected_v2/manifest.json
+      protected_manifest_checksum: sha256:8f95dbf127fada6543c6dd8953f37e38b512294076404cab902dc70a8e3051fc
+      ready_receipt: /home/inzi/poke-bot-agent/outputs/state/dudunsparce-expert-bootstrap-corrected-v2-ready.json
+      ready_receipt_checksum: sha256:b514f823bb715ac6a0b836c817a12f693c2b1dcf39ee5c1d1efc0e8e4b9f12e0
+      source_core_checksum: sha256:cc5976935a885dd25f3485e920d91fc5edf894aaba4d91782afd9613f8f7edee
+      expanded_head_schedule_checksum: sha256:e471f58915df0cbe88b837de6fbe532e6416aa028a538b92a11ec788621f45dc
+      expanded_target_schema_checksum: sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f
+      runtime_enabled_heads: []
+    staged_runtime:
+      runtime_root: /home/inzi/poke-bot-agent-deployments/dudunsparce-corrected-runtime-v2
+      registry_checksum: sha256:267cc6991708c43e968cd9587f540f837cc6574cd75f470dcbd6b3ad18e69459
+      selector_checksum: sha256:88809dd243c87cdf69c9867937c1174394a82afa6690f97ee4ecdfa4ddc5624a
+      selector_preflight_passed: true
+      regression_tests_passed: 94
+      managed_activator: pokebot-activate-corrected-dudunsparce-v2.service
+      activation_receipt: /home/inzi/poke-bot-agent/outputs/state/dudunsparce-corrected-runtime-v2-activation.json
+      activation_receipt_exists: true
+      activated_at_utc: 2026-07-25T10:50:15.148936Z
+      activation_receipt_checksum: sha256:4b6fe5d061e10ffa64b4ad8ec450fcbfe3cb9238cf12c30c9f478b289fe93771
   active_run:
     service: pokebot-pure-rl-trevenant-staged.service
-    run_name: pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723
-    path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723
-    status: active_running_iteration_2
+    run_name: pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723
+    path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723
+    status: running_iteration_2_research_controls
+    active_specialist: rockets-mewtwo
     last_completed_iteration: 1
     next_iteration: 2
-    learner_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00001_roster18.pt
-    learner_checksum: sha256:4f56ffb864d425c1651480372124537cffcf4ca983de2cd136b04f164d1526fd
+    current_phase: measure_research_controls
+    service_active: true
+    main_pid: 2482118
+    service_restarts: null
+    checkpoint_format: poke-bot-expanded-v6-decision-fusion
+    decision_fusion_runtime_enabled: true
+    required_fused_head_count: 17
+    learner_checksum: sha256:12861233854257fa494cdcb1922cb00f865562b24bb5bc1e749b09b2297a6f5a
+    protected_heldout_champion_checksum: sha256:12861233854257fa494cdcb1922cb00f865562b24bb5bc1e749b09b2297a6f5a
+    latest_exact_holdout:
+      iteration: 1
+      checkpoint_checksum: sha256:12861233854257fa494cdcb1922cb00f865562b24bb5bc1e749b09b2297a6f5a
+      games: 2750
+      win_rate: 0.6534000000000001
+      confidence_lower: 0.6404
+      confidence_upper: 0.66661
+      audit_passed: true
+      gate_passed: true
+      promoted_to_heldout_champion: true
+      commit: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723/commits/iter_00001.json
+      commit_checksum: sha256:547760490bf5acdc91407ea4c9567e2c4e5410ce52cf049273e6459e81d0c587
+    latest_research_controls:
+      iteration: 1
+      games: 1000
+      win_rate: 0.539
+      audit_passed: true
+      training_eligible: false
+      replay_eligible: false
+      result_checksum: sha256:930435da1a343437763418e914ea2d9bb7aae064584148fa0bc5966fd54aec0f
+    exact_gate_regression:
+      status: not_yet_run
+      anchor_win_rate: null
+      candidate_win_rate: null
+      regression_margin: null
+      streak: null
+      patience: null
+      rollback_triggered: false
+    memory_guard:
+      memory_high_bytes: 118111600640
+      memory_max_bytes: 124554051584
+      hard_limit_events: 0
+      oom_events: 0
+      oom_kill_events: 0
+  completed_dudunsparce_run:
+    service: pokebot-pure-rl-trevenant-staged.service
+    run_name: pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725
+    path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725
+    status: running_corrected_iteration_11
+    source_specialist_run: null
+    last_completed_iteration: 10
+    next_iteration: 11
+    learner_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/checkpoints/iter_00008.pt
+    learner_checksum: sha256:032783f85a6743c7b3c3e00a490dd317cbefeb7a316460c881f53b0cca4b7ca8
+    learner_selection: iteration_10_exact_gate_regression_rollback_to_heldout_champion
+    latest_trained_candidate: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/checkpoints/iter_00010.pt
+    latest_trained_candidate_checksum: sha256:0fc167c12088a287275e133680aff3e76b54fc27cd61600e1d4cbe0115bb3c5c
     checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
-    matchup_tree: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-public-matchup-tree-roster18-v1.json
-    matchup_tree_checksum: sha256:033264ab10a51fe093ad2b64f5def3a8e22d869c42b978ee86d2ff7d01ea0328
-    matchup_authorization: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-matchup-adapter-authorization-roster18-v1.json
-    matchup_authorization_checksum: sha256:b03b8dcd8daeb3a60cdf6d77110c2af48cdff957a40c7b508bf6e4d04ac75970
-    migration_receipt: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-roster18-migration-v1.json
+    matchup_tree: /home/inzi/poke-bot-agent/outputs/state/dudunsparce-public-matchup-tree-v33.json
+    matchup_tree_checksum: sha256:15ffdf665bda2a7c6b0ed2e42adfcf5ad91f3fbd7ba5691393304725fa7ed466
+    matchup_authorization: /home/inzi/poke-bot-agent/outputs/state/dudunsparce-matchup-adapter-bootstrap-corrected-v2.json
+    matchup_authorization_checksum: sha256:876d4e7705b63fc6f0c03b9b0624cb6c688d4c9f5f40f8ea4f7cf6aa0b177c47
+    first_collection_route_audit:
+      status: passed
+      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/collection_receipts/iter_00000.json
+      receipt_checksum: sha256:fb0ca06091b7d41d2abce464f86cdadadfc3e95e055aabe0607c568c07bd22b4
+      created_at_utc: 2026-07-25T11:14:40.114746+00:00
+      iteration: 0
+      games: 8192
+      public_mix_games: 7168
+      self_play_games: 1024
+      decisions: 628446
+      usable_game_fraction: 1.0
+      shard: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/shards/iter_00000.jsonl
+      shard_checksum: sha256:99fbb5069dce7a56e0fed9ea113fab82436fb0b98224f58882e8495398b33974
+      strict_remote_execution: true
+      remote_self_play_completions: {elmo: 414, bert: 208}
+      local_fallback_count: 0
+      required_mirror_archetype: dudunsparce
+      mirror_route_observations: 93299
+      all_enforcement_assertions_passed: true
+    current_collection_receipt:
+      iteration: 10
+      status: committed_in_iteration_10
+      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/collection_receipts/iter_00010.json
+      receipt_checksum: sha256:dcc36675e7c49bfc356d3b9b4bec5e2d027f148a179c39ede7239fff8eb08967
+      created_at_utc: 2026-07-25T19:59:35.800758+00:00
+      parent_checkpoint_checksum: sha256:bb011fb700cf99f16b550b5c20b20455f39dd858959fa5f39cfbd8ad873854c0
+      requested_new_games: 8192
+      retained_source_games: 8192
+      public_mix_source_games: 7168
+      self_play_source_games: 1024
+      usable_game_fraction: 1.0
+      trajectories_written: 8192
+      decisions: 638319
+      shard: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/shards/iter_00010.jsonl
+      shard_checksum: sha256:3c6d33018c24922071e8c14eec011a723e95961533529c17c722422aa3900a19
+      strict_remote_execution: true
+      remote_self_play_completions: {elmo: 414, bert: 208}
+      local_fallback_count: 0
+      mirror_route_observations: 121208
+      all_enforcement_assertions_passed: true
+    latest_expert_rehearsal:
+      status: committed
+      before_iteration: 10
+      epochs: 5
+      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/rehearsals/before_iter_00010.json
+      receipt_checksum: sha256:4c09a9741b707191d041dcb4d20a23d4fb53a63d805726827e3c295d0e51e41e
+      checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/checkpoints/expert_before_iter_00010.pt
+      checkpoint_checksum: sha256:81251711dcdae631a29e043e7d2180e51e2b89eb4d172be3d17d8f136336ab4f
+      expanded_heads_gradient_enabled: 11
+      expanded_heads_with_labeled_training_rows: 11
+      runtime_enabled_heads: []
+      action_type_train_rows: 882
+      remaining_turns_train_rows: 695
+      remaining_turns_validation_rows: 0
+      missing_validation_targets_masked: true
+    latest_iteration_commit:
+      iteration: 10
+      status: committed
+      commit: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/commits/iter_00010.json
+      commit_checksum: sha256:96e2f5bcf018c16a554643a1ef5b3cd525f04468fc86e5b66cf8e715d62a88df
+      committed_at_utc: 2026-07-25T20:25:51.684481+00:00
+      parent_checkpoint_checksum: sha256:81251711dcdae631a29e043e7d2180e51e2b89eb4d172be3d17d8f136336ab4f
+      candidate_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/checkpoints/iter_00010.pt
+      candidate_checkpoint_checksum: sha256:0fc167c12088a287275e133680aff3e76b54fc27cd61600e1d4cbe0115bb3c5c
+      checkpoint_file_checksum_verified: true
+      promotion:
+        games: 80
+        first: 40
+        second: 40
+        wins: 49
+        losses: 31
+        win_rate: 0.6125
+        confidence_lower: 0.525
+        passed: true
+        learner_carried: false
+        learner_carry_reason: exact_gate_regression_patience_exhausted
+        incumbent_after_checksum: sha256:796c2f01aec84e10aebfc593a29b9508865c325c99826f5a56e8112b0663de22
+      gate:
+        games: 2000
+        first: 1000
+        second: 1000
+        skill_weighted_win_rate: 0.33885714285714286
+        confidence_lower: 0.32285714285714284
+        confidence_upper: 0.3554285714285714
+        s_tier_mean: 0.322
+        minimum_opponent_win_rate: 0.152
+        s_plus_below_floor_count: 3
+        s_plus_below_floor_allowance: 2
+        audit_passed: true
+        passed: false
+      research_controls:
+        games: 1000
+        first: 500
+        second: 500
+        win_rate: 0.4
+        diagnostic_only: true
+        training_eligible: false
+        replay_eligible: false
+        replay_records_written: 0
+        audit_passed: true
+      matchup_adapter_fit:
+        optimizer_scope: matchup_adapter_bank_only
+        base_frozen: true
+        runtime_enabled: false
+        zero_example_routes_remain_dormant: true
+        trained_archetype_ids: [crustle, starmie, alakazam, lucario, archaludon-ex, dudunsparce, hops-trevenant, dragapult-dusknoir]
+        rows: 11020624
+        steps: 1212
+        phase_rows: 1033599
+        phase_steps: 113
+      expanded_strategic_head_training:
+        mode: full_model_rl_shadow_objectives
+        architecture_present: true
+        flat_policy_authoritative: true
+        runtime_enabled_heads: []
+        latest_verified_full_model_iteration: 10
+        metrics: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725/metrics/iter_00010.json
+        metrics_checksum: sha256:d7d75ced553ec7ce269666c1ee2c2a4b0c8f0831be7bd4f27e084c89b698a300
+        total_model_parameters: 1636200
+        ordinary_optimizer_trainable_parameters: 1606680
+        latest_per_head_detail: null
+        latest_per_head_detail_status: not_emitted_by_iteration_8_metrics
+        expert_rehearsal_head_evidence: latest_expert_rehearsal
+      next_collection_publish:
+        local_ok: true
+        remote_ok: true
+        endpoints: ["192.168.1.143:8765", "bert.local:8766"]
+        published_checkpoint_checksum: sha256:032783f85a6743c7b3c3e00a490dd317cbefeb7a316460c881f53b0cca4b7ca8
+    dashboard_projection_validation:
+      status: current
+      validated_at_utc: 2026-07-25T13:20:00Z
+      snapshot_checksum: sha256:402ed376930f22b2aa63b667c9d974c2aac4569f9718b3eed6eb9161e69e6158
+      supports_public_agent_gate_result_v1: true
+      committed_gate_audit_visible: true
+      latest_commit_iteration_visible: 2
+      official_gate_games_visible: 2000
+      official_gate_win_rate_visible: 0.3122857142857143
+      research_control_games_visible: 1000
+      research_control_win_rate_visible: 0.379
+      focused_tests_passed: 3
+      trainer_interrupted: false
+    migration_receipt: /home/inzi/poke-bot-agent/outputs/state/dudunsparce-corrected-runtime-v2-activation.json
     games_per_iteration: 8192
     public_mix_games: 7168
     self_play_games: 1024
     official_research_games: 1000
-    premium_gate_games: 1750
-    total_evaluation_games: 2750
+    premium_gate_games: 2000
+    total_evaluation_games: 3000
     frozen_specialist_registry: /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/ops/frozen_specialist_registry_v1.json
-    terminal_active_gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r4
-    terminal_gate_marker: SPECIALIST_GATE_PASSED.dragapult-dusknoir-splus-v1
+    terminal_active_gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r5
+    effective_gate_from_iteration_5: specialist-strong-public-roster-lc50-at-iter5-v1+frozen-specialists-r5
+    terminal_gate_marker: SPECIALIST_GATE_PASSED.dudunsparce-splus-v1
     minimum_terminal_iteration: 5
     iteration_ceiling: 15
     ceiling_behavior: freeze_submit_and_continue_without_false_pass
     gate_handler_service: pokebot-specialist-passed-gate-handler.service
-    gate_handler_state: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-passed-gate-handler-v1.json
-    kaggle_submission: null
-    threshold_transition_receipt: null
+    gate_handler_state: /home/inzi/poke-bot-agent/outputs/state/dudunsparce-passed-gate-handler-v1.json
+    gate_handler_validation:
+      status: active_current_validator
+      handler_path: /home/inzi/poke-bot-gate-handler-v42/scripts/handle_passed_gate.py
+      handler_checksum: sha256:4e3b64d14ac65f9e3f182487915f972d7853b7fd5799a38a4de94678830fea63
+      supports_s_plus_matchup_floor_allowance: true
+      canonical_roster_is_dynamic: true
+      focused_tests_passed: 25
+      reloaded_at_utc: 2026-07-25T04:55:53Z
+      trainer_pid_before_and_after: 2760088
+      trainer_restarts_before_and_after: 0
+      trainer_interrupted: false
+    kaggle_submission:
+      status: accepted
+      nonblocking: true
+      copy_number: 1
+      label: dragapult-dusknoir ceiling accepted iter 15 copy 1/1 b6996ed641b1
+      checkpoint_checksum: sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef
+      queued_at: 2026-07-25T06:31:57.040517Z
+      submitted_at: 2026-07-25T13:40:37.593000Z
+      submission_id: 54976694
+      returned_score: 600.0
+      network_submission_occurred: true
+    threshold_transition_receipt: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-lc50-iteration5-activation.json
+    latest_gate_evaluation:
+      iteration: 15
+      gate_id: specialist-strong-public-roster-lc50-at-iter5-v1+frozen-specialists-r4
+      result: failed
+      games: 1750
+      exact_distribution: true
+      first_second_balanced: true
+      skill_weighted_win_rate: 0.2895
+      skill_weighted_confidence_lower: 0.2726666666666667
+      s_tier_mean: 0.2744
+      minimum_opponent_win_rate: 0.112
+      promotion_passed: false
+      measured_gate_passed: false
+      completion_authority: explicit_owner_ceiling_acceptance
+      learner_carry: false
+      learner_selection: exact_ceiling_checkpoint_frozen
+      evaluation_receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/eval/iter_00015.json
+      commit_receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/commits/iter_00015.json
+    latest_research_controls:
+      iteration: 15
+      games: 1000
+      win_rate: 0.2015
+      training_eligible: false
+      replay_eligible: false
+      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/research_controls/iter_00015.json
     frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir-protocol-gate-pass-v1
     specialist_cycle_handoff_service: pokebot-specialist-cycle-handoff.service
     specialist_cycle_handoff_state: /home/inzi/poke-bot-agent/outputs/state/post-lucario-cumulative-core-handoff.json
@@ -253,16 +890,19 @@ current:
   note: This file does not start, stop, or reconfigure the observed run.
 
 target_registry:
-  authoritative_source: state/matchup_adapter_roster.json#/expert_ids
+  authoritative_source: state/matchup_adapter_roster.json#/active_expert_ids
   required_target_count: 18
   policy: >-
     The 18 logical archetypes in the stable canonical expert_ids list are the
     required specialist program. Retired v4 archetypes are absent from active
     planning and checkpoint rows; references below may remain only as clearly
     historical artifact lineage.
-  checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
-  adapter_count_derivation: length_of_authoritative_expert_ids
-  parameter_expectation_derivation: canonical_adapter_count_times_instantiated_per_head_parameter_count
+  live_checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
+  staged_checkpoint_format: poke-bot-matchup-adapter-bank-v6
+  adapter_count_derivation: fixed_physical_slot_capacity
+  logical_active_count_derivation: length_of_authoritative_active_expert_ids
+  physical_slot_capacity: 64
+  parameter_expectation_derivation: physical_slot_capacity_times_instantiated_per_slot_parameter_count
   hard_coded_adapter_parameter_total_allowed: false
   pinned_core_roster_count: 17
   pinned_core_roster_source: poke_bot/archetypes.py#CORE_LADDER_ARCHETYPE_IDS
@@ -292,20 +932,59 @@ training_priority:
       unfinished v5 targets resume the established ordering.
     removes_target: false
   source:
-    page: https://ptcg-ladder-meta.vercel.app/strategies
-    api: https://ptcg-ladder-meta.vercel.app/api/strategies
-    generated_at_utc: 2026-07-22T17:09:07.357Z
-    snapshot_id: 2026-06-22T05:47:35
-    scope: public_top_episode_appearances_not_hidden_evaluation_distribution
+    status: verified_current
+    authoritative_page: https://ptcgreplay.netlify.app/
+    retired_page: https://ptcg-ladder-meta.vercel.app/strategies
+    retired_page_allowed: false
+    access_contract: site_published_config_with_supabase_rls
+    credentials_committed: false
+    completed_ingest:
+      id: 8
+      started_at: 2026-07-24T15:20:05.13636+00:00
+      finished_at: 2026-07-24T16:16:25.861048+00:00
+      window_start: 2026-06-22
+      window_end: 2026-07-23
+      days_ingested: 32
+      episodes_available: 165094
+      episodes_attempted: 97904
+      episodes_ingested: 97768
+    match_facts:
+      base_date: 2026-06-22
+      matches: 164817
+      deck_identities: 2186
+      archetypes: 43
+      rpc: match_facts
+    aggregation:
+      source_semantics: ptcgreplay_side_aware_browser_aggregation
+      date_window: full_completed_ingest_window
+      play_order: first_or_second
+      rendered_chart_scraping: false
+      rogue_other_is_pooled_not_specialist: true
+      classified_appearances: 329634
+    verified_specialist_mappings:
+      marnie-s-grimmsnarl-ex: {source_name: "Marnie's Grimmsnarl ex", appearances: 51451, share_percent: 15.6085}
+      crustle: {source_name: Crustle, appearances: 30315, share_percent: 9.1966}
+      dudunsparce: {source_name: Dudunsparce, appearances: 14604, share_percent: 4.4304}
+      garchomp: {source_name: "Cynthia's Garchomp ex", appearances: 13722, share_percent: 4.1628}
+      team-rockets-spidops: {source_name: "Team Rocket's Spidops", appearances: 13390, share_percent: 4.0621}
+      archaludon-ex: {source_name: Archaludon ex, appearances: 3472, share_percent: 1.0533}
+      thwackey: {source_name: Thwackey, appearances: 3153, share_percent: 0.9565}
+      walrein: {source_name: Walrein, appearances: 1026, share_percent: 0.3113}
+    aggregate_source_mappings:
+      hammer-pult: Dragapult ex
+      dragapult-blaziken: Dragapult ex
+      dragapult-dudunsparce: Dragapult ex
+      dragapult: Dragapult ex
+      dragapult-dusknoir:
+        - Dragapult ex
+        - Dusknoir
+    null_or_ambiguous_mappings:
+      rockets-mewtwo: no Team Rocket's Mewtwo row in completed ingest 8
+    scope: public_ladder_meta_analysis_only_not_training_or_gate_evidence
   # The four internal Dragapult variants map to the source's aggregate
   # "Dragapult ex" row; the shared percentage is group-level, not an assertion
   # that each variant independently owns that fraction of the field.
   ordered_unfinished_ids_after_active:
-    - dudunsparce
-    - marnie-s-grimmsnarl-ex
-    - garchomp
-    - rockets-mewtwo
-    - thwackey
     - team-rockets-spidops
     - hammer-pult
     - dragapult-blaziken
@@ -361,6 +1040,116 @@ training_priority:
       retired_routes_absent_from_active_checkpoint: true
       retained_route_tensors_byte_identical_by_route_identity: true
       local_and_remote_fleet_checksum_parity: verified
+  staged_v6_runtime:
+    status: compatibility_and_fleet_handoff_prechecks_passed_boundary_activation_pending
+    checkpoint_format: poke-bot-matchup-adapter-bank-v6
+    registry: state/matchup_adapter_roster.json
+    physical_slot_capacity: 64
+    legacy_v5_prefix_length: 18
+    current_logical_routes: 18
+    unused_exact_zero_slots: 46
+    source_v5_checkpoints_remain_immutable: true
+    retained_rows_byte_identical_required: true
+    retained_optimizer_state_by_parameter_name_required: true
+    positional_optimizer_state_without_name_map: fail_closed
+    retired_slots_reindexed_or_reused: false
+    normal_roster_edit_requires_format_switch: false
+    activation_boundary: next_safe_receipt_backed_boundary
+    handoff_runtime_pointer:
+      status: staged_service_verified_inactive
+      stable_path: /home/inzi/poke-bot-agent-deployments/specialist-handoff-current
+      resolved_candidate: /home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate
+      service: pokebot-specialist-cycle-handoff.service
+      service_state_when_verified: inactive
+      v6_corpus_root: /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic
+      required_target_schema: poke_bot.expanded_strategic_targets/v2
+      unit_validation: systemd_analyze_passed
+      focused_tests_passed: 28
+      durable_fail_closed_retry:
+        status: deployed
+        restart: on-failure
+        restart_seconds: 60
+        purpose: retry_after_atomic_v6_corpus_promotion_without_resuming_terminal_trainer
+        service_checksum: sha256:f294228a5f573f216c31660ac1508c29a5fc20d8c2e3fd4cfa461fc8db2b6d33
+        active_trainer_pid_before_and_after: 2760088
+        active_trainer_restarts_before_and_after: 0
+      live_training_modified: false
+      verified_at_utc: 2026-07-25T05:48:44Z
+    compatibility_canary:
+      status: passed
+      receipt: /home/inzi/poke-bot-agent/outputs/staging/matchup-v6-canary/dragapult-dusknoir/iter_00002.df369542d43a6c71.v6-canary.receipt.json
+      source_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00002.pt
+      source_checkpoint_checksum: sha256:df369542d43a6c71deb1a30c87a263cbf46664766c4d07887e4accf740a41c7a
+      derivative_checkpoint: /home/inzi/poke-bot-agent/outputs/staging/matchup-v6-canary/dragapult-dusknoir/iter_00002.df369542d43a6c71.v6-canary.pt
+      derivative_checkpoint_checksum: sha256:ad9e3726bccbc5192a33487a20f213438639be05858090bcd84aa27717cb1bd1
+      registry_checksum: sha256:be816ddc6b15d35a28451ae02fc4e3bd326d10d0336ce9c582908fd50cd102dd
+      retained_adapter_tensors_bit_exact: 72
+      unused_adapter_tensors_exact_zero: 184
+      non_adapter_model_tensors_bit_exact: 156
+      main_optimizer_bit_exact: true
+      rng_state_bit_exact: true
+      dormant_optimizer_moments_bit_exact: true
+      verified_optimizer_parameter_name_map: true
+      serialized_registry_bound_to_checkpoint: true
+      retained_route_forward_bit_exact: true
+      strict_v6_model_load: true
+      source_checkpoint_immutable: true
+      live_selector_changed: false
+      selector_precheck:
+        status: passed
+        candidate_runtime: /home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate
+        checkpoint_checksum: sha256:ad9e3726bccbc5192a33487a20f213438639be05858090bcd84aa27717cb1bd1
+        focused_tests: 23
+        full_adapter_runtime_tests: 102
+        safe_boundary_handoff_and_fleet_tests: 39
+        failed_tests: 0
+        training_environment: /home/inzi/miniconda3/envs/poke-bot-agent
+        verified_at_utc: 2026-07-24T21:14:51Z
+    boundary_candidate:
+      status: source_commit_verified_activation_pending_next_safe_boundary
+      source_iteration: 3
+      source_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00003.pt
+      source_checkpoint_checksum: sha256:3715ce667ecb8bb52a9be4922aa8b481fedde06997b8c9e66d2896e8e0ebb070
+      derivative_checkpoint: /home/inzi/poke-bot-agent/outputs/staging/matchup-v6-canary/dragapult-dusknoir/iter_00003.3715ce667ecb8bb5.v6-canary.pt
+      derivative_checkpoint_checksum: sha256:a98ed6ae513860f0a6aff800475e6b2a6f3289d1c6e1277cd2976f9e3797e161
+      migration_receipt: /home/inzi/poke-bot-agent/outputs/staging/matchup-v6-canary/dragapult-dusknoir/iter_00003.3715ce667ecb8bb5.v6-canary.receipt.json
+      migration_receipt_checksum: sha256:c11eb39443aa34a22c851e9bc838dc6a4a42dccafaf19b8c72f59ce9333f65f8
+      source_checkpoint_immutable: true
+      selector_eligible: true
+      required_commit_next_iteration: 4
+      required_commit_satisfied: true
+      commit_receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/commits/iter_00003.json
+      commit_receipt_checkpoint_checksum_verified: true
+      activation_deferred_reason: healthy_specialist_training_is_active
+    fleet_activation:
+      status: staged_and_tested_waiting_for_stopped_specialist_handoff
+      source_root: /home/inzi/poke-bot-agent-deployments/matchup-v6-safe-boundary-candidate
+      receipt: /home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v1.json
+      receipt_exists: false
+      trainer_must_be_stopped: true
+      activation_uses_managed_services_only: true
+      exact_loader_checksum_parity_required: true
+      bert:
+        service_manager: launchctl
+        service_label: com.pokebot.remote-worker-8766
+        expected_workers: 16
+        expected_leaves: 4
+      elmo:
+        service_manager: docker_compose
+        expected_image: poke-bot-truenas-worker:matchup-v36-runtime
+        currently_live_image: poke-bot-truenas-worker:matchup-v34-runtime
+        expected_workers: 36
+        expected_leaves: 4
+        production_compose_staged: true
+      rollback_or_partial_activation_on_active_trainer: forbidden
+    activation_receipt: null
+    live_selector_changed: false
+    meta_crosswalk:
+      source: state/matchup_adapter_roster.json#/meta_analysis_source/crosswalk
+      numeric_source_id_and_exact_name_guard: true
+      card_signature_disambiguation: true
+      fuzzy_display_name_matching: false
+      scope: meta_analysis_and_specialist_priority_only
   rows:
     - {id: dudunsparce, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dudunsparce, share: 0.21312803889789303, appearances: 263, mapping: exact}
     - {id: marnie-s-grimmsnarl-ex, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Marnie's Grimmsnarl ex", share: 0.0024311183144246355, appearances: 3, mapping: canonical_name}
@@ -425,6 +1214,239 @@ expert_corpus_archive:
       persistent_replay_archives_on_bert: 0
       cleanup_condition: exact_elmo_checksum_committed
       last_verified: 2026-07-24
+    daily_feature_materialization:
+      status: complete_on_elmo
+      worker_container: pokebot-expert-latest20-missing-days
+      worker_cpu_limit: 24
+      feature_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v5
+      selected_missing_days:
+        - 2026-07-04
+        - 2026-07-05
+        - 2026-07-06
+        - 2026-07-07
+        - 2026-07-08
+        - 2026-07-09
+        - 2026-07-10
+        - 2026-07-21
+        - 2026-07-22
+        - 2026-07-23
+      completed_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v5/MISSING_DAYS_READY.json
+      completion_status: ready_receipt_written
+      retry_pending_days: []
+      retry_behavior: managed_container_restart_after_other_day_jobs_finish
+    specialist_corpus_finalization:
+      status: ready_on_elmo
+      managed_container: pokebot-expert-latest20-finalizer
+      idle_until_daily_receipt: false
+      output_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v5
+      ready_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v5/LATEST20_SPECIALIST_CORPORA_READY.json
+      inzi_sync_service: pokebot-expert-latest20-specialist-sync.service
+      inzi_sync_status: ready_checksum_validated
+      inzi_current_pointer: /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20
+      sync_bandwidth_limit_kib_per_second: 8000
+      sync_is_atomic: true
+      running_training_may_be_modified: false
+      sync_receipt: /home/inzi/poke-bot-agent/outputs/state/expert-latest20-specialist-sync.json
+      sync_completed_at_utc: 2026-07-24T22:55:55.770068+00:00
+      sync_bytes: 27952195164
+      elmo_output_permissions:
+        status: remediated_and_persisted
+        shared_gid: 950
+        future_finalizer_applies_group_read_execute: true
+      atomic_pointer_status: promoted_after_copy_and_checksum_validation
+    expanded_v6_strategic_corpus:
+      status: checksum_validated_ready_on_inzi
+      target_schema: poke_bot.expanded_strategic_targets/v2
+      target_schema_digest: sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f
+      source_window: {start: 2026-07-04, end: 2026-07-23, days: 20}
+      daily_worker_container: pokebot-expert-latest20-v6-strategic
+      daily_feature_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v6-strategic
+      finalizer_container: pokebot-expert-latest20-v6-strategic-finalizer
+      elmo_output_root: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v6-strategic
+      inzi_sync_service: pokebot-v6-strategic-corpus-sync.service
+      inzi_current_pointer: /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic
+      inzi_sync_receipt: /home/inzi/poke-bot-agent/outputs/state/expert-latest20-v6-strategic-sync.json
+      sync_bandwidth_limit_kib_per_second: 8000
+      sync_is_atomic: true
+      current_live_v5_training_modified: false
+      observed_at_utc: 2026-07-25T07:34:47Z
+      native_inputs_validated: 20
+      daily_features_complete: 20
+      daily_features_total: 20
+      daily_features_in_progress: []
+      live_progress_authority: elmo_container_and_daily_status_receipts
+      elmo_finalization:
+        status: checksum_validated_ready
+        ready_receipt: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/windows/2026-07-04_2026-07-23/roster18-v6-strategic/LATEST20_SPECIALIST_CORPORA_READY.json
+        ready_receipt_checksum: sha256:8a37a2504d9a8526e7cd7b214664dca125285e219c338442b48660ed9d924c2a
+        roster_records: 18
+        ready_specialist_corpora: 16
+        unavailable_specialist_corpora: [thwackey, team-rockets-spidops]
+        selected_next_specialist: dudunsparce
+        selected_next_specialist_ready: true
+        balanced_core_decisions: 2385683
+        balanced_core_pointer_checksum: sha256:1c175a51cb06e9d95474ffcda642435f2bb7472afe4bcdadaad585ac00106892
+        balanced_core_manifest_checksum: sha256:468f985d7fdc46d8977850fb5ade1f420635eedd22a51075e4d8714a0e140e6b
+        exactly_11_canonical_heads: true
+        every_balanced_core_head_nonzero: true
+        labeled_plus_masked_equals_decisions: true
+        finalizer_exit_status: 0
+        finalizer_missing_setfacl_repair:
+          status: remediated_and_tested
+          source_checksum: sha256:ad78488873486ba9fc20adfada097ad64e54966b87673635ff871b24f19620e6
+          behavior: defer_to_managed_group_permission_step_when_acl_tool_absent
+          focused_tests_passed: 9
+      inzi_sync:
+        status: ready
+        started_at_utc: 2026-07-25T05:35:29.899728+00:00
+        completed_at_utc: 2026-07-25T07:02:51.071611+00:00
+        source_bytes: 41444291956
+        copied_bytes: 41444291956
+        destination: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic
+        staging: /home/inzi/poke-bot-agent/data/bootstrap/.expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic.partial
+        atomic_pointer_promoted: true
+        percent: 100.0
+        live_training_modified: false
+      materializer_repair:
+        status: corrected_rebuild_complete
+        root_cause: >-
+          The authoritative visual-trace materializer used a direct temporal
+          featurization path that bypassed convert_record and therefore omitted
+          expanded strategic labels and their coverage block.
+        invalid_output_quarantine: /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v6-strategic.invalid-missing-expanded-20260725T033133Z
+        source_file: /home/admin/pokebot-expert-src-v6-strategic/poke_bot/authoritative_visual_trace.py
+        source_sha256: sha256:54ebda910715a919036351aea43e1742ee675a2cfa1403d319330f63c0421791
+        targeted_tests_passed: 25
+        real_archive_smoke:
+          status: passed
+          source_date: 2026-07-04
+          episodes: 2
+          decisions: 362
+          all_11_heads_have_nonzero_labeled_rows: true
+          serialized_decisions_checked: 94
+          serialized_decisions_with_expanded_labels: 94
+        corrected_daily_receipts:
+          status: all_twenty_validated
+          decisions: 14426019
+          completed_dates:
+            - {date: 2026-07-04, decisions: 730108, feature_checksum: "sha256:5b65a8d0db8dc189e6022dbac98b0638c18dd020ac6346c8ad5dd569bba0161e"}
+            - {date: 2026-07-05, decisions: 744596, feature_checksum: "sha256:e50aa769ca8ff8c18a33de11c1207e5990287c387e4736b5c9b8e7ed33fd7d88"}
+            - {date: 2026-07-06, decisions: 725921, feature_checksum: "sha256:a891f4368781585fe53530f7fbad19d5dabfd9100ee594f35b5c92afa6ab0ca8"}
+            - {date: 2026-07-07, decisions: 699015, feature_checksum: "sha256:f28226f547e949991a1d1344738c603e99184e3b8313d6849f561bab4d1580c0"}
+            - {date: 2026-07-08, decisions: 708416, feature_checksum: "sha256:14444cfb052b360ded21774e2281bf17a81ab0241158cb399b7ec10b4ecea53c"}
+            - {date: 2026-07-09, decisions: 706348, feature_checksum: "sha256:61859cd72895bce2087000383f9493a74613c35506a404b07efc97fc1313063c"}
+            - {date: 2026-07-10, decisions: 717893, feature_checksum: "sha256:bb10f6bc12627a59dd2106b1dd0ecc87183ef0aaf40499f0ad688a82f346c6f1"}
+            - {date: 2026-07-11, decisions: 709557, feature_checksum: "sha256:1f150f823eb52f41a0e83e609992206d510dbbb1452842061b901b306d99f4e3"}
+            - {date: 2026-07-12, decisions: 711111, feature_checksum: "sha256:dcc3d24b49e6cc0f410a0c6e6a0ba0abcd629ba394d03db66b44690a9685d0dc"}
+            - {date: 2026-07-13, decisions: 725146, feature_checksum: "sha256:0760484dda26493e7d2f47ddfe4d2e9c0dd6d85f37b27d0e28c48c22104d9d30"}
+            - {date: 2026-07-14, decisions: 718703, feature_checksum: "sha256:aa1c91561b39a86aa8720281dfeea26d19a0fcf811c43fca8dd9b56f25fb74ea"}
+            - {date: 2026-07-15, decisions: 719201, feature_checksum: "sha256:40ba45002a00824b0478e30e677370cb164854b873661eecb2c1f702348c92d1"}
+            - {date: 2026-07-16, decisions: 705997, feature_checksum: "sha256:00bddca7bd078cc189de7d847d5a4b26951580b1b2dfbf10c188e96dea97fb5f"}
+            - {date: 2026-07-17, decisions: 706541, feature_checksum: "sha256:94b8ebff2c9fc66e0a388c0adcc51f48b1f6ca6e56a823585e2c7f5ba9906a74"}
+            - {date: 2026-07-18, decisions: 738733, feature_checksum: "sha256:3e4c0465de3244b57319f8b3b0b87b2e3cfed7109a74c389f172dc52b1769d0d"}
+            - {date: 2026-07-19, decisions: 712964, feature_checksum: "sha256:83e49486a564318d837da298540d5e246cd687362ef9c78f29399538e4b00e73"}
+            - {date: 2026-07-20, decisions: 719864, feature_checksum: "sha256:2961dbdca129df35fdc69bd4dbba6f8dd3bba2ba18a65b2a1ea07bffb2caf56b"}
+            - {date: 2026-07-21, decisions: 740627, feature_checksum: "sha256:1644b9fa6e543a92ab71fc636b1c7e508718b874c06346abb01f1782b3046ede"}
+            - {date: 2026-07-22, decisions: 746559, feature_checksum: "sha256:be138e86d059a53b72a019bccab5d5c730b4a1f2bc9f8ffdb37a8787955b513b"}
+            - {date: 2026-07-23, decisions: 738719, feature_checksum: "sha256:73645bbadf5d6221d0423999064acc5a64b023b8044cdae9701a6257ffeed4bb"}
+          feature_hashes_verified: true
+          metadata_and_receipt_coverage_equal: true
+          target_schema_and_digest_exact: true
+          exactly_11_canonical_heads: true
+          all_11_heads_nonzero_on_each_day: true
+          labeled_plus_masked_equals_total_decisions: true
+          serialized_first_sequence_labels_verified_each_day: true
+        historical_v5_corpus_modified: false
+        live_v5_training_modified: false
+      expanded_cumulative_core_pipeline:
+        status: active_exact_25_epoch_training
+        protected_core_pointer: /home/inzi/poke-bot-agent/data/bootstrap/current-specialist-latest20-v6-strategic/core-balanced-v6/PROTECTED_CORE_CORPUS.json
+        run_state: /home/inzi/poke-bot-agent/outputs/bootstrap/deck-agnostic-core-cumulative-v5/state.json
+        managed_service: pokebot-specialist-cycle-handoff.service
+        corpus_builder_preserves_expanded_targets: true
+        exact_bootstrap_epochs: 25
+        all_11_heads_required_before_selection: true
+        runtime_enabled_heads: []
+        flat_policy_remains_authoritative: true
+        matchup_adapters_remain_bit_identical_and_dormant: true
+        cycle_contract_checksum: sha256:0771e0e6fe218537f3ec032cd160fb1336778fd603243b119a964bf8f177ad73
+        focused_tests_passed: 97
+        live_v5_training_modified: false
+      completion_requirements:
+        - all_20_daily_features_checksum_validated
+        - exact_expanded_target_schema_and_digest
+        - exactly_11_head_coverage_rows
+        - nonzero_labeled_rows_for_every_scheduled_head_in_selected_specialist
+        - atomic_inzi_pointer_after_full_tree_validation
+    preserved_v5_next_specialist_prestage:
+      status: ready_historical_immutable
+      receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.v5-ready-20260724T225948Z.json
+      receipt_checksum: sha256:b0eb9aea6a33766292678eada822c0e85100ac6f2c6dddf83c6cab015951c2f8
+      selected_specialist: dudunsparce
+      expanded_strategic_targets_present: false
+      v6_bootstrap_eligible: false
+    historical_marnie_next_specialist_prestage:
+      status: ready_historical_consumed
+      receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
+      receipt_schema: poke_bot.next_specialist_prestage/v1
+      receipt_checksum: sha256:66793609408bc4d90874b130365f16b096038ebcd1b0b44c6e0ad7b5cee2fa44
+      receipt_created_at_utc: 2026-07-25T19:13:31.728098+00:00
+      service_working_directory: /home/inzi/poke-bot-agent-deployments/specialist-handoff-current
+      cycle_contract_checksum: sha256:e9d1c0363cc00ddfd19c84e202a5f868118e2067c3f771f60528e726d402d738
+      focused_fail_closed_tests_passed: 28
+      selected_specialist: marnie-s-grimmsnarl-ex
+      intended_next_specialist_after_corpus_validation: marnie-s-grimmsnarl-ex
+      blocker: null
+      live_training_modified: false
+      latest20_window: {start: 2026-07-04, end: 2026-07-23, days: 20}
+      matching_games: 42155
+      matching_decisions: 3776077
+      minimum_decisions: 20000
+      representative_card_count: 60
+      representative_checksum: sha256:5da3bdb8371264d46ca95df34d20ce1a25ee4a86c683159d9dd7318053eb623c
+      runtime_tree: /home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster18-v39.inactive.json
+      runtime_tree_checksum: sha256:9984fb73dbb94d788235149315cdf54e1f4ebb98626f9d1390608ffd82b17dc1
+      selected_route_accepted: true
+      current_deck_guide:
+        status: ready
+        version: marnie-grimmsnarl-north-star-v1
+        contract_checksum: sha256:7ccc948f2b7c177d8ff2cb6dc40a0c1dd81a9517e38bed7d74de78e72c00e40d
+        filtered_expert_rows: 967241
+        expert_writeup_checksum: sha256:6563a6cd0eec11a741a4259b620b4e221d90ce414796c84b645f06bdabb73bea
+        expert_writeup_words: 5434
+      cpu_pack_status: ready
+      cpu_pack_cache_hit_on_final_validation: true
+      cpu_pack_key: b9960575e317d1c2033e34ba548cd4a4eb6d332c22dfe9e8f7b39b1e3d17937c
+      cpu_pack_payload: /home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/prestaged-specialists/marnie-s-grimmsnarl-ex/expert-pack-b9960575e317d1c2033e34ba548cd4a4eb6d332c22dfe9e8f7b39b1e3d17937c.pt
+      cpu_pack_checksum: sha256:b4252f5f303aafa04c9098ea206d02e1b1e1a074c1ec231db50ce834d4eac20e
+      cpu_pack_bytes: 6144562603
+      cpu_pack_manifest: /home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/prestaged-specialists/marnie-s-grimmsnarl-ex/expert-pack-b9960575e317d1c2033e34ba548cd4a4eb6d332c22dfe9e8f7b39b1e3d17937c.json
+      cpu_pack_manifest_checksum: sha256:8a04d2b88b965c93c65179d8f71b3df0e9d8f87c8f83234dd7250d3eda018594
+      stale_roster22_receipt_quarantined: true
+      quarantine_path: /home/inzi/poke-bot-agent/outputs/state/quarantine/next-specialist-prestage-v41-roster22-20260724T2142Z/next-specialist-prestage-v1.json
+      current_runtime_tree_from_active_registry_verified: true
+      rebuild_trigger: none_cache_ready
+    next_specialist_prestage:
+      source_of_truth: current.next_successor_prestage
+      status: ready
+      active_specialist: rockets-mewtwo
+      selected_specialist: thwackey
+      receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
+      receipt_schema: poke_bot.next_specialist_prestage/v1
+      receipt_checksum: sha256:8b9b954d967b00a1594842a2bb9421c1b90f1d0758008aecdb68a70624377cc9
+      receipt_created_at_utc: 2026-07-27T21:01:47.950704+00:00
+      logical_specialist_id: thwackey
+      physical_source_id: festival-lead
+      matching_games: 2105
+      matching_decisions: 150766
+      minimum_decisions: 20000
+      guide_days: 20
+      guide_rows: 26824
+      representative_ready: true
+      runtime_route_accepted: true
+      cpu_pack_ready: true
+      blockers: []
+      live_training_modified: false
     note: >-
       This is 20 calendar days selected before archetype filtering, not 20
       matching games and not 20 days on which the archetype appeared. Historical
@@ -516,15 +1538,24 @@ expert_corpus_archive:
 
 shared_core:
   status: frozen
-  checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_distilled_from_alakazam_v1/model.pt
-  checksum: sha256:ae2e1bbd973f5ef3aed581c784238069757cc3be0a8aa0dfd4c8ac18b5421b74
-  frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_distilled_from_alakazam_v1
-  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/owner-accepted-alakazam-core-distillation-ready.json
-  ready_receipt_checksum: sha256:dd1f1b26ffd3a1f4dc4b03fd77da6fb88aefdfbb711ea942fc0d3fded7483086
-  protected_manifest_checksum: sha256:e1168850431b9ad882536193e51bff2c8cad178e0b5de0574da87c5cb75a80c8
+  generation: 6
+  checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6/model.pt
+  checksum: sha256:e1966ea311657c9a68f918da0f9276df6d74258216f38837a294d1f9c1cb2490
+  frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6
+  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v6-ready.json
+  ready_receipt_checksum: sha256:33e9287f5d870b2a5d6987c6b08a3bbe43a3df4849f25f379499155333c65c45
+  protected_manifest_checksum: sha256:34be3b0d1e708e6a323cef917039d1bd81307bcf789ae69352080c9f195637d2
   epochs_completed: 25
-  best_validation_loss: 1.3377324819422745
-  observed_archetypes: 20
+  best_validation_loss: null
+  observed_archetypes: null
+  expanded_strategic_heads_present: true
+  runtime_enabled_heads: []
+  gameplay_regression_passed: true
+  prior_core:
+    checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_distilled_from_alakazam_v1/model.pt
+    checksum: sha256:ae2e1bbd973f5ef3aed581c784238069757cc3be0a8aa0dfd4c8ac18b5421b74
+    ready_receipt: /home/inzi/poke-bot-agent/outputs/state/owner-accepted-alakazam-core-distillation-ready.json
+    ready_receipt_checksum: sha256:dd1f1b26ffd3a1f4dc4b03fd77da6fb88aefdfbb711ea942fc0d3fded7483086
   derivation_plan:
     source_specialist: alakazam
     wait_through_completed_iteration: 30
@@ -581,17 +1612,131 @@ shared_core:
     required_confidence_lower: 0.55
 
 heads_and_datasets:
+  active_specialist_data_integrity:
+    status: failed_closed
+    specialist_id: dudunsparce
+    detected_at_utc: 2026-07-25T09:49:00Z
+    issue: marnie_grimmsnarl_lists_misclassified_as_dudunsparce
+    contaminated_latest20_records: 23
+    contaminated_latest20_decisions: 2448
+    conflicting_attacker_line_card_ids: [646, 647, 648]
+    causal_router_observed_route: marnie-s-grimmsnarl-ex
+    causal_router_observed_route_index: 1
+    valid_historical_dudunsparce_records_found: 29
+    valid_historical_evidence_dates: [2026-06-26, 2026-06-27, 2026-06-28]
+    promotion_allowed: false
+    training_update_allowed: false
+    required_repair:
+      - rebuild_classifier_with_main_attacker_precedence
+      - reselect_checksum_bound_dudunsparce_representative
+      - rebuild_expert_features_from_genuine_dudunsparce_games
+      - rerun_exact_25_epoch_bootstrap_from_core_v5
+      - validate_causal_dudunsparce_route_before_rl
   specialist_head_template:
     source_design: Alakazam
     archetype_policy_head_required: true
     game_plan_policy_heads_required: true
     matchup_policy_heads_required: true
+    expanded_strategic_heads:
+      schema: poke_bot.expanded_head_training/v1
+      target_schema: poke_bot.expanded_strategic_targets/v2
+      status: active_specialist_training_runtime_shadow
+      training_activation_boundary: corrected_dudunsparce_launch
+      current_active_specialist: rockets-mewtwo
+      active_v5_compatible_specialist_training_enabled: true
+      train_during_every_full_model_rl_epoch: true
+      train_during_every_scheduled_expert_rehearsal_epoch: true
+      exact_causal_labels_required: true
+      zero_valid_label_behavior: masked_zero_gradient
+      frozen_specialist_checkpoints_modified: false
+      architecture_present_heads:
+        - action_q
+        - action_type
+        - action_target
+        - action_resource
+        - action_utility
+        - tactical_outcomes
+        - opponent_response
+        - resource_forecast
+        - game_phase
+        - outcome_distribution
+        - remaining_turns
+      initial_runtime_enabled_heads: []
+      flat_policy_authoritative_until_decision_fusion_activation: true
+      shadow_only_until_decision_fusion_activation_receipt: true
+      decision_fusion:
+        schema: poke_bot.causal_decision_fusion_state/v1
+        status: runtime_active_successor
+        owner_decision_revision: 16
+        applies_to_current_and_future_specialists: true
+        current_iteration_action_path_unchanged: true
+        activation_boundary: next_safe_checkpoint_boundary
+        required_head_count: 17
+        required_heads:
+          - value
+          - archetype
+          - opponent_hand
+          - opponent_remainder
+          - lethal_threat
+          - prize_race
+          - action_q
+          - action_type
+          - action_target
+          - action_resource
+          - action_utility
+          - tactical_outcomes
+          - opponent_response
+          - resource_forecast
+          - game_phase
+          - outcome_distribution
+          - remaining_turns
+        matchup_adapter_behavior: causal_route_gated
+        absent_deck_guide_behavior: exact_bypass
+        implementation_receipt: state/causal_decision_fusion_validation_v1.json
+        runtime_activation_receipt: /home/inzi/poke-bot-agent/outputs/state/rockets-mewtwo-specialist-rl-activation-v6.json
+      bootstrap_schedule_source: config/rl_protocol.yaml#/specialist_training/expanded_strategic_heads/bootstrap_stage_schedule
+      checkpoint_contract_required: true
+      local_remote_schema_digest_parity_required: true
+      latest_validation_receipt: state/expanded_strategic_heads_validation_v1.json
+      durable_handoff_candidate_receipt: state/v6_strategic_handoff_candidate_v2.json
+      v6_bootstrap_ready: true
+      v6_bootstrap_blocker: null
+      completed_specialist_retrofit:
+        status: ready_dormant_untrained
+        eligible_after: first_expanded_head_cumulative_core_frozen_and_registered
+        source_specialists:
+          - alakazam
+          - hops-trevenant
+          - starmie
+          - lucario
+          - dragapult-dusknoir
+        original_checkpoints_modified: false
+        receipt: /home/inzi/poke-bot-agent/outputs/state/completed-specialist-expanded-head-retrofits-v1.json
+        cumulative_core_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v5/model.pt
+        cumulative_core_checksum: sha256:cc5976935a885dd25f3485e920d91fc5edf894aaba4d91782afd9613f8f7edee
+        derivative_records:
+          - {specialist_id: alakazam, checksum: "sha256:1327054679fa27411e5b838c9f385781912ff5a53e313ae964d02356ebf056e6"}
+          - {specialist_id: hops-trevenant, checksum: "sha256:5b58fa6a03d735dd0875e4beaaf794bc8d6d3fc880927687a9d8a65566878517"}
+          - {specialist_id: starmie, checksum: "sha256:7a1ef43390cb982eba3074f6d162139ebc2377ca5586a07e9e8cdb130e7e4dc8"}
+          - {specialist_id: lucario, checksum: "sha256:ebe9806528495fb258efa4a6472525b429110095f2b8e8bcaa2a96a40a7e506a"}
+          - {specialist_id: dragapult-dusknoir, checksum: "sha256:fee83b27c2f180557e012499b021c922c30ca4faaf97ea02195ccdf9377623ef"}
+        active_retrofit_specialist: null
+        runtime_enabled_heads: []
+        gradients_enabled: false
+        serving_eligible: false
+        public_mix_eligible: false
+        gate_eligible: false
+        kaggle_submission_eligible: false
+        next_action: await_explicit_sole_active_retrofit_training_phase
     matchup_routing:
-      canonical_roster_source: state/matchup_adapter_roster.json#/expert_ids
-      checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
-      adapter_count_derivation: length_of_canonical_roster_source
+      canonical_roster_source: state/matchup_adapter_roster.json#/active_expert_ids
+      live_checkpoint_format_until_safe_boundary: poke-bot-matchup-adapter-bank-v5-roster18
+      checkpoint_format: poke-bot-matchup-adapter-bank-v6
+      physical_slot_capacity: 64
+      logical_active_count_derivation: length_of_canonical_roster_source
+      adapter_count_derivation: fixed_physical_slot_capacity
       per_head_parameter_count_source: checkpoint_declared_matchup_adapter_config
-      total_parameter_expectation: adapter_count_times_instantiated_per_head_parameter_count
+      total_parameter_expectation: physical_slot_capacity_times_instantiated_per_head_parameter_count
       hard_coded_parameter_total_allowed: false
       complete_roster_required_in_every_checkpoint: true
       active_specialist_route_required: true
@@ -697,26 +1842,38 @@ gates:
       waiver: Iono per-opponent floor
       source: ops/alakazam_gate_program_v1.json#/accepted_gate
   premium_competition:
-    gate_id: specialist-strong-public-roster-lc50-at-iter10-v1+frozen-specialists-r1
-    base_games: 2000
-    games: 2250
-    base_opponents: 8
-    opponents: 9
+    gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r9
+    catalog_games_before_supersession: 2000
+    active_external_games: 750
+    games: 3000
+    catalog_opponents_before_supersession: 8
+    superseded_external_opponents: 5
+    active_external_opponents: 3
+    frozen_specialist_opponents: 9
+    frozen_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo]
+    opponents: 12
     games_per_opponent: 250
     first_per_opponent: 125
     second_per_opponent: 125
     frozen_specialist_registry: ops/frozen_specialist_registry_v1.json
+    frozen_specialist_details_source: ops/frozen_specialist_registry_v1.json
     frozen_specialists:
-      - opponent_id: specialist-alakazam-owner-accepted-iter39
-        specialist_id: alakazam
-        tier: S+
-        games: 250
-        first: 125
-        second: 125
-        checkpoint_checksum: sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea
-        package_checksum: sha256:7e9942e3a60e31d5ee734e5f66bae818f2c28a14cd8d8122d4b11683e79af3bc
-        training_eligible_in_holdout: false
-        replay_eligible_in_holdout: false
+      - {specialist_id: alakazam, opponent_id: specialist-alakazam-owner-accepted-iter39-roster18-v5, checkpoint_checksum: "sha256:87f31362158bdb16866f8be1417269aa87f4fe1c285be4a319816a35f31b0d66"}
+      - {specialist_id: hops-trevenant, opponent_id: specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5, checkpoint_checksum: "sha256:efcc8e0bb329e1fb07f970a20daf55961522e5ccd443264bc96a7b97dfd79c31"}
+      - {specialist_id: starmie, opponent_id: specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5, checkpoint_checksum: "sha256:19a6d35f61fb8914dccd30a88a9df3c7b36affe72ffa8c9e36c6882e614d99ab"}
+      - {specialist_id: lucario, opponent_id: specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5, checkpoint_checksum: "sha256:806623c735f3e70ee318460692c4385c2641b99a0dbf83e21594ad5dc0338fea"}
+      - {specialist_id: dragapult-dusknoir, opponent_id: specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1, checkpoint_checksum: "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef"}
+      - {specialist_id: dudunsparce, opponent_id: specialist-dudunsparce-gate-iter15-a1e944fcb4c4, checkpoint_checksum: "sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a"}
+      - {specialist_id: marnie-s-grimmsnarl-ex, opponent_id: specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98, checkpoint_checksum: "sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac"}
+      - {specialist_id: garchomp, opponent_id: specialist-garchomp-gate-iter5-61fbb254944f, checkpoint_checksum: "sha256:61fbb254944fa14452b1b623f89af4e49f86f32111219eaeb76f7f43e22daa70"}
+      - {specialist_id: rockets-mewtwo, opponent_id: specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86, checkpoint_checksum: "sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f"}
+    frozen_specialist_holdout_contract:
+      tier: S+
+      games_each: 250
+      first_each: 125
+      second_each: 125
+      training_eligible: false
+      replay_eligible: false
     criteria:
       skill_weighted_win_rate: 0.50
       skill_weighted_confidence_lower: 0.50
@@ -742,31 +1899,79 @@ gates:
       ceiling_completed_iteration: 15
       pre_floor_pass_can_transition: false
       ceiling_behavior: freeze_submit_and_continue_without_false_pass
+    lc50_activation:
+      status: activated_from_immutable_iteration_4_commit
+      applies_from_completed_iteration: 5
+      historical_alakazam_iteration_30_transition_immutable: true
+      active_runtime_restart_required: false
+      resume_must_use_exact_iteration_4_commit: true
+      activation_must_not_replay_or_discard_iteration_4: true
+      activation_receipt: /home/inzi/poke-bot-agent/outputs/state/dragapult-dusknoir-lc50-iteration5-activation.json
+      activation_receipt_status: ready
+      activation_receipt_checksum: sha256:9868d6118bd2703d1af12517b9e26e652b4222c9e7a85ef3226df22fc74ade6d
+      activated_at_utc: 2026-07-24T22:15:52.700909Z
+      boundary_commit: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/commits/iter_00004.json
+      boundary_commit_checksum: sha256:464bd3941dc0d3ec892811b8db8c397e01885972f0587fc8b44fdda4c5cb601b
+      prior_contract_checksum: sha256:daded276b27e0241a1f6fda76248991f18eb72067d2a8b5bb8af90ecf199ebac
+      active_contract_checksum: sha256:4caf893b3e57902662ab913f1d2396e6eeb5a4a7cf84516f2ccd4f93915d2cd8
+      old_main_pid: 2347290
+      new_main_pid: 2760088
+      manual_stop_protection_restored: true
 
-current_cumulative_core_refresh:
+historical_marnie_cumulative_core_refresh:
   schema: poke_bot.cumulative_core_refresh_state/v1
-  status: training
-  supersedes_attempt_version: 3
-  superseded_attempt_preserved_for_audit: true
-  trigger_specialist: lucario
-  output_core_version: 4
-  contract: /home/inzi/poke-bot-agent/outputs/state/post-lucario-cumulative-core-v4-handoff.json
-  output_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v4
-  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v4-ready.json
+  status: gameplay_regression_failed_terminal
+  trigger_specialist: marnie-s-grimmsnarl-ex
+  output_core_version: 7
+  contract: /home/inzi/poke-bot-agent/outputs/state/post-marnie-s-grimmsnarl-ex-cumulative-core-v7-fused-v1-attempt5-handoff.json
+  contract_checksum: sha256:139bb92bd5604557cc20e0bb428605e88bafd745ab582c4eba2b8d4278aeaff9
+  run_state: /home/inzi/poke-bot-agent/outputs/bootstrap/deck-agnostic-core-cumulative-v7-fused-v1-attempt5/state.json
+  output_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v7_fused_v1_attempt5
+  output_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v7_fused_v1_attempt5/model.pt
+  output_checksum: sha256:e1406a3fe0de175cbb004711a5dd616c68e1b1da7a46c4e68584133d775f0bb1
+  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v7-fused-v1-attempt5-ready.json
+  ready_receipt_checksum: sha256:1dbbdd04759cfb8ca7fc5977ad443b0514ad2551a6d8b81f1dd3191f86e1ad93
+  supervised_epochs_target: 25
+  supervised_epochs_completed: 25
+  gameplay_regression_passed: false
+  gameplay_regression_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v7-fused-v1-attempt5-gameplay-regression.json
+  gameplay_regression_receipt_checksum: sha256:643ce3e4d578aa43922dfedbb0fb59e03690bfe8ac5ce09d7183765ea592c376
+  expanded_head_schedule_schema: poke_bot.expanded_head_schedule/v1
+  expanded_head_target_schema: poke_bot.expanded_strategic_targets/v2
+  expanded_head_target_digest: sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f
+  runtime_enabled_heads: []
+  flat_policy_authoritative: false
+  decision_fusion_present: true
+  previous_accepted_core:
+    version: 6
+    checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6/model.pt
+    checksum: sha256:e1966ea311657c9a68f918da0f9276df6d74258216f38837a294d1f9c1cb2490
+    manifest_checksum: sha256:34be3b0d1e708e6a323cef917039d1bd81307bcf789ae69352080c9f195637d2
+    ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v6-ready.json
+    ready_receipt_checksum: sha256:33e9287f5d870b2a5d6987c6b08a3bbe43a3df4849f25f379499155333c65c45
   teacher_population_policy: all_checksum_verified_frozen_specialists
   teachers:
     - specialist_id: alakazam
       mode: frozen_inference_only
       checksum: sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea
+    - specialist_id: dragapult-dusknoir
+      mode: frozen_inference_only
+      checksum: sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef
+    - specialist_id: dudunsparce
+      mode: frozen_inference_only
+      checksum: sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a
     - specialist_id: hops-trevenant
       mode: frozen_inference_only
       checksum: sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1
-    - specialist_id: starmie
-      mode: frozen_inference_only
-      checksum: sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8
     - specialist_id: lucario
       mode: frozen_inference_only
       checksum: sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd
+    - specialist_id: marnie-s-grimmsnarl-ex
+      mode: frozen_inference_only
+      checksum: sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac
+    - specialist_id: starmie
+      mode: frozen_inference_only
+      checksum: sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8
   direct_checkpoint_tensor_sources_exclude: []
   teacher_gradients_allowed: false
   teacher_optimizer_steps_allowed: false
@@ -775,10 +1980,62 @@ current_cumulative_core_refresh:
     games_per_teacher: 80
     per_teacher_minimum_raw_win_rate: 0.35
     aggregate_minimum_raw_win_rate: 0.40
+    games_completed: 560
+    aggregate_raw_win_rate: 0.5044642857142858
+    aggregate_raw_floor_passed: true
+    per_teacher_raw_floor_passed: false
+    failed_teacher:
+      specialist_id: marnie-s-grimmsnarl-ex
+      raw_win_rate: 0.325
     confidence_level: 0.90
     confidence_intervals_diagnostic_only: true
     specialist_gate_thresholds_unchanged: true
   authorization: owner_directive_2026-07-24_all_frozen_sets
+  next_specialist_launch_authorized: false
+  another_pass_seeking_attempt_authorized: false
+
+current_cumulative_core_refresh:
+  schema: poke_bot.cumulative_core_refresh_state/v1
+  status: ready_gameplay_regression_passed
+  trigger_specialist: rockets-mewtwo
+  output_core_version: 9
+  handoff_receipt: /home/inzi/poke-bot-agent/outputs/state/post-rockets-mewtwo-core-v9-handoff.json
+  candidate_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt
+  candidate_checkpoint_checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
+  candidate_registered_as_accepted: true
+  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v9-fused-v1-ready.json
+  ready_receipt_checksum: sha256:37ef4c69094475a71dfc3d962efedfb2f02eddb5c2202b1afb6be4c1c64fa478
+  gameplay_regression:
+    passed: true
+    receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v9-fused-v1-gameplay-regression.json
+    receipt_checksum: sha256:a39a69861ebb74c3f604758a1d69793c7fe352a4141e7766fab00784d07b25d5
+    games_per_teacher: 80
+    teacher_count: 9
+    games_completed: 720
+    aggregate_raw_win_rate: 0.4819444444444445
+    aggregate_raw_floor: 0.40
+    aggregate_raw_floor_passed: true
+    per_teacher_raw_floor: 0.35
+    per_teacher_raw_floor_passed: true
+  latest_accepted_core:
+    version: 9
+    checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt
+    checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
+  active_successor:
+    specialist_id: thwackey
+    bootstrap_core_version: 9
+    bootstrap_core_checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
+    bootstrap_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey_expert_bootstrap_from_core_v9/model.pt
+    bootstrap_checkpoint_checksum: sha256:825200cbcf3c96afa6aa28a1b20d274313149cb539fa8deb7bd3661a4a80fbc9
+    bootstrap_epochs_completed: 25
+    handoff_receipt: /home/inzi/poke-bot-agent/outputs/state/thwackey-specialist-rl-activation-v9.json
+  rejected_or_unaccepted_candidate_blocks_production: false
+  active_training_modified: true
+  next_action: >-
+    Keep Thwackey specialist RL running from the accepted cumulative core v9
+    bootstrap. Attempt the next cumulative refresh only after Thwackey becomes
+    training-complete; a future rejected candidate still may not block the next
+    specialist.
 
 historical_accepted_shared_core_v2:
   schema: poke_bot.shared_core_refresh_state/v1
@@ -886,8 +2143,8 @@ specialists:
 
   - id: dragapult-dusknoir
     name: Dragapult Dusknoir
-    status: rl_training
-    active: true
+    status: passed_frozen
+    active: false
     heads:
       status: active_multihead_runtime
       archetype_policy: present
@@ -906,24 +2163,90 @@ specialists:
       expert_decisions: 10946
     counters:
       bootstrap_epochs_completed: 25
-      rl_iterations_completed: 2
-      rl_epochs_completed: 2
-      rehearsal_epochs_completed: 0
-      last_completed_iteration: 1
-      next_iteration: 2
+      rl_iterations_completed: 16
+      rl_epochs_completed: 16
+      rehearsal_epochs_completed: 15
+      last_completed_iteration: 15
+      next_iteration: null
+      iteration_12_collection:
+        status: committed_iteration_complete
+        games: 8192
+        public_mix_games: 7168
+        self_play_games: 1024
+        decisions: 573652
+        usable_game_fraction: 1.0
+        collection_elapsed_seconds: 1264.0377683639526
+        parent_checkpoint_checksum: sha256:161d8881a526b118e903953aeedb06581ee319dfb944bd31240358e5b2573e80
+        trained_checkpoint_checksum: sha256:cb679878aa795acefb30a23cea6291e759190b24fefd6cead1e1835d371cd079
+        shard_checksum: sha256:7d9e6c053e851c6ff04a80a7be9d3815b14445d3e1cc68ba6dfdb9f537a502d1
+        matchup_runtime_contract_clean: true
+        mirror_route_observations: 56201
+        receipt: /home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/collection_receipts/iter_00012.json
+      iteration_13_collection:
+        status: committed_iteration_complete
+        games: 8192
+        public_mix_games: 7168
+        self_play_games: 1024
+        decisions: 587466
+        usable_game_fraction: 1.0
+        collection_elapsed_seconds: 1271.5778772830963
+        parent_checkpoint_checksum: sha256:cb679878aa795acefb30a23cea6291e759190b24fefd6cead1e1835d371cd079
+        trained_checkpoint_checksum: sha256:4a312f8c8a617aada7a22dc370c9799a2ef1025827b17f8cfab9ab774bd2c961
+        shard_checksum: sha256:2ee112e2186a2d30e2c6480ca4042f162a877333e171cc26ff89e02fb6de9fee
+        matchup_runtime_contract_clean: true
+        mirror_route_observations: 54689
+        receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/collection_receipts/iter_00013.json
+      iteration_14_collection:
+        status: committed_iteration_complete
+        games: 8192
+        public_mix_games: 7168
+        self_play_games: 1024
+        decisions: 555265
+        usable_game_fraction: 1.0
+        collection_elapsed_seconds: 1238.8567206859589
+        parent_checkpoint_checksum: sha256:fed18bb08c3ef37fdb4769059d26429d9bb685b19f418c1d73021e96278b6335
+        trained_checkpoint_checksum: sha256:080643322db4aa4870af117f8347de0c5829f2f8ed5e89ecf2cb239569880edc
+        shard_checksum: sha256:1b4df7690475102d233e2c993f42638aba74572bb1f72f4cccb2196dc1a21e70
+        matchup_runtime_contract_clean: true
+        mirror_route_observations: 51081
+        receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/collection_receipts/iter_00014.json
     checkpoints:
       bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir_expert_bootstrap_from_core_v4/model.pt
       bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir_expert_bootstrap_from_core_v4/model.pt
       bootstrap_checksum: sha256:6df0dae20c8cfa98b71a4b688eba2a7ff26e85bf52ce4b43b1a4b6bfe25ff933
-      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00001_roster18.pt
-      latest_checksum: sha256:4f56ffb864d425c1651480372124537cffcf4ca983de2cd136b04f164d1526fd
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/checkpoints/iter_00015.pt
+      latest_checksum: sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef
+      active_learner: null
+      active_learner_checksum: null
       format: poke-bot-matchup-adapter-bank-v5-roster18
-      passing: null
-      passing_checksum: null
-    holdouts: {official: null, premium: null}
-    frozen: false
+      passing: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dragapult-dusknoir-protocol-gate-pass-v1/model.pt
+      passing_checksum: sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef
+      passing_validation_status: accepted_with_waiver
+    holdouts:
+      official:
+        iteration: 15
+        games: 1000
+        first: 500
+        second: 500
+        win_rate: 0.2015
+        training_eligible: false
+        replay_eligible: false
+        receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/research_controls/iter_00015.json
+      premium:
+        iteration: 15
+        gate_id: specialist-strong-public-roster-lc50-at-iter5-v1+frozen-specialists-r4
+        games: 1750
+        first: 875
+        second: 875
+        skill_weighted_win_rate: 0.2895
+        skill_weighted_confidence_lower: 0.2726666666666667
+        passed: false
+        completion_authority: explicit_owner_ceiling_acceptance
+        receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_dragapult-dusknoir_temporal1_8k_v1_20260723/eval/iter_00015.json
+    frozen: true
     public_mix_eligible: false
-    kaggle_submissions: []
+    kaggle_submissions:
+      - {copy_number: 1, label: "dragapult-dusknoir ceiling accepted iter 15 copy 1/1 b6996ed641b1", checkpoint_checksum: "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef", status: accepted, queued_at: "2026-07-25T06:31:57.040517Z", submitted_at: "2026-07-25T13:40:37.593000Z", submission_id: 54976694, returned_score: 600.0, failure_reason: null, retry_count: 1}
 
   - id: dragapult-blaziken
     name: Dragapult Blaziken
@@ -1126,42 +2449,191 @@ specialists:
 
   - id: marnie-s-grimmsnarl-ex
     name: Marnie's Grimmsnarl ex
-    status: unstarted
+    status: passed_frozen
     active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
+    heads:
+      status: full_model_training_fused_runtime
+      archetype_policy: trained
+      game_plan_policies: trained
+      expanded_strategic_heads: trained_when_causally_labeled
+      decision_fusion_runtime_enabled: true
+      required_fused_head_count: 17
+      matchup_runtime_enabled: true
+      current_deck_guide: marnie-grimmsnarl-north-star-v1
+    datasets:
+      expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json
+      expert_manifest_checksum: sha256:08bcd3a0d21e301c0b11da09f6c780fda02e80ef71f316da43a66ebd8ed17819
+      guide_rows: 967241
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 6, rl_epochs_completed: 6, rehearsal_epochs_completed: 5, last_completed_iteration: 5, next_iteration: null}
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex_expert_bootstrap_from_core_v6/model.pt
+      bootstrap_best_checksum: sha256:6e0bc93f1b6c62641ab9cf0f5e376cfa077144fa4d2ead536668c7a9b02db1e2
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex_expert_bootstrap_from_core_v6/model.pt
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_marnie-s-grimmsnarl-ex_temporal1_8k_v1_20260723/checkpoints/iter_00005.pt
+      latest_checksum: sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac
+      passing: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex-protocol-gate-pass-v1/model.pt
+      passing_checksum: sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac
+    holdouts:
+      official:
+        iteration: 5
+        games: 1000
+        win_rate: 0.60
+        audit_passed: true
+        training_eligible: false
+        replay_eligible: false
+      premium:
+        iteration: 5
+        games: 2250
+        win_rate: 0.7442500000000001
+        confidence_lower: 0.7290000000000001
+        confidence_upper: 0.7589999999999999
+        audit_passed: true
+        passed: true
+    frozen: true
+    public_mix_eligible: true
+    kaggle_submissions:
+      - copy_number: 1
+        label: marnie-s-grimmsnarl-ex exact gate iter 5 copy 1/1 52a5207e4c98
+        checkpoint_checksum: sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac
+        status: accepted
+        queued_at: 2026-07-26T09:47:10.591822Z
+        submitted_at: 2026-07-26T13:09:24.753000Z
+        submission_id: 55001957
+        returned_score: 817.0
+        failure_reason: null
+        retry_count: 1
 
   - id: garchomp
     name: Cynthia's Garchomp ex
-    status: unstarted
+    status: passed_frozen
     active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
+    heads:
+      status: full_model_trained
+      decision_fusion_runtime_enabled: true
+      required_fused_head_count: 17
+      current_deck_guide: cynthias-garchomp-north-star-v1
+    datasets:
+      expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/garchomp/PROTECTED_EXPERT_CORPUS.json
+      expert_manifest_checksum: sha256:fd2f05f547a8cb1e422eaa0a52f7011726b1e00e6145ae42b57a0cc27f0923c0
+    counters:
+      bootstrap_epochs_completed: 25
+      rl_iterations_completed: 6
+      rl_epochs_completed: 6
+      rehearsal_epochs_completed: 5
+      next_iteration: null
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/garchomp_expert_bootstrap_from_core_v6/model.pt
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/garchomp_expert_bootstrap_from_core_v6/model.pt
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/garchomp-protocol-gate-pass-v1/model.pt
+      passing: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/garchomp-protocol-gate-pass-v1/model.pt
+      passing_checksum: sha256:61fbb254944fa14452b1b623f89af4e49f86f32111219eaeb76f7f43e22daa70
+    holdouts:
+      official: null
+      premium:
+        iteration: 5
+        games: 2500
+        win_rate: 0.7215555555555555
+        confidence_lower: 0.7062222222222222
+        confidence_upper: 0.736
+        audit_passed: true
+        passed: true
+    frozen: true
+    public_mix_eligible: true
+    kaggle_submissions:
+      - copy_number: 1
+        label: garchomp exact gate iter 5 copy 1/1 61fbb254944f
+        checkpoint_checksum: sha256:61fbb254944fa14452b1b623f89af4e49f86f32111219eaeb76f7f43e22daa70
+        status: accepted
+        queued_at: 2026-07-27T15:41:30Z
+        submitted_at: 2026-07-27T16:01:06.713000Z
+        submission_id: 55033219
+        returned_score: 600.0
+        failure_reason: null
+        retry_count: 0
 
   - id: rockets-mewtwo
     name: Team Rocket's Mewtwo ex
-    status: unstarted
+    status: passed_frozen
     active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
+    heads:
+      status: full_model_training
+      decision_fusion_runtime_enabled: true
+      required_fused_head_count: 17
+      current_deck_guide: rockets-mewtwo-north-star-v1
+      current_deck_guide_runtime_action_override: false
+      matchup_adapters: causal_route_gated
+    datasets:
+      expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/rockets-mewtwo/PROTECTED_EXPERT_CORPUS.json
+      expert_manifest_checksum: sha256:5074af7be4fda236d5f378d893e1248a642b8ea00d962224903aa57d235c1921
+      decisions: 868246
+      guide_rows: 40229
+    counters:
+      bootstrap_epochs_completed: 25
+      rl_iterations_completed: 6
+      rl_epochs_completed: 6
+      rehearsal_epochs_completed: 5
+      last_completed_iteration: 5
+      next_iteration: null
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/rockets-mewtwo_expert_bootstrap_from_core_v6/model.pt
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/rockets-mewtwo_expert_bootstrap_from_core_v6/model.pt
+      bootstrap_checksum: sha256:51c9fe270979022c6e166c2dfa42dd0767cca19192ff0438236a0a50fe55cbca
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723/checkpoints/iter_00005.pt
+      latest_checksum: sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f
+      passing: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/rockets-mewtwo-protocol-gate-pass-v1/model.pt
+      passing_checksum: sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f
+    holdouts:
+      official:
+        iteration: 5
+        checkpoint_checksum: sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f
+        games: 1000
+        first: 500
+        second: 500
+        win_rate: 0.569
+        audit_passed: true
+        training_eligible: false
+        replay_eligible: false
+        diagnostic_only: true
+        included_in_gate_pass: false
+        matchups:
+          - {opponent: iono, games: 250, first: 125, second: 125, win_rate: 0.468}
+          - {opponent: dragapult-ex, games: 250, first: 125, second: 125, win_rate: 0.528}
+          - {opponent: mega-abomasnow-ex, games: 250, first: 125, second: 125, win_rate: 0.572}
+          - {opponent: mega-lucario-ex, games: 250, first: 125, second: 125, win_rate: 0.708}
+        source: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723/research_controls/iter_00005.json
+      premium:
+        iteration: 5
+        checkpoint_checksum: sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f
+        gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r8
+        games: 2750
+        first: 1375
+        second: 1375
+        skill_weighted_win_rate: 0.6512
+        confidence_lower: 0.6384000000000001
+        confidence_upper: 0.6638
+        s_tier_mean: 0.6886666666666668
+        minimum_opponent_win_rate: 0.3
+        audit_passed: true
+        passed: true
+        pre_iteration_floor_only: false
+        terminal_transition_allowed: true
+        matchups:
+          - {opponent: pilkwang-meta-20260708, games: 250, first: 125, second: 125, win_rate: 0.928}
+          - {opponent: archaludon-ex, games: 250, first: 125, second: 125, win_rate: 0.3}
+          - {opponent: lucifer19-battlecore, games: 250, first: 125, second: 125, win_rate: 0.328}
+          - {opponent: specialist-alakazam-owner-accepted-iter39-roster18-v5, games: 250, first: 125, second: 125, win_rate: 0.856}
+          - {opponent: specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5, games: 250, first: 125, second: 125, win_rate: 0.852}
+          - {opponent: specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5, games: 250, first: 125, second: 125, win_rate: 0.338}
+          - {opponent: specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5, games: 250, first: 125, second: 125, win_rate: 0.504}
+          - {opponent: specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1, games: 250, first: 125, second: 125, win_rate: 0.888}
+          - {opponent: specialist-dudunsparce-gate-iter15-a1e944fcb4c4, games: 250, first: 125, second: 125, win_rate: 0.832}
+          - {opponent: specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98, games: 250, first: 125, second: 125, win_rate: 0.476}
+          - {opponent: specialist-garchomp-gate-iter5-61fbb254944f, games: 250, first: 125, second: 125, win_rate: 0.524}
+        source: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_rockets-mewtwo_temporal1_8k_v1_20260723/commits/iter_00005.json#/history/-1/active_gate_result
+    frozen: true
     public_mix_eligible: false
-    kaggle_submissions: []
+    kaggle_submissions:
+      - {copy_number: 1, label: "rockets-mewtwo exact gate iter 5 copy 1/1 fc2f9a525a86", checkpoint_checksum: "sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f", status: accepted, queued_at: "2026-07-28T13:23:48.479431Z", submitted_at: "2026-07-28T13:24:45.570000Z", submission_id: 55056041, returned_score: 707.2, failure_reason: null, retry_count: 0}
 
   - id: starmie
     name: Starmie
@@ -1336,12 +2808,18 @@ specialists:
 
   - id: thwackey
     name: Thwackey
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
+    status: rl_training
+    active: true
+    heads: {status: bootstrap_trained_runtime_active, archetype_policy: trained, game_plan_policies: trained}
+    datasets: {expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/thwackey/PROTECTED_EXPERT_CORPUS.json}
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: 0}
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey_expert_bootstrap_from_core_v9/model.pt
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/thwackey_expert_bootstrap_from_core_v9/model.pt
+      bootstrap_checksum: sha256:825200cbcf3c96afa6aa28a1b20d274313149cb539fa8deb7bd3661a4a80fbc9
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_thwackey_temporal1_8k_v1_20260723/checkpoints/seed.pt
+      passing: null
+      passing_checksum: null
     holdouts: {official: null, premium: null}
     frozen: false
     public_mix_eligible: false
@@ -1362,16 +2840,80 @@ specialists:
 
   - id: dudunsparce
     name: Dudunsparce
-    status: unstarted
+    status: passed_frozen
     active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
+    heads:
+      status: bootstrap_trained_runtime_shadow
+      archetype_policy: trained_in_exact_25_epoch_bootstrap
+      game_plan_policies: trained_in_exact_25_epoch_bootstrap
+      expanded_strategic_heads: trained_in_bootstrap_and_each_labeled_full_model_rl_update_runtime_shadow
+      runtime_enabled_heads: []
+      expanded_strategic_head_training:
+        last_verified_iteration: 10
+        checkpoint_checksum: sha256:81251711dcdae631a29e043e7d2180e51e2b89eb4d172be3d17d8f136336ab4f
+        receipt_checksum: sha256:4c09a9741b707191d041dcb4d20a23d4fb53a63d805726827e3c295d0e51e41e
+        update_stage: five_epoch_expert_rehearsal_before_iteration_10
+        heads_with_labeled_updates: 11
+        heads_total: 11
+        fully_masked_heads: []
+        flat_policy_authoritative: true
+      matchup_policies:
+        status: runtime_enabled_training
+        active_specialist_route: dudunsparce
+        causal_runtime_enabled: true
+        maximum_routes_per_decision: 1
+        first_collection_audit_passed: true
+    datasets:
+      expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/dudunsparce-verified-visual-schema-v2/PROTECTED_EXPERT_CORPUS.json
+      expert_manifest_checksum: sha256:dba158ccf0e98bec56df2df558008e4a5f8b438661cd59c06f64d6bc5ac25aa8
+      date_start: 2026-06-26
+      date_end: 2026-06-28
+      records: 29
+      decisions: 1130
+      genuine_archetype_verified: true
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 16, rl_epochs_completed: 16, rehearsal_epochs_completed: 15, last_completed_iteration: 15, next_iteration: null}
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce_expert_bootstrap_from_core_v5_corrected_v2/model.pt
+      bootstrap_best_checksum: sha256:72f2c998f2239378017956269927ce885ada0b5fd30207763f01b3a58552865c
+      bootstrap_best_epoch: null
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce_expert_bootstrap_from_core_v5_corrected_v2/model.pt
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce-protocol-gate-pass-v1/model.pt
+      latest_checksum: sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a
+      passing: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/dudunsparce-protocol-gate-pass-v1/model.pt
+      passing_checksum: sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a
+      passing_validation_status: accepted_with_waiver
+    holdouts:
+      official:
+        iteration: 10
+        games: 1000
+        first: 500
+        second: 500
+        win_rate: 0.4
+        training_eligible: false
+        replay_eligible: false
+        replay_records_written: 0
+        audit_passed: true
+        matchups:
+          - {opponent: iono, games: 250, first: 125, second: 125, win_rate: 0.168}
+          - {opponent: dragapult-ex, games: 250, first: 125, second: 125, win_rate: 0.216}
+          - {opponent: mega-abomasnow-ex, games: 250, first: 125, second: 125, win_rate: 0.636}
+          - {opponent: mega-lucario-ex, games: 250, first: 125, second: 125, win_rate: 0.58}
+      premium:
+        iteration: 15
+        games: 2000
+        first: 1000
+        second: 1000
+        skill_weighted_win_rate: 0.3634285714285714
+        confidence_lower: 0.34685714285714286
+        confidence_upper: 0.3791428571428571
+        passed: false
+        audit_passed: true
+        completion_authority: ceiling_accepted
+    frozen: true
+    public_mix_eligible: true
+    premium_holdout_tier: S+
+    kaggle_submissions:
+      - {copy_number: 1, label: "dudunsparce ceiling accepted iter 15 copy 1/1 a1e944fcb4c4", checkpoint_checksum: "sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a", status: accepted, queued_at: "2026-07-26T02:06:39.099991Z", submitted_at: "2026-07-26T13:05:56.057000Z", submission_id: 55001882, returned_score: 676.6, failure_reason: null, retry_count: 1}
 
   - id: hops-trevenant
     name: Hop's Trevenant
@@ -1501,17 +3043,21 @@ specialists:
 kaggle_submission_state:
   schema_version: poke_bot.kaggle_submission_state/v2
   required_copies_per_passing_specialist: 1
+  automatic_one_shot_authorization_on_training_complete: true
+  one_shot_authorization_uses: 1
+  standing_owner_decision_source: GOAL.md#/decision-ledger/revision-18
+  pre_network_authorization_block_behavior: repair_oldest_first_and_continue
   allowed_copy_statuses: [not_ready, pending, submitted, accepted, failed]
   allowed_queue_statuses: [pending, submitting, submitted, accepted, failed, cancelled]
   quota:
     daily_submission_limit: 5
     minimum_hours_between_submissions: 4
-    known_submissions_used_today: 5
-    quota_date: 2026-07-24
+    known_submissions_used_today: 1
+    quota_date: 2026-07-27
     next_reset_time: null
-    last_submission_at: "2026-07-24T13:33:57.223000Z"
-    next_submission_eligible_at: "2026-07-24T17:33:57.223000Z"
-    currently_exhausted: true
+    last_submission_at: "2026-07-27T16:01:06.713000Z"
+    next_submission_eligible_at: "2026-07-27T20:01:06.713000Z"
+    currently_exhausted: false
     last_quota_error: null
   queue_order: oldest_first
   spacing_wait_behavior: leave_pending_and_continue_training
@@ -1526,11 +3072,15 @@ kaggle_submission_state:
     - queue_status
   queue:
     - {specialist_id: lucario, copy_number: 1, label: "lucario exact gate iter 10 copy 1/1 ffa401242b2c", checkpoint_checksum: "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd", queued_at: "2026-07-24T13:28:00.355124Z", queue_status: accepted}
+    - {specialist_id: dragapult-dusknoir, copy_number: 1, label: "dragapult-dusknoir ceiling accepted iter 15 copy 1/1 b6996ed641b1", checkpoint_checksum: "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef", queued_at: "2026-07-25T06:31:57.040517Z", queue_status: accepted}
+    - {specialist_id: dudunsparce, copy_number: 1, label: "dudunsparce ceiling accepted iter 15 copy 1/1 a1e944fcb4c4", checkpoint_checksum: "sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a", queued_at: "2026-07-26T02:06:39.099991Z", queue_status: accepted}
+    - {specialist_id: marnie-s-grimmsnarl-ex, copy_number: 1, label: "marnie-s-grimmsnarl-ex exact gate iter 5 copy 1/1 52a5207e4c98", checkpoint_checksum: "sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac", queued_at: "2026-07-26T09:47:10.591822Z", queue_status: accepted}
+    - {specialist_id: garchomp, copy_number: 1, label: "garchomp exact gate iter 5 copy 1/1 61fbb254944f", checkpoint_checksum: "sha256:61fbb254944fa14452b1b623f89af4e49f86f32111219eaeb76f7f43e22daa70", queued_at: "2026-07-27T15:41:30Z", queue_status: accepted}
   specialist_copies:
     hammer-pult:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     dragapult-dusknoir:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+      - {copy_number: 1, label: "dragapult-dusknoir ceiling accepted iter 15 copy 1/1 b6996ed641b1", checkpoint_checksum: "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef", status: accepted, queued_at: "2026-07-25T06:31:57.040517Z", submitted_at: "2026-07-25T13:40:37.593000Z", submission_id: 54976694, returned_score: 600.0, failure_reason: null, retry_count: 1}
     dragapult-blaziken:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     dragapult-dudunsparce:
@@ -1542,11 +3092,11 @@ kaggle_submission_state:
     crustle:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     marnie-s-grimmsnarl-ex:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+      - {copy_number: 1, label: "marnie-s-grimmsnarl-ex exact gate iter 5 copy 1/1 52a5207e4c98", checkpoint_checksum: "sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac", status: accepted, queued_at: "2026-07-26T09:47:10.591822Z", submitted_at: "2026-07-26T13:09:24.753000Z", submission_id: 55001957, returned_score: 817.0, failure_reason: null, retry_count: 1}
     garchomp:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+      - {copy_number: 1, label: "garchomp exact gate iter 5 copy 1/1 61fbb254944f", checkpoint_checksum: "sha256:61fbb254944fa14452b1b623f89af4e49f86f32111219eaeb76f7f43e22daa70", status: accepted, queued_at: "2026-07-27T15:41:30Z", submitted_at: "2026-07-27T16:01:06.713000Z", submission_id: 55033219, returned_score: 600.0, failure_reason: null, retry_count: 0}
     rockets-mewtwo:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+      - {copy_number: 1, label: "rockets-mewtwo exact gate iter 5 copy 1/1 fc2f9a525a86", checkpoint_checksum: "sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f", status: accepted, queued_at: "2026-07-28T13:23:48.479431Z", submitted_at: "2026-07-28T13:24:45.570000Z", submission_id: 55056041, returned_score: 707.2, failure_reason: null, retry_count: 0}
     starmie:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     archaludon-ex:
@@ -1558,7 +3108,7 @@ kaggle_submission_state:
     team-rockets-spidops:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     dudunsparce:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+      - {copy_number: 1, label: "dudunsparce ceiling accepted iter 15 copy 1/1 a1e944fcb4c4", checkpoint_checksum: "sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a", status: accepted, queued_at: "2026-07-26T02:06:39.099991Z", submitted_at: "2026-07-26T13:05:56.057000Z", submission_id: 55001882, returned_score: 691.0, failure_reason: null, retry_count: 1}
     hops-trevenant:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     walrein:
@@ -1574,13 +3124,12 @@ population_training:
   rehearsal_epochs_completed: 0
 
 unresolved_facts:
-  - The metadata fields `status` and `runtime_enabled` inside state/matchup_adapter_roster.json still describe the pre-deployment migration state even though the receipt-backed roster18 checkpoint, router, authorization, and fleet deployment are verified; that source metadata requires a separate authorized correction.
   - Dragapult/Dusknoir remains bound to its historical 28-day expert artifact. It must not be relabeled as the canonical latest-20-calendar-day corpus; rebuild and checksum-pin the compliant active-archetype filter at the next safe rehearsal boundary.
   - No complete latest-20 Dragapult/Dusknoir receipt currently proves its aggregate matching-game count, so eligibility for the historical zero-match fallback is unknown and no fallback is authorized.
   - Frozen pre-roster18 specialist packages preserve their verified historical 22-row checkpoint lineage. Whether every inference package has its own verified roster18 migration receipt is not established by these three planning files.
   - Alakazam has not passed the complete measured fallback pipeline; the contained owner-waiver artifact and submission are audit evidence only and do not confer protocol passing status.
   - Timestamps for the three historical accepted-baseline Kaggle submissions are absent from the repository gate registry.
   - Aggregate RL-epoch and rehearsal-epoch counters are not authoritative in loop_state.json and remain null.
-  - Team Rocket's Mewtwo and Thwackey have no unambiguous row in the pinned PTCG Ladder Meta strategies snapshot; their shares remain null and sort last.
-  - Team Rocket's Spidops also has no verified row in the pinned PTCG Ladder Meta strategies snapshot; its share remains null and sorts last.
+  - Team Rocket's Mewtwo has no matching row in PTCGReplay completed ingest 8; its share remains null and sorts last within its model-availability group unless an explicit operator priority prefix applies.
+  - PTCGReplay reports Dragapult ex and Dusknoir independently rather than a unique Dragapult/Dusknoir combination. Internal Dragapult variants therefore retain explicit aggregate source mappings and must not be assigned invented variant-specific shares.
   - Hammer Pult has an 18-epoch historical bootstrap; it is audit-only and the specialist is explicitly marked restart_required for a fresh 25-epoch protocol bootstrap.

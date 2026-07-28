@@ -1,0 +1,26 @@
+{
+  "schema": "poke_bot.specialist_transition_registry_convergence/v1",
+  "created_at_utc": "2026-07-28T15:06:08Z",
+  "active_specialist": "thwackey",
+  "canonical_runtime_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
+  "stable_handoff_root": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current",
+  "invariants": {
+    "runtime_root_selected_by_environment": true,
+    "cli_self_bootstraps_import_path": true,
+    "managed_and_stable_commands_identical": true,
+    "active_training_interrupted": false
+  },
+  "artifacts": {
+    "gate_handler_sha256": "sha256:13f4eb40d9bc98fedd19e5e837ade25e5965f404eb6e162d756fd3742b3c26b6",
+    "runtime_registry_sha256": "sha256:197eda72ec1473ea5ff02545f20a54c3639dad3f3eb4e9b29fa3014148d870d3",
+    "resolved_command_sha256": "sha256:31daa996e52b81f7cd63a985657062c0b6297ba277cc44b026d3b8f005c239ce"
+  },
+  "validation": {
+    "focused_tests_passed": 52,
+    "focused_tests_failed": 0,
+    "arbitrary_working_directory_check_passed": true,
+    "active_trainer_pid": 2690510,
+    "active_trainer_restart_count": 0,
+    "active_trainer_state": "active/running"
+  }
+}

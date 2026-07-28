@@ -4,16 +4,39 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REGISTRY = ROOT / "ops/specialist_runtime_registry_v1.json"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from poke_bot.archetypes import classify_deck
+
+
 SELECTOR_ENV = "POKEBOT_ACTIVE_SPECIALIST"
+SUBMISSION_CONTRACT_INPUTS = (
+    "scripts/build_submission.sh",
+    "scripts/build_submission_belief_posterior.py",
+    "submission/main.py",
+    "submission/search_config.json",
+    "poke_bot/submission_budget.py",
+    "data/training_mixes/top_ladder_representatives.v1.json",
+    "data/training_mixes/specialist_representatives.v1.json",
+)
+
+
+def default_registry() -> Path:
+    runtime_root = str(
+        os.environ.get("POKEBOT_SPECIALIST_RUNTIME_ROOT") or ""
+    ).strip()
+    root = Path(runtime_root).expanduser() if runtime_root else ROOT
+    return root / "ops/specialist_runtime_registry_v1.json"
 
 
 def _required_text(row: dict[str, Any], field: str) -> str:
@@ -61,6 +84,55 @@ def build_command(
     for path in (launcher, contract, representatives, matchup_tree):
         if not path.is_file():
             raise RuntimeError(f"pass-handler input is missing: {path}")
+    representative_catalog = json.loads(
+        representatives.read_text(encoding="utf-8")
+    )
+    representative_row = dict(
+        dict(representative_catalog.get("decks") or {}).get(specialist_id)
+        or {}
+    )
+    representative_cards = list(representative_row.get("card_ids") or ())
+    digest_payload = dict(representative_catalog)
+    declared_artifact_digest = str(
+        digest_payload.pop("artifact_sha256", "") or ""
+    )
+    actual_artifact_digest = "sha256:" + hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    canonical_multiset_digest = "sha256:" + hashlib.sha256(
+        ",".join(str(card_id) for card_id in sorted(representative_cards)).encode(
+            "ascii"
+        )
+    ).hexdigest()
+    if (
+        representative_catalog.get("schema")
+        != "poke_bot.specialist_deck_representatives/v1"
+        or declared_artifact_digest != actual_artifact_digest
+        or len(representative_cards) != 60
+        or any(
+            isinstance(card, bool) or not isinstance(card, int) or card < 0
+            for card in representative_cards
+        )
+        or representative_row.get("canonical_multiset_sha256")
+        != canonical_multiset_digest
+        or classify_deck(representative_cards) != specialist_id
+    ):
+        raise RuntimeError(
+            f"specialist {specialist_id!r} lacks its exact 60-card "
+            "pass-handler representative"
+        )
+    for relative in SUBMISSION_CONTRACT_INPUTS:
+        path = runtime_root / relative
+        if not path.is_file():
+            raise RuntimeError(
+                f"pass-handler submission input is missing: {path}"
+            )
 
     run_name = _required_text(specialist, "run_name")
     run_dir = Path(
@@ -143,6 +215,7 @@ def build_command(
         "--training-service",
         _required_text(common, "training_service"),
         "--recover-status-143-before-gate",
+        "--require-decision-fusion-runtime",
         "--handoff-service",
         _required_text(handler, "handoff_service"),
         "--continue-drop-in-source",
@@ -166,12 +239,22 @@ def build_command(
             command.index("--ceiling-completed-iteration") + 2,
             "--accept-ceiling-and-continue",
         )
+    runtime_exact_gate_receipt = str(
+        handler.get("runtime_exact_gate_receipt") or ""
+    ).strip()
+    if runtime_exact_gate_receipt:
+        command.extend(
+            [
+                "--runtime-exact-gate-receipt",
+                runtime_exact_gate_receipt,
+            ]
+        )
     return command
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    parser.add_argument("--registry", type=Path, default=default_registry())
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     registry = json.loads(args.registry.resolve().read_text(encoding="utf-8"))

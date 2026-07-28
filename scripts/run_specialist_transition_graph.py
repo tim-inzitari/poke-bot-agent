@@ -20,8 +20,16 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 from typing import Any, Callable
 
+
+ROOT = Path(__file__).resolve().parents[1]
+try:
+    sys.path.remove(str(ROOT))
+except ValueError:
+    pass
+sys.path.insert(0, str(ROOT))
 
 GRAPH_SCHEMA = "poke_bot.specialist_transition_graph/v1"
 CYCLE_SCHEMA = "poke_bot.specialist_cycle_handoff_contract/v1"
@@ -314,9 +322,16 @@ def _assert_active_training_stopped(context: Context) -> dict[str, Any]:
 def _execute_existing_handoff(context: Context) -> dict[str, Any]:
     # The imported implementation contains its own filesystem lock, immutable
     # checkpoint checks, phase receipts, and exact systemd service validation.
-    from scripts.run_specialist_cycle_handoff import run as run_cycle_handoff
+    from scripts import run_specialist_cycle_handoff as handoff_module
 
-    result = run_cycle_handoff(context.cycle_path)
+    implementation = Path(str(handoff_module.__file__)).resolve()
+    if not implementation.is_relative_to(ROOT):
+        raise RuntimeError(
+            "specialist handoff implementation escaped the stable runtime "
+            f"pointer: {implementation}"
+        )
+
+    result = handoff_module.run(context.cycle_path)
     if result:
         raise RuntimeError(f"specialist cycle handoff failed: {result}")
     return {

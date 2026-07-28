@@ -1,5 +1,5 @@
 [Unit]
-Description=Resume-safe Pokemon specialist transition task graph (staged)
+Description=Continue to the next unfinished Pokemon specialist
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=0
@@ -9,12 +9,11 @@ Type=oneshot
 WorkingDirectory=/home/inzi/poke-bot-agent-deployments/specialist-handoff-current
 EnvironmentFile=/home/inzi/.config/pokebot/specialist_runtime.env
 Environment=PYTHONUNBUFFERED=1
-ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent-deployments/specialist-handoff-current/ops/specialist_transition_graph.json
 ExecStartPre=/usr/bin/test -s /home/inzi/poke-bot-agent-deployments/specialist-handoff-current/ops/specialist_cycle_handoff_v1.json
 # EnvironmentFile intentionally retains the live specialist selector while the
 # boundary is running. Pin PYTHONPATH at exec time because EnvironmentFile
 # values override Environment= and may still name the outgoing V5 runtime.
-ExecStart=/usr/bin/env PYTHONPATH=/home/inzi/poke-bot-agent-deployments/specialist-handoff-current /home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_specialist_transition_graph.py --graph ops/specialist_transition_graph.json --cycle-contract ops/specialist_cycle_handoff_v1.json --state /home/inzi/poke-bot-agent/outputs/state/specialist-transition-graph.json
+ExecStart=/usr/bin/env PYTHONPATH=/home/inzi/poke-bot-agent-deployments/specialist-handoff-current /home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_specialist_cycle_handoff.py --contract /home/inzi/poke-bot-agent-deployments/specialist-handoff-current/ops/specialist_cycle_handoff_v1.json
 Restart=on-failure
 RestartSec=60
 TimeoutStartSec=36h
@@ -25,5 +24,5 @@ MemoryHigh=96G
 MemoryMax=112G
 MemorySwapMax=0
 OOMPolicy=stop
-StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-transition-graph.log
-StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-transition-graph.log
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-cycle-handoff.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-cycle-handoff.log
