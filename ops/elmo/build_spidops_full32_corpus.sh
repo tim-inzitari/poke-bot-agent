@@ -21,18 +21,100 @@ test -s "$source_root/scripts/finalize_current_deck_guide_window.py"
 test "$(sha256sum "$catalog_source" | awk '{print $1}')" = "$catalog_sha256"
 
 python3 - "$archive_root" "$start_date" "$end_date" <<'PY'
+import csv
 from datetime import date, timedelta
+import hashlib
+import io
+import json
 from pathlib import Path
 import sys
+import zipfile
 
 root = Path(sys.argv[1])
 start = date.fromisoformat(sys.argv[2])
 end = date.fromisoformat(sys.argv[3])
+expected_manifest_only_ids = {
+    "2026-07-24": {"87841523"},
+}
+expected_archive_sha256 = {
+    "2026-07-24": "68a5c1be539bef579f03b5de29b901a1fab1dc4904af78824fbf7666d73bc8ab",
+}
+validated = []
 for offset in range((end - start).days + 1):
     day = (start + timedelta(days=offset)).isoformat()
     archive = root / f"pokemon-tcg-ai-battle-episodes-{day}.zip"
     if not archive.is_file() or archive.stat().st_size <= 0:
         raise SystemExit(f"missing public replay archive: {archive}")
+    expected_checksum = expected_archive_sha256.get(day)
+    if expected_checksum is not None:
+        digest = hashlib.sha256()
+        with archive.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+                digest.update(chunk)
+        observed_checksum = digest.hexdigest()
+        if observed_checksum != expected_checksum:
+            raise SystemExit(
+                f"audited public replay archive changed: {archive}"
+            )
+    with zipfile.ZipFile(archive) as source:
+        names = source.namelist()
+        if "manifest.csv" not in names:
+            raise SystemExit(f"public replay archive has no manifest: {archive}")
+        json_ids = [
+            Path(name).stem
+            for name in names
+            if name.endswith(".json") and not name.endswith("/")
+        ]
+        manifest_rows = list(
+            csv.DictReader(
+                io.StringIO(
+                    source.read("manifest.csv").decode("utf-8-sig")
+                )
+            )
+        )
+    manifest_ids = [str(row.get("episode_id") or "") for row in manifest_rows]
+    if (
+        not json_ids
+        or len(json_ids) != len(set(json_ids))
+        or not manifest_ids
+        or "" in manifest_ids
+        or len(manifest_ids) != len(set(manifest_ids))
+    ):
+        raise SystemExit(f"public replay archive has duplicate/invalid IDs: {archive}")
+    json_id_set = set(json_ids)
+    manifest_id_set = set(manifest_ids)
+    missing = manifest_id_set - json_id_set
+    orphaned = json_id_set - manifest_id_set
+    if missing != expected_manifest_only_ids.get(day, set()) or orphaned:
+        raise SystemExit(
+            "public replay archive differs from its manifest: "
+            f"day={day} missing={sorted(missing)} orphaned={sorted(orphaned)}"
+        )
+    validated.append(
+        {
+            "date": day,
+            "json_replays": len(json_ids),
+            "manifest_rows": len(manifest_ids),
+            "manifest_only_episode_ids": sorted(missing),
+        }
+    )
+print(
+    json.dumps(
+        {
+            "status": "all_public_archives_match_manifests",
+            "days": len(validated),
+            "json_replays": sum(row["json_replays"] for row in validated),
+            "manifest_rows": sum(row["manifest_rows"] for row in validated),
+            "manifest_only_episode_ids": [
+                episode_id
+                for row in validated
+                for episode_id in row["manifest_only_episode_ids"]
+            ],
+        },
+        sort_keys=True,
+    ),
+    flush=True,
+)
 PY
 
 mkdir -p "$output_root/status"
