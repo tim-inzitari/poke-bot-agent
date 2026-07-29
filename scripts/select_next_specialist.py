@@ -489,14 +489,29 @@ def select(
         for value in (roster.get("expert_ids") or [])
         if str(value)
     ]
+    slot_route_ids = {
+        str(row.get("archetype_id") or "")
+        for row in (roster.get("slots") or [])
+        if isinstance(row, dict)
+        and str(row.get("status") or "") in {"active", "dormant"}
+        and str(row.get("archetype_id") or "")
+    }
+    legacy_prefix_length = int(
+        roster.get("legacy_v5_prefix_length") or 0
+    )
     if (
         not roster_ids
         or len(roster_ids) != len(set(roster_ids))
         or int(roster.get("required_specialist_count") or 0) != len(roster_ids)
-        or int(roster.get("physical_checkpoint_rows") or 0) != len(roster_ids)
+        or int(roster.get("physical_checkpoint_rows") or 0)
+        != legacy_prefix_length
+        or legacy_prefix_length <= 0
+        or slot_route_ids != set(roster_ids)
+        or len(roster.get("slots") or []) != int(
+            roster.get("slot_capacity") or 0
+        )
     ):
         raise RuntimeError("canonical matchup-adapter roster is invalid")
-    roster_id_set = set(roster_ids)
     rows = {
         str(row.get("id") or ""): dict(row)
         for row in (state.get("specialists") or [])
@@ -541,10 +556,13 @@ def select(
         if str(row.get("status") or "") in UNFINISHED
     }
     effective_unfinished_ids = unfinished_ids - boundary_exclusions
+    declared_required_total = progress.get("required_specialists_total")
     if (
-        expected_total != len(roster_ids)
-        or len(rows) != expected_total
-        or set(rows) != roster_id_set
+        expected_total != len(rows)
+        or (
+            declared_required_total is not None
+            and int(declared_required_total) != expected_total
+        )
         or int(remaining_projection if remaining_projection is not None else -1)
         not in {len(order), len(effective_order)}
         or len(set(order)) != len(order)
@@ -552,8 +570,8 @@ def select(
         or not effective_unfinished_ids.issubset(set(effective_order))
     ):
         raise RuntimeError(
-            "canonical specialist unfinished priority roster drifted from "
-            f"{roster_path}"
+            "canonical specialist plan or unfinished priority projection "
+            "drifted"
         )
     order = effective_order
     # Once the controller has staged a concrete successor, both background

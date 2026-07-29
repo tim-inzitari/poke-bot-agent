@@ -12,22 +12,26 @@ from typing import Iterable, Optional, Sequence
 
 from . import (
     alakazam_heuristics,
+    archaludon_ex_heuristics,
     garchomp_heuristics,
     grimmsnarl_heuristics,
     hammer_heuristics,
     rockets_mewtwo_heuristics,
     team_rockets_spidops_heuristics,
+    teal_mask_ogerpon_heuristics,
     thwackey_heuristics,
 )
 
 
 _GUIDES: dict[str, ModuleType] = {
     "alakazam": alakazam_heuristics,
+    "archaludon-ex": archaludon_ex_heuristics,
     "garchomp": garchomp_heuristics,
     "hammer-pult": hammer_heuristics,
     "marnie-s-grimmsnarl-ex": grimmsnarl_heuristics,
     "rockets-mewtwo": rockets_mewtwo_heuristics,
     "team-rockets-spidops": team_rockets_spidops_heuristics,
+    "teal-mask-ogerpon-ex": teal_mask_ogerpon_heuristics,
     "thwackey": thwackey_heuristics,
 }
 

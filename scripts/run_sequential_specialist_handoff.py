@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
 from poke_bot import checkpoint  # noqa: E402
 from poke_bot.pure_rl.expert_rehearsal import resolve_expert_manifest  # noqa: E402
 from poke_bot.matchup_adapters import EXPERT_IDS  # noqa: E402
+from poke_bot.matchup_adapters_v6 import load_slot_registry  # noqa: E402
 from poke_bot.pure_rl.model_registry import (  # noqa: E402
     FAMILY_MARKER,
     sha256,
@@ -444,16 +445,28 @@ def runtime_fleet(
 def canonical_matchup_target_ids(contract: dict[str, Any]) -> tuple[str, ...]:
     """Resolve the handoff's routing roster without a version-sized literal."""
 
-    canonical = tuple(str(value) for value in EXPERT_IDS)
-    configured = dict(contract.get("runtime_registration") or {}).get(
-        "matchup_target_ids"
-    )
+    registration = dict(contract.get("runtime_registration") or {})
+    matchup_v6 = registration.get("matchup_v6")
+    if matchup_v6 is None:
+        canonical = tuple(str(value) for value in EXPERT_IDS)
+    else:
+        matchup_v6 = dict(matchup_v6)
+        if matchup_v6.get("enabled") is not True:
+            raise RuntimeError("Matchup Adapter V6 routing is not enabled")
+        registry_path = Path(str(matchup_v6.get("registry") or ""))
+        if not registry_path.is_absolute():
+            raise RuntimeError("Matchup Adapter V6 registry path is invalid")
+        registry = load_slot_registry(registry_path)
+        canonical = tuple(
+            str(value) for value in registry["active_expert_ids"]
+        )
+    configured = registration.get("matchup_target_ids")
     if configured is not None:
         declared = tuple(str(value) for value in configured)
         if declared != canonical:
             raise RuntimeError(
-                "runtime registration matchup roster differs from canonical "
-                "EXPERT_IDS"
+                "runtime registration matchup roster differs from the "
+                "canonical adapter registry"
             )
     if not canonical or len(canonical) != len(set(canonical)):
         raise RuntimeError("canonical matchup roster is empty or duplicated")

@@ -17,7 +17,9 @@ if str(ROOT) not in sys.path:
 
 import torch
 
-from poke_bot.matchup_adapters import EXPERT_IDS
+from poke_bot.matchup_adapter_routes import (
+    resolve_matchup_adapter_route_contract,
+)
 from poke_bot.public_matchup_router import PublicMatchupDecisionTree
 
 
@@ -47,12 +49,19 @@ def activate(
     extra = dict(saved.get("extra") or {})
     dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
     adapter_config = dict(extra.get("matchup_adapter_config") or {})
+    tree_targets = tuple(str(value) for value in payload.get("targets") or ())
+    route_contract = resolve_matchup_adapter_route_contract(adapter_config)
+    if tree_targets != route_contract.target_ids:
+        raise ValueError(
+            "public tree targets differ from the checkpoint adapter registry"
+        )
+    dormant_config = dict(dormant.get("adapter_config") or {})
     zero_materialized = bool(
         allow_zero_materialized_adapters
         and dormant.get("schema") == "poke_bot.zero_dormant_matchup_adapter/v1"
         and dormant.get("zero_output") is True
         and dormant.get("runtime_enabled") is False
-        and tuple(adapter_config.get("expert_ids") or ()) == tuple(EXPERT_IDS)
+        and (not dormant_config or dormant_config == adapter_config)
     )
     route_decisions = {
         str(key): int(value) for key, value in (fit.get("route_decisions") or {}).items()
@@ -64,7 +73,7 @@ def activate(
     accepted = []
     thresholds = {}
     rejected = {}
-    for archetype_id in EXPERT_IDS:
+    for archetype_id in tree_targets:
         metrics = dict(classes.get(archetype_id) or {})
         reasons = []
         if route_decisions.get(archetype_id, 0) <= 0 and not zero_materialized:
@@ -108,6 +117,7 @@ def activate(
         "consecutive_required": int(consecutive_required),
         "unknown_route_exact_bypass": True,
         "one_route_per_decision": True,
+        **route_contract.runtime_binding(),
         "oracle_or_package_identity_forbidden": True,
         "zero_materialized_adapters_allowed": zero_materialized,
     }

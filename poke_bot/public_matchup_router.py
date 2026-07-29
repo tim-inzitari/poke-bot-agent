@@ -129,25 +129,70 @@ class PublicMatchupDecisionTree:
     """
 
     def __init__(self, payload: Mapping[str, Any], *, digest: str) -> None:
+        from .matchup_adapter_routes import (
+            MatchupAdapterRouteContract,
+            require_runtime_route_binding,
+        )
+        from .matchup_adapters import (
+            ADAPTER_CHECKPOINT_FORMAT as V5_ADAPTER_CHECKPOINT_FORMAT,
+        )
         from .matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
 
         if payload.get("schema") != PUBLIC_TREE_SCHEMA:
             raise ValueError("invalid public matchup decision-tree schema")
         prediction = dict(payload.get("prediction_contract") or {})
         targets = tuple(str(value) for value in payload.get("targets") or ())
+        v5_targets = tuple(EXPERT_IDS)
         if (
-            targets != tuple(EXPERT_IDS)
-            or tuple(prediction.get("route_class_names") or ()) != targets
+            tuple(prediction.get("route_class_names") or ()) != targets
             or int(prediction.get("route_output_width", -1)) != len(targets)
             or int(prediction.get("adapter_count", -1)) != len(targets)
             or prediction.get("unknown_is_separate_abstention") is not True
             or int(prediction.get("unknown_class_index", -1)) != len(targets)
         ):
-            raise ValueError("public tree does not match the 22-position adapter contract")
+            raise ValueError(
+                "public tree does not match the canonical V5 or V6 route contract"
+            )
         tree = dict(payload.get("tree") or {})
         class_names = tuple(str(value) for value in tree.get("class_names") or ())
         if class_names != targets + ("unknown",):
             raise ValueError("public tree class order is not route-safe")
+        if targets == v5_targets:
+            route_contract = MatchupAdapterRouteContract(
+                adapter_format=V5_ADAPTER_CHECKPOINT_FORMAT,
+                target_ids=targets,
+                physical_slots=tuple(range(len(targets))),
+                slot_capacity=len(targets),
+                slot_registry_digest=None,
+            )
+        else:
+            from .matchup_adapters_v6 import (
+                ADAPTER_CHECKPOINT_FORMAT as V6_ADAPTER_CHECKPOINT_FORMAT,
+            )
+            from .matchup_adapters_v6 import (
+                SLOT_CAPACITY,
+                load_slot_registry,
+                registry_digest,
+                slot_map,
+            )
+
+            v6_registry = load_slot_registry()
+            v6_targets = tuple(v6_registry["active_expert_ids"])
+            if targets != v6_targets:
+                raise ValueError(
+                    "public tree does not match the canonical V5 or V6 route "
+                    "contract"
+                )
+            v6_slot_map = slot_map(v6_registry)
+            route_contract = MatchupAdapterRouteContract(
+                adapter_format=V6_ADAPTER_CHECKPOINT_FORMAT,
+                target_ids=targets,
+                physical_slots=tuple(
+                    int(v6_slot_map[target]) for target in targets
+                ),
+                slot_capacity=SLOT_CAPACITY,
+                slot_registry_digest=registry_digest(v6_registry),
+            )
         arrays = {
             key: tuple(tree.get(key) or ())
             for key in (
@@ -162,11 +207,20 @@ class PublicMatchupDecisionTree:
         if lengths != {int(tree.get("node_count", -1))} or not lengths:
             raise ValueError("public tree arrays have inconsistent lengths")
         self.targets = targets
+        self.route_physical_slots = route_contract.physical_slots
+        self.adapter_format = route_contract.adapter_format
+        self.slot_registry_digest = route_contract.slot_registry_digest
         self.unknown_index = len(targets)
         self.unknown_route = UNKNOWN_ROUTE
         self.digest = str(digest)
         self.runtime_enabled = payload.get("runtime_enabled") is True
         runtime = dict(payload.get("runtime_contract") or {})
+        if self.runtime_enabled:
+            require_runtime_route_binding(
+                runtime,
+                route_contract,
+                allow_legacy_v5=True,
+            )
         self.runtime_accepted_archetype_ids = frozenset(
             str(value) for value in runtime.get("accepted_archetype_ids") or ()
         )
@@ -247,13 +301,22 @@ class PublicMatchupDecisionTree:
         if class_index == self.unknown_index:
             return PublicTreePrediction(None, self.unknown_route, confidence, node)
         return PublicTreePrediction(
-            self.targets[class_index], class_index, confidence, node
+            self.targets[class_index],
+            self.route_physical_slots[class_index],
+            confidence,
+            node,
         )
 
     def runtime_prediction(self, card_ids: Sequence[int]) -> PublicTreePrediction:
         """Return an activation-qualified prediction or exact abstention."""
 
-        prediction = self.predict_card_ids(card_ids)
+        present = tuple(int(value) for value in card_ids if int(value) >= 0)
+        if not present:
+            # No archetype may be inferred from a public state with no visible
+            # opponent-card evidence, irrespective of fitted leaf contents or
+            # calibration thresholds.
+            return PublicTreePrediction(None, self.unknown_route, 0.0, -1)
+        prediction = self.predict_card_ids(present)
         threshold = self.runtime_per_archetype_min_leaf_confidence.get(
             str(prediction.archetype_id), self.runtime_min_leaf_confidence
         )

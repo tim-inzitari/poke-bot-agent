@@ -106,6 +106,16 @@ def main() -> int:
             "catalog labels take precedence over stale local signatures."
         ),
     )
+    parser.add_argument(
+        "--authoritative-only-archetype",
+        action="append",
+        default=[],
+        help=(
+            "Require this archetype to be labeled by an exact authoritative "
+            "deck-catalog fingerprint; reject representative/signature/ace "
+            "fallbacks. Repeatable."
+        ),
+    )
     parser.add_argument("--no-resume", action="store_true")
     args = parser.parse_args()
     classifier = LadderReplayClassifier.from_paths(
@@ -117,6 +127,7 @@ def main() -> int:
         ),
         logical_aliases=logical_aliases(args.logical_alias),
         authoritative_deck_catalogs=args.authoritative_deck_catalog,
+        authoritative_only_ids=args.authoritative_only_archetype,
     )
     receipt = materialize_day(
         args.archive,

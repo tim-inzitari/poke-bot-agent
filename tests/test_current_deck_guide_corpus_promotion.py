@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date, timedelta
 from pathlib import Path
 import subprocess
 import sys
@@ -19,17 +20,21 @@ def _json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _source(root: Path) -> Path:
+def _source(root: Path, *, days: int = 20) -> Path:
     specialist = "example-specialist"
     root.mkdir()
     rows = []
-    dates = [f"2026-07-{day:02d}" for day in range(1, 21)]
-    for date in dates:
-        shard = root / f"{specialist}-{date}.features"
-        shard.write_bytes(f"{date}\n".encode())
+    start = date(2026, 6, 26)
+    dates = [
+        (start + timedelta(days=offset)).isoformat()
+        for offset in range(days)
+    ]
+    for source_date in dates:
+        shard = root / f"{specialist}-{source_date}.features"
+        shard.write_bytes(f"{source_date}\n".encode())
         rows.append(
             {
-                "date": date,
+                "date": source_date,
                 "records": 1,
                 "decisions": 2,
                 "guide_rows": 1,
@@ -41,8 +46,8 @@ def _source(root: Path) -> Path:
         manifest,
         {
             "totals": {
-                "decisions_kept": 40,
-                "target_coverage": {"guide_rows": 20},
+                "decisions_kept": days * 2,
+                "target_coverage": {"guide_rows": days},
             }
         },
     )
@@ -66,9 +71,9 @@ def _source(root: Path) -> Path:
             "guide_version": "example-v1",
             "manifest_sha256": _sha256(manifest),
             "protected_pointer_sha256": _sha256(pointer),
-            "decisions": 40,
-            "guide_rows": 20,
-            "days": 20,
+            "decisions": days * 2,
+            "guide_rows": days,
+            "days": days,
             "dates": dates,
             "daily_shards": rows,
         },
@@ -115,7 +120,8 @@ def test_promotion_rejects_a_tampered_landed_shard(tmp_path: Path) -> None:
     source = _source(tmp_path / "source")
     destination = tmp_path / "corpora" / "example-specialist"
     destination.mkdir(parents=True)
-    (source / "example-specialist-2026-07-20.features").write_text(
+    tampered_date = "2026-07-15"
+    (source / f"example-specialist-{tampered_date}.features").write_text(
         "tampered\n", encoding="utf-8"
     )
     result = subprocess.run(
@@ -138,5 +144,41 @@ def test_promotion_rejects_a_tampered_landed_shard(tmp_path: Path) -> None:
         text=True,
     )
     assert result.returncode != 0
-    assert "guide feature checksum failed: 2026-07-20" in result.stderr
+    assert f"guide feature checksum failed: {tampered_date}" in result.stderr
     assert not (destination / "PROTECTED_EXPERT_CORPUS.json").exists()
+
+
+def test_promotion_accepts_an_explicit_full_history_window(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path / "source", days=32)
+    destination = tmp_path / "corpora" / "example-specialist"
+    state = tmp_path / "state.json"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--specialist-id",
+            "example-specialist",
+            "--source",
+            str(source),
+            "--destination",
+            str(destination),
+            "--state",
+            str(state),
+            "--expected-days",
+            "32",
+            "--bwlimit-kib",
+            "100000",
+        ],
+        check=True,
+    )
+
+    receipt = json.loads(state.read_text())
+    assert receipt["status"] == "ready"
+    assert receipt["identity"]["days"] == 32
+    assert len(receipt["identity"]["dates"]) == 32
+    assert receipt["rollback_directory"] is None
+    assert receipt["replaced_existing_destination"] is False
+    assert (destination / "PROTECTED_EXPERT_CORPUS.json").is_file()

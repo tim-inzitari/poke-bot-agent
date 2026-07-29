@@ -180,6 +180,9 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "rockets-mewtwo",
         "thwackey",
         "team-rockets-spidops",
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "archaludon-ex",
     ]
 
 
@@ -724,9 +727,12 @@ def test_failed_core_regression_reuses_boundary_and_falls_back(
 
 def test_required_specialist_ids_is_exact_canonical_roster() -> None:
     identifiers = _required_specialist_ids(ROOT / "state/specialists.yaml")
-    assert len(identifiers) == 18
+    assert len(identifiers) == 17
     assert "starmie" in identifiers
     assert "hops-trevenant" in identifiers
+    assert "teal-mask-ogerpon-ex" in identifiers
+    assert "dragapult-blaziken" not in identifiers
+    assert "dragapult-dudunsparce" not in identifiers
 
 
 def test_required_specialist_ids_rejects_completed_specialist_in_unfinished_order(
@@ -764,7 +770,7 @@ def test_starmie_pass_still_leaves_unfinished_roster_before_population() -> None
         "hops-trevenant",
         "starmie",
     }
-    assert len(required - completed_after_starmie) == 15
+    assert len(required - completed_after_starmie) == 14
     assert not population_transition_ready(completed_after_starmie, required)
 
 

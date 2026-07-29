@@ -1,0 +1,993 @@
+ARCHALUDON EX / DUDUNSPARCE
+PRACTICAL PILOT GUIDE FOR EXPERT REVIEW
+
+Specialist ID: archaludon-ex
+Guide version: archaludon-ex-north-star-v1
+Prepared: 2026-07-28
+Audience: world-champion and equivalent Pokémon TCG subject-matter experts
+Status: research pilot; not yet expert-approved
+
+
+HOW TO READ THIS PILOT
+
+This guide covers the current Archaludon ex archetype built around Duraludon,
+Archaludon ex, Basic Metal Energy, and a Dudunsparce draw engine. It does not
+claim that every deck containing Archaludon ex belongs to this specialist.
+
+The concrete reference is Brian Peltz's NAIC 2026 list. It is the most recent
+large-event Masters list located during review and contains the current
+Perfect Order and Chaos Rising support package. Antoni M.'s fifth-place
+Juniors list from the June 2026 Turin Special Event is an important alternate:
+it uses a 4-4 Dudunsparce line and one single-Prize Archaludon. The alternate
+is particularly relevant to anti-Pokémon-ex walls.
+
+Labels used below:
+
+SOURCE: a printed card, published deck list, official article, or public
+results page directly supports the statement.
+
+INFERENCE: practical play reasoning derived from public card text and lists.
+It is proposed for expert review, not an official ruling or causal result.
+
+LIST CHECK: the advice applies only if the registered sixty cards include the
+named card.
+
+SME CHECK: a deliberately exposed question for expert correction.
+
+Card text and event rulings control exact legality. This guide paraphrases
+cards and supplies arithmetic; it does not replace either.
+
+
+EXECUTIVE IDENTITY
+
+SOURCE: Archaludon ex is a 300-HP Stage 1. When it evolves from hand, Assemble
+Alloy may attach up to two Basic Metal Energy from the discard pile to Metal
+Pokémon in any distribution. Metal Defender costs three Metal, deals 220, and
+removes that Archaludon ex's Weakness during the opponent's next turn.
+
+SOURCE: Duraludon SCR 106 is a 130-HP Basic with Hammer In for 30 and Raging
+Hammer for 80 plus 10 for each damage counter on itself. Relicanth's Memory
+Dive lets evolved Pokémon use attacks from their previous Evolutions while
+still paying the printed costs. A damaged Archaludon ex can therefore use
+Duraludon's Raging Hammer.
+
+SOURCE: Dudunsparce's Run Away Draw draws three, then shuffles Dudunsparce and
+all attached cards into the deck if cards were drawn. This supplies repeated
+draw, removes a fragile single-Prize body from play, and reopens a bench slot.
+
+INFERENCE: The deck is a resource-conversion tank deck, not simply a 220-damage
+linear attacker. It repeatedly converts:
+
+- Metal in hand into Metal in the discard through Ultra Ball or Prism Tower;
+- an unevolved Duraludon into acceleration through Assemble Alloy;
+- a Dunsparce evolution into three new cards and a reopened bench slot;
+- damage on an Archaludon into Raging Hammer damage through Relicanth;
+- a damaged or expendable board slot into a reset through Scoop Up Cyclone;
+- and the opponent's prize progress into disruption through Special Red Card.
+
+The normal plan is to make an Archaludon ex attack immediately on the turn it
+evolves, force an awkward two-hit exchange against 300 HP, and have a second
+Duraludon ready to inherit discarded Energy after a knockout. The strongest
+turns do several jobs at once: draw with Dudunsparce, seed exactly enough
+Metal into the discard, evolve and accelerate, disrupt or gust, then take a
+prize while preserving the next attacker.
+
+The deck becomes brittle when it treats every optional Pokémon as free.
+Meowth ex and Fezandipiti ex each expose two prizes. Mega Mawile ex exposes
+three. Relicanth and Fan Rotom expose easy single prizes. The five bench slots
+must first protect the attack stream and Dudunsparce engine.
+
+
+CURRENT PUBLIC EVIDENCE
+
+SOURCE: The reviewed POR Standard 2026 Play Limitless aggregate recorded 135
+wins, 97 losses, and 5 ties across 237 Archaludon Dudunsparce matches, a
+reported 56.96% win rate. That page included 19 Dragapult Dusknoir matches,
+17 plain Dragapult, 14 Alakazam Dudunsparce, 12 N's Zoroark, 10 Rocket's
+Mewtwo, 9 Raging Bolt Ogerpon, 9 Grimmsnarl Froslass, 8 Lucario Hariyama, 7
+Crustle, and only 3 Rocket's Spidops matches.
+
+INFERENCE: Those are observational online results, not matchup truth. Lists,
+players, event structures, and sample sizes differ. Use the aggregate to
+choose testing priorities, never to substitute a percentage for a board-state
+decision. In particular, an 8-1 row or a 1-2 row is too small to support a
+confident matchup claim.
+
+SOURCE: The official Pokémon strategy article from December 2024 explains the
+core tank, discard-and-recover, Relicanth, Raging Hammer, and damaged-attacker
+reset principles. Its example list belongs to an older format, so rotated
+support cards from that list are historical context rather than current-list
+instructions.
+
+
+REFERENCE SIXTY
+
+Brian Peltz, 523rd place, NAIC 2026, New Orleans
+Public list: https://limitlesstcg.com/decks/list/28608
+
+Pokémon - 18
+
+4 Duraludon SCR 106
+3 Archaludon ex SSP 130
+3 Dunsparce JTG 120
+3 Dudunsparce TEF 129
+1 Fan Rotom SCR 118
+1 Meowth ex POR 62
+1 Relicanth TEF 84
+1 Mega Mawile ex MEG 94
+1 Fezandipiti ex ASC 142
+
+Trainers - 32
+
+4 Lillie's Determination
+3 Boss's Orders
+2 Judge
+1 Hilda
+1 Philippe
+1 Black Belt's Training
+4 Night Stretcher
+4 Poké Pad
+4 Ultra Ball
+2 Buddy-Buddy Poffin
+1 Special Red Card
+1 Scoop Up Cyclone
+2 Prism Tower
+2 Battle Cage
+
+Energy - 10
+
+10 Basic Metal Energy
+
+SOURCE: Antoni M.'s fifth-place Turin Juniors alternate uses four Dunsparce,
+four Dudunsparce, four total Duraludon across two prints, three Archaludon ex,
+one single-Prize Archaludon, Fan Rotom, Relicanth, Psyduck, and Mega Mawile ex.
+Its Trainers emphasize Explorer's Guidance, four Prism Tower, and no Battle
+Cage. Treat this as a different registered list, not hidden access to cards
+missing from the reference sixty.
+
+
+QUICK START
+
+If time is short, pilot from these rules:
+
+1. Prefer going first by default. The deck wants to evolve and attack on its
+   second turn; going first reaches that evolution turn before the opponent's
+   second attack turn.
+2. Start Duraludon when practical. Establish a second Duraludon before exposing
+   optional support Pokémon.
+3. Establish one or two Dunsparce early. Fan Call and Buddy-Buddy Poffin find
+   the draw engine, not the 130-HP Metal Duraludon.
+4. On the first deck search, inventory the Duraludon line, Basic Metal, Scoop
+   Up Cyclone, recovery, and matchup Stadium. Infer prizes only from legal
+   searches; never pretend to know face-down Prize identities.
+5. Before evolving, place up to two useful Basic Metal in the discard. Do not
+   discard Metal merely because Assemble Alloy can recover it.
+6. Evolve only after choosing where each accelerated Energy goes. Default to
+   a current three-Energy attacker plus progress toward a replacement.
+7. Use Metal Defender by default. Choose Raging Hammer only when its exact
+   knockout or prize conversion is worth giving up refreshed Weakness removal.
+8. Keep a replacement Duraludon in play whenever the opponent can knock out
+   the Active. An Archaludon in hand is not a replacement attacker without a
+   legal Duraludon and an Energy route.
+9. Do not bench Meowth ex, Fezandipiti ex, or Mega Mawile ex speculatively.
+   Name the immediate Supporter, draw, attack, or prize-map gain first.
+10. Against damage-counter strategies, prioritize Battle Cage but remember
+    that it does not prevent ordinary damage to the Bench.
+11. Against a Pokémon-ex damage wall such as Crustle DRI, preserve a
+    single-Prize attack route. The reference list has Duraludon; variants may
+    also register single-Prize Archaludon.
+12. Before Scoop Up Cyclone, identify the new Active, the standing Duraludon,
+    and how returned Energy will re-enter play. Returned Energy goes to hand,
+    not to the discard.
+
+
+SETUP AND OPENING BOARD
+
+INFERENCE: The default opening board is:
+
+- one Duraludon Active or ready to become Active;
+- a second Duraludon as the replacement lane;
+- one or two Dunsparce;
+- and no optional support liability without a named job.
+
+The priority is resilience, not maximum occupancy. Two Duraludon protect
+against gust and let successive Archaludon evolutions accelerate. Two
+Dunsparce protect the draw engine and allow consecutive Run Away Draw turns.
+The fifth bench slot is contested by Relicanth, Fan Rotom, Meowth ex,
+Fezandipiti ex, Mega Mawile ex, or a newly recycled Dunsparce.
+
+Opening Active order
+
+INFERENCE:
+
+1. Duraludon is the default. It can evolve, attack, and become a damaged
+   Raging Hammer source later.
+2. Dunsparce is an acceptable single-Prize pivot. Going second, Trading Places
+   can move it to the Bench after setup if paying one Colorless is useful.
+3. Fan Rotom is functional because Fan Call matters only on the first turn,
+   but it can become a stranded easy prize.
+4. Relicanth and the Rule Box support Pokémon are generally poor voluntary
+   openers. Mega Mawile is especially costly because a Mega Evolution
+   Pokémon ex yields three prizes when Knocked Out.
+
+First-turn search order
+
+SOURCE: Fan Rotom's Fan Call can be used only on the first turn and finds up
+to three Colorless Pokémon with 100 HP or less. Buddy-Buddy Poffin places up
+to two Basic Pokémon with 70 HP or less directly onto the Bench. Poké Pad
+finds a Pokémon without a Rule Box.
+
+INFERENCE:
+
+1. Use Fan Call before the first turn expires. It can find Dunsparce and
+   another Fan Rotom, but it cannot find the 130-HP Metal Duraludon.
+2. Use Poffin only after counting bench slots; it can establish Dunsparce
+   directly.
+3. Use Poké Pad to fill the role the other searches miss. In the reference
+   list that often means Duraludon, Dudunsparce, Relicanth, or Fan Rotom.
+   Poké Pad cannot find Archaludon ex, Meowth ex, Fezandipiti ex, or Mega
+   Mawile ex because those Pokémon have Rule Boxes.
+4. Preserve Ultra Ball when its two-card discard is the cleanest route to
+   both Archaludon ex and Assemble Alloy fuel.
+
+Prize check
+
+INFERENCE: During the first legal deck search, count rather than merely look.
+Confirm how many of these remain in deck:
+
+- Duraludon and Archaludon ex;
+- Dunsparce and Dudunsparce;
+- Basic Metal Energy;
+- Night Stretcher;
+- the one-of Scoop Up Cyclone;
+- the relevant Stadium;
+- Relicanth and Mega Mawile if the matchup may need them;
+- and the one-of Supporters that Meowth can fetch.
+
+Human pilots may infer which cards are prized from the registered list and
+the legally viewed deck. The heuristic teacher must not use face-down Prize
+identities; that distinction is intentional.
+
+
+GOING FIRST
+
+INFERENCE: Going first is the default because Duraludon cannot evolve on the
+first turn it enters play. The desired second turn is evolve, Assemble Alloy,
+and Metal Defender. Going first also denies the opponent a full extra turn to
+attack the unevolved 130-HP line before that evolution.
+
+First turn goals, in order:
+
+1. Put two Duraludon in play when the hand and prizes allow.
+2. Establish at least one Dunsparce, preferably two against gust or spread.
+3. Use Fan Call now if available.
+4. Make the normal attachment where it survives and advances a known attack.
+5. Preserve a discard outlet and Archaludon access for the next turn.
+
+Do not over-discard Metal on turn one. If one Metal is manually attached and
+two are available to discard next turn, the attack is already funded. Sending
+four or five of the deck's ten Metal to discard without a recovery plan makes
+later attackers fragile.
+
+On turn two, draw before committing to the exact line. If Dudunsparce is
+available, decide whether its three cards can reduce the cost of the turn.
+Then establish the necessary discard Metal, evolve, distribute Assemble Alloy,
+retreat if needed, and attack. The sequencing section below covers exceptions.
+
+
+GOING SECOND
+
+INFERENCE: Going second gives access to a first-turn Supporter and attack, but
+it does not remove the evolution wait. Choose it only for a matchup-specific
+reason or when the registered list's first-turn consistency outweighs the
+tempo of evolving first.
+
+The first-turn Supporter is usually Lillie's Determination when the opening
+hand needs repair. At exactly six remaining prizes it draws eight after
+shuffling the hand, so it is at peak value before either side has taken one of
+your prizes. Hilda is useful only when the searched Evolution and Energy have
+a next-turn route; an Archaludon in hand does not protect a lone Duraludon
+from the opponent's immediate turn.
+
+Available attacks are setup tools, not obligations:
+
+- Duraludon's Hammer In does 30 for one Metal. Take it when the 30 changes a
+  later threshold and the Active Duraludon is not being volunteered into an
+  easy knockout.
+- Dunsparce's Trading Places can switch itself with a Benched Pokémon. Use it
+  when the pivot protects a key body or improves the next-turn evolution.
+- Passing can be superior when an attack would strand the wrong Active,
+  consume the only attachment, or place damage that ruins a planned clean
+  Huge Bite target.
+
+The last point is nonlinear but important. Mega Mawile's Huge Bite has a
+260-damage base only if the opposing Active has no damage counters before the
+attack. A casual Hammer In can reduce that future base to 30.
+
+
+TURN SEQUENCING
+
+Start-of-turn verbal check
+
+Before playing a card, answer:
+
+1. How many prizes does each player need, and what public prize values are
+   available?
+2. Which attacker takes the current prize?
+3. Which Pokémon attacks after the opponent's most likely knockout?
+4. How many Basic Metal are in hand, deck, discard, and visibly attached?
+5. How many Assemble Alloy activations remain possible this game?
+6. Is Metal Defender's Weakness protection required for the next opponent
+   turn?
+7. Does Relicanth create a better exact Raging Hammer number?
+8. Which bench slot must remain open for Meowth, Fezandipiti, Dunsparce, or a
+   replacement Duraludon?
+9. Which Stadium matters now: Battle Cage, Prism Tower, or the opponent's?
+10. If the Active is removed, what becomes Active and how does it retreat?
+
+Information before destruction
+
+INFERENCE: Use safe current-turn information before irreversible discards.
+Run Away Draw and a legal Flip the Script can reveal cards that change the
+Ultra Ball discard or Supporter choice. Search effects reveal the remaining
+deck and improve prize inference. Exceptions are deliberate:
+
+- If the deck must contain a particular card before Run Away Draw shuffles
+  Dudunsparce back, search first.
+- If a Dudunsparce currently occupies the only bench slot needed for the
+  turn, Run Away Draw first.
+- If Lillie's Determination will shuffle the whole hand, consume useful Items,
+  abilities, and searches first without discarding resources the new hand
+  needs.
+- If Judge or Special Red Card is the chosen disruption, complete your own
+  searches before changing hands unless a known ordering rule demands
+  otherwise.
+
+The acceleration sequence
+
+INFERENCE:
+
+1. Decide the final attacker and Energy allocation.
+2. Count already attached Metal.
+3. Put only the missing amount of Basic Metal into the discard with Ultra Ball
+   or Prism Tower.
+4. Search Archaludon ex if needed.
+5. Evolve a Duraludon.
+6. Resolve Assemble Alloy, attaching zero, one, or two according to the plan.
+7. Make the manual attachment to the current or replacement attacker.
+8. Retreat or gust only after confirming the attack remains legal.
+
+Assemble Alloy may split two Energy across Metal Pokémon. The default is not
+automatically "both to the new Archaludon." If the current attacker already
+has enough, one or both Energy can prepare a second Duraludon, another
+Archaludon, or Mega Mawile. Conversely, splitting is wrong when it leaves both
+attackers short.
+
+Dudunsparce sequencing
+
+SOURCE: Run Away Draw shuffles Dudunsparce and all attached cards into the
+deck after drawing.
+
+INFERENCE:
+
+- Avoid attaching Energy to Dudunsparce without a concrete attack or retreat
+  reason; Run Away Draw removes that Energy from the board and returns it to
+  the deck, not the discard.
+- Rebench Dunsparce only after confirming it does not consume the replacement
+  Duraludon or matchup-tech slot.
+- A second Dunsparce lets the engine alternate, but two Dunsparce are not
+  mandatory when prizes, bench pressure, or spread make them liabilities.
+- Near deck-out, count before using the ability. Dudunsparce shuffles itself
+  back, but a pilot should not rely on an improvised endgame loop without
+  verifying every mandatory draw and legal board requirement.
+
+Supporter sequencing
+
+SOURCE: Hilda searches an Evolution Pokémon and an Energy card. Philippe
+attaches up to two Basic Metal from the discard to one Metal Pokémon. Black
+Belt's Training adds 40 damage to attacks against the opponent's Active
+Pokémon ex for that turn.
+
+INFERENCE:
+
+- Lillie's Determination is the broad reset, especially at six prizes.
+- Boss's Orders is correct when the gust changes the prize map now, not merely
+  because a target is attractive.
+- Hilda is an exact two-resource bridge. It is strongest when the Evolution
+  and Energy both complete the same turn or preserve the next attacker.
+- Philippe is the recovery acceleration when no useful Assemble Alloy remains.
+  Unlike Assemble Alloy, both attached Energy go to one Metal Pokémon.
+- Black Belt is a threshold card. Name the target and arithmetic before using
+  the Supporter for the turn.
+- Judge is symmetrical disruption; use your draw/search abilities first when
+  doing so does not reveal a new reason to choose another Supporter.
+
+
+ENERGY AND RESOURCE ACCOUNTING
+
+The reference list has ten Basic Metal. Treat them as a finite system with
+five locations: deck, hand, discard, attached, and face-down prizes. Only
+publicly established or legally inferred counts belong in the plan.
+
+INFERENCE: Assign each Metal one of four jobs:
+
+1. the current attack;
+2. the next attacker;
+3. retreat or a specific auxiliary attack;
+4. recoverable discard fuel.
+
+Metal in the discard is not wasted, but it is not attached until an actual
+Assemble Alloy or Philippe resolves. Metal in hand is not acceleration fuel
+until discarded. Metal returned by Scoop Up Cyclone is also in hand, so a
+reset Archaludon does not automatically reaccelerate itself.
+
+Discard outlets
+
+SOURCE: Ultra Ball discards two cards as part of its cost and searches a
+Pokémon. Prism Tower lets each player once per turn discard two cards from
+hand to draw one.
+
+INFERENCE:
+
+- Ultra Ball is the best combined bridge when it discards needed Metal and
+  finds Archaludon ex.
+- Prism Tower is a resource-negative filter, not free draw. Discarding two to
+  draw one costs a net card and gives the opponent access to the Stadium too.
+- Do not discard Night Stretcher, Scoop Up Cyclone, or the only matchup Stadium
+  merely to reach the aesthetically ideal two-Metal discard.
+- Do not use Prism Tower before deciding whether Battle Cage is essential;
+  playing one Stadium discards the other Stadium in play.
+
+Recovery
+
+SOURCE: Night Stretcher returns either a Pokémon or a Basic Energy from the
+discard to hand. The reference list runs four.
+
+INFERENCE: Name the bottleneck before choosing:
+
+- recover Duraludon when no evolution seed remains;
+- recover Archaludon ex when a live Duraludon and discard Energy already exist;
+- recover Basic Metal when the manual attachment is the missing attack cost;
+- recover Dudunsparce when draw is the bottleneck;
+- recover Relicanth only when an exact Raging Hammer line matters;
+- recover a Rule Box support Pokémon only when its immediate value justifies
+  the exposed prize liability.
+
+Multiple Night Stretchers do not excuse careless discards. They are also how
+the deck rebuilds after knockouts, so using all four as early consistency
+cards can leave no late attack stream.
+
+
+ATTACKS AND EXACT THRESHOLDS
+
+Metal Defender
+
+SOURCE: 220 damage for three Metal; the attacking Archaludon ex has no
+Weakness during the opponent's next turn.
+
+INFERENCE: This is the default attack even when 220 misses a knockout. The
+Weakness-removal clause is part of its value. Against Fire attackers, a turn
+of Raging Hammer or another attack does not refresh Metal Defender's
+protection. Check whether the extra damage wins now or simply exposes a
+two-Prize knockout.
+
+Black Belt's Training changes Metal Defender from 220 to 260 against an
+Active Pokémon ex. It does not add damage against a non-ex target. Recheck
+Weakness, Resistance, Tools, and other effects after setting the base.
+
+Raging Hammer through Relicanth
+
+SOURCE: Raging Hammer is 80 plus 10 per damage counter on the attacking
+Pokémon. Memory Dive allows the evolved Archaludon ex to use it for its
+printed three-Energy cost.
+
+Exact examples before other modifiers:
+
+0 damage on Archaludon ex: 80
+40 damage: 120
+80 damage: 160
+120 damage: 200
+140 damage: 220
+180 damage: 260
+220 damage: 300
+260 damage: 340
+
+INFERENCE: Raging Hammer is not automatically better once it exceeds 220. It
+requires a Relicanth bench slot and gives up the new Metal Defender protection.
+Use it for an exact knockout, a game-ending prize, or a prize swing that
+outweighs the defensive loss.
+
+Mega Mawile ex
+
+SOURCE: Gobble Down costs two Metal and deals 80 times the number of prizes
+you have already taken. Huge Bite costs three Energy and normally has a
+260-damage base, but its base becomes 30 if the opposing Active already has
+any damage counters.
+
+Gobble Down table:
+
+0 prizes taken: 0
+1 prize taken: 80
+2 prizes taken: 160
+3 prizes taken: 240
+4 prizes taken: 320
+5 prizes taken: 400
+
+INFERENCE: Mega Mawile is a finisher, not a default opening bench Pokémon.
+At three prizes taken, Gobble Down reaches 240; with Black Belt it reaches 280
+against an Active ex. At four prizes taken it reaches 320 without a modifier.
+Huge Bite plus Black Belt reaches 300 against a clean Active ex, exactly the
+printed HP of Archaludon ex. Any prior damage counter collapses Huge Bite's
+base to 30, so plan the target before Hammer In, spread, or incidental damage.
+
+Mega Mawile gives up three prizes. Bench it only when the current attack,
+next-turn attack, or forced prize map justifies that liability.
+
+Duraludon and auxiliary attacks
+
+SOURCE: Unevolved Duraludon has Hammer In for 30 and Raging Hammer using the
+same damage-counter formula. Fezandipiti ex can attack any opposing Pokémon
+for 100. Meowth ex's three-Energy Tuck Tail does 60 and returns Meowth and its
+attached cards to hand.
+
+INFERENCE:
+
+- Preserve Duraludon as the reference list's non-ex attack route into an
+  ex-immune wall.
+- Fezandipiti's attack can take an exact Bench prize, but funding three
+  Colorless on a two-Prize support Pokémon must not break the Metal stream.
+- Tuck Tail can recycle Last-Ditch Catch and remove Meowth from play, but it
+  is a niche three-Energy attack rather than the normal recovery plan.
+
+
+BENCH AND PRIZE MAPPING
+
+Default prize map
+
+INFERENCE: The clean default asks the opponent to take three Archaludon ex
+knockouts: 2-2-2. That is not always achievable, but it is the baseline against
+which optional benching should be judged.
+
+A Duraludon or Dunsparce knockout can make the opponent take seven or more
+prizes in total if it does not also break the engine. Conversely, a gusted
+Meowth ex or Fezandipiti ex preserves the opponent's 2-2-2 route. A gusted
+Mega Mawile can compress the game into 3 plus 2 plus 1.
+
+Before benching a Rule Box support Pokémon, ask:
+
+1. How many prizes does it expose?
+2. Can the opponent gust and knock it out now?
+3. Does its immediate effect create at least equivalent tempo or prizes?
+4. Can Scoop Up Cyclone or its own attack remove it later?
+5. Which core body loses the bench slot?
+
+Bench roles
+
+INFERENCE: A typical five-slot allocation is:
+
+- current or replacement Duraludon lane;
+- second Duraludon lane;
+- Dunsparce engine body;
+- second Dunsparce or recycled engine body;
+- one flex slot.
+
+Relicanth belongs in the flex slot only when Raging Hammer is live or likely.
+Fan Rotom belongs there only while first-turn setup value exceeds its later
+liability. Meowth belongs there when a named Supporter changes the turn.
+Fezandipiti belongs there after an opponent-turn knockout when three cards are
+worth exposing two prizes. Mega Mawile belongs there for a funded threshold.
+
+Scoop Up Cyclone
+
+SOURCE: Scoop Up Cyclone puts one of your Pokémon and all cards attached to it
+into your hand.
+
+INFERENCE: Four common jobs:
+
+1. Reset a damaged Archaludon ex and deny an imminent two-Prize knockout.
+2. Remove Meowth ex or Fezandipiti ex from a gustable bench.
+3. Return Meowth ex so Last-Ditch Catch can be used on a later replay.
+4. Reopen a bench slot at the exact turn it is needed.
+
+The Archaludon reset requires preparation. When an evolved Archaludon and its
+Energy return to hand, the Energy is not in discard and the Duraludon under
+the evolution returns too. A different Duraludon must already be in play if
+you want to evolve again that turn. Confirm the promoted Active and retreat
+path before scooping the Active.
+
+
+MATCHUP PLANS
+
+These plans prioritize mechanics. The public percentages are descriptive
+testing context only.
+
+Dragapult and Dragapult Dusknoir
+
+SOURCE: In the reviewed aggregate, plain Dragapult was 11-6 for Archaludon,
+while Dragapult Dusknoir was 8-9-2. Battle Cage prevents damage counters from
+being placed on Benched Pokémon by effects of the opponent's attacks and
+Abilities. It explicitly does not prevent damage from attacks.
+
+INFERENCE:
+
+- Prioritize Battle Cage before the opponent's damage-counter turn.
+- Keep at least two Duraludon when a single counter-placement sequence can
+  remove an evolution seed.
+- Metal Defender's 220 and 300 HP make two-hit tanking plausible, but count
+  all public modifiers rather than assuming survival.
+- Use Run Away Draw to remove a damaged Dudunsparce when legal, but do not
+  expose a new 60- or 70-HP Dunsparce without a reason.
+- Against Dusknoir, account for counter placement before choosing the next
+  attacker and prize map.
+- Battle Cage can be replaced by another Stadium. Do not call the bench safe
+  beyond the current public board.
+
+Raging Bolt Ogerpon
+
+SOURCE: The aggregate row was 8-1 across only nine matches.
+
+INFERENCE:
+
+- Treat the row as a testing hypothesis, not an 89% matchup.
+- Force the opponent to spend the full resources required to clear 300 HP.
+- Metal Defender's Weakness clause is usually not the core here; its stable
+  220 pressure and the second attacker matter more.
+- Gust a two-Prize engine only when it changes the race now.
+- Avoid volunteering Meowth, Fezandipiti, or an unfunded Mega Mawile as an
+  easier two- or three-Prize route.
+
+Rocket's Mewtwo and Rocket's Spidops
+
+SOURCE: The aggregate recorded 6-4 against Rocket's Mewtwo and 1-2 against
+Rocket's Spidops, with the Spidops sample only three matches.
+
+INFERENCE:
+
+- Against either Rocket deck, count the public Team Rocket bodies and Energy
+  before assuming the Active survives.
+- Take efficient one-Prize knockouts on engine pieces when they break the next
+  attack; otherwise prioritize the funded attacker or exposed Rule Box target.
+- Do not give the single-Prize Spidops plan a free compressed prize map through
+  Mega Mawile.
+- Battle Cage does not prevent Sneasel's ordinary attack damage to a Benched
+  Pokémon. Do not misapply its damage-counter wording.
+- Preserve a second Duraludon because gusting or removing the only 130-HP seed
+  can strand every Archaludon in hand.
+
+Alakazam Dudunsparce and other Dudunsparce engines
+
+SOURCE: The aggregate recorded 8-6 against Alakazam Dudunsparce.
+
+INFERENCE:
+
+- Track how many Dunsparce remain in play after each Run Away Draw.
+- Gust only when removing the draw engine or attacker changes the following
+  turn; a recycled Dudunsparce can make an unfocused Boss low value.
+- Preserve Judge or Special Red Card for a turn when the opponent cannot
+  immediately redraw through multiple Dudunsparce.
+- Protect your own draw engine from counter placement with Battle Cage when
+  that mechanic is present.
+
+Lucario Hariyama and other single-Prize attackers
+
+SOURCE: The reviewed row was 3-5 across eight matches.
+
+INFERENCE:
+
+- Expect the opponent to trade one prize into a two-Prize Archaludon. You need
+  tanking, missed attacks, or multi-prize conversions to recover the exchange.
+- Do not worsen the map with Mega Mawile unless it takes decisive prizes.
+- Boss a multi-Prize support target when available; otherwise remove the
+  exact attacker or engine that prevents the next attack.
+- A damaged Archaludon using Raging Hammer can create a needed one-hit
+  knockout, but verify whether losing Weakness protection matters.
+
+Crustle and other anti-ex walls
+
+SOURCE: Crustle DRI 12 prevents attack damage to itself from opposing Pokémon
+ex. The aggregate row was 2-5 across seven matches. The reference list has no
+single-Prize Archaludon; the Turin alternate has one.
+
+INFERENCE:
+
+- Do not evolve every Duraludon into Archaludon ex.
+- Preserve and fund an unevolved Duraludon as the reference list's legal
+  damage route.
+- LIST CHECK: If single-Prize Archaludon is registered, preserve the line and
+  use Poké Pad or recovery to access it.
+- Boss can bypass the wall only when a legal target and prize plan exist.
+- An ex attack dealing more damage does not solve an effect that prevents all
+  of that attack damage.
+
+Fire Weakness
+
+SOURCE: Archaludon ex and Mega Mawile ex are Fire Weak. Metal Defender removes
+the attacking Archaludon's Weakness only during the opponent's next turn.
+
+INFERENCE:
+
+- Refresh Metal Defender every turn that Weakness removal is required.
+- Do not switch to Raging Hammer for marginal damage if it turns survival into
+  a one-hit knockout.
+- Scoop a heavily damaged Archaludon only when the replacement lane is ready.
+- Mega Mawile is not a safe alternate tank into Fire merely because it is a
+  different attacker.
+
+Mirror
+
+INFERENCE:
+
+- Track which player has the second live Duraludon and which has exhausted
+  Assemble Alloy.
+- A damaged Archaludon can cross 260 or 300 with Raging Hammer; Relicanth
+  therefore changes the opponent's safe-damage calculations.
+- Black Belt makes Metal Defender 260 into an Active ex, but not 300.
+- A clean Huge Bite plus Black Belt reaches 300. Do not place incidental
+  damage on the intended target first.
+- Special Red Card becomes live when the opponent has three or fewer prizes.
+  Pair disruption with a board state that limits immediate Dudunsparce redraw.
+
+
+RECOVERY TREES
+
+If the Active Archaludon is Knocked Out
+
+1. Promote the Pokémon that preserves the most options, not automatically the
+   next Duraludon.
+2. Use Flip the Script only if Fezandipiti is already worth its prize risk or
+   must be benched now for a recoverable turn.
+3. Identify whether the bottleneck is Duraludon, Archaludon ex, or Basic Metal.
+4. Night Stretcher that bottleneck.
+5. Seed discard Metal if needed.
+6. Evolve the standing Duraludon and resolve Assemble Alloy.
+7. Use Philippe only if the Supporter attachment is better than draw, gust,
+   disruption, or Black Belt.
+
+If no Duraludon remains in play
+
+INFERENCE: The deck cannot create an Archaludon attack immediately from a new
+Duraludon because a newly played Basic normally cannot evolve that turn.
+Recover and bench Duraludon, protect it, and choose a bridge attack or
+disruption turn. This is why the second line is established before the first
+knockout.
+
+If no Basic Metal is in discard
+
+Use a manual attachment if it completes the attack. Otherwise create only the
+needed discard with Ultra Ball or Prism Tower. Do not play Philippe with no
+valid Metal target in discard, and do not evolve solely to announce an empty
+Assemble Alloy unless the evolution itself is required.
+
+If the draw engine is gone
+
+Night Stretcher Dunsparce or Dudunsparce according to the board. Poké Pad can
+find either because neither has a Rule Box. Preserve Lillie's Determination
+for a meaningful reset instead of spending multiple cards to reconstruct a
+draw loop that will not affect the current turn.
+
+If the board is full
+
+Run Away Draw can remove Dudunsparce. Scoop Up Cyclone can remove a liability.
+Tuck Tail can remove Meowth if funded and attacking is acceptable. Do not
+discard a playable Pokémon and call the bench problem solved if the actual
+needed card still has nowhere to enter.
+
+
+COMMON PILOT ERRORS
+
+1. Evolving the only Duraludon without a replacement seed.
+2. Discarding more Metal than the next two attackers can use.
+3. Evolving before deciding how Assemble Alloy will distribute Energy.
+4. Treating Metal in hand as though Assemble Alloy can attach it.
+5. Attaching both accelerated Metal to the new Archaludon when one should fund
+   the replacement, or splitting when it leaves both attackers short.
+6. Using Raging Hammer because its number is larger while forgetting that
+   Metal Defender's Weakness protection will not be refreshed.
+7. Benching Relicanth before Raging Hammer is relevant.
+8. Benching Meowth ex without naming the Supporter and present-turn use.
+9. Benching Fezandipiti ex before an opponent-turn knockout enables Flip the
+   Script, or leaving it as a two-Prize gust target after its job.
+10. Benching Mega Mawile early and compressing the opponent's prize route.
+11. Using Hammer In before a planned Huge Bite and turning its base from 260
+    to 30.
+12. Treating Prism Tower as free draw and ignoring that the opponent may use
+    it.
+13. Replacing Battle Cage before the opponent's damage-counter turn.
+14. Assuming Battle Cage prevents ordinary attack damage to the Bench.
+15. Attaching Energy to Dudunsparce and then shuffling that Energy into deck
+    without planning for it.
+16. Using Run Away Draw when the resulting empty bench or tiny deck makes the
+    endgame worse.
+17. Scooping an Archaludon without another legal Duraludon evolution lane.
+18. Forgetting that Scooped Energy returns to hand rather than discard.
+19. Evolving every Duraludon against an ex-immune wall.
+20. Playing disruption before using one's own exact searches and draw
+    abilities, then failing to rebuild the hand.
+21. Believing an aggregate matchup percentage guarantees the next decision.
+22. Planning around a face-down Prize identity rather than a legal deck-search
+    inference.
+
+
+TURN CHECKLISTS
+
+Opening hand
+
+[ ] Preferred Active selected.
+[ ] Two Duraludon lanes considered.
+[ ] One or two Dunsparce lanes considered.
+[ ] Fan Call used during the only turn it is available.
+[ ] Bench space reserved for the first required flex Pokémon.
+[ ] First deck search used to inventory key counts and infer prizes legally.
+[ ] Next-turn Archaludon and discard outlet identified.
+
+Before Run Away Draw or Flip the Script
+
+[ ] Current deck count checked.
+[ ] Required remaining Pokémon in play checked.
+[ ] Attached cards that will be shuffled checked.
+[ ] Bench slot created by the ability has a named use.
+[ ] Higher-value search or shuffle ordering considered.
+
+Before Ultra Ball or Prism Tower
+
+[ ] Exact search or draw target named.
+[ ] Basic Metal discard requirement counted.
+[ ] Both discarded cards are expendable under the next-two-turn plan.
+[ ] Battle Cage requirement checked before replacing the Stadium.
+[ ] Opponent's access to Prism Tower considered.
+
+Before evolving to Archaludon ex
+
+[ ] Duraludon has been in play long enough to evolve.
+[ ] Replacement Duraludon exists or its absence is intentional.
+[ ] Zero, one, or two valid Basic Metal are in discard.
+[ ] Destination of each Assemble Alloy attachment named.
+[ ] Manual attachment and retreat still legal afterward.
+[ ] Bench and prize liabilities unchanged or accepted.
+
+Before attacking
+
+[ ] Target HP, Weakness, Resistance, Tools, and public effects checked.
+[ ] Metal Defender, Raging Hammer, and auxiliary attack damage calculated.
+[ ] Black Belt applies only to an Active Pokémon ex.
+[ ] Huge Bite target confirmed clean before the attack.
+[ ] Knockout prizes and the opponent's return prize route counted.
+[ ] Next attacker and its required Energy named.
+[ ] Weakness protection after this attack explicitly confirmed or declined.
+
+Before Scoop Up Cyclone
+
+[ ] New Active named.
+[ ] Retreat path checked.
+[ ] Returned evolution stack and attached cards counted.
+[ ] Standing Duraludon evolution lane confirmed.
+[ ] Returned Metal-to-discard route confirmed if Assemble Alloy is needed.
+[ ] Alternative target such as Meowth or Fezandipiti considered.
+
+End of turn
+
+[ ] Current attacker survives known public thresholds or the loss is accepted.
+[ ] Replacement attacker exists.
+[ ] Opponent's easiest gust prize identified.
+[ ] Battle Cage or other Stadium role checked.
+[ ] Remaining Basic Metal locations counted.
+[ ] Remaining Night Stretcher and evolution activations counted.
+[ ] Opponent's next two prize steps and one's own next two prize steps stated.
+
+
+EXPERT REVIEW QUESTIONS
+
+SME CHECK:
+
+1. Is going first still the correct blind default for the exact NAIC list, and
+   which current matchups justify choosing second?
+2. When the opening can establish either 2 Duraludon plus 1 Dunsparce or 1
+   Duraludon plus 2 Dunsparce, what matchup and hand factors decide?
+3. What is the best first-turn Fan Call package when one Dunsparce is already
+   in hand?
+4. How often should the second Assemble Alloy split Energy rather than fully
+   fund the evolved attacker?
+5. At what damage and matchup thresholds is Relicanth worth a permanent bench
+   slot?
+6. Is Mega Mawile best withheld until three prizes have been taken, or do
+   clean Huge Bite lines justify earlier deployment?
+7. When both Prism Tower and Battle Cage are available, which current matchups
+   justify giving up discard filtering for counter protection?
+8. Against Dragapult Dusknoir, what is the preferred Duraludon/Dunsparce bench
+   geometry before the opponent's first full counter-placement turn?
+9. Against Crustle, is unevolved Duraludon sufficient in the reference sixty,
+   or should the specialist representative adopt the single-Prize Archaludon
+   seen in Turin?
+10. Which Night Stretcher targets are most commonly misvalued in the late game?
+11. Which matchup plans above should be rejected because the public online
+    sample is too compositionally different from current high-level play?
+12. Which decisions are sufficiently exact and local to become auxiliary
+    heuristic labels without leaking hidden information or replacing policy
+    search?
+
+
+SOURCE SET
+
+Reviewed 2026-07-28. URLs are included so the same evidence can be revisited.
+
+Current lists and results
+
+1. Brian Peltz, Archaludon Dudunsparce, NAIC 2026:
+   https://limitlesstcg.com/decks/list/28608
+2. Antoni M., Archaludon Dudunsparce, Turin Juniors, fifth:
+   https://limitlesstcg.com/decks/list/28245
+3. Archaludon Dudunsparce, POR Standard 2026 online matchup aggregate:
+   https://play.limitlesstcg.com/decks/archaludon-dudunsparce/matchups?format=standard&rotation=2026&set=POR
+4. Stéphane Ivanoff, official Archaludon ex strategy article, December 2024;
+   use for enduring mechanics, not its format-dated list:
+   https://www.pokemon.com/us/strategy/archaludon-ex-strategy-testing-your-metal
+
+Core Pokémon
+
+5. Archaludon ex SSP 130:
+   https://limitlesstcg.com/cards/SSP/130
+6. Duraludon SCR 106:
+   https://limitlesstcg.com/cards/SCR/106
+7. Dudunsparce TEF 129:
+   https://limitlesstcg.com/cards/TEF/129
+8. Dunsparce JTG 120:
+   https://limitlesstcg.com/cards/JTG/120
+9. Fan Rotom SCR 118:
+   https://limitlesstcg.com/cards/SCR/118
+10. Relicanth TEF 84:
+    https://limitlesstcg.com/cards/TEF/84
+11. Mega Mawile ex MEG 94:
+    https://limitlesstcg.com/cards/MEG/94
+12. Meowth ex POR 62:
+    https://limitlesstcg.com/cards/POR/62
+13. Fezandipiti ex ASC 142:
+    https://limitlesstcg.com/cards/ASC/142
+14. Single-Prize Archaludon SCR 107:
+    https://limitlesstcg.com/cards/SCR/107
+15. Crustle DRI 12:
+    https://limitlesstcg.com/cards/DRI/12
+
+Trainers
+
+16. Poké Pad POR 81:
+    https://limitlesstcg.com/cards/POR/81
+17. Buddy-Buddy Poffin TEF 144:
+    https://limitlesstcg.com/cards/TEF/144
+18. Ultra Ball SVI 196:
+    https://limitlesstcg.com/cards/SVI/196
+19. Night Stretcher SFA 61:
+    https://limitlesstcg.com/cards/SFA/61
+20. Hilda WHT 84:
+    https://limitlesstcg.com/cards/WHT/84
+21. Lillie's Determination MEG 119:
+    https://limitlesstcg.com/cards/MEG/119
+22. Philippe CRI 79:
+    https://limitlesstcg.com/cards/CRI/79
+23. Black Belt's Training JTG 143:
+    https://limitlesstcg.com/cards/JTG/143
+24. Prism Tower CRI 80:
+    https://limitlesstcg.com/cards/CRI/80
+25. Battle Cage PFL 85:
+    https://limitlesstcg.com/cards/PFL/85
+26. Special Red Card CRI 82:
+    https://limitlesstcg.com/cards/CRI/82
+27. Scoop Up Cyclone TWM 162:
+    https://limitlesstcg.com/cards/TWM/162
+
+
+HEURISTIC BOUNDARY
+
+The companion auxiliary teacher deliberately covers less than this human
+guide. It can rank only a complete legal factorized stage whose current
+options all resolve exactly: selected opening Basics; exact Fan Call, Poffin,
+Poké Pad, Ultra Ball, Hilda, or Night Stretcher search choices; and safe
+yes/no prompts for Run Away Draw or Flip the Script.
+
+It masks attack choice, manual Energy attachment, Assemble Alloy routing,
+discard costs, retreat, gust, Stadium replacement, Scoop Up Cyclone targets,
+damage-dependent Raging Hammer choices, Mega Mawile prize math, and matchup
+branches. Those decisions need broader planning. The teacher uses only the
+acting player's current observable state and public board, never an opponent's
+hidden hand, face-down Prize identities, future draws, future actions, or
+eventual outcomes. It supplies auditable auxiliary labels and has no authority
+to select an action or override the fused policy.

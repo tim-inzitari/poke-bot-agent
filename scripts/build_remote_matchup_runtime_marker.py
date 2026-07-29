@@ -15,6 +15,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from poke_bot import checkpoint  # noqa: E402
+from poke_bot.matchup_adapter_routes import (  # noqa: E402
+    require_runtime_route_binding,
+    resolve_matchup_adapter_route_contract,
+)
 from poke_bot.public_matchup_router import PublicMatchupDecisionTree  # noqa: E402
 
 
@@ -49,15 +53,29 @@ def build(checkpoint_path: Path, tree_path: Path, output: Path) -> dict:
     extra = dict(saved.get("extra") or {})
     dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
     adapter_config = dict(extra.get("matchup_adapter_config") or {})
+    route_contract = resolve_matchup_adapter_route_contract(adapter_config)
+    if tuple(tree.targets) != route_contract.target_ids:
+        raise RuntimeError("checkpoint and tree route rosters differ")
+    try:
+        require_runtime_route_binding(
+            runtime,
+            route_contract,
+            allow_legacy_v5=True,
+        )
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    dormant_config = dict(dormant.get("adapter_config") or {})
     zero_materialized = bool(
         runtime.get("zero_materialized_adapters_allowed") is True
         and dormant.get("schema") == "poke_bot.zero_dormant_matchup_adapter/v1"
         and dormant.get("zero_output") is True
         and dormant.get("runtime_enabled") is False
-        and set(accepted).issubset(set(adapter_config.get("expert_ids") or ()))
+        and set(accepted).issubset(set(route_contract.target_ids))
+        and (not dormant_config or dormant_config == adapter_config)
     )
     trained = bool(
         fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
+        and set(accepted).issubset(set(route_contract.target_ids))
         and all(route_decisions.get(route, 0) > 0 for route in accepted)
     )
     if not (
@@ -79,6 +97,7 @@ def build(checkpoint_path: Path, tree_path: Path, output: Path) -> dict:
         "continuous_reevaluation": True,
         "one_route_per_decision": True,
         "zero_materialized_adapters_allowed": zero_materialized,
+        **route_contract.runtime_binding(),
     }
     encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
     output.parent.mkdir(parents=True, exist_ok=True)

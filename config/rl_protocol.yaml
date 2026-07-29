@@ -262,6 +262,14 @@ specialist_training:
     recorded_overlap_deferral_allowed: true
     recorded_operator_priority_prefix_allowed: true
     overlap_deferral_removes_target: false
+    owner_removed_specialist_ids:
+      - dragapult-blaziken
+      - dragapult-dudunsparce
+    owner_removed_specialists_are_selection_eligible: false
+    owner_removed_specialists_count_toward_completion: false
+    owner_removed_historical_artifacts_are_preserved: true
+    owner_removed_stable_matchup_slots_are_deleted_or_reused: false
+    owner_removal_activation: next_receipt_backed_successor_selection
     refresh_before_specialist_handoff: true
     reorder_started_specialist: false
     meta_share_changes_gate_thresholds: false
@@ -367,6 +375,27 @@ specialist_training:
       production_controller_role:
         - validate_returned_artifacts
         - integrate_validated_artifacts
+    nonlinear_decision_support:
+      contract_schema: poke_bot.nonlinear_specialist_decision_support/v1
+      validation_receipt_schema: poke_bot.nonlinear_specialist_decision_support_validation/v1
+      required_when_deck_complexity_is_nonlinear: true
+      sparse_guide_alone_is_sufficient: false
+      authoritative_action_path: fused_policy
+      required_system_ids:
+        - branching_setup_and_pivot
+        - attacker_and_engine_preservation
+        - typed_energy_and_resource_planning
+        - attack_target_and_prize_routing
+        - stochastic_disruption_timing
+        - bench_and_recovery_routing
+        - guide_weight_annealing
+      checksum_bound_implementation_artifacts_required: true
+      exact_fused_head_inventory_required: true
+      causal_current_and_past_state_only: true
+      missing_exact_labels_are_masked: true
+      training_ineligible_scenario_evaluation_required: true
+      preexisting_prestage_receipt_must_be_reissued_after_validation: true
+      failure_behavior: block_prestage_and_bootstrap
     specialist_deck_signature_required: true
     causal_public_state_only: true
     hidden_or_future_information_allowed: false
@@ -422,7 +451,9 @@ specialist_training:
         - current_weight
     prepared_contracts:
       alakazam: legacy_validated
+      hammer-pult: config/deck_guides/hammer-pult.yaml
       marnie-s-grimmsnarl-ex: config/deck_guides/marnie-s-grimmsnarl-ex.yaml
+      teal-mask-ogerpon-ex: config/deck_guides/teal-mask-ogerpon-ex.yaml
   matchup_heads:
     required_for_every_specialist: true
     runtime_enabled_by_default_at_specialist_launch: true

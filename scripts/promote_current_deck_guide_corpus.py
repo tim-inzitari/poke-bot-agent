@@ -61,6 +61,7 @@ def validate(
     root: Path,
     *,
     specialist_id: str,
+    expected_days: int = 20,
     verify_shards: bool = True,
 ) -> dict[str, Any]:
     ready_path = root / "CURRENT_DECK_GUIDE_CORPUS_READY.json"
@@ -71,8 +72,16 @@ def validate(
     manifest = read_json(manifest_path)
     totals = dict(manifest.get("totals") or {})
     coverage = dict(totals.get("target_coverage") or {})
+    dates = [str(value) for value in ready.get("dates") or ()]
+    daily_shards = list(ready.get("daily_shards") or ())
+    daily_dates = [
+        str(row.get("date") or "")
+        for row in daily_shards
+        if isinstance(row, dict)
+    ]
     if (
-        ready.get("schema") != READY_SCHEMA
+        expected_days <= 0
+        or ready.get("schema") != READY_SCHEMA
         or ready.get("status") != "ready"
         or ready.get("specialist_id") != specialist_id
         or pointer.get("schema") != POINTER_SCHEMA
@@ -86,12 +95,15 @@ def validate(
         or int(coverage.get("guide_rows") or 0)
         != int(ready.get("guide_rows") or 0)
         or int(ready.get("guide_rows") or 0) <= 0
-        or int(ready.get("days") or 0) != 20
-        or len(ready.get("daily_shards") or ()) != 20
+        or int(ready.get("days") or 0) != expected_days
+        or len(dates) != expected_days
+        or len(set(dates)) != expected_days
+        or len(daily_shards) != expected_days
+        or daily_dates != dates
     ):
         raise RuntimeError("current-deck guide corpus identity is invalid")
     if verify_shards:
-        for row in ready["daily_shards"]:
+        for row in daily_shards:
             date = str(row.get("date") or "")
             shard = root / f"{specialist_id}-{date}.features"
             if (
@@ -102,7 +114,8 @@ def validate(
     return {
         "specialist_id": specialist_id,
         "guide_version": ready["guide_version"],
-        "dates": list(ready["dates"]),
+        "days": expected_days,
+        "dates": dates,
         "decisions": int(ready["decisions"]),
         "guide_rows": int(ready["guide_rows"]),
         "manifest": str(manifest_path),
@@ -120,6 +133,7 @@ def identity_signature(value: dict[str, Any]) -> dict[str, Any]:
         for key in (
             "specialist_id",
             "guide_version",
+            "days",
             "dates",
             "decisions",
             "guide_rows",
@@ -136,6 +150,7 @@ def main() -> int:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("--expected-days", type=int, default=20)
     parser.add_argument("--bwlimit-kib", type=int, default=4_000)
     args = parser.parse_args()
     if args.bwlimit_kib <= 0:
@@ -150,6 +165,7 @@ def main() -> int:
     source_identity = validate(
         source,
         specialist_id=args.specialist_id,
+        expected_days=args.expected_days,
         verify_shards=False,
     )
     if destination.is_dir():
@@ -157,6 +173,7 @@ def main() -> int:
             current_identity = validate(
                 destination,
                 specialist_id=args.specialist_id,
+                expected_days=args.expected_days,
                 verify_shards=False,
             )
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
@@ -227,22 +244,32 @@ def main() -> int:
         ],
         check=True,
     )
-    staged_identity = validate(staging, specialist_id=args.specialist_id)
+    staged_identity = validate(
+        staging,
+        specialist_id=args.specialist_id,
+        expected_days=args.expected_days,
+    )
     if identity_signature(staged_identity) != identity_signature(
         source_identity
     ):
         raise RuntimeError("staged guide corpus identity differs from source")
 
-    if backup.exists():
-        raise RuntimeError(f"rollback path already exists: {backup}")
-    os.replace(destination, backup)
+    rollback_directory: Path | None = None
+    if destination.exists():
+        if backup.exists():
+            raise RuntimeError(f"rollback path already exists: {backup}")
+        os.replace(destination, backup)
+        rollback_directory = backup
     try:
         os.replace(staging, destination)
     except BaseException:
-        os.replace(backup, destination)
+        if rollback_directory is not None:
+            os.replace(rollback_directory, destination)
         raise
     promoted_identity = validate(
-        destination, specialist_id=args.specialist_id
+        destination,
+        specialist_id=args.specialist_id,
+        expected_days=args.expected_days,
     )
     atomic_json(
         args.state,
@@ -252,7 +279,12 @@ def main() -> int:
             "specialist_id": args.specialist_id,
             "source": str(source),
             "destination": str(destination),
-            "rollback_directory": str(backup),
+            "rollback_directory": (
+                str(rollback_directory)
+                if rollback_directory is not None
+                else None
+            ),
+            "replaced_existing_destination": rollback_directory is not None,
             "bandwidth_limit_kib_per_second": args.bwlimit_kib,
             "identity": promoted_identity,
             "started_at_utc": started,

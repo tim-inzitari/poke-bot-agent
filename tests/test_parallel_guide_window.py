@@ -48,6 +48,28 @@ def test_elmo_guide_launcher_preserves_native_runtime_and_parallelism() -> None:
     assert 'systemctl is-active --quiet "$unit"' in source
 
 
+def test_teal_full32_builder_requires_exact_catalog_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    builder = (
+        root / "ops" / "elmo" / "build_teal_mask_ogerpon_full32_corpus.sh"
+    ).read_text(encoding="utf-8")
+    parallel = (
+        root / "scripts" / "materialize_authoritative_guide_window_parallel.py"
+    ).read_text(encoding="utf-8")
+    daily = (
+        root / "scripts" / "materialize_authoritative_alakazam_day.py"
+    ).read_text(encoding="utf-8")
+
+    assert "teal-mask-ogerpon-ex-guide-corpus-full-v2" in builder
+    assert (
+        "--authoritative-only-archetype teal-mask-ogerpon-ex" in builder
+    )
+    assert "--guide-version teal-mask-ogerpon-ex-north-star-v2" in builder
+    assert "actual_by_day != expected_by_day" in builder
+    assert '"--authoritative-only-archetype"' in parallel
+    assert '"--authoritative-only-archetype"' in daily
+
+
 def test_completed_row_requires_exact_specialist_guide_and_accepts_zero_day(
     tmp_path: Path,
 ) -> None:

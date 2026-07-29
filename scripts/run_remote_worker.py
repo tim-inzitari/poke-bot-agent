@@ -70,15 +70,21 @@ def _apply_matchup_runtime_environment(runtime: dict) -> None:
     os.environ["POKEBOT_MATCHUP_ADAPTER_RUNTIME"] = "1"
     os.environ["POKEBOT_PUBLIC_MATCHUP_TREE_PATH"] = str(runtime["tree"])
     os.environ["POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE"] = "runtime"
+    os.environ["POKEBOT_MATCHUP_ADAPTER_FORMAT"] = str(
+        runtime["adapter_format"]
+    )
 
 
-def _matchup_runtime_worker_identity(runtime: Optional[dict]) -> tuple[str, tuple[str, ...]]:
+def _matchup_runtime_worker_identity(runtime: Optional[dict]) -> tuple:
     """Return the routing identity captured by long-lived simulator children."""
 
     if not isinstance(runtime, dict):
-        return "", ()
+        return "", "", (), (), ()
     return (
         str(runtime.get("tree_digest") or ""),
+        str(runtime.get("slot_registry_digest") or ""),
+        tuple(str(value) for value in runtime.get("route_target_ids") or ()),
+        tuple(int(value) for value in runtime.get("route_physical_slots") or ()),
         tuple(sorted(str(value) for value in runtime.get("accepted_archetype_ids") or ())),
     )
 
@@ -106,7 +112,14 @@ def _activate_matchup_runtime_from_marker(
         "continuous_reevaluation",
         "one_route_per_decision",
     }
-    optional_keys = {"zero_materialized_adapters_allowed"}
+    optional_keys = {
+        "zero_materialized_adapters_allowed",
+        "adapter_format",
+        "route_target_ids",
+        "route_physical_slots",
+        "physical_slot_capacity",
+        "slot_registry_digest",
+    }
     if not required_keys.issubset(payload) or not set(payload).issubset(
         required_keys | optional_keys
     ) or not (
@@ -127,6 +140,10 @@ def _activate_matchup_runtime_from_marker(
         raise ValueError("matchup runtime tree digest does not match its marker")
 
     from poke_bot import checkpoint as checkpoint_mod
+    from poke_bot.matchup_adapter_routes import (
+        require_runtime_route_binding,
+        resolve_matchup_adapter_route_contract,
+    )
     from poke_bot.public_matchup_router import PublicMatchupDecisionTree
 
     tree = PublicMatchupDecisionTree.from_path(tree_path, require_runtime_enabled=True)
@@ -138,19 +155,30 @@ def _activate_matchup_runtime_from_marker(
     extra = dict(saved.get("extra") or {})
     dormant = dict(extra.get("dormant_matchup_adapter_bank") or {})
     adapter_config = dict(extra.get("matchup_adapter_config") or {})
+    route_contract = resolve_matchup_adapter_route_contract(adapter_config)
+    if tuple(tree.targets) != route_contract.target_ids:
+        raise ValueError("checkpoint and runtime tree route rosters differ")
+    require_runtime_route_binding(
+        payload,
+        route_contract,
+        allow_legacy_v5=True,
+    )
     route_decisions = {
         str(key): int(value) for key, value in (fit.get("route_decisions") or {}).items()
     }
     fully_trained = bool(
         fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
+        and set(accepted).issubset(set(route_contract.target_ids))
         and all(route_decisions.get(archetype_id, 0) > 0 for archetype_id in accepted)
     )
+    dormant_config = dict(dormant.get("adapter_config") or {})
     zero_bank = bool(
         payload.get("zero_materialized_adapters_allowed") is True
         and dormant.get("schema") == "poke_bot.zero_dormant_matchup_adapter/v1"
         and dormant.get("zero_output") is True
         and dormant.get("runtime_enabled") is False
-        and set(accepted).issubset(set(adapter_config.get("expert_ids") or ()))
+        and set(accepted).issubset(set(route_contract.target_ids))
+        and (not dormant_config or dormant_config == adapter_config)
     )
     # Once the first isolated adapter pass runs, the checkpoint is a hybrid:
     # observed routes are trained while routes without examples must remain an
@@ -163,20 +191,22 @@ def _activate_matchup_runtime_from_marker(
         and fit.get("schema") == "poke_bot.dormant_matchup_adapter_fit/v1"
         and fit.get("zero_example_routes_remain_dormant") is True
     ):
-        expert_ids = [str(value) for value in adapter_config.get("expert_ids") or ()]
+        physical_slot_by_target = route_contract.physical_slot_by_target
         model_state = dict(saved.get("model_state_dict") or {})
         dormant_ids = {
             str(value)
             for value in fit.get("dormant_no_example_archetype_ids") or ()
         }
-        hybrid_covered = set(accepted).issubset(set(expert_ids))
+        hybrid_covered = set(accepted).issubset(
+            set(route_contract.target_ids)
+        )
         for archetype_id in accepted:
             if not hybrid_covered or route_decisions.get(archetype_id, 0) > 0:
                 continue
             if archetype_id not in dormant_ids:
                 hybrid_covered = False
                 break
-            route_index = expert_ids.index(archetype_id)
+            route_index = physical_slot_by_target[archetype_id]
             for suffix in ("up.weight", "up.bias"):
                 tensor = model_state.get(
                     f"matchup_adapter_bank.experts.{route_index}.{suffix}"
@@ -200,6 +230,7 @@ def _activate_matchup_runtime_from_marker(
         "unknown_route_exact_bypass": True,
         "zero_materialized_adapters_allowed": bool(zero_bank or hybrid_covered),
         "consecutive_required": int(tree.runtime_consecutive_required),
+        **route_contract.runtime_binding(),
     }
     if apply_environment:
         _apply_matchup_runtime_environment(runtime)

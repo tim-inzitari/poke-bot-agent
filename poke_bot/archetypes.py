@@ -41,6 +41,40 @@ THWACKEY_GROOKEY = 89
 THWACKEY = 90
 THWACKEY_DIPPLIN = 93
 FESTIVAL_GROUNDS = 1245
+TEAL_MASK_OGERPON_EX = 96
+WELLSPRING_MASK_OGERPON_EX = 108
+LILLIES_CLEFAIRY_EX = 272
+MEGA_KANGASKHAN_EX = 756
+MEOWTH_EX = 1071
+ENERGY_SWITCH = 1116
+AREA_ZERO_UNDERDEPTHS = 1250
+OGERPON_BOX_KANGASKHAN_MIN = 2
+OGERPON_BOX_KANGASKHAN_MAX = 3
+
+# Exact top-ladder modal representative.  Full multiset equality is deliberate:
+# Archaludon shares generic Metal engines with other decks, so a loose marker
+# signature would not be collision-safe.
+ARCHALUDON_EX_MODAL_REPRESENTATIVE: tuple[int, ...] = (
+    190, 190, 190, 190,
+    169, 169, 169, 169,
+    57, 57,
+    414,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    1159,
+    1097, 1097, 1097, 1097,
+    1121, 1121, 1121, 1121,
+    1122, 1122, 1122, 1122,
+    1152, 1152, 1152, 1152,
+    1182, 1182, 1182, 1182,
+    1192, 1192, 1192, 1192,
+    1227, 1227, 1227, 1227,
+    1213, 1213,
+    1197,
+    1244, 1244, 1244, 1244,
+)
+_ARCHALUDON_EX_MODAL_MULTISET = tuple(
+    sorted(ARCHALUDON_EX_MODAL_REPRESENTATIVE)
+)
 
 #: Minimum Crushing Hammers for the Hammer-Pult signature (list runs 3-4).
 CRUSHING_HAMMER_MIN = 3
@@ -210,6 +244,18 @@ for _id, _name, _slug_all in _ADDITIVE_LADDER_GENERIC:
         )
     )
 
+register(Archetype(
+    id="teal-mask-ogerpon-ex",
+    name="Teal Mask Ogerpon ex",
+    description=(
+        "Nonlinear Ogerpon Box toolbox centered on Teal Mask acceleration, "
+        "Wellspring spread, Energy Switch, Area Zero, and Basic attackers. "
+        "Exact card-signature classification prevents cross-archetype capture "
+        "from Raging Bolt, Hydrapple, Meganium, or Cornerstone Ogerpon."
+    ),
+    signature_only=True,
+))
+
 CORE_LADDER_ARCHETYPE_IDS: tuple[str, ...] = (
     "alakazam",
     "crustle",
@@ -251,6 +297,39 @@ def is_hammer_signature(card_ids: Iterable[int]) -> bool:
     )
 
 
+def is_teal_mask_ogerpon_box_signature(card_ids: Iterable[int]) -> bool:
+    """True for the exact Ogerpon Box family, not any Teal Mask engine deck."""
+
+    c = _counts(card_ids)
+    toolbox_markers = sum(
+        c.get(card_id, 0) >= 2
+        for card_id in (
+            LILLIES_CLEFAIRY_EX,
+            MEGA_KANGASKHAN_EX,
+            MEOWTH_EX,
+        )
+    )
+    return (
+        c.get(TEAL_MASK_OGERPON_EX, 0) >= 3
+        and c.get(WELLSPRING_MASK_OGERPON_EX, 0) >= 1
+        and c.get(LILLIES_CLEFAIRY_EX, 0) >= 1
+        and OGERPON_BOX_KANGASKHAN_MIN
+        <= c.get(MEGA_KANGASKHAN_EX, 0)
+        <= OGERPON_BOX_KANGASKHAN_MAX
+        and c.get(ENERGY_SWITCH, 0) >= 3
+        and c.get(AREA_ZERO_UNDERDEPTHS, 0) >= 2
+        and toolbox_markers >= 2
+    )
+
+
+def is_archaludon_ex_modal_representative(
+    card_ids: Iterable[int],
+) -> bool:
+    """Match only the pinned exact 60-card Archaludon ex modal multiset."""
+
+    return tuple(sorted(card_ids)) == _ARCHALUDON_EX_MODAL_MULTISET
+
+
 def classify_deck(card_ids: Iterable[int]) -> str:
     """Classify a deck from its card-id multiset. Authoritative.
 
@@ -259,8 +338,12 @@ def classify_deck(card_ids: Iterable[int]) -> str:
     Dragapult, else ``"unknown"``.
     """
     card_ids = list(card_ids)
+    if is_archaludon_ex_modal_representative(card_ids):
+        return "archaludon-ex"
     if is_hammer_signature(card_ids):
         return "hammer-pult"
+    if is_teal_mask_ogerpon_box_signature(card_ids):
+        return "teal-mask-ogerpon-ex"
 
     c = _counts(card_ids)
     if has_line(c, DRAGAPULT_LINE):

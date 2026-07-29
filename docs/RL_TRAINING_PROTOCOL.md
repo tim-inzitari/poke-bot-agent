@@ -99,7 +99,11 @@ specialist baseline gate threshold. A failed candidate remains rejected,
 immutable, and ineligible to initialize a specialist. It does not stop
 production: the handoff immediately selects the latest checksum-accepted
 cumulative core and hot-starts the next specialist from that accepted
-fallback. Core v6 is the current fallback. The controller still attempts a new
+fallback. Cumulative core V9 is the current accepted fallback. The
+post-Thwackey V10 candidate is preserved as a rejected gameplay-regression
+attempt and is not bootstrap-eligible. Matchup Adapter V6 is a separate
+checkpoint-format version and must never be displayed or interpreted as the
+current cumulative-core generation. The controller still attempts a new
 cumulative refresh from all frozen teachers after every later completed
 specialist.
 
@@ -156,7 +160,7 @@ legal action stage only when cited strategy evidence and the causally
 observable public state support a high-confidence preference. The resulting
 masked, confidence-weighted loss shapes the existing shared policy logits. It
 is not a separate serving action path, may not inspect hidden or future state,
-and never overrides the flat policy.
+and never overrides the authoritative fused policy.
 
 The guide is temporary scaffolding. Its loss weight ramps from 0.01 to 0.05
 during bootstrap epochs 1–5 and remains at no more than 0.05 through the exact
@@ -218,6 +222,22 @@ expert-facing guide and extract its causal, abstaining heuristics. It may not
 operate production training, selectors, services, dashboards, or unrelated
 architecture. The production controller validates and integrates the returned
 artifacts.
+
+A specialist declared `nonlinear` requires more than a sparse guide. Before
+pre-stage can be ready, a checksum-bound
+`poke_bot.nonlinear_specialist_decision_support/v1` contract and validation
+receipt must bind the complete 17-input fused policy to every declared branch
+system, give each system an exact causal input set and a training-ineligible
+scenario gate, preserve mask-not-zero behavior, and require the exact terminal
+runtime gate. A pre-existing pre-stage receipt that lacks this binding is
+superseded and must be reissued.
+
+Hammer-Pult is nonlinear. Its required systems cover branching setup and pivot
+choice, attacker and Drakloak-engine preservation, typed-Energy/resource
+planning, Phantom Dive target and prize routing, disruption timing under both
+possible Crushing Hammer outcomes, bench/recovery routing, and guide-weight
+annealing. The sparse Hammer teacher remains deliberately narrow and causal;
+the learned fused policy owns decisions outside that safe scaffold.
 
 For each specialist:
 
@@ -519,9 +539,12 @@ a gate or supplies training examples. PTCGReplay does not replace expert replay
 archives, training labels, official/premium research agents, frozen-specialist
 registries, or established gate evidence.
 
-A handoff may carry an explicit, recorded operator priority prefix or overlap
-deferral. The named missing-model targets run first in their recorded order;
-the remaining targets then return to the normal availability/meta ordering.
+A handoff may carry an explicit, recorded operator priority prefix, owner
+removal, or overlap deferral. The named missing-model targets run first in
+their recorded order; the remaining targets then return to the normal
+availability/meta ordering. An owner-removed target is absent from selection
+and completion accounting, while historical corpus, audit, and stable matchup
+slot evidence remains immutable.
 An overlap deferral may move a distinct missing-model target ahead of an
 unfinished target substantially covered by the active or completed specialist
 design. Neither mechanism removes a target, marks it complete, weakens a gate,
@@ -563,10 +586,11 @@ and unknown or insufficient evidence uses the exact base-policy bypass.
 
 ### Canonical specialist roster and Matchup Adapter V6
 
-The logical authoritative roster is
-`state/matchup_adapter_roster.json#/active_expert_ids`. The live run remains on
-the immutable `poke-bot-matchup-adapter-bank-v5-roster18` format until a safe
-receipt-backed boundary. The staged successor format is the roster-neutral
+The logical authoritative matchup roster is
+`state/matchup_adapter_roster.json#/active_expert_ids`; it is not itself the
+required specialist-plan list. The live run remains on the immutable
+`poke-bot-matchup-adapter-bank-v5-roster18` format until a safe receipt-backed
+boundary. The staged successor format is the roster-neutral
 `poke-bot-matchup-adapter-bank-v6`.
 
 V6 always contains 64 physical adapter slots. Slots 0 through 17 preserve the
@@ -631,8 +655,26 @@ full public rolling replay history; it never permits fall-through to a
 lower-priority executable corpus. The June 26 through July 27 public window
 must contribute at least 16,639 checksum-bound exact acting-seat Spidops games.
 Hammer-Pult then returns at its actual meta priority without the
-existing-artifact priority penalty. Remaining unfinished canonical targets
-then return to the established normal ordering.
+existing-artifact priority penalty. The strict post-Spidops successor prefix is
+Hammer-Pult, Teal Mask Ogerpon ex, then Archaludon ex. Missing inputs for any
+member of that prefix block fallback and trigger public-data recovery.
+For Teal Mask, the competitive deck taxonomy is `Ogerpon Box`, while the
+current PTCGReplay public identity is numeric archetype 151 with the exact name
+`Teal Mask Ogerpon ex`; those identities must not be substituted for one
+another. Completed ingest 17's catalog/index binds one exact public deck
+fingerprint and a 1,135-game acting-seat floor across the full June 26 through
+July 27 window. Exact raw replay materialization expands that floor to 2,300
+unique acting-seat games, 156,692 decisions, and 10,495 causal guide rows under
+32 verified daily receipts with no duplicate episode-seat keys. It includes
+all four nonzero recent days from July 24 through July 27: 42, 259, 413, and
+421 games respectively. Its V6 matchup identity is allocated dormant at stable
+slot 18 until its causal route passes the ordinary precision and
+weighted-support audit.
+Dragapult/Blaziken and Dragapult/Dudunsparce are removed from the required
+specialist plan and completion count; their historical corpus, router, and
+audit artifacts remain evidence only, and their stable matchup slots are not
+deleted or reused. Other retained unfinished specialists resume only after
+Archaludon ex.
 
 The active specialist's own matchup route is mandatory for mirror self-play.
 For example, a Hop's Trevenant specialist must contain the

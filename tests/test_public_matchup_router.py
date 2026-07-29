@@ -7,6 +7,7 @@ from poke_bot.public_matchup_router import (
     visible_opponent_card_ids,
 )
 from poke_bot.matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
+from poke_bot.matchup_adapters_v6 import load_slot_registry
 import json
 
 
@@ -123,6 +124,45 @@ def test_exported_tree_has_exact_canonical_route_positions_and_separate_abstenti
     assert prediction.confidence == 1.0
 
 
+def test_exported_tree_accepts_the_checksum_validated_v6_route_order() -> None:
+    targets = list(load_slot_registry()["active_expert_ids"])
+    width = len(targets) + 1
+    teal = [0.0] * width
+    teal[targets.index("teal-mask-ogerpon-ex")] = 1.0
+    payload = {
+        "schema": "poke_bot.public_matchup_decision_tree/v1",
+        "runtime_enabled": False,
+        "targets": targets,
+        "prediction_contract": {
+            "route_output_width": len(targets),
+            "route_class_names": targets,
+            "unknown_is_separate_abstention": True,
+            "unknown_class_index": len(targets),
+            "adapter_count": len(targets),
+        },
+        "tree": {
+            "class_names": [*targets, "unknown"],
+            "children_left": [-1],
+            "children_right": [-1],
+            "feature_card_id": [-2],
+            "threshold": [-2.0],
+            "weighted_class_counts": [teal],
+            "node_count": 1,
+        },
+    }
+
+    tree = PublicMatchupDecisionTree(
+        payload,
+        digest="sha256:" + "0" * 64,
+    )
+
+    assert len(tree.targets) == 19
+    assert tree.targets[:18] == EXPERT_IDS
+    prediction = tree.predict_card_ids([96])
+    assert prediction.archetype_id == "teal-mask-ogerpon-ex"
+    assert prediction.route == 18
+
+
 def test_runtime_router_starts_dormant_and_continuously_corrects_route() -> None:
     width = len(EXPERT_IDS) + 1
     crustle = [0.0] * width
@@ -215,3 +255,46 @@ def test_runtime_router_starts_dormant_and_continuously_corrects_route() -> None
     ]
     assert router.audit is router
     assert router.audit.snapshot(include_events=False)["route_transitions"] == []
+
+
+def test_runtime_tree_exactly_bypasses_empty_public_state_even_if_leaf_routes() -> None:
+    width = len(EXPERT_IDS) + 1
+    routed = [0.0] * width
+    routed[0] = 1.0
+    payload = {
+        "schema": "poke_bot.public_matchup_decision_tree/v1",
+        "runtime_enabled": True,
+        "targets": list(EXPERT_IDS),
+        "prediction_contract": {
+            "route_output_width": len(EXPERT_IDS),
+            "route_class_names": list(EXPERT_IDS),
+            "unknown_is_separate_abstention": True,
+            "unknown_class_index": len(EXPERT_IDS),
+            "adapter_count": len(EXPERT_IDS),
+        },
+        "runtime_contract": {
+            "accepted_archetype_ids": ["crustle"],
+            "per_archetype_min_leaf_confidence": {"crustle": 0.9},
+            "min_leaf_confidence": 0.9,
+            "consecutive_required": 1,
+            "unknown_route_exact_bypass": True,
+            "one_route_per_decision": True,
+        },
+        "tree": {
+            "class_names": [*EXPERT_IDS, "unknown"],
+            "children_left": [-1],
+            "children_right": [-1],
+            "feature_card_id": [-2],
+            "threshold": [-2.0],
+            "weighted_class_counts": [routed],
+            "node_count": 1,
+        },
+    }
+    tree = PublicMatchupDecisionTree(payload, digest="sha256:" + "0" * 64)
+
+    assert tree.predict_card_ids([]).route == 0
+    prediction = tree.runtime_prediction([])
+    assert prediction.archetype_id is None
+    assert prediction.route == UNKNOWN_ROUTE
+    assert prediction.confidence == 0.0
+    assert prediction.leaf == -1

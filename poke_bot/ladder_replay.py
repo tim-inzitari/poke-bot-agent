@@ -98,6 +98,7 @@ class LadderReplayClassifier:
         additive_registered_ids: Sequence[str] = (),
         logical_aliases: Mapping[str, str] | None = None,
         authoritative_deck_catalogs: Sequence[str | Path] = (),
+        authoritative_only_ids: Sequence[str] = (),
     ) -> None:
         bound = representatives.bind(mix)
         self.mix = mix
@@ -125,6 +126,19 @@ class LadderReplayClassifier:
         if invalid_aliases:
             raise ValueError(f"invalid logical ladder aliases: {invalid_aliases}")
         self.logical_aliases = dict(sorted(aliases.items()))
+        authoritative_only = tuple(
+            dict.fromkeys(
+                str(value).strip().casefold()
+                for value in authoritative_only_ids
+                if str(value).strip()
+            )
+        )
+        unknown_authoritative_only = sorted(set(authoritative_only) - known)
+        if unknown_authoritative_only:
+            raise ValueError(
+                "unregistered authoritative-only ladder archetypes: "
+                f"{unknown_authoritative_only}"
+            )
         authoritative: dict[str, str] = {}
         catalog_contracts: list[dict[str, Any]] = []
         for raw_path in authoritative_deck_catalogs:
@@ -134,6 +148,8 @@ class LadderReplayClassifier:
             fingerprints = tuple(
                 str(value) for value in payload.get("deck_fingerprints") or ()
             )
+            source_archetype = dict(payload.get("source_archetype") or {})
+            source_deck_rows = payload.get("source_deck_rows")
             source_window = dict(payload.get("source_window") or {})
             observed_by_day = dict(payload.get("observed_by_day") or {})
             minimum_games = int(payload.get("minimum_acting_seat_games") or 0)
@@ -172,6 +188,42 @@ class LadderReplayClassifier:
                 raise ValueError(
                     f"invalid authoritative public deck catalog: {path}"
                 )
+            source_row_fingerprints: set[str] = set()
+            source_rows_bound = bool(
+                isinstance(source_archetype.get("id"), int)
+                and not isinstance(source_archetype.get("id"), bool)
+                and int(source_archetype["id"]) > 0
+                and bool(str(source_archetype.get("name") or "").strip())
+                and isinstance(source_deck_rows, list)
+                and bool(source_deck_rows)
+            )
+            if source_rows_bound:
+                for row in source_deck_rows:
+                    cards = (
+                        row.get("card_ids")
+                        if isinstance(row, dict)
+                        else None
+                    )
+                    if (
+                        not isinstance(cards, list)
+                        or len(cards) != 60
+                        or any(
+                            isinstance(value, bool)
+                            or not isinstance(value, int)
+                            for value in cards
+                        )
+                        or row.get("archetype_id")
+                        != source_archetype["id"]
+                    ):
+                        source_rows_bound = False
+                        break
+                    source_row_fingerprints.add(
+                        canonical_deck_sha256(cards)
+                    )
+                source_rows_bound = bool(
+                    source_rows_bound
+                    and source_row_fingerprints == set(fingerprints)
+                )
             for fingerprint in fingerprints:
                 previous = authoritative.get(fingerprint)
                 if previous is not None and previous != specialist_id:
@@ -186,14 +238,46 @@ class LadderReplayClassifier:
                     "sha256": _sha256(path),
                     "specialist_id": specialist_id,
                     "source": payload["source"],
+                    "source_archetype": source_archetype,
+                    "source_deck_rows_bound_to_fingerprints": (
+                        source_rows_bound
+                    ),
                     "source_window": source_window,
                     "minimum_acting_seat_games": minimum_games,
                     "observed_acting_seat_games": observed_games,
                     "deck_fingerprint_count": len(fingerprints),
                 }
             )
+        catalog_specialist_ids = {
+            str(row["specialist_id"]) for row in catalog_contracts
+        }
+        missing_authoritative_catalogs = sorted(
+            set(authoritative_only) - catalog_specialist_ids
+        )
+        if missing_authoritative_catalogs:
+            raise ValueError(
+                "authoritative-only ladder archetypes lack a public deck "
+                f"catalog: {missing_authoritative_catalogs}"
+            )
+        unbound_authoritative_catalogs = sorted(
+            specialist_id
+            for specialist_id in authoritative_only
+            if not any(
+                row["specialist_id"] == specialist_id
+                and row["source_deck_rows_bound_to_fingerprints"] is True
+                for row in catalog_contracts
+            )
+        )
+        if unbound_authoritative_catalogs:
+            raise ValueError(
+                "authoritative-only ladder archetypes lack exact public "
+                "source-archetype deck-row binding: "
+                f"{unbound_authoritative_catalogs}"
+            )
         self._authoritative_deck_labels = authoritative
         self._authoritative_catalog_contracts = tuple(catalog_contracts)
+        self.authoritative_only_ids = authoritative_only
+        self._authoritative_only = frozenset(authoritative_only)
 
         exact: dict[tuple[int, ...], str] = {}
         for entry in bound:
@@ -253,6 +337,7 @@ class LadderReplayClassifier:
         additive_registered_ids: Sequence[str] = (),
         logical_aliases: Mapping[str, str] | None = None,
         authoritative_deck_catalogs: Sequence[str | Path] = (),
+        authoritative_only_ids: Sequence[str] = (),
     ) -> "LadderReplayClassifier":
         return cls(
             load_ladder_deck_mix(mix_path),
@@ -261,6 +346,7 @@ class LadderReplayClassifier:
             additive_registered_ids=additive_registered_ids,
             logical_aliases=logical_aliases,
             authoritative_deck_catalogs=authoritative_deck_catalogs,
+            authoritative_only_ids=authoritative_only_ids,
         )
 
     @property
@@ -276,6 +362,7 @@ class LadderReplayClassifier:
             "authoritative_deck_catalogs": list(
                 self._authoritative_catalog_contracts
             ),
+            "authoritative_only_ids": list(self.authoritative_only_ids),
             "derived_ace_ids": {
                 key: list(value)
                 for key, value in sorted(self._derived_ace_ids.items())
@@ -296,21 +383,33 @@ class LadderReplayClassifier:
             )
         exact = self._exact.get(canonical_deck_fingerprint(cards))
         if exact is not None:
-            return self._logical_label(exact, "representative_exact")
+            return self._fallback_label(exact, "representative_exact")
 
         registered = archetypes.classify_deck(cards)
         if registered in self._active or registered in self._additive_registered:
-            return self._logical_label(registered, "registered_signature")
+            return self._fallback_label(registered, "registered_signature")
 
         present = set(cards)
         for entry in self._signature_rows:
             if all(present.intersection(group) for group in entry.signature_groups):
-                return self._logical_label(entry.deck_id, "artifact_signature")
+                return self._fallback_label(
+                    entry.deck_id,
+                    "artifact_signature",
+                )
 
         for deck_id, ace_ids in self._derived_ace_ids.items():
             if present.intersection(ace_ids):
-                return self._logical_label(deck_id, "derived_primary_ace")
+                return self._fallback_label(deck_id, "derived_primary_ace")
         return LadderReplayLabel(archetypes.UNKNOWN, "unrecognized")
+
+    def _fallback_label(self, deck_id: str, method: str) -> LadderReplayLabel:
+        label = self._logical_label(deck_id, method)
+        if label.deck_id in self._authoritative_only:
+            return LadderReplayLabel(
+                archetypes.UNKNOWN,
+                "authoritative_public_deck_identity_required",
+            )
+        return label
 
     def _logical_label(self, deck_id: str, method: str) -> LadderReplayLabel:
         logical = self.logical_aliases.get(str(deck_id).casefold(), str(deck_id))

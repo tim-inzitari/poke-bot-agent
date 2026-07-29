@@ -77,6 +77,45 @@ def test_runtime_checkpoint_staging_builds_all_route_companions(
     assert marker["one_route_per_decision"] is True
 
 
+def test_runtime_checkpoint_staging_preserves_v6_registry_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tree = tmp_path / "runtime-tree-v6.json"
+    route_targets = ["crustle", "teal-mask-ogerpon-ex"]
+    tree.write_text(
+        json.dumps(
+            {
+                "runtime_contract": {
+                    "accepted_archetype_ids": ["teal-mask-ogerpon-ex"],
+                    "one_route_per_decision": True,
+                    "unknown_route_exact_bypass": True,
+                    "consecutive_required": 2,
+                    "zero_materialized_adapters_allowed": True,
+                    "adapter_format": "poke-bot-matchup-adapter-bank-v6",
+                    "route_target_ids": route_targets,
+                    "route_physical_slots": [0, 18],
+                    "physical_slot_capacity": 64,
+                    "slot_registry_digest": "sha256:" + "a" * 64,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "1")
+    monkeypatch.setenv("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", str(tree))
+
+    source, marker_raw = remote_jobs._matchup_runtime_companions()
+    marker = json.loads(marker_raw)
+
+    assert source == tree
+    assert marker["adapter_format"] == "poke-bot-matchup-adapter-bank-v6"
+    assert marker["route_target_ids"] == route_targets
+    assert marker["route_physical_slots"] == [0, 18]
+    assert marker["physical_slot_capacity"] == 64
+    assert marker["slot_registry_digest"] == "sha256:" + "a" * 64
+
+
 def test_prepare_remote_play_job_stages_both_elmo_checkpoints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

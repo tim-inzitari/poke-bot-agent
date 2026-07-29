@@ -1134,6 +1134,22 @@ def test_specialist_protocol_state_validates_roster_and_restart(
         "target_registry": {"required_target_count": 2},
         "training_priority": {
             "policy": "unfinished_without_passing_checkpoint_then_meta_share_descending",
+            "handoff_override": {"priority_prefix": ["hammer-pult"]},
+            "strict_post_spidops_prefix": {
+                "decision_revision": 29,
+                "ids": ["hammer-pult"],
+                "missing_input_behavior": (
+                    "block_fallback_and_recover_public_inputs"
+                ),
+            },
+            "owner_removal": {
+                "decision_revision": 28,
+                "specialist_ids": [
+                    "dragapult-blaziken",
+                    "dragapult-dudunsparce",
+                ],
+                "counts_toward_completion": False,
+            },
             "ordered_unfinished_ids_after_active": ["hammer-pult"],
             "source": {
                 "generated_at_utc": "2026-07-22T17:09:07.357Z",
@@ -1197,6 +1213,15 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     assert state["head_requirements"]["causal_observable_state_only"] is True
     assert state["head_requirements"]["opponent_package_identity_allowed"] is False
     assert state["training_priority"]["next_specialist"] == "hammer-pult"
+    assert state["training_priority"]["strict_post_spidops_prefix"] == {
+        "decision_revision": 29,
+        "ids": ["hammer-pult"],
+        "missing_input_behavior": "block_fallback_and_recover_public_inputs",
+    }
+    assert state["training_priority"]["owner_removal"]["specialist_ids"] == [
+        "dragapult-blaziken",
+        "dragapult-dudunsparce",
+    ]
     hammer = next(row for row in state["specialists"] if row["id"] == "hammer-pult")
     assert hammer["status"] == "restart_required"
     assert hammer["bootstrap_epochs_completed"] == 18
@@ -1209,18 +1234,18 @@ def test_specialist_protocol_state_validates_roster_and_restart(
         {
             "schema": "poke_bot.population_round_robin_state/v1",
             "status": "training",
-            "member_count": 22,
+            "member_count": 2,
             "population_cycle": 4,
-            "active_member_index": 7,
-            "active_specialist_id": "starmie",
+            "active_member_index": 1,
+            "active_specialist_id": "hammer-pult",
             "members": [
                 {
                     "specialist_id": f"specialist-{index:02d}",
-                    "cycles_completed": 1 if index < 7 else 0,
-                    "rl_epochs_completed": 5 if index < 7 else 0,
-                    "rehearsal_epochs_completed": 5 if index < 7 else 0,
+                    "cycles_completed": 1 if index < 1 else 0,
+                    "rl_epochs_completed": 5 if index < 1 else 0,
+                    "rehearsal_epochs_completed": 5 if index < 1 else 0,
                 }
-                for index in range(22)
+                for index in range(2)
             ],
         },
     )
@@ -1238,10 +1263,10 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     runtime = population_overlay["population_training"]["runtime"]
     assert population_overlay["population_training"]["status"] == "training"
     assert population_overlay["population_training"]["enabled"] is True
-    assert runtime["active_specialist_id"] == "starmie"
-    assert runtime["completed_member_cycles"] == 7
-    assert runtime["rl_epochs_completed"] == 35
-    assert runtime["rehearsal_epochs_completed"] == 35
+    assert runtime["active_specialist_id"] == "hammer-pult"
+    assert runtime["completed_member_cycles"] == 1
+    assert runtime["rl_epochs_completed"] == 5
+    assert runtime["rehearsal_epochs_completed"] == 5
 
     runtime_state = specialist_protocol_state(
         path,
@@ -2614,14 +2639,17 @@ def test_dashboard_separates_accepted_holdout_next_gate_and_sampled_progress() -
     assert "activeGateSeat0=Number(nextEval.seat0_games_per_opponent||0)" in html
     assert "activeGateSeat1=Number(nextEval.seat1_games_per_opponent||0)" in html
     assert "candidate-first + '+activeGateSeat1+' candidate-second" in html
-    assert "${activeGateSeat0} candidate-first + ${activeGateSeat1} candidate-second" in html
+    assert (
+        "${row.seat0??activeGateSeat0} candidate-first + "
+        "${row.seat1??activeGateSeat1} candidate-second"
+    ) in html
     assert "exact greedy gate games" in html
     assert "no early stop" in html
     assert "original-four research excluded" in html
     assert "requires ops/alakazam_gate_program_v1.json" in html
     assert "Number.isFinite(c.heldout_wr)" not in html
     assert "+' gate + '+researchGames" not in html
-    assert "Dashboard UI v14" in html
+    assert "Dashboard UI v15" in html
 
 
 def test_live_curriculum_wins_over_stale_bootstrap_in_hero_status() -> None:
@@ -4368,7 +4396,11 @@ def test_live_post_starmie_handoff_reports_remaining_program(
     assert result["stage"] == "deck_agnostic_core_v2_corpus_pack"
     assert result["current"] == 16547
     assert result["total"] == 33095
-    assert result["remaining_specialists_after_starmie"] == 19
+    # The training plan is owned by state/specialists.yaml, not by the
+    # independently retained matchup-route roster.  Ten specialists are
+    # already frozen in the canonical state and seven of the seventeen
+    # required targets remain.
+    assert result["remaining_specialists_after_starmie"] == 7
     assert result["program_complete"] is False
     assert result["population_transition_ready"] is False
 
@@ -4418,3 +4450,79 @@ def test_dashboard_exposes_rare_route_boundary_preparation() -> None:
     ).read_text(encoding="utf-8")
     assert "pokebot-rare-route-assets-v35-import.service" in snapshot_source
     assert "rare-route-assets-v35-ready.json" in snapshot_source
+
+
+def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
+    root = Path(__file__).resolve().parents[1]
+    yaml = pytest.importorskip("yaml")
+    state = yaml.safe_load(
+        (root / "state/specialists.yaml").read_text(encoding="utf-8")
+    )
+    priority = state["training_priority"]
+    active_id = state["current"]["active_specialist"]
+    strict_ids = priority["strict_post_spidops_prefix"]["ids"]
+    ordered_ids = priority["ordered_unfinished_ids_after_active"]
+    removed_ids = set(priority["owner_removal"]["specialist_ids"])
+    required_ids = {row["id"] for row in state["specialists"]}
+    allowed_statuses = set(state["allowed_status_values"]["specialist"])
+
+    assert active_id == "team-rockets-spidops"
+    assert all(
+        row["status"] in allowed_statuses for row in state["specialists"]
+    )
+    assert strict_ids == [
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "archaludon-ex",
+    ]
+    assert ordered_ids[:3] == strict_ids
+    assert removed_ids == {
+        "dragapult-blaziken",
+        "dragapult-dudunsparce",
+    }
+    assert removed_ids.isdisjoint(required_ids)
+    assert removed_ids.isdisjoint(ordered_ids)
+
+    protocol = specialist_protocol_state(root / "state/specialists.yaml")
+    assert protocol["available"] is True, protocol.get("reason")
+    assert protocol["training_priority"]["strict_post_spidops_prefix"][
+        "ids"
+    ] == strict_ids
+    assert set(
+        protocol["training_priority"]["owner_removal"]["specialist_ids"]
+    ) == removed_ids
+
+    display_order = list(
+        dict.fromkeys(
+            specialist_id
+            for specialist_id in [active_id, *strict_ids, *ordered_ids]
+            if specialist_id and specialist_id not in removed_ids
+        )
+    )
+    assert display_order[:4] == [
+        "team-rockets-spidops",
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "archaludon-ex",
+    ]
+    assert removed_ids.isdisjoint(display_order)
+
+    snapshot_source = (
+        root / "scripts/dashboard_snapshot.py"
+    ).read_text(encoding="utf-8")
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+    assert (
+        '"strict_post_spidops_prefix": strict_prefix_contract'
+        in snapshot_source
+    )
+    assert '"owner_removal": owner_removal_contract' in snapshot_source
+    assert 'id="protocol-goals"' in html
+    assert 'id="protocol-removed"' in html
+    assert (
+        "goalOrder=[protocol.active_specialist,...strictGoalIds,"
+        "...(protocolPriority.ordered_unfinished_ids_after_active||[])]"
+        in html
+    )
+    assert "!removedGoalSet.has(id)" in html
+    assert "STRICT POST-SPIDOPS PREFIX" in html
+    assert "REMOVED FROM REQUIRED GOALS" in html

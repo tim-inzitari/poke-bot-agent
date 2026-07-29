@@ -8,8 +8,24 @@ from poke_bot.batched_infer import (
     LeafPacket,
     apply_runtime_matchup_adapter_contract,
 )
+from poke_bot.matchup_adapters import (
+    ADAPTER_CHECKPOINT_FORMAT as V5_ADAPTER_CHECKPOINT_FORMAT,
+)
+from poke_bot.matchup_adapters import EXPERT_IDS
+from poke_bot.matchup_adapter_routes import (
+    resolve_matchup_adapter_route_contract,
+)
+from poke_bot.matchup_adapters_v6 import (
+    ADAPTER_CHECKPOINT_FORMAT as V6_ADAPTER_CHECKPOINT_FORMAT,
+)
+from poke_bot.matchup_adapters_v6 import (
+    SLOT_CAPACITY,
+    load_slot_registry,
+    registry_digest,
+)
 from poke_bot.mcts import LeafEvaluator
 from scripts import run_remote_worker
+from scripts.build_remote_matchup_runtime_marker import build as build_runtime_marker
 
 
 def test_leaf_evaluator_uses_remote_backend_without_local_model() -> None:
@@ -106,6 +122,7 @@ def test_remote_runtime_health_proves_the_exact_activation_contract(
         runtime_accepted_archetype_ids = frozenset({"crustle"})
         runtime_consecutive_required = 2
         digest = tree_digest
+        targets = EXPERT_IDS
 
     monkeypatch.setattr(
         "poke_bot.public_matchup_router.PublicMatchupDecisionTree.from_path",
@@ -115,6 +132,10 @@ def test_remote_runtime_health_proves_the_exact_activation_contract(
         "poke_bot.checkpoint.load_checkpoint",
         lambda *_args, **_kwargs: {
             "extra": {
+                "matchup_adapter_config": {
+                    "format": V5_ADAPTER_CHECKPOINT_FORMAT,
+                    "expert_ids": list(EXPERT_IDS),
+                },
                 "dormant_matchup_adapter_fit": {
                     "schema": "poke_bot.dormant_matchup_adapter_fit/v1",
                     "route_decisions": {"crustle": 123},
@@ -134,6 +155,7 @@ def test_remote_runtime_health_proves_the_exact_activation_contract(
     monkeypatch.setenv("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "test-pending")
     monkeypatch.setenv("POKEBOT_PUBLIC_MATCHUP_TREE_PATH", "test-pending")
     monkeypatch.setenv("POKEBOT_MATCHUP_ADAPTER_ROUTER_MODE", "test-pending")
+    monkeypatch.setenv("POKEBOT_MATCHUP_ADAPTER_FORMAT", "test-pending")
 
     runtime = run_remote_worker._activate_matchup_runtime_from_marker(
         checkpoint_path
@@ -153,6 +175,10 @@ def test_remote_runtime_health_proves_the_exact_activation_contract(
         "unknown_route_exact_bypass": True,
         "consecutive_required": 2,
         "zero_materialized_adapters_allowed": False,
+        "adapter_format": V5_ADAPTER_CHECKPOINT_FORMAT,
+        "route_target_ids": list(EXPERT_IDS),
+        "route_physical_slots": list(range(len(EXPERT_IDS))),
+        "physical_slot_capacity": len(EXPERT_IDS),
     }
 
 
@@ -185,6 +211,7 @@ def test_remote_runtime_accepts_trained_routes_plus_proven_zero_dormant_routes(
         runtime_accepted_archetype_ids = frozenset({"crustle", "walrein"})
         runtime_consecutive_required = 2
         digest = tree_digest
+        targets = EXPERT_IDS
 
     monkeypatch.setattr(
         "poke_bot.public_matchup_router.PublicMatchupDecisionTree.from_path",
@@ -194,12 +221,13 @@ def test_remote_runtime_accepts_trained_routes_plus_proven_zero_dormant_routes(
         "poke_bot.checkpoint.load_checkpoint",
         lambda *_args, **_kwargs: {
             "model_state_dict": {
-                "matchup_adapter_bank.experts.1.up.weight": torch.zeros(3, 2),
-                "matchup_adapter_bank.experts.1.up.bias": torch.zeros(3),
+                "matchup_adapter_bank.experts.13.up.weight": torch.zeros(3, 2),
+                "matchup_adapter_bank.experts.13.up.bias": torch.zeros(3),
             },
             "extra": {
                 "matchup_adapter_config": {
-                    "expert_ids": ["crustle", "walrein"],
+                    "format": V5_ADAPTER_CHECKPOINT_FORMAT,
+                    "expert_ids": list(EXPERT_IDS),
                 },
                 "dormant_matchup_adapter_bank": {
                     "schema": "poke_bot.trained_dormant_matchup_adapter/v1",
@@ -225,6 +253,123 @@ def test_remote_runtime_accepts_trained_routes_plus_proven_zero_dormant_routes(
 
     assert runtime["zero_materialized_adapters_allowed"] is True
     assert runtime["accepted_archetype_ids"] == ["crustle", "walrein"]
+
+
+def test_v6_marker_and_worker_reload_bind_the_embedded_registry(
+    tmp_path,
+) -> None:
+    registry = load_slot_registry()
+    adapter_config = {
+        "format": V6_ADAPTER_CHECKPOINT_FORMAT,
+        "slot_capacity": SLOT_CAPACITY,
+        "slot_registry_digest": registry_digest(registry),
+        "slot_registry": registry,
+    }
+    route_contract = resolve_matchup_adapter_route_contract(adapter_config)
+    checkpoint_path = tmp_path / "model.pt"
+    torch.save(
+        {
+            "extra": {
+                "matchup_adapter_config": adapter_config,
+                "dormant_matchup_adapter_bank": {
+                    "schema": "poke_bot.zero_dormant_matchup_adapter/v1",
+                    "zero_output": True,
+                    "runtime_enabled": False,
+                    "adapter_config": adapter_config,
+                },
+                "dormant_matchup_adapter_fit": {"route_decisions": {}},
+            }
+        },
+        checkpoint_path,
+    )
+    targets = list(route_contract.target_ids)
+    width = len(targets) + 1
+    unknown_counts = [0.0] * width
+    unknown_counts[-1] = 1.0
+    tree_path = tmp_path / "runtime-tree.json"
+    tree_path.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.public_matchup_decision_tree/v1",
+                "runtime_enabled": True,
+                "targets": targets,
+                "prediction_contract": {
+                    "route_output_width": len(targets),
+                    "route_class_names": targets,
+                    "unknown_is_separate_abstention": True,
+                    "unknown_class_index": len(targets),
+                    "adapter_count": len(targets),
+                },
+                "runtime_contract": {
+                    "schema": (
+                        "poke_bot.public_matchup_tree_runtime_activation/v1"
+                    ),
+                    "checkpoint_digest": (
+                        "sha256:"
+                        + hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
+                    ),
+                    "accepted_archetype_ids": ["teal-mask-ogerpon-ex"],
+                    "per_archetype_min_leaf_confidence": {
+                        "teal-mask-ogerpon-ex": 0.9
+                    },
+                    "min_leaf_confidence": 0.9,
+                    "consecutive_required": 2,
+                    "unknown_route_exact_bypass": True,
+                    "one_route_per_decision": True,
+                    "zero_materialized_adapters_allowed": True,
+                    **route_contract.runtime_binding(),
+                },
+                "tree": {
+                    "class_names": [*targets, "unknown"],
+                    "children_left": [-1],
+                    "children_right": [-1],
+                    "feature_card_id": [-2],
+                    "threshold": [-2.0],
+                    "weighted_class_counts": [unknown_counts],
+                    "node_count": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    marker_path = tmp_path / run_remote_worker.MATCHUP_RUNTIME_MARKER
+
+    marker = build_runtime_marker(
+        checkpoint_path,
+        tree_path,
+        marker_path,
+    )
+    runtime = run_remote_worker._activate_matchup_runtime_from_marker(
+        checkpoint_path,
+        apply_environment=False,
+    )
+    reloaded = run_remote_worker._reload_matchup_runtime_contract(
+        checkpoint_path,
+        runtime,
+    )
+
+    assert marker["adapter_format"] == V6_ADAPTER_CHECKPOINT_FORMAT
+    assert marker["slot_registry_digest"] == registry_digest(registry)
+    assert marker["route_target_ids"] == targets
+    assert marker["route_physical_slots"][-1] == 18
+    assert runtime["slot_registry_digest"] == registry_digest(registry)
+    assert runtime["route_physical_slots"][-1] == 18
+    assert reloaded is not None
+    assert reloaded["checkpoint_digest"] == runtime["checkpoint_digest"]
+    assert reloaded["slot_registry_digest"] == runtime["slot_registry_digest"]
+
+    changed_marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    changed_marker["slot_registry_digest"] = "sha256:" + "0" * 64
+    marker_path.chmod(0o644)
+    marker_path.write_text(json.dumps(changed_marker), encoding="utf-8")
+    with pytest.raises(
+        ValueError,
+        match="runtime matchup route binding changed: slot_registry_digest",
+    ):
+        run_remote_worker._reload_matchup_runtime_contract(
+            checkpoint_path,
+            runtime,
+        )
 
 
 def test_remote_runtime_rejects_nonzero_untrained_dormant_route(
@@ -255,6 +400,7 @@ def test_remote_runtime_rejects_nonzero_untrained_dormant_route(
         runtime_accepted_archetype_ids = frozenset({"walrein"})
         runtime_consecutive_required = 2
         digest = tree_digest
+        targets = EXPERT_IDS
 
     monkeypatch.setattr(
         "poke_bot.public_matchup_router.PublicMatchupDecisionTree.from_path",
@@ -264,11 +410,14 @@ def test_remote_runtime_rejects_nonzero_untrained_dormant_route(
         "poke_bot.checkpoint.load_checkpoint",
         lambda *_args, **_kwargs: {
             "model_state_dict": {
-                "matchup_adapter_bank.experts.0.up.weight": torch.ones(3, 2),
-                "matchup_adapter_bank.experts.0.up.bias": torch.zeros(3),
+                "matchup_adapter_bank.experts.13.up.weight": torch.ones(3, 2),
+                "matchup_adapter_bank.experts.13.up.bias": torch.zeros(3),
             },
             "extra": {
-                "matchup_adapter_config": {"expert_ids": ["walrein"]},
+                "matchup_adapter_config": {
+                    "format": V5_ADAPTER_CHECKPOINT_FORMAT,
+                    "expert_ids": list(EXPERT_IDS),
+                },
                 "dormant_matchup_adapter_fit": {
                     "schema": "poke_bot.dormant_matchup_adapter_fit/v1",
                     "route_decisions": {"walrein": 0},

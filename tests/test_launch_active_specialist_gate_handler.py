@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from poke_bot import archetypes
 from scripts.launch_active_specialist_gate_handler import build_command
 
 
@@ -137,6 +138,77 @@ def test_gate_handler_resolves_from_selected_registry_record(
         "/state/runtime-gate.json"
     )
     assert command.count("--run-dir") == 1
+
+
+def test_archaludon_classifier_and_terminal_representative_resolver_agree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = tmp_path / "runtime"
+    (runtime / "ops").mkdir(parents=True)
+    (runtime / "scripts").mkdir()
+    (runtime / "data/training_mixes").mkdir(parents=True)
+    for relative in ("scripts/handle.py", "ops/gate.json"):
+        (runtime / relative).write_text("{}", encoding="utf-8")
+    _write_submission_contract_inputs(runtime)
+
+    representatives = runtime / "data/training_mixes/representatives.json"
+    representatives.write_text(
+        Path(
+            "data/training_mixes/specialist_representatives.v1.json"
+        ).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    tree = tmp_path / "tree.json"
+    tree.write_text("{}", encoding="utf-8")
+    registry = {
+        "runtime_root": str(runtime),
+        "python": "/usr/bin/python3",
+        "active_gate_contract": "ops/gate.json",
+        "minimum_terminal_iteration": 5,
+        "pass_handler": {
+            "launcher": "scripts/handle.py",
+            "registry_root": "/models",
+            "representatives": "data/training_mixes/representatives.json",
+            "competition": "competition",
+            "submission_count": 1,
+            "submission_mode": "queue_and_continue",
+            "submission_queue": "/state/queue.json",
+            "kaggle": "/bin/kaggle",
+            "authorization": "/config/authorization.json",
+            "submission_receipts": "/state/receipts",
+            "training_service": "trainer.service",
+            "continue_drop_in_source": "ops/gate.json",
+            "continue_drop_in_target": "/config/unused.conf",
+        },
+        "specialists": {
+            "archaludon-ex": {
+                "status": "ready",
+                "run_name": "run-archaludon-ex",
+                "terminal_gate_marker": "SPECIALIST_GATE_PASSED.archaludon-ex",
+                "matchup_runtime_tree": str(tree),
+                "pass_handler": {
+                    "family": "archaludon-ex-v1",
+                    "display_name": "Archaludon ex",
+                    "submission_root": "/submissions/archaludon-ex",
+                    "state": "/state/archaludon-ex.json",
+                    "lock": "/state/archaludon-ex.lock",
+                    "handoff_service": "next.service",
+                },
+            }
+        },
+    }
+    monkeypatch.setattr(
+        "scripts.launch_active_specialist_gate_handler.classify_deck",
+        archetypes.classify_deck,
+    )
+
+    command = build_command(registry, "archaludon-ex")
+
+    assert command[command.index("--archetype") + 1] == "archaludon-ex"
+    assert command[command.index("--representatives") + 1] == str(
+        representatives.resolve()
+    )
 
 
 def test_gate_handler_uses_canonical_floor_without_specialist_override(

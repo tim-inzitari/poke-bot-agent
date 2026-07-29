@@ -11,7 +11,7 @@
 # not change or block that status.
 schema_version: poke_bot.specialist_state/v1
 protocol_schema_version: poke_bot.rl_protocol/v2
-last_verified_at_utc: 2026-07-28T20:58:41Z
+last_verified_at_utc: 2026-07-29T00:21:33Z
 verification_scope:
   repository: /Users/tsinzitari/Documents/Codex/2026-07-16/im-doing-my-pokemon-rl-you
   runtime_repository: /home/inzi/poke-bot-agent
@@ -43,29 +43,32 @@ current:
   transition_source_specialist: thwackey
   staged_successor_specialist: null
   program_progress:
-    required_specialists_total: 18
+    required_specialists_total: 17
     completed_frozen: 10
     completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo, thwackey]
     boundary_frozen_pending_public_mix_registration: []
     active_specialists: 1
     active_specialist_ids: [team-rockets-spidops]
-    remaining_unfinished: 8
-    remaining_after_active: 7
+    remaining_unfinished: 7
+    remaining_after_active: 6
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Continue Team Rocket's Spidops specialist RL from its committed iteration-0
-    heldout champion. The exact 8,192-game collection, one-epoch update, premium
-    holdout, research controls, and next-collection publication are receipt
-    backed; iteration 1 is collecting automatically. Preserve rejected
-    cumulative core v10 as immutable diagnostic evidence and keep Hammer-Pult
-    one-ahead without interrupting healthy Spidops training.
+    Continue Team Rocket's Spidops specialist RL from its committed iteration-4
+    heldout champion. The managed service recovered iteration 5 after an OOM
+    without changing the selector or committed boundary; iteration 5 public
+    collection is active. Preserve rejected cumulative core V10 as immutable
+    diagnostic evidence, use accepted cumulative core V9 for successor
+    prestaging, and keep Hammer-Pult one-ahead without interrupting Spidops.
+    The strict post-Spidops prefix is Hammer-Pult, Teal Mask Ogerpon ex, then
+    Archaludon ex; Dragapult/Blaziken and Dragapult/Dudunsparce are removed
+    from the required program.
   next_successor_prestage:
     specialist_id: hammer-pult
-    status: ready
+    status: ready_nonlinear_systems_bound
     active_training_modified: false
     guide_contract: config/deck_guides/hammer-pult.yaml
-    guide_contract_checksum: sha256:8622b4449bb06b4ee953f8c2e38b12d495d7300a7f36a596edd2384941ca11e9
+    guide_contract_checksum: sha256:27d4151e6028b90a774d26cb55d02725c5ce75c3b47f2c8ce6f5c9453862f4aa
     guide_version: hammer-pult-north-star-v1
     teacher_module: poke_bot/hammer_heuristics.py
     exact_60_card_representative:
@@ -91,11 +94,20 @@ current:
       key: ad2080d20a87aaa8ff2fcedaa9ff896a387e87ffb9e263083ea93da7e5c1b116
       manifest_checksum: sha256:ce6cac5edba1cde4c3540aacd8ffc348eff622f13956d938f6f3440a5ac2837b
       payload_checksum: sha256:2638aa7d5257527c6038694570c74285a64beb6d0dd44ae180eee5c6704dc9ee
+    nonlinear_decision_support:
+      status: validated
+      receipt: state/hammer_pult_nonlinear_systems_validation_v1.json
+      receipt_checksum: sha256:c3c5f05ae72ce94f97366368ee6700a389527425a0cb704739965851446cda4a
+      required_system_count: 7
+      required_fused_head_count: 17
+      sparse_guide_alone_is_sufficient: false
+      existing_prestage_receipt_superseded: true
+      reissued_prestage_receipt_bound: true
     pre_stage_ready: true
     pre_stage_receipt: /home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json
-    pre_stage_receipt_checksum: sha256:6a62dd671d90a0dbf644d79f3a56f69244df09cc53ad726a90e487d033cebeb3
-    pre_stage_created_at_utc: 2026-07-28T20:15:35.163734+00:00
-    selection_identity_checksum: sha256:2b1b87c9de6422a2ccd80c9fde2bb88825a31bf438a1e63ea94fe693f7462620
+    pre_stage_receipt_checksum: sha256:51b7543e71e13f6e197a12c9dbd1c65d89a337013ca14b1f54ff48954f2faaee
+    pre_stage_created_at_utc: 2026-07-28T21:32:43.746060+00:00
+    selection_identity_checksum: sha256:d01acd90683f75c091e8c2b3f9da7ce93e852730cf3e78853da9ed583e41d5b4
     blockers: []
   historical_spidops_prestage:
     specialist_id: team-rockets-spidops
@@ -980,11 +992,19 @@ current:
   note: This file does not start, stop, or reconfigure the observed run.
 
 target_registry:
-  authoritative_source: state/matchup_adapter_roster.json#/active_expert_ids
-  required_target_count: 18
+  authoritative_source: state/specialists.yaml#/specialists
+  required_target_count: 17
+  matchup_route_source: state/matchup_adapter_roster.json#/active_expert_ids
+  live_v5_matchup_route_count: 18
+  staged_v6_matchup_route_count: 19
+  specialist_plan_and_matchup_routes_may_differ: true
   policy: >-
-    The 18 logical archetypes in the stable canonical expert_ids list are the
-    required specialist program. Retired v4 archetypes are absent from active
+    The 18 immutable V5-prefix archetypes remain causal matchup routes and the
+    staged V6 registry appends Teal Mask Ogerpon ex at stable slot 18, while
+    the required specialist program is the explicit specialists list after
+    owner removals and additions. Dragapult/Blaziken and
+    Dragapult/Dudunsparce may remain immutable matchup evidence without
+    remaining specialist targets. Retired v4 archetypes are absent from active
     planning and checkpoint rows; references below may remain only as clearly
     historical artifact lineage.
   live_checkpoint_format: poke-bot-matchup-adapter-bank-v5-roster18
@@ -1014,15 +1034,40 @@ training_priority:
       - rockets-mewtwo
       - thwackey
       - team-rockets-spidops
+      - hammer-pult
+      - teal-mask-ogerpon-ex
+      - archaludon-ex
     reason: >-
       Operator-pinned future sequence: Dragapult/Dusknoir, Dudunsparce,
       Marnie's Grimmsnarl ex, Cynthia's Garchomp ex, Team Rocket's Mewtwo ex,
       Thwackey, then Team Rocket's Spidops. Spidops is fail-closed and may not
       be skipped when its corpus is missing; recover the full public-history
-      inputs instead. Hammer-Pult then resumes at its actual meta priority
-      without an existing-artifact penalty; remaining unfinished v5 targets
-      resume the established ordering.
+      inputs instead. After Spidops, Hammer-Pult, Teal Mask Ogerpon ex, and
+      Archaludon ex form a strict fail-closed prefix. Remaining unfinished
+      targets resume only after Archaludon ex.
     removes_target: false
+  owner_removal:
+    decision_revision: 28
+    specialist_ids:
+      - dragapult-blaziken
+      - dragapult-dudunsparce
+    removes_target: true
+    selection_eligible: false
+    counts_toward_completion: false
+    preserve_historical_corpus_router_and_audit_artifacts: true
+    delete_or_reuse_stable_matchup_slots: false
+    status: active_in_planning_staged_for_next_selector_projection
+    active_specialist_modified: false
+    prepared_successor_modified: false
+  strict_post_spidops_prefix:
+    decision_revision: 29
+    ids:
+      - hammer-pult
+      - teal-mask-ogerpon-ex
+      - archaludon-ex
+    missing_input_behavior: block_fallback_and_recover_public_inputs
+    activation: receipt_backed_handoff_only
+    status: staged_while_spidops_iteration_5_active
   source:
     status: verified_current
     authoritative_page: https://ptcgreplay.netlify.app/
@@ -1064,26 +1109,37 @@ training_priority:
       walrein: {source_name: Walrein, appearances: 1026, share_percent: 0.3113}
     aggregate_source_mappings:
       hammer-pult: Dragapult ex
-      dragapult-blaziken: Dragapult ex
-      dragapult-dudunsparce: Dragapult ex
       dragapult: Dragapult ex
       dragapult-dusknoir:
         - Dragapult ex
         - Dusknoir
+    verified_latest_public_source_mappings:
+      teal-mask-ogerpon-ex:
+        source_archetype_id: 151
+        source_name: "Teal Mask Ogerpon ex"
+        competitive_taxonomy_name: Ogerpon Box
+        completed_ingest_id: 17
+        source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
+        appearances: 1135
+        share: 0.0035400603837612596
+        exact_deck_fingerprints: 1
+        deck_catalog: data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json
+        deck_catalog_checksum: sha256:5c2f4856b5f99f5b008f5160af1c9f27dd2ae10d7bee5e964de08b64607d3e1a
+        fuzzy_name_matching_allowed: false
+        exact_deck_checksum_classifier_ready: true
     null_or_ambiguous_mappings:
       rockets-mewtwo: no Team Rocket's Mewtwo row in completed ingest 8
     scope: public_ladder_meta_analysis_only_not_training_or_gate_evidence
-  # The four internal Dragapult variants map to the source's aggregate
+  # Retained internal Dragapult targets map to the source's aggregate
   # "Dragapult ex" row; the shared percentage is group-level, not an assertion
   # that each variant independently owns that fraction of the field.
   ordered_unfinished_ids_after_active:
     - hammer-pult
-    - dragapult-blaziken
-    - dragapult-dudunsparce
+    - teal-mask-ogerpon-ex
+    - archaludon-ex
     - dragapult
     - walrein
     - crustle
-    - archaludon-ex
   canonical_v5_runtime:
     status: deployed
     roster: state/matchup_adapter_roster.json
@@ -1111,6 +1167,8 @@ training_priority:
       - thwackey
       - team-rockets-spidops
       - hammer-pult
+      - teal-mask-ogerpon-ex
+      - archaludon-ex
     priority_exceptions:
       hammer-pult:
         existing_artifact_penalty: false
@@ -1121,6 +1179,8 @@ training_priority:
       rockets-mewtwo: Team Rocket's Mewtwo ex
       thwackey: Thwackey
       team-rockets-spidops: Team Rocket's Spidops
+      teal-mask-ogerpon-ex: Teal Mask Ogerpon ex
+      archaludon-ex: Archaludon ex
     thwackey_resolution: >-
       The source list is labeled Thwackey and uses four Dipplin with the
       Festival Lead Ability plus four Festival Grounds. Expose the existing
@@ -1137,8 +1197,12 @@ training_priority:
     registry: state/matchup_adapter_roster.json
     physical_slot_capacity: 64
     legacy_v5_prefix_length: 18
-    current_logical_routes: 18
-    unused_exact_zero_slots: 46
+    current_logical_routes: 19
+    unused_exact_zero_slots: 45
+    appended_dormant_route:
+      slot: 18
+      archetype_id: teal-mask-ogerpon-ex
+      public_source_archetype_id: 151
     source_v5_checkpoints_remain_immutable: true
     retained_rows_byte_identical_required: true
     retained_optimizer_state_by_parameter_name_required: true
@@ -1247,8 +1311,7 @@ training_priority:
     - {id: garchomp, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Cynthia's Garchomp ex", share: 0.004862236628849271, appearances: 6, mapping: canonical_name}
     - {id: rockets-mewtwo, existing_model_artifact: false, availability_group: missing_model, source_archetype: null, share: null, appearances: null, mapping: unresolved}
     - {id: hammer-pult, existing_model_artifact: true, availability_group: missing_model_priority_equivalent, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family, priority_override: no_existing_artifact_penalty}
-    - {id: dragapult-blaziken, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family}
-    - {id: dragapult-dudunsparce, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: aggregate_family}
+    - {id: teal-mask-ogerpon-ex, existing_model_artifact: false, availability_group: missing_model, source_archetype: "Teal Mask Ogerpon ex", source_archetype_id: 151, share: 0.0035400603837612596, appearances: 1135, mapping: exact_deck_checksum}
     - {id: dragapult, existing_model_artifact: false, availability_group: missing_model, source_archetype: Dragapult ex, share: 0.055105348460291734, appearances: 68, mapping: canonical_name}
     - {id: walrein, existing_model_artifact: false, availability_group: missing_model, source_archetype: Walrein, share: 0.018638573743922204, appearances: 23, mapping: exact}
     - {id: crustle, existing_model_artifact: false, availability_group: missing_model, source_archetype: Crustle, share: 0.008103727714748784, appearances: 10, mapping: exact}
@@ -1297,6 +1360,44 @@ expert_corpus_archive:
         public_source_ingest_id: 17
         lower_priority_fallthrough_allowed: false
         historical_12_game_shard_is_intended_corpus: false
+      teal-mask-ogerpon-ex:
+        decision_revision: 27
+        source_mode: public_full_history_exact_deck_identity
+        competitive_taxonomy_identity: ogerpon-box
+        public_source_archetype_id: 151
+        public_source_archetype_name: "Teal Mask Ogerpon ex"
+        source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
+        minimum_acting_seat_games: 1135
+        source_indexed_acting_seat_games: 1135
+        materialized_acting_seat_games: null
+        materialized_decisions: null
+        materialized_guide_rows: null
+        daily_receipts_verified: 0
+        duplicate_episode_seat_keys: null
+        exact_deck_fingerprints: 1
+        deck_catalog: data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json
+        deck_catalog_checksum: sha256:5c2f4856b5f99f5b008f5160af1c9f27dd2ae10d7bee5e964de08b64607d3e1a
+        public_source_ingest_id: 17
+        exact_source_binding_required: true
+        authoritative_only_classifier_required: true
+        full_history_materialization_service: pokebot-teal-mask-full32-guide-v3-clean.service
+        full_history_materialization_status: active_collision_safe_rebuild
+        clean_source_root: /home/admin/pokebot-teal-clean-src-v2
+        clean_output_root: /mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v3
+        teacher_checksum: sha256:475a4e67897aab17dd9a65f47431fdb44134c6e9f6a07d350d653226b99ef59f
+        corpus_promotion_status: blocked_until_clean_v3_receipt
+        contaminated_v1:
+          status: quarantined_not_promotable
+          false_source_archetype_id: 67
+          false_source_archetype_name: Mega Kangaskhan ex
+          records: 2300
+          decisions: 156692
+          guide_rows: 10495
+          ready_receipt_checksum: sha256:216b60efe50709a7972081ad2c7df60614412a28b09b15458b659eadec8c547c
+          manifest_checksum: sha256:da6c63179ac879a68955ba0819768100d08b12f7b2e4f6dcff4eebb5733dd668
+          protected_pointer_checksum: sha256:ab6a383ab332c58b2f44a23f5f11bb737216a03fc3e2fa407971ebf4f157100c
+          promotion_receipt_checksum: sha256:db8aff2fd5076fd75c4e56384f9bd609dda79836169527a780ec2808722e2674
+        lower_priority_fallthrough_allowed: false
     refresh_boundary: next_safe_bootstrap_or_rehearsal
     current_bound_corpus_must_not_be_relabelled_or_rewritten: true
     authoritative_config: config/rl_protocol.yaml#/specialist_training/expert_corpus
@@ -1642,19 +1743,27 @@ expert_corpus_archive:
 
 shared_core:
   status: frozen
-  generation: 6
-  checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6/model.pt
-  checksum: sha256:e1966ea311657c9a68f918da0f9276df6d74258216f38837a294d1f9c1cb2490
-  frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v6
-  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v6-ready.json
-  ready_receipt_checksum: sha256:33e9287f5d870b2a5d6987c6b08a3bbe43a3df4849f25f379499155333c65c45
-  protected_manifest_checksum: sha256:34be3b0d1e708e6a323cef917039d1bd81307bcf789ae69352080c9f195637d2
+  generation: 9
+  checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt
+  checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
+  frozen_family: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1
+  ready_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v9-fused-v1-ready.json
+  ready_receipt_checksum: sha256:37ef4c69094475a71dfc3d962efedfb2f02eddb5c2202b1afb6be4c1c64fa478
+  protected_manifest_checksum: sha256:468f985d7fdc46d8977850fb5ade1f420635eedd22a51075e4d8714a0e140e6b
   epochs_completed: 25
   best_validation_loss: null
-  observed_archetypes: null
+  observed_archetypes: 9
   expanded_strategic_heads_present: true
   runtime_enabled_heads: []
   gameplay_regression_passed: true
+  latest_attempted_refresh:
+    generation: 10
+    status: rejected_gameplay_regression
+    checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v10_fused_v1/model.pt
+    checksum: sha256:fb634ad17a34287272f4bde26cd6c82b9ea0c8cab4bab2daa387e8ae25c45e1d
+    registered_as_accepted: false
+    regression_receipt: /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v10-fused-v1-gameplay-regression.json
+    regression_receipt_checksum: sha256:7b2e07e69a36930072fb72c6d736d1bf00471075590dc404b66b89ace51af8b8
   prior_core:
     checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_distilled_from_alakazam_v1/model.pt
     checksum: sha256:ae2e1bbd973f5ef3aed581c784238069757cc3be0a8aa0dfd4c8ac18b5421b74
@@ -2248,6 +2357,106 @@ specialists:
     public_mix_eligible: false
     kaggle_submissions: []
 
+  - id: teal-mask-ogerpon-ex
+    name: Teal Mask Ogerpon ex
+    source_archetype_id: ogerpon-box
+    source_archetype_display_name: Ogerpon Box
+    status: unstarted
+    active: false
+    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
+    datasets:
+      expert_manifest: null
+      corpus_identity_status: blocked_contaminated_v1_quarantined_clean_v3_build_active
+      public_deck_catalog: data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json
+      public_deck_catalog_checksum: sha256:5c2f4856b5f99f5b008f5160af1c9f27dd2ae10d7bee5e964de08b64607d3e1a
+      public_identity_validation_receipt: state/teal_mask_ogerpon_public_deck_identity_validation_v1.json
+      source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
+      source_indexed_public_acting_seat_games: 1135
+      materialized_acting_seat_games: null
+      materialized_decisions: null
+      materialized_guide_rows: null
+      daily_receipts_verified: 0
+      duplicate_episode_seat_keys: null
+      exact_source_archetype_binding:
+        status: validated
+        source_archetype_id: 151
+        source_archetype_name: Teal Mask Ogerpon ex
+        deck_fingerprint: sha256:10857495e924480503a72e7178ba50bb55fcfbf044954427833d722276e3c71a
+        authoritative_only_classifier: true
+      clean_rebuild:
+        status: active
+        service: pokebot-teal-mask-full32-guide-v3-clean.service
+        source_root: /home/admin/pokebot-teal-clean-src-v2
+        output_root: /mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v3
+        guide_version: teal-mask-ogerpon-ex-north-star-v2
+        teacher_checksum: sha256:475a4e67897aab17dd9a65f47431fdb44134c6e9f6a07d350d653226b99ef59f
+      contaminated_v1:
+        status: quarantined_not_promotable
+        false_source_archetype_id: 67
+        false_source_archetype_name: Mega Kangaskhan ex
+        false_deck_fingerprint: sha256:3339847ed8e48d4410471886db604b48190495dde36b8c8ece70e92ee88c25ab
+        records: 2300
+        decisions: 156692
+        guide_rows: 10495
+        ready_receipt_checksum: sha256:216b60efe50709a7972081ad2c7df60614412a28b09b15458b659eadec8c547c
+        manifest_checksum: sha256:da6c63179ac879a68955ba0819768100d08b12f7b2e4f6dcff4eebb5733dd668
+        protected_pointer_checksum: sha256:ab6a383ab332c58b2f44a23f5f11bb737216a03fc3e2fa407971ebf4f157100c
+        promotion_receipt_checksum: sha256:db8aff2fd5076fd75c4e56384f9bd609dda79836169527a780ec2808722e2674
+    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
+    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
+    representative:
+      status: ready_checksum_bound
+      provenance: Toshiyuki_Otake_Japan_Championships_2026_winner
+      official_deck_code: J8xJG4-TqjMpR-cJ8Gcc
+      exact_card_count: 60
+      public_list: https://www.limitlesstcg.com/decks/list/28688
+      logical_identity: teal-mask-ogerpon-ex
+      physical_source_identity: ogerpon-box
+      ordered_cards_checksum: sha256:d7b99fcf1b2f5bc49525024b0ad7a80eb91571cc6305293035e0ee8826eaee5f
+      sorted_multiset_checksum: sha256:ec97474ff3a01876bd2f7002569c78a8e5bb19592fa204f2074fa764d321e1d4
+    guide:
+      status: research_integrated_clean_corpus_rebuild_and_additive_19_route_refresh_active
+      deck_complexity: nonlinear_basic_toolbox
+      contract: config/deck_guides/teal-mask-ogerpon-ex.yaml
+      teacher_module: poke_bot/teal_mask_ogerpon_heuristics.py
+      focused_tests_passed: 7
+      exact_causal_labels_only: true
+      hidden_or_future_information_allowed: false
+      nonlinear_decision_support:
+        status: validated
+        receipt: state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json
+        required_system_count: 7
+        required_fused_head_count: 17
+      matchup_router:
+        runtime_authority: none
+        production_router_modified: false
+        rejected_v43:
+          status: rejected_18_of_19_routes
+          artifact: /mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-router-v43-attempt2/public-matchup-tree.json
+          artifact_checksum: sha256:095fa8b9df2b35dbe47c2ec3214146edcab3ba3f6f276def4d46f9c93b2ea93b
+          audit_checksum: sha256:bc4544b9ca63c8ea14837432563bc58cda9e30f93289648af10aa1ac371d44db
+          teal_precision: 0.9338913930027903
+          teal_weighted_support: 30938
+          rejection_reason: team_rockets_spidops_zero_support
+        combined_v44:
+          status: managed_rebuild_active_inactive_only
+          service: pokebot-teal-mask-router-v44-combined.service
+          output_root: /mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-router-v44-combined
+          spidops_calibration_archive: /mnt/Main/main/poke-bot-agent/archive/router-calibration-spidops-v42/router-calibration-spidops-v42.zip
+          spidops_calibration_archive_checksum: sha256:b19dc7b852e6ff229a47256c3e0a5658c8c47ee98028f500edb240534259a03c
+          minimum_precision: 0.93
+          minimum_weighted_support: 10000
+          required_accepted_routes: 19
+          exact_zero_state_bypass_required: true
+    transition:
+      strict_predecessor: hammer-pult
+      strict_successor: archaludon-ex
+      missing_input_behavior: block_fallback_and_recover_public_inputs
+    holdouts: {official: null, premium: null}
+    frozen: false
+    public_mix_eligible: false
+    kaggle_submissions: []
+
   - id: dragapult-dusknoir
     name: Dragapult Dusknoir
     status: passed_frozen
@@ -2354,32 +2563,6 @@ specialists:
     public_mix_eligible: false
     kaggle_submissions:
       - {copy_number: 1, label: "dragapult-dusknoir ceiling accepted iter 15 copy 1/1 b6996ed641b1", checkpoint_checksum: "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef", status: accepted, queued_at: "2026-07-25T06:31:57.040517Z", submitted_at: "2026-07-25T13:40:37.593000Z", submission_id: 54976694, returned_score: 600.0, failure_reason: null, retry_count: 1}
-
-  - id: dragapult-blaziken
-    name: Dragapult Blaziken
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
-
-  - id: dragapult-dudunsparce
-    name: Dragapult Dudunsparce
-    status: unstarted
-    active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
-    kaggle_submissions: []
 
   - id: dragapult
     name: Dragapult
@@ -2815,9 +2998,34 @@ specialists:
   - id: archaludon-ex
     name: Archaludon ex
     status: unstarted
+    prestage_status: research_and_identity_corpus_ready_guide_rows_pending
     active: false
-    heads: {status: unstarted, archetype_policy: null, game_plan_policies: null}
-    datasets: {expert_manifest: null}
+    heads:
+      status: sparse_causal_guide_teacher_validated_training_not_started
+      archetype_policy: null
+      game_plan_policies: null
+      current_deck_guide:
+        contract: config/deck_guides/archaludon-ex.yaml
+        guide_version: archaludon-ex-north-star-v1
+        teacher_module: poke_bot.archaludon_ex_heuristics
+        teacher_module_checksum: sha256:4ec28e4f26c281f7488b20c31bbe17a6e4320cb54cb7dc5e1e4722e839aceca3
+        runtime_authority: none
+        guide_corpus_status: pending_nonzero_guide_rows
+        guide_corpus_build:
+          status: preflight_passed_deferred_behind_teal
+          script: ops/elmo/build_archaludon_ex_latest20_guide_corpus.sh
+          source_root: /home/admin/pokebot-teal-clean-src-v2
+          output_root: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-latest20-v2
+          resource_contention_allowed: false
+    datasets:
+      expert_manifest: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-latest20-2026-07-08_2026-07-27-v1/PROTECTED_EXPERT_CORPUS.json
+      expert_manifest_checksum: sha256:31219b077cfcea65dc591afb7887548dbf20a668ac46c0f433804c67bd03d8b0
+      manifest_checksum: sha256:558f2161e84c297e9f37e1d46fde3732781f6b18cadffed29ed3a67804ad1b0f
+      records: 1458
+      decisions: 83980
+      guide_rows: 0
+      source_window: {start: 2026-07-08, end: 2026-07-27, days: 20}
+      current_deck_guide_corpus_ready: false
     counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
     checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
     holdouts: {official: null, premium: null}
@@ -2943,7 +3151,7 @@ specialists:
 
   - id: team-rockets-spidops
     name: Team Rocket's Spidops
-    status: active_training
+    status: rl_training
     active: true
     heads: {status: bootstrap_trained_fused_runtime_active, archetype_policy: trained, game_plan_policies: trained}
     datasets:
@@ -3063,15 +3271,15 @@ specialists:
           three_mewtwo_canary_rejected: true
           active_runtime_modified: false
         active_training_modified: false
-    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 1, rl_epochs_completed: 1, rehearsal_epochs_completed: 0, last_completed_iteration: 0, next_iteration: 1}
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 5, rl_epochs_completed: 5, rehearsal_epochs_completed: 0, last_completed_iteration: 4, next_iteration: 5}
     checkpoints:
       bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
       bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/team-rockets-spidops_expert_bootstrap_from_core_v9/model.pt
       bootstrap_checksum: sha256:ee65790629cc529b936a9fdecad676a9df6cb94924a0ecee5d6da06b00baf338
-      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
-      latest_checksum: sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3
-      heldout_champion: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt
-      heldout_champion_checksum: sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00004.pt
+      latest_checksum: sha256:14be9143b1d4b61acf5bd8afc905010d44c98622522c74e48d1317d4fc5eb5ff
+      heldout_champion: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00004.pt
+      heldout_champion_checksum: sha256:14be9143b1d4b61acf5bd8afc905010d44c98622522c74e48d1317d4fc5eb5ff
       passing: null
       passing_checksum: null
     activation_receipt: /home/inzi/poke-bot-agent/outputs/state/team-rockets-spidops-specialist-rl-activation-v9.json
@@ -3096,14 +3304,14 @@ specialists:
       all_enforcement_assertions_passed: true
       shard_checksum: sha256:bd077be061d98b9af89edaacc9959a8a08869fdd5de412e0587c7dd5a4df1193
     latest_iteration_commit:
-      iteration: 0
-      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00000.json
-      receipt_checksum: sha256:ef96f0834b31101d3a4f93292854a833471e48e4ac142a98e821a5cda6909139
-      committed_at_utc: 2026-07-28T20:57:47.668808+00:00
-      candidate_checkpoint_checksum: sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3
+      iteration: 4
+      receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00004.json
+      receipt_checksum: sha256:59ad77d05d814b1c64efc5b1049672d7cb3b73e367a0b8df7246a59c2160d66a
+      committed_at_utc: 2026-07-28T20:20:27.234181+00:00
+      candidate_checkpoint_checksum: sha256:14be9143b1d4b61acf5bd8afc905010d44c98622522c74e48d1317d4fc5eb5ff
       promotion_games: 80
-      promotion_win_rate: 1.0
-      promotion_passed: true
+      promotion_win_rate: null
+      promotion_passed: false
       heldout_champion_updated: true
       learner_carried: true
       next_collection_local_ok: true
@@ -3111,8 +3319,8 @@ specialists:
     iteration_boundary_receipt: state/spidops_iteration0_boundary_v1.json
     iteration_boundary_receipt_checksum: sha256:90815eacaa4c9be227721a70ed5f50639ca92a4cea3805db45d7378ff230436e
     holdouts:
-      official: {iteration: 0, games: 1000, win_rate: 0.409, audit_passed: true, training_eligible: false, replay_eligible: false, diagnostic_only: true}
-      premium: {iteration: 0, games: 3250, win_rate: 0.5078333333333334, confidence_lower: 0.495325, confidence_upper: 0.5208333333333334, audit_passed: true, passed: false, gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r10}
+      official: {iteration: 4, games: 1000, win_rate: 0.448, audit_passed: true, training_eligible: false, replay_eligible: false, diagnostic_only: true}
+      premium: {iteration: 4, games: 3250, win_rate: 0.5375000000000001, confidence_lower: 0.5253333333333333, confidence_upper: 0.5508333333333334, audit_passed: true, passed: false, gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r10}
     frozen: false
     public_mix_eligible: false
     kaggle_submissions: []
@@ -3358,12 +3566,10 @@ kaggle_submission_state:
   specialist_copies:
     hammer-pult:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+    teal-mask-ogerpon-ex:
+      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     dragapult-dusknoir:
       - {copy_number: 1, label: "dragapult-dusknoir ceiling accepted iter 15 copy 1/1 b6996ed641b1", checkpoint_checksum: "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef", status: accepted, queued_at: "2026-07-25T06:31:57.040517Z", submitted_at: "2026-07-25T13:40:37.593000Z", submission_id: 54976694, returned_score: 600.0, failure_reason: null, retry_count: 1}
-    dragapult-blaziken:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
-    dragapult-dudunsparce:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     dragapult:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     alakazam:

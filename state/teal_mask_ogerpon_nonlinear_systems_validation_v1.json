@@ -1,0 +1,89 @@
+{
+  "schema": "poke_bot.nonlinear_specialist_decision_support_validation/v1",
+  "status": "validated",
+  "specialist_id": "teal-mask-ogerpon-ex",
+  "deck_complexity": "nonlinear",
+  "validated_at_utc": "2026-07-28T22:15:00Z",
+  "contract_fragment_sha256": "sha256:0216c6030f8ea632b484d83bb51be3630cf31d428db7a4c557fe80f3d6ad2b49",
+  "protocol_sha256": "sha256:14e2d6253f6b4fae7f91614b963e5fa772241415867241e6d4e9cce02a233ec1",
+  "required_fused_head_inputs": [
+    "value",
+    "archetype",
+    "opponent_hand",
+    "opponent_remainder",
+    "lethal_threat",
+    "prize_race",
+    "action_q",
+    "action_type",
+    "action_target",
+    "action_resource",
+    "action_utility",
+    "tactical_outcomes",
+    "opponent_response",
+    "resource_forecast",
+    "game_phase",
+    "outcome_distribution",
+    "remaining_turns"
+  ],
+  "required_system_ids": [
+    "branching_setup_and_pivot",
+    "attacker_and_engine_preservation",
+    "typed_energy_and_resource_planning",
+    "attack_target_and_prize_routing",
+    "stochastic_disruption_timing",
+    "bench_and_recovery_routing",
+    "guide_weight_annealing"
+  ],
+  "implementation_artifacts": [
+    {
+      "path": "poke_bot/model.py",
+      "sha256": "sha256:909949db8479e3290850c04454e5700f5c8745fbf4076c01bf4b0924b2d7c441"
+    },
+    {
+      "path": "poke_bot/train.py",
+      "sha256": "sha256:9b05aa3435d94bf19b75d3933c6930bd8b9873310412a1d4841316f3a7e9b96e"
+    },
+    {
+      "path": "scripts/run_starmie_expert_bootstrap.py",
+      "sha256": "sha256:d872d11db6a02177bdb6d8264b2a89b4b8724266e69a85a50fb0d7f1525cd388"
+    },
+    {
+      "path": "scripts/audit_decision_fusion_checkpoint.py",
+      "sha256": "sha256:89ecb6c55be551f6da5ccceb755223906dea8258aa55360aae86096eb7297a19"
+    },
+    {
+      "path": "poke_bot/teal_mask_ogerpon_heuristics.py",
+      "sha256": "sha256:77042e740435dcce5148e6a14d43c3d496b0ac1262937042663df11f965ac951"
+    },
+    {
+      "path": "scripts/prestage_next_specialist.py",
+      "sha256": "sha256:a3b0f0e378ebd77c5011d2a6ea396a9678b83996f6cc67868f7973748c3d9fb5"
+    }
+  ],
+  "checks": {
+    "all_required_fused_heads_train_and_serve": true,
+    "branch_systems_have_causal_inputs_and_eval_gates": true,
+    "guide_is_auxiliary_and_annealed": true,
+    "hidden_future_information_prohibited": true,
+    "missing_labels_masked": true,
+    "active_specialist_unchanged": true
+  },
+  "evidence": {
+    "authoritative_action_path": "fused_policy",
+    "fused_head_count": 17,
+    "expanded_strategic_head_count": 11,
+    "bootstrap_epochs": 25,
+    "guide_role": "causal_auxiliary_scaffolding_only",
+    "public_exact_acting_seat_games": 1135,
+    "public_source_days": 32,
+    "guide_corpus_status": "materialization_running",
+    "masked_branch_policy": "mask_not_zero",
+    "guide_weight_evidence": "training_ineligible_guide_on_guide_off_pairs",
+    "terminal_runtime_gate_required": true
+  },
+  "activation": {
+    "prestage_receipt_required": true,
+    "bootstrap_allowed_before_corpus_and_route_ready": false,
+    "active_spidops_training_modified": false
+  }
+}

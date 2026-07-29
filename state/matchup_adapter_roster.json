@@ -1,12 +1,12 @@
 {
   "schema": "poke_bot.matchup_adapter_roster/v1",
   "slot_schema": "poke_bot.matchup_adapter_slot_registry/v1",
-  "revision": 6,
+  "revision": 8,
   "status": "staged_pending_safe_boundary",
   "checkpoint_format": "poke-bot-matchup-adapter-bank-v6",
   "slot_capacity": 64,
   "legacy_v5_prefix_length": 18,
-  "required_specialist_count": 18,
+  "required_specialist_count": 19,
   "physical_checkpoint_rows": 18,
   "v6_physical_checkpoint_slots": 64,
   "runtime_enabled": false,
@@ -40,7 +40,8 @@
     "dragapult-dusknoir",
     "dragapult-blaziken",
     "thwackey",
-    "team-rockets-spidops"
+    "team-rockets-spidops",
+    "teal-mask-ogerpon-ex"
   ],
   "expert_ids": [
     "crustle",
@@ -60,7 +61,8 @@
     "dragapult-dusknoir",
     "dragapult-blaziken",
     "thwackey",
-    "team-rockets-spidops"
+    "team-rockets-spidops",
+    "teal-mask-ogerpon-ex"
   ],
   "specialist_priority": [
     "dragapult-dusknoir",
@@ -71,12 +73,11 @@
     "thwackey",
     "team-rockets-spidops",
     "hammer-pult",
-    "dragapult-blaziken",
-    "dragapult-dudunsparce",
+    "teal-mask-ogerpon-ex",
+    "archaludon-ex",
     "dragapult",
     "walrein",
-    "crustle",
-    "archaludon-ex"
+    "crustle"
   ],
   "canonical_display_names": {
     "marnie-s-grimmsnarl-ex": "Marnie's Grimmsnarl ex",
@@ -85,7 +86,8 @@
     "starmie": "Mega Starmie ex",
     "lucario": "Mega Lucario ex",
     "thwackey": "Thwackey",
-    "team-rockets-spidops": "Team Rocket's Spidops"
+    "team-rockets-spidops": "Team Rocket's Spidops",
+    "teal-mask-ogerpon-ex": "Teal Mask Ogerpon ex"
   },
   "logical_aliases": {
     "festival-lead": "thwackey"
@@ -97,13 +99,13 @@
     "may_supply_gate_evidence": false,
     "credentials_committed": false,
     "source_snapshot": {
-      "ingest_id": 8,
-      "window_start": "2026-06-22",
-      "window_end": "2026-07-23",
+      "ingest_id": 17,
+      "window_start": "2026-06-26",
+      "window_end": "2026-07-27",
       "days": 32,
-      "match_facts": 164817,
-      "deck_identities": 2186,
-      "archetypes": 43
+      "match_facts": 160308,
+      "deck_identities": 1033,
+      "archetypes": 38
     },
     "mapping_statuses": [
       "exact",
@@ -135,7 +137,8 @@
       "dragapult-dusknoir": {"source_id": 58, "source_name": "Dragapult ex", "status": "card_signature", "allowed_source_family_ids": [58, 60]},
       "dragapult-blaziken": {"source_id": 58, "source_name": "Dragapult ex", "status": "card_signature", "allowed_source_family_ids": [58]},
       "thwackey": {"source_id": 76, "source_name": "Thwackey", "status": "exact"},
-      "team-rockets-spidops": {"source_id": 75, "source_name": "Team Rocket's Spidops", "status": "exact"}
+      "team-rockets-spidops": {"source_id": 75, "source_name": "Team Rocket's Spidops", "status": "exact"},
+      "teal-mask-ogerpon-ex": {"source_id": 151, "source_name": "Teal Mask Ogerpon ex", "status": "exact"}
     }
   },
   "slots": [
@@ -157,7 +160,7 @@
     {"slot": 15, "archetype_id": "dragapult-blaziken", "status": "active", "lineage": "v5:15"},
     {"slot": 16, "archetype_id": "thwackey", "status": "active", "lineage": "v5:16;renamed-from:festival-lead"},
     {"slot": 17, "archetype_id": "team-rockets-spidops", "status": "active", "lineage": "v5:17"},
-    {"slot": 18, "archetype_id": null, "status": "unused", "lineage": null},
+    {"slot": 18, "archetype_id": "teal-mask-ogerpon-ex", "status": "dormant", "lineage": "goal-r27:public-archetype-151"},
     {"slot": 19, "archetype_id": null, "status": "unused", "lineage": null},
     {"slot": 20, "archetype_id": null, "status": "unused", "lineage": null},
     {"slot": 21, "archetype_id": null, "status": "unused", "lineage": null},

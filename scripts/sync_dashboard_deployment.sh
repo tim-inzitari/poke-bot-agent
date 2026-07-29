@@ -36,6 +36,20 @@ rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent-deployments/state-core-v1/scripts/dashboard_snapshot.py"
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v41-specialist-matchup-runtime/scripts/dashboard_snapshot.py"
+SELECTOR_RUNTIME_ROOT="$(
+  ssh -o BatchMode=yes -o ConnectTimeout=5 "${INZI}" \
+    "sed -n 's/^POKEBOT_SPECIALIST_RUNTIME_ROOT=//p' /home/inzi/.config/pokebot/specialist_runtime.env"
+)"
+case "${SELECTOR_RUNTIME_ROOT}" in
+  /home/inzi/poke-bot-agent|/home/inzi/poke-bot-agent-deployments/*)
+    ;;
+  *)
+    echo "selector-owned specialist runtime root is invalid" >&2
+    exit 1
+    ;;
+esac
+rsync -a scripts/dashboard_snapshot.py \
+  "${INZI}:${SELECTOR_RUNTIME_ROOT}/scripts/dashboard_snapshot.py"
 
 launchctl kickstart -k "gui/$(id -u)/com.pokebot.training-dashboard"
 echo "DASHBOARD_SYNC_APPLIED"

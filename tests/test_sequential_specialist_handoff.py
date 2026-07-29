@@ -102,7 +102,7 @@ def test_runtime_tree_target_count_derives_from_canonical_roster(
     )
 
     contract["runtime_registration"]["matchup_target_ids"] = ["one", "two"]
-    with pytest.raises(RuntimeError, match="differs from canonical"):
+    with pytest.raises(RuntimeError, match="differs from the canonical"):
         handoff.canonical_matchup_target_ids(contract)
 
     source = (
@@ -110,6 +110,33 @@ def test_runtime_tree_target_count_derives_from_canonical_roster(
     ).read_text(encoding="utf-8")
     assert 'audit.get("target_count") or 0) != 22' not in source
     assert "len(canonical_matchup_target_ids(contract))" in source
+
+
+def test_runtime_tree_target_count_uses_the_v6_slot_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    targets = (*handoff.EXPERT_IDS, "teal-mask-ogerpon-ex")
+    monkeypatch.setattr(
+        handoff,
+        "load_slot_registry",
+        lambda path: {"active_expert_ids": list(targets)},
+    )
+    contract = {
+        "runtime_registration": {
+            "matchup_target_ids": list(targets),
+            "matchup_v6": {
+                "enabled": True,
+                "registry": "/absolute/state/matchup_adapter_roster.json",
+            },
+        }
+    }
+
+    assert handoff.canonical_matchup_target_ids(contract) == targets
+    contract["runtime_registration"]["matchup_target_ids"] = list(
+        handoff.EXPERT_IDS
+    )
+    with pytest.raises(RuntimeError, match="canonical adapter registry"):
+        handoff.canonical_matchup_target_ids(contract)
 
 
 def test_frozen_predecessor_registry_preserves_source_gate_s_plus_rows() -> None:

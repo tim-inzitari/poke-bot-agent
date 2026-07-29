@@ -1,0 +1,392 @@
+# Research-complete, checksum-bound staging contract for the Teal Mask
+# Ogerpon ex logical specialist and the public Ogerpon Box archetype.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: teal-mask-ogerpon-ex
+display_name: "Teal Mask Ogerpon ex"
+physical_source_archetype_id: ogerpon-box
+physical_source_archetype_name: "Ogerpon Box"
+ptcgreplay_public_archetype_id: 151
+ptcgreplay_public_archetype_name: "Teal Mask Ogerpon ex"
+status: research_sparse_teacher_and_full_history_corpus_validated_router_pending
+guide_version: teal-mask-ogerpon-ex-north-star-v2
+teacher_module: poke_bot.teal_mask_ogerpon_heuristics
+implementation_status: sparse_causal_teacher_validated
+teacher_module_sha256: sha256:475a4e67897aab17dd9a65f47431fdb44134c6e9f6a07d350d653226b99ef59f
+deck_complexity: nonlinear
+
+project_representative_binding:
+  path: data/training_mixes/specialist_representatives.v1.json
+  json_pointer: /decks/teal-mask-ogerpon-ex
+  logical_specialist_id: teal-mask-ogerpon-ex
+  physical_source_id: ogerpon-box
+  official_deck_code: J8xJG4-TqjMpR-cJ8Gcc
+  source_deck_url: https://www.limitlesstcg.com/decks/list/28688
+  source_event: Japan_Championships_2026
+  source_player: Toshiyuki_Otake
+  source_finish: 1
+  card_count: 60
+  canonical_multiset_sha256: sha256:ec97474ff3a01876bd2f7002569c78a8e5bb19592fa204f2074fa764d321e1d4
+  terminal_multiset_sha256: sha256:bb071ddaa81e321b493ed69d35800220d417173a0f551117ee694a04b2bdb584
+  cards_sha256: sha256:d7b99fcf1b2f5bc49525024b0ad7a80eb91571cc6305293035e0ee8826eaee5f
+  selection: exact_Japan_Championships_2026_winning_Ogerpon_Box_list
+
+policy_target:
+  type: sparse_confidence_weighted_legal_action_preference
+  parameterized_head: false
+  target_logits: shared_fused_policy
+  serving_authority: false
+  override_authoritative_policy: false
+
+deck_signature:
+  minimum_card_counts:
+    96: 3    # Teal Mask Ogerpon ex
+    108: 1   # Wellspring Mask Ogerpon ex
+    272: 1   # Lillie's Clefairy ex; exact Jul24-27 public list runs one
+    756: 2   # Mega Kangaskhan ex
+    1071: 2  # Meowth ex
+    1116: 3  # Energy Switch
+    1250: 2  # Area Zero Underdepths
+  maximum_card_counts:
+    756: 3   # Four-copy public lists are source-archetype-67 Mega Kangaskhan
+  representative_supporting_card_ids:
+    1: Basic Grass Energy
+    16: Prism Energy
+    31: Chi-Yu
+    112: Munkidori
+    140: Fezandipiti ex
+    184: Latias ex
+    230: Pecharunt
+    1080: Unfair Stamp
+    1094: Bug Catching Set
+    1097: Night Stretcher
+    1121: Ultra Ball
+    1127: Tera Orb
+    1182: "Boss's Orders"
+    1188: "Ciphermaniac's Codebreaking"
+    1221: "N's Plan"
+    1227: "Lillie's Determination"
+  positive_family_rule: >-
+    Require Teal Mask, Wellspring, at least one Clefairy, two or three
+    Kangaskhan, Energy Switch, Area Zero, and at least two multi-copy toolbox
+    markers among Clefairy, Kangaskhan, and Meowth.
+  prohibited_cross_archetype_capture:
+    - raging-bolt-ogerpon
+    - hydrapple
+    - ogerpon-meganium
+    - mega-venusaur
+    - clefairy-ogerpon
+    - tera-box
+    - cornerstone-ogerpon
+    - mega-kangaskhan-ex
+  exact_deck_checksum_overrides_display_name: true
+  fuzzy_display_name_matching_allowed: false
+
+strategy_sources:
+  - title: "Ogerpon Box by Toshiyuki Otake"
+    publisher: Limitless TCG
+    url: https://www.limitlesstcg.com/decks/list/28688
+    evidence_role: exact_Japan_Championships_2026_winning_60_card_list
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "2026 Japan Championships winner interview"
+    publisher: The Pokemon Company
+    url: https://www.pokemon-card.com/info/005538.html
+    evidence_role: official_pilot_and_deck_selection_evidence
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Official deck record J8xJG4-TqjMpR-cJ8Gcc"
+    publisher: The Pokemon Company
+    url: https://www.pokemon-card.com/deck/deck.html?deckID=J8xJG4-TqjMpR-cJ8Gcc
+    evidence_role: official_exact_deck_identity
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Japan Championships 2026 winning decks"
+    publisher: PokeZentrum
+    url: https://pokezentrum.de/pokemon-karten-news/entdecke-die-gewinner-decks-der-pokemon-japan-championships-2026/
+    evidence_role: independent_card_role_and_strategy_synopsis
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Current deck taxonomy"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks
+    evidence_role: separates_Ogerpon_Box_from_other_Teal_Mask_engines
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Japan Championships 2026 card distribution"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/tournaments/568/cards
+    evidence_role: event_scale_and_Ogerpon_Box_finish_evidence
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Teal Mask Ogerpon ex TWM 25"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TWM/25
+    evidence_role: exact_Teal_Dance_and_Myriad_Leaf_Shower_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Mega Kangaskhan ex MEG 104"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/MEG/104
+    evidence_role: exact_Run_Errand_and_Rapid_Fire_Combo_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Lillie's Clefairy ex JTG 56"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/JTG/56
+    evidence_role: exact_Fairy_Zone_and_Full_Moon_Rondo_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Wellspring Mask Ogerpon ex TWM 64"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TWM/64
+    evidence_role: exact_Torrential_Pump_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Pecharunt SVP 149"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/SVP/149
+    evidence_role: exact_Toxic_Subjugation_and_Poison_Chain_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Munkidori TWM 95"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TWM/95
+    evidence_role: exact_Adrena_Brain_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Meowth ex POR 62"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/POR/62
+    evidence_role: exact_Last_Ditch_Catch_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Fezandipiti ex ASC 142"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/ASC/142
+    evidence_role: exact_Flip_the_Script_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Latias ex SSP 76"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/SSP/76
+    evidence_role: exact_Skyliner_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Energy Switch MEG 115"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/MEG/115
+    evidence_role: exact_Basic_Energy_movement_text
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Prism Energy ASC 216"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/ASC/216
+    evidence_role: exact_Basic_only_type_and_single_Energy_rule
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Area Zero Underdepths SCR 131"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/SCR/131
+    evidence_role: exact_Tera_and_eight_Bench_rule
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Pitch Black expansion availability"
+    publisher: The Pokemon Company
+    url: https://www.pokemon.com/us/news/the-pokemon-tcg-mega-evolution-pitch-black-expansion-is-available-now
+    evidence_role: current_format_release_timing
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Pokemon TCG product legality update"
+    publisher: The Pokemon Company
+    url: https://community.pokemon.com/en-us/discussion/22216/pokemon-tcg-product-legality-update
+    evidence_role: current_two_week_legality_timing
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+public_corpus_sources:
+  - title: "PTCGReplay full public ingest 17"
+    publisher: PTCGReplay
+    url: https://ptcgreplay.netlify.app/
+    evidence_role: exact_public_archetype_151_deck_fingerprint_and_full_32_day_match_facts
+    reviewed_at_utc: 2026-07-28T21:40:00Z
+
+expert_writeup:
+  path: docs/deck_guides/teal-mask-ogerpon-ex-expert-brief.txt
+  sha256: sha256:acbc8bc3f037890bd03de047d6c7bcd249f06c5d105921a0cdfff366757357ff
+  word_count: 2488
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: teal-mask-ogerpon-ex
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+high_confidence_principles:
+  - establish_multiple_Teal_Mask_engines_only_when_Grass_in_hand_supports_them
+  - route_only_Basic_Energy_with_Energy_Switch
+  - count_Prism_as_one_Energy_and_all_types_only_on_a_Basic
+  - use_deterministic_Kangaskhan_200_damage_floor_not_future_coin_heads
+  - preserve_Latias_mobility_when_it_enables_the_current_pivot
+  - name_Area_Zero_bench_collapse_before_removing_the_Stadium
+  - use_only_public_prize_counts_and_current_prize_values
+  - keep_attack_target_and_recovery_branches_under_the_fused_policy
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_predicates:
+    - id: exact_initial_Ogerpon_Box_active
+      supported_stages: [initial_setup_active]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - current_combo_card_ids
+      preference: prefer_Mega_Kangaskhan_then_Teal_Mask_over_support_basics
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+    - id: exact_initial_Ogerpon_Box_bench
+      supported_stages: [initial_setup_bench]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+      preference: establish_two_Teal_Mask_then_unique_Latias_and_Meowth
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+    - id: exact_current_legal_draw_or_acceleration_ability
+      supported_stages: [legal_main_ability_action]
+      exact_inputs:
+        - exact_current_legal_options
+        - exact_ability_origin_card_id
+      preference: prefer_legal_Teal_Dance_Run_Errand_Flip_the_Script_or_Adrena_Brain
+      abstain_if:
+        - ability_origin_unresolved
+        - any_legal_option_unresolved
+
+masked_targets:
+  - Teal_Dance_attachment_if_the_legal_action_does_not_expose_exact_target
+  - Energy_Switch_source_or_destination
+  - Prism_Energy_type_route
+  - attack_selection_or_damage_target
+  - Kangaskhan_coin_result_or_bonus_damage
+  - Wellspring_Torrential_Pump_bench_target
+  - Pecharunt_future_checkups_beyond_the_next_deterministic_check
+  - Munkidori_Adrena_Brain_source_or_target
+  - Area_Zero_future_bench_or_collapse_target
+  - Supporter_search_discard_or_recovery_choice
+  - face_down_prize_identity
+  - opponent_hidden_hand_deck_or_prize_contents
+  - future_draw_or_future_opponent_response
+  - unknown_prompt_origin
+  - unresolved_option_or_malformed_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  own_hidden_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_fused_policy: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+nonlinear_decision_support:
+  schema: poke_bot.nonlinear_specialist_decision_support/v1
+  required: true
+  authoritative_action_path: fused_policy
+  sparse_guide_role: causal_auxiliary_scaffolding_only
+  sparse_guide_alone_is_sufficient: false
+  unsupported_exact_guide_targets: mask_not_zero
+  hidden_or_future_information_allowed: false
+  required_fused_head_inputs:
+    - value
+    - archetype
+    - opponent_hand
+    - opponent_remainder
+    - lethal_threat
+    - prize_race
+    - action_q
+    - action_type
+    - action_target
+    - action_resource
+    - action_utility
+    - tactical_outcomes
+    - opponent_response
+    - resource_forecast
+    - game_phase
+    - outcome_distribution
+    - remaining_turns
+  required_branch_systems:
+    branching_setup_and_pivot:
+      causal_head_inputs: [value, action_q, action_type, action_target, resource_forecast, game_phase]
+      guide_scaffold: [exact_initial_Ogerpon_Box_active, exact_initial_Ogerpon_Box_bench]
+      evaluation_gate: balanced_first_second_toolbox_setup_scenarios
+    attacker_and_engine_preservation:
+      causal_head_inputs: [value, action_target, tactical_outcomes, resource_forecast, remaining_turns]
+      guide_scaffold: [exact_current_legal_draw_or_acceleration_ability]
+      evaluation_gate: current_and_next_attacker_plus_Latias_engine_scenarios
+    typed_energy_and_resource_planning:
+      causal_head_inputs: [action_resource, action_utility, resource_forecast, game_phase, remaining_turns]
+      guide_scaffold: []
+      evaluation_gate: Basic_Grass_Prism_and_Energy_Switch_route_scenarios
+    attack_target_and_prize_routing:
+      causal_head_inputs: [prize_race, action_q, action_target, action_utility, tactical_outcomes, outcome_distribution]
+      guide_scaffold: []
+      evaluation_gate: Teal_Kangaskhan_Clefairy_Wellspring_Pecharunt_prize_scenarios
+    stochastic_disruption_timing:
+      causal_head_inputs: [opponent_hand, action_q, action_utility, opponent_response, outcome_distribution]
+      guide_scaffold: []
+      evaluation_gate: Kangaskhan_floor_and_opponent_response_scenarios
+    bench_and_recovery_routing:
+      causal_head_inputs: [action_target, action_resource, action_utility, resource_forecast, game_phase, remaining_turns]
+      guide_scaffold: [exact_initial_Ogerpon_Box_bench]
+      evaluation_gate: Area_Zero_collapse_and_Night_Stretcher_scenarios
+    guide_weight_annealing:
+      causal_head_inputs: [action_q, outcome_distribution]
+      guide_scaffold: [all_supported_sparse_predicates]
+      evaluation_gate: training_ineligible_guide_on_guide_off_pairs
+  bootstrap_and_runtime_gates:
+    exact_supervised_epochs: 25
+    per_head_labeled_and_masked_counts_required: true
+    missing_required_fused_head_fails_closed: true
+    every_required_fused_head_must_influence_action_selection: true
+    nonlinear_scenario_suite_required_before_bootstrap_publication: true
+    training_ineligible_guide_on_guide_off_pairs_required_for_weight_changes: true
+    exact_terminal_runtime_gate_required: true
+  validation_receipt: state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json
+
+corpus_binding_evidence:
+  status: ready_checksum_validated_promoted_on_inzi
+  logical_specialist_id: teal-mask-ogerpon-ex
+  competitive_taxonomy_identity: ogerpon-box
+  required_public_source_archetype_id: 151
+  required_public_source_archetype_name: "Teal Mask Ogerpon ex"
+  public_deck_catalog: data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json
+  public_deck_catalog_sha256: sha256:5c2f4856b5f99f5b008f5160af1c9f27dd2ae10d7bee5e964de08b64607d3e1a
+  source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
+  minimum_acting_seat_games: 1135
+  source_indexed_acting_seat_games: 1135
+  materialized_acting_seat_games: 2300
+  materialized_decisions: 156692
+  daily_receipts_verified: 32
+  duplicate_episode_seat_keys: 0
+  exact_public_deck_fingerprints: 1
+  identity_validation_receipt: state/teal_mask_ogerpon_public_deck_identity_validation_v1.json
+  ready_receipt: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json
+  ready_receipt_sha256: sha256:216b60efe50709a7972081ad2c7df60614412a28b09b15458b659eadec8c547c
+  manifest_sha256: sha256:da6c63179ac879a68955ba0819768100d08b12f7b2e4f6dcff4eebb5733dd668
+  protected_pointer_sha256: sha256:ab6a383ab332c58b2f44a23f5f11bb737216a03fc3e2fa407971ebf4f157100c
+  promotion_receipt: /home/inzi/poke-bot-agent/outputs/state/teal-mask-ogerpon-ex-guide-corpus-promotion-v1.json
+  promotion_receipt_sha256: sha256:db8aff2fd5076fd75c4e56384f9bd609dda79836169527a780ec2808722e2674
+  guide_rows: 10495
+  full_public_history_required: true
+  active_training_modified: false
+
+validation:
+  dedicated_two_task_research_agent_complete: true
+  research_sources_reviewed: true
+  expert_writeup_under_word_limit: true
+  yaml_parse_required: true
+  unit_tests_passed: true
+  scorer_canary_passed: true
+  focused_tests_passed: 7
+  guide_rows_in_filtered_expert_corpus: 10495
+  nonlinear_systems_validation_required: true
+  nonlinear_systems_validation_receipt: state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json
+  contract_checksum: null
+  unresolved_evidence_gaps:
+    - no_world_champion_SME_approval_yet
+    - no_universal_first_versus_second_rule_supported
+    - exact_causal_matchup_route_not_materialized
+    - first_Pitch_Black_legal_event_refresh_pending

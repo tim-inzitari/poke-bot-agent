@@ -4,11 +4,12 @@
 schema_version: poke_bot.current_deck_guide/v1
 specialist_id: hammer-pult
 display_name: "Hammer Dragapult"
-status: research_and_sparse_teacher_validated_corpus_targets_pending
+status: ready_checksum_bound_nonlinear_systems_validated
 guide_version: hammer-pult-north-star-v1
 teacher_module: poke_bot.hammer_heuristics
-implementation_status: sparse_causal_teacher_validated
+implementation_status: sparse_causal_teacher_and_fused_nonlinear_policy_validated
 teacher_module_sha256: sha256:691cad77be466d5be4222a11ee36dbcabdb2b823b3598134b45328a27cc3864b
+deck_complexity: nonlinear
 
 project_representative_binding:
   path: data/training_mixes/top_ladder_representatives.v1.json
@@ -243,14 +244,120 @@ target_safety:
 
 weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
 
+nonlinear_decision_support:
+  schema: poke_bot.nonlinear_specialist_decision_support/v1
+  required: true
+  authoritative_action_path: fused_policy
+  sparse_guide_role: causal_auxiliary_scaffolding_only
+  sparse_guide_alone_is_sufficient: false
+  unsupported_exact_guide_targets: mask_not_zero
+  hidden_or_future_information_allowed: false
+  required_fused_head_inputs:
+    - value
+    - archetype
+    - opponent_hand
+    - opponent_remainder
+    - lethal_threat
+    - prize_race
+    - action_q
+    - action_type
+    - action_target
+    - action_resource
+    - action_utility
+    - tactical_outcomes
+    - opponent_response
+    - resource_forecast
+    - game_phase
+    - outcome_distribution
+    - remaining_turns
+  required_branch_systems:
+    branching_setup_and_pivot:
+      causal_head_inputs:
+        - value
+        - action_q
+        - action_type
+        - action_target
+        - resource_forecast
+        - game_phase
+      guide_scaffold:
+        - exact_initial_Budew_or_Dreepy_active
+        - exact_redundant_Dreepy_setup
+      evaluation_gate: balanced_first_second_branch_scenarios
+    attacker_and_engine_preservation:
+      causal_head_inputs:
+        - value
+        - action_target
+        - tactical_outcomes
+        - resource_forecast
+        - remaining_turns
+      guide_scaffold:
+        - exact_visible_Dragapult_line_evolution
+        - exact_Recon_Directive_activation
+      evaluation_gate: preserve_Drakloak_engine_and_next_attacker_scenarios
+    typed_energy_and_resource_planning:
+      causal_head_inputs:
+        - action_resource
+        - action_utility
+        - resource_forecast
+        - game_phase
+        - remaining_turns
+      guide_scaffold: []
+      evaluation_gate: exact_Fire_Psychic_Darkness_resource_scenarios
+    attack_target_and_prize_routing:
+      causal_head_inputs:
+        - prize_race
+        - action_q
+        - action_target
+        - action_utility
+        - tactical_outcomes
+        - outcome_distribution
+      guide_scaffold: []
+      evaluation_gate: Phantom_Dive_active_plus_bench_prize_route_scenarios
+    stochastic_disruption_timing:
+      causal_head_inputs:
+        - opponent_hand
+        - action_q
+        - action_utility
+        - opponent_response
+        - outcome_distribution
+      guide_scaffold:
+        - exact_Crushing_Hammer_with_visible_energy
+      evaluation_gate: evaluate_both_pre_flip_branches_without_future_coin_labels
+    bench_and_recovery_routing:
+      causal_head_inputs:
+        - action_target
+        - action_resource
+        - action_utility
+        - resource_forecast
+        - game_phase
+        - remaining_turns
+      guide_scaffold: []
+      evaluation_gate: open_bench_next_attacker_and_Night_Stretcher_scenarios
+    guide_weight_annealing:
+      causal_head_inputs:
+        - action_q
+        - outcome_distribution
+      guide_scaffold:
+        - all_supported_sparse_predicates
+      evaluation_gate: training_ineligible_guide_on_guide_off_pairs
+  bootstrap_and_runtime_gates:
+    exact_supervised_epochs: 25
+    per_head_labeled_and_masked_counts_required: true
+    missing_required_fused_head_fails_closed: true
+    every_required_fused_head_must_influence_action_selection: true
+    nonlinear_scenario_suite_required_before_bootstrap_publication: true
+    training_ineligible_guide_on_guide_off_pairs_required_for_weight_changes: true
+    exact_terminal_runtime_gate_required: true
+  validation_receipt: state/hammer_pult_nonlinear_systems_validation_v1.json
+
 corpus_binding_evidence:
-  status: pending
+  status: ready_checksum_validated
   logical_specialist_id: hammer-pult
   required_source_identity: hammer-pult
-  ready_receipt: null
-  ready_receipt_sha256: null
-  manifest_sha256: null
-  guide_rows: null
+  ready_receipt: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/hammer-pult/CURRENT_DECK_GUIDE_CORPUS_READY.json
+  ready_receipt_sha256: sha256:b6196d6a8a796f373e5eb0e2128e335647c01409c32aca3076e130e9b5b21d3e
+  manifest_sha256: sha256:649fbaa9f35ee783a95f3bc1db967455946182744cf7d568b3a8da6a8448e943
+  guide_rows: 83805
   active_training_modified: false
 
 validation:
@@ -259,9 +366,10 @@ validation:
   yaml_parse_required: true
   unit_tests_passed: true
   scorer_canary_passed: true
+  nonlinear_systems_validation_required: true
+  nonlinear_systems_validation_receipt: state/hammer_pult_nonlinear_systems_validation_v1.json
   contract_checksum: null
   unresolved_evidence_gaps:
     - no_world_champion_SME_approval_yet
     - no_Hammer_only_randomized_first_versus_second_evidence
     - aggregate_matchups_mix_Dragapult_variants_and_are_not_causal
-    - no_checksum_bound_current_guide_corpus_receipt_bound_yet

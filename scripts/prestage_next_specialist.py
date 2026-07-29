@@ -89,6 +89,185 @@ def _optional_path(value: Any) -> Path | None:
     return Path(raw).expanduser().resolve() if raw else None
 
 
+def _nonlinear_decision_support_contract(
+    root: Path,
+    specialist_id: str,
+    guide: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate a checksum-bound nonlinear specialist strategy system."""
+
+    declared_nonlinear = guide.get("deck_complexity") == "nonlinear"
+    required = declared_nonlinear or specialist_id == "hammer-pult"
+    if not required:
+        return {
+            "required": False,
+            "ready": True,
+            "reason": None,
+        }
+
+    block = dict(guide.get("nonlinear_decision_support") or {})
+    protocol_path = root / "config" / "rl_protocol.yaml"
+    protocol = yaml.safe_load(protocol_path.read_text(encoding="utf-8"))
+    specialist_training = dict(protocol.get("specialist_training") or {})
+    fusion = dict(specialist_training.get("decision_fusion") or {})
+    guide_protocol = dict(
+        specialist_training.get("current_deck_guide") or {}
+    )
+    nonlinear_protocol = dict(
+        guide_protocol.get("nonlinear_decision_support") or {}
+    )
+    expected_heads = [
+        str(value)
+        for value in fusion.get("required_causal_head_inputs") or ()
+    ]
+    expected_system_ids = [
+        str(value)
+        for value in nonlinear_protocol.get("required_system_ids") or ()
+    ]
+    branch_systems = dict(block.get("required_branch_systems") or {})
+    structural_ready = bool(
+        block.get("schema")
+        == "poke_bot.nonlinear_specialist_decision_support/v1"
+        and block.get("required") is True
+        and block.get("authoritative_action_path") == "fused_policy"
+        and block.get("sparse_guide_alone_is_sufficient") is False
+        and block.get("unsupported_exact_guide_targets") == "mask_not_zero"
+        and block.get("hidden_or_future_information_allowed") is False
+        and expected_heads
+        and list(block.get("required_fused_head_inputs") or ())
+        == expected_heads
+        and expected_system_ids
+        and list(branch_systems) == expected_system_ids
+        and all(
+            isinstance(branch_systems[system_id], dict)
+            and bool(branch_systems[system_id].get("causal_head_inputs"))
+            and set(branch_systems[system_id]["causal_head_inputs"])
+            <= set(expected_heads)
+            and isinstance(
+                branch_systems[system_id].get("guide_scaffold"), list
+            )
+            and bool(branch_systems[system_id].get("evaluation_gate"))
+            for system_id in expected_system_ids
+        )
+    )
+    gates = dict(block.get("bootstrap_and_runtime_gates") or {})
+    gates_ready = bool(
+        gates.get("exact_supervised_epochs") == 25
+        and gates.get("per_head_labeled_and_masked_counts_required") is True
+        and gates.get("missing_required_fused_head_fails_closed") is True
+        and (
+            gates.get(
+                "every_required_fused_head_must_influence_action_selection"
+            )
+            is True
+        )
+        and (
+            gates.get(
+                "nonlinear_scenario_suite_required_before_bootstrap_publication"
+            )
+            is True
+        )
+        and (
+            gates.get(
+                "training_ineligible_guide_on_guide_off_pairs_required_for_weight_changes"
+            )
+            is True
+        )
+        and gates.get("exact_terminal_runtime_gate_required") is True
+    )
+    receipt_raw = str(block.get("validation_receipt") or "").strip()
+    receipt_path = (root / receipt_raw).resolve() if receipt_raw else None
+    root_resolved = root.resolve()
+    receipt_within_root = False
+    if receipt_path is not None:
+        try:
+            receipt_path.relative_to(root_resolved)
+            receipt_within_root = True
+        except ValueError:
+            receipt_within_root = False
+    receipt = (
+        _read(receipt_path)
+        if receipt_path is not None
+        and receipt_within_root
+        and receipt_path.is_file()
+        else {}
+    )
+    fragment = {
+        key: value
+        for key, value in block.items()
+        if key != "validation_receipt"
+    }
+    required_checks = (
+        "all_required_fused_heads_train_and_serve",
+        "branch_systems_have_causal_inputs_and_eval_gates",
+        "guide_is_auxiliary_and_annealed",
+        "hidden_future_information_prohibited",
+        "missing_labels_masked",
+        "active_specialist_unchanged",
+    )
+    checks = dict(receipt.get("checks") or {})
+    artifacts = list(receipt.get("implementation_artifacts") or ())
+    artifacts_ready = bool(len(artifacts) >= 5)
+    for row in artifacts:
+        if not isinstance(row, dict):
+            artifacts_ready = False
+            break
+        raw_path = str(row.get("path") or "").strip()
+        artifact_path = (root / raw_path).resolve() if raw_path else None
+        try:
+            if artifact_path is None:
+                raise ValueError
+            artifact_path.relative_to(root_resolved)
+        except ValueError:
+            artifacts_ready = False
+            break
+        if (
+            not artifact_path.is_file()
+            or str(row.get("sha256") or "") != sha256(artifact_path)
+        ):
+            artifacts_ready = False
+            break
+    receipt_ready = bool(
+        receipt.get("schema")
+        == "poke_bot.nonlinear_specialist_decision_support_validation/v1"
+        and receipt.get("status") == "validated"
+        and receipt.get("specialist_id") == specialist_id
+        and receipt.get("contract_fragment_sha256")
+        == _canonical_digest(fragment)
+        and receipt.get("protocol_sha256") == sha256(protocol_path)
+        and list(receipt.get("required_fused_head_inputs") or ())
+        == expected_heads
+        and list(receipt.get("required_system_ids") or ())
+        == expected_system_ids
+        and all(checks.get(key) is True for key in required_checks)
+        and artifacts_ready
+    )
+    ready = structural_ready and gates_ready and receipt_ready
+    return {
+        "required": True,
+        "ready": ready,
+        "schema": block.get("schema"),
+        "authoritative_action_path": block.get(
+            "authoritative_action_path"
+        ),
+        "required_fused_head_inputs": expected_heads,
+        "required_system_ids": expected_system_ids,
+        "validation_receipt": (
+            str(receipt_path) if receipt_path is not None else None
+        ),
+        "validation_receipt_sha256": (
+            sha256(receipt_path)
+            if receipt_path is not None and receipt_path.is_file()
+            else None
+        ),
+        "reason": (
+            None
+            if ready
+            else "nonlinear_decision_support_not_validated"
+        ),
+    }
+
+
 def _deck_guide_contract(
     root: Path,
     specialist_id: str,
@@ -142,10 +321,16 @@ def _deck_guide_contract(
         and 0 < writeup_words <= 10000
         and expected_writeup_checksum == writeup_checksum
     )
+    nonlinear_support = _nonlinear_decision_support_contract(
+        root,
+        specialist_id,
+        raw,
+    )
     implementation_ready = bool(
         validation.get("unit_tests_passed")
         and validation.get("scorer_canary_passed")
         and writeup_ready
+        and nonlinear_support["ready"]
     )
     declared_guide_rows = validation.get(
         "guide_rows_in_filtered_expert_corpus"
@@ -193,6 +378,7 @@ def _deck_guide_contract(
             "ready": writeup_ready,
         },
         "implementation_ready": implementation_ready,
+        "nonlinear_decision_support": nonlinear_support,
         # The sealed corpus receipt and manifest are authoritative for the
         # post-featurization count.  A researched guide contract may
         # intentionally leave its pre-featurization estimate null; a concrete
@@ -216,7 +402,11 @@ def _deck_guide_contract(
             else (
                 "current_deck_guide_corpus_binding_not_ready"
                 if implementation_ready
-                else "current_deck_guide_implementation_not_validated"
+                else (
+                    nonlinear_support["reason"]
+                    if not nonlinear_support["ready"]
+                    else "current_deck_guide_implementation_not_validated"
+                )
             )
         ),
     }

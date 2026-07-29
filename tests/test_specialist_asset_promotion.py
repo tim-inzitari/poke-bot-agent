@@ -196,6 +196,8 @@ def test_router_only_promotion_cannot_claim_or_replace_rare_corpora() -> None:
     assert "router-only promotion must retain the existing protected" in source
     assert '"existing_protected_generation"' in source
     assert "if not args.router_only:" in source
+    assert "--roster" in source
+    assert "target_registry_sha256" in source
 
 
 def test_additive_public_history_masks_missing_private_aux_labels() -> None:

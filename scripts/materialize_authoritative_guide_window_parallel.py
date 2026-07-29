@@ -121,6 +121,15 @@ def main() -> int:
         default=[],
         help="Forward a checksum-bound public exact-deck archetype catalog.",
     )
+    parser.add_argument(
+        "--authoritative-only-archetype",
+        action="append",
+        default=[],
+        help=(
+            "Forward an archetype whose label must come from an exact "
+            "authoritative catalog fingerprint."
+        ),
+    )
     parser.add_argument("--day-parallelism", type=int, default=4)
     parser.add_argument("--workers-per-day", type=int, default=3)
     parser.add_argument("--max-in-flight-per-day", type=int, default=6)
@@ -258,6 +267,13 @@ def main() -> int:
                     for catalog in args.authoritative_deck_catalog:
                         command.extend(
                             ["--authoritative-deck-catalog", str(catalog)]
+                        )
+                    for archetype_id in args.authoritative_only_archetype:
+                        command.extend(
+                            [
+                                "--authoritative-only-archetype",
+                                str(archetype_id),
+                            ]
                         )
                     running[day] = (
                         subprocess.Popen(

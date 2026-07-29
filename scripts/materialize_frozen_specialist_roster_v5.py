@@ -30,6 +30,7 @@ from scripts.migrate_active_matchup_roster import migrate_checkpoint, migrate_tr
 LOADER_RUNTIME_FILES = (
     "poke_bot/config.py",
     "poke_bot/matchup_adapters.py",
+    "poke_bot/matchup_adapter_routes.py",
     "poke_bot/public_matchup_router.py",
     "poke_bot/matchup_adapter_activation.py",
     "poke_bot/model.py",

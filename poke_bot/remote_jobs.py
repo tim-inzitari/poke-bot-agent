@@ -914,6 +914,20 @@ def _matchup_runtime_companions() -> tuple[Path, bytes] | None:
         raise RemoteJobsError(
             "matchup runtime tree lacks its enabled routing contract"
         )
+    binding_keys = (
+        "adapter_format",
+        "route_target_ids",
+        "route_physical_slots",
+        "physical_slot_capacity",
+        "slot_registry_digest",
+    )
+    if (
+        runtime.get("adapter_format") == "poke-bot-matchup-adapter-bank-v6"
+        and any(key not in runtime for key in binding_keys)
+    ):
+        raise RemoteJobsError(
+            "V6 matchup runtime tree lacks its registry/slot binding"
+        )
     payload = {
         "schema": _MATCHUP_RUNTIME_MARKER_SCHEMA,
         "runtime_enabled": True,
@@ -925,6 +939,11 @@ def _matchup_runtime_companions() -> tuple[Path, bytes] | None:
         "zero_materialized_adapters_allowed": bool(
             runtime.get("zero_materialized_adapters_allowed")
         ),
+        **{
+            key: runtime[key]
+            for key in binding_keys
+            if key in runtime
+        },
     }
     marker = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
     return tree, marker

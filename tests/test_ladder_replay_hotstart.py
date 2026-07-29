@@ -7,6 +7,9 @@ import pytest
 
 from poke_bot.dataset import BootstrapDataset, GameSequence
 from poke_bot.ladder_deck_mix import (
+    LadderDeck,
+    LadderDeckMix,
+    LadderDeckRepresentatives,
     load_ladder_deck_mix,
     load_ladder_deck_representatives,
 )
@@ -22,6 +25,21 @@ from scripts.split_top_ladder_dataset import main as split_top_ladder_dataset
 ROOT = Path(__file__).resolve().parents[1]
 MIX = ROOT / "data" / "training_mixes" / "top_ladder.v1.json"
 REPS = ROOT / "data" / "training_mixes" / "top_ladder_representatives.v1.json"
+TEAL_PUBLIC_CATALOG = (
+    ROOT
+    / "data"
+    / "training_mixes"
+    / "teal-mask-ogerpon-ex-public-full32.v1.json"
+)
+TEAL_SIGNATURE_AUDIT = (
+    ROOT
+    / "data"
+    / "training_mixes"
+    / "teal-mask-ogerpon-ex-public-signature-audit.v1.json"
+)
+SPECIALIST_REPRESENTATIVES = (
+    ROOT / "data" / "training_mixes" / "specialist_representatives.v1.json"
+)
 
 
 def _sequence(episode_id: str, seat: int) -> GameSequence:
@@ -34,6 +52,53 @@ def _sequence(episode_id: str, seat: int) -> GameSequence:
         value=1.0,
         decisions=[],
     )
+
+
+def _minimal_classifier_inputs() -> tuple[
+    LadderDeckMix,
+    LadderDeckRepresentatives,
+]:
+    mix_digest = "sha256:" + "1" * 64
+    mix = LadderDeckMix(
+        schema="poke_bot.ladder_deck_mix/v1",
+        mix_id="unit-test",
+        artifact_sha256=mix_digest,
+        source={},
+        coverage={},
+        weight_policy={},
+        decks=(
+            LadderDeck(
+                source_rank=1,
+                deck_id="alakazam",
+                observed_count=1,
+                observed_weight=1.0,
+                known_conditional_weight=1.0,
+                train_weight=1.0,
+                games_featuring=1,
+                game_share=1.0,
+                win_rate=0.5,
+                wilson_95=(0.0, 1.0),
+                classification_method="unit_test",
+                signature_groups=(),
+            ),
+        ),
+        excluded=(),
+    )
+    representatives = LadderDeckRepresentatives(
+        schema="poke_bot.ladder_deck_representatives/v1",
+        artifact_sha256="sha256:" + "2" * 64,
+        source_mix_sha256=mix_digest,
+        source_dataset="unit-test",
+        selection="unit-test",
+        decks={
+            "alakazam": {
+                "card_ids": [999_999] * 60,
+                "modal_seat_count": 1,
+                "labeled_seat_count": 1,
+            }
+        },
+    )
+    return mix, representatives
 
 
 def test_every_pinned_representative_has_exact_family_label() -> None:
@@ -116,6 +181,60 @@ def test_public_deck_catalog_overrides_stale_cross_archetype_signature(
     assert contract["observed_acting_seat_games"] == 1
     assert contract["deck_fingerprint_count"] == 1
     assert contract["sha256"].startswith("sha256:")
+
+
+def test_authoritative_only_teal_corpus_rejects_every_fallback_identity() -> None:
+    catalog = json.loads(TEAL_PUBLIC_CATALOG.read_text(encoding="utf-8"))
+    audit = json.loads(TEAL_SIGNATURE_AUDIT.read_text(encoding="utf-8"))
+    representative = json.loads(
+        SPECIALIST_REPRESENTATIVES.read_text(encoding="utf-8")
+    )["decks"]["teal-mask-ogerpon-ex"]["card_ids"]
+    mix, representatives = _minimal_classifier_inputs()
+    classifier = LadderReplayClassifier(
+        mix,
+        representatives,
+        additive_registered_ids=["teal-mask-ogerpon-ex"],
+        authoritative_deck_catalogs=[TEAL_PUBLIC_CATALOG],
+        authoritative_only_ids=["teal-mask-ogerpon-ex"],
+    )
+
+    intended = classifier.classify_deck(
+        catalog["source_deck_rows"][0]["card_ids"]
+    )
+    assert intended.deck_id == "teal-mask-ogerpon-ex"
+    assert intended.method == "authoritative_public_deck_identity"
+
+    rejected_representative = classifier.classify_deck(representative)
+    assert rejected_representative.deck_id == "unknown"
+    assert rejected_representative.method == (
+        "authoritative_public_deck_identity_required"
+    )
+    for row in audit["mega_kangaskhan_collision_rows"]:
+        assert classifier.classify_deck(row["card_ids"]).deck_id != (
+            "teal-mask-ogerpon-ex"
+        )
+    assert classifier.contract["authoritative_only_ids"] == [
+        "teal-mask-ogerpon-ex"
+    ]
+    catalog_contract = classifier.contract["authoritative_deck_catalogs"][0]
+    assert catalog_contract["source_archetype"] == {
+        "id": 151,
+        "name": "Teal Mask Ogerpon ex",
+    }
+    assert (
+        catalog_contract["source_deck_rows_bound_to_fingerprints"] is True
+    )
+
+
+def test_authoritative_only_classifier_requires_a_matching_catalog() -> None:
+    mix, representatives = _minimal_classifier_inputs()
+    with pytest.raises(ValueError, match="lack a public deck catalog"):
+        LadderReplayClassifier(
+            mix,
+            representatives,
+            additive_registered_ids=["teal-mask-ogerpon-ex"],
+            authoritative_only_ids=["teal-mask-ogerpon-ex"],
+        )
 
 
 def test_additive_allowlist_rejects_unregistered_family() -> None:

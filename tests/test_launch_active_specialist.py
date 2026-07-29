@@ -6,11 +6,14 @@ from pathlib import Path
 import pytest
 import torch
 
-from poke_bot.matchup_adapters import EXPERT_IDS
+from poke_bot.matchup_adapter_routes import (
+    resolve_matchup_adapter_route_contract,
+)
 from poke_bot.matchup_adapters_v6 import (
     ADAPTER_CHECKPOINT_FORMAT as V6_ADAPTER_CHECKPOINT_FORMAT,
     SLOT_CAPACITY,
     load_slot_registry,
+    registry_digest,
 )
 from poke_bot.model import (
     DECISION_FUSION_REQUIRED_HEADS,
@@ -30,14 +33,22 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
     (root / "ops").mkdir()
     checkpoint = tmp_path / "model.pt"
     expert = tmp_path / "expert.json"
-    routes = list(EXPERT_IDS)
+    slot_registry = load_slot_registry()
+    adapter_config = {
+        "format": V6_ADAPTER_CHECKPOINT_FORMAT,
+        "slot_capacity": SLOT_CAPACITY,
+        "slot_registry_digest": registry_digest(slot_registry),
+        "slot_registry": slot_registry,
+    }
+    route_contract = resolve_matchup_adapter_route_contract(adapter_config)
+    routes = list(route_contract.target_ids)
     torch.save(
         {
             "model_state_dict": {
                 f"matchup_adapter_bank.experts.{index}.up.weight": torch.zeros(1)
-                for index in range(len(EXPERT_IDS))
+                for index in range(SLOT_CAPACITY)
             },
-            "extra": {"matchup_adapter_config": {"expert_ids": routes}},
+            "extra": {"matchup_adapter_config": adapter_config},
         },
         checkpoint,
     )
@@ -52,6 +63,7 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
                     "accepted_archetype_ids": ["dragapult-dusknoir"],
                     "one_route_per_decision": True,
                     "unknown_route_exact_bypass": True,
+                    **route_contract.runtime_binding(),
                 },
             }
         ),
@@ -257,6 +269,7 @@ def test_v6_checkpoint_must_bind_exact_runtime_registry(tmp_path: Path) -> None:
                 "matchup_adapter_config": {
                     "format": V6_ADAPTER_CHECKPOINT_FORMAT,
                     "slot_capacity": SLOT_CAPACITY,
+                    "slot_registry_digest": registry_digest(slot_registry),
                     "slot_registry": slot_registry,
                 }
             },

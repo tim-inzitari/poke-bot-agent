@@ -31,6 +31,20 @@ def main() -> None:
     loaded = PublicMatchupDecisionTree.from_path(tree, require_runtime_enabled=True)
     tree_payload = json.loads(raw)
     runtime = dict(tree_payload.get("runtime_contract") or {})
+    binding_keys = (
+        "adapter_format",
+        "route_target_ids",
+        "route_physical_slots",
+        "physical_slot_capacity",
+        "slot_registry_digest",
+    )
+    if (
+        runtime.get("adapter_format") == "poke-bot-matchup-adapter-bank-v6"
+        and any(key not in runtime for key in binding_keys)
+    ):
+        raise RuntimeError(
+            "V6 runtime tree lacks its registry/slot binding"
+        )
     payload = {
         "schema": SCHEMA,
         "runtime_enabled": True,
@@ -42,6 +56,11 @@ def main() -> None:
         "zero_materialized_adapters_allowed": bool(
             runtime.get("zero_materialized_adapters_allowed")
         ),
+        **{
+            key: runtime[key]
+            for key in binding_keys
+            if key in runtime
+        },
     }
     output = args.output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)

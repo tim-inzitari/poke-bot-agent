@@ -9,7 +9,13 @@ import yaml
 
 pytest.importorskip("torch")
 
-from scripts.prestage_next_specialist import _deck_guide_contract
+from scripts.prestage_next_specialist import (
+    _deck_guide_contract,
+    _nonlinear_decision_support_contract,
+)
+
+
+ROOT = Path(__file__).parents[1]
 
 
 def _sha256(path: Path) -> str:
@@ -150,3 +156,66 @@ def test_deck_guide_ready_receipt_supplies_post_featurization_count(
     assert result["corpus_binding_ready"] is True
     assert result["filtered_expert_corpus_guide_rows"] == 7
     assert result["declared_filtered_expert_corpus_guide_rows"] is None
+
+
+def test_hammer_pult_nonlinear_systems_are_checksum_bound() -> None:
+    contract = yaml.safe_load(
+        (ROOT / "config/deck_guides/hammer-pult.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    result = _nonlinear_decision_support_contract(
+        ROOT,
+        "hammer-pult",
+        contract,
+    )
+
+    assert result["required"] is True
+    assert result["ready"] is True
+    assert result["authoritative_action_path"] == "fused_policy"
+    assert len(result["required_fused_head_inputs"]) == 17
+    assert result["required_system_ids"] == [
+        "branching_setup_and_pivot",
+        "attacker_and_engine_preservation",
+        "typed_energy_and_resource_planning",
+        "attack_target_and_prize_routing",
+        "stochastic_disruption_timing",
+        "bench_and_recovery_routing",
+        "guide_weight_annealing",
+    ]
+
+
+def test_hammer_pult_missing_nonlinear_systems_fails_closed() -> None:
+    result = _nonlinear_decision_support_contract(
+        ROOT,
+        "hammer-pult",
+        {
+            "schema_version": "poke_bot.current_deck_guide/v1",
+            "specialist_id": "hammer-pult",
+        },
+    )
+
+    assert result["required"] is True
+    assert result["ready"] is False
+    assert result["reason"] == "nonlinear_decision_support_not_validated"
+
+
+def test_teal_mask_ogerpon_nonlinear_systems_are_checksum_bound() -> None:
+    contract = yaml.safe_load(
+        (
+            ROOT / "config/deck_guides/teal-mask-ogerpon-ex.yaml"
+        ).read_text(encoding="utf-8")
+    )
+
+    result = _nonlinear_decision_support_contract(
+        ROOT,
+        "teal-mask-ogerpon-ex",
+        contract,
+    )
+
+    assert result["required"] is True
+    assert result["ready"] is True
+    assert result["authoritative_action_path"] == "fused_policy"
+    assert len(result["required_fused_head_inputs"]) == 17
+    assert len(result["required_system_ids"]) == 7

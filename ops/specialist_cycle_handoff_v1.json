@@ -30,13 +30,16 @@
       "garchomp",
       "rockets-mewtwo",
       "thwackey",
-      "team-rockets-spidops"
+      "team-rockets-spidops",
+      "hammer-pult",
+      "teal-mask-ogerpon-ex",
+      "archaludon-ex"
     ]
   },
   "prestage": {
     "receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
     "ladder_representatives": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/data/training_mixes/top_ladder_representatives.v1.json",
-    "representatives": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/data/training_mixes/specialist_representatives.v1.json",
+    "representatives": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current/data/training_mixes/specialist_representatives.v1.json",
     "cpu_pack_root": "/home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/prestaged-specialists",
     "cpu_pack_workers": 4,
     "cpu_pack_memory_reserve_gib": 12.0,

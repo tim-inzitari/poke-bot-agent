@@ -238,14 +238,25 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
     )
     roster_path = state_path.parent / "matchup_adapter_roster.json"
     roster = _read(roster_path)
-    identifiers = {
+    route_ids = {
         str(value) for value in (roster.get("expert_ids") or []) if str(value)
     }
+    slot_route_ids = {
+        str(row.get("archetype_id") or "")
+        for row in (roster.get("slots") or [])
+        if isinstance(row, dict)
+        and str(row.get("status") or "") in {"active", "dormant"}
+        and str(row.get("archetype_id") or "")
+    }
+    legacy_prefix_length = int(
+        roster.get("legacy_v5_prefix_length") or 0
+    )
     rows = {
         str(row.get("id") or ""): dict(row)
         for row in (state.get("specialists") or [])
         if isinstance(row, dict) and str(row.get("id") or "")
     }
+    identifiers = set(rows)
     order = [
         str(value)
         for value in (
@@ -273,10 +284,18 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
     }
     if (
         expected != len(identifiers)
-        or int(roster.get("required_specialist_count") or 0) != len(identifiers)
-        or int(roster.get("physical_checkpoint_rows") or 0) != len(identifiers)
+        or int(progress.get("required_specialists_total") or 0) != expected
+        or not route_ids
+        or int(roster.get("required_specialist_count") or 0) != len(route_ids)
+        or int(roster.get("physical_checkpoint_rows") or 0)
+        != legacy_prefix_length
+        or legacy_prefix_length <= 0
+        or slot_route_ids != route_ids
+        or len(roster.get("slots") or []) != int(
+            roster.get("slot_capacity") or 0
+        )
+        or len(route_ids) != len(roster.get("expert_ids") or [])
         or "" in identifiers
-        or set(rows) != identifiers
         or len(order) != len(set(order))
         or set(order) != unfinished
         or int(remaining if remaining is not None else -1) != len(order)

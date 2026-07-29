@@ -1687,14 +1687,38 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
     completed_count = frozen_count + int(
         cycle_active and source_id not in frozen_ids
     )
-    canonical_roster = read_json(CANONICAL_MATCHUP_ADAPTER_ROSTER)
+    try:
+        import yaml  # type: ignore[import-not-found]
+
+        program_state = yaml.safe_load(
+            (ROOT / "state/specialists.yaml").read_text(encoding="utf-8")
+        )
+    except (ImportError, OSError, UnicodeError, ValueError, TypeError):
+        program_state = {}
     required_specialist_count = int(
-        canonical_roster.get("required_specialist_count") or 0
+        (
+            ((program_state or {}).get("target_registry") or {}).get(
+                "required_target_count"
+            )
+            or 0
+        )
     )
     if required_specialist_count <= 0:
         required_specialist_count = len(
-            canonical_roster.get("expert_ids") or []
+            (program_state or {}).get("specialists") or []
         )
+    if required_specialist_count <= 0:
+        # Isolated dashboard fixtures and older deployments may not carry the
+        # program-state YAML. The route roster is a compatibility fallback
+        # only; the canonical training plan still wins whenever it is present.
+        canonical_roster = read_json(CANONICAL_MATCHUP_ADAPTER_ROSTER)
+        required_specialist_count = int(
+            canonical_roster.get("required_specialist_count") or 0
+        )
+        if required_specialist_count <= 0:
+            required_specialist_count = len(
+                canonical_roster.get("expert_ids") or []
+            )
     remaining_count = max(0, required_specialist_count - completed_count)
     selected_value = state.get("selected_specialist")
     selected = (
@@ -11731,39 +11755,10 @@ def specialist_protocol_state(
                 "reason": "stable canonical matchup roster is invalid",
                 "source": str(canonical_roster_path),
             }
-        specialist_records = {
-            str(row.get("id") or ""): dict(row)
-            for row in specialists
-            if isinstance(row, dict) and str(row.get("id") or "")
-        }
-        # Festival Lead is the historical physical identity of the canonical
-        # Thwackey row. Preserve any verified progress while exposing only the
-        # stable canonical ID. Spidops and any later additions begin unstarted.
-        if (
-            "thwackey" not in specialist_records
-            and "festival-lead" in specialist_records
-        ):
-            specialist_records["thwackey"] = {
-                **specialist_records["festival-lead"],
-                "id": "thwackey",
-                "name": "Thwackey",
-            }
-        display_names = dict(canonical_roster.get("canonical_display_names") or {})
-        specialists = [
-            specialist_records.get(
-                specialist_id,
-                {
-                    "id": specialist_id,
-                    "name": str(display_names.get(specialist_id) or specialist_id),
-                    "status": "unstarted",
-                    "active": False,
-                    "frozen": False,
-                    "public_mix_eligible": False,
-                    "counters": {},
-                },
-            )
-            for specialist_id in canonical_ids
-        ]
+        # The stable matchup roster owns causal adapter routes, not the
+        # required training/completion plan. Preserve and validate it
+        # independently, but never use it to reintroduce owner-removed targets
+        # or drop a newly staged specialist that has not received a route yet.
     active_run = current.get("active_run")
     active_run = active_run if isinstance(active_run, dict) else {}
     canonical_live_execution = active_specialist_commit_overlay(active_run)
@@ -11917,28 +11912,180 @@ def specialist_protocol_state(
         status_counts[status] = status_counts.get(status, 0) + 1
     priority = payload.get("training_priority")
     priority = priority if isinstance(priority, dict) else {}
-    canonical_priority = (
-        [
+    strict_prefix_contract = dict(
+        priority.get("strict_post_spidops_prefix") or {}
+    )
+    owner_removal_contract = dict(priority.get("owner_removal") or {})
+    goal_projection = read_json(ROOT / "ops/current_goal_requirements.json")
+    projected_overrides = goal_projection.get("current_owner_overrides") or {}
+    projected_plan = (
+        projected_overrides.get("required_specialist_plan")
+        or {}
+    )
+    projected_revision = int(projected_plan.get("goal_revision") or 0)
+    state_revision = max(
+        int(strict_prefix_contract.get("decision_revision") or 0),
+        int(owner_removal_contract.get("decision_revision") or 0),
+    )
+    if projected_revision > state_revision:
+        projected_prefix = [
             str(value)
-            for value in (canonical_roster.get("specialist_priority") or [])
+            for value in (
+                projected_plan.get("strict_post_spidops_prefix") or []
+            )
             if str(value)
         ]
-        if canonical_roster_present
-        else [
-            canonical_active_id,
-            *[
-                str(value)
-                for value in (
-                    priority.get("ordered_unfinished_ids_after_active") or []
-                )
-                if str(value)
-            ],
+        projected_removed = [
+            str(value)
+            for value in (
+                projected_plan.get("removed_specialist_ids") or []
+            )
+            if str(value)
         ]
+        if projected_prefix:
+            strict_prefix_contract = {
+                "decision_revision": projected_revision,
+                "ids": projected_prefix,
+                "missing_input_behavior": projected_plan.get(
+                    "missing_strict_prefix_input_behavior"
+                ),
+                "activation": projected_plan.get("activation_boundary"),
+                "source": "current_goal_requirements_owner_projection",
+            }
+        if projected_removed:
+            owner_removal_contract = {
+                "decision_revision": projected_revision,
+                "specialist_ids": projected_removed,
+                "selection_eligible": bool(
+                    projected_plan.get("removed_ids_selection_eligible")
+                ),
+                "counts_toward_completion": bool(
+                    projected_plan.get("removed_ids_count_toward_completion")
+                ),
+                "preserve_historical_corpus_router_and_audit_artifacts": bool(
+                    projected_plan.get(
+                        "removed_ids_historical_artifacts_preserved"
+                    )
+                ),
+                "source": "current_goal_requirements_owner_projection",
+            }
+    strict_prefix_ids = [
+        str(value)
+        for value in (strict_prefix_contract.get("ids") or [])
+        if str(value)
+    ]
+    owner_removed_ids = {
+        str(value)
+        for value in (owner_removal_contract.get("specialist_ids") or [])
+        if str(value)
+    }
+    planning_required_count = int(
+        projected_plan.get("required_specialists_total") or expected_count
     )
+    projected_core = dict(projected_overrides.get("cumulative_core") or {})
+    current_core_refresh = dict(payload.get("current_cumulative_core_refresh") or {})
+    accepted_core = dict(current_core_refresh.get("latest_accepted_core") or {})
+    latest_accepted_core_version = int(
+        projected_core.get("latest_accepted_version")
+        or accepted_core.get("version")
+        or 0
+    )
+    attempted_core_versions: list[tuple[int, str]] = []
+    for key, value in projected_core.items():
+        match = re.search(r"_v(\d+)_status$", str(key))
+        if match:
+            attempted_core_versions.append((int(match.group(1)), str(value)))
+    if current_core_refresh.get("output_core_version"):
+        attempted_core_versions.append(
+            (
+                int(current_core_refresh["output_core_version"]),
+                str(current_core_refresh.get("status") or ""),
+            )
+        )
+    immutable_core_receipts_found = False
+    for ready_receipt in (
+        ROOT / "outputs/state"
+    ).glob("deck-agnostic-core-cumulative-v*-fused-v1-ready.json"):
+        match = re.search(
+            r"cumulative-v(\d+)-fused-v1-ready\.json$",
+            ready_receipt.name,
+        )
+        if not match:
+            continue
+        immutable_core_receipts_found = True
+        version = int(match.group(1))
+        regression = read_json(
+            ready_receipt.with_name(
+                ready_receipt.name.replace(
+                    "-ready.json",
+                    "-gameplay-regression.json",
+                )
+            )
+        )
+        if regression.get("passed") is False:
+            receipt_status = "rejected_gameplay_regression"
+        elif regression.get("passed") is True:
+            receipt_status = "gameplay_regression_passed"
+        else:
+            receipt_status = str(
+                read_json(ready_receipt).get("status")
+                or "candidate_receipt_present"
+            )
+        attempted_core_versions.append((version, receipt_status))
+    latest_attempted_core = (
+        max(attempted_core_versions, key=lambda row: row[0])
+        if attempted_core_versions
+        else (0, "")
+    )
+    core_generation = {
+        "latest_accepted_version": latest_accepted_core_version or None,
+        "latest_accepted_checkpoint": (
+            projected_core.get("latest_accepted_checkpoint")
+            or accepted_core.get("checkpoint")
+            or shared_core.get("checkpoint")
+        ),
+        "latest_attempted_version": latest_attempted_core[0] or None,
+        "latest_attempted_status": latest_attempted_core[1] or None,
+        "source": (
+            "current_goal_requirements_owner_projection"
+            if projected_core
+            else "immutable_core_receipts"
+            if immutable_core_receipts_found
+            else "specialist_state"
+        ),
+    }
+    raw_canonical_priority = [
+        canonical_active_id,
+        *strict_prefix_ids,
+        *[
+            str(value)
+            for value in (
+                (priority.get("handoff_override") or {}).get(
+                    "priority_prefix"
+                )
+                or []
+            )
+            if str(value)
+        ],
+        *[
+            str(value)
+            for value in (
+                priority.get("ordered_unfinished_ids_after_active") or []
+            )
+            if str(value)
+        ],
+    ]
+    canonical_priority: list[str] = []
+    seen_priority_ids: set[str] = set()
+    for specialist_id in raw_canonical_priority:
+        if specialist_id and specialist_id not in seen_priority_ids:
+            canonical_priority.append(specialist_id)
+            seen_priority_ids.add(specialist_id)
     ordered_priority = [
         specialist_id
         for specialist_id in canonical_priority
         if specialist_id != canonical_active_id
+        and specialist_id not in owner_removed_ids
         and specialist_id in ids
         and str(
             next(
@@ -11996,6 +12143,7 @@ def specialist_protocol_state(
         str(row["id"])
         for row in rows
         if str(row["id"]) != canonical_active_id
+        and str(row["id"]) not in owner_removed_ids
         and row["status"] not in {"passed_frozen", "population_training"}
     }
     if (
@@ -12290,28 +12438,35 @@ def specialist_protocol_state(
         set(frozen_program_ids),
         active_id,
     )
+    planning_frozen_ids = [
+        specialist_id
+        for specialist_id in frozen_program_ids
+        if specialist_id not in owner_removed_ids
+    ]
     live_program_progress = {
         **program_progress,
-        "required_specialists_total": expected_count,
-        "completed_frozen": len(frozen_program_ids),
-        "completed_specialist_ids": frozen_program_ids,
+        "required_specialists_total": planning_required_count,
+        "completed_frozen": len(planning_frozen_ids),
+        "completed_specialist_ids": planning_frozen_ids,
         "active_specialists": int(bool(program_active_id)),
         "active_specialist_ids": (
             [program_active_id] if program_active_id else []
         ),
         "remaining_unfinished": max(
-            0, expected_count - len(frozen_program_ids)
+            0, planning_required_count - len(planning_frozen_ids)
         ),
         "remaining_after_active": max(
             0,
-            expected_count
-            - len(frozen_program_ids)
+            planning_required_count
+            - len(planning_frozen_ids)
             - int(bool(program_active_id)),
         ),
-        "population_transition_ready": len(frozen_program_ids) == expected_count,
+        "population_transition_ready": (
+            len(planning_frozen_ids) == planning_required_count
+        ),
     }
     unfinished_including_active = max(
-        0, expected_count - len(frozen_program_ids)
+        0, planning_required_count - len(planning_frozen_ids)
     )
     status_by_id = {
         str(row["id"]): str(row["status"])
@@ -12323,6 +12478,7 @@ def specialist_protocol_state(
         if (
             specialist_id
             and specialist_id != program_active_id
+            and specialist_id not in owner_removed_ids
             and status_by_id.get(specialist_id)
             not in {"passed_frozen", "population_training"}
             and specialist_id not in live_ordered_priority
@@ -12347,7 +12503,7 @@ def specialist_protocol_state(
             f"{live_program_progress['remaining_after_active']} remain after it. "
             "Freeze and register it only after both gates pass, then begin the "
             "next unfinished specialist. Population training remains blocked "
-            f"until all {expected_count} specialists are frozen."
+            f"until all {planning_required_count} specialists are frozen."
         )
     elif runtime_identity_reconciled and program_active_id:
         # A selector may commit the next specialist before that run has
@@ -12362,7 +12518,7 @@ def specialist_protocol_state(
             "unfinished including the active specialist; preserve all frozen "
             "predecessors and begin normal receipt-backed iteration tracking "
             "as soon as it appears. Population training remains blocked until "
-            f"all {expected_count} specialists are frozen."
+            f"all {planning_required_count} specialists are frozen."
         )
     population_runtime: dict[str, Any] = {}
     if POPULATION_ROUND_ROBIN_STATE.is_file():
@@ -12411,6 +12567,15 @@ def specialist_protocol_state(
                 }
         except (OSError, UnicodeError, ValueError, TypeError):
             population_runtime = {}
+    dashboard_rows = [
+        row for row in rows if str(row["id"]) not in owner_removed_ids
+    ]
+    dashboard_status_counts: dict[str, int] = {}
+    for row in dashboard_rows:
+        status = str(row["status"])
+        dashboard_status_counts[status] = (
+            dashboard_status_counts.get(status, 0) + 1
+        )
     return {
         "available": True,
         "schema_version": payload.get("schema_version"),
@@ -12446,6 +12611,7 @@ def specialist_protocol_state(
         "live_execution": live_execution,
         "shared_core_status": shared_core.get("status"),
         "shared_core_checkpoint": shared_core.get("checkpoint"),
+        "core_generation": core_generation,
         "head_requirements": {
             "archetype_policy": head_template.get(
                 "archetype_policy_head_required"
@@ -12475,9 +12641,9 @@ def specialist_protocol_state(
                 matchup_routing.get("staged_router_candidate") or {}
             ),
         },
-        "required_target_count": expected_count,
-        "status_counts": status_counts,
-        "specialists": rows,
+        "required_target_count": planning_required_count,
+        "status_counts": dashboard_status_counts,
+        "specialists": dashboard_rows,
         "training_priority": {
             "policy": priority.get("policy"),
             "ordered_unfinished_ids_after_active": live_ordered_priority,
@@ -12499,6 +12665,8 @@ def specialist_protocol_state(
             ),
             "primary_sort": "missing specialist model first",
             "handoff_override": dict(priority.get("handoff_override") or {}),
+            "strict_post_spidops_prefix": strict_prefix_contract,
+            "owner_removal": owner_removal_contract,
             "staged_v5_transition": dict(
                 priority.get("staged_v5_transition") or {}
             ),

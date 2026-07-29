@@ -52,16 +52,19 @@ def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
         )
     )
 
-    assert "Revision: `24`" in goal
+    assert "Revision: `29`" in goal
     assert "mandatory and sole successor after Thwackey" in goal
     assert state["current"]["active_specialist"] == "team-rockets-spidops"
     assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
         "ordered_unfinished_ids_after_active"
     ][0] == "hammer-pult"
-    assert cycle["selection"]["strict_priority_prefix"][-1] == (
-        "team-rockets-spidops"
-    )
+    assert cycle["selection"]["strict_priority_prefix"][-4:] == [
+        "team-rockets-spidops",
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "archaludon-ex",
+    ]
     assert cycle["selection"]["minimum_records_by_specialist"] == {
         "team-rockets-spidops": 16_639
     }
@@ -74,6 +77,108 @@ def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
     assert projected["lower_priority_fallthrough_allowed"] is False
     assert projected["activation_status"] == "active_training_verified"
     assert projected["hammer_pult_selected"] is False
+
+
+def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
+    goal = (ROOT / "GOAL.md").read_text(encoding="utf-8")
+    protocol = yaml.safe_load(
+        (ROOT / "config/rl_protocol.yaml").read_text(encoding="utf-8")
+    )
+    state = yaml.safe_load(
+        (ROOT / "state/specialists.yaml").read_text(encoding="utf-8")
+    )
+    compatibility = json.loads(
+        (ROOT / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    removed = ["dragapult-blaziken", "dragapult-dudunsparce"]
+    order = [
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "archaludon-ex",
+    ]
+    specialist_ids = [row["id"] for row in state["specialists"]]
+    priority = state["training_priority"]
+    selection = protocol["specialist_training"]["selection_order"]
+    projected = compatibility["current_owner_overrides"][
+        "required_specialist_plan"
+    ]
+
+    assert "Remove `dragapult-blaziken` and `dragapult-dudunsparce`" in goal
+    assert state["current"]["program_progress"]["required_specialists_total"] == 17
+    assert priority["ordered_unfinished_ids_after_active"][:3] == order
+    assert priority["strict_post_spidops_prefix"]["ids"] == order
+    assert all(specialist_id not in specialist_ids for specialist_id in removed)
+    matchup_roster = json.loads(
+        (ROOT / "state/matchup_adapter_roster.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert matchup_roster["specialist_priority"][7:10] == order
+    assert all(
+        specialist_id not in matchup_roster["specialist_priority"]
+        for specialist_id in removed
+    )
+    assert all(
+        specialist_id in matchup_roster["expert_ids"]
+        for specialist_id in removed
+    )
+    assert selection["owner_removed_specialist_ids"] == removed
+    assert selection["owner_removed_specialists_are_selection_eligible"] is False
+    assert selection["owner_removed_specialists_count_toward_completion"] is False
+    assert projected["strict_post_spidops_prefix"] == order
+    assert projected["removed_specialist_ids"] == removed
+    assert projected["required_specialists_total"] == 17
+
+
+def test_teal_mask_ogerpon_uses_exact_ogerpon_box_source_identity() -> None:
+    state = yaml.safe_load(
+        (ROOT / "state/specialists.yaml").read_text(encoding="utf-8")
+    )
+    row = next(
+        value
+        for value in state["specialists"]
+        if value["id"] == "teal-mask-ogerpon-ex"
+    )
+
+    assert row["source_archetype_id"] == "ogerpon-box"
+    assert row["datasets"]["source_indexed_public_acting_seat_games"] == 1_135
+    assert row["datasets"]["materialized_acting_seat_games"] == 2_300
+    assert row["datasets"]["materialized_decisions"] == 156_692
+    assert row["datasets"]["materialized_guide_rows"] == 10_495
+    assert row["datasets"]["daily_receipts_verified"] == 32
+    assert row["datasets"]["duplicate_episode_seat_keys"] == 0
+    assert row["datasets"]["corpus_identity_status"] == (
+        "ready_checksum_validated_promoted_on_inzi"
+    )
+    assert row["datasets"]["public_deck_catalog"].endswith(
+        "teal-mask-ogerpon-ex-public-full32.v1.json"
+    )
+    projected = json.loads(
+        (ROOT / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )["current_owner_overrides"]["teal_mask_ogerpon_ex"]
+    assert projected["competitive_taxonomy_id"] == "ogerpon-box"
+    assert projected["physical_public_archetype_id"] == 151
+    assert projected["physical_public_archetype_name"] == (
+        "Teal Mask Ogerpon ex"
+    )
+    assert projected["source_indexed_public_acting_seat_games"] == 1_135
+    assert projected["materialized_public_acting_seat_games"] == 2_300
+    assert projected["materialized_decisions"] == 156_692
+    assert projected["materialized_guide_rows"] == 10_495
+    assert projected["corpus_promotion_status"] == (
+        "ready_checksum_validated_promoted_on_inzi"
+    )
+    assert row["representative"]["exact_card_count"] == 60
+    assert row["representative"]["official_deck_code"] == (
+        "J8xJG4-TqjMpR-cJ8Gcc"
+    )
+    assert row["transition"]["strict_predecessor"] == "hammer-pult"
+    assert row["transition"]["strict_successor"] == "archaludon-ex"
 
 
 def test_clean_specialist_transition_contract_cannot_regress() -> None:

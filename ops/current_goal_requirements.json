@@ -1,7 +1,7 @@
 {
   "schema": "poke_bot.goal_requirements/v1",
   "status": "compatibility_projection",
-  "created_at_utc": "2026-07-28T20:58:41Z",
+  "created_at_utc": "2026-07-28T21:12:00Z",
   "purpose": "Compatibility projection for older controllers. GOAL.md is the authoritative adaptive goal gateway. Runtime selectors and immutable receipts remain authoritative for execution facts.",
   "authoritative_sources": {
     "goal_gateway": "GOAL.md",
@@ -46,12 +46,122 @@
       "activation_receipt_sha256": "sha256:94c99e97a8fa15d2f9b204b24064e795e1a73732613a86d41b22fcb833a98c8b",
       "local_boundary_receipt": "state/spidops_activation_boundary_v1.json",
       "local_boundary_receipt_sha256": "sha256:e623208e98f949f4a04898554547a667375a5c09ee382f6794a1f87587871025",
-      "latest_committed_iteration": 0,
-      "latest_checkpoint_digest": "sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3",
-      "latest_iteration_receipt": "state/spidops_iteration0_boundary_v1.json",
-      "latest_iteration_receipt_sha256": "sha256:90815eacaa4c9be227721a70ed5f50639ca92a4cea3805db45d7378ff230436e",
-      "next_iteration": 1,
+      "latest_committed_iteration": 4,
+      "latest_checkpoint_digest": "sha256:14be9143b1d4b61acf5bd8afc905010d44c98622522c74e48d1317d4fc5eb5ff",
+      "latest_iteration_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00004.json",
+      "latest_iteration_receipt_sha256": "sha256:59ad77d05d814b1c64efc5b1049672d7cb3b73e367a0b8df7246a59c2160d66a",
+      "next_iteration": 5,
       "hammer_pult_selected": false
+    },
+    "hammer_pult_nonlinear_systems": {
+      "goal_revision": 26,
+      "specialist_id": "hammer-pult",
+      "deck_complexity": "nonlinear",
+      "sparse_guide_alone_is_sufficient": false,
+      "authoritative_action_path": "fused_policy",
+      "required_fused_head_count": 17,
+      "required_system_ids": [
+        "branching_setup_and_pivot",
+        "attacker_and_engine_preservation",
+        "typed_energy_and_resource_planning",
+        "attack_target_and_prize_routing",
+        "stochastic_disruption_timing",
+        "bench_and_recovery_routing",
+        "guide_weight_annealing"
+      ],
+      "validation_receipt": "state/hammer_pult_nonlinear_systems_validation_v1.json",
+      "validation_receipt_sha256": "sha256:c3c5f05ae72ce94f97366368ee6700a389527425a0cb704739965851446cda4a",
+      "old_prestage_receipt_valid_for_bootstrap": false,
+      "reissued_prestage_receipt_required": false,
+      "reissued_prestage_receipt_status": "ready",
+      "reissued_prestage_receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
+      "reissued_prestage_receipt_sha256": "sha256:51b7543e71e13f6e197a12c9dbd1c65d89a337013ca14b1f54ff48954f2faaee",
+      "failure_behavior": "block_hammer_pult_bootstrap",
+      "active_spidops_modified": false
+    },
+    "required_specialist_plan": {
+      "goal_revision": 29,
+      "required_specialists_total": 17,
+      "active_specialist": "team-rockets-spidops",
+      "strict_post_spidops_prefix": [
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "archaludon-ex"
+      ],
+      "removed_specialist_ids": [
+        "dragapult-blaziken",
+        "dragapult-dudunsparce"
+      ],
+      "removed_ids_selection_eligible": false,
+      "removed_ids_count_toward_completion": false,
+      "removed_ids_historical_artifacts_preserved": true,
+      "missing_strict_prefix_input_behavior": "block_fallback_and_recover_public_inputs",
+      "activation_boundary": "receipt_backed_successor_handoff"
+    },
+    "teal_mask_ogerpon_ex": {
+      "goal_revision": 27,
+      "logical_specialist_id": "teal-mask-ogerpon-ex",
+      "display_name": "Teal Mask Ogerpon ex",
+      "competitive_taxonomy_id": "ogerpon-box",
+      "competitive_taxonomy_name": "Ogerpon Box",
+      "physical_public_archetype_id": 151,
+      "physical_public_archetype_name": "Teal Mask Ogerpon ex",
+      "strict_predecessor": "hammer-pult",
+      "strict_successor": "archaludon-ex",
+      "representative_status": "ready_checksum_bound",
+      "representative_provenance": "Toshiyuki Otake, 2026 Japan Championships winner",
+      "official_deck_code": "J8xJG4-TqjMpR-cJ8Gcc",
+      "exact_60_card_public_list": "https://www.limitlesstcg.com/decks/list/28688",
+      "full_public_history_required": true,
+      "public_deck_catalog": "data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json",
+      "public_deck_catalog_sha256": "sha256:5c2f4856b5f99f5b008f5160af1c9f27dd2ae10d7bee5e964de08b64607d3e1a",
+      "source_indexed_public_acting_seat_games": 1135,
+      "source_indexed_games_are_materialization_minimum": true,
+      "materialized_public_acting_seat_games": null,
+      "materialized_decisions": null,
+      "materialized_guide_rows": null,
+      "daily_receipts_verified": 0,
+      "duplicate_episode_seat_keys": null,
+      "full_public_history_materialization_status": "active_collision_safe_v3_rebuild",
+      "corpus_promotion_status": "blocked_until_clean_v3_receipt",
+      "exact_source_archetype_binding": {
+        "source_archetype_id": 151,
+        "source_archetype_name": "Teal Mask Ogerpon ex",
+        "deck_fingerprint": "sha256:10857495e924480503a72e7178ba50bb55fcfbf044954427833d722276e3c71a",
+        "authoritative_only_classifier": true
+      },
+      "clean_rebuild": {
+        "service": "pokebot-teal-mask-full32-guide-v3-clean.service",
+        "source_root": "/home/admin/pokebot-teal-clean-src-v2",
+        "output_root": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v3",
+        "guide_version": "teal-mask-ogerpon-ex-north-star-v2",
+        "teacher_sha256": "sha256:475a4e67897aab17dd9a65f47431fdb44134c6e9f6a07d350d653226b99ef59f"
+      },
+      "contaminated_v1": {
+        "status": "quarantined_not_promotable",
+        "false_source_archetype_id": 67,
+        "false_source_archetype_name": "Mega Kangaskhan ex",
+        "false_deck_fingerprint": "sha256:3339847ed8e48d4410471886db604b48190495dde36b8c8ece70e92ee88c25ab",
+        "records": 2300,
+        "decisions": 156692,
+        "guide_rows": 10495,
+        "ready_receipt_sha256": "sha256:216b60efe50709a7972081ad2c7df60614412a28b09b15458b659eadec8c547c",
+        "manifest_sha256": "sha256:da6c63179ac879a68955ba0819768100d08b12f7b2e4f6dcff4eebb5733dd668",
+        "protected_pointer_sha256": "sha256:ab6a383ab332c58b2f44a23f5f11bb737216a03fc3e2fa407971ebf4f157100c",
+        "promotion_receipt_sha256": "sha256:db8aff2fd5076fd75c4e56384f9bd609dda79836169527a780ec2808722e2674"
+      },
+      "public_identity_validation_receipt": "state/teal_mask_ogerpon_public_deck_identity_validation_v1.json",
+      "deck_complexity": "nonlinear",
+      "sparse_guide_alone_is_sufficient": false,
+      "required_fused_head_count": 17,
+      "required_nonlinear_system_count": 7,
+      "nonlinear_systems_validation_receipt": "state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json",
+      "v6_matchup_slot": 18,
+      "v6_matchup_slot_status": "dormant",
+      "exact_classifier_required": true,
+      "fuzzy_name_matching_allowed": false,
+      "matchup_route_status": "retraining_and_audit_pending",
+      "activation_status": "staged_after_hammer_pult"
     }
   },
   "historical_snapshot_retained_for_audit": {
@@ -632,7 +742,7 @@
     }
   },
   "verified_snapshot": {
-    "verified_at_utc": "2026-07-28T20:58:41Z",
+    "verified_at_utc": "2026-07-29T00:21:33Z",
     "phase": "specialist_rl_training",
     "canonical_specialist_count": 18,
     "active_specialist": "team-rockets-spidops",
@@ -644,20 +754,20 @@
       "selector": "/home/inzi/.config/pokebot/specialist_runtime.env",
       "selector_value": "team-rockets-spidops",
       "source_specialist": "team-rockets-spidops",
-      "source_specialist_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00000.pt",
-      "source_specialist_checkpoint_digest": "sha256:9d332dfc8d718b4ec35d53fbef46ef16eb1b1a74f57a8609d8b011feb5686ff3",
-      "current_stage": "iteration_1_collection",
-      "last_completed_iteration": 0,
-      "next_iteration": 1,
+      "source_specialist_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/checkpoints/iter_00004.pt",
+      "source_specialist_checkpoint_digest": "sha256:14be9143b1d4b61acf5bd8afc905010d44c98622522c74e48d1317d4fc5eb5ff",
+      "current_stage": "iteration_5_collection",
+      "last_completed_iteration": 4,
+      "next_iteration": 5,
       "first_collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/collection_receipts/iter_00000.json",
       "first_collection_receipt_sha256": "sha256:8edaec72310a4e08db4b04a77b52e8edd6a1d5ec9eb5b4e4ea09afdbcf3ecb70",
-      "latest_iteration_commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00000.json",
-      "latest_iteration_commit_sha256": "sha256:ef96f0834b31101d3a4f93292854a833471e48e4ac142a98e821a5cda6909139",
+      "latest_iteration_commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_team-rockets-spidops_temporal1_8k_v1_20260723/commits/iter_00004.json",
+      "latest_iteration_commit_sha256": "sha256:59ad77d05d814b1c64efc5b1049672d7cb3b73e367a0b8df7246a59c2160d66a",
       "latest_premium_gate_games": 3250,
-      "latest_premium_gate_win_rate": 0.5078333333333334,
+      "latest_premium_gate_win_rate": 0.5375000000000001,
       "latest_premium_gate_passed": false,
       "latest_research_control_games": 1000,
-      "latest_research_control_win_rate": 0.409,
+      "latest_research_control_win_rate": 0.448,
       "decision_fusion_runtime_enabled": true,
       "required_fused_head_count": 17
     },
@@ -704,8 +814,9 @@
       "active_specialist": "team-rockets-spidops",
       "selected_specialist": "hammer-pult",
       "receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
-      "receipt_sha256": "sha256:6a62dd671d90a0dbf644d79f3a56f69244df09cc53ad726a90e487d033cebeb3",
-      "receipt_created_at_utc": "2026-07-28T20:15:35.163734+00:00",
+      "receipt_sha256": "sha256:51b7543e71e13f6e197a12c9dbd1c65d89a337013ca14b1f54ff48954f2faaee",
+      "receipt_created_at_utc": "2026-07-28T21:32:43.746060+00:00",
+      "selection_identity_sha256": "sha256:d01acd90683f75c091e8c2b3f9da7ce93e852730cf3e78853da9ed583e41d5b4",
       "blockers": [],
       "matching_games": 4386,
       "minimum_matching_decisions": 20000,
@@ -714,6 +825,9 @@
       "representative_ready": true,
       "runtime_route_ready": true,
       "cpu_pack_ready": true,
+      "nonlinear_decision_support_ready": true,
+      "required_nonlinear_system_count": 7,
+      "required_fused_head_count": 17,
       "spidops_remains_active": true
     },
     "latest20_alias_correct_promotion": {
@@ -860,7 +974,7 @@
     "Preserve all eight registered exact passing, ceiling-accepted, or owner-accepted frozen checkpoints and their historical gate and submission evidence without replacement.",
     "Preserve the four roster-18 V5 derivatives as immutable internal inference-only packages; never treat them as new passing checkpoints and never submit them to Kaggle.",
     "Preserve the completed Dragapult/Dusknoir run, its frozen checkpoint, replay data, iteration journal, matchup-router evidence, and historical gate results.",
-    "Preserve the canonical 18-specialist roster and current priority ordering while staging the roster-neutral 64-slot V6 checkpoint format without interrupting the live V5 run.",
+    "Preserve the canonical stable matchup-slot evidence while the required 17-specialist plan uses the strict Spidops, Hammer-Pult, Teal Mask Ogerpon ex, Archaludon ex prefix. Removed specialist targets retain historical evidence but are not selected or counted.",
     "Preserve the validated 11-head strategic architecture, exact target and schedule digests, and cumulative 25-epoch schedule without rewriting live or frozen V5 checkpoints. Stage the revision-16 learned causal decision-fusion path for the next safe boundary and every successor.",
     "Preserve original passing checkpoints when expanded-head retrofit derivatives are created; derivatives remain separately identified, dormant, runtime-disabled, and non-authoritative until independently validated and activated.",
     "Preserve the hourly latest-20 archive policy: Kaggle ingress on Bert Wi-Fi, checksum transfer to Elmo over Bert Ethernet, atomic Elmo receipt, then deletion of Bert's temporary archive.",
@@ -869,22 +983,27 @@
   "next_actions": [
     {
       "order": 1,
-      "action": "Keep the healthy Rocket's Mewtwo specialist running through its exact receipt-backed 5/15 gate contract. Do not preempt it for preparation or planning reconciliation.",
+      "action": "Keep the healthy Team Rocket's Spidops specialist running through its exact receipt-backed 5/15 gate contract. It has committed through iteration 4 and is collecting iteration 5; do not preempt it for preparation or planning reconciliation.",
       "boundary": "active_specialist_training"
     },
     {
       "order": 2,
-      "action": "Preserve the checksum-validated alias-correct latest-20 corpus and its atomic current-specialist-latest20 pointer. Use it at the next safe specialist bootstrap or rehearsal boundary without preempting active training.",
-      "boundary": "background_atomic_data_promotion"
-    },
-    {
-      "order": 3,
-      "action": "Preserve Garchomp as frozen and immutable, preserve cumulative core v6 as the latest accepted core, and retain the rejected post-Garchomp v8 checkpoint and gameplay-regression receipt as immutable diagnostic evidence.",
+      "action": "Preserve cumulative core V9 as the latest checksum-accepted core and preserve the post-Thwackey V10 candidate as an immutable rejected gameplay-regression attempt. Matchup Adapter V6 remains a separate checkpoint-format contract.",
       "boundary": "immutable_checkpoint_identity"
     },
     {
+      "order": 3,
+      "action": "Reject the inactive V43 candidate because it retained only 18 of 19 accepted routes and had zero Spidops support. Complete and audit the additive V44 candidate, which re-adds the independent checksum-bound Spidops V42 calibration archive before exact Teal Mask public evidence, without changing the active production router.",
+      "boundary": "background_router_preparation"
+    },
+    {
       "order": 4,
-      "action": "At Rocket's Mewtwo's passing boundary, run the standing cumulative-core attempt without allowing rejection to block production, then hand off to the already pre-staged Thwackey specialist using the exact immutable receipts.",
+      "action": "Complete the collision-safe Teal Mask full-history v3 corpus rebuild from exact public archetype 151, quarantine the contaminated V1 corpus, and do not promote Teal inputs until all 32 daily receipts and final checksums validate.",
+      "boundary": "background_corpus_preparation"
+    },
+    {
+      "order": 5,
+      "action": "At the Spidops terminal boundary, attempt the next cumulative refresh without allowing rejection to block production, then hand off strictly to Hammer Pult from the latest accepted core. Teal Mask Ogerpon ex and Archaludon ex follow in that order.",
       "boundary": "next_specialist_safe_boundary"
     }
   ],
@@ -926,13 +1045,13 @@
     "Do not resume if any precondition would require interrupting the current training iteration."
   ],
   "known_unresolved_facts": [
-    "The post-Garchomp cumulative core v8 artifact failed its unchanged per-teacher gameplay floor against Marnie's Grimmsnarl ex at 30.00% and remains rejected; Rocket's Mewtwo correctly hot-started from accepted cumulative core v6 under GOAL.md revision 19.",
-    "The alias-correct latest-20 specialist corpus is validated on Elmo and is still transferring to Inzi under a bandwidth limit; the current pointer must remain unchanged until atomic validation completes.",
-    "The roster-18 v42 inactive router candidate passed all 18 unchanged causal-route audit checks; Team Rocket's Spidops passed at 93.15% precision and 15,703 weighted support. It remains boundary-only and cannot be selected until its protected expert corpus receipt is ready.",
+    "Cumulative core V9 is the latest accepted core. The post-Thwackey V10 artifact failed the unchanged per-teacher gameplay floor against Marnie's Grimmsnarl ex at 27.50% and remains rejected and immutable.",
+    "The inactive Teal Mask V43 router candidate checksum sha256:095fa8b9df2b35dbe47c2ec3214146edcab3ba3f6f276def4d46f9c93b2ea93b was rejected: Teal passed at 93.3891% precision and 30,938 weighted support, but Spidops had zero support, so only 18 of 19 routes passed. The additive V44 combined Spidops-plus-Teal rebuild is active on Elmo and cannot replace production until all 19 routes pass precision at least 0.93, weighted support at least 10,000, zero-state exact bypass, and immutable audit checks.",
+    "The first Teal Mask full-history V1 corpus is contaminated by a Mega Kangaskhan source-identity collision and is quarantined. The isolated V3 exact-archetype-151 rebuild is active; no Teal corpus promotion is authorized until all 32 daily receipts and the final sealed receipt validate.",
     "The compatibility projection records a point-in-time snapshot only. The live selector, managed service, progress journal, and immutable receipts remain authoritative for newer execution facts."
   ],
   "completion_definition": {
-    "baseline_specialist_program": "All 18 canonical specialists are training-complete under the protocol, with exact immutable checkpoints registered, complete gate evidence preserved, and required Kaggle copies accepted or persistently queued against the original checkpoints.",
+    "baseline_specialist_program": "All 17 currently required specialists are training-complete under the protocol, with exact immutable checkpoints registered, complete gate evidence preserved, and required Kaggle copies accepted or persistently queued against the original checkpoints. Dragapult/Blaziken and Dragapult/Dudunsparce are excluded from selection and completion.",
     "population_transition": "Pending Kaggle work does not block transition. After all specialists are training-complete, unfreeze the population and begin local round-robin self-play against current and selected historical internal models.",
     "population_training": "Continue the 5-RL-epoch/5-expert-rehearsal-epoch cadence. Public, official, premium, and other external agents are research-only and never provide population-training games.",
     "goal_complete": "The sequential specialist program has completed, the population round-robin service is running from checksum-registered internal models with external agents excluded from training, persistent queues and receipts are healthy, and no unresolved invariant violation remains."

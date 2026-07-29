@@ -328,19 +328,63 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
         _copy_remote_directory(args.host, remote_split, split_stage)
 
     audit = _read(audit_stage)
+    tree = _read(tree_stage)
     accepted = tuple(str(value) for value in audit.get("accepted_specialist_ids") or ())
+    expected_targets: tuple[str, ...] | None = None
+    roster_path: Path | None = None
+    if args.roster is not None:
+        roster_path = args.roster.expanduser().resolve()
+        roster = _read(roster_path)
+        expected_targets = tuple(
+            str(value) for value in roster.get("expert_ids") or ()
+        )
+        slot_targets = {
+            str(row.get("archetype_id") or "")
+            for row in roster.get("slots") or ()
+            if isinstance(row, dict)
+            and str(row.get("status") or "") in {"active", "dormant"}
+            and str(row.get("archetype_id") or "")
+        }
+        if (
+            roster.get("schema") != "poke_bot.matchup_adapter_roster/v1"
+            or not expected_targets
+            or len(expected_targets) != len(set(expected_targets))
+            or slot_targets != set(expected_targets)
+            or int(roster.get("required_specialist_count") or 0)
+            != len(expected_targets)
+        ):
+            raise RuntimeError("staged V6 target registry is invalid")
+    expected_target_count = (
+        len(expected_targets) if expected_targets is not None else 22
+    )
     if (
         audit.get("schema") != AUDIT_SCHEMA
         or audit.get("runtime_enabled") is not False
-        or int(audit.get("target_count") or 0) != 22
+        or tree.get("schema") != "poke_bot.public_matchup_decision_tree/v1"
+        or tree.get("runtime_enabled") is not False
+        or int(audit.get("target_count") or 0) != expected_target_count
         or audit.get("artifact_sha256") != _sha256(tree_stage)
         or float(audit.get("minimum_precision") or 0.0) != 0.93
         or int(audit.get("minimum_weighted_support") or 0) != 10_000
         or len(accepted) != len(set(accepted))
         or (
+            expected_targets is not None
+            and (
+                tuple(str(value) for value in tree.get("targets") or ())
+                != expected_targets
+                or tuple(
+                    str(value)
+                    for value in audit.get("canonical_target_ids") or ()
+                )
+                != expected_targets
+                or audit.get("target_registry_sha256")
+                != _sha256(roster_path)
+            )
+        )
+        or (
             args.require_all_targets
             and (
-                len(accepted) != 22
+                len(accepted) != expected_target_count
                 or bool(audit.get("rejected_specialists"))
             )
         )
@@ -431,6 +475,16 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
         "candidate_audit_sha256": _sha256(audit_output),
         "accepted_specialist_ids": list(accepted),
         "accepted_count": len(accepted),
+        "canonical_target_ids": (
+            list(expected_targets)
+            if expected_targets is not None
+            else list(tree.get("targets") or ())
+        ),
+        "canonical_target_count": expected_target_count,
+        "target_registry": str(roster_path) if roster_path is not None else None,
+        "target_registry_sha256": (
+            _sha256(roster_path) if roster_path is not None else None
+        ),
         "corpus_root": str(output_root),
         "corpus_mode": (
             "existing_protected_generation"
@@ -482,6 +536,14 @@ def main() -> int:
     )
     parser.add_argument("--source-corpus-root", type=Path, required=True)
     parser.add_argument("--output-corpus-root", type=Path, required=True)
+    parser.add_argument(
+        "--roster",
+        type=Path,
+        help=(
+            "Optional staged V6 registry used to validate an appended logical "
+            "route while retaining the physical V5 checkpoint prefix."
+        ),
+    )
     parser.add_argument("--tree-output", type=Path, required=True)
     parser.add_argument("--audit-output", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
@@ -491,7 +553,10 @@ def main() -> int:
     parser.add_argument(
         "--require-all-targets",
         action="store_true",
-        help="Fail closed unless every one of the canonical 22 routes passed.",
+        help=(
+            "Fail closed unless every route in --roster (or the legacy "
+            "22-route default) passed."
+        ),
     )
     parser.add_argument(
         "--router-only",
