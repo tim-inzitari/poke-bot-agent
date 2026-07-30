@@ -1,205 +1,235 @@
-# Remote job scheduler extraction (public-play LAN dispatch)
+# Plan: `wave_dispatch` — standalone LAN job-dispatch library
 
-Status: **design only — no production activation**  
+Status: **/plan only — no implementation, no production changes**  
 Branch: `cursor/remote-job-scheduler-extract-045a`  
-Related: [THROUGHPUT_NEXT_ITER.md](THROUGHPUT_NEXT_ITER.md), [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md)
+Product: a **separate library** you can install and use in any project  
+Reference source (read-only for this plan): poke-bot-agent public-play LAN dispatch
 
-## Goal
+Related context in this repo: [THROUGHPUT_NEXT_ITER.md](THROUGHPUT_NEXT_ITER.md), [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md)
 
-Extract the system that **schedules whole-game collect jobs during public-play
-waves onto other LAN computers** (Elmo / Bert additive farms) into a reusable
-external package, then progressively rewrite the hot path in C++ for max
-dispatch speed — **without touching live production** (selector, systemd
-trainer, healthy training process, or Elmo production compose).
+---
 
-Production currently pins adaptive mid-iter rebalance off
-(`PURE_RL_MID_ITER_SCHEDULER=0` in `config/specialist_runtime.env`) and hard-pins
-128 workers. This plan must not reverse that.
+## Verdict
 
-## What this is (and is not)
+Ship **`wave_dispatch` as its own git repository and installable package** (Python first, C++ core later). Generalize the poke-bot public-play → Elmo/Bert whole-job dispatcher into domain-agnostic APIs. **poke-bot keeps its current in-tree code and production stays untouched**; adopting the library later is an optional consumer decision, not part of standing up the library.
 
-| In scope | Out of scope |
-|---|---|
-| TCP length-prefixed job protocol | Specialist transition graph / cycle handoff |
-| `RemoteJobClient` / farm / `serve_forever` | Deck-guide / strategic-head / ladder mix “schedules” |
-| Additive local+remote collect (`iter_*_additive_results`) | `libcg` / engine multi-env rewrite (separate track) |
-| Mid-wave capacity controller (`MidIterScheduler`) | Live-pool iter-boundary watcher (sibling; optional later) |
-| Demand grow/shrink, chunk claim, endpoint-owned queues | Checkpoint rsync / SMB staging (host-specific adapters) |
-| Generic opaque job bytes + completion credits | Pokemon matchup-runtime markers, leaf GPU striping |
+---
 
-This is **not** cron, Airflow, or specialist orchestration. It is a
-**wave-scoped, additive whole-job dispatcher**: local workers + N remote TCP
-sockets, rebalanced on wall-clock completions, never killing in-flight games.
+## What you get as a library user
 
-## Current architecture (as shipped)
-
-```mermaid
-flowchart LR
-  trainer["train_pure_rl collect wave"]
-  mid["MidIterScheduler"]
-  schedIter["iter_scheduled_additive_results"]
-  local["local WorkerPool"]
-  farm["RemoteWorkerFarm sockets"]
-  elmo["Elmo :8765 serve_forever"]
-  bert["Bert :8766 serve_forever"]
-
-  trainer --> mid
-  trainer --> schedIter
-  mid -->|"local_share remote_share remote_demand remote_chunk"| schedIter
-  schedIter --> local
-  schedIter --> farm
-  farm --> elmo
-  farm --> bert
+```bash
+pip install wave-dispatch          # or: pip install git+https://github.com/<you>/wave-dispatch
 ```
 
-### Source map (~5.6k LOC core)
+```python
+from wave_dispatch import (
+    JobClient,
+    WorkerFarm,
+    serve_forever,
+    MidWaveScheduler,
+    iter_scheduled_results,
+)
+
+# Worker box
+serve_forever(handler=my_job_fn, host="0.0.0.0", port=8765, hello=my_hello)
+
+# Controller
+farm = WorkerFarm(endpoints=["host-a:8765", "host-b:8766"])
+farm.connect()
+sched = MidWaveScheduler(config, capacity=my_caps)
+for result in iter_scheduled_results(
+    local_submit=my_local,
+    jobs=job_dicts,           # opaque JSON objects
+    remote_clients=farm.clients,
+    scheduler=sched,
+):
+    ...
+```
+
+Jobs and results are **opaque**. The library never knows about Pokemon, checkpoints, or leaf GPUs.
+
+---
+
+## Source of truth in poke-bot (reference only)
+
+The behavior to extract lives here today:
 
 | Layer | Path | ~LOC | Role |
 |---|---|---:|---|
-| Decision engine | [`poke_bot/pure_rl/mid_iter_scheduler.py`](../poke_bot/pure_rl/mid_iter_scheduler.py) | 1.2k | Wave GPS tracker, demand probes, share/worker targets |
-| Dispatch + protocol | [`poke_bot/remote_jobs.py`](../poke_bot/remote_jobs.py) | 3.9k | Framing, client, farm, additive iterators, `serve_forever` |
-| RAM helper | [`poke_bot/live_pool.py`](../poke_bot/live_pool.py) `max_local_workers_for_ram` | small | Injected into mid-iter |
-| Trainer wiring | [`scripts/train_pure_rl.py`](../scripts/train_pure_rl.py) `_collect` / `_additive_iter` | glue | Public-mix vs practice kinds, remote allow |
-| Worker process | [`scripts/run_remote_worker.py`](../scripts/run_remote_worker.py) | ~2k | Pokemon sim handler behind `serve_forever` |
+| Decision engine | `poke_bot/pure_rl/mid_iter_scheduler.py` | 1.2k | Wave GPS, demand probes, share/worker targets |
+| Dispatch + protocol | `poke_bot/remote_jobs.py` | 3.9k | Framing, client, farm, collectors, `serve_forever` |
+| Worker entry | `scripts/run_remote_worker.py` | ~2k | Domain handler behind the generic server |
 
-### Wire protocol (keep stable)
+Wire protocol to preserve as v1:
 
-- TCP, one job in flight per socket (concurrency = open sockets).
-- Frame: `!I` big-endian uint32 length + UTF-8 JSON body (optional `orjson`).
-- `PROTO_VERSION = 1`.
-- Control: `hello` / `hello_ok`, `ping`/`pong`, `health`, `reload`, `pin`/`unpin`, `rotate`, `bye`.
-- Data: `{type: job, kind, job}` → `{type: result, ok, result}` (or `error`).
-- Design invariant: **whole-game jobs**, chunked claim lists, **not** per-leaf RPCs over LAN.
+- TCP, one in-flight job per socket (concurrency = open sockets)
+- `!I` length + UTF-8 JSON body
+- `hello` / `job` / `result` / `ping` / control (`reload`, `pin`, …)
+- Whole jobs over LAN; chunked claims; never per-leaf RPCs
 
-### Hot paths / bottlenecks today
+```mermaid
+flowchart LR
+  app["Any app collect wave"]
+  libSched["wave_dispatch.MidWaveScheduler"]
+  libCollect["wave_dispatch.iter_scheduled_results"]
+  local["local workers callback"]
+  farm["WorkerFarm sockets"]
+  wA["worker A serve_forever"]
+  wB["worker B serve_forever"]
 
-1. **Python GIL + many threads** in `iter_scheduled_additive_results` (claim lock, grow lock, per-socket request threads, refill monitor).
-2. **JSON encode/decode** of large self-play result bodies (up to 256 MiB frame cap).
-3. **Per-job deepcopy + host path remap** in `prepare_remote_play_job`.
-4. **Scheduler tick** every ~15s is cheap; **claim/credit arithmetic under locks** is hotter under high GPS.
-5. **LAN RTT** amortized by large `remote_chunk` / endpoint-owned queues — do not regress to chatty per-game scheduler RPCs.
-6. Game sim time on remotes dominates wall clock; dispatcher C++ wins matter most when **socket count, refill, and result fan-in** become the limiter (many endpoints, small games, or multi-env remotes).
-
-## Extraction boundary
-
-### Package name (chosen)
-
-`wave_dispatch` — generic mid-wave additive job dispatcher + capacity controller.
-
-Suggested layout (new, **sidecar to poke-bot**, not activated in production):
-
-```
-packages/wave_dispatch/
-  pyproject.toml
-  README.md
-  include/wave_dispatch/          # C++ public headers (phase 2+)
-  src/wave_dispatch/              # C++ implementation
-  python/wave_dispatch/           # thin Python package / pybind11
-    __init__.py
-    protocol.py                   # frame codec + message types
-    client.py                     # RemoteJobClient equivalent
-    server.py                     # serve_forever equivalent
-    scheduler.py                  # MidIterScheduler equivalent
-    collector.py                  # additive / scheduled iterators
-    capacity.py                   # EndpointCapacity protocol
-  tests/
-  benchmarks/
+  app --> libSched
+  app --> libCollect
+  libSched -->|"shares demand chunk"| libCollect
+  libCollect --> local
+  libCollect --> farm
+  farm --> wA
+  farm --> wB
 ```
 
-### Generic core (move)
+---
 
-1. **Framing** — `encode_frame` / `read_frame` / `send_frame`, max frame, proto version.
-2. **Session client** — connect/hello, ping, submit opaque job dict/bytes, control RPCs with hangup retry.
-3. **Accept loop** — `serve_forever` with idle-timeout keep-alive, connection semaphore, handler callback.
-4. **Farm** — multi-endpoint connect (soft-drop vs require-all), reload/pin fan-out with slow-but-alive policy.
-5. **Collector** — spillable result queue, local+remote additive emitters, endpoint-owned demand queues, low-water refill, claim credits, tail-straggler override.
-6. **Scheduler** — `WaveGpsTracker`, `DemandCompletionProbe`, share/demand/chunk decisions from completion feed + injectable hardware signals.
-7. **Config** — typed knobs (tick, settle, frac floors, demand defaults/maxima) instead of hard-coded `PURE_RL_*` / Elmo/Bert IPs.
+## Library home (chosen)
 
-### Pokemon / host adapters (stay in poke-bot)
+**Separate git repo** (not a `packages/` sidecar inside poke-bot).
 
-Keep as thin wrappers that call `wave_dispatch`:
+Suggested:
 
-- `prepare_remote_play_job`, Elmo/Bert checkpoint staging (SMB/GVFS/rsync).
-- Matchup-runtime hello fields and capability gates.
-- `run_remote_worker.py` job handler (play / promotion / leaf lifecycle).
-- Trainer public-mix policy (`PURE_RL_PUBLIC_MIX_*`, local-only slice).
-- Leaf GPU0 frac bias and 3080/Blackwell assumptions (optional policy plugin).
-- Env-var bridge that maps existing `PURE_RL_*` / `POKEBOT_REMOTE_*` names onto the generic config **only when explicitly enabled**.
+| Item | Choice |
+|---|---|
+| Repo | `github.com/<owner>/wave-dispatch` (new) |
+| PyPI name | `wave-dispatch` |
+| Import | `wave_dispatch` |
+| License | match owner preference (document in new repo) |
+| poke-bot | stays independent; may depend later via pip/git URL |
 
-### Public interfaces (stable contracts)
+This plan lives in poke-bot only as the **extraction brief**. Implementation commits belong in the new library repo.
+
+### Target layout (new repo)
 
 ```text
-# Capacity plugin
+wave-dispatch/
+  README.md
+  pyproject.toml
+  LICENSE
+  docs/
+    PROTOCOL.md
+    SCHEDULER.md
+    MIGRATION_FROM_POKEBOT.md
+  src/wave_dispatch/
+    __init__.py
+    protocol.py          # frame codec, message types
+    client.py            # JobClient
+    farm.py              # WorkerFarm
+    server.py            # serve_forever
+    scheduler.py         # MidWaveScheduler, WaveGpsTracker, DemandProbe
+    collector.py         # additive + scheduled iterators
+    capacity.py          # EndpointCapacity protocol / maps
+    config.py            # typed knobs (no PURE_RL_* names)
+    hardware.py          # optional signal sampling hooks
+  tests/
+  benchmarks/
+    echo_worker.py
+  # Phase C++ later:
+  cpp/
+    include/wave_dispatch/
+    src/
+    CMakeLists.txt
+  python/bindings/       # pybind11 when C++ lands
+```
+
+Hard rule: **zero imports of `poke_bot`**. CI must fail if that appears.
+
+---
+
+## What moves into the library vs stays in consumers
+
+### Into `wave_dispatch`
+
+1. Frame codec (`encode_frame` / `read_frame` / `send_frame`)
+2. `JobClient` session (hello, ping, submit opaque job, hangup retry)
+3. `serve_forever` accept loop (idle keep-alive, connection cap, handler callback)
+4. `WorkerFarm` (soft-drop vs require-all, control fan-out)
+5. Additive / scheduled collectors (claim credits, endpoint-owned queues, low-water refill, spillable result queue, tail override)
+6. `MidWaveScheduler` + wave wall-clock GPS + demand completion probes
+7. Typed config + `EndpointCapacity` plugin (defaults/max per endpoint from caller)
+
+### Stays in poke-bot (or any consumer)
+
+- Checkpoint staging (SMB / GVFS / rsync), host path remaps
+- Matchup-runtime hello fields / capability gates
+- Sim / leaf / GPU job handlers
+- Public-mix training policy and env bridges (`PURE_RL_*`, `POKEBOT_REMOTE_*`)
+- Systemd / Docker / launchd deployment
+
+Generic control ops (`reload`, `pin`, `rotate`) stay in the library as **opaque control frames**; consumers decide what they mean.
+
+---
+
+## Public API contract (stable)
+
+```text
 EndpointCapacity:
   default_workers(endpoint) -> int
   max_workers(endpoint) -> int
 
-# Hardware plugin
-sample_signals() -> HardwareSignals   # or inject snapshots
+HardwareSignals / sample_signals()     # injectable; library ships a best-effort Linux sampler
 
-# Scheduler
-bind_endpoints(caps)
-note_completed(side, n, decisions)
-maybe_tick(remaining, force=False) -> Decision | None
-decision() -> Decision  # local_share, remote_share, remote_demand, remote_chunk, target_workers, ...
+MidWaveScheduler:
+  from_config(cfg, *, baseline_workers)
+  bind_endpoints(capacity | clients)
+  note_completed(side, n, decisions=0)
+  maybe_tick(remaining, force=False) -> Decision | None
+  decision() -> Decision
+    # local_share, remote_share, remote_demand, remote_chunk,
+    # target_workers, reason, metrics, hardware
 
-# Collector (Python API initially)
-iter_scheduled(local_pool, local_fn, jobs, remote_clients, scheduler, ...) -> Iterator[result]
+iter_scheduled_results(...):
+  local_submit, jobs, remote_clients, scheduler, ...
+  -> Iterator[result_dict]
 
-# Job payload
-opaque JSON object; dispatcher never interprets Pokemon fields
+Job payload: opaque JSON object
 ```
 
-## Phased plan (production untouched)
+Env vars in the library use a neutral prefix (`WAVE_DISPATCH_*`), not `PURE_RL_*`.
 
-### Phase 0 — Design freeze (this doc)
+---
 
-- Lock scope, interfaces, and “no production wiring” rule.
-- Inventory tests that define behavior:
-  - `tests/test_remote_demand_caps.py`
-  - `tests/test_remote_checkpoint_staging.py` (collector behavior; staging stays poke-bot)
-  - `tests/test_remote_endpoint_chunks.py`
-  - relevant slices of `tests/test_dashboard_regressions.py` / `test_live_pool_plan.py`
+## Phases (library repo)
 
-### Phase 1 — Extract Python package in-repo (no trainer switch)
+### Phase 0 — Plan freeze (this document)
 
-1. Create `packages/wave_dispatch/` with `pyproject.toml` (setuptools/scikit-build later).
-2. Move/copy generic pieces from `remote_jobs.py` + `mid_iter_scheduler.py` into the package.
-3. Replace Elmo/Bert hardcodes with `EndpointCapacity` maps supplied by callers.
-4. Inject `max_local_workers_for_ram` / hardware sampling via callables.
-5. Port unit tests into `packages/wave_dispatch/tests/` (no systemd, no selector).
-6. Leave poke-bot imports pointing at **existing** modules. Add optional shim only behind an explicit env such as `POKEBOT_USE_WAVE_DISPATCH=0` (default off). **Do not flip defaults.**
+Done when this brief is accepted. No code in poke-bot production paths.
 
-Deliverable: installable pure-Python package + parity tests; production binary path unchanged.
+### Phase 1 — New repo + pure-Python v0.1
 
-### Phase 2 — Protocol hardening for reuse
+1. Create `wave-dispatch` repo with `pyproject.toml`, README, PROTOCOL.md.
+2. Port framing, server, client, farm from `remote_jobs.py` (strip Elmo/Bert/staging).
+3. Port scheduler from `mid_iter_scheduler.py` with injectable capacity + hardware hooks.
+4. Port collector logic; local side is a callback, not WorkerPool.
+5. Port/adapt unit tests from poke-bot (`test_remote_demand_caps`, collector behaviors) into library tests with synthetic echo workers.
+6. Tag `v0.1.0`. Installable via `pip install -e .` / git URL.
 
-1. Formalize message schema (JSON Schema or protobuf IDL kept dual-readable).
-2. Split **control plane** vs **data plane** timeouts (already partially done).
-3. Add capability negotiation that is domain-agnostic (`job_kinds`, `capabilities` strings).
-4. Optional content-type: JSON jobs today; allow `content_type=msgpack|raw` later without breaking v1.
-5. Benchmark harness: synthetic echo workers measuring claim→submit→result GPS vs Python baseline.
+**poke-bot unchanged.**
 
-### Phase 3 — C++ core for max dispatch speed
+### Phase 2 — Reuse polish
 
-Rewrite **only the dispatcher/runtime**, not the Pokemon sim:
+1. Documented JSON schema for v1 frames.
+2. Echo benchmarks (claim → submit → result GPS, CPU%).
+3. Examples: “local+2 remotes map-reduce style jobs”, “fail-soft farm”.
+4. Optional msgpack/raw content-type negotiation without breaking JSON v1.
 
-| Component | Language | Why |
+### Phase 3 — C++ hot path (same library, optional extra)
+
+Ship as optional package extra (`wave-dispatch[native]`) or same wheel with pybind11:
+
+| Component | C++ | Why |
 |---|---|---|
-| Frame codec + socket I/O | C++ (asio or raw epoll/kqueue) | Avoid GIL; many sockets |
-| Connection accept + per-socket state machine | C++ | `serve_forever` hot loop |
-| Claim/credit/demand queues | C++ | Lock-friendly atomics / sharded queues |
-| Wave GPS + demand probe math | C++ | Tiny; keep policy identical |
-| Mid-iter decision policy | C++ or keep Python | Policy changes often; start C++, keep Python mirror for A/B |
-| Job handler / sim | stays Python (or engine C++) | Domain work |
-| Checkpoint staging | stays Python/shell | Host FS specifics |
-| pybind11 / cffi façade | Python | Drop-in `wave_dispatch.collector` |
-
-**Do not** put battle simulation inside this package — that is the separate
-engine rebuild track. This package ships **opaque jobs** and **opaque results**.
-
-Suggested C++ module split:
+| Frame I/O + reactor | yes | many sockets, no GIL |
+| Accept / session SM | yes | server hot loop |
+| Claim / demand queues | yes | lock contention under high GPS |
+| Wave GPS + demand math | yes | keep policy identical |
+| Policy knobs / config | Python OK | changes often |
+| Domain job handler | never | consumer-owned |
 
 ```text
 wave_dispatch::net::FrameCodec
@@ -213,69 +243,63 @@ wave_dispatch::collect::EndpointQueue
 wave_dispatch::collect::AdditiveCollector
 ```
 
-Build: CMake + pybind11 wheel; CI builds manylinux + macOS (Bert) artifacts.
-Keep a pure-Python fallback so remotes without the wheel still run.
+Keep pure-Python fallback so install works without a compiler.
 
-### Phase 4 — Opt-in poke-bot integration (still non-production)
+### Phase 4 — Optional poke-bot consumer (separate, later, non-production)
 
-1. Adapter module `poke_bot/wave_dispatch_adapter.py` mapping env + staging.
-2. Canary path on a **non-production** collect (smoke / staging trainer only):
-   `POKEBOT_USE_WAVE_DISPATCH=1` + mid-iter allowed only in staging profiles.
-3. Parity receipts: same job list → same completion counts; GPS within noise;
-   demand grow/shrink probe behavior matches golden traces from Phase 1 tests.
-4. **No** change to `config/specialist_runtime.env`, live systemd units, Elmo
-   `docker-compose.production.yml`, or Bert production launchd until an owner
-   orders a receipt-backed boundary activation.
+Only if/when you want poke-bot to *use* the library:
 
-### Phase 5 — Production consideration (explicit future order only)
+1. Add `wave-dispatch` dependency in a **non-production** / staging path.
+2. Thin adapter for staging + `PURE_RL_*` → `WAVE_DISPATCH_*` mapping.
+3. Default remains in-tree `remote_jobs` / `mid_iter_scheduler`.
+4. Never flip selector / systemd / Elmo production compose without an explicit owner boundary order.
 
-Only after Phase 4 receipts and an owner boundary order:
+**Standing up the library does not require Phase 4.**
 
-- Deploy wheels beside a new immutable runtime root.
-- Flip mid-iter / wave_dispatch behind selector at a safe iter/promotion boundary.
-- Respect GOAL pin: adaptive rebalance must not lower the 128-worker floor while that pin is active.
+---
 
-This phase is **out of scope for the extraction workstream** until ordered.
+## Performance priorities (library)
 
-## Optimization priorities (once extracted)
+1. C++ collector + socket reactor  
+2. Fine-grained / sharded per-endpoint queues  
+3. Fast codec or opaque blob passthrough for large results  
+4. Proto v2 multi-job frames (still whole-job semantics, large chunks)  
+5. io_uring / kqueue where available  
 
-Ordered by expected dispatcher-side win:
+Invariants: wave wall-clock GPS only; no in-flight kills; no chatty per-game scheduler RPCs; no leaf traffic over LAN.
 
-1. **C++ collector + socket reactor** — eliminate GIL contention across dozens of remote sockets.
-2. **Sharded per-endpoint queues** (already conceptually present) with lock-free or fine-grained C++ queues.
-3. **Faster codec** for large results (reuse `orjson` from Python; in C++ prefer SIMD JSON or length-prefixed blob passthrough when poke-bot can accept opaque bytes).
-4. **Batch control** — multi-job submit per frame (proto v2) while keeping whole-game semantics; larger chunks beat smaller frames.
-5. **io_uring / kqueue** on Linux/macOS workers for accept/read fan-in.
-6. Keep policy probes on **wave wall-clock GPS only** — never reintroduce batch-dump instantaneous rates.
+---
 
-Non-goals for speed:
+## Production safety (poke-bot)
 
-- Moving leaf eval over LAN (regress).
-- Killing in-flight games to rebalance (forbidden).
-- Chatty per-game scheduler RPCs (forbidden).
+While this plan exists in the poke-bot tree as documentation only:
 
-## Production safety checklist (hard rules)
+- Do not restart/replace trainer, gate, or handoff services
+- Do not mutate live selector or deployment roots
+- Do not enable `PURE_RL_MID_ITER_SCHEDULER` in canonical production env
+- Do not change Elmo production compose / Bert production launchd for this work
+- Do not preempt healthy training
 
-- Do **not** restart, stop, or replace `pokebot-pure-rl-*`, gate handler, or handoff services for this work.
-- Do **not** mutate `/home/inzi/.config/pokebot/specialist_runtime.env` or deployment roots.
-- Do **not** change Elmo `docker-compose.production.yml` or Bert production launchd as part of extraction.
-- Do **not** enable `PURE_RL_MID_ITER_SCHEDULER` in the canonical selector.
-- Do **not** preempt healthy active training to validate the package.
-- Interactive SSH/Codex/Cursor sessions remain untouched.
-- All work stays on feature branch + optional local/staging processes.
+The library repo has **no production coupling**.
 
-## Success criteria
+---
 
-1. `wave_dispatch` installs and runs its own pytest suite with **zero** imports of `poke_bot.*`.
-2. Synthetic echo benchmark documents Python vs C++ collector GPS / CPU%.
-3. poke-bot still uses in-tree `remote_jobs` / `mid_iter_scheduler` by default.
-4. Optional adapter exists but default-off; production selector unchanged.
-5. Design invariants preserved: whole-game jobs, chunked remotes, completion-gated demand, no in-flight kills.
+## Success criteria (for the library)
 
-## Immediate next implementation steps (when exiting design-only)
+1. Own repo; `pip install` works; import `wave_dispatch`.
+2. Test suite green with **zero** `poke_bot` imports.
+3. Echo-worker demo runs local + fake remotes.
+4. README shows a non-Pokemon example.
+5. poke-bot production path unmodified by library work.
+6. Later: optional native extra beats pure-Python dispatcher CPU% at high socket counts.
 
-1. Scaffold `packages/wave_dispatch/` + `pyproject.toml`.
-2. Lift framing + `serve_forever` + client (no staging) with ported tests.
-3. Lift `WaveGpsTracker` / `DemandCompletionProbe` / scheduler with injectable caps.
-4. Lift additive collector behind the duck-typed scheduler protocol.
-5. Add echo-worker microbench; defer C++ until Python package parity is green.
+---
+
+## When leaving /plan (implementation order in `wave-dispatch` repo)
+
+1. Scaffold repo + pyproject + PROTOCOL.md  
+2. Port protocol + server + client + tests  
+3. Port scheduler + capacity plugins + tests  
+4. Port collector + echo benchmark  
+5. Tag v0.1.0  
+6. Only then consider C++ and/or poke-bot opt-in consumer work  
