@@ -2,8 +2,9 @@
 
 Status: **/plan only — no implementation, no production changes**  
 Branch: `cursor/remote-job-scheduler-extract-045a`  
-Product: a **separate library** you can install and use in any project  
-Reference source (read-only for this plan): poke-bot-agent public-play LAN dispatch
+Product: a **separate library** for multi-machine RL collect across Kaggle projects  
+Primary use: train models for **other Kaggle competitions** on the same LAN farm pattern  
+Reference source (read-only): poke-bot-agent public-play LAN dispatch
 
 Related context in this repo: [THROUGHPUT_NEXT_ITER.md](THROUGHPUT_NEXT_ITER.md), [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md)
 
@@ -11,7 +12,46 @@ Related context in this repo: [THROUGHPUT_NEXT_ITER.md](THROUGHPUT_NEXT_ITER.md)
 
 ## Verdict
 
-Ship **`wave_dispatch` as its own git repository and installable package** (Python first, C++ core later). Generalize the poke-bot public-play → Elmo/Bert whole-job dispatcher into domain-agnostic APIs. **poke-bot keeps its current in-tree code and production stays untouched**; adopting the library later is an optional consumer decision, not part of standing up the library.
+Ship **`wave_dispatch` as its own git repository and installable package** (Python first, C++ core later). It is the reusable **collect-wave dispatcher**: one trainer host fans opaque self-play / eval / rollout jobs across local workers + LAN boxes, rebalances on wall-clock completions, and streams results back for training.
+
+Intended consumers: **new Kaggle competition repos** (and optionally poke-bot later). Each competition owns its env, model, and job payload; they all `pip install wave-dispatch` and share the same farm machines.
+
+**poke-bot production stays untouched.** This plan does not wire poke-bot to the library.
+
+---
+
+## Intended use: other Kaggle competitions
+
+Typical loop this library owns (competition-agnostic):
+
+```text
+for each training iteration:
+  build N opaque jobs   # episode / game / puzzle / match — consumer-defined
+  dispatch wave         # local + remote sockets, mid-wave capacity control
+  gather results        # trajectories / scores / metrics blobs
+  train update          # consumer-owned (PyTorch, etc.)
+```
+
+What stays **per competition repo** (not in the library):
+
+| Consumer owns | Examples |
+|---|---|
+| Simulator / env | chess engine, robot sim, card game, LLM rollout harness |
+| Job schema | seed, checkpoint URI, opponent id, time limit, scenario |
+| Result schema | trajectory tensor refs, reward, win/loss, logprobs |
+| Model load on workers | `hello` capabilities + optional `reload` control frames |
+| Checkpoint publish | rsync, object store, NFS path remap |
+| Kaggle submit packaging | competition-specific |
+
+What **`wave_dispatch` owns** (reuse across comps):
+
+- TCP job protocol + farm client/server
+- Chunked claim / demand queues / low-water refill
+- Mid-wave scheduler (wave GPS, remote demand grow/shrink)
+- Fail-soft endpoints, hangup retry, spillable result buffering
+- Later: C++ dispatcher for max socket/refill speed
+
+Same physical workers (Elmo-class GPU box, Bert-class Mac, training box) can run **different competition worker processes on different ports**, each advertising `job_kinds` / `capabilities` in `hello`.
 
 ---
 
@@ -30,23 +70,23 @@ from wave_dispatch import (
     iter_scheduled_results,
 )
 
-# Worker box
-serve_forever(handler=my_job_fn, host="0.0.0.0", port=8765, hello=my_hello)
+# Worker box (per competition process)
+serve_forever(handler=run_episode, host="0.0.0.0", port=8765, hello=advertise_caps)
 
-# Controller
-farm = WorkerFarm(endpoints=["host-a:8765", "host-b:8766"])
+# Trainer in any Kaggle project
+farm = WorkerFarm(endpoints=["gpu-box:8765", "mac-box:8766"])
 farm.connect()
 sched = MidWaveScheduler(config, capacity=my_caps)
 for result in iter_scheduled_results(
-    local_submit=my_local,
-    jobs=job_dicts,           # opaque JSON objects
+    local_submit=run_episode_local,
+    jobs=episode_jobs,        # opaque JSON — your competition schema
     remote_clients=farm.clients,
     scheduler=sched,
 ):
-    ...
+    buffer.add(result)        # then your train step
 ```
 
-Jobs and results are **opaque**. The library never knows about Pokemon, checkpoints, or leaf GPUs.
+Jobs and results are **opaque**. The library never imports competition code, Pokemon types, or Kaggle APIs.
 
 ---
 
@@ -211,12 +251,16 @@ Done when this brief is accepted. No code in poke-bot production paths.
 
 **poke-bot unchanged.**
 
-### Phase 2 — Reuse polish
+### Phase 2 — Multi-competition reuse polish
 
-1. Documented JSON schema for v1 frames.
+1. Documented JSON schema for v1 frames (transport only; job body untyped).
 2. Echo benchmarks (claim → submit → result GPS, CPU%).
-3. Examples: “local+2 remotes map-reduce style jobs”, “fail-soft farm”.
-4. Optional msgpack/raw content-type negotiation without breaking JSON v1.
+3. Examples aimed at new Kaggle repos:
+   - `examples/echo_farm/` — synthetic episodes, local+2 remotes
+   - `examples/checkpoint_reload/` — control-plane reload between iters
+   - `examples/fail_soft_farm/` — one endpoint down, wave continues
+4. README section: “Drop into a new competition in ~50 lines.”
+5. Optional msgpack/raw content-type negotiation without breaking JSON v1.
 
 ### Phase 3 — C++ hot path (same library, optional extra)
 
@@ -245,16 +289,18 @@ wave_dispatch::collect::AdditiveCollector
 
 Keep pure-Python fallback so install works without a compiler.
 
-### Phase 4 — Optional poke-bot consumer (separate, later, non-production)
+### Phase 4 — First real consumer = new Kaggle project (preferred)
 
-Only if/when you want poke-bot to *use* the library:
+Prefer proving the library in a **new competition repo**, not by rewiring poke-bot:
 
-1. Add `wave-dispatch` dependency in a **non-production** / staging path.
-2. Thin adapter for staging + `PURE_RL_*` → `WAVE_DISPATCH_*` mapping.
-3. Default remains in-tree `remote_jobs` / `mid_iter_scheduler`.
-4. Never flip selector / systemd / Elmo production compose without an explicit owner boundary order.
+1. New project depends on `wave-dispatch` via git/PyPI.
+2. Implements `run_episode` handler + job builder only.
+3. Points `WorkerFarm` at the same LAN hosts (different ports if poke-bot workers still run).
+4. Collects rollouts → trains that competition’s model.
 
-**Standing up the library does not require Phase 4.**
+Optional later: poke-bot staging adapter (`PURE_RL_*` → `WAVE_DISPATCH_*`), default-off, never production without an owner boundary order.
+
+**Standing up the library does not require changing poke-bot at all.**
 
 ---
 
@@ -287,19 +333,20 @@ The library repo has **no production coupling**.
 ## Success criteria (for the library)
 
 1. Own repo; `pip install` works; import `wave_dispatch`.
-2. Test suite green with **zero** `poke_bot` imports.
+2. Test suite green with **zero** `poke_bot` / competition imports.
 3. Echo-worker demo runs local + fake remotes.
-4. README shows a non-Pokemon example.
-5. poke-bot production path unmodified by library work.
-6. Later: optional native extra beats pure-Python dispatcher CPU% at high socket counts.
+4. README shows a **non-Pokemon Kaggle-style** collect→train sketch.
+5. A second competition repo can depend on it without forking dispatcher code.
+6. poke-bot production path unmodified by library work.
+7. Later: optional native extra beats pure-Python dispatcher CPU% at high socket counts.
 
 ---
 
 ## When leaving /plan (implementation order in `wave-dispatch` repo)
 
-1. Scaffold repo + pyproject + PROTOCOL.md  
+1. Scaffold repo + pyproject + PROTOCOL.md (Kaggle multi-comp framing in README)  
 2. Port protocol + server + client + tests  
 3. Port scheduler + capacity plugins + tests  
-4. Port collector + echo benchmark  
-5. Tag v0.1.0  
-6. Only then consider C++ and/or poke-bot opt-in consumer work  
+4. Port collector + echo benchmark + “new competition” example  
+5. Tag v0.1.0 — use from the next Kaggle training repo  
+6. C++ hot path when socket/refill CPU shows up; poke-bot opt-in only if desired later  
