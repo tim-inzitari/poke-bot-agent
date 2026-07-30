@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll future specialist guide-weight review queue
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+Persistent=true
+Unit=pokebot-future-guide-weight-shadow.service
+
+[Install]
+WantedBy=timers.target

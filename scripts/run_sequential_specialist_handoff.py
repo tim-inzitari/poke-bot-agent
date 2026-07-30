@@ -51,6 +51,7 @@ from scripts.activate_public_matchup_tree import (  # noqa: E402
     activate as activate_public_matchup_tree,
 )
 from scripts.register_next_specialist_runtime import (  # noqa: E402
+    GUIDE_TRAINING_MODE_STRATEGIC,
     register as register_specialist_runtime,
 )
 from scripts.materialize_matchup_v6_runtime_family import (  # noqa: E402
@@ -73,6 +74,9 @@ from scripts.run_starmie_expert_bootstrap import (  # noqa: E402
 CONTRACT_SCHEMA = "poke_bot.sequential_specialist_handoff_contract/v1"
 STATE_SCHEMA = "poke_bot.sequential_specialist_handoff_state/v1"
 ACTIVATION_SCHEMA = "poke_bot.specialist_rl_activation/v2"
+GUIDE_POLICY_INSTALL_SCHEMA = (
+    "poke_bot.future_specialist_guide_weight_policy_install/v1"
+)
 SAFE_ID = re.compile(r"[a-z0-9][a-z0-9-]*")
 SAFE_SERVICE = re.compile(r"pokebot-[A-Za-z0-9_.@-]+\.service")
 ALLOWED_HANDLER_PHASES = {
@@ -87,10 +91,27 @@ RESUMABLE_PREFLIGHT_PHASES = {
     "next_specialist_runtime_checkpoint_frozen",
     "matchup_v6_fleet_activated",
     "next_specialist_runtime_tree_bound",
+    "future_guide_weight_policy_installed",
     "next_specialist_runtime_registered",
     "next_specialist_rl_armed",
     "next_specialist_rl_started",
 }
+
+
+def strategic_guide_enabled(contract: dict[str, Any]) -> bool:
+    guide = (contract.get("training") or {}).get("current_deck_guide")
+    return bool(
+        isinstance(guide, dict)
+        and guide.get("training_mode") == GUIDE_TRAINING_MODE_STRATEGIC
+    )
+
+
+def expected_decision_fusion(
+    contract: dict[str, Any],
+) -> dict[str, Any]:
+    return decision_fusion_handoff_contract(
+        strategic_curriculum=strategic_guide_enabled(contract)
+    )
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -208,7 +229,7 @@ def load_contract(path: Path) -> tuple[dict[str, Any], str]:
         validate_expanded_handoff_training_contract(
             training["expanded_heads"]
         )
-        if training.get("decision_fusion") != decision_fusion_handoff_contract():
+        if training.get("decision_fusion") != expected_decision_fusion(contract):
             raise RuntimeError(
                 "generated successor lacks the canonical causal decision-fusion "
                 "contract"
@@ -233,6 +254,45 @@ def load_contract(path: Path) -> tuple[dict[str, Any], str]:
             ),
             expected_corpus_ready_sha256=str(
                 guide.get("corpus_ready_receipt_sha256") or ""
+            ),
+            strategic_curriculum_spec=(
+                Path(str((guide.get("strategic_curriculum") or {}).get(
+                    "curriculum_spec"
+                )))
+                if guide.get("strategic_curriculum") is not None
+                else None
+            ),
+            expected_strategic_curriculum_spec_sha256=str(
+                (guide.get("strategic_curriculum") or {}).get(
+                    "curriculum_spec_sha256"
+                )
+                or ""
+            ),
+            strategic_head_role_map=(
+                Path(str((guide.get("strategic_curriculum") or {}).get(
+                    "head_role_map"
+                )))
+                if guide.get("strategic_curriculum") is not None
+                else None
+            ),
+            expected_strategic_head_role_map_sha256=str(
+                (guide.get("strategic_curriculum") or {}).get(
+                    "head_role_map_sha256"
+                )
+                or ""
+            ),
+            strategic_validation_receipt=(
+                Path(str((guide.get("strategic_curriculum") or {}).get(
+                    "validation_receipt"
+                )))
+                if guide.get("strategic_curriculum") is not None
+                else None
+            ),
+            expected_strategic_validation_receipt_sha256=str(
+                (guide.get("strategic_curriculum") or {}).get(
+                    "validation_receipt_sha256"
+                )
+                or ""
             ),
             protocol_path=ROOT / "config/rl_protocol.yaml",
         )
@@ -551,6 +611,165 @@ def service_active(name: str) -> bool:
     )
 
 
+def install_future_guide_weight_policy(
+    contract: dict[str, Any],
+    *,
+    source_specialist_id: str,
+    specialist_id: str,
+    source_service: str,
+) -> dict[str, Any] | None:
+    """Install the prospective guide policy only after the source run stops."""
+
+    registration = dict(contract.get("runtime_registration") or {})
+    policy = registration.get("future_guide_weight_policy")
+    if policy is None:
+        return None
+    policy = dict(policy)
+    if (
+        policy.get("enabled") is not True
+        or policy.get("scope") != "future_specialist_training_runs_only"
+        or int(policy.get("prospective_scope_revision") or 0) != 44
+        or int(policy.get("learning_semantics_revision") or 0) != 46
+        or str(policy.get("prospective_effective_specialist") or "")
+        != "archaludon-ex"
+        or policy.get(
+            "retroactive_application_to_completed_frozen_or_started_runs"
+        )
+        is not False
+        or policy.get("historical_weight_or_receipt_rewrite_allowed")
+        is not False
+        or specialist_id == source_specialist_id
+        or not SAFE_ID.fullmatch(specialist_id)
+    ):
+        raise RuntimeError("future guide-weight policy scope changed")
+    if service_active(source_service):
+        raise RuntimeError(
+            "source specialist is active; refusing guide-policy install"
+        )
+
+    source_root = Path(str(policy.get("source_root") or "")).expanduser()
+    registry_path = path_value(
+        contract, "runtime_registration", "runtime_registry"
+    )
+    registry = read_json(registry_path)
+    target_root = Path(
+        str(registry.get("runtime_root") or "")
+    ).expanduser()
+    raw_files = policy.get("files")
+    if (
+        not source_root.is_absolute()
+        or not source_root.is_dir()
+        or not target_root.is_absolute()
+        or not target_root.is_dir()
+        or not isinstance(raw_files, dict)
+        or not raw_files
+    ):
+        raise RuntimeError("future guide-weight policy roots are invalid")
+
+    files: dict[str, dict[str, Any]] = {}
+    previous_targets: dict[str, str | None] = {}
+    staged: list[tuple[Path, Path, int]] = []
+    for relative, expected in sorted(raw_files.items()):
+        relative_path = Path(str(relative))
+        expected_sha = str(expected)
+        if (
+            relative_path.is_absolute()
+            or ".." in relative_path.parts
+            or not expected_sha.startswith("sha256:")
+        ):
+            raise RuntimeError("future guide-weight policy file is unsafe")
+        source = (source_root / relative_path).resolve()
+        target = (target_root / relative_path).resolve()
+        if (
+            not source.is_relative_to(source_root.resolve())
+            or not target.is_relative_to(target_root.resolve())
+            or not source.is_file()
+            or sha256(source) != expected_sha
+        ):
+            raise RuntimeError(
+                f"future guide-weight policy source changed: {relative}"
+            )
+        previous_sha = sha256(target) if target.is_file() else None
+        previous_targets[str(relative_path)] = previous_sha
+        files[str(relative_path)] = {
+            "source": str(source),
+            "source_sha256": expected_sha,
+            "target": str(target),
+        }
+        if previous_sha != expected_sha:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(
+                f".{target.name}.{os.getpid()}.r44.tmp"
+            )
+            temporary.write_bytes(source.read_bytes())
+            with temporary.open("rb") as stream:
+                os.fsync(stream.fileno())
+            staged.append((temporary, target, source.stat().st_mode & 0o777))
+
+    receipt_template = str(policy.get("receipt_template") or "")
+    receipt_path = Path(
+        receipt_template.format(specialist_id=specialist_id)
+    ).expanduser()
+    if (
+        "{specialist_id}" not in receipt_template
+        or not receipt_path.is_absolute()
+        or receipt_path.suffix != ".json"
+    ):
+        raise RuntimeError("future guide-weight policy receipt path is invalid")
+    identity = {
+        "schema": GUIDE_POLICY_INSTALL_SCHEMA,
+        "owner_decision_revision": 43,
+        "prospective_scope_revision": 44,
+        "scope": "future_specialist_training_runs_only",
+        "prospective_effective_specialist": "archaludon-ex",
+        "source_specialist_id": source_specialist_id,
+        "specialist_id": specialist_id,
+        "source_service_verified_inactive": source_service,
+        "source_root": str(source_root.resolve()),
+        "target_root": str(target_root.resolve()),
+        "files": files,
+        "completed_or_frozen_specialists_modified": False,
+        "active_or_started_source_runtime_modified": False,
+        "service_control_used": False,
+    }
+    if receipt_path.is_file():
+        receipt = read_json(receipt_path)
+        if (
+            receipt.get("schema") != GUIDE_POLICY_INSTALL_SCHEMA
+            or receipt.get("identity") != identity
+            or receipt.get("identity_sha256") != canonical_digest(identity)
+            or any(
+                sha256(Path(row["target"])) != row["source_sha256"]
+                for row in files.values()
+            )
+        ):
+            raise RuntimeError(
+                "future guide-weight policy install receipt changed"
+            )
+        for temporary, _, _ in staged:
+            temporary.unlink(missing_ok=True)
+        return receipt
+
+    for temporary, target, mode in staged:
+        os.replace(temporary, target)
+        target.chmod(mode)
+    if any(
+        sha256(Path(row["target"])) != row["source_sha256"]
+        for row in files.values()
+    ):
+        raise RuntimeError("future guide-weight policy install verification failed")
+    receipt = {
+        "schema": GUIDE_POLICY_INSTALL_SCHEMA,
+        "status": "installed_for_future_specialist",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "identity": identity,
+        "identity_sha256": canonical_digest(identity),
+        "previous_target_sha256": previous_targets,
+    }
+    atomic_json(receipt_path, receipt, immutable=True)
+    return receipt
+
+
 def run_checked(argv: list[str]) -> None:
     completed = subprocess.run(argv, check=False)
     if completed.returncode:
@@ -583,10 +802,23 @@ def validate_source(contract: dict[str, Any]) -> dict[str, Any]:
                 != "explicit_owner_ceiling_acceptance"
             ):
                 raise
-            runtime_exact_receipt = str(
-                saved_plan.get("exact_result_pointer") or ""
-            ).strip()
-            if runtime_exact_receipt:
+            if (
+                saved_plan.get("schema")
+                == "poke_bot.ceiling_acceptance_archive_plan/v1"
+            ):
+                plan = validate_ceiling_completion(
+                    path_value(contract, "source_specialist", "run_dir"),
+                    path_value(contract, "source_specialist", "gate_contract"),
+                    int(saved_plan.get("commit_boundary", -1)),
+                )
+            else:
+                runtime_exact_receipt = str(
+                    saved_plan.get("exact_result_pointer") or ""
+                ).strip()
+                if not runtime_exact_receipt:
+                    raise RuntimeError(
+                        "runtime ceiling acceptance has no exact-gate receipt"
+                    )
                 plan = validate_runtime_exact_gate(
                     path_value(contract, "source_specialist", "run_dir"),
                     path_value(contract, "source_specialist", "gate_contract"),
@@ -596,28 +828,28 @@ def validate_source(contract: dict[str, Any]) -> dict[str, Any]:
                         saved_plan.get("commit_boundary", -1)
                     ),
                 )
-            else:
-                plan = validate_ceiling_completion(
-                    path_value(contract, "source_specialist", "run_dir"),
-                    path_value(contract, "source_specialist", "gate_contract"),
-                    int(saved_plan.get("commit_boundary", -1)),
-                )
             if not compatible_ceiling_acceptance_plan(saved_plan, plan):
                 raise RuntimeError("saved ceiling-acceptance plan changed")
     frozen_path = path_value(contract, "source_specialist", "passed_family")
     frozen = verify_frozen_model(frozen_path)
     queued = [dict(row) for row in (handler.get("queued_submissions") or [])]
+    approved_submission_count = int(
+        handler.get("approved_submission_count", 1)
+    )
+    expected_copy_numbers = list(range(1, approved_submission_count + 1))
     minimum_completed_iteration = int(source["minimum_completed_iteration"])
     if (
         handler.get("schema") != HANDLER_SCHEMA
         or handler.get("phase") not in ALLOWED_HANDLER_PHASES
         or handler.get("submission_mode") != "queue_and_continue"
+        or approved_submission_count not in (1, 2)
         or not compatible_ceiling_acceptance_plan(
             dict(handler.get("gate") or {}),
             plan,
         )
         or handler.get("frozen_model") != frozen
-        or [int(row.get("copy_number", -1)) for row in queued] != [1]
+        or [int(row.get("copy_number", -1)) for row in queued]
+        != expected_copy_numbers
         or any(
             row.get("checkpoint_checksum") != plan["checkpoint_digest"]
             for row in queued
@@ -942,7 +1174,7 @@ def bootstrap_command(contract: dict[str, Any]) -> list[str]:
     expanded = training.get("expanded_heads")
     if expanded is not None:
         validated = validate_expanded_handoff_training_contract(expanded)
-        if training.get("decision_fusion") != decision_fusion_handoff_contract():
+        if training.get("decision_fusion") != expected_decision_fusion(contract):
             raise RuntimeError(
                 "generated handoff causal decision-fusion contract changed"
             )
@@ -974,6 +1206,24 @@ def bootstrap_command(contract: dict[str, Any]) -> list[str]:
                 str(guide["corpus_ready_receipt_sha256"]),
             ]
         )
+        strategic = guide.get("strategic_curriculum")
+        if strategic is not None:
+            command.extend(
+                [
+                    "--strategic-curriculum-spec",
+                    str(strategic["curriculum_spec"]),
+                    "--strategic-curriculum-spec-sha256",
+                    str(strategic["curriculum_spec_sha256"]),
+                    "--strategic-head-role-map",
+                    str(strategic["head_role_map"]),
+                    "--strategic-head-role-map-sha256",
+                    str(strategic["head_role_map_sha256"]),
+                    "--strategic-validation-receipt",
+                    str(strategic["validation_receipt"]),
+                    "--strategic-validation-receipt-sha256",
+                    str(strategic["validation_receipt_sha256"]),
+                ]
+            )
     return command
 
 
@@ -1019,7 +1269,7 @@ def validate_bootstrap(
     fusion_valid = (
         fusion_expected is None
         or (
-            fusion_expected == decision_fusion_handoff_contract()
+            fusion_expected == expected_decision_fusion(contract)
             and fusion_ready.get("schema") == fusion_expected["schema"]
             and fusion_ready.get("runtime_enabled") is True
             and fusion_ready.get("required_heads")
@@ -1183,7 +1433,7 @@ def validate_runtime_registration(
         if line.startswith("POKEBOT_ACTIVE_SPECIALIST=")
     ]
     selector_rows = set(selector.read_text(encoding="utf-8").splitlines())
-    expected_fusion = decision_fusion_handoff_contract()
+    expected_fusion = expected_decision_fusion(contract)
     row_fusion = dict(row.get("decision_fusion") or {})
     guide = contract["training"].get("current_deck_guide")
     if (
@@ -1214,6 +1464,13 @@ def validate_runtime_registration(
                 or row.get("guide_contract_sha256")
                 != str(guide["contract_sha256"]).removeprefix("sha256:")
                 or row.get("guide_version") != guide["guide_version"]
+                or row.get("guide_training_mode")
+                != guide.get("training_mode")
+                or (
+                    strategic_guide_enabled(contract)
+                    and row.get("strategic_curriculum")
+                    != guide.get("strategic_curriculum")
+                )
             )
         )
         or sha256(path_value(contract, "runtime_registration", "runtime_registry"))
@@ -1402,6 +1659,7 @@ def run(contract_path: Path) -> int:
                 "next_specialist_runtime_checkpoint_frozen",
                 "matchup_v6_fleet_activated",
                 "next_specialist_runtime_tree_bound",
+                "future_guide_weight_policy_installed",
                 "next_specialist_runtime_registered",
                 "next_specialist_rl_armed",
             }
@@ -1463,6 +1721,26 @@ def run(contract_path: Path) -> int:
                 next_specialist_splus_gate=next_gate,
             )
 
+        registration_contract = contract.get("runtime_registration")
+        policy_install = None
+        if registration_contract is not None:
+            target = dict(contract["next_specialist"])
+            policy_install = install_future_guide_weight_policy(
+                contract,
+                source_specialist_id=str(
+                    contract["source_specialist"]["id"]
+                ),
+                specialist_id=str(target["id"]),
+                source_service=source_service,
+            )
+            if policy_install is not None:
+                save_state(
+                    contract,
+                    "future_guide_weight_policy_installed",
+                    digest,
+                    future_guide_weight_policy_install=policy_install,
+                )
+
         run_checked(bootstrap_command(contract))
         bootstrap = validate_bootstrap(contract, core, corpus)
         save_state(
@@ -1497,7 +1775,6 @@ def run(contract_path: Path) -> int:
                 next_specialist_runtime_checkpoint=runtime_ready,
             )
 
-        registration_contract = contract.get("runtime_registration")
         registration = None
         if registration_contract is not None:
             target = dict(contract["next_specialist"])
@@ -1535,6 +1812,7 @@ def run(contract_path: Path) -> int:
                         "required_target_coverage", ()
                     )
                 ),
+                matchup_target_ids=canonical_matchup_target_ids(contract),
                 guide_id=(
                     str(contract["training"]["current_deck_guide"][
                         "specialist_id"
@@ -1575,8 +1853,63 @@ def run(contract_path: Path) -> int:
                     is not None
                     else ""
                 ),
+                guide_training_mode=(
+                    str(contract["training"]["current_deck_guide"].get(
+                        "training_mode"
+                    ))
+                    if contract["training"].get("current_deck_guide")
+                    is not None
+                    else ""
+                ),
+                strategic_curriculum_spec=(
+                    Path(str(contract["training"]["current_deck_guide"][
+                        "strategic_curriculum"
+                    ]["curriculum_spec"]))
+                    if strategic_guide_enabled(contract)
+                    else None
+                ),
+                strategic_curriculum_spec_sha256=(
+                    str(contract["training"]["current_deck_guide"][
+                        "strategic_curriculum"
+                    ]["curriculum_spec_sha256"])
+                    if strategic_guide_enabled(contract)
+                    else ""
+                ),
+                strategic_head_role_map=(
+                    Path(str(contract["training"]["current_deck_guide"][
+                        "strategic_curriculum"
+                    ]["head_role_map"]))
+                    if strategic_guide_enabled(contract)
+                    else None
+                ),
+                strategic_head_role_map_sha256=(
+                    str(contract["training"]["current_deck_guide"][
+                        "strategic_curriculum"
+                    ]["head_role_map_sha256"])
+                    if strategic_guide_enabled(contract)
+                    else ""
+                ),
+                strategic_validation_receipt=(
+                    Path(str(contract["training"]["current_deck_guide"][
+                        "strategic_curriculum"
+                    ]["validation_receipt"]))
+                    if strategic_guide_enabled(contract)
+                    else None
+                ),
+                strategic_validation_receipt_sha256=(
+                    str(contract["training"]["current_deck_guide"][
+                        "strategic_curriculum"
+                    ]["validation_receipt_sha256"])
+                    if strategic_guide_enabled(contract)
+                    else ""
+                ),
             )
             registration = validate_runtime_registration(contract, runtime_ready)
+            if policy_install is not None:
+                registration = {
+                    **registration,
+                    "future_guide_weight_policy_install": policy_install,
+                }
             save_state(
                 contract,
                 "next_specialist_runtime_registered",

@@ -1,0 +1,205 @@
+# Checksum-bound research and sparse causal-target contract for Crustle.
+# This is an inactive future-specialist guide artifact only. It has no
+# selector, runtime, transition, gate, corpus, dashboard, or serving authority
+# until the ordinary pre-stage and handoff contracts authorize it.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: crustle
+display_name: "Crustle / Mega Kangaskhan ex"
+status: research_sparse_teacher_validated_corpus_pending
+guide_version: crustle-north-star-v1
+teacher_module: poke_bot.crustle_heuristics
+implementation_status: sparse_causal_teacher_validated_inactive
+teacher_module_sha256: sha256:e68a759bc8c3566dab2d49420d09dff8fcec7d9563da5f659fd2e2569f73ba6d
+deck_complexity: nonlinear_wall_resource_denial_and_prize_mapping
+
+identity_scope:
+  included: crustle_mysterious_rock_inn_with_mega_kangaskhan_ex
+  exact_representative_player: Cooper Kull
+  exact_representative_finish: "55th, NAIC 2026 New Orleans"
+  current_strategy_benchmark_player: Rahul Reddy
+  benchmark_list_is_not_representative: true
+  fuzzy_display_name_matching_allowed: false
+  no_list_substitution: true
+
+project_representative_binding:
+  path: data/training_mixes/specialist_representatives.v1.json
+  json_pointer: /decks/crustle
+  source_path: decks/competitive/the_rest/2026-06_naic-2026-new-orleans_55th_crustle.csv
+  source_url: https://limitlesstcg.com/decks/list/28292
+  source_deck_id: crustle
+  card_count: 60
+  pokemon_count: 11
+  trainer_count: 37
+  energy_count: 12
+  source_file_sha256: sha256:fb2997e9981d262acdb72dc2e0bda488876ab1927c2c78cb752b10fdfe516f3c
+  canonical_multiset_sha256: sha256:e6d7c09024d1f0b056ccbab8f51f0e3aae4c319ad4f731c9c769e971fab225ab
+  cards_sha256: sha256:38c69503c9d6f8156bbae8cca625b29f80d2fb2603872df556572dad8ffed9ff
+  selection: exact_checksum_bound_current_public_competitive_list
+  distinct_lists: 1
+  labeled_seat_count: 1
+  modal_seat_count: 1
+
+policy_target:
+  type: sparse_confidence_weighted_legal_action_preference
+  parameterized_head: false
+  target_logits: shared_fused_policy
+  serving_authority: false
+  override_authoritative_policy: false
+
+deck_signature:
+  exact_deck_checksum_overrides_family_signature: true
+  exact_multiset_only_for_runtime_representative: true
+  public_causal_corpus_identity: collision_safe_crustle_family_signature
+  public_family_required_counts:
+    Dwebble: ">=3"
+    Crustle: ">=2"
+    Mist_Energy: 4
+    Jumbo_Ice_Cream: 4
+    Heros_Cape: 1
+  representative_supporting_card_ids:
+    344: Dwebble
+    345: Crustle
+    756: Mega Kangaskhan ex
+    858: Psyduck
+    1086: Buddy-Buddy Poffin
+    1112: Super Potion
+    1120: Crushing Hammer
+    1147: Jumbo Ice Cream
+    1219: "Team Rocket's Petrel"
+  fuzzy_display_name_matching_allowed: false
+
+strategy_sources:
+  - title: "Crustle by Cooper Kull"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/28292
+    evidence_role: exact_representative_provenance
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Crustle by Rahul Reddy"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/28252
+    evidence_role: current_fifth_place_NAIC_strategy_benchmark
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Crustle DRI 12"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/en/DRI/12
+    evidence_role: exact_wall_and_attack_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Dwebble DRI 11"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/11
+    evidence_role: exact_Ascension_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Mega Kangaskhan ex MEG 104"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/MEG/104
+    evidence_role: exact_Run_Errand_and_attack_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Jumbo Ice Cream PFL 91"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/PFL/91
+    evidence_role: exact_healing_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Team Rocket's Petrel DRI 176"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/176
+    evidence_role: exact_Trainer_search_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Hilda WHT 84"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/WHT/84
+    evidence_role: exact_evolution_and_energy_search_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Growing Grass Energy POR 86"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/POR/86
+    evidence_role: exact_Grass_and_HP_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Spiky Energy JTG 159"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/JTG/159
+    evidence_role: exact_retaliatory_counter_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Mist Energy TEF 161"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TEF/161
+    evidence_role: exact_attack_effect_protection_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Crustle CRI Standard 2026 matchups"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/decks/crustle-dri/matchups?combine=&format=standard&rotation=2026&set=CRI
+    evidence_role: observational_testing_priorities_not_causal_labels
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/crustle-expert-brief.txt
+  sha256: sha256:ed49922091c631ec49f40a8e05126a231a00a4c46e660c06bd2d20a164d3f135
+  word_count: 5099
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: crustle
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+high_confidence_principles:
+  - establish_redundant_Dwebble_before_optional_multi_prize_support
+  - complete_one_Grass_plus_two_Colorless_Crustle_before_splitting_energy
+  - treat_Mega_Kangaskhan_as_draw_engine_or_planned_attacker_not_free_bench
+  - plan_Rapid_Fire_Combo_from_its_200_damage_floor
+  - use_wall_healing_and_denial_only_from_exact_visible_resource_state
+  - keep_hidden_prize_future_draw_random_outcome_and_matchup_inference_out_of_labels
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_stage_classes:
+    - initial_setup_bench
+    - buddy_buddy_poffin_search
+    - ultra_ball_search
+    - ascension_search
+    - run_errand_yes_no
+
+masked_targets:
+  - initial_setup_active
+  - energy_attachment
+  - Hilda_selection
+  - Team_Rockets_Petrel_selection
+  - attack_selection
+  - healing_timing
+  - Crushing_Hammer_play_or_target
+  - gust_target
+  - stadium_play
+  - tool_attachment
+  - retreat_or_switch
+  - disruption_timing_or_target
+  - matchup_specific_action
+  - face_down_prize_identity
+  - opponent_hidden_hand_deck_or_prize_contents
+  - future_draw_random_outcome_or_eventual_result
+  - unknown_prompt_origin
+  - unresolved_option_or_incomplete_legal_combo_set
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  acting_seat_prompt_revealed_option_card_ids_allowed: true
+  own_hidden_non_prompt_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_fused_policy: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+unresolved_evidence_gaps:
+  - build_current_full_history_Crustle_guide_corpus
+  - validate_exact_prompt_encodings_against_Crustle_replays
+  - validate_heuristic_label_coverage_precision_and_abstention_rate
+  - obtain_training_ineligible_guide_on_guide_off_contribution_evidence
+  - obtain_world_champion_SME_approval

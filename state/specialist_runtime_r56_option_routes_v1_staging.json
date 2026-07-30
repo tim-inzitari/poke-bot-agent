@@ -1,0 +1,52 @@
+{
+  "schema": "poke_bot.specialist_runtime_deployment_staging/v1",
+  "status": "staged_inactive",
+  "created_at_utc": "2026-07-30T17:34:19Z",
+  "goal_revision": 67,
+  "decision_fusion_owner_revision": 56,
+  "runtime_name": "specialist-runtime-r56-option-routes-v1",
+  "runtime_root": "/home/inzi/poke-bot-agent-deployments/specialist-runtime-r56-option-routes-v1",
+  "semantic_version_namespaces": {
+    "training_core_revision": 10,
+    "matchup_router_format": 6,
+    "accepted_policy_generation": 9,
+    "future_specialist_runtime": "r56-option-routes-v1"
+  },
+  "deployment_checks": {
+    "runtime_root_exists": true,
+    "runtime_registry_root_matches": true,
+    "revision56_registration_code_present": true,
+    "setup_board_outcome_route_present": true,
+    "focused_tests_passed": true,
+    "focused_tests_passed_count": 52,
+    "focused_tests_failed_count": 0,
+    "live_selector_modified": false,
+    "training_service_started": false
+  },
+  "checksums": {
+    "ops/specialist_runtime_registry_v1.json": "sha256:3b5e92ddde04ab88335c7e3757cb952fe2916436015aeec044c91bd51ee8715d",
+    "scripts/register_next_specialist_runtime.py": "sha256:337bc6a2972e6a72befaa89a54e4768ada3e4acde0d03044591b0be745acc562",
+    "scripts/run_starmie_expert_bootstrap.py": "sha256:f1aaea92cfbe42780efa6e0a8815fca8767c0fb4cc7e330d229a44d646d38ff6",
+    "scripts/run_sequential_specialist_handoff.py": "sha256:7fe29845f825451887f1b79b3c917e96e01b1b749e37e858f6b17459c9711474",
+    "scripts/prestage_next_specialist.py": "sha256:ac382f51ddf56a9ddc439ad78123ed6970c74b9e86ec837e0626b7975d74e1bf",
+    "poke_bot/model.py": "sha256:f21306c3b3821f847bda68e3650a210e4cd2d48b364854199bf5769af5046be3",
+    "poke_bot/setup_board_outcome.py": "sha256:79b5f71465ef3aeae4d45d936fc266b81255e1f2bebcbf5afb7fcf37cd3d7ce0",
+    "config/specialist_runtime.env": "sha256:27bfd75f6ed17ed7496ae61669ea10bcde153ef32f80695cfc4a76510b720f56"
+  },
+  "live_selector_before_activation": {
+    "runtime_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
+    "sha256": "sha256:36edd54c17cadcac42733e0d11586b0374206906f37705f8c230eac5e01819fd"
+  },
+  "activation_requirements": {
+    "full_public_schema7_identity_corpus_ready": false,
+    "full_public_schema7_guide_corpus_ready": false,
+    "checksum_import_ready": false,
+    "revision56_strategic_curriculum_validation_ready": false,
+    "archaludon_runtime_row_registered_under_fusion_v2": false,
+    "launch_and_terminal_preflight_rerun": false,
+    "blackwell_simulator_workers": 128,
+    "blackwell_games_in_flight": 128,
+    "lower_worker_fallback_allowed": false
+  },
+  "activation_authorized": false
+}

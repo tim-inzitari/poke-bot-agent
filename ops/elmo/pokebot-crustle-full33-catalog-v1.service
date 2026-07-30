@@ -1,0 +1,21 @@
+[Unit]
+Description=Crustle family full33 public deck catalog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/pokebot-expert-guide-src-v1
+Environment=PYTHONPATH=/home/admin/pokebot-expert-guide-src-v1
+Environment=POKEBOT_CRUSTLE_SCANNER_SHA256=5c53540adc0551e9ef45719e1822951c6877c49ab1401fbc981b3a5293dd53a1
+Environment=POKEBOT_CRUSTLE_TEACHER_SHA256=e68a759bc8c3566dab2d49420d09dff8fcec7d9563da5f659fd2e2569f73ba6d
+Environment=POKEBOT_CRUSTLE_CATALOG_WORKERS=4
+ExecStart=/usr/bin/bash /home/admin/pokebot-expert-guide-src-v1/ops/elmo/build_crustle_full33_catalog.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

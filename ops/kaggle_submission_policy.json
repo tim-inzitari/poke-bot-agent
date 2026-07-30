@@ -4,6 +4,8 @@
   "automatic_submissions_allowed": false,
   "retries_allowed_without_new_user_approval": false,
   "minimum_hours_between_submissions": 4,
+  "spacing_anchor": "second_most_recent_logical_submission",
+  "spacing_duplicate_handling": "deduplicate_reconciled_remote_and_queue_rows_by_submission_id_or_checkpoint_bound_label",
   "spacing_wait_behavior": "leave_pending_and_continue_training",
   "explicit_user_approval_required_for_each_submission": true,
   "authorization_uses": 1,

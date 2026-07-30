@@ -30,8 +30,12 @@ fi
 
 rsync -a dashboard/lan/index.html "${LIVE_ROOT}/index.html"
 rsync -a dashboard/lan/server.py "${LIVE_ROOT}/server.py"
+rsync -a ops/current_goal_requirements.json \
+  "${LIVE_ROOT}/current_goal_requirements.json"
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py"
+rsync -a ops/current_goal_requirements.json \
+  "${INZI}:/home/inzi/poke-bot-agent/ops/current_goal_requirements.json"
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:/home/inzi/poke-bot-agent-deployments/state-core-v1/scripts/dashboard_snapshot.py"
 rsync -a scripts/dashboard_snapshot.py \
@@ -50,6 +54,8 @@ case "${SELECTOR_RUNTIME_ROOT}" in
 esac
 rsync -a scripts/dashboard_snapshot.py \
   "${INZI}:${SELECTOR_RUNTIME_ROOT}/scripts/dashboard_snapshot.py"
+rsync -a ops/current_goal_requirements.json \
+  "${INZI}:${SELECTOR_RUNTIME_ROOT}/ops/current_goal_requirements.json"
 
 launchctl kickstart -k "gui/$(id -u)/com.pokebot.training-dashboard"
 echo "DASHBOARD_SYNC_APPLIED"

@@ -375,6 +375,119 @@ def test_later_rehearsal_authorization_is_exact_and_closes_when_next_iter_starts
     ) == proof
 
 
+def test_specialist_authorization_accepts_checksum_bound_v6_inherited_training(
+    tmp_path: Path,
+) -> None:
+    source_family = tmp_path / "source"
+    source_family.mkdir()
+    source_checkpoint = source_family / "model.pt"
+    source_checkpoint.write_bytes(b"specialist-bootstrap")
+    source_checkpoint_digest = (
+        "sha256:" + hashlib.sha256(source_checkpoint.read_bytes()).hexdigest()
+    )
+    required_coverage = [
+        "temporal_action_rows",
+        "opponent_hand_rows",
+        "opponent_remainder_rows",
+        "opponent_private_prize_rows",
+        "lethal_threat_rows",
+        "prize_race_rows",
+    ]
+    source_manifest = source_family / "manifest.json"
+    source_manifest.write_text(
+        json.dumps(
+            {
+                "checkpoint_digest": source_checkpoint_digest,
+                "model_path": str(source_checkpoint),
+                "provenance": {
+                    "acting_seat_archetype": "teal-mask-ogerpon-ex",
+                    "epochs_max": 25,
+                    "trained_target_coverage": required_coverage,
+                },
+                "evidence": {"epochs_completed": 25},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source_manifest_digest = (
+        "sha256:" + hashlib.sha256(source_manifest.read_bytes()).hexdigest()
+    )
+
+    derivative_family = tmp_path / "derivative"
+    derivative_family.mkdir()
+    parent = derivative_family / "model.pt"
+    parent.write_bytes(b"router-format-6-derivative")
+    parent_digest = (
+        "sha256:" + hashlib.sha256(parent.read_bytes()).hexdigest()
+    )
+    derivative_manifest = derivative_family / "manifest.json"
+    derivative_manifest.write_text(
+        json.dumps(
+            {
+                "checkpoint_digest": parent_digest,
+                "model_path": str(parent),
+                "provenance": {
+                    "kind": "matchup_adapter_v6_runtime_derivative",
+                    "source_family": str(source_family),
+                    "source_family_immutable": True,
+                    "source_family_manifest_sha256": source_manifest_digest,
+                    "source_checkpoint_digest": source_checkpoint_digest,
+                },
+                "evidence": {
+                    "training_evidence_inherited_from_source": True,
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    derivative_manifest_digest = (
+        "sha256:"
+        + hashlib.sha256(derivative_manifest.read_bytes()).hexdigest()
+    )
+    authorization = tmp_path / "authorization.json"
+    authorization.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "poke_bot.matchup_adapter_specialist_bootstrap_"
+                    "authorization/v1"
+                ),
+                "specialist_id": "teal-mask-ogerpon-ex",
+                "runtime_enabled": False,
+                "parent_untouched": True,
+                "optimizer_scope": "matchup_adapter_bank_only",
+                "first_eligible_iteration": 0,
+                "completed_iteration": -1,
+                "parent_checkpoint": str(parent),
+                "parent_checkpoint_digest": parent_digest,
+                "protected_manifest": str(derivative_manifest),
+                "protected_manifest_digest": derivative_manifest_digest,
+                "required_target_coverage": required_coverage,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proof = validate_adapter_training_authorization(
+        authorization,
+        parent_checkpoint=parent,
+        permit_post_boundary_use=True,
+    )
+    assert proof.parent_checkpoint == parent.resolve()
+    assert proof.commit_path == derivative_manifest.resolve()
+
+    source_manifest.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="inherited training evidence"):
+        validate_adapter_training_authorization(
+            authorization,
+            parent_checkpoint=parent,
+            permit_post_boundary_use=True,
+        )
+
+
 def test_activation_receipt_rejects_partial_ledger_drift_and_early_start_markers(
     tmp_path: Path,
 ) -> None:

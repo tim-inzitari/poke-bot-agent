@@ -61,19 +61,20 @@ def test_post_snapshot_archetypes_are_additive_and_signature_distinct() -> None:
     )
     assert (
         archetypes.classify_deck(
-            [96] * 4
+            [63] * 2
+            + [96] * 3
             + [108]
-            + [272] * 2
-            + [756] * 2
-            + [1071] * 2
+            + [272]
+            + [756] * 3
+            + [1071] * 3
             + [1116] * 4
-            + [1250] * 3
-            + [1] * 42
+            + [1250] * 4
+            + [1] * 39
         )
         == "teal-mask-ogerpon-ex"
     )
     # A generic Teal Mask engine is not enough to capture another Ogerpon
-    # archetype; Ogerpon Box requires its exact toolbox markers.
+    # archetype; Slop Box requires its exact Raging Bolt/toolbox markers.
     assert (
         archetypes.classify_deck([96] * 4 + [1116] * 4 + [1] * 52)
         == "unknown"
@@ -92,8 +93,16 @@ def test_teal_mask_ogerpon_representative_is_exact_and_self_checksumming() -> No
 
     assert payload["artifact_sha256"] == canonical_payload_digest(payload)
     assert len(row["card_ids"]) == 60
-    assert row["source_deck_id"] == "ogerpon-box"
-    assert row["official_deck_code"] == "J8xJG4-TqjMpR-cJ8Gcc"
+    assert row["source_deck_id"] == "slop-box"
+    assert row["competitive_family_alias"] == "raging-bolt-ogerpon"
+    assert row["source_archetype_id"] == 151
+    public = json.loads(
+        Path(
+            "data/training_mixes/"
+            "teal-mask-ogerpon-ex-public-full32.v1.json"
+        ).read_text(encoding="utf-8")
+    )["source_deck_rows"][0]["card_ids"]
+    assert row["card_ids"] == public
     assert archetypes.classify_deck(row["card_ids"]) == (
         "teal-mask-ogerpon-ex"
     )
@@ -174,12 +183,18 @@ def test_teal_mask_signature_rejects_all_1032_non_target_ingest_rows() -> None:
             for _ in range(int(count))
         ]
         cards.extend([1] * (60 - len(cards)))
-        is_teal = archetypes.is_teal_mask_ogerpon_box_signature(cards)
         if int(row["target_rows"]):
-            assert is_teal
+            assert archetypes.is_teal_mask_ogerpon_box_signature(
+                json.loads(
+                    Path(
+                        "data/training_mixes/"
+                        "teal-mask-ogerpon-ex-public-full32.v1.json"
+                    ).read_text(encoding="utf-8")
+                )["source_deck_rows"][0]["card_ids"]
+            )
             target_rows += int(row["target_rows"])
         else:
-            assert not is_teal
+            assert not archetypes.is_teal_mask_ogerpon_box_signature(cards)
             non_target_rows += int(row["rows"])
 
     assert target_rows == audit["target_rows"] == 1

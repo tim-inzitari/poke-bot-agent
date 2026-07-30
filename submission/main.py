@@ -3,7 +3,8 @@
 Hard constraints:
   - No ``__file__`` at import time (isolated tarball / Kaggle).
   - Deck from ``deck.csv`` next to ``main.py`` or ``/kaggle_simulations/agent/``.
-  - Deterministically choose first before importing cg or loading the model.
+  - Deterministically honor the packaged turn-order profile before importing
+    cg or loading the model.
   - Info-set only (features.assert_info_set inside the policy runtime).
   - Fail-closed: illegal selects -> legal random fallback.
 """
@@ -57,7 +58,20 @@ _GAME_COUNT = 0
 _RNG = random.Random(0)
 
 
-def _go_first_choice(obs_dict: dict) -> list[int] | None:
+def _turn_order_preference() -> str:
+    """Read the immutable packaged preference without importing the runtime."""
+
+    path = _agent_dir() / "turn_order_profile.json"
+    if not path.is_file():
+        return "first_if_allowed"
+    payload = json.loads(path.read_text())
+    preference = str(payload.get("turn_order_preference") or "")
+    if preference not in {"first_if_allowed", "second_if_allowed"}:
+        raise RuntimeError("invalid packaged turn-order preference")
+    return preference
+
+
+def _turn_order_choice(obs_dict: dict) -> list[int] | None:
     """Resolve IsFirst directly from the wire enum without runtime imports."""
 
     selection = obs_dict.get("select") if isinstance(obs_dict, dict) else None
@@ -70,16 +84,26 @@ def _go_first_choice(obs_dict: dict) -> list[int] | None:
     if context != 41 and normalized_context != "isfirst":
         return None
     options = list(selection.get("option") or [])
-    yes = [
+    desired_type = (
+        "yes" if _turn_order_preference() == "first_if_allowed" else "no"
+    )
+    desired_integer = 1 if desired_type == "yes" else 2
+    matches = [
         index
         for index, option in enumerate(options)
         if isinstance(option, dict)
         and (
-            option.get("type") == 1
-            or str(option.get("type") or "").strip().lower() == "yes"
+            option.get("type") == desired_integer
+            or str(option.get("type") or "").strip().lower() == desired_type
         )
     ]
-    return yes if len(yes) == 1 else []
+    return matches if len(matches) == 1 else []
+
+
+def _go_first_choice(obs_dict: dict) -> list[int] | None:
+    """Backward-compatible alias for the packaged turn-order resolver."""
+
+    return _turn_order_choice(obs_dict)
 
 
 def _ensure_agent_path() -> None:
@@ -235,9 +259,9 @@ def agent(obs_dict: dict) -> list[int]:
     """Kaggle entry point."""
 
     global _GAME_COUNT
-    go_first = _go_first_choice(obs_dict)
-    if go_first is not None:
-        return _fail_closed(obs_dict, go_first)
+    turn_order = _turn_order_choice(obs_dict)
+    if turn_order is not None:
+        return _fail_closed(obs_dict, turn_order)
 
     deck, _model, policy = _ensure_runtime()
     _ensure_agent_path()

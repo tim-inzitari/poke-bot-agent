@@ -208,13 +208,23 @@ def run_canary(
             raise RuntimeError(f"V6 canary changed top-level checkpoint field: {key}")
     source_model_config = dict(source_payload.get("model_config") or {})
     target_model_config = dict(loaded.get("model_config") or {})
+    source_adapter_format = source_model_config.pop(
+        "matchup_adapter_format",
+        None,
+    )
+    source_adapter_registry = source_model_config.pop(
+        "matchup_adapter_registry",
+        None,
+    )
     target_adapter_format = target_model_config.pop("matchup_adapter_format", None)
     target_adapter_registry = target_model_config.pop(
         "matchup_adapter_registry",
         None,
     )
     if (
-        target_adapter_format != "poke-bot-matchup-adapter-bank-v6"
+        source_adapter_format != "poke-bot-matchup-adapter-bank-v5-roster18"
+        or source_adapter_registry is not None
+        or target_adapter_format != "poke-bot-matchup-adapter-bank-v6"
         or target_adapter_registry != registry
         or target_model_config != source_model_config
     ):

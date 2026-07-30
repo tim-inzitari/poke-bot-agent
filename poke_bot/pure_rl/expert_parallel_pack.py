@@ -48,6 +48,8 @@ _SAMPLE_DIRECT_FIELDS = frozenset(
         "sample_aux_class",
         "guide_target_index",
         "guide_confidence",
+        "select_context",
+        "selected_is_stop",
         "strategic_action_q_target",
         "strategic_action_q_mask",
         "strategic_action_factor_mask",
@@ -726,6 +728,10 @@ def _validate_merge_capacity(
         "n_options": samples,
         "target_index": samples,
         "value_target": samples,
+        "guide_target_index": samples,
+        "guide_confidence": samples,
+        "select_context": samples,
+        "selected_is_stop": samples,
     }
     if "hand_offset" in specs:
         expected_rows["hand_offset"] = decisions + 1

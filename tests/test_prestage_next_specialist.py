@@ -24,6 +24,7 @@ def test_prestage_contract_cannot_control_live_training() -> None:
     assert "_manifest_expanded_targets" in source
     assert "_deck_guide_contract" in source
     assert '"current_deck_guide": deck_guide' in source
+    assert '"terminal_preflight": terminal_preflight' in source
 
 
 def test_cycle_contract_pins_read_only_prestage() -> None:
@@ -34,6 +35,9 @@ def test_cycle_contract_pins_read_only_prestage() -> None:
         )
     )
     stage = contract["prestage"]
+    assert contract["selection"]["state"] == (
+        "/home/inzi/poke-bot-agent/state/specialists.yaml"
+    )
     assert stage["live_training_modification_allowed"] is False
     assert stage["selector_update_allowed"] is False
     assert stage["service_control_allowed"] is False

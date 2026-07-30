@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll for the fully validated Crustle full33 guide corpus
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=pokebot-crustle-full33-corpus-import.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

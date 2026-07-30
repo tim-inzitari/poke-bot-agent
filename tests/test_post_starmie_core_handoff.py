@@ -9,6 +9,7 @@ import pytest
 from scripts.run_post_starmie_core_handoff import (
     _compatible_selected_asset_upgrade,
     _generated_contract,
+    _late_matchup_v6_migration_is_safe,
     _upgrade_selected_handoff_contract,
 )
 from scripts.run_starmie_expert_bootstrap import (
@@ -128,6 +129,155 @@ def test_generated_handoff_continues_to_lucario_not_population() -> None:
     assert generated["next_specialist"]["training_service"] == (
         "pokebot-pure-rl-trevenant-staged.service"
     )
+
+
+def test_generated_handoff_propagates_matchup_v6_safe_boundary_contract() -> None:
+    contract = json.loads(
+        (ROOT / "ops/post_starmie_core_v2_handoff_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    matchup_v6 = {
+        "enabled": True,
+        "registry": "/runtime/state/matchup_adapter_roster.json",
+        "staging_root": "/state/matchup-v6",
+        "receipt_root": "/state",
+        "family_suffix": "_matchup_v6",
+        "fleet": {"receipt": "/state/matchup-v6-fleet.json"},
+    }
+    contract["runtime"]["matchup_v6"] = matchup_v6
+    generated = _generated_contract(
+        contract=contract,
+        source={"specialist_id": "starmie"},
+        selected={
+            "specialist_id": "lucario",
+            "pointer": "/corpora/lucario/PROTECTED_EXPERT_CORPUS.json",
+            "decisions": 20_000,
+        },
+        core_digest="sha256:" + "a" * 64,
+    )
+
+    assert generated["runtime_registration"]["matchup_v6"] == matchup_v6
+
+
+def test_selected_handoff_can_add_matchup_v6_after_bootstrap() -> None:
+    payload = {
+        "schema": "poke_bot.sequential_specialist_handoff_contract/v1",
+        "source_specialist": {"id": "starmie"},
+        "next_specialist": {"id": "lucario"},
+        "training": {
+            "minimum_decisions": 20_000,
+            "expanded_heads": expanded_handoff_training_contract(),
+            "decision_fusion": decision_fusion_handoff_contract(),
+        },
+        "gate_materialization": {"archetype_label": "Starmie"},
+        "runtime_registration": {},
+    }
+    matchup_v6 = {
+        "enabled": True,
+        "registry": "/runtime/state/matchup_adapter_roster.json",
+        "staging_root": "/state/matchup-v6",
+        "receipt_root": "/state",
+        "family_suffix": "_matchup_v6",
+        "fleet": {"receipt": "/state/matchup-v6-fleet.json"},
+    }
+    upgraded, changes = _upgrade_selected_handoff_contract(
+        payload,
+        {
+            "specialist_id": "lucario",
+            "minimum_decisions": 20_000,
+            "decisions": 20_000,
+        },
+        matchup_v6=matchup_v6,
+    )
+
+    assert set(changes) == {"matchup_v6"}
+    assert upgraded["runtime_registration"]["matchup_v6"] == matchup_v6
+
+
+def test_selected_handoff_accepts_checksum_identical_guide_path_alias(
+    tmp_path: Path,
+) -> None:
+    old_root = tmp_path / "v29"
+    new_root = tmp_path / "v30"
+    old_root.mkdir()
+    new_root.mkdir()
+    old_contract = old_root / "guide.yaml"
+    new_contract = new_root / "guide.yaml"
+    old_contract.write_text("guide: exact\n", encoding="utf-8")
+    new_contract.write_text("guide: exact\n", encoding="utf-8")
+    digest = "sha256:" + hashlib.sha256(old_contract.read_bytes()).hexdigest()
+    old_guide = {
+        "specialist_id": "lucario",
+        "contract": str(old_contract),
+        "contract_sha256": digest,
+        "guide_version": "exact-v1",
+    }
+    new_guide = {**old_guide, "contract": str(new_contract)}
+    payload = {
+        "schema": "poke_bot.sequential_specialist_handoff_contract/v1",
+        "source_specialist": {"id": "starmie"},
+        "next_specialist": {"id": "lucario"},
+        "training": {
+            "minimum_decisions": 20_000,
+            "expanded_heads": expanded_handoff_training_contract(),
+            "decision_fusion": decision_fusion_handoff_contract(),
+            "current_deck_guide": old_guide,
+        },
+        "gate_materialization": {"archetype_label": "Starmie"},
+        "runtime_registration": {},
+    }
+
+    upgraded, changes = _upgrade_selected_handoff_contract(
+        payload,
+        {
+            "specialist_id": "lucario",
+            "minimum_decisions": 20_000,
+            "decisions": 20_000,
+        },
+        current_deck_guide=new_guide,
+    )
+
+    assert "current_deck_guide" not in changes
+    assert upgraded["training"]["current_deck_guide"] == old_guide
+
+
+def test_late_matchup_v6_migration_requires_checksum_bound_bootstrap_coverage(
+    tmp_path: Path,
+) -> None:
+    checkpoint = "sha256:" + "a" * 64
+    required = ["temporal_action_rows", "prize_race_rows"]
+    ready_path = tmp_path / "ready.json"
+    ready_path.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.specialist_expert_bootstrap_ready/v1",
+                "status": "ready",
+                "checkpoint_digest": checkpoint,
+                "trained_target_coverage": required,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    state = {
+        "phase": "next_specialist_runtime_checkpoint_frozen",
+        "next_specialist_bootstrap": {
+            "checkpoint_digest": checkpoint,
+            "ready": str(ready_path),
+            "ready_sha256": (
+                "sha256:" + hashlib.sha256(ready_path.read_bytes()).hexdigest()
+            ),
+        },
+    }
+    changes = {
+        "matchup_v6": {"before": None, "after": {"enabled": True}},
+        "required_target_coverage": {"before": None, "after": required},
+    }
+
+    assert _late_matchup_v6_migration_is_safe(changes, state)
+    changes["required_target_coverage"]["after"] = ["untrained"]
+    assert not _late_matchup_v6_migration_is_safe(changes, state)
 
 
 def test_generated_handoff_propagates_selected_corpus_minimum() -> None:

@@ -114,15 +114,112 @@
       "absent_deck_guide_behavior": "exact_bypass"
     }
   },
+  "post_fleet_refresh": {
+    "schema": "poke_bot.post_fleet_specialist_refresh/v1",
+    "owner_decision_revision": 64,
+    "owner_decision_revisions": [
+      36,
+      64
+    ],
+    "state_source": "selection.state#/post_fleet_refresh",
+    "required_fleet_count": 15,
+    "terminal_required_specialist_id": "slowking",
+    "slowking_freeze_and_registration_immediately_triggers_first_refresh": true,
+    "ordered_specialist_ids": [
+      "alakazam",
+      "marnie-s-grimmsnarl-ex"
+    ],
+    "release_gates": {
+      "final_alakazam_model_computation": {
+        "required_receipts": [
+          "required_specialist_fleet_complete_for_final_alakazam_v1",
+          "capacity_research_resource_lease_v1"
+        ],
+        "all_required_before_model_computation": true,
+        "authorization_scope": "final_format_alakazam_refresh_only",
+        "no_receipt_no_model_work": true
+      },
+      "broader_multi_archetype_capacity_program": {
+        "required_receipt": "post_refresh_sequence_complete_for_capacity_v2",
+        "requires_final_format_alakazam_and_marnie_refresh_complete": true,
+        "no_receipt_no_model_work": true
+      }
+    },
+    "first_refresh": {
+      "specialist_id": "alakazam",
+      "start_timing": "immediately_after_slowking_frozen_and_registered",
+      "model_format": "final_submission_format",
+      "format_contract": "docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md",
+      "first_final_format_model": true,
+      "final_format_computation_before_slowking_completion_allowed": false,
+      "validation_and_compatibility_receipts_required": true,
+      "silent_legacy_format_fallback_allowed": false,
+      "turn_order": {
+        "training_seat_split": {
+          "first": 0.5,
+          "second": 0.5
+        },
+        "exact_even_split_required": true,
+        "deterministic_assignment_required": true,
+        "seat_count_parity_receipt_required": true,
+        "seat_count_parity_receipt_schema": "poke_bot.alakazam_refresh_seat_split/v1",
+        "seat_count_receipt_required_stages": [
+          "assigned",
+          "actual",
+          "consumed"
+        ],
+        "equal_first_second_counts_required_at_each_stage": true,
+        "package_preference": "first_if_allowed",
+        "second_focus_1_to_7_allowed": false,
+        "always_second_arm_allowed": false,
+        "second_preferring_refresh_copy_allowed": false
+      },
+      "preferred_parent_migration": {
+        "parent_specialist_id": "alakazam",
+        "parent_checkpoint": "immutable_existing_alakazam",
+        "parent_checkpoint_sha256": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+        "require_checksum_bound_shape_and_key_coverage": true,
+        "genuinely_new_structures_initialization": "zero_safe",
+        "step_zero_parity_receipt_required": true,
+        "causal_validation_receipt_required": true,
+        "original_checkpoint_may_be_rewritten": false,
+        "failed_or_partial_migration_promotable": false,
+        "failure_fallback": {
+          "migration_failure_receipt_preserved": true,
+          "ordinary_same_archetype_alakazam_refresh_initialized_from": "then_latest_checksum_accepted_core",
+          "expand_only_that_completed_alakazam_derivative_to_final_format": true,
+          "latest_core_direct_final_format_tensor_parent_allowed": false,
+          "partial_old_alakazam_core_overlay_allowed": false
+        }
+      }
+    },
+    "new_separately_versioned_derivative_required": true,
+    "resolve_latest_checksum_accepted_core_at_each_refresh_start": true,
+    "prefer_compatible_immutable_alakazam_migration_first": true,
+    "migration_failure_fallback": {
+      "migration_failure_receipt_preserved": true,
+      "ordinary_same_archetype_alakazam_refresh_initialized_from": "then_latest_checksum_accepted_core",
+      "expand_only_that_completed_alakazam_derivative_to_final_format": true,
+      "latest_core_direct_final_format_tensor_parent_allowed": false,
+      "partial_old_alakazam_core_overlay_allowed": false
+    },
+    "resolve_current_canonical_training_contracts_at_each_refresh_start": true,
+    "original_passing_checkpoints_immutable": true,
+    "current_selector_eligible": false,
+    "current_prestage_eligible": false,
+    "current_runtime_registry_eligible": false,
+    "population_transition_blocked_until_complete": true,
+    "completion_receipt_schema": "poke_bot.post_fleet_specialist_refresh_completion/v1"
+  },
   "runtime": {
     "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
     "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
     "runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/trevenant-public-matchup-tree-iter5-v1.json",
-    "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster18-v42.inactive.json",
-    "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster18-v42.audit.json",
-    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-roster18-v42-ready.json",
+    "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster19-v44.inactive.json",
+    "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster19-v44.audit.json",
+    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-roster19-v44-ready.json",
     "future_assets_scope": "router_only",
-    "runtime_registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/specialist_runtime_registry_v1.json",
+    "runtime_registry": "/home/inzi/poke-bot-agent-deployments/specialist-runtime-r56-option-routes-v1/ops/specialist_runtime_registry_v1.json",
     "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/frozen_specialist_registry_v1.json",
     "selector_env": "/home/inzi/.config/pokebot/specialist_runtime.env",
     "state_root": "/home/inzi/poke-bot-agent/outputs/state",
@@ -131,6 +228,42 @@
     "population_handoff_service": "pokebot-population-round-robin-handoff.service",
     "population_training_service": "pokebot-population-round-robin.service",
     "gate_handler_service": "pokebot-specialist-passed-gate-handler.service",
+    "future_guide_weight_policy": {
+      "enabled": true,
+      "owner_decision_revision": 43,
+      "prospective_scope_revision": 44,
+      "learning_semantics_revision": 46,
+      "scope": "future_specialist_training_runs_only",
+      "prospective_effective_specialist": "archaludon-ex",
+      "retroactive_application_to_completed_frozen_or_started_runs": false,
+      "historical_weight_or_receipt_rewrite_allowed": false,
+      "shadow_pair_execution": {
+        "managed_service": "pokebot-future-guide-weight-shadow.service",
+        "managed_timer": "pokebot-future-guide-weight-shadow.timer",
+        "shadow_device": "cpu",
+        "production_device": "cuda:1",
+        "workers": 4,
+        "minimum_pairs": 1000,
+        "training_replay_and_formal_gate_eligible": false,
+        "checkpoint_publication_allowed": false,
+        "active_teal_eligible": false
+      },
+      "source_root": "/home/inzi/.local/lib/pokebot-boundary-r46",
+      "receipt_template": "/home/inzi/poke-bot-agent/outputs/state/{specialist_id}-guide-weight-policy-install-r44.json",
+      "files": {
+        "poke_bot/pure_rl/deck_guide_schedule.py": "sha256:c50442cf1f70bec11449e97733867ebe8f781a7917762be9b78993caec70efa2",
+        "poke_bot/pure_rl/guide_weight_evidence.py": "sha256:c1bf35383c69ac702ed76c9eae5a7b24309ca85d7022a1caa6afe4673d479229",
+        "poke_bot/pure_rl/guide_weight_review.py": "sha256:4f7f926abe490ffb28343f1601d11952e6e9cdcd92e5e74d96b33b0419b5816a",
+        "poke_bot/pure_rl/guide_weight_shadow_pair.py": "sha256:efb94b5e3a3cddaf6d1537b0b8374d8e5a746d022a0cbd96d8e9012147578129",
+        "scripts/apply_future_guide_weight_at_boundary.py": "sha256:9b2798724ab31163f1e8e541cd6759d6c0ae8543759b2fa4e141b87350ab53fb",
+        "scripts/compile_guide_weight_schedule.py": "sha256:cfc9efab29e4c8aa023e49af32aa507656df6588e2c1a3232196283e7661bd41",
+        "scripts/launch_active_specialist.py": "sha256:c8221f4a37b04b9d7ddc5a818d9134484cdee5792705bcc25f7a8a5694877717",
+        "scripts/process_future_guide_weight_review_queue.py": "sha256:7beb89d04dc2f40e15d4f95fa1bab819d7f2e5fa6ad0e39cd5092a8b9d260ca1",
+        "scripts/register_next_specialist_runtime.py": "sha256:15d7f6540476a02337bb26bb8ad581663c72239d65eef18b4d7457a3afbeddb8",
+        "scripts/run_future_guide_weight_shadow_pair.py": "sha256:9c424c3ecd91885bcd59a230431ec02208e1c337c5873b25746d60dd25e6b9d4",
+        "scripts/train_pure_rl.py": "sha256:25c3da7fe85935a846d5e3717f849b61c3549c284eff798bf5e1e0972c32da27"
+      }
+    },
     "matchup_v6": {
       "enabled": true,
       "registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/matchup_adapter_roster.json",
@@ -140,7 +273,7 @@
       "fleet": {
         "source_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
         "registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/matchup_adapter_roster.json",
-        "receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v1.json",
+        "receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v3.json",
         "bert": {
           "host": "192.168.1.158",
           "runtime_root": "/Users/tsinzitari/workspace/poke-bot-agent",
@@ -153,7 +286,9 @@
           "host": "elmo",
           "container": "poke-bot-truenas-worker",
           "service": "worker",
-          "image": "poke-bot-truenas-worker:matchup-v38-record-schema-runtime",
+        "image": "poke-bot-truenas-worker:matchup-v40-v6-router-runtime",
+        "build_context": "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1",
+        "dockerfile": "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/Dockerfile",
           "compose_files": [
             "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.host.yml",
             "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/docker-compose.production.yml"

@@ -24,12 +24,32 @@ def _state(path: Path) -> Path:
         *[{"id": value, "status": "unstarted"} for value in ids],
     ]
     roster_ids = [str(row["id"]) for row in specialists]
+    slot_capacity = 64
+    slots = [
+        {
+            "physical_slot": index,
+            "status": "active",
+            "archetype_id": specialist_id,
+        }
+        for index, specialist_id in enumerate(roster_ids)
+    ]
+    slots.extend(
+        {
+            "physical_slot": index,
+            "status": "reserved",
+            "archetype_id": None,
+        }
+        for index in range(len(roster_ids), slot_capacity)
+    )
     (path.parent / "matchup_adapter_roster.json").write_text(
         json.dumps(
             {
                 "required_specialist_count": len(roster_ids),
                 "physical_checkpoint_rows": len(roster_ids),
+                "legacy_v5_prefix_length": len(roster_ids),
+                "slot_capacity": slot_capacity,
                 "expert_ids": roster_ids,
+                "slots": slots,
             }
         ),
         encoding="utf-8",

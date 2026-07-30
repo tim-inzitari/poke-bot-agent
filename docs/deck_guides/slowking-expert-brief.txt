@@ -1,0 +1,1195 @@
+SLOWKING COMBO / TOOLBOX
+PRACTICAL PILOT GUIDE FOR EXPERT REVIEW
+
+Specialist identity: owner's exact 60-card Slowking list shown 2026-07-29/30
+Prepared: 2026-07-29
+Audience: world-champion and equivalent Pokémon TCG subject-matter experts
+Status: future specialist guide; blocked behind Archaludon and combo-head validation; not expert-approved
+
+
+HOW TO READ THIS PILOT
+
+This guide teaches the exact deck in the owner's supplied image. It does not
+replace it with the more common June 2026 Slowking/Metagross list. The owner's
+list uses two Conkeldurr, two Annihilape, and two Smoochum, plus Counter Gain;
+it has no Metagross, Lillie's Clefairy ex, Powerglass, Brave Bangle, Switch,
+Boss's Orders, or other gust card.
+
+The screenshot omits set codes and collector numbers. Public tournament lists
+make the intended identities highly likely, but not all of them are literally
+proved by the image. This pilot therefore uses the following identities:
+
+- Slowking SCR 58 and Slowpoke SCR 57;
+- Annihilape SSP 100, with Destined Fight;
+- Conkeldurr TWM 105, with Gutsy Swing;
+- Kyurem SFA 47, with Trifrost;
+- Smoochum SSP 75, with Delightful Kiss;
+- Latias ex SSP 76, Mega Kangaskhan ex MEG 104, Fezandipiti ex SFA 38,
+  and Meowth ex POR 62; and
+- Telepathic Psychic Energy POR 88, which the screenshot abbreviates as
+  “Telepath Psychic Energy.”
+
+Those identities should be confirmed when a set-coded export becomes
+available. In particular, current Standard contains other cards named
+Conkeldurr and Annihilape with materially different text. Do not silently use
+this guide with those versions.
+
+Labels used throughout:
+
+SOURCE: directly supported by printed card text, an official rulebook, a
+published strategy article, a published list, or public results in the source
+set at the end.
+
+INFERENCE: practical reasoning from those sources and the exact sixty. It is a
+proposal for expert review, not an official ruling or controlled result.
+
+LIST FACT: follows from the owner's displayed sixty.
+
+SME CHECK: intentionally unresolved and suitable for expert or judge
+correction.
+
+Use current cards, rules, and event rulings for exact legality. This pilot
+paraphrases text and arithmetic; it does not replace them.
+
+
+EXECUTIVE IDENTITY
+
+SOURCE: Slowking SCR 58 is a 120-HP single-Prize Stage 1. Seek Inspiration
+costs one Psychic and one Colorless Energy. It discards the top card of the
+deck and, if that card is a Pokémon without a Rule Box, lets Slowking use one
+of that Pokémon's attacks. [S2, S5]
+
+SOURCE: Slowking became a genuine 2026 tournament archetype. Limitless records
+a Turin Special Event runner-up and a fourth-place NAIC finish, and its
+archetype overview records multiple major Top 8s. Public June and July guides
+describe the deck as an aggressive combo deck whose normal opening objective
+is an early Trifrost. [S3, S4, S19, S31]
+
+LIST FACT: This exact version is a top-deck toolbox with four distinct attack
+families:
+
+- Kyurem's Trifrost spreads 110 damage to three opposing Pokémon and discards
+  all Energy from the attacking Slowking.
+- Conkeldurr's Gutsy Swing supplies a clean 250-damage hit.
+- Annihilape's Destined Fight Knocks Out both Active Pokémon, regardless of
+  their remaining HP, unless an applicable effect prevents it.
+- Slowking, Slowpoke, and Smoochum provide lower-damage or recovery/acceleration
+  attacks when those jobs are actually better.
+
+INFERENCE: The deck is best understood as an exact sequencing deck, not a
+roulette deck. Academy at Night and Ciphermaniac's Codebreaking make the top
+card deliberate. Mega Kangaskhan ex, Latias ex, Telepathic Psychic Energy,
+Smoochum, Wondrous Patch, and Boomerang Energy make repeated attacks possible.
+The pilot wins by answering four questions every turn:
+
+1. Which copied attack produces the best current prize map?
+2. How will the next Slowking receive one Psychic plus one Colorless?
+3. Which draw, search, and shuffle actions must happen before the top card is
+   locked?
+4. Which multi-Prize support Pokémon are truly worth exposing?
+
+This version trades the 300-damage Metagross ceiling and common defensive
+Tools for redundancy in Gutsy Swing, Destined Fight, and Delightful Kiss. That
+makes its plans different enough that a generic Metagross guide is unsafe.
+
+
+OWNER'S EXACT DISPLAYED LIST
+
+Pokémon - 22
+
+4 Slowking
+4 Slowpoke
+2 Annihilape
+2 Conkeldurr
+2 Kyurem
+2 Latias ex
+2 Mega Kangaskhan ex
+2 Smoochum
+1 Fezandipiti ex
+1 Meowth ex
+
+Trainer - 28
+
+4 Academy at Night
+4 Ciphermaniac's Codebreaking
+4 Lillie's Determination
+4 Poké Pad
+4 Ultra Ball
+3 Night Stretcher
+3 Wondrous Patch
+1 Counter Gain
+1 Secret Box
+
+Energy - 10
+
+4 Basic Psychic Energy
+4 Telepathic Psychic Energy
+2 Boomerang Energy
+
+LIST FACT: The displayed counts total exactly 60: 22 Pokémon, 28 Trainers, and
+10 Energy.
+
+SOURCE NOTE: The image labels the aggregate row “Conkeldurr,” reports S tier,
+66.2% wins over 136 matches, and shows this as both its most popular and
+highest-win-rate list. The underlying page URL, filters, date range, and match
+rows were not supplied, so that result is identity evidence, not an
+independently reproducible performance claim.
+
+
+QUICK START
+
+If time is short, pilot from these rules:
+
+1. Build two Slowpoke lines. One line is too easy to remove or strand.
+2. Prefer going first when the priority is the earliest legal Seek
+   Inspiration: attach to Slowpoke on turn one, evolve and attach again on
+   turn two.
+3. Prefer the going-second Smoochum plan when two Basic Psychic attachments
+   and a first-turn Supporter are worth delaying the first Slowking attack.
+4. Open Mega Kangaskhan ex when possible only if Latias ex or another clean
+   pivot can move it later. Use Run Errand before locking the top card.
+5. Use all searches, shuffles, Lillie's Determination, Flip the Script, and
+   Run Errand before Academy at Night puts the attack source on top.
+6. With Ciphermaniac plus active Mega Kangaskhan, stack two exact cards, draw
+   them with Run Errand, then use Academy to put the chosen attacker back on
+   top before pivoting into Slowking.
+7. Choose Kyurem when 110 to three visible targets creates immediate prizes
+   or a clearly superior multi-target damage map.
+8. Choose Conkeldurr when 250 takes the Active knockout. Preserve
+   Annihilape for targets that damage cannot cleanly remove.
+9. Use Destined Fight only after checking both players' remaining prizes,
+   Bench, effect protection, and simultaneous-win consequences.
+10. Treat Boomerang Energy as the preferred Colorless half of a planned
+    Trifrost. It returns only when an attack effect discards it; it does not
+    return after Hammer, retreat, hand discard, or a Knock Out.
+11. Load the next Slowking on the Bench. Wondrous Patch cannot attach to the
+    Active Pokémon and can recover only Basic Psychic Energy.
+12. Do not bench a second Mega Kangaskhan, Fezandipiti, Meowth, or extra
+    Latias merely because a slot is open. Name its same-turn or mapped job.
+13. Against Team Rocket's Watchtower, replace it with Academy before relying
+    on Run Errand or Last-Ditch Catch.
+14. Against a visible Benched Bastiodon PBL 62, damage from a Slowking with
+    two or fewer Energy attached is prevented. Reach three attached Energy
+    cards or use a valid non-damage route such as Destined Fight.
+15. Before ending the turn, name the next attacker, its Energy route, the
+    attack source that must reach the top, and the opponent's shortest prize
+    route through your Bench.
+
+
+THE CORE ENGINE
+
+Seek Inspiration
+
+SOURCE: Seek Inspiration costs Psychic-Colorless. It discards the top card,
+and only a Pokémon without a Rule Box can supply the copied attack. Slowking
+itself remains the attacking Pokémon. Rule-Box Pokémon in this list—Latias ex,
+Mega Kangaskhan ex, Fezandipiti ex, and Meowth ex—are setup or direct attackers,
+not Seek Inspiration targets. [S2, S5]
+
+INFERENCE: A successful attack turn requires four independent resources:
+
+- an attacking Slowking;
+- enough Energy to pay Seek Inspiration itself;
+- a legal non-Rule-Box Pokémon on top; and
+- an Active or Bench damage map that makes that copied attack useful.
+
+Never call the turn “set up” merely because Slowking has two Energy. The
+top-card route and the post-attack Energy route matter just as much.
+
+Academy at Night
+
+SOURCE: Once during each player's turn, Academy lets that player put a card
+from hand on top of their deck. [S14]
+
+INFERENCE: Academy is the cleanest final lock because it acts after all
+shuffles and draws. Hold the selected Kyurem, Conkeldurr, or Annihilape in
+hand, complete every other action, use Academy, and then attack. The opponent
+may use Academy too, so do not mistake the Stadium for one-sided value.
+
+Ciphermaniac's Codebreaking
+
+SOURCE: Ciphermaniac searches any two cards, shuffles, and puts the chosen
+cards on top in either order. [S15]
+
+INFERENCE: Ciphermaniac has two principal modes:
+
+1. Attack lock: place the copied attacker on top and the desired next-turn
+   card underneath, then use Seek Inspiration.
+2. Kangaskhan tutor: with Mega Kangaskhan Active, stack two setup cards, draw
+   both with Run Errand, use Academy to restack the copied attacker, and pivot
+   to Slowking.
+
+The second mode converts a Supporter plus Run Errand into two exact cards
+without sacrificing the attack lock. It requires Academy access and a legal
+pivot. If Academy is absent, Run Errand after Ciphermaniac consumes the attack
+source and ruins the lock.
+
+The ordering rule
+
+SOURCE: Ultra Ball, Poké Pad, Telepathic Psychic Energy, Ciphermaniac, and
+other deck searches shuffle. Run Errand draws two. Lillie's Determination
+shuffles the hand into the deck and draws. [S11, S13, S15, S16]
+
+INFERENCE: Use this order unless the exact state proves a reason not to:
+
+1. normal draw;
+2. prize/deck inventory during a legal search;
+3. bench and evolution actions;
+4. all ordinary search and shuffle effects;
+5. Lillie's Determination or Ciphermaniac;
+6. Run Errand and Flip the Script;
+7. Energy acceleration and retreat/pivot planning;
+8. Academy at Night as the final top-card placement;
+9. promote or pivot to Slowking;
+10. Seek Inspiration.
+
+A shuffle after Academy destroys the guarantee. A draw after Academy consumes
+the target. A Run Errand after Ciphermaniac is correct only when the plan
+explicitly draws both stacked cards and restacks the target with Academy.
+
+
+THE COPY TOOLBOX
+
+Kyurem SFA 47
+
+SOURCE: Trifrost discards all Energy from the attacking Pokémon and deals 110
+damage to three opposing Pokémon. Weakness and Resistance are not applied to
+Benched Pokémon. [S6]
+
+INFERENCE: Trifrost is the tempo ceiling. Use it for immediate multi-KOs,
+three relevant setup targets, or a damage spread that turns later Gutsy Swings
+into multiple clean prizes. Do not use it merely because Kyurem is the famous
+line.
+
+The key thresholds are:
+
+- 110 remaining HP: immediate Trifrost knockout;
+- 120-130 HP: Trifrost misses by 10-20, so confirm whether evolution or
+  healing will erase the setup before spending all attached Energy;
+- 250 remaining HP: clean Gutsy Swing;
+- 251-360 HP: one prior 110 plus Gutsy Swing can reach 360 before other
+  modifiers; and
+- any HP: Destined Fight can be the effect-based answer if legally safe.
+
+When Slowking copies Trifrost, the Energy discarded is Slowking's Energy.
+Boomerang Energy can return after the attack because Trifrost itself discarded
+it. Basic and Telepathic Psychic Energy do not return.
+
+Do not assume all three targets take damage. Shaymin's Flower Curtain protects
+Benched non-Rule-Box Pokémon. Bastiodon's Ancient Bulwark can prevent all
+attack damage when the attacking Pokémon has two or fewer Energy attached.
+Other current effects can also alter the map. [S20, S22]
+
+Conkeldurr TWM 105
+
+SOURCE: Gutsy Swing deals 250. Its printed cost is Fighting plus three
+Colorless; its conditional text lets a Special-Conditioned Conkeldurr ignore
+that cost. Seek Inspiration pays its own Psychic-Colorless cost and uses the
+copied attack rather than building a Stage 2 Conkeldurr. [S7, S31]
+
+INFERENCE: Gutsy Swing is the default single-target damage attack in this
+sixty. Use it whenever 250, after current Weakness, Resistance, Tools, and
+effects, takes the needed knockout. It is superior to Destined Fight when both
+take the same prizes because Slowking survives and keeps its attached Energy.
+
+The copied attack is used by Psychic-type Slowking, not by a Fighting-type
+Conkeldurr in play. Do not apply Fighting Weakness just because the source
+card is Conkeldurr.
+
+Annihilape SSP 100
+
+SOURCE: Destined Fight Knocks Out both Active Pokémon. Tantrum deals 130 and
+makes the attacking Pokémon Confused. [S8]
+
+INFERENCE: Destined Fight is the high-HP and damage-prevention breaker. A
+single-Prize Slowking trading into a two- or three-Prize Active can be the
+best route in the deck. It is not free:
+
+- the opponent also takes a Prize for Slowking;
+- all Energy and Tool cards on Slowking are lost through the Knock Out;
+- Boomerang Energy is not being discarded by an attack effect and therefore
+  does not earn its return;
+- a simultaneous final-Prize turn can trigger the official simultaneous-win
+  procedure; and
+- an effect that prevents effects of attacks may stop the intended Knock Out.
+
+Use Tantrum when 130 is exactly valuable enough to justify leaving Slowking
+Confused. A Slowking that survives while Confused and has Retreat Cost three
+is often worse than spending a different copy target.
+
+Slowking, Slowpoke, and Smoochum as copy targets
+
+SOURCE: Slowking's Super Psy Bolt deals 120. Slowpoke's Dangle Tail returns a
+Pokémon from the discard pile to hand. Smoochum's Delightful Kiss searches up
+to two Basic Psychic Energy and attaches both to one Benched Pokémon. [S5,
+S9, S10]
+
+INFERENCE:
+
+- A top-decked Slowking can supply Super Psy Bolt for an exact 120. This can
+  matter in the mirror, but it consumes an evolution card from the deck.
+- A top-decked Slowpoke can use Dangle Tail to recover a Pokémon, including a
+  critical copy target or evolution line. It is a recovery turn, not a damage
+  turn.
+- A top-decked Smoochum can copy Delightful Kiss, but attacking directly with
+  a Smoochum is normally cheaper. Copy it only when direct access is absent
+  and two Basic attachments are worth the Slowking attack turn.
+
+SME CHECK: Seek Inspiration copying another Seek Inspiration appears in
+community ruling questions, but no clear current official answer was found in
+the reviewed public sources. This pilot never depends on recursive Seek
+Inspiration. If Slowking is the revealed source, Super Psy Bolt is the
+unambiguous default pending an event judge ruling.
+
+
+ENERGY AND RECOVERY
+
+Basic Psychic Energy
+
+LIST FACT: There are only four. They are the sole Energy that Smoochum can
+search, Wondrous Patch can accelerate, and Night Stretcher can return.
+
+INFERENCE: Track all four across deck, hand, discard, prizes inferred from a
+legal search, and play. Deliberately discarding one with Ultra Ball or Secret
+Box can turn on Wondrous Patch, but only when the resulting Bench attachment
+is more valuable than preserving the manual attachment.
+
+Telepathic Psychic Energy POR 88
+
+SOURCE: It provides Psychic while attached. When attached from hand to a
+Psychic Pokémon, it searches up to two Basic Psychic Pokémon directly to the
+Bench. [S11, S23]
+
+INFERENCE: In this list its search targets are Slowpoke, Smoochum, and Latias
+ex. It cannot search Slowking, Mega Kangaskhan, Kyurem, Fezandipiti, Meowth,
+Conkeldurr, or Annihilape. Prefer attaching it to a Slowpoke or another
+Psychic Pokémon when the two-Basic setup and deck thinning matter. It is
+Special Energy: Wondrous Patch, Night Stretcher, and Delightful Kiss cannot
+recover or search it.
+
+Boomerang Energy
+
+SOURCE: It provides Colorless. If an attack effect used by its attached
+Pokémon discards it, it reattaches to that Pokémon after attacking. [S12]
+
+INFERENCE: Boomerang is the clean Colorless partner for Trifrost, but its
+protection is narrow:
+
+- Trifrost discards it: it returns.
+- Crushing Hammer discards it: it does not return.
+- retreat discards it: it does not return.
+- Ultra Ball or Secret Box discards it from hand: it does not return.
+- Slowking is Knocked Out: it does not return.
+- Destined Fight Knocks Out Slowking: it does not return.
+
+After Trifrost, a returned Boomerang plus a manual Psychic attachment can
+restore Seek Inspiration on the next turn. If Slowking is expected to be
+Knocked Out, spend Items before attacking to prepare the next Benched line
+rather than trying to protect an Active line that will disappear.
+
+Wondrous Patch
+
+SOURCE: Wondrous Patch attaches a Basic Psychic Energy from the discard pile
+to a Benched Psychic Pokémon. [S17]
+
+INFERENCE: It can accelerate a Benched Slowpoke, Slowking, Smoochum, or Latias
+ex. It cannot attach to the Active Pokémon, cannot target non-Psychic
+Pokémon, and cannot recover either Special Energy. The best use completes a
+visible next attacker this turn or establishes the next Slowking before the
+Active is lost.
+
+Smoochum
+
+SOURCE: Delightful Kiss costs no Energy, searches up to two Basic Psychic
+Energy, and attaches both to one Benched Pokémon. Smoochum has free Retreat.
+Grant Manley's July analysis specifically identifies Smoochum as a major
+reason Slowking can produce more early Trifrost attacks and resist Crushing
+Hammer pressure. [S9, S19]
+
+INFERENCE: A strong going-second pattern is:
+
+1. start or pivot to Smoochum;
+2. establish two Slowpoke;
+3. attach Telepathic Psychic Energy to one Slowpoke, using it to find Basics;
+4. use Delightful Kiss to attach two Basic Psychic Energy to the other
+   Slowpoke; and
+5. on the next turn, evolve the two-Basic Slowpoke into an attack-ready
+   Slowking while the Telepathic Slowpoke remains the backup line.
+
+Delightful Kiss may attach to any Benched Pokémon, not only Psychic Pokémon.
+That creates a real but expensive anti-Shaymin line: put two Basic Psychic
+Energy on Fezandipiti ex, attach a third Energy later, and use Cruel Arrow for
+100 to Knock Out an 80-HP Shaymin on the Bench. This is an inference unique
+to the owner's list, not a published matchup guarantee. It exposes a
+two-Prize attacker and consumes most of the Basic Energy engine, so calculate
+the full prize map first.
+
+Night Stretcher
+
+SOURCE: Night Stretcher returns either a Pokémon or a Basic Energy from the
+discard pile to hand. [S18]
+
+INFERENCE: Its jobs compete:
+
+- recover Slowking or Slowpoke to preserve the attack chain;
+- recover Kyurem, Conkeldurr, or Annihilape so Academy can put it back on top;
+- recover Smoochum for a second acceleration turn;
+- recover Fezandipiti or another needed support Pokémon; or
+- recover Basic Psychic Energy for a manual attachment.
+
+Do not spend Stretcher on the first available target. Identify which finite
+resource currently blocks the next prize-taking attack.
+
+Counter Gain
+
+SOURCE: While the player has more Prize cards remaining than the opponent,
+Counter Gain reduces the attached Pokémon's attack cost by one Colorless.
+[S32]
+
+INFERENCE: On Slowking, active Counter Gain turns Psychic-Colorless into one
+Psychic while behind. This is the deck's cleanest recovery from a lost
+Boomerang or an Energy-denial turn. It stops helping if the prize counts cease
+to satisfy its condition. Attach it for an exact attack or mapped follow-up,
+not merely because the player is currently behind.
+
+Secret Box
+
+SOURCE: Secret Box discards three other cards from hand, then searches an
+Item, Tool, Supporter, and Stadium. [S24]
+
+INFERENCE: The exact sixty can turn Secret Box into a complete combo bridge:
+
+- Item: Poké Pad, Ultra Ball, Night Stretcher, or Wondrous Patch;
+- Tool: the lone Counter Gain;
+- Supporter: Ciphermaniac or Lillie's Determination; and
+- Stadium: Academy at Night.
+
+A particularly coherent line discards a Basic Psychic Energy, searches
+Wondrous Patch plus Counter Gain plus Ciphermaniac plus Academy, accelerates a
+Benched Psychic attacker, and finishes with the required top lock. It is not
+automatically correct: the three-card discard can consume the next attack
+source, a second Slowking line, or irreplaceable Special Energy.
+
+
+SETUP AND BENCH GEOMETRY
+
+Opening priorities
+
+INFERENCE: A stable first board normally wants:
+
+- two Slowpoke;
+- one mobility/draw bridge, usually Mega Kangaskhan plus Latias;
+- Smoochum when Delightful Kiss will be used; and
+- at least one open Bench slot for Meowth, Fezandipiti, or a recovered
+  attacker.
+
+Do not fill all five Bench slots just because Telepathic Psychic Energy can.
+The exact list contains five different multi-Prize support cards and two
+fragile Smoochum. Every Bench slot changes both the setup ceiling and the
+opponent's prize route.
+
+Starting Pokémon
+
+Mega Kangaskhan ex
+
+SOURCE: Run Errand draws two once per turn while Mega Kangaskhan is Active.
+Latias ex gives Basic Pokémon in play free Retreat. [S25, S26]
+
+INFERENCE: Mega Kangaskhan is the best blind Active when Run Errand plus a
+Latias pivot is live. It is a dangerous permanent Bench resident because a
+Mega Pokémon ex gives up three Prizes when Knocked Out. One copy in play is
+usually enough; the second copy is consistency, not permission to expose six
+Prizes.
+
+Smoochum
+
+INFERENCE: Smoochum is the preferred going-second Active when Delightful Kiss
+will power a Benched Slowpoke and the opponent cannot take a more damaging
+immediate line. Its 30 HP makes it an easy spread Prize after the setup turn.
+
+Slowpoke
+
+INFERENCE: Slowpoke is an acceptable Active only when another Slowpoke is
+safe on the Bench and the evolution/retreat line is known. Losing the sole
+Slowpoke ends the engine. Latias can retreat it for free while it remains
+Basic.
+
+Latias, Fezandipiti, and Meowth
+
+INFERENCE: Avoid blind-starting narrow two-Prize support Pokémon. Latias is
+the mobility bridge; Fezandipiti is the post-Knock-Out draw bridge; Meowth is
+the one-time Supporter bridge. Each should enter play because its printed job
+changes the current or mapped next turn.
+
+
+GOING FIRST
+
+INFERENCE: Going first gives the earliest legal Stage 1 attack:
+
+Turn one
+
+- establish two Slowpoke if possible;
+- attach Psychic or Boomerang to the intended first Slowpoke;
+- use Telepathic Psychic Energy on a Psychic Pokémon if its Basic search is
+  valuable;
+- place Mega Kangaskhan Active only with a pivot plan; and
+- preserve the attack source in hand for Academy.
+
+Turn two
+
+- evolve the intended Slowpoke;
+- finish the Psychic-Colorless requirement;
+- perform every shuffle and draw;
+- use Run Errand before locking the top;
+- use Ciphermaniac or Academy to guarantee the chosen source; and
+- attack with the line that changes the prize map, not automatically
+  Trifrost.
+
+The cost of going first is no first-turn Supporter and no Delightful Kiss.
+Hands that cannot establish two attachments or find Slowking may value going
+second more.
+
+
+GOING SECOND
+
+SOURCE: The published July expert analysis calls Smoochum consistent,
+efficient, and important into Hammer-heavy Dragapult. [S19]
+
+INFERENCE: Going second is the deliberate acceleration/consistency line:
+
+Turn one
+
+- use Lillie's Determination for eight while exactly six Prizes remain, or
+  use Ciphermaniac for an exact Run Errand setup;
+- use Telepathic Psychic Energy to establish Slowpoke and another Basic;
+- pivot to Smoochum;
+- use Delightful Kiss to put two Basic Psychic Energy on a Benched Slowpoke;
+  and
+- leave a second Slowpoke with at least one attachment when possible.
+
+Turn two
+
+- evolve the two-Energy Slowpoke;
+- use the Supporter and draw sequence;
+- stack the attack source last; and
+- attack while preparing the second line.
+
+The tradeoff is initiative: the opponent receives two turns before the first
+Seek Inspiration. Choose second only when the two Basic attachments,
+first-turn Supporter, and Hammer resilience outweigh that delay.
+
+SME CHECK: No controlled current-format first-versus-second study for this
+exact sixty was found. The default above is a reasoned plan, not a proven
+universal choice.
+
+
+PRIZE AND BENCH MAPPING
+
+SOURCE: Grant Manley's July testing found that Slowking can struggle against
+two-Prize decks because its engine exposes Mega Kangaskhan, Latias, and
+Fezandipiti. He identifies the opponent's 3-2-1 route—Mega Kangaskhan, a
+two-Prize support, then Slowking—as a structural problem. [S19]
+
+INFERENCE: Recalculate the opponent's shortest route before every support
+Pokémon:
+
+- Mega Kangaskhan ex: three Prizes;
+- Latias ex, Fezandipiti ex, or Meowth ex: two Prizes;
+- Slowking, Slowpoke, Smoochum, Kyurem, Conkeldurr, or Annihilape if somehow
+  in play: one Prize.
+
+The common exposed route is exactly 3-2-1. Avoid giving the opponent multiple
+equivalent Boss targets:
+
+- bench one Mega Kangaskhan, not two;
+- bench Meowth only when the searched Supporter matters;
+- bench Fezandipiti only when Flip the Script materially repairs the hand;
+- preserve the second Latias in hand unless mobility must survive a first
+  knockout; and
+- after using Smoochum, remember that its 30 HP is still an easy one-Prize
+  target.
+
+Your attacking prize maps
+
+Against three-Prize Mega Pokémon ex:
+
+- Destined Fight can trade one Prize for three;
+- Trifrost plus Gutsy Swing reaches 360 before modifiers; or
+- direct Mega Kangaskhan can attack only when the coin-dependent line is
+  actually superior.
+
+Against ordinary two-Prize Pokémon ex:
+
+- Gutsy Swing takes those at 250 or less;
+- Trifrost softens higher-HP targets; and
+- Destined Fight is the clean HP-independent trade when the opponent cannot
+  exploit the simultaneous knockout.
+
+Against single-Prize decks:
+
+- prioritize multi-KO Trifrost;
+- avoid Destined Fight for a fair one-for-one unless it removes an otherwise
+  unbeatable Active;
+- minimize support ex; and
+- recognize that a Shaymin-protected board can invalidate the normal prize
+  advantage.
+
+
+MATCHUP PLANS
+
+Evidence caveat
+
+SOURCE: The public POR online aggregate contains 1,846 reported Slowking
+matches at 49.02%, but it mixes lists, players, event structures, and a
+pre-Pitch-Black card pool. It reports materially different results across
+Dragapult variants, 34.44% into Alakazam/Dudunsparce, 82.35% into Crustle,
+45.56% into Rocket's Mewtwo, and 60.98% into Raging Bolt/Ogerpon. These are
+signals, not exact-list causal estimates. [S27]
+
+The owner's screenshot reports 66.2% over 136 matches for this exact-looking
+Conkeldurr list, but the underlying rows and filters are unavailable. Do not
+combine those percentages.
+
+Dragapult variants
+
+SOURCE: Current published assessments disagree by build. The online aggregate
+reports 44.72% into straight Dragapult, 57.01% into Dragapult/Dusknoir, and
+41.94% into Dragapult/Blaziken. After further testing, Grant Manley judged
+many Dragapult builds even or slightly favorable for Slowking, while stressing
+that Hammer, Watchtower, Special Red Card, Shaymin, and pilot errors change
+the matchup sharply. [S19, S27]
+
+Plan:
+
+1. Establish two Slowpoke. Dusknoir and Phantom Dive punish a lone line.
+2. Use Smoochum early when Hammer pressure makes Basic attachments more
+   reliable than one exposed Boomerang.
+3. Seek the earliest high-value Trifrost into Dreepy, Drakloak, Budew, or
+   other low-HP setup Pokémon.
+4. Check Shaymin before declaring the spread. Flower Curtain protects
+   Benched non-Rule-Box Pokémon, though it does not protect Rule-Box Pokémon
+   or the Active. [S20]
+5. Replace Team Rocket's Watchtower with Academy before using Run Errand;
+   Watchtower removes Abilities from Colorless Pokémon, including Mega
+   Kangaskhan and Meowth. [S21]
+6. Use every Item before moving an Energy-empty Slowking Active under Budew
+   Item lock. The exact list lacks Powerglass and Switch, so a stranded
+   Active is worse here than in common guide lists.
+7. After Trifrost, expect only Boomerang to return. Prepare the next Benched
+   Slowking with Wondrous Patch before attacking.
+8. When the opponent reaches three or fewer Prizes, Ciphermaniac can put the
+   next attack source on top and a useful card beneath it. Seek discards the
+   source; the useful card remains above hand disruption such as Special Red
+   Card. [S28]
+
+Do not claim a generic favorable matchup. Identify the opposing variant and
+its visible techs.
+
+Alakazam/Dudunsparce and other single-Prize engines
+
+SOURCE: The online aggregate reports 34.44% for Slowking into
+Alakazam/Dudunsparce. Published guides identify Shaymin as the central
+problem: Flower Curtain blocks Trifrost damage to Benched non-Rule-Box
+Pokémon, and single-Prize opponents can then win the fair exchange. [S19,
+S20, S27, S31]
+
+Plan:
+
+1. Trifrost before Shaymin reaches play when the visible board offers
+   multiple immediate prizes.
+2. If Shaymin is present, stop pretending Trifrost hits protected targets.
+   Gutsy Swing the Active or use Super Psy Bolt/Tantrum for exact small
+   knockouts.
+3. Avoid Destined Fight for ordinary single-Prize trades.
+4. Keep Mega Kangaskhan, Latias, Meowth, and Fezandipiti exposure to the
+   minimum functional board.
+5. Consider the direct Fezandipiti Cruel Arrow line only when Smoochum or
+   manual attachments can reach three Energy and removing Shaymin unlocks
+   enough future prizes to compensate for exposing Fezandipiti.
+6. With no gust card in the exact sixty, accept that the opponent may keep
+   Shaymin Benched and that the matchup can remain structurally poor.
+
+Crustle
+
+SOURCE: Crustle DRI 12 prevents damage done to itself by attacks from Pokémon
+ex. Slowking is not a Pokémon ex, so its copied attacks are not stopped by
+Mysterious Rock Inn. The public aggregate reports 82.35% over 51 matches for
+Slowking, though lists vary. [S22, S27]
+
+Plan:
+
+1. Use Trifrost early on Dwebble or other small setup targets.
+2. Attack Crustle with Slowking, not a direct Pokémon ex attacker.
+3. Gutsy Swing's 250 cleanly clears ordinary 150-HP Crustle and reaches an
+   exact 250 if a +100 HP Tool is present, before any other modifiers.
+4. Preserve Academy against competing Stadiums.
+5. Use Destined Fight only when damage modifiers or effects make Gutsy Swing
+   fail; the normal damage route preserves Slowking.
+
+Big-Basic and multi-Prize box decks
+
+SOURCE: Public expert testing warns that these decks can map 3-2-1 through
+Slowking's support board even though Slowking itself is single-Prize. The POR
+aggregate reports 60.98% into Raging Bolt/Ogerpon but only 16.67% into the
+small Ogerpon Box sample, illustrating why the exact opposing composition
+matters. [S19, S27]
+
+Plan:
+
+1. Expose the smallest functional support board.
+2. Map a Destined Fight into every Active two- or three-Prize Pokémon that
+   cannot be cleanly removed by 250.
+3. Use Trifrost when three Rule-Box targets are available; Shaymin does not
+   protect Benched Rule-Box Pokémon.
+4. Use one 110 spread plus Gutsy Swing to reach 360 when the opponent cannot
+   heal, evolve out of range, or change the target.
+5. Do not bench the second Mega Kangaskhan. A three-Prize setup Pokémon is a
+   liability if the opponent can one-shot it.
+6. Avoid a Destined Fight that gives the opponent its last Prize unless the
+   exact simultaneous-win resolver says the outcome is acceptable.
+
+Rocket's Mewtwo and Watchtower decks
+
+SOURCE: Team Rocket's Watchtower turns off Abilities of Colorless Pokémon.
+The public aggregate reports 45.56% for Slowking into Rocket's Mewtwo.
+[S21, S27]
+
+Plan:
+
+1. Preserve an Academy to replace Watchtower before Run Errand or Last-Ditch
+   Catch.
+2. Trifrost low-HP Team Rocket setup Pokémon when visible protection does not
+   stop it.
+3. Use Gutsy Swing for targets within 250 and Destined Fight for Mewtwo-sized
+   targets beyond the clean threshold.
+4. Keep the second Slowpoke line out of easy multi-target damage when the
+   opposing build includes Spidops or other spread branches.
+
+Pitch Black Bastiodon shells
+
+SOURCE: Bastiodon PBL 62's Ancient Bulwark prevents all damage done to the
+opponent's Pokémon by attacks from an opposing Pokémon with two or fewer
+Energy attached, while Bastiodon is on the Bench. [S29]
+
+Plan:
+
+1. Count attached Energy cards, not the attack's reduced cost.
+2. Attach a third Energy to Slowking before using Trifrost, Gutsy Swing,
+   Tantrum, or Super Psy Bolt through Ancient Bulwark.
+3. Counter Gain makes Seek Inspiration cheaper but does not make a
+   two-Energy Slowking pass the three-Energy check.
+4. If three attachments are unavailable, Destined Fight is a Knock-Out
+   effect rather than damage; verify no separate effect protection applies.
+5. Remember that Trifrost discards all three Energy. Boomerang may return,
+   but the reload cost increases.
+
+Slowking mirror
+
+Plan:
+
+1. Initiative and redundant Slowpoke matter more than raw support Pokémon.
+2. Trifrost 110 misses an undamaged 120-HP Slowking by 10 but clears many
+   Slowpoke and Smoochum.
+3. Super Psy Bolt copied from a top-decked Slowking reaches 120 exactly; use
+   it only when spending an evolution card is better than Gutsy Swing.
+4. Tantrum reaches 130 but leaves Slowking Confused.
+5. Avoid giving the opponent three clean Trifrost targets.
+6. Preserve Night Stretcher for the Slowking line if both players exchange
+   attackers every turn.
+
+
+RECOVERY LINES
+
+Academy is bumped
+
+- Play another Academy after all desired searches.
+- If Academy is unavailable, Ciphermaniac can lock the top directly, but do
+  not draw or shuffle afterward.
+- Do not use Seek Inspiration on an unknown top card when a deterministic
+  recovery turn is available unless the game state forces the gamble.
+
+The copied attacker is in the discard
+
+- Night Stretcher it to hand, then Academy it to the top.
+- If Night Stretcher is more urgently needed for Slowking, use the second
+  physical copy of Kyurem, Conkeldurr, or Annihilape from deck/hand.
+- Dangle Tail can recover a Pokémon through an attack when Items are locked,
+  but it sacrifices the damage turn.
+
+No second Energy
+
+- If behind, Counter Gain plus one Psychic pays Seek Inspiration.
+- Use Wondrous Patch on a Benched Psychic Pokémon, never the Active.
+- Use Smoochum to put two Basics on one Benched attacker.
+- If the Active Slowking has returned Boomerang after Trifrost, a manual
+  Psychic attachment restores the attack.
+
+Boomerang is removed
+
+- Do not expect it to return after Hammer.
+- Build with two Psychic Energy, one of which may be Telepathic.
+- Use Counter Gain while behind.
+- Prefer Basic Psychic on the Bench because Patch, Stretcher, and Smoochum
+  can interact with it.
+
+The hand is disrupted
+
+- Before Special Red Card is live, use Ciphermaniac to place the attack
+  source on top and a useful next draw beneath it.
+- Use Meowth's Last-Ditch Catch only after Watchtower is gone and only if the
+  chosen Supporter changes the current turn.
+- Bench Fezandipiti after an opponent's Knock Out when drawing three is worth
+  exposing two Prizes.
+
+Slowking is stranded Active
+
+- Latias does not give Stage 1 Slowking free Retreat.
+- Wondrous Patch cannot attach to the Active.
+- A returned Boomerang plus manual Psychic can restore Seek after Trifrost.
+- Paying three Retreat can be correct only if the replacement attack and
+  remaining Energy map justify losing all three cards.
+- Under Item lock, prioritize manual attachment and a productive attack over
+  a speculative retreat plan.
+
+
+COMMON PILOT ERRORS
+
+1. Treating the owner's list as the common Metagross list.
+2. Using the wrong current Conkeldurr or Annihilape printing.
+3. Building only one Slowpoke line.
+4. Drawing with Run Errand after Academy has locked the copied attacker.
+5. Shuffling after Academy or Ciphermaniac has locked the top.
+6. Putting the Ciphermaniac cards in the wrong order.
+7. Forgetting that Run Errand requires Mega Kangaskhan to be Active.
+8. Forgetting that Latias gives free Retreat only to Basic Pokémon, not
+   Slowking.
+9. Benching a second Mega Kangaskhan without a same-turn job.
+10. Benching Meowth without naming the Supporter and current use.
+11. Benching Fezandipiti when Flip the Script is not legal or not needed.
+12. Treating a 3-2-1 opponent prize map as a six-turn single-Prize game.
+13. Choosing Trifrost when 250 takes a cleaner knockout.
+14. Choosing Gutsy Swing when Trifrost takes two or three immediate prizes.
+15. Choosing Destined Fight when 250 already KOs the Active.
+16. Choosing Destined Fight into a one-Prize Active without a special reason.
+17. Using Destined Fight when it gives the opponent its last Prize without
+   resolving simultaneous win conditions.
+18. Expecting Boomerang to return after Hammer, retreat, hand discard, or
+   Knock Out.
+19. Forgetting that Trifrost discards the attacking Slowking's Energy.
+20. Trying to Wondrous Patch an Active, a non-Psychic Pokémon, or a Special
+   Energy.
+21. Spending Night Stretcher on a target that does not unblock the attack
+   chain.
+22. Leaving an Energy-empty Slowking Active under Item lock.
+23. Ignoring Shaymin and assigning 110 to protected Benched non-Rule-Box
+   Pokémon.
+24. Ignoring Watchtower and attempting Run Errand or Last-Ditch Catch.
+25. Ignoring Bastiodon and attacking for damage with only two attached
+   Energy.
+26. Applying Conkeldurr's Fighting type to damage copied by Psychic Slowking.
+27. Using Tantrum without planning for Confusion.
+28. Treating the owner's 66.2% screenshot as a reproducible matchup study.
+29. Filling the Bench before reserving a slot for the next Slowpoke or a
+   needed support Pokémon.
+30. Depending on recursive Seek Inspiration without a current judge ruling.
+
+
+TURN CHECKLIST
+
+Before setup
+
+- Which Basic is the safest Active?
+- Is this a going-first evolution race or a going-second Smoochum plan?
+- Can two Slowpoke be established?
+- Is one Bench slot reserved?
+- Which multi-Prize support Pokémon has an actual job?
+
+At the first legal deck search
+
+- How many Slowpoke and Slowking are accessible?
+- Are both Kyurem, both Conkeldurr, and both Annihilape accounted for?
+- Where are the four Basic Psychic, four Telepathic, and two Boomerang?
+- Are Counter Gain, Secret Box, and enough Academy available?
+- Which apparent absences can be inferred as Prized only from this legal
+  search?
+
+Before a draw or shuffle
+
+- Is the top card currently known?
+- Has Academy already been used?
+- Will Run Errand consume a needed copy target?
+- Is Ciphermaniac in attack-lock mode or Kangaskhan-tutor mode?
+- Are all Ultra Ball, Poké Pad, Telepathic, and Stretcher actions complete?
+
+Before attaching Energy
+
+- Does Telepathic trigger on this target?
+- Is Basic Psychic more valuable in discard for Wondrous Patch?
+- Is Boomerang reserved for Trifrost?
+- Is Counter Gain currently active by Prize count?
+- Is a visible Bastiodon demanding three attached Energy cards?
+- Which Benched Slowking attacks next?
+
+Before choosing the copied attacker
+
+- How many immediate Prizes does Trifrost take?
+- Which three targets are legal and unprotected?
+- Does Gutsy Swing's adjusted 250 take the Active knockout?
+- Is Destined Fight necessary?
+- What Prize does each player take after Destined Fight?
+- Does effect prevention apply?
+- Is a 120 or 130 attack sufficient without spending a more important copy
+  target?
+
+Before benching an ex
+
+- What printed Ability or attack is used now?
+- How many Prizes does it expose?
+- Does it create a 3-2-1 route?
+- Can the same job be done by an existing Pokémon?
+- Is Watchtower disabling it?
+
+Before Seek Inspiration
+
+- Is the top card known and a non-Rule-Box Pokémon?
+- Were all draws and shuffles completed?
+- Is the correct attack selected?
+- Were Weakness, Resistance, Tools, and prevention effects applied to the
+  attacking Slowking?
+- What Energy is discarded?
+- Does Boomerang actually meet its return condition?
+- Is the next attacker ready?
+
+At end of turn
+
+- What is the opponent's shortest visible prize route?
+- Which Slowpoke survives the next public damage map?
+- Which attack source must return to hand?
+- Which Basic Psychic can be patched or stretched?
+- What top card remains after Seek for the next draw?
+
+
+QUESTIONS FOR WORLD-CHAMPION SME REVIEW
+
+1. For this exact two-Smoochum list, which current matchups justify choosing
+   second rather than taking the earliest Stage 1 attack?
+2. Is two Slowpoke the correct default, or should the opening target be three
+   against Dragapult/Dusknoir and other multi-target pressure?
+3. When does a first-turn Delightful Kiss outperform the chronological
+   advantage of going first?
+4. Which current 110, 120, 130, 250, and 360 thresholds matter most?
+5. When should Slowking spend another Slowking as a Super Psy Bolt target?
+6. When is Tantrum's 130 worth accepting Confusion?
+7. Which opposing effects currently stop Destined Fight, and which only stop
+   damage?
+8. What is the preferred simultaneous-win line when Destined Fight would give
+   both players their final Prize?
+9. How often should the exact list use a direct Fezandipiti Cruel Arrow to
+   remove Shaymin?
+10. Is powering Mega Kangaskhan for Rapid-Fire Combo ever correct outside a
+    forced recovery game?
+11. When should Meowth use Tuck Tail to remove its two-Prize liability?
+12. Which Dragapult variants remain favorable after accounting for Shaymin,
+    Watchtower, Hammer, and Special Red Card?
+13. Does the Pitch Black Bastiodon interaction materially change the required
+    Energy map or attacker package?
+14. Which copy target should Night Stretcher prioritize in fast, medium, and
+    long games?
+15. Which exact public states are sufficiently local and unambiguous to become
+    sparse auxiliary heuristic labels?
+
+
+SHORT TRAINING-HEURISTIC APPENDIX
+
+The companion research proposal is intentionally narrower than this human
+guide. It is stored at state/slowking_heuristic_research_v1.txt. It proposes
+only sparse, causal preferences from the current player-observable state and
+supplied legal actions. It abstains whenever a label would require hidden
+Prize contents, unknown future draws, opponent hand knowledge, assumed deck
+composition, recursive-Seek interpretation, matchup-name shortcuts, or
+outcome hindsight.
+
+This guide now belongs to the required future Slowking specialist, but it
+remains preparation-only. It does not change the active selector, runtime,
+matchup roster, service, or gradient scope. Archaludon ex remains strictly
+next, and Slowking cannot bootstrap until the exact corpus, route,
+combo-head-coverage, parameter-accounting, and terminal-preflight receipts
+pass.
+
+
+SOURCE SET
+
+Reviewed 2026-07-29. URLs are included so the evidence can be revisited.
+
+[S1] Owner-supplied exact-list image.
+     /Users/tsinzitari/.codex/attachments/8ddf80e7-404e-4e03-8c46-4604805796a3/codex-clipboard-866108ec-7429-4cb9-a20b-d998b51395ec.png
+     Primary identity evidence for the exact counts and displayed 136-match
+     snapshot; not a public mechanics source.
+
+[S2] Pokémon, Slowking, Stellar Crown 58.
+     https://www.pokemon.com/uk/pokemon-tcg/pokemon-cards/series/sv07/58
+     Official Slowking card record.
+
+[S3] Pokémon, 2026 North America International Championships TCG Masters.
+     https://www.pokemon.com/uk/play-pokemon/internationals/2026/north-america/tcg-masters
+     Official event page and published Slowking lists/results.
+
+[S4] Limitless TCG, Slowking archetype overview.
+     https://limitlesstcg.com/decks/322
+     Current tournament history, major finishes, and guide index.
+
+[S5] Limitless TCG, Slowking SCR 58.
+     https://limitlesstcg.com/cards/SCR/58
+     Current card text, format legality, and result links.
+
+[S6] Limitless TCG, Kyurem SFA 47.
+     https://limitlesstcg.com/cards/SFA/47
+     Current Trifrost text.
+
+[S7] Limitless TCG, Conkeldurr TWM 105.
+     https://limitlesstcg.com/cards/TWM/105
+     Current Gutsy Swing text and Slowking result links.
+
+[S8] Limitless TCG, Annihilape SSP 100.
+     https://limitlesstcg.com/cards/SSP/100
+     Current Tantrum and Destined Fight text.
+
+[S9] Limitless TCG, Smoochum SSP 75.
+     https://limitlesstcg.com/cards/SSP/75
+     Current Delightful Kiss text.
+
+[S10] Limitless TCG, Slowpoke SCR 57.
+      https://limitlesstcg.com/cards/SCR/57
+      Current Dangle Tail text.
+
+[S11] Limitless TCG, Telepathic Psychic Energy POR 88.
+      https://limitlesstcg.com/cards/POR/88
+      Current official English name and effect.
+
+[S12] Limitless TCG, Boomerang Energy TWM 166.
+      https://limitlesstcg.com/cards/TWM/166
+      Current return condition.
+
+[S13] Limitless TCG, Poké Pad POR 81.
+      https://limitlesstcg.com/cards/POR/81
+      Current non-Rule-Box Pokémon search text.
+
+[S14] Limitless TCG, Academy at Night SFA 54.
+      https://limitlesstcg.com/cards/SFA/54
+      Current top-deck placement text.
+
+[S15] Limitless TCG, Ciphermaniac's Codebreaking TEF 145.
+      https://limitlesstcg.com/cards/TEF/145
+      Current two-card top-stack text.
+
+[S16] Limitless TCG, Lillie's Determination MEG 119.
+      https://limitlesstcg.com/cards/MEG/119
+      Current shuffle-draw-six/eight text.
+
+[S17] Limitless TCG, Wondrous Patch PFL 94.
+      https://limitlesstcg.com/cards/PFL/94
+      Current Basic-Psychic-to-Benched-Psychic acceleration text.
+
+[S18] Limitless TCG, Night Stretcher SFA 61.
+      https://limitlesstcg.com/cards/SFA/61
+      Current Pokémon-or-Basic-Energy recovery text.
+
+[S19] Grant Manley, “Funny Slowking — A Deck That Can Dominate Major
+      Tournaments,” PokéBeach, 2026-07-10.
+      https://www.pokebeach.com/2026/07/funny-slowking-a-deck-that-can-dominate-major-tournaments
+      Current expert testing on Smoochum, Dragapult variants, disruption,
+      multi-Prize liabilities, and prize mapping. Public portion reviewed.
+
+[S20] Limitless TCG, Shaymin DRI 10.
+      https://limitlesstcg.com/cards/DRI/10
+      Current Flower Curtain text.
+
+[S21] Limitless TCG, Team Rocket's Watchtower ASC 210.
+      https://limitlesstcg.com/cards/ASC/210
+      Current Colorless Ability-denial text.
+
+[S22] Limitless TCG, Crustle DRI 12.
+      https://limitlesstcg.com/cards/DRI/12
+      Current Mysterious Rock Inn text.
+
+[S23] Pokémon, Pitch Black Battle Pass deck strategies, 2026-07-13.
+      https://www.pokemon.com/us/features/pokemon-tcg-mega-evolution-pitch-black-battle-pass-deck-strategies
+      Official contemporary strategy example for Telepathic Psychic Energy
+      setup and Wondrous Patch.
+
+[S24] Limitless TCG, Secret Box TWM 163.
+      https://limitlesstcg.com/cards/TWM/163
+      Current discard and four-category search text.
+
+[S25] Limitless TCG, Mega Kangaskhan ex MEG 104.
+      https://limitlesstcg.com/cards/MEG/104
+      Current Run Errand and Rapid-Fire Combo text.
+
+[S26] Limitless TCG, Latias ex SSP 76.
+      https://limitlesstcg.com/cards/SSP/76
+      Current Skyliner and Eon Blade text.
+
+[S27] Play Limitless, Slowking POR Standard 2026 matchups.
+      https://play.limitlesstcg.com/decks/slowking-scr/matchups?format=standard&rotation=2026&set=POR
+      Public online aggregate; mixed lists and not causal for this exact
+      sixty.
+
+[S28] Limitless TCG, Special Red Card CRI 113.
+      https://limitlesstcg.com/cards/CRI/113
+      Current hand-disruption text and tournament usage.
+
+[S29] Limitless TCG, Bastiodon PBL 62.
+      https://limitlesstcg.com/cards/PBL/62
+      Current Pitch Black Ancient Bulwark text.
+
+[S30] Pokémon, current Pokémon Trading Card Game rulebook.
+      https://www.pokemon.com/static-assets/content-assets/cms2/pdf/trading-card-game/rulebook/par_rulebook_en.pdf
+      Official setup, attacking, Knock Out, Prize, simultaneous-win, and
+      Sudden Death rules.
+
+[S31] Natalie Millar, “Slowking Deck Guide (Pokémon TCG),” TCGplayer,
+      2026-06-09.
+      https://www.tcgplayer.com/content/article/Slowking-Deck-Guide-Pok%C3%A9mon-TCG/80014a0e-4c46-413a-8113-7b6a0aa77c6c/
+      Current published engine guide for Run Errand, top stacking, Trifrost,
+      Boomerang, Hammer, Shaymin, Wondrous Patch, and Special Red Card. Its
+      displayed list differs from the owner's exact sixty.
+
+[S32] Limitless TCG, Counter Gain SSP 169.
+      https://limitlesstcg.com/cards/SSP/169
+      Current conditional cost-reduction text.
+
+[S33] Limitless TCG, Fezandipiti ex SFA 38.
+      https://limitlesstcg.com/cards/SFA/38
+      Current Flip the Script and Cruel Arrow text.
+
+[S34] Limitless TCG, Meowth ex POR 62.
+      https://limitlesstcg.com/cards/POR/62
+      Current Last-Ditch Catch and Tuck Tail text.
+
+
+EVIDENCE AND IDENTITY GAPS
+
+- No world-champion SME has approved this pilot.
+- The screenshot has no public source URL, filter definition, set codes, or
+  match rows. Its 66.2% over 136 matches is not independently reproducible.
+- The screenshot says “Telepath Psychic Energy”; the current official English
+  card record is “Telepathic Psychic Energy” POR 88.
+- The screenshot does not prove the exact Conkeldurr, Annihilape, Slowpoke,
+  Kyurem, or Trainer printings. This guide infers the identities used by
+  contemporary Slowking lists.
+- No authoritative full guide for this exact 4-4, 2 Annihilape, 2
+  Conkeldurr, 2 Smoochum, Counter Gain sixty was found.
+- Most detailed June guides use Metagross and sometimes Lillie's Clefairy,
+  Powerglass, Brave Bangle, or Switch. Their matchup conclusions cannot be
+  copied wholesale.
+- No controlled first-versus-second study for this exact list was found.
+- Public matchup aggregates mix list composition, skill, event size, and
+  best-of-one/best-of-three structures.
+- The reviewed POR aggregate predates Pitch Black. Bastiodon and other new
+  cards may change current matchups.
+- The exact interaction matrix for Destined Fight versus all current
+  effect-prevention cards still needs judge review.
+- The recursive Seek Inspiration question remains unresolved in the reviewed
+  authoritative sources and is intentionally excluded.
+- The direct Fezandipiti anti-Shaymin line is a deck-text inference, not a
+  validated matchup result.

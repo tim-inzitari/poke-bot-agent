@@ -1,0 +1,17 @@
+[Unit]
+Description=Exact plain Dragapult full33 guide-label audit
+After=pokebot-plain-dragapult-full33-corpus-v1.service
+ConditionPathExists=/mnt/Main/main/poke-bot-agent/archive/dragapult-guide-corpus-plain-full33-v1/CURRENT_DECK_GUIDE_CORPUS_READY.json
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/pokebot-expert-guide-src-v1
+ExecStart=/usr/bin/bash /home/admin/pokebot-expert-guide-src-v1/ops/elmo/audit_plain_dragapult_full33_labels.sh
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=400%
+MemoryHigh=12G
+MemoryMax=16G
+TimeoutStartSec=infinity

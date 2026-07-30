@@ -36,6 +36,15 @@ def _spawn_load_checkpoint(path: str) -> dict[str, object]:
     return {
         "config_path": str(Path(worker_config.__file__).resolve()),
         "expanded_heads_enabled": bool(loaded.cfg.expanded_heads_enabled),
+        "setup_board_outcome_head_enabled": bool(
+            loaded.cfg.setup_board_outcome_head_enabled
+        ),
+        "decision_fusion_dedicated_routes_enabled": bool(
+            loaded.cfg.decision_fusion_dedicated_routes_enabled
+        ),
+        "decision_fusion_dedicated_routes_runtime_enabled": bool(
+            loaded.cfg.decision_fusion_dedicated_routes_runtime_enabled
+        ),
         "matchup_adapter_format": str(loaded.cfg.matchup_adapter_format),
         "matchup_adapter_registry": loaded.cfg.matchup_adapter_registry,
     }
@@ -120,3 +129,74 @@ def test_v6_checkpoint_loads_in_gameplay_gate_spawn_worker(
     assert result["expanded_heads_enabled"] is True
     assert result["matchup_adapter_format"] == "poke-bot-matchup-adapter-bank-v6"
     assert result["matchup_adapter_registry"] == cfg.matchup_adapter_registry
+
+
+def test_legacy_checkpoint_ignores_ambient_v6_router_format(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg = _config()
+    model = build_model(
+        cfg,
+        aux_archetype_classes=2,
+        encoder_vocab=16,
+        decoder_vocab=16,
+    )
+    payload = checkpoint.build_checkpoint(model=model, model_config=cfg)
+    payload["model_config"].pop("matchup_adapter_format")
+    payload["model_config"].pop("matchup_adapter_registry")
+    path = checkpoint.atomic_torch_save(payload, tmp_path / "legacy-v5.pt")
+
+    # A fresh gameplay worker imports ModelConfig under the active candidate's
+    # Router Format 6 environment. The checkpoint's omitted historical field
+    # must still resolve to immutable Router Format 5.
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_FORMAT",
+        "poke-bot-matchup-adapter-bank-v6",
+    )
+    with WorkerPool(num_workers=1, recycle_games=1) as pool:
+        result = next(pool.imap_unordered(_spawn_load_checkpoint, [str(path)]))
+
+    assert result["matchup_adapter_format"] == (
+        "poke-bot-matchup-adapter-bank-v5-roster18"
+    )
+    assert result["matchup_adapter_registry"] is None
+
+
+def test_historical_checkpoint_ignores_ambient_future_head_flags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg = _config()
+    model = build_model(
+        cfg,
+        aux_archetype_classes=2,
+        encoder_vocab=16,
+        decoder_vocab=16,
+    )
+    payload = checkpoint.build_checkpoint(model=model, model_config=cfg)
+    for field in (
+        "setup_board_outcome_head_enabled",
+        "decision_fusion_dedicated_routes_enabled",
+        "decision_fusion_dedicated_routes_runtime_enabled",
+    ):
+        payload["model_config"].pop(field)
+    path = checkpoint.atomic_torch_save(
+        payload, tmp_path / "historical-before-fusion-v2.pt"
+    )
+
+    monkeypatch.setenv("POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED", "1")
+    monkeypatch.setenv(
+        "POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED", "1"
+    )
+    monkeypatch.setenv(
+        "POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED", "1"
+    )
+    with WorkerPool(num_workers=1, recycle_games=1) as pool:
+        result = next(pool.imap_unordered(_spawn_load_checkpoint, [str(path)]))
+
+    assert result["setup_board_outcome_head_enabled"] is False
+    assert result["decision_fusion_dedicated_routes_enabled"] is False
+    assert (
+        result["decision_fusion_dedicated_routes_runtime_enabled"] is False
+    )

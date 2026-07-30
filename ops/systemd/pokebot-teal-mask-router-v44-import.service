@@ -1,0 +1,21 @@
+[Unit]
+Description=Import audited Teal Mask router V44 as an inactive candidate
+Wants=network-online.target
+After=network-online.target
+OnSuccess=pokebot-next-specialist-prestage.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/specialist-handoff-current
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/specialist-handoff-current
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/import_inactive_router_candidate_from_elmo.py --host elmo --remote-root /mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-router-v44-combined --tree-output /home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster19-v44.inactive.json --audit-output /home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster19-v44.audit.json --roster state/matchup_adapter_roster.json --corpus-root /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic --promotion-receipt /home/inzi/poke-bot-agent/outputs/state/rare-route-assets-roster19-v44-ready.json --parent-receipt /home/inzi/poke-bot-agent/outputs/state/rare-route-assets-roster18-v42-ready.json --ready-archetype teal-mask-ogerpon-ex
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=5
+CPUQuota=100%
+MemoryHigh=2G
+MemoryMax=4G
+NoNewPrivileges=yes
+TimeoutStartSec=30m
+

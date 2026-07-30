@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 import zipfile
@@ -33,7 +34,7 @@ def _run(argv: list[str]) -> None:
 def stage_day(
     *,
     day: str,
-    python: Path,
+    kaggle: Path,
     host: str,
     remote_root: str,
     temporary_root: Path,
@@ -63,9 +64,7 @@ def stage_day(
         workspace = Path(raw)
         _run(
             [
-                str(python),
-                "-m",
-                "kaggle",
+                str(kaggle),
                 "datasets",
                 "download",
                 f"kaggle/{name}",
@@ -114,7 +113,19 @@ def stage_day(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--day", action="append", required=True)
-    parser.add_argument("--python", type=Path, required=True)
+    parser.add_argument(
+        "--kaggle",
+        type=Path,
+        help="Kaggle CLI executable (preferred over the deprecated --python)",
+    )
+    parser.add_argument(
+        "--python",
+        type=Path,
+        help=(
+            "Deprecated compatibility hint; its sibling kaggle executable "
+            "is used because the Kaggle package has no python -m entrypoint"
+        ),
+    )
     parser.add_argument("--host", default="elmo")
     parser.add_argument(
         "--remote-root",
@@ -126,11 +137,26 @@ def main() -> int:
         default=Path("/home/inzi/poke-bot-agent/outputs/tmp"),
     )
     args = parser.parse_args()
+    kaggle = args.kaggle
+    if kaggle is None and args.python is not None:
+        sibling = args.python.expanduser().resolve().with_name("kaggle")
+        if sibling.is_file():
+            kaggle = sibling
+    if kaggle is None:
+        discovered = shutil.which("kaggle")
+        if discovered:
+            kaggle = Path(discovered)
+    if kaggle is None or not kaggle.expanduser().resolve().is_file():
+        parser.error(
+            "a Kaggle CLI executable is required via --kaggle, the sibling "
+            "of --python, or PATH"
+        )
+    kaggle = kaggle.expanduser().resolve()
     args.temporary_root.mkdir(parents=True, exist_ok=True)
     for day in args.day:
         stage_day(
             day=str(day),
-            python=args.python.expanduser().resolve(),
+            kaggle=kaggle,
             host=str(args.host),
             remote_root=str(args.remote_root),
             temporary_root=args.temporary_root.expanduser().resolve(),

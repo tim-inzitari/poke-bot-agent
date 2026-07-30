@@ -34,6 +34,9 @@ from .blackwell_heads import (
 )
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .device_corpus import DEFAULT_MIN_FREE_GIB, DeviceResidentBootstrapCorpus
+from .matchup_adapters import (
+    ADAPTER_CHECKPOINT_FORMAT as MATCHUP_ADAPTER_V5_FORMAT,
+)
 from .matchup_adapters import HIDDEN_DIM as MATCHUP_ADAPTER_HIDDEN_DIM
 from .matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
 from .matchup_adapter_activation import (
@@ -52,11 +55,19 @@ from .model import (
     build_model,
 )
 from .strategic_losses import (
+    GUIDE_OUTCOME_BACKED_HEAD_IDS,
     canonical_expanded_loss_weights,
     expanded_strategic_losses,
+    guide_outcome_backed_loss_weights,
     resident_expanded_strategic_losses,
 )
-from .strategic_heads import EXPANDED_STRATEGIC_SCHEMA, TARGET_SCHEMA_DIGEST
+from .setup_board_outcome import setup_board_outcome_loss
+from .strategic_heads import (
+    EXPANDED_STRATEGIC_KEY,
+    EXPANDED_STRATEGIC_SCHEMA,
+    TARGET_SCHEMA_DIGEST,
+    validate_expanded_strategic_labels,
+)
 from .strategic_schedule import EXPANDED_HEAD_IDS, EXPANDED_SCHEDULE_SCHEMA
 
 # Distinct named belief + Blackwell strategy heads — warm-start may omit only
@@ -65,6 +76,13 @@ BELIEF_AUX_HEAD_KEY_PREFIXES: tuple[str, ...] = (
     "opp_hand_head.",
     "opp_remainder_head.",
 ) + BLACKWELL_STRATEGY_HEAD_PREFIXES
+
+GUIDE_TRAINING_MODE_LEGACY = "legacy_policy_ce_v1"
+GUIDE_TRAINING_MODE_STRATEGIC = "strategic_curriculum_v1"
+GUIDE_TRAINING_MODES = frozenset(
+    {GUIDE_TRAINING_MODE_LEGACY, GUIDE_TRAINING_MODE_STRATEGIC}
+)
+SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT = 0.025
 
 
 @dataclass
@@ -87,12 +105,26 @@ class TrainConfig:
     #: Training-only soft strategy guide. This must remain zero for core and
     #: non-Alakazam runs; the specialist launcher owns the explicit opt-in.
     alakazam_guide_loss_weight: float = 0.0
+    #: Already-started runs retain direct policy CE. Future runs beginning
+    #: with Archaludon use confidence only to scale observed-target losses.
+    current_deck_guide_training_mode: str = GUIDE_TRAINING_MODE_LEGACY
+    #: Ordinary observed-target weight for the future setup/bench branch.
+    setup_board_outcome_loss_weight: float = (
+        SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
+    )
+    #: Checksum-gated future curriculum artifacts, recorded in checkpoints.
+    current_deck_guide_curriculum_spec: str = ""
+    current_deck_guide_head_role_map: str = ""
+    current_deck_guide_curriculum_validation_receipt: str = ""
     #: Scope B (Blackwell Hammer) only — keep 0.0 for core / generic bootstrap.
     lethal_threat_loss_weight: float = 0.0
     prize_race_loss_weight: float = 0.0
     #: Additive V6 auxiliary weights keyed by canonical expanded head id.
     #: Empty/all-zero preserves the exact V5 optimizer and forward path.
     expanded_head_loss_weights: dict[str, float] = field(default_factory=dict)
+    #: One clean-boundary, receipt-backed loss rebalance may change inherited
+    #: expanded-head multipliers without changing tensors or optimizer state.
+    expanded_head_weight_migration_reason: str = ""
     grad_clip: float = 1.0
     amp: bool = True
     seed: int = 0
@@ -174,6 +206,8 @@ class BatchMetrics:
     opp_hand_loss: float = 0.0
     opp_remainder_loss: float = 0.0
     alakazam_guide_loss: float = 0.0
+    guide_strategic_curriculum_loss: float = 0.0
+    setup_board_outcome_loss: float = 0.0
     lethal_threat_loss: float = 0.0
     prize_race_loss: float = 0.0
     history_identity_loss: float = 0.0
@@ -193,6 +227,8 @@ class BatchMetrics:
     n_matchup_adapter_rows: int = 0
     n_teacher_policy_rows: int = 0
     expanded_head_metrics: dict[str, Any] = field(default_factory=dict)
+    guide_curriculum_head_metrics: dict[str, Any] = field(default_factory=dict)
+    setup_board_outcome_metrics: dict[str, Any] = field(default_factory=dict)
     # Backward-compatible pipeline signal consumed by pure_rl.aborts. It is
     # deliberately the raw mean absolute advantage, not a signed/whitened mean.
     mean_advantage: float = 0.0
@@ -593,7 +629,8 @@ def prepare_matchup_adapter_isolation_guard(
         for decision in sequence.decisions:
             active_routes.add(training_route_for_decision(sequence, decision))
     if not active_routes or any(
-        route < 0 or route >= len(EXPERT_IDS) for route in active_routes
+        route < 0 or route >= len(model.matchup_adapter_bank.experts)
+        for route in active_routes
     ):
         raise RuntimeError("adapter batch has no valid oracle-ticketed route")
 
@@ -779,6 +816,322 @@ def masked_alakazam_guide_ce(
     return torch.stack(losses).mean(), len(losses)
 
 
+def canonical_guide_training_mode(value: str) -> str:
+    """Normalize the explicit guide semantics without guessing from weights."""
+
+    mode = str(value or "").strip() or GUIDE_TRAINING_MODE_LEGACY
+    if mode not in GUIDE_TRAINING_MODES:
+        raise ValueError(f"unknown current-deck guide training mode: {mode!r}")
+    return mode
+
+
+def assert_strategic_curriculum_model_contract(
+    model: TemporalCabtTransformer,
+    *,
+    setup_board_outcome_loss_weight: float,
+) -> None:
+    """Fail before a future curriculum can silently use the legacy model path."""
+
+    if not math.isfinite(float(setup_board_outcome_loss_weight)) or not math.isclose(
+        float(setup_board_outcome_loss_weight),
+        SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise ValueError(
+            "strategic curriculum requires setup-board base loss weight 0.025"
+        )
+    if str(getattr(model, "decision_context", "")) != "history":
+        raise ValueError(
+            "strategic curriculum requires temporal history decision context"
+        )
+    required_flags = {
+        "expanded_heads_enabled": bool(
+            getattr(model, "expanded_heads_enabled", False)
+        ),
+        "setup_board_outcome_head_enabled": bool(
+            getattr(model, "setup_board_outcome_head_enabled", False)
+        ),
+        "decision_fusion_enabled": bool(
+            getattr(model, "decision_fusion_enabled", False)
+        ),
+        "decision_fusion_dedicated_routes_enabled": bool(
+            getattr(model, "decision_fusion_dedicated_routes_enabled", False)
+        ),
+    }
+    missing = sorted(name for name, enabled in required_flags.items() if not enabled)
+    if missing:
+        raise ValueError(
+            "strategic curriculum model contract is incomplete: "
+            f"missing={missing}"
+        )
+
+
+def assert_strategic_curriculum_receipt_contract(
+    *,
+    specialist_id: str,
+    curriculum_spec: str,
+    head_role_map: str,
+    validation_receipt: str,
+) -> None:
+    """Require checksum-linked immutable artifacts at every training entry."""
+
+    paths = {
+        "curriculum_spec": Path(curriculum_spec).expanduser().resolve(),
+        "head_role_map": Path(head_role_map).expanduser().resolve(),
+        "validation_receipt": Path(validation_receipt).expanduser().resolve(),
+    }
+    if any(not value.is_file() for value in paths.values()):
+        missing = sorted(
+            name for name, value in paths.items() if not value.is_file()
+        )
+        raise ValueError(
+            "strategic curriculum receipt gate is incomplete: "
+            f"missing={missing}"
+        )
+    try:
+        spec = json.loads(paths["curriculum_spec"].read_text(encoding="utf-8"))
+        role_map = json.loads(paths["head_role_map"].read_text(encoding="utf-8"))
+        receipt = json.loads(
+            paths["validation_receipt"].read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("strategic curriculum receipt gate is unreadable") from exc
+    specialist = str(specialist_id or "").strip().casefold()
+    if (
+        not isinstance(spec, dict)
+        or spec.get("schema")
+        != "poke_bot.future_specialist_strategic_curriculum/v1"
+        or spec.get("training_mode") != GUIDE_TRAINING_MODE_STRATEGIC
+        or str(spec.get("specialist_id") or "").strip().casefold()
+        != specialist
+        or spec.get("direct_policy_cross_entropy_allowed") is not False
+        or spec.get("replace_observed_outcome_targets_allowed") is not False
+        or not isinstance(role_map, dict)
+        or role_map.get("schema")
+        != "poke_bot.future_specialist_strategic_head_roles/v1"
+        or str(role_map.get("specialist_id") or "").strip().casefold()
+        != specialist
+        or not isinstance(receipt, dict)
+        or receipt.get("schema")
+        != "poke_bot.future_specialist_strategic_curriculum_validation/v1"
+        or receipt.get("status") != "validated"
+        or receipt.get("training_mode") != GUIDE_TRAINING_MODE_STRATEGIC
+        or str(receipt.get("specialist_id") or "").strip().casefold()
+        != specialist
+    ):
+        raise ValueError("strategic curriculum receipt gate is invalid")
+
+    def digest(path: Path) -> str:
+        return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+    if (
+        str(receipt.get("curriculum_spec_sha256") or "")
+        != digest(paths["curriculum_spec"])
+        or str(receipt.get("head_role_map_sha256") or "")
+        != digest(paths["head_role_map"])
+    ):
+        raise ValueError("strategic curriculum receipt digest mismatch")
+    checks = receipt.get("checks")
+    required_checks = (
+        "guide_supervision_terminates_at_strategic_heads",
+        "direct_policy_cross_entropy_absent",
+        "observed_outcome_targets_not_replaced",
+        "all_training_paths_use_the_declared_mode",
+    )
+    if not isinstance(checks, dict) or any(
+        checks.get(name) is not True for name in required_checks
+    ):
+        raise ValueError("strategic curriculum receipt checks are incomplete")
+
+
+def _strategic_curriculum_contract_record(
+    cfg: TrainConfig,
+) -> dict[str, Any]:
+    """Serialize the immutable future loss route without guide actions."""
+
+    if (
+        canonical_guide_training_mode(cfg.current_deck_guide_training_mode)
+        != GUIDE_TRAINING_MODE_STRATEGIC
+    ):
+        raise ValueError("strategic curriculum record requested for legacy mode")
+
+    def artifact(path_value: str) -> dict[str, str]:
+        path = Path(path_value).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(
+                f"strategic curriculum checkpoint artifact is missing: {path}"
+            )
+        return {
+            "path": str(path),
+            "sha256": "sha256:"
+            + hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+
+    return {
+        "schema": "poke_bot.strategic_guide_training_contract/v1",
+        "mode": GUIDE_TRAINING_MODE_STRATEGIC,
+        "guide_multiplier": float(cfg.alakazam_guide_loss_weight),
+        "setup_board_outcome_base_loss_weight": float(
+            cfg.setup_board_outcome_loss_weight
+        ),
+        "observed_target_heads": [
+            *GUIDE_OUTCOME_BACKED_HEAD_IDS,
+            "setup_board_outcome",
+        ],
+        "direct_policy_cross_entropy": False,
+        "guide_preferred_action_consumed": False,
+        "observed_outcome_targets_replaced": False,
+        "artifacts": {
+            "curriculum_spec": artifact(
+                cfg.current_deck_guide_curriculum_spec
+            ),
+            "head_role_map": artifact(
+                cfg.current_deck_guide_head_role_map
+            ),
+            "validation_receipt": artifact(
+                cfg.current_deck_guide_curriculum_validation_receipt
+            ),
+        },
+    }
+
+
+def _strategic_curriculum_training_record(
+    *,
+    cfg: TrainConfig,
+    train_metrics: BatchMetrics,
+    validation_metrics: BatchMetrics,
+) -> dict[str, Any]:
+    """Serialize future loss telemetry without recording guide actions."""
+
+    def metrics(value: BatchMetrics) -> dict[str, Any]:
+        return {
+            "guide_conditioned_observed_loss": float(
+                value.guide_strategic_curriculum_loss
+            ),
+            "setup_board_outcome_weighted_loss": float(
+                value.setup_board_outcome_loss
+            ),
+            "guide_rows": int(value.n_alakazam_guide_rows),
+            "head_metrics": copy.deepcopy(
+                value.guide_curriculum_head_metrics
+            ),
+            "setup_metrics": copy.deepcopy(
+                value.setup_board_outcome_metrics
+            ),
+        }
+
+    return {
+        "schema": "poke_bot.strategic_guide_training/v1",
+        "contract": _strategic_curriculum_contract_record(cfg),
+        "train": metrics(train_metrics),
+        "validation": metrics(validation_metrics),
+    }
+
+
+def count_usable_strategic_guide_rows(
+    sequences: Sequence[GameSequence],
+) -> int:
+    """Count confidence-bearing rows without reading guide action preferences."""
+
+    usable = 0
+    for game in sequences:
+        for decision in game.decisions:
+            for stage in decision.policy_stages:
+                confidence = float(getattr(stage, "guide_confidence", 0.0))
+                if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+                    raise ValueError(
+                        "strategic guide confidence must be finite in [0, 1]"
+                    )
+                if int(stage.options.num_words) >= 1 and confidence > 0.0:
+                    usable += 1
+    return usable
+
+
+def _setup_board_targets_from_aux(
+    decision_aux: Sequence[dict[str, Any]],
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Materialize only the existing observed resource/outcome labels."""
+
+    resource_targets: list[list[float]] = []
+    resource_masks: list[list[bool]] = []
+    outcome_targets: list[int] = []
+    outcome_masks: list[bool] = []
+    for aux in decision_aux:
+        raw = dict(aux or {}).get(EXPANDED_STRATEGIC_KEY)
+        if raw is None:
+            resource_targets.append([0.0] * 6)
+            resource_masks.append([False] * 6)
+            outcome_targets.append(0)
+            outcome_masks.append(False)
+            continue
+        target = validate_expanded_strategic_labels(raw)
+        resource = dict(target["resource_forecast"])
+        resource_targets.append(
+            [float(value) for value in resource["values"]]
+        )
+        resource_masks.append([bool(value) for value in resource["mask"]])
+        raw_outcome = target.get("outcome_class")
+        outcome_targets.append(0 if raw_outcome is None else int(raw_outcome))
+        outcome_masks.append(raw_outcome is not None)
+    return (
+        torch.tensor(resource_targets, device=device, dtype=dtype),
+        torch.tensor(resource_masks, device=device, dtype=torch.bool),
+        torch.tensor(outcome_targets, device=device, dtype=torch.long),
+        torch.tensor(outcome_masks, device=device, dtype=torch.bool),
+    )
+
+
+def _decision_guide_confidences(
+    *,
+    row_confidences: Sequence[float],
+    decision_keys: Sequence[tuple[int, int]],
+    stage_indices: Sequence[int],
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Put each decision's maximum stage confidence on its stage-zero row."""
+
+    if not (
+        len(row_confidences) == len(decision_keys) == len(stage_indices)
+    ):
+        raise ValueError("guide confidence decision rows do not align")
+    maxima: dict[tuple[int, int], float] = {}
+    for key, confidence in zip(decision_keys, row_confidences):
+        maxima[key] = max(maxima.get(key, 0.0), float(confidence))
+    values = [
+        maxima[key] if int(stage_index) == 0 else 0.0
+        for key, stage_index in zip(decision_keys, stage_indices)
+    ]
+    return torch.tensor(values, device=device, dtype=dtype)
+
+
+def _resident_decision_guide_confidences(
+    sample_confidences: torch.Tensor,
+    sample_state_rows: torch.Tensor,
+    *,
+    decisions: int,
+) -> torch.Tensor:
+    """Reduce factorized-stage confidence to one causal decision weight."""
+
+    result = torch.zeros(
+        int(decisions),
+        device=sample_confidences.device,
+        dtype=sample_confidences.dtype,
+    )
+    result.scatter_reduce_(
+        0,
+        sample_state_rows.to(dtype=torch.long),
+        sample_confidences,
+        reduce="amax",
+        include_self=True,
+    )
+    return result
+
+
 def count_usable_alakazam_guide_rows(
     sequences: Sequence[GameSequence],
 ) -> int:
@@ -792,7 +1145,7 @@ def count_usable_alakazam_guide_rows(
                 n = int(stage.options.num_words)
                 if target >= n:
                     raise ValueError(
-                        "Alakazam guide target is not aligned to policy options"
+                        "current-deck guide target is not aligned to policy options"
                     )
                 if n >= 2 and target >= 0 and confidence > 0.0:
                     usable += 1
@@ -808,6 +1161,10 @@ def sequence_losses(
     opp_hand_weight: float = 0.2,
     opp_remainder_weight: float = 0.15,
     alakazam_guide_weight: float = 0.0,
+    current_deck_guide_training_mode: str = GUIDE_TRAINING_MODE_LEGACY,
+    setup_board_outcome_loss_weight: float = (
+        SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
+    ),
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
@@ -824,6 +1181,8 @@ def sequence_losses(
         opp_hand_weight=opp_hand_weight,
         opp_remainder_weight=opp_remainder_weight,
         alakazam_guide_weight=alakazam_guide_weight,
+        current_deck_guide_training_mode=current_deck_guide_training_mode,
+        setup_board_outcome_loss_weight=setup_board_outcome_loss_weight,
         lethal_threat_weight=lethal_threat_weight,
         prize_race_weight=prize_race_weight,
         expanded_head_weights=expanded_head_weights,
@@ -842,6 +1201,10 @@ def batch_losses(
     opp_hand_weight: float = 0.2,
     opp_remainder_weight: float = 0.15,
     alakazam_guide_weight: float = 0.0,
+    current_deck_guide_training_mode: str = GUIDE_TRAINING_MODE_LEGACY,
+    setup_board_outcome_loss_weight: float = (
+        SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
+    ),
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
@@ -869,9 +1232,10 @@ def batch_losses(
     Belief card multilabel losses are attached with zero/masked defaults so
     late head add does not break the training loop when labels are absent.
 
-    Alakazam guide scores are collapsed during featurization to a unique-best
-    index and bounded confidence, then distilled with masked CE. The default
-    weight is zero, so core and older feature shards preserve exact behavior.
+    Already-started guide runs collapse scores to a unique-best action and use
+    masked CE. ``strategic_curriculum_v1`` never reads that action preference:
+    confidence scales only losses whose direction comes from observed causal
+    strategic/setup targets.
 
     Scope B (``lethal_threat`` / ``prize_race``) losses are masked when labels
     are absent and default-weight 0 so core / generic trains ignore them.
@@ -885,10 +1249,31 @@ def batch_losses(
     the legacy detached-online behavior. Optional per-batch whitening and a
     small entropy bonus stabilize high-SPS pure RL.
     """
-    if float(alakazam_guide_weight) < 0.0:
-        raise ValueError("Alakazam guide loss weight cannot be negative")
+    if not math.isfinite(float(alakazam_guide_weight)) or float(
+        alakazam_guide_weight
+    ) < 0.0:
+        raise ValueError(
+            "current-deck guide loss weight must be finite and nonnegative"
+        )
+    guide_training_mode = canonical_guide_training_mode(
+        current_deck_guide_training_mode
+    )
+    strategic_curriculum = (
+        guide_training_mode == GUIDE_TRAINING_MODE_STRATEGIC
+    )
+    if strategic_curriculum:
+        assert_strategic_curriculum_model_contract(
+            model,
+            setup_board_outcome_loss_weight=setup_board_outcome_loss_weight,
+        )
+        if matchup_adapter_training:
+            raise ValueError(
+                "strategic guide curriculum cannot run in adapter-only fitting"
+            )
     expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
-    use_expanded_heads = any(weight > 0.0 for weight in expanded_weights.values())
+    use_expanded_heads = strategic_curriculum or any(
+        weight > 0.0 for weight in expanded_weights.values()
+    )
     if use_expanded_heads and not bool(
         getattr(model, "expanded_heads_enabled", False)
     ):
@@ -961,10 +1346,17 @@ def batch_losses(
     aux_labels: list[int] = []
     decision_aux: list[dict[str, Any]] = []
     expanded_stage_indices: list[int] = []
+    expanded_decision_keys: list[tuple[int, int]] = []
     matchup_routes: list[int] = []
     guide_target_rows: list[int] = []
     guide_confidence_rows: list[float] = []
-    use_alakazam_guide = float(alakazam_guide_weight) > 0.0
+    setup_select_context_rows: list[int] = []
+    setup_selected_is_stop_rows: list[bool] = []
+    use_legacy_guide = bool(
+        float(alakazam_guide_weight) > 0.0
+        and guide_training_mode == GUIDE_TRAINING_MODE_LEGACY
+    )
+    use_guide_confidence = bool(strategic_curriculum or use_legacy_guide)
     spatial_offset = 0
     for game_index, g in enumerate(games):
         val = float(g.value)
@@ -1069,13 +1461,22 @@ def batch_losses(
                 awr_baseline_keys.append((id(g), t, stage_i))
                 decision_aux.append(dict(d.aux_labels or {}))
                 expanded_stage_indices.append(stage_i)
+                expanded_decision_keys.append((game_index, t))
                 matchup_routes.append(matchup_route)
-                if use_alakazam_guide:
+                if use_guide_confidence:
+                    guide_confidence_rows.append(
+                        float(getattr(stage, "guide_confidence", 0.0))
+                    )
+                if use_legacy_guide:
                     guide_target_rows.append(
                         int(getattr(stage, "guide_target_index", -1))
                     )
-                    guide_confidence_rows.append(
-                        float(getattr(stage, "guide_confidence", 0.0))
+                if strategic_curriculum:
+                    setup_select_context_rows.append(
+                        int(getattr(stage, "select_context", -1))
+                    )
+                    setup_selected_is_stop_rows.append(
+                        bool(getattr(stage, "selected_is_stop", False))
                     )
                 last_valid_row = len(valid_options) - 1
         label = _archetype_label(g.opp_archetype)
@@ -1157,7 +1558,7 @@ def batch_losses(
     selected_log_p = log_p[torch.arange(k, device=device), target_idx]
     policy_selected_nll = float((-selected_log_p.detach()).mean().item())
 
-    if use_alakazam_guide:
+    if use_legacy_guide:
         guide_loss, n_guide_rows = masked_alakazam_guide_ce(
             log_p,
             guide_target_rows,
@@ -1425,6 +1826,10 @@ def batch_losses(
     )
     expanded_loss = total.sum() * 0.0
     expanded_metrics: dict[str, Any] = {}
+    guide_strategic_curriculum_loss = total.sum() * 0.0
+    guide_curriculum_metrics: dict[str, Any] = {}
+    setup_loss = total.sum() * 0.0
+    setup_metrics: dict[str, Any] = {}
     if use_expanded_heads:
         expanded_loss, expanded_metric_record = expanded_strategic_losses(
             option_outputs=expanded_option_outputs,
@@ -1438,6 +1843,87 @@ def batch_losses(
         )
         total = total + expanded_loss
         expanded_metrics = expanded_metric_record.as_dict()
+    if strategic_curriculum:
+        if not (
+            len(guide_confidence_rows)
+            == len(setup_select_context_rows)
+            == len(setup_selected_is_stop_rows)
+            == k
+        ):
+            raise AssertionError(
+                "strategic curriculum metadata does not align with policy rows"
+            )
+        guide_confidence = torch.tensor(
+            guide_confidence_rows,
+            device=device,
+            dtype=option_hidden.dtype,
+        )
+        decision_guide_confidence = _decision_guide_confidences(
+            row_confidences=guide_confidence_rows,
+            decision_keys=expanded_decision_keys,
+            stage_indices=expanded_stage_indices,
+            device=device,
+            dtype=option_hidden.dtype,
+        )
+        (
+            guide_strategic_curriculum_loss,
+            guide_curriculum_metric_record,
+        ) = expanded_strategic_losses(
+            option_outputs=expanded_option_outputs,
+            state_outputs=expanded_state_outputs,
+            target_indices=target_idx,
+            value_targets=v_target,
+            option_counts=valid_n,
+            stage_indices=expanded_stage_indices,
+            decision_aux=decision_aux,
+            weights=guide_outcome_backed_loss_weights(),
+            row_weights=guide_confidence,
+            state_row_weights=decision_guide_confidence,
+        )
+        resource_target, resource_mask, outcome_target, outcome_mask = (
+            _setup_board_targets_from_aux(
+                decision_aux,
+                device=device,
+                dtype=option_hidden.dtype,
+            )
+        )
+        setup_prediction = model.setup_board_outcome_logits(option_hidden)
+        setup_loss, setup_metric_record = setup_board_outcome_loss(
+            predictions=setup_prediction,
+            selected_indices=target_idx,
+            option_counts=torch.as_tensor(
+                valid_n, device=device, dtype=torch.long
+            ),
+            select_contexts=torch.tensor(
+                setup_select_context_rows,
+                device=device,
+                dtype=torch.long,
+            ),
+            selected_is_stop=torch.tensor(
+                setup_selected_is_stop_rows,
+                device=device,
+                dtype=torch.bool,
+            ),
+            resource_targets=resource_target,
+            resource_masks=resource_mask,
+            outcome_targets=outcome_target,
+            outcome_masks=outcome_mask,
+            guide_confidences=guide_confidence,
+            base_loss_weight=setup_board_outcome_loss_weight,
+            guide_loss_weight=alakazam_guide_weight,
+        )
+        total = (
+            total
+            + float(alakazam_guide_weight)
+            * guide_strategic_curriculum_loss
+            + setup_loss
+        )
+        guide_loss = guide_strategic_curriculum_loss
+        n_guide_rows = int(guide_confidence.gt(0.0).sum().item())
+        guide_curriculum_metrics = (
+            guide_curriculum_metric_record.as_dict()
+        )
+        setup_metrics = setup_metric_record.as_dict()
     preds = logits_all.argmax(dim=1)
     if prediction_sink is not None:
         prediction_sink.extend(int(x) for x in preds.detach().cpu().tolist())
@@ -1447,6 +1933,10 @@ def batch_losses(
         value_loss=float(v_loss.detach().item()),
         aux_loss=float(aux_loss.detach().item()),
         alakazam_guide_loss=float(guide_loss.detach().item()),
+        guide_strategic_curriculum_loss=float(
+            guide_strategic_curriculum_loss.detach().item()
+        ),
+        setup_board_outcome_loss=float(setup_loss.detach().item()),
         opp_hand_loss=float(opp_hand_loss.detach().item()),
         opp_remainder_loss=float(opp_remainder_loss.detach().item()),
         lethal_threat_loss=float(lethal_threat_loss.detach().item()),
@@ -1471,6 +1961,8 @@ def batch_losses(
             else 0
         ),
         expanded_head_metrics=expanded_metrics,
+        guide_curriculum_head_metrics=guide_curriculum_metrics,
+        setup_board_outcome_metrics=setup_metrics,
         mean_advantage=awr_mean_adv,
         raw_advantage_mean=raw_adv_mean,
         raw_advantage_std=raw_adv_std,
@@ -1542,6 +2034,7 @@ def device_batch_losses(
     sample_ids: torch.Tensor,
     *,
     value_weight: float = 1.0,
+    current_deck_guide_training_mode: str = GUIDE_TRAINING_MODE_LEGACY,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Hard-target stateless loss with every input already on the device.
 
@@ -1551,6 +2044,13 @@ def device_batch_losses(
     """
     if model.decision_context != "stateless":
         raise ValueError("device-resident bootstrap requires stateless context")
+    if (
+        canonical_guide_training_mode(current_deck_guide_training_mode)
+        == GUIDE_TRAINING_MODE_STRATEGIC
+    ):
+        raise ValueError(
+            "strategic curriculum requires the resident temporal training path"
+        )
     board, options, counts, target_idx, v_target = corpus.batch(sample_ids)
     k = int(target_idx.numel())
     if k <= 0:
@@ -1590,6 +2090,10 @@ def device_temporal_batch_losses(
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     alakazam_guide_weight: float = 0.0,
+    current_deck_guide_training_mode: str = GUIDE_TRAINING_MODE_LEGACY,
+    setup_board_outcome_loss_weight: float = (
+        SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
+    ),
     expanded_head_weights: Optional[dict[str, float]] = None,
     matchup_adapter_route: int | None = None,
     teacher_policy_targets: Optional[torch.Tensor] = None,
@@ -1604,8 +2108,19 @@ def device_temporal_batch_losses(
     """
     if model.decision_context != "history":
         raise ValueError("temporal resident loss requires history context")
+    guide_training_mode = canonical_guide_training_mode(
+        current_deck_guide_training_mode
+    )
+    strategic_curriculum = (
+        guide_training_mode == GUIDE_TRAINING_MODE_STRATEGIC
+    )
+    if strategic_curriculum:
+        assert_strategic_curriculum_model_contract(
+            model,
+            setup_board_outcome_loss_weight=setup_board_outcome_loss_weight,
+        )
     expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
-    use_expanded_heads = any(
+    use_expanded_heads = strategic_curriculum or any(
         weight > 0.0 for weight in expanded_weights.values()
     )
     if use_expanded_heads:
@@ -1774,6 +2289,9 @@ def device_temporal_batch_losses(
         value_weight=value_weight,
         n_games=int(game_ids.numel()),
     )
+    guide_loss = logits.sum() * 0.0
+    guide_strategic_curriculum_loss = logits.sum() * 0.0
+    setup_loss = logits.sum() * 0.0
     sample_ids: Optional[torch.Tensor] = None
     if float(teacher_policy_weight) > 0.0:
         assert teacher_policy_targets is not None
@@ -1899,6 +2417,114 @@ def device_temporal_batch_losses(
         total = total + expanded_loss
         metrics.expanded_head_metrics = expanded_metric_record.as_dict()
         metrics.total_loss = float(total.detach().item())
+    if strategic_curriculum:
+        if corpus.guide_confidence is None:
+            raise ValueError(
+                "strategic curriculum requires resident guide confidence rows"
+            )
+        if corpus.select_context is None or corpus.selected_is_stop is None:
+            raise ValueError(
+                "strategic curriculum requires resident setup context metadata"
+            )
+        guide_confidence = corpus.guide_confidence.index_select(
+            0, sample_ids
+        ).to(dtype=option_hidden.dtype)
+        if not bool(torch.isfinite(guide_confidence).all()) or bool(
+            ((guide_confidence < 0.0) | (guide_confidence > 1.0)).any()
+        ):
+            raise ValueError(
+                "resident strategic guide confidence is outside [0, 1]"
+            )
+        decision_guide_confidence = _resident_decision_guide_confidences(
+            guide_confidence,
+            sample_state_rows,
+            decisions=decisions,
+        )
+        (
+            guide_strategic_curriculum_loss,
+            guide_curriculum_metric_record,
+        ) = resident_expanded_strategic_losses(
+            option_outputs=expanded_option_outputs,
+            state_outputs=expanded_state_outputs,
+            target_indices=target_idx,
+            option_counts=counts,
+            target_tensors=corpus.tensor_state(),
+            sample_ids=sample_ids,
+            decision_ids=decision_ids,
+            weights=guide_outcome_backed_loss_weights(),
+            sample_row_weights=guide_confidence,
+            decision_row_weights=decision_guide_confidence,
+        )
+        setup_required = (
+            corpus.strategic_resource_forecast_target,
+            corpus.strategic_resource_forecast_mask,
+            corpus.strategic_outcome_class_target,
+            corpus.strategic_outcome_class_mask,
+        )
+        if any(value is None for value in setup_required):
+            raise ValueError(
+                "strategic curriculum lacks packed setup observed targets"
+            )
+        assert corpus.strategic_resource_forecast_target is not None
+        assert corpus.strategic_resource_forecast_mask is not None
+        assert corpus.strategic_outcome_class_target is not None
+        assert corpus.strategic_outcome_class_mask is not None
+        setup_loss, setup_metric_record = setup_board_outcome_loss(
+            predictions=model.setup_board_outcome_logits(option_hidden),
+            selected_indices=target_idx,
+            option_counts=counts,
+            select_contexts=corpus.select_context.index_select(
+                0, sample_ids
+            ),
+            selected_is_stop=corpus.selected_is_stop.index_select(
+                0, sample_ids
+            ),
+            resource_targets=(
+                corpus.strategic_resource_forecast_target.index_select(
+                    0, board_ids
+                ).to(dtype=option_hidden.dtype)
+            ),
+            resource_masks=(
+                corpus.strategic_resource_forecast_mask.index_select(
+                    0, board_ids
+                )
+            ),
+            outcome_targets=(
+                corpus.strategic_outcome_class_target.index_select(
+                    0, board_ids
+                )
+            ),
+            outcome_masks=(
+                corpus.strategic_outcome_class_mask.index_select(
+                    0, board_ids
+                )
+            ),
+            guide_confidences=guide_confidence,
+            base_loss_weight=setup_board_outcome_loss_weight,
+            guide_loss_weight=alakazam_guide_weight,
+        )
+        total = (
+            total
+            + float(alakazam_guide_weight)
+            * guide_strategic_curriculum_loss
+            + setup_loss
+        )
+        guide_loss = guide_strategic_curriculum_loss
+        metrics.alakazam_guide_loss = float(guide_loss.detach().item())
+        metrics.guide_strategic_curriculum_loss = float(
+            guide_strategic_curriculum_loss.detach().item()
+        )
+        metrics.setup_board_outcome_loss = float(
+            setup_loss.detach().item()
+        )
+        metrics.n_alakazam_guide_rows = int(
+            guide_confidence.gt(0.0).sum().item()
+        )
+        metrics.guide_curriculum_head_metrics = (
+            guide_curriculum_metric_record.as_dict()
+        )
+        metrics.setup_board_outcome_metrics = setup_metric_record.as_dict()
+        metrics.total_loss = float(total.detach().item())
     if not auxiliary_targets_enabled:
         return total, metrics
 
@@ -1911,7 +2537,6 @@ def device_temporal_batch_losses(
     guide_log_p = torch.nan_to_num(
         F.log_softmax(logits, dim=-1), neginf=0.0
     )
-    guide_loss = guide_log_p.sum() * 0.0
 
     n_archetype_rows = 0
     if corpus.sample_aux_class is not None:
@@ -2002,6 +2627,8 @@ def device_temporal_batch_losses(
 
     n_guide_rows = 0
     if (
+        guide_training_mode == GUIDE_TRAINING_MODE_LEGACY
+        and
         corpus.guide_target_index is not None
         and corpus.guide_confidence is not None
     ):
@@ -2015,7 +2642,7 @@ def device_temporal_batch_losses(
         if bool(invalid_guide.any()):
             bad_row = int(torch.nonzero(invalid_guide, as_tuple=False)[0].item())
             raise ValueError(
-                "resident Alakazam guide target is outside option row: "
+                "resident current-deck guide target is outside option row: "
                 f"target={int(guide_target[bad_row].item())} "
                 f"options={int(counts[bad_row].item())}"
             )
@@ -2045,7 +2672,11 @@ def device_temporal_batch_losses(
         + float(opp_remainder_weight) * opp_remainder_loss
         + float(lethal_threat_weight) * lethal_threat_loss
         + float(prize_race_weight) * prize_race_loss
-        + float(alakazam_guide_weight) * guide_loss
+        + (
+            float(alakazam_guide_weight) * guide_loss
+            if guide_training_mode == GUIDE_TRAINING_MODE_LEGACY
+            else guide_loss * 0.0
+        )
     )
     metrics.aux_loss = float(aux_loss.detach().item())
     metrics.opp_hand_loss = float(opp_hand_loss.detach().item())
@@ -2059,7 +2690,8 @@ def device_temporal_batch_losses(
     metrics.n_opp_remainder_rows = n_opp_remainder_rows
     metrics.n_lethal_threat_rows = n_lethal_threat_rows
     metrics.n_prize_race_rows = n_prize_race_rows
-    metrics.n_alakazam_guide_rows = n_guide_rows
+    if guide_training_mode == GUIDE_TRAINING_MODE_LEGACY:
+        metrics.n_alakazam_guide_rows = n_guide_rows
     return total, metrics
 
 
@@ -2254,12 +2886,20 @@ def device_exact_batch_losses(
     lethal_threat_weight: float = 0.1,
     prize_race_weight: float = 0.1,
     alakazam_guide_weight: float = 0.0,
+    current_deck_guide_training_mode: str = GUIDE_TRAINING_MODE_LEGACY,
     awr_beta: float = 0.5,
     awr_weight_max: float = 20.0,
     awr_normalize_advantages: bool = True,
     entropy_bonus: float = 0.01,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Full AWR + exact-hidden losses with all source tensors on-device."""
+    if (
+        canonical_guide_training_mode(current_deck_guide_training_mode)
+        == GUIDE_TRAINING_MODE_STRATEGIC
+    ):
+        raise ValueError(
+            "strategic curriculum requires the resident temporal training path"
+        )
     if model.decision_context != "stateless":
         raise ValueError("device-resident exact replay requires stateless context")
     if not corpus.has_exact_targets:
@@ -2294,7 +2934,7 @@ def device_exact_batch_losses(
     if float(alakazam_guide_weight) > 0.0:
         if not corpus.has_guide_targets:
             raise ValueError(
-                "nonzero Alakazam guide weight requires resident guide targets"
+                "nonzero current-deck guide weight requires resident guide targets"
             )
         assert corpus.guide_target_index is not None
         assert corpus.guide_confidence is not None
@@ -2308,7 +2948,7 @@ def device_exact_batch_losses(
         if bool(invalid.any()):
             bad_row = int(torch.nonzero(invalid, as_tuple=False)[0].item())
             raise ValueError(
-                "resident Alakazam guide target is outside option row: "
+                "resident current-deck guide target is outside option row: "
                 f"target={int(guide_target[bad_row].item())} "
                 f"options={int(counts[bad_row].item())}"
             )
@@ -2588,6 +3228,97 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
                 "outcome_entropy": calibration_average("outcome_entropy"),
             },
         }
+    guide_curriculum_parts = [
+        dict(part.guide_curriculum_head_metrics)
+        for part in parts
+        if part.guide_curriculum_head_metrics
+    ]
+    guide_curriculum_metrics: dict[str, Any] = {}
+    if guide_curriculum_parts:
+        head_ids = sorted(
+            {
+                str(name)
+                for record in guide_curriculum_parts
+                for name in dict(record.get("total") or {})
+            }
+        )
+        curriculum_labeled = {
+            name: sum(
+                int(dict(record.get("labeled") or {}).get(name, 0))
+                for record in guide_curriculum_parts
+            )
+            for name in head_ids
+        }
+        curriculum_total = {
+            name: sum(
+                int(dict(record.get("total") or {}).get(name, 0))
+                for record in guide_curriculum_parts
+            )
+            for name in head_ids
+        }
+        guide_curriculum_metrics = {
+            "losses": {
+                name: (
+                    sum(
+                        float(
+                            dict(record.get("losses") or {}).get(name, 0.0)
+                        )
+                        * int(
+                            dict(record.get("labeled") or {}).get(name, 0)
+                        )
+                        for record in guide_curriculum_parts
+                    )
+                    / curriculum_labeled[name]
+                    if curriculum_labeled[name] > 0
+                    else 0.0
+                )
+                for name in head_ids
+            },
+            "labeled": curriculum_labeled,
+            "total": curriculum_total,
+            "masked": {
+                name: max(
+                    0, curriculum_total[name] - curriculum_labeled[name]
+                )
+                for name in head_ids
+            },
+            "coverage": {
+                name: curriculum_labeled[name]
+                / max(curriculum_total[name], 1)
+                for name in head_ids
+            },
+        }
+    setup_parts = [
+        dict(part.setup_board_outcome_metrics)
+        for part in parts
+        if part.setup_board_outcome_metrics
+    ]
+    setup_metrics: dict[str, Any] = {}
+    if setup_parts:
+        setup_metrics = {
+            "total_rows": sum(
+                int(record.get("total_rows", 0)) for record in setup_parts
+            ),
+            "eligible_rows": sum(
+                int(record.get("eligible_rows", 0)) for record in setup_parts
+            ),
+            "guide_rows": sum(
+                int(record.get("guide_rows", 0)) for record in setup_parts
+            ),
+            "stop_rows": sum(
+                int(record.get("stop_rows", 0)) for record in setup_parts
+            ),
+            "non_stop_rows": sum(
+                int(record.get("non_stop_rows", 0)) for record in setup_parts
+            ),
+            "context_rows": {
+                name: sum(
+                    int(dict(record.get("context_rows") or {}).get(name, 0))
+                    for record in setup_parts
+                )
+                for name in ("setup_active", "setup_bench")
+            },
+        }
 
     return BatchMetrics(
         policy_loss=wavg("policy_loss"),
@@ -2595,6 +3326,10 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         value_loss=wavg("value_loss"),
         aux_loss=wavg("aux_loss"),
         alakazam_guide_loss=guide_loss,
+        guide_strategic_curriculum_loss=wavg(
+            "guide_strategic_curriculum_loss"
+        ),
+        setup_board_outcome_loss=wavg("setup_board_outcome_loss"),
         opp_hand_loss=wavg("opp_hand_loss"),
         opp_remainder_loss=wavg("opp_remainder_loss"),
         lethal_threat_loss=wavg("lethal_threat_loss"),
@@ -2616,6 +3351,8 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         n_matchup_adapter_rows=matchup_adapter_rows,
         n_teacher_policy_rows=teacher_policy_rows,
         expanded_head_metrics=expanded_metrics,
+        guide_curriculum_head_metrics=guide_curriculum_metrics,
+        setup_board_outcome_metrics=setup_metrics,
         mean_advantage=wavg("mean_advantage"),
         raw_advantage_mean=raw_mean,
         raw_advantage_std=math.sqrt(max(raw_mean_sq - raw_mean * raw_mean, 0.0)),
@@ -2984,6 +3721,12 @@ def evaluate(
                 lethal_threat_weight=cfg.lethal_threat_loss_weight,
                 prize_race_weight=cfg.prize_race_loss_weight,
                 alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                current_deck_guide_training_mode=(
+                    cfg.current_deck_guide_training_mode
+                ),
+                setup_board_outcome_loss_weight=(
+                    cfg.setup_board_outcome_loss_weight
+                ),
                 expanded_head_weights=cfg.expanded_head_loss_weights,
                 pure_rl=bool(cfg.pure_rl),
                 awr_beta=float(cfg.awr_beta),
@@ -3055,6 +3798,12 @@ def evaluate_device_corpus(
                     lethal_threat_weight=cfg.lethal_threat_loss_weight,
                     prize_race_weight=cfg.prize_race_loss_weight,
                     alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                    current_deck_guide_training_mode=(
+                        cfg.current_deck_guide_training_mode
+                    ),
+                    setup_board_outcome_loss_weight=(
+                        cfg.setup_board_outcome_loss_weight
+                    ),
                     expanded_head_weights=cfg.expanded_head_loss_weights,
                     teacher_policy_targets=teacher_policy_targets,
                     teacher_policy_weight=teacher_policy_weight,
@@ -3065,6 +3814,9 @@ def evaluate_device_corpus(
                     corpus,
                     batch_ids,
                     value_weight=cfg.value_loss_weight,
+                    current_deck_guide_training_mode=(
+                        cfg.current_deck_guide_training_mode
+                    ),
                 )
         parts.append(metrics)
     return _merge_metrics(parts)
@@ -3211,6 +3963,9 @@ def _evaluate_device_exact_corpus(
                     lethal_threat_weight=cfg.lethal_threat_loss_weight,
                     prize_race_weight=cfg.prize_race_loss_weight,
                     alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                    current_deck_guide_training_mode=(
+                        cfg.current_deck_guide_training_mode
+                    ),
                     awr_beta=cfg.awr_beta,
                     awr_weight_max=cfg.awr_weight_max,
                     awr_normalize_advantages=cfg.awr_normalize_advantages,
@@ -3275,6 +4030,12 @@ def _fit_device_batch_size(
                             lethal_threat_weight=cfg.lethal_threat_loss_weight,
                             prize_race_weight=cfg.prize_race_loss_weight,
                             alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                            current_deck_guide_training_mode=(
+                                cfg.current_deck_guide_training_mode
+                            ),
+                            setup_board_outcome_loss_weight=(
+                                cfg.setup_board_outcome_loss_weight
+                            ),
                             expanded_head_weights=(
                                 cfg.expanded_head_loss_weights
                             ),
@@ -3296,6 +4057,9 @@ def _fit_device_batch_size(
                             lethal_threat_weight=cfg.lethal_threat_loss_weight,
                             prize_race_weight=cfg.prize_race_loss_weight,
                             alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                            current_deck_guide_training_mode=(
+                                cfg.current_deck_guide_training_mode
+                            ),
                             awr_beta=cfg.awr_beta,
                             awr_weight_max=cfg.awr_weight_max,
                             awr_normalize_advantages=(
@@ -3309,6 +4073,9 @@ def _fit_device_batch_size(
                             corpus,
                             batch_ids,
                             value_weight=cfg.value_loss_weight,
+                            current_deck_guide_training_mode=(
+                                cfg.current_deck_guide_training_mode
+                            ),
                         )
                 total.backward()
                 if corpus.device.type == "cuda":
@@ -3426,6 +4193,42 @@ def train_bootstrap(
         if source_path is not None
         else build_model(model_cfg or config.MODEL, device=device)
     )
+    cfg.current_deck_guide_training_mode = canonical_guide_training_mode(
+        cfg.current_deck_guide_training_mode
+    )
+    if (
+        cfg.current_deck_guide_training_mode
+        == GUIDE_TRAINING_MODE_STRATEGIC
+    ):
+        assert_strategic_curriculum_model_contract(
+            model,
+            setup_board_outcome_loss_weight=(
+                cfg.setup_board_outcome_loss_weight
+            ),
+        )
+        assert_strategic_curriculum_receipt_contract(
+            specialist_id=archetype_id,
+            curriculum_spec=cfg.current_deck_guide_curriculum_spec,
+            head_role_map=cfg.current_deck_guide_head_role_map,
+            validation_receipt=(
+                cfg.current_deck_guide_curriculum_validation_receipt
+            ),
+        )
+        if device_resident:
+            raise ValueError(
+                "strategic curriculum bootstrap requires the temporal host path"
+            )
+        if (
+            float(cfg.alakazam_guide_loss_weight) > 0.0
+            and count_usable_strategic_guide_rows(
+                [*train_seqs, *val_seqs]
+            )
+            <= 0
+        ):
+            raise ValueError(
+                "nonzero strategic guide multiplier has no confidence-bearing "
+                "bootstrap rows"
+            )
     if model_cfg is not None and getattr(model, "cfg", None) != model_cfg:
         raise ValueError("initial checkpoint model profile does not match model_cfg")
     if model.decision_context == "history":
@@ -3728,6 +4531,13 @@ def train_bootstrap(
                 ),
             }
         )
+        if (
+            cfg.current_deck_guide_training_mode
+            == GUIDE_TRAINING_MODE_STRATEGIC
+        ):
+            extra["current_deck_guide_training_contract"] = (
+                _strategic_curriculum_contract_record(cfg)
+            )
         if cfg.matchup_adapter_training:
             extra["matchup_adapter_config"] = (
                 model.matchup_adapter_bank.config_dict()
@@ -3828,6 +4638,9 @@ def train_bootstrap(
                             resident_corpus,
                             batch,
                             value_weight=cfg.value_loss_weight,
+                            current_deck_guide_training_mode=(
+                                cfg.current_deck_guide_training_mode
+                            ),
                         )
                     else:
                         total, bm = batch_losses(
@@ -3840,6 +4653,12 @@ def train_bootstrap(
                             lethal_threat_weight=cfg.lethal_threat_loss_weight,
                             prize_race_weight=cfg.prize_race_loss_weight,
                             alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                            current_deck_guide_training_mode=(
+                                cfg.current_deck_guide_training_mode
+                            ),
+                            setup_board_outcome_loss_weight=(
+                                cfg.setup_board_outcome_loss_weight
+                            ),
                             expanded_head_weights=(
                                 cfg.expanded_head_loss_weights
                             ),
@@ -4087,6 +4906,13 @@ def supervised_rehearsal_step(
     lethal_threat_loss_weight: float = 0.0,
     prize_race_loss_weight: float = 0.0,
     alakazam_guide_loss_weight: float = 0.0,
+    current_deck_guide_training_mode: str = GUIDE_TRAINING_MODE_LEGACY,
+    setup_board_outcome_loss_weight: float = (
+        SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
+    ),
+    current_deck_guide_curriculum_spec: str = "",
+    current_deck_guide_head_role_map: str = "",
+    current_deck_guide_curriculum_validation_receipt: str = "",
     expanded_head_loss_weights: Optional[dict[str, float]] = None,
     expanded_head_schedule: Optional[dict[str, Any]] = None,
     output_archetype_id: Optional[str] = None,
@@ -4208,6 +5034,21 @@ def supervised_rehearsal_step(
         lethal_threat_loss_weight=float(lethal_threat_loss_weight),
         prize_race_loss_weight=float(prize_race_loss_weight),
         alakazam_guide_loss_weight=float(alakazam_guide_loss_weight),
+        current_deck_guide_training_mode=canonical_guide_training_mode(
+            current_deck_guide_training_mode
+        ),
+        setup_board_outcome_loss_weight=float(
+            setup_board_outcome_loss_weight
+        ),
+        current_deck_guide_curriculum_spec=str(
+            current_deck_guide_curriculum_spec
+        ),
+        current_deck_guide_head_role_map=str(
+            current_deck_guide_head_role_map
+        ),
+        current_deck_guide_curriculum_validation_receipt=str(
+            current_deck_guide_curriculum_validation_receipt
+        ),
         expanded_head_loss_weights=canonical_expanded_weights,
         amp=device.type == "cuda",
         seed=int(seed),
@@ -4215,6 +5056,45 @@ def supervised_rehearsal_step(
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
     model = load_model_from_checkpoint(base_path, device=device)
+    if (
+        cfg.current_deck_guide_training_mode
+        == GUIDE_TRAINING_MODE_STRATEGIC
+    ):
+        assert_strategic_curriculum_model_contract(
+            model,
+            setup_board_outcome_loss_weight=(
+                cfg.setup_board_outcome_loss_weight
+            ),
+        )
+        assert_strategic_curriculum_receipt_contract(
+            specialist_id=(
+                str(output_archetype_id)
+                if output_archetype_id is not None
+                else str(
+                    checkpoint.load_checkpoint(
+                        base_path, map_location="cpu"
+                    ).get("archetype_id")
+                    or ""
+                )
+            ),
+            curriculum_spec=cfg.current_deck_guide_curriculum_spec,
+            head_role_map=cfg.current_deck_guide_head_role_map,
+            validation_receipt=(
+                cfg.current_deck_guide_curriculum_validation_receipt
+            ),
+        )
+        if model.decision_context != "history":
+            raise ValueError(
+                "strategic curriculum rehearsal requires temporal history"
+            )
+        if float(cfg.alakazam_guide_loss_weight) > 0.0:
+            if corpus.guide_confidence is None or not bool(
+                corpus.guide_confidence.gt(0.0).any()
+            ):
+                raise ValueError(
+                    "nonzero strategic guide multiplier has no "
+                    "confidence-bearing rehearsal rows"
+                )
     if expanded_enabled and not bool(
         getattr(model, "expanded_heads_enabled", False)
     ):
@@ -4348,6 +5228,12 @@ def supervised_rehearsal_step(
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
                         alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        current_deck_guide_training_mode=(
+                            cfg.current_deck_guide_training_mode
+                        ),
+                        setup_board_outcome_loss_weight=(
+                            cfg.setup_board_outcome_loss_weight
+                        ),
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         teacher_policy_targets=teacher_policy_targets,
                         teacher_policy_weight=float(teacher_policy_weight),
@@ -4358,6 +5244,9 @@ def supervised_rehearsal_step(
                         corpus,
                         batch_ids,
                         value_weight=cfg.value_loss_weight,
+                        current_deck_guide_training_mode=(
+                            cfg.current_deck_guide_training_mode
+                        ),
                     )
             scaler.scale(total).backward()
             if cfg.grad_clip > 0:
@@ -4586,6 +5475,16 @@ def supervised_rehearsal_step(
                 "fused_policy" if fused_action_path else "flat_policy"
             ),
         }
+    strategic_training_record = (
+        _strategic_curriculum_training_record(
+            cfg=cfg,
+            train_metrics=train_metrics,
+            validation_metrics=val_metrics,
+        )
+        if cfg.current_deck_guide_training_mode
+        == GUIDE_TRAINING_MODE_STRATEGIC
+        else {}
+    )
     rehearsal_record = {
         "schema": 1,
         "before_iteration": int(rehearsal_iteration),
@@ -4623,6 +5522,11 @@ def supervised_rehearsal_step(
             "alakazam_guide": float(cfg.alakazam_guide_loss_weight),
             "expanded_strategic": dict(canonical_expanded_weights),
         },
+        **(
+            {"current_deck_guide_training": strategic_training_record}
+            if strategic_training_record
+            else {}
+        ),
         "teacher_behavior_distillation": {
             "enabled": teacher_policy_enabled,
             "target_digest": (
@@ -4791,6 +5695,13 @@ def _precompute_awr_baseline_cache(
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
                         alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        current_deck_guide_training_mode=(
+                            cfg.current_deck_guide_training_mode
+                        ),
+                        setup_board_outcome_loss_weight=(
+                            cfg.setup_board_outcome_loss_weight
+                        ),
+                        expanded_head_weights=cfg.expanded_head_loss_weights,
                         pure_rl=True,
                         awr_beta=float(cfg.awr_beta),
                         awr_weight_max=float(cfg.awr_weight_max),
@@ -4866,6 +5777,13 @@ def _policy_argmax_predictions(
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
                         alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        current_deck_guide_training_mode=(
+                            cfg.current_deck_guide_training_mode
+                        ),
+                        setup_board_outcome_loss_weight=(
+                            cfg.setup_board_outcome_loss_weight
+                        ),
+                        expanded_head_weights=cfg.expanded_head_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
                         awr_weight_max=float(cfg.awr_weight_max),
@@ -4939,9 +5857,15 @@ def _train_dormant_matchup_adapter_phase(
             "dormant matchup adapter phase precedes its authorized boundary"
         )
 
+    from .matchup_adapter_routes import resolve_matchup_adapter_route_contract
+
+    route_contract = resolve_matchup_adapter_route_contract(
+        model.matchup_adapter_bank.config_dict()
+    )
+    route_ids = tuple(route_contract.target_ids)
+    route_sequences = {expert_id: 0 for expert_id in route_ids}
+    route_decisions = {expert_id: 0 for expert_id in route_ids}
     routed: list[GameSequence] = []
-    route_sequences = {expert_id: 0 for expert_id in EXPERT_IDS}
-    route_decisions = {expert_id: 0 for expert_id in EXPERT_IDS}
     for sequence in sequences:
         if not sequence.decisions or not sequence.matchup_adapter_training_ticket:
             continue
@@ -5017,6 +5941,12 @@ def _train_dormant_matchup_adapter_phase(
                     opp_hand_weight=0.0,
                     opp_remainder_weight=0.0,
                     alakazam_guide_weight=0.0,
+                    # Dormant adapters are an isolated residual fit. They
+                    # intentionally consume neither legacy guide imitation nor
+                    # the future strategic-head curriculum.
+                    current_deck_guide_training_mode=(
+                        GUIDE_TRAINING_MODE_LEGACY
+                    ),
                     lethal_threat_weight=0.0,
                     prize_race_weight=0.0,
                     pure_rl=True,
@@ -5076,28 +6006,28 @@ def _train_dormant_matchup_adapter_phase(
         raise ValueError("prior dormant matchup adapter fit has an invalid schema")
     prior_route_sequences = {
         expert_id: int((prior_fit.get("route_sequences") or {}).get(expert_id, 0))
-        for expert_id in EXPERT_IDS
+        for expert_id in route_ids
     }
     prior_route_decisions = {
         expert_id: int((prior_fit.get("route_decisions") or {}).get(expert_id, 0))
-        for expert_id in EXPERT_IDS
+        for expert_id in route_ids
     }
     cumulative_route_sequences = {
         expert_id: prior_route_sequences[expert_id] + route_sequences[expert_id]
-        for expert_id in EXPERT_IDS
+        for expert_id in route_ids
     }
     cumulative_route_decisions = {
         expert_id: prior_route_decisions[expert_id] + route_decisions[expert_id]
-        for expert_id in EXPERT_IDS
+        for expert_id in route_ids
     }
     trained_archetype_ids = [
         expert_id
-        for expert_id in EXPERT_IDS
+        for expert_id in route_ids
         if cumulative_route_decisions[expert_id] > 0
     ]
     dormant_archetype_ids = [
         expert_id
-        for expert_id in EXPERT_IDS
+        for expert_id in route_ids
         if cumulative_route_decisions[expert_id] == 0
     ]
     fit = {
@@ -5169,6 +6099,9 @@ def rl_train_step(
     # not supply one.  A nullable lineage field is too easy to misinterpret.
     parent_digest = actual_parent_digest
     cfg = cfg or TrainConfig()
+    cfg.current_deck_guide_training_mode = canonical_guide_training_mode(
+        cfg.current_deck_guide_training_mode
+    )
     if int(cfg.dormant_matchup_adapter_epochs) < 0:
         raise ValueError("dormant matchup adapter epochs cannot be negative")
     if float(cfg.dormant_matchup_adapter_lr) <= 0.0:
@@ -5190,6 +6123,28 @@ def rl_train_step(
     random.seed(seed)
 
     model = load_model_from_checkpoint(base_ckpt, device=device)
+    if (
+        cfg.current_deck_guide_training_mode
+        == GUIDE_TRAINING_MODE_STRATEGIC
+    ):
+        assert_strategic_curriculum_model_contract(
+            model,
+            setup_board_outcome_loss_weight=(
+                cfg.setup_board_outcome_loss_weight
+            ),
+        )
+        assert_strategic_curriculum_receipt_contract(
+            specialist_id=archetype_id,
+            curriculum_spec=cfg.current_deck_guide_curriculum_spec,
+            head_role_map=cfg.current_deck_guide_head_role_map,
+            validation_receipt=(
+                cfg.current_deck_guide_curriculum_validation_receipt
+            ),
+        )
+        if device_resident:
+            raise ValueError(
+                "strategic curriculum RL requires temporal host batching"
+            )
     if model.decision_context not in {"history", "stateless"}:
         raise ValueError(
             "trusted RL training requires a history or stateless checkpoint"
@@ -5270,9 +6225,24 @@ def rl_train_step(
         if not any(requested_expanded_weights.values()):
             cfg.expanded_head_loss_weights = inherited_expanded_weights
         elif requested_expanded_weights != inherited_expanded_weights:
-            raise ValueError(
-                "RL expanded-head weights drift from the parent checkpoint"
+            changed = {
+                name
+                for name in requested_expanded_weights
+                if requested_expanded_weights[name]
+                != inherited_expanded_weights[name]
+            }
+            safe_teal_rebalance = bool(
+                cfg.expanded_head_weight_migration_reason
+                == "receipt_backed_teal_auxiliary_head_rebalance_v1"
+                and changed == {"tactical_outcome"}
+                and inherited_expanded_weights["tactical_outcome"] == 0.05
+                and requested_expanded_weights["tactical_outcome"] == 0.01
             )
+            if not safe_teal_rebalance:
+                raise ValueError(
+                    "RL expanded-head weights drift from the parent checkpoint"
+                )
+            cfg.expanded_head_loss_weights = requested_expanded_weights
     elif any(requested_expanded_weights.values()):
         raise ValueError("V5 RL checkpoint cannot receive expanded-head losses")
 
@@ -5294,16 +6264,20 @@ def rl_train_step(
     if not train_seqs:
         raise ValueError("RL training dataset has no usable decision sequences")
     if float(cfg.alakazam_guide_loss_weight) > 0.0:
-        guide_rows = count_usable_alakazam_guide_rows(
-            [*train_seqs, *val_seqs]
+        guide_rows = (
+            count_usable_strategic_guide_rows([*train_seqs, *val_seqs])
+            if cfg.current_deck_guide_training_mode
+            == GUIDE_TRAINING_MODE_STRATEGIC
+            else count_usable_alakazam_guide_rows([*train_seqs, *val_seqs])
         )
         if guide_rows <= 0:
             raise ValueError(
-                "nonzero Alakazam guide loss has no usable guide rows; "
-                "verify POKEBOT_ALAKAZAM_GUIDE_TARGETS=1 and scorer coverage"
+                "nonzero current-deck guide loss has no usable guide rows; "
+                "verify the selected current-deck guide target switch and "
+                "scorer coverage"
             )
         print(
-            f"[rl-train] Alakazam guide rows={guide_rows} "
+            f"[rl-train] current-deck guide rows={guide_rows} "
             f"weight={float(cfg.alakazam_guide_loss_weight):.4f}",
             flush=True,
         )
@@ -5503,6 +6477,12 @@ def rl_train_step(
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
                         alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        current_deck_guide_training_mode=(
+                            cfg.current_deck_guide_training_mode
+                        ),
+                        setup_board_outcome_loss_weight=(
+                            cfg.setup_board_outcome_loss_weight
+                        ),
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
@@ -5548,6 +6528,9 @@ def rl_train_step(
                         lethal_threat_weight=cfg.lethal_threat_loss_weight,
                         prize_race_weight=cfg.prize_race_loss_weight,
                         alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        current_deck_guide_training_mode=(
+                            cfg.current_deck_guide_training_mode
+                        ),
                         awr_beta=cfg.awr_beta,
                         awr_weight_max=cfg.awr_weight_max,
                         awr_normalize_advantages=(
@@ -5919,6 +6902,19 @@ def rl_train_step(
             "gradient_enabled_heads": gradient_enabled,
             "runtime_enabled_heads": [],
             "loss_weights": dict(cfg.expanded_head_loss_weights),
+            "loss_weight_migration": (
+                {
+                    "reason": cfg.expanded_head_weight_migration_reason,
+                    "parent_loss_weights": dict(inherited_expanded_weights),
+                    "current_loss_weights": dict(
+                        cfg.expanded_head_loss_weights
+                    ),
+                    "tensor_values_changed_by_migration": False,
+                    "optimizer_state_preserved": optimizer_state_restored,
+                }
+                if requested_expanded_weights != inherited_expanded_weights
+                else parent_expanded_contract.get("loss_weight_migration")
+            ),
             "train_metrics": {
                 name: {"loss": train_losses.get(name)}
                 for name in EXPANDED_HEAD_IDS
@@ -5942,6 +6938,16 @@ def rl_train_step(
                 "fused_policy" if fused_action_path else "flat_policy"
             ),
         }
+    strategic_training_record = (
+        _strategic_curriculum_training_record(
+            cfg=cfg,
+            train_metrics=last,
+            validation_metrics=validation_metrics,
+        )
+        if cfg.current_deck_guide_training_mode
+        == GUIDE_TRAINING_MODE_STRATEGIC
+        else {}
+    )
 
     delta_sq = 0.0
     base_sq = 0.0
@@ -6031,6 +7037,15 @@ def rl_train_step(
                 if rl_expanded_contract
                 else {}
             ),
+            **(
+                {
+                    "current_deck_guide_training": (
+                        strategic_training_record
+                    )
+                }
+                if strategic_training_record
+                else {}
+            ),
         },
     )
     if output_path is not None:
@@ -6054,6 +7069,11 @@ def rl_train_step(
         "metrics": rl_metrics,
         "validation_metrics": validation_metrics.__dict__,
         "validation_source": best_validation_source,
+        **(
+            {"current_deck_guide_training": strategic_training_record}
+            if strategic_training_record
+            else {}
+        ),
         "step": step,
         "parent_step": base_step,
         "optimizer_state_restored": optimizer_state_restored,
@@ -6123,6 +7143,14 @@ def load_model_from_checkpoint(
         # an ambient environment default turn a bankless checkpoint on.
         snap = dict(snap)
         snap.setdefault("matchup_adapters_enabled", False)
+        # Router Format predates the serialized field. Historical checkpoints
+        # that omit it are immutable Router Format 5 artifacts. Never inherit
+        # the active process's Format 6 environment: frozen opponents load in
+        # the same worker as a current Format 6 candidate, and that inheritance
+        # would incorrectly require a registry the historical checkpoint never
+        # carried.
+        snap.setdefault("matchup_adapter_format", MATCHUP_ADAPTER_V5_FORMAT)
+        snap.setdefault("matchup_adapter_registry", None)
         # Expanded strategic heads are an explicit V6 migration.  An ambient
         # environment variable must never materialize them while loading an
         # immutable V5 checkpoint.
@@ -6130,6 +7158,16 @@ def load_model_from_checkpoint(
         snap.setdefault("decision_fusion_enabled", False)
         snap.setdefault("decision_fusion_runtime_enabled", False)
         snap.setdefault("decision_fusion_width", 16)
+        # Setup-outcome supervision and per-head fusion routes are future-only
+        # architecture additions. Missing fields in an immutable historical
+        # checkpoint mean explicit ``False`` even when this process was
+        # launched with future-specialist environment defaults.
+        snap.setdefault("setup_board_outcome_head_enabled", False)
+        snap.setdefault("decision_fusion_dedicated_routes_enabled", False)
+        snap.setdefault(
+            "decision_fusion_dedicated_routes_runtime_enabled",
+            False,
+        )
         known = set(config.ModelConfig.__dataclass_fields__)  # type: ignore[attr-defined]
         unknown = sorted(set(snap) - known)
         if unknown:

@@ -1,0 +1,802 @@
+CRUSTLE / MEGA KANGASKHAN EX
+CURRENT HUMAN PILOT GUIDE
+
+Guide identity: crustle
+Research version: crustle-north-star-proposal-v1
+Format reviewed: 2026 Standard, through Crimson Blaze (CRI)
+Representative: Cooper Kull, 55th, NAIC 2026
+Audience: advanced and championship-level pilots
+
+======================================================================
+1. WHAT THIS DECK IS
+======================================================================
+
+Crustle is a single-Prize wall deck with a deliberately lopsided game plan.
+Crustle DRI 12 prevents all attack damage from opposing Pokémon ex. A large
+part of the format therefore cannot take the Active Prize through its normal
+attacker. The deck uses Mega Kangaskhan ex as an early draw engine and a real
+alternate attacker, then converts time into healing, Energy denial, hand
+pressure, and carefully chosen gusts.
+
+That description contains the first important correction for new pilots:
+Crustle is not "promote Crustle and pass." The wall buys turns, but you still
+have to decide what the opponent's legal answer is, whether that answer deals
+damage or places damage counters, whether Mist Energy matters, which wall can
+be lost, when Kangaskhan must attack, and whether your real win condition is
+six Prizes, resource exhaustion, or the clock.
+
+Limitless identifies the archetype as Crustle / Mysterious Rock Inn. Its
+current six-month results page showed 6.14% of points in the reviewed format,
+and Rahul Reddy placed fifth at NAIC 2026. The current online matchup aggregate
+was 53.01% over 3,290 recorded matches. These are observational results, not a
+guarantee about a particular list or pilot. [S1][S2][S15]
+
+The representative sixty in this guide is not Rahul's fifth-place sixty. It is
+the exact Cooper Kull 55th-place NAIC list already archived in this project.
+That distinction matters because Cooper's list uses four Crushing Hammer,
+Psyduck, Super Potion, Festival Grounds, Team Rocket's Factory, and Lumiose
+City. Rahul's list instead includes a different disruption and stadium package
+and no Psyduck. General strategy transfers; individual card lines do not.
+[S1][S2]
+
+Exact representative (60)
+
+Pokémon — 11
+4 Mega Kangaskhan ex MEG 104
+3 Dwebble DRI 11
+3 Crustle DRI 12
+1 Psyduck ASC 39
+
+Trainers — 37
+4 Lillie's Determination
+4 Team Rocket's Petrel
+4 Boss's Orders
+2 Lisia's Appeal
+2 Hilda
+1 Xerosic's Machinations
+4 Crushing Hammer
+4 Jumbo Ice Cream
+3 Pokégear 3.0
+2 Buddy-Buddy Poffin
+1 Ultra Ball
+1 Switch
+1 Super Potion
+1 Hero's Cape
+1 Festival Grounds
+1 Team Rocket's Factory
+1 Lumiose City
+
+Energy — 12
+4 Mist Energy
+4 Spiky Energy
+4 Growing Grass Energy
+
+The deck's card roles are unusually clean:
+
+- Dwebble is both the evolution base and the acceleration shortcut. Ascension
+  evolves it directly from the deck for one Colorless Energy. [S4]
+- Crustle is the wall. Mysterious Rock Inn prevents damage from attacks by
+  Pokémon ex; it does not say that all effects are prevented, and it does not
+  protect the Bench. Superb Scissors costs Grass-Colorless-Colorless, deals
+  120, and ignores effects on the opponent's Active. [S3]
+- Mega Kangaskhan ex is setup insurance and a three-Prize attacker. While
+  Active, Run Errand draws two once per turn. Rapid-Fire Combo starts at 200
+  for three Colorless and adds 50 per heads before the first tails. [S5]
+- Psyduck is a narrow one-Prize utility Basic, not an automatic bench.
+- Jumbo Ice Cream heals 80 from the Active only when it has at least three
+  Energy attached. [S6]
+- Growing Grass Energy supplies Grass and adds 20 HP while attached to a Grass
+  Pokémon. Spiky Energy supplies Colorless and puts two damage counters on an
+  attacker that damages its Active holder. Mist Energy supplies Colorless and
+  blocks effects of opposing attacks, but expressly does not prevent damage.
+  [S10][S11][S12]
+- Hilda finds one Evolution Pokémon and one Energy. That is frequently the
+  cleanest Crustle-plus-Energy bridge, but it consumes the Supporter for the
+  turn. [S9]
+- Team Rocket's Petrel finds any Trainer. It is the glue card: search the
+  Trainer that solves the exact current problem, not the card that looked best
+  before the opponent acted. [S8]
+- Lillie's Determination draws eight while all six Prizes remain and six
+  afterward, making the opening Supporter window uniquely valuable. [S7]
+
+======================================================================
+2. THE THREE-QUESTION GAME PLAN
+======================================================================
+
+At the start of every turn, answer these in order.
+
+1. How can the opponent take a Prize through my intended Active?
+
+Name the card, not the archetype. Separate:
+
+- damage from a Pokémon ex attack, which Crustle prevents;
+- damage from a non-ex attacker, which Crustle does not prevent;
+- damage counters or other effects, which require their own rules check;
+- gust around Crustle to a benched liability;
+- Ability-based damage or Knock Out effects;
+- Ability suppression, which can turn off Mysterious Rock Inn;
+- retreat lock, Special Energy removal, or Tool removal that does not take a
+  Prize immediately but breaks the next-turn plan.
+
+If you cannot name the answer, do not over-bench speculative liabilities.
+
+2. What does my next attacker need?
+
+Crustle needs Grass plus two Colorless. In this sixty, Growing Grass is the
+clean Grass source, while Mist and Spiky are Colorless. Kangaskhan accepts any
+three. A Dwebble that must Ascend now needs one attachment; a Crustle expected
+to attack later needs a three-attachment schedule. Do not scatter Energy
+because all three Special Energy types look useful. First complete the line
+that must act.
+
+3. Which clock am I playing?
+
+- Prize clock: attack, gust, and race.
+- resource clock: heal and remove Energy until their answer disappears.
+- board clock: deny a second copy of their answer and force them through the
+  wall.
+- tournament clock: take actions briskly, track turns, and know when a draw is
+  unacceptable.
+
+The right clock can change after one Hammer flip, one revealed answer, or one
+Prize card.
+
+======================================================================
+3. SETUP AND OPENING SEQUENCING
+======================================================================
+
+Opening board targets
+
+A strong generic start has:
+
+- one Dwebble that can become Crustle;
+- a second Dwebble when the opponent can gust or remove the first;
+- one Active Kangaskhan only when Run Errand materially improves setup or when
+  it is your planned first attacker;
+- no unnecessary three-Prize Pokémon on the Bench;
+- one attachment whose purpose you can state.
+
+Do not turn "two Dwebble is good" into "fill every bench slot." A compact board
+is a defensive resource. Boss's Orders and Lisia's Appeal punish liabilities,
+and opposing spread can turn harmless Basics into a prize map.
+
+Before searching
+
+1. Check all three Dwebble and all three Crustle.
+2. Check Hero's Cape, all four Growing Grass, and the stadiums.
+3. Count how many Mist and Spiky Energy are accessible.
+4. Identify whether Psyduck is prized or simply absent from the opening hand.
+5. Decide whether this matchup asks for a wall or immediate Kangaskhan damage.
+
+Prize checking need not be perfectly exhaustive on turn one, but the evolution
+line and Energy mix are non-negotiable. With only three Dwebble and three
+Crustle, prizing two copies changes how aggressively you expose the remaining
+line.
+
+Search ordering
+
+- Use Buddy-Buddy Poffin before a shuffle-draw if the Dwebble is definitely
+  needed.
+- Use Hilda when the exact pair — usually Crustle plus the Energy that
+  completes the plan — is worth spending the Supporter.
+- Use Petrel only after naming the missing function. Petrel can become Poffin,
+  Ultra Ball, Pokégear, Hammer, Ice Cream, Switch, or a stadium; "get a good
+  Trainer" is not a plan.
+- Preserve Ultra Ball if its discard cost would consume a unique recovery,
+  stadium, Tool, or Energy resource. This list has no Night Stretcher.
+- Use Pokégear before committing to a weaker Supporter line when the top seven
+  can find the Supporter that makes the whole turn coherent.
+- Draw before searching only when the search target is flexible and drawing
+  can save the search card. Search before drawing when the target is mandatory
+  and a shuffle-draw might strand it.
+
+Run Errand sequencing
+
+Run Errand requires Kangaskhan in the Active Spot. If you intend to move it,
+draw first unless drawing risks decking out or a known ordering constraint
+matters. Do not burn Switch, retreat Energy, or a gust Supporter merely to
+access two cards unless those two cards are necessary to establish the wall or
+win the game. Kangaskhan has a retreat cost of three; promoting it casually can
+be expensive. [S5]
+
+======================================================================
+4. GOING FIRST
+======================================================================
+
+Default first-turn objective: establish two Dwebble if the opponent can remove
+one, exploit Lillie's eight-card window, and make an attachment that advances
+a turn-two Crustle or Kangaskhan.
+
+Preferred outline
+
+1. Prize-check the 3-3 Crustle line and Energy mix.
+2. Bench one Dwebble; bench a second when removal or gust is credible.
+3. If Kangaskhan is Active, use Run Errand before moving it.
+4. Use Lillie's Determination while six Prizes remain when it does not shuffle
+   away a uniquely stronger prepared hand. The eight-card opening mode is a
+   real tempo resource. [S7]
+5. Attach Growing Grass to the Dwebble most likely to become the attacking
+   Crustle, unless immediate survival requires Mist or the planned attacker is
+   Kangaskhan.
+6. End with a turn-two evolution path and a contingency if the first Dwebble
+   is removed.
+
+Why not always attach Mist first? Because Mist provides Colorless, not Grass.
+A Crustle with three Special Energy but no Grass cannot use Superb Scissors.
+Likewise, why not always lead Spiky? Its counters trigger only when the Active
+holder is damaged by an opposing attack. If Mysterious Rock Inn prevents all
+damage from an ex, Spiky's condition was not met. Save it for the Active and
+matchup where damage will actually happen. [S3][S11][S12]
+
+Your second turn
+
+Evolve normally when Crustle is in hand. If not, Hilda is the cleanest
+evolution-plus-Energy bridge. Decide whether to:
+
+- promote Crustle immediately and begin the wall;
+- keep Kangaskhan Active for another Run Errand and/or attack;
+- leave a sacrificial one-Prize Active while finishing a three-Energy Crustle;
+- attack with Superb Scissors if the 120 meaningfully changes the prize map.
+
+Do not promote the wall automatically. Against a known non-ex answer that can
+take Crustle immediately, forcing that answer to act may still be right, but
+you should have a second wall or a race plan.
+
+======================================================================
+5. GOING SECOND
+======================================================================
+
+Going second gives Dwebble access to Ascension immediately. This is the deck's
+fastest wall line: attach any Energy to an Active Dwebble, attack, and evolve
+from the deck. [S4]
+
+Default outline
+
+1. Prefer an Active Dwebble when Ascension is safe and useful.
+2. Establish a second Dwebble before investing in optional support.
+3. Attach with turn-two attack math in mind. Growing Grass is ideal if the
+   Active Crustle will attack; Mist can be correct when an attack effect is the
+   opponent's answer; Spiky is correct when retaliation matters.
+4. Use the opening Lillie's eight-card mode before taking a Prize.
+5. Ascend only after completing all useful Trainer actions and checking that
+   Crustle remains in deck.
+
+Do not Ascend blindly into a known non-ex one-hit knockout. Sometimes the
+correct second-turn plan is Kangaskhan: Run Errand, attach toward three, and
+force the opponent to answer a 300-HP attacker while the Dwebble develops on
+the Bench. Kangaskhan concedes three Prizes when Knocked Out, so this pivot
+must buy more than it gives away.
+
+Going-second decision:
+
+- If the opponent's normal attacker is a Pokémon ex and has no visible bypass,
+  Ascension is high priority.
+- If their answer attacks through Crustle, preserve a second Dwebble and plan
+  Kangaskhan damage or disruption.
+- If the opponent can gust a benched Kangaskhan for three Prizes, do not bench
+  it just for hypothetical future draw.
+- If the deck is likely to win by resource denial, start attaching to the wall
+  that will eventually satisfy Jumbo Ice Cream.
+
+======================================================================
+6. ENERGY, HEALING, AND ATTACK PLANNING
+======================================================================
+
+Energy ledger
+
+Keep a mental four-column ledger:
+
+1. Growing Grass remaining.
+2. Mist remaining.
+3. Spiky remaining.
+4. Energy already committed to a Pokémon likely to be gusted or stranded.
+
+Growing Grass on Crustle is structural: it supplies the required Grass and adds
+20 HP. Mist is tactical: it blocks effects of attacks, not damage. Spiky is
+punitive: it adds counters only after the Active holder is damaged. All three
+count toward the three Energy needed for Jumbo Ice Cream. [S6][S10][S11][S12]
+
+A typical attack-ready Crustle has one Growing Grass and two Colorless-providing
+Special Energy. The last two slots should reflect the opponent's answer:
+
+- prefer Mist when their plan depends on an attack effect;
+- prefer Spiky when their answer deals ordinary damage and the two counters
+  improve a knockout breakpoint;
+- prefer additional Growing Grass when the extra HP is the difference between
+  surviving and being Knocked Out, provided you are not starving the next
+  attacker.
+
+Jumbo Ice Cream math
+
+Ice Cream heals 80 only from the Active Pokémon with at least three Energy.
+Therefore:
+
+- attaching the third Energy can turn every retained Ice Cream into 80 healing;
+- healing before the opponent reaches a clean knockout breakpoint is often
+  stronger than waiting for maximum damage;
+- healing zero or trivial damage simply because the Item is playable wastes
+  the resource;
+- moving the damaged Pokémon to the Bench shuts off Ice Cream until it is
+  Active again;
+- a Tool or Growing Grass that raises effective HP can alter how many Ice
+  Creams are needed across two attacks.
+
+Super Potion is a separate one-of. Count its Energy cost and the attack it may
+turn off before using it. Healing that prevents a Knock Out but strands the
+only attacking Crustle can lose the same Prize one turn later.
+
+Hero's Cape
+
+Cape belongs on the Pokémon whose extra HP changes the opponent's number of
+attacks, not automatically the first Crustle. Check Tool removal and stadium
+answers. Against decks that cannot damage Crustle with their ex attacker, Cape
+may be more valuable on Kangaskhan or may be unnecessary until the opponent
+reveals a bypass.
+
+Attack selection
+
+Superb Scissors is not filler. It deals 120 through effects on the opponent's
+Active. Use it to:
+
+- remove a single-Prize answer before it gets a second attack;
+- create a Boss's Orders knockout next turn;
+- force a damaged ex into the exact Kangaskhan range;
+- keep the Prize clock moving when passive walling lets the opponent assemble
+  multiple answers.
+
+Kangaskhan's Rapid-Fire Combo starts at 200, then depends on coin flips. Plan
+around 200 as the reliable floor. Treat extra heads as upside, not as a prize
+map you are entitled to receive. [S5]
+
+======================================================================
+7. BENCH AND PRIZE MAPPING
+======================================================================
+
+Bench discipline
+
+Each Pokémon must have a current job:
+
+- Active or next Crustle;
+- second Dwebble against removal;
+- Kangaskhan drawing now or attacking on schedule;
+- Psyduck addressing a known problem now.
+
+If a Pokémon has no job, do not bench it. A benched Kangaskhan is a three-Prize
+Boss target. A benched Dwebble can become a Prize that lets the opponent skip
+the wall. A benched Psyduck is useful only if its Ability is relevant and not
+itself the easiest route through the board.
+
+Prize-map templates
+
+Pure wall map:
+
+- concede one Crustle;
+- replace with one Crustle;
+- deny the final Prizes while taking six single-Prize or gusted targets.
+
+Kangaskhan pivot map:
+
+- force the opponent to spend turns on Crustle;
+- attack with Kangaskhan when its 200 floor wins the race;
+- accept the three-Prize liability only if the remaining map is favorable.
+
+Sacrifice map:
+
+- give one Dwebble or Psyduck to finish three Energy on the real wall;
+- promote Crustle with healing online;
+- use Boss or Lisia to remove the opponent's only answer.
+
+At every promotion, state both prize maps aloud: "If they take this, they go to
+N; if I take my intended target, I go to M." Do not evaluate only HP. A 300-HP
+Kangaskhan can be strategically frailer than a 70-HP Dwebble because of the
+three-Prize payout.
+
+Opponent bench mapping
+
+Mark:
+
+- their non-ex attacker;
+- their Ability suppressor;
+- their Tool or Energy-removal engine;
+- their draw engine;
+- their lowest-HP two-Prize or three-Prize closer.
+
+Boss's Orders is often better used to remove the only Crustle answer than to
+take the largest immediate Prize. Lisia's Appeal can pull a Basic and Confuse
+it, buying a turn even when the target is not a knockout. [S13]
+
+======================================================================
+8. DISRUPTION AND RESOURCE CONTROL
+======================================================================
+
+Crushing Hammer
+
+Four Hammer makes Energy denial a plan, but each individual flip is stochastic.
+Sequence guaranteed actions before optional flips when the result would change
+your search, Supporter, or attack line. After a heads, recalculate; do not keep
+playing the old turn.
+
+Target Energy by function:
+
+1. the only Energy on the opponent's Crustle answer;
+2. an irreplaceable Special Energy;
+3. the attachment that preserves retreat into their answer;
+4. the largest pile only when no functional target exists.
+
+Do not assume heads. A line that loses immediately on tails was already risky.
+
+Petrel
+
+Petrel is a Trainer search Supporter. Its strongest use is not a fixed card but
+turn compression:
+
+- Poffin when a second Dwebble is mandatory;
+- Ultra Ball when Crustle is missing;
+- Pokégear when another Supporter solves the actual turn;
+- Hammer when one removed Energy buys a full turn;
+- Ice Cream when 80 changes the knockout count;
+- Switch when a trapped Active breaks the plan;
+- Festival Grounds, Factory, or Lumiose City when the stadium war matters.
+
+Because Petrel consumes the Supporter, compare the found Trainer with simply
+playing Hilda, Lillie's, Boss, Lisia, Xerosic, or another Supporter now. [S8]
+
+Hand pressure
+
+Xerosic reduces the opponent to three cards. It is strongest after they have
+committed search and before they can use a large draw engine. Do not play it
+just because their hand is large; compare it with Boss removing the answer or
+Lillie's repairing your own hand. Eri appears in Rahul's current list and can
+discard up to two revealed Items, but it is not in Cooper's representative and
+must not be assumed available. [S14]
+
+Stadiums
+
+The three one-of stadiums are not interchangeable. Keep track of which stadium
+has been used, which remains in deck, and whether replacing the current
+stadium helps the opponent more than you. Festival Grounds has a current
+status-clearing role; Factory is a Team Rocket engine card; Lumiose City is a
+different utility stadium. Exact text and matchup interaction should be
+confirmed during event preparation. With only one of each and no generic
+recovery in the sixty, blind early stadium play is expensive.
+
+======================================================================
+9. MATCHUP PLANS
+======================================================================
+
+These plans use current aggregate evidence as testing priorities, not causal
+proof. The reviewed CRI online table recorded Crustle at 59.28% versus
+Dragapult, 64.04% versus N's Zoroark, 61.08% versus Alakazam, and 87.50%
+versus Beedrill. It was poor into Slowking (33.68%), Rocket's Honchkrow
+(20.18%), Mega Starmie (36.26%), Festival Lead (39.33%), Rocket's Mewtwo
+(39.34%), Mega Lopunny (22.95%), and Ethan's Typhlosion (23.91%). Samples,
+variant mixing, event strength, and list changes all limit those figures.
+[S15]
+
+Dragapult
+
+Primary plan: establish Crustle before Dragapult takes easy bench Prizes, keep
+the Bench narrow, and protect key Pokémon from attack effects when Mist
+Energy applies. Mysterious Rock Inn prevents attack damage from Dragapult ex,
+but Dragapult variants may have non-ex or Ability-based answers and can route
+damage counters around the Active. Identify the exact variant before assuming
+the matchup is free.
+
+- Two Dwebble is enough; five liabilities is not.
+- Remove the answer, not merely the largest Dragapult.
+- Track damage-counter math on every benched Basic.
+- Preserve Mist when it blocks the exact attack effect being used.
+- Against straight Dragapult with no answer, resource preservation matters
+  more than early Kangaskhan damage.
+
+Slowking
+
+This is a bad aggregate matchup because a single-Prize attacker can copy
+attacks that bypass the ex wall. Your goal is active disruption, not passive
+immunity.
+
+- Use Boss or Lisia to interrupt the Slowking line or remove its setup Basic.
+- Hammer the Energy that makes the copied attack available.
+- Pressure with Superb Scissors; 120 forces real healing or a two-hit clock.
+- Preserve the second wall, but do not expect walling alone to win.
+- Kangaskhan can race, but exposing three Prizes must shorten the game.
+
+Rocket's Honchkrow, Festival Lead, and other non-ex attackers
+
+Mysterious Rock Inn does not protect against non-ex attack damage. Treat these
+as ordinary prize races with healing and disruption.
+
+- Spiky Energy is more valuable when the attacker actually deals damage.
+- Ice Cream breakpoint math is central.
+- Boss the engine or the next attacker before it becomes active.
+- Do not spend turns admiring the wall while the opponent takes single-Prize
+  knockouts.
+
+N's Zoroark
+
+The aggregate is favorable, but the opponent can use non-ex attackers and
+status pressure.
+
+- Identify the exact attacker and whether it damages or applies effects.
+- Festival Grounds can matter for status management.
+- Mist does not prevent damage, so attach it only for the relevant effect.
+- Remove the Energy or support that lets the answer repeat.
+
+Alakazam
+
+Crustle's aggregate was favorable in the reviewed online data, but Alakazam
+lists can contain single-Prize or Dudunsparce-based routes.
+
+- Keep a second Dwebble without overfilling the Bench.
+- Remove the non-ex answer before it is repeated.
+- Count whether Superb Scissors plus Spiky counters reaches a key breakpoint.
+- Do not rely on the matchup label; inspect the revealed sixty-card signature.
+
+Mega Lopunny, Mega Starmie, and high-pressure bypass decks
+
+These are poor aggregate matchups. Ask whether Crustle buys even one turn. If
+not, pivot toward Kangaskhan attack, Hammer, hand disruption, and gust.
+
+- Hammers target the minimum Energy that turns off an attack.
+- Cape goes where it changes an attack count.
+- Use Lisia to Confuse a Basic when that can buy the missing attachment turn.
+- Accept that the correct route may be a six-Prize race, not a wall game.
+
+Mirror
+
+The online aggregate contains many ties. The mirror is about attack access,
+Energy preservation, gust, and time.
+
+- Superb Scissors ignores effects on the opponent's Active but still deals
+  only 120; plan the two-hit sequence and healing response.
+- Kangaskhan can pressure, but it is worth three Prizes.
+- Do not waste Hammers on Energy that does not change the next attack.
+- Play at a legal, decisive pace. Know early whether you need a win rather than
+  a draw.
+
+======================================================================
+10. RECOVERY LINES
+======================================================================
+
+There is no Night Stretcher or Lana's Aid in the representative. Once a Pokémon
+or Energy is discarded, assume it is gone unless the current board proves
+otherwise. Recovery therefore means rebuilding the plan, not retrieving every
+lost card.
+
+If the only Dwebble is Knocked Out:
+
+1. promote the Pokémon that gives the safest search turn;
+2. Poffin the second Dwebble;
+3. Hilda for Crustle plus Energy if available;
+4. decide whether another Ascension turn is safe;
+5. do not bench Kangaskhan unless Run Errand or the race justifies three
+   exposed Prizes.
+
+If Crustle is Knocked Out through the wall:
+
+1. identify the exact bypass;
+2. decide whether Mist, healing, Cape, Hammer, or Boss stops repetition;
+3. if it does not, stop repeating the same wall line and pivot to damage;
+4. preserve the last Crustle only if it buys a real turn.
+
+If Growing Grass is scarce:
+
+1. count all remaining copies;
+2. reserve one for every Crustle expected to attack;
+3. do not attach multiple Growing Grass for HP unless the extra 20/40 changes
+   the current knockout breakpoint;
+4. use Kangaskhan, whose attack is Colorless, as the alternate sink for Mist
+   and Spiky.
+
+If the Active is trapped:
+
+- check Switch before discarding three Energy to retreat;
+- check whether attacking is better than retreating;
+- use Petrel for Switch only when no stronger Supporter line exists;
+- remember that moving a damaged three-Energy Pokémon to the Bench turns off
+  Ice Cream until it returns Active.
+
+If the hand is dead:
+
+- Run Errand if Kangaskhan is already Active;
+- Pokégear for Lillie's or the exact Supporter;
+- Petrel for Pokégear only when the extra Supporter-search layer is worth the
+  turn;
+- preserve a usable hand rather than shuffling automatically.
+
+======================================================================
+11. COMMON MISTAKES
+======================================================================
+
+1. Reading Mysterious Rock Inn as complete immunity. It prevents attack damage
+   from Pokémon ex; it does not write "prevent all effects," protect the Bench,
+   or stop non-ex attackers. [S3]
+
+2. Benching every Basic. Kangaskhan is a three-Prize gust target and Psyduck is
+   not mandatory in every matchup.
+
+3. Missing the Grass requirement. Mist and Spiky are Colorless. At least one
+   Growing Grass is needed for Superb Scissors in this sixty.
+
+4. Attaching Spiky where damage will be prevented. Its counters require the
+   holder to be damaged by an attack. [S11]
+
+5. Treating Mist as damage prevention. Mist blocks effects of attacks, not
+   damage. [S12]
+
+6. Healing before three Energy. Jumbo Ice Cream is dead unless the Active has
+   at least three attached. [S6]
+
+7. Spending Hilda without using both halves. If you cannot name the Evolution
+   and Energy you need, another Supporter may be stronger.
+
+8. Using Petrel without a target. Search is only as good as the exact Trainer
+   function it supplies.
+
+9. Planning Kangaskhan damage above 200. Additional Rapid-Fire Combo damage is
+   stochastic. [S5]
+
+10. Repeating a failed wall line. Once the opponent reveals a reliable bypass,
+    adapt with Boss, Hammer, healing, or Kangaskhan.
+
+11. Failing to prize-check the 3-3 line. Two prized Crustle changes the entire
+    wall schedule.
+
+12. Holding Boss only for large Prizes. Removing the opponent's only Crustle
+    answer can be worth more than taking two Prizes now.
+
+13. Ignoring the clock. Control turns require many micro-decisions. Practice
+    the search and Energy ledgers until they are fast.
+
+======================================================================
+12. DECISION CHECKLISTS
+======================================================================
+
+Opening seven
+
+[ ] What is my turn order?
+[ ] Are Dwebble, Crustle, and the Energy mix prize-checked?
+[ ] Can I establish two Dwebble without exposing a bad Prize map?
+[ ] Is Kangaskhan drawing now, attacking later, or merely a liability?
+[ ] Is Psyduck relevant now?
+[ ] What is the purpose of my first attachment?
+
+Before every search
+
+[ ] What exact card or function is missing?
+[ ] Can drawing first save the search card?
+[ ] Can drawing first lose access to the mandatory target?
+[ ] Am I spending the turn's Supporter to use Hilda or Petrel?
+[ ] Does Ultra Ball discard a unique resource?
+[ ] Is the second Dwebble more important than optional support?
+
+Before every attachment
+
+[ ] Which Pokémon must attack?
+[ ] Does Crustle already have a Grass source?
+[ ] Does Mist block an exact attack effect?
+[ ] Will Spiky's damage condition actually occur?
+[ ] Does Growing Grass change a knockout breakpoint?
+[ ] Does this become the third Energy for Ice Cream?
+[ ] What happens if this Pokémon is gusted?
+
+Before promoting Crustle
+
+[ ] What exact opposing card gets through Mysterious Rock Inn?
+[ ] Is that answer currently in play, discard, or only hypothetical?
+[ ] Can Boss, Lisia, Hammer, or Xerosic stop it?
+[ ] Is a second wall ready?
+[ ] Is Superb Scissors online or am I only buying a turn?
+
+Before healing
+
+[ ] Does the Active have three Energy for Ice Cream?
+[ ] How much damage is actually removed?
+[ ] Does healing change the number of attacks to Knock Out?
+[ ] Does Super Potion's Energy cost turn off my attack?
+[ ] Is Cape needed on this Pokémon?
+
+Before attacking
+
+[ ] Is 120 from Superb Scissors changing a prize or answer map?
+[ ] Am I counting Kangaskhan's reliable floor as 200?
+[ ] What is the opponent's best promotion?
+[ ] What Prize total follows on both sides?
+[ ] Would gusting the only answer be stronger?
+[ ] Is resource denial now better than damage?
+
+End of turn
+
+[ ] How many Dwebble and Crustle remain?
+[ ] How many Growing Grass, Mist, and Spiky remain?
+[ ] Which recovery options do I actually have? (Usually none for discarded
+    Pokémon/Energy in this exact sixty.)
+[ ] What is the opponent's revealed bypass?
+[ ] What is my next Supporter?
+[ ] Am I playing the prize clock, resource clock, board clock, or tournament
+    clock?
+
+======================================================================
+APPENDIX A. SPARSE CAUSAL HEURISTIC PROPOSAL
+======================================================================
+
+The accompanying teacher proposal is deliberately much smaller than this human
+guide. Human strategy depends on matchup knowledge, inferred resources,
+stochastic Hammer and Kangaskhan outcomes, Energy schedules, future healing,
+and prize mapping. Those judgments must not be encoded as exact labels when
+the observation does not prove them.
+
+The proposal labels only complete, origin-resolved legal stages for:
+
+- establishing two visible Dwebble during Bench setup;
+- Poffin or Ultra Ball filling a visible Dwebble/Crustle gap;
+- Dwebble's exact Ascension search;
+- Run Errand Yes/No when current deck count proves a conservative draw reserve.
+
+It masks opening Active choice, Energy, Hilda, Petrel, attack, healing, Hammer,
+gust, stadium, Tool, retreat, disruption, prizes, matchups, unknown prompt
+origins, unresolved options, partial candidate sets, and low-margin stages.
+It never reads the opponent's hidden hand, either deck, face-down Prizes,
+future draws, future random outcomes, eventual game result, or unselected
+private cards. A missing label returns no target; it is not a zero target.
+The serving bias function returns exact zeros, and the proposal remains
+hard-disabled pending separate integration authority.
+
+======================================================================
+SOURCES
+======================================================================
+
+[S1] Limitless TCG, "Crustle by Cooper Kull," exact 55th-place NAIC 2026
+list. https://limitlesstcg.com/decks/list/28292
+
+[S2] Limitless TCG, "Crustle by Rahul Reddy," 5th-place NAIC 2026 list.
+https://limitlesstcg.com/decks/list/28252
+
+[S3] Limitless TCG, Crustle DRI 12 card record.
+https://limitlesstcg.com/cards/en/DRI/12
+
+[S4] Limitless TCG, Dwebble DRI 11 card record.
+https://limitlesstcg.com/cards/DRI/11
+
+[S5] Limitless TCG, Mega Kangaskhan ex MEG 104 card record.
+https://limitlesstcg.com/cards/MEG/104
+
+[S6] Limitless TCG, Jumbo Ice Cream PFL 91 card record.
+https://limitlesstcg.com/cards/PFL/91
+
+[S7] Limitless TCG, Lillie's Determination MEG 119 card record.
+https://limitlesstcg.com/cards/MEG/119
+
+[S8] Limitless TCG, Team Rocket's Petrel DRI 176 card record.
+https://limitlesstcg.com/cards/DRI/176
+
+[S9] Limitless TCG, Hilda WHT 84 card record.
+https://limitlesstcg.com/cards/WHT/84
+
+[S10] Limitless TCG, Growing Grass Energy POR 86 card record.
+https://limitlesstcg.com/cards/POR/86
+
+[S11] Limitless TCG, Spiky Energy JTG 159 card record.
+https://limitlesstcg.com/cards/JTG/159
+
+[S12] Limitless TCG, Mist Energy TEF 161 card record.
+https://limitlesstcg.com/cards/TEF/161
+
+[S13] Limitless TCG, Lisia's Appeal SSP 179 card record.
+https://limitlesstcg.com/cards/SSP/179
+
+[S14] Limitless TCG, Eri TEF 146 card record. It supports discussion of the
+Rahul list only; Eri is absent from the exact Cooper representative.
+https://limitlesstcg.com/cards/TEF/146
+
+[S15] Play! Limitless, Crustle CRI Standard 2026 matchup table. Observational
+online-event evidence; not a controlled matchup experiment.
+https://play.limitlesstcg.com/decks/crustle-dri/matchups?combine=&format=standard&rotation=2026&set=CRI
+
+[S16] TCGplayer, "The Best Pokémon TCG Decks Right Now," current overview
+discussing the Rahul NAIC list, Mysterious Rock Inn, healing, and broad
+counterplay. https://www.tcgplayer.com/content/article/The-Best-Pok%C3%A9mon-TCG-Decks-Right-Now-February-2026/df18897b-3902-41b9-9eff-3b7fefd93820/
+
+Evidence boundary: current paid Metafy guides listed by Limitless were not
+accessed. No claim above is attributed to their private contents. Public
+matchup figures mix pilots and lists and are used only to prioritize testing.

@@ -1,0 +1,601 @@
+STRAIGHT DRAGAPULT EX — CURRENT STANDARD HUMAN PILOT GUIDE
+
+Guide identity: dragapult
+Research status: proposal for production-controller validation
+Format reviewed: public Standard 2026 (H-on), through 2026-07-28
+
+IDENTITY AND SCOPE
+
+This guide is for the project's retained plain `dragapult` specialist: a
+straight Dragapult ex deck built around Dreepy, Drakloak, Dragapult ex,
+Munkidori, Budew, and a flexible Basic-Pokemon toolbox. It is not Hammer Pult,
+Dragapult/Blaziken, Dragapult/Dudunsparce, or Dragapult/Dusknoir.
+
+That distinction matters because public tournament sites often place multiple
+straight-looking shells under the broad "Dragapult" label. The project's
+classifier treats a list with at least three Crushing Hammer plus the Munkidori,
+Budew, Unfair Stamp, and Dragapult signatures as `hammer-pult`. This guide
+therefore does not import Crushing Hammer sequencing into plain Dragapult.
+Likewise, it does not borrow Seething Spirit, Run Away Draw, or Cursed Blast
+plans from the three partner variants.
+
+The exact local anchor is the archived 2nd-place Campinas 2026 straight list:
+
+  decks/competitive/high_performing/
+  2026-05_regional-campinas-2026_2nd_dragapult.csv
+
+It is a 60-card list with file SHA-256
+`ce78f069b7d7172d5edf7e8ea36da1cdf801fd77412226b94120eafe9566a1e0`
+and sorted-card-multiset SHA-256
+`90732310b0d40256cc1e6ecd65d726648ebb620aeb4f5992c69ae789762461a6`.
+It contains:
+
+Pokémon (21)
+
+  4 Dreepy
+  4 Drakloak
+  3 Dragapult ex
+  2 Munkidori
+  2 Meowth ex
+  1 Budew
+  1 Fezandipiti ex
+  1 Pecharunt ex
+  1 Lillie's Clefairy ex
+  1 Yveltal
+  1 Moltres
+
+Trainers (30)
+
+  4 Lillie's Determination
+  4 Boss's Orders
+  2 Crispin
+  2 Judge
+  4 Buddy-Buddy Poffin
+  4 Ultra Ball
+  4 Poké Pad
+  3 Night Stretcher
+  1 Prime Catcher
+  2 Area Zero Underdepths
+
+Energy (9)
+
+  3 Fire
+  3 Psychic
+  3 Darkness
+
+The current public evidence still supports this straight-deck identity. A May
+2026 strategy article explicitly separates "Straight Dragapult" from Blaziken
+and Dudunsparce variants and describes its plan as early Dreepy development,
+Budew item lock, and board disruption with Munkidori and Yveltal. Current
+tournament aggregation continues to show the 4-4-3-ish Dragapult line,
+Munkidori, Budew, Meowth ex, Fezandipiti ex, Lillie's Determination, Boss's
+Orders, Crispin, Poffin, Poké Pad, Ultra Ball, and Night Stretcher as the core.
+Recent broad "Dragapult" consensus lists often include four Crushing Hammer;
+those are useful metagame evidence but are Hammer Pult under this project's
+stricter identity and are not the representative here.
+
+WHAT THE DECK IS TRYING TO DO
+
+Dragapult ex is a 320-HP Stage 2 whose Phantom Dive costs one Fire and one
+Psychic Energy, deals 200 to the Active, and places six damage counters across
+the opponent's Bench. The attack is not merely "200 plus 60." It is a prize-map
+engine. A good attack should improve at least two clocks:
+
+1. the clock on the current Active Pokémon; and
+2. a later knockout, forced evolution, awkward bench retreat, or multi-Prize
+   turn created by the six counters.
+
+Drakloak is both the bridge to the attacker and the draw engine. Recon Directive
+looks at the top two cards, keeps one, and bottoms the other. Keeping one
+Drakloak unevolved can be stronger than evolving every available line
+immediately, especially when an attacker is already online. Evolve enough to
+attack and survive the next exchange; keep enough Recon Directive capacity to
+find the next energy, gust, recovery card, or evolution.
+
+Straight Dragapult trades the partner engines' explosive ceilings for deck
+space and flexibility. Its extra Basics are not random inclusions:
+
+- Budew buys a setup turn with Item lock.
+- Munkidori moves up to three damage counters off one of your Pokémon and onto
+  an opposing Pokémon when Darkness Energy is attached.
+- Meowth ex converts a bench slot into the exact Supporter needed now.
+- Fezandipiti ex can refill after the opponent takes a knockout.
+- Lillie's Clefairy ex changes the Weakness of opposing N's Pokémon to Psychic
+  and supplies a bench-count-scaling alternative attacker.
+- Pecharunt ex can provide a switch route for Darkness Pokémon, but volunteering
+  an extra two-Prize target is a real cost.
+- Moltres and Yveltal provide specialized single-Prize pressure rather than
+  replacing the main Dragapult plan.
+
+The operating principle is "core before toolbox." Establish the Dreepy line,
+typed Energy, and next attacker first. Bench a tech only when it fixes a visible
+problem or creates a concrete prize route.
+
+SETUP: THE FIRST TWO TURNS
+
+Before drawing, inspect the opening hand in this order:
+
+1. Can I put at least two Dreepy into play?
+2. Can I evolve at least one Dreepy next turn?
+3. What is my first Phantom Dive energy sequence?
+4. Do I need Budew to prevent an opposing explosive Item turn?
+5. Is a Meowth ex bench slot worth the Supporter it finds?
+6. Which optional Basic would merely expose Prizes without solving a current
+   problem?
+
+An ideal opening board is usually two Dreepy plus one useful support Basic, not
+a full bench. Two Dreepy make a single gust knockout less likely to end your
+attacker chain. A third Dreepy is often reasonable against decks that can remove
+evolving Basics or when your hand already has multiple Drakloak. It is less
+urgent when bench space is needed for Munkidori, Meowth ex, Fezandipiti ex, or a
+matchup attacker.
+
+Going first
+
+Going first is the default preference for this Stage 2 deck. You cannot attack,
+so the turn is about making turn two stable:
+
+- Use Buddy-Buddy Poffin or Poké Pad to establish Dreepy redundancy.
+- Attach a useful Energy if doing so does not strand the wrong type. A Fire or
+  Psychic attachment to the Dreepy most likely to survive keeps Phantom Dive
+  on schedule. Darkness usually belongs on Munkidori once that ability has an
+  actual damage source and target.
+- Bench Meowth ex only when Last-Ditch Catch finds a Supporter that materially
+  improves the next turn. The card is not free: it occupies a bench slot and
+  offers two Prizes.
+- Do not bench Fezandipiti ex "for later" unless a knockout is reasonably live
+  or the matchup makes a draw reset especially likely.
+- Preserve at least one search route for Drakloak or Dragapult ex rather than
+  emptying every search card during setup.
+
+Going second
+
+Going second adds the option to use Budew's Itchy Pollen immediately. Choose
+between setup and item lock based on the opposing board:
+
+- Against an Item-dense deck that needs a turn of search or Rare Candy, Budew
+  can be your first attacker while Dreepy develop behind it.
+- Against a deck already established from its first turn, a low-impact Budew
+  attack may simply concede tempo. Prioritize the fastest possible Dragapult.
+- If you open Dreepy Active, do not spend multiple resources escaping it unless
+  the Active is in immediate knockout danger and the switch preserves your only
+  evolution line.
+- A Meowth ex search can turn a weak hand into Crispin or Lillie's
+  Determination, but only if you can still develop the board after paying the
+  bench cost.
+
+THE FIRST PHANTOM DIVE
+
+The first Phantom Dive is the deck's main tempo checkpoint. To reach it, you
+need:
+
+- a surviving Dreepy that can become Drakloak and then Dragapult ex;
+- one Fire and one Psychic Energy on the attacking line;
+- a legal path to the Active Spot; and
+- a meaningful plan for all six Bench counters.
+
+Crispin is the cleanest acceleration tool. It searches two different Basic
+Energy types, puts one in hand, and attaches the other to a Pokémon. Combine
+that attachment with the normal attachment for the turn. Before playing
+Crispin, decide which of Fire and Psychic must be attached from the deck and
+which must enter the hand. Do not choose mechanically: account for the Energy
+already attached, the manual attachment still available, and whether a future
+Munkidori needs Darkness.
+
+If a Dragapult line already holds one attack Energy, Crispin commonly finds the
+missing attack type plus a Darkness Energy. The missing Fire/Psychic can be
+accelerated or manually attached, while Darkness is retained for Munkidori.
+That is only a default pattern. If the available attachment destination or hand
+state does not complete Phantom Dive, choose the line that actually produces
+an attack.
+
+Rosa's Encouragement appears in current straight lists even though it is not in
+the Campinas anchor. When you are behind on Prizes, it can attach up to two
+Basic Energy from discard to one Stage 2 Pokémon. This creates a recovery line
+after disruption or a knockout, but it requires being behind and having the
+right Energy already discarded. Do not discard Energy blindly in anticipation
+of Rosa; first confirm the card is in the list, accessible, and likely to be
+legal when needed.
+
+SEQUENCING THE DRAW AND SEARCH ENGINE
+
+Use information-gaining effects before irreversible commitments.
+
+A robust midgame sequence is:
+
+1. Establish which Pokémon must evolve and which Energy types are missing.
+2. Use Recon Directive before playing a shuffle effect if the top two cards can
+   solve the turn. If neither is wanted, bottom the worse card and then shuffle.
+3. Use Poké Pad for non-Rule-Box Pokémon such as Dreepy, Drakloak, Munkidori,
+   Budew, Moltres, or Yveltal.
+4. Use Ultra Ball when you need Dragapult ex or a Rule Box Pokémon, or when its
+   discard cost deliberately enables Night Stretcher or Rosa.
+5. Bench Meowth ex only after you know which Supporter solves the turn.
+6. Play the Supporter after extracting any value that would be lost to a hand
+   shuffle.
+7. Make Energy attachments after the full turn's attacker and pivot route are
+   known.
+
+Lillie's Determination shuffles the hand and draws six, or eight while exactly
+six Prizes remain. Its first-turn value is especially high, but "draw eight"
+does not justify shuffling away a hand that already has the complete turn. Use
+available search, Recon Directive, and Last-Ditch Catch deliberately so that
+the shuffle improves rather than destroys your plan.
+
+Ultra Ball's two-card discard is a resource-conversion decision. Good discards
+include redundant Stadiums, a Supporter that cannot be used this turn when
+another copy remains accessible, and an Energy that Night Stretcher or Rosa can
+recover for a defined purpose. Bad discards include the only copy of a matchup
+attacker, the last recovery card, and the only Energy type that completes the
+next Phantom Dive.
+
+Poké Pad cannot find Dragapult ex, Meowth ex, Fezandipiti ex, Pecharunt ex, or
+Lillie's Clefairy ex because they have Rule Boxes. Preserve Ultra Ball or
+Meowth's Supporter search when one of those is the real need.
+
+ENERGY ACCOUNTING
+
+The representative has only nine Energy: three Fire, three Psychic, and three
+Darkness. Treat every Energy as a named resource.
+
+At the start of each turn, count:
+
+- Fire and Psychic already attached to each Dragapult line;
+- Fire and Psychic in discard and therefore recoverable;
+- Darkness attached to each Munkidori;
+- known Energy spent or stranded on a support Pokémon;
+- the number of remaining attackers you expect to field; and
+- Night Stretcher copies remaining or already used.
+
+The first Dragapult needs Fire plus Psychic. The replacement needs the same.
+Munkidori needs Darkness to use Adrena-Brain. A Darkness Energy on Munkidori can
+create repeated value, so avoid retreating or discarding it casually.
+
+Do not split one Fire and one Psychic across two Dreepy unless you have a clear
+acceleration plan. A half-powered pair often attacks later than one completed
+Dragapult plus a searched replacement. Conversely, do not stack excess Energy
+onto the Active if the opponent can take it and you have no replacement.
+
+Night Stretcher returns a Pokémon or Basic Energy from discard. Decide whether
+the turn is constrained by body or Energy:
+
+- Recover Dreepy/Drakloak/Dragapult ex if an evolution link is missing.
+- Recover Fire/Psychic if the attacker exists but cannot reach Phantom Dive.
+- Recover Darkness if an exact Adrena-Brain move changes the prize map.
+- Recover a one-of tech only when that tech has a concrete immediate role.
+
+PHANTOM DIVE COUNTER PLACEMENT
+
+Before attacking, write the prize map in damage, not in hope.
+
+For every opposing Pokémon, note:
+
+- current HP and current damage;
+- whether it will evolve and gain HP;
+- whether it is worth one, two, or three Prizes;
+- whether it has a damage-prevention effect;
+- whether Boss's Orders or Prime Catcher can expose it later;
+- whether Munkidori can supply an additional 10–30 damage; and
+- whether the counters create a knockout now or only after another attack.
+
+Strong counter placements usually do one of four things:
+
+1. take an immediate Bench knockout;
+2. put an evolving Basic or support Pokémon into range before it can leave play;
+3. convert the next 200-damage Active hit into a multi-Prize turn; or
+4. create two simultaneous threats the opponent cannot both heal or evolve.
+
+Avoid aesthetically even spreads. Three counters on each of two targets are
+good only when both placements change a real threshold. Six counters on one
+target can be correct when it secures a Prize or forces a costly response.
+
+Remember that Phantom Dive places damage counters; it does not deal attack
+damage to the Bench. Effects that prevent damage may not prevent counter
+placement, while effects that prevent effects of attacks or damage counters may
+matter. Read the exact card in play rather than generalizing from its archetype.
+
+MUNKIDORI AND DAMAGE REPAIR
+
+Adrena-Brain moves up to three damage counters from one of your Pokémon to one
+of the opponent's Pokémon when Munkidori has Darkness attached. This is both
+healing and offense. Good uses:
+
+- remove 30 damage so the Active Dragapult survives a known attack number;
+- finish a 10–30 HP Bench target without spending Phantom Dive counters there;
+- adjust a target so Phantom Dive's six counters create a two-knockout turn;
+- move damage from a support Pokémon that the opponent planned to finish.
+
+Do not activate merely because you can. Confirm an exact source with damage,
+an exact legal target, and a threshold that changes. Moving counters onto a
+high-HP target without changing its knockout clock may reveal no value. The
+Darkness attachment also competes with Fire/Psychic setup, so power Munkidori
+only when the ability is part of the active plan.
+
+BENCH MANAGEMENT
+
+Area Zero Underdepths expands the Bench while a Tera Pokémon is in play. That
+extra room enables Dreepy redundancy plus Munkidori and toolbox Basics, but it
+is conditional. If the Stadium leaves play, you may have to discard Benched
+Pokémon until the normal limit is restored.
+
+Before filling an expanded bench, choose which Pokémon would be discarded if
+Area Zero disappears. Never make the answer "my only replacement attacker."
+Prioritize:
+
+1. current attacker and replacement Dreepy/Drakloak line;
+2. powered Munkidori when its counters matter;
+3. a support Pokémon whose ability is live now;
+4. matchup attacker with a defined Prize target;
+5. redundant or already-spent liabilities last.
+
+Meowth ex is strongest when Last-Ditch Catch finds the turn's exact Supporter.
+It is weakest when benched preemptively and then stranded as a two-Prize target.
+Fezandipiti ex has the same discipline: bench it after the opponent has taken a
+knockout and its draw ability is available, not solely because it is in hand.
+
+Pecharunt ex can switch a Darkness-type Pokémon from the Bench into the Active
+Spot, at the cost of Poisoning it, when its ability is applicable. In this
+anchor that can promote Yveltal or Fezandipiti ex, but not Psychic-type
+Munkidori merely because Munkidori has a Darkness Energy attached. The switch
+can still expose a support Pokémon and another two-Prize liability. Use it to
+complete a known attack or escape a trap, not as routine board decoration.
+
+PRIZE MAPPING
+
+The deck commonly wins with three two-Prize knockouts, but Phantom Dive lets it
+build better maps:
+
+- 2 + 2 + 2: straightforward Rule Box exchange.
+- 1 + 1 + 2 + 2: Bench counters collect small supports while Active attacks
+  handle Rule Box Pokémon.
+- 2 + 3 + 1: a list-specific matchup attacker handles a three-Prize target
+  while Phantom Dive prepares the last Prize.
+- 1 + 2 + 3 in one compressed endgame: a Bench knockout plus a gusted Active
+  can close before the opponent gets another attack.
+
+At six Prizes, decide whether your intended final turn uses Boss's Orders,
+Prime Catcher, Munkidori, or raw Phantom Dive spread. Preserve the unique card
+that enables that ending. Spending Prime Catcher for minor tempo is wrong when
+it is the only way to force the final target Active; holding it forever is also
+wrong when using it now protects two setup turns.
+
+FIRST- AND SECOND-PLAYER MIDGAME PLANS
+
+When you went first, your advantage is evolution timing. Aim to attack first
+with Dragapult while retaining a Drakloak engine. Force the opponent to choose
+between removing the Active attacker and disrupting the replacement.
+
+When you went second, your compensation is an optional Budew attack and the
+first Supporter. If Budew delays the opponent, use that borrowed turn to build
+two Dragapult lines. If Budew is unlikely to matter, accelerate immediately.
+Do not remain in Item lock after the opponent's board is established merely
+because it was useful on turn one.
+
+RECOVERY LINES
+
+If the first Dreepy is knocked out:
+
+- promote the lowest-cost pivot, not automatically the next Dreepy;
+- preserve the surviving Dreepy's attachment;
+- use Poffin/Poké Pad/Night Stretcher to restore two lines if possible;
+- count whether Crispin plus the manual attachment still produces an attack.
+
+If the first Dragapult is knocked out:
+
+- activate Fezandipiti ex only after confirming its ability is live;
+- decide whether Night Stretcher needs to recover a Pokémon or Energy;
+- use a single-Prize attacker only if it changes the prize exchange or buys a
+  full setup turn;
+- avoid benching every recovery target and creating an easy Boss route.
+
+After Judge or another hand reset:
+
+- use Recon Directive before committing a shuffle;
+- use Meowth ex to recover the exact Supporter if a bench slot is safe;
+- identify the minimum winning turn rather than rebuilding the entire ideal
+  board.
+
+If Area Zero is removed:
+
+- discard spent support liabilities first;
+- keep the replacement attacker and powered Munkidori;
+- reassess whether replacing the Stadium is worth the card and tempo.
+
+MATCHUP PLANS
+
+The public matchup table is observational, not a guarantee. Use it to choose
+testing priorities; play the board in front of you.
+
+Mirror and other Dragapult variants
+
+The broad public mirror is close to even. Protect multiple Dreepy and avoid
+offering low-HP Basics that let the opponent turn Phantom Dive into free
+Prizes. Keep track of opposing Munkidori and possible counter movement before
+declaring a target safe. Lillie's Clefairy ex does not create Psychic Weakness
+on ordinary Dragapult ex; Fairy Zone applies to opposing N's Pokémon. Bench it
+in the mirror only if Full Moon Rondo's visible bench count creates a better
+attack or exchange. Against a Hammer build, typed-Energy redundancy matters
+more; against Dusknoir, damage thresholds can change without an attack. Those
+are opponent adaptations, not permission to treat your own deck as those
+variants.
+
+Rocket's Mewtwo
+
+Public results put this matchup near even. Deny a clean multi-Prize map:
+develop two Dreepy, limit unused Rule Box supports, and spread only toward
+targets that remain relevant after evolution. Save gust for an engine Pokémon
+or a final Prize rather than a low-value hit. Watch for stadium interactions
+before overfilling Area Zero.
+
+Alakazam/Dudunsparce
+
+The public aggregate is also near even. Multiple small Pokémon can make
+Phantom Dive attractive, but Run Away Draw can remove a damaged Dudunsparce
+from play and erase your setup. Place counters on targets that cannot simply
+shuffle themselves away, or take the immediate knockout. Hand disruption is
+best when paired with board pressure; Judge without a threatening attack gives
+the draw engine time to recover.
+
+Starmie/Froslass
+
+Public results slightly favor Dragapult. The opponent punishes ability-heavy
+benches, so every Drakloak, Munkidori, Meowth ex, and Fezandipiti ex must earn
+its place. Get the first meaningful Phantom Dive and use counters to remove
+small Froslass or developing Staryu when that changes the damage engine. Do not
+bench both draw supports by habit.
+
+Festival Lead
+
+Public results favor Dragapult. The opposing deck presents many single-Prize,
+low-HP targets, making exact Phantom Dive placement decisive. Build turns that
+take an Active Prize and a Bench Prize together. Respect stadium competition:
+losing Area Zero can collapse your bench, while Festival Grounds enables the
+opponent's engine.
+
+Crustle
+
+The public table shows this as a severe problem. Check the exact defensive
+effect before attacking. Phantom Dive's Active damage and Bench counter
+placement interact differently with prevention text. Preserve Yveltal,
+Munkidori, or another list-specific answer if it bypasses the visible lock.
+Do not repeatedly spend Phantom Dive into an immune Active when the Bench
+counters do not create a winning route. This matchup needs dedicated testing;
+the guide does not claim an automatic answer.
+
+Cynthia's Garchomp
+
+Public results favor Dragapult strongly, but do not become careless. Remove
+evolving Basics before they become durable attackers, keep a replacement line,
+and avoid exposing a toolbox Pokémon for no value. Straight pressure plus
+targeted spread is usually better than an elaborate tech route.
+
+COMMON MISTAKES
+
+1. Starting one Dreepy and filling the rest of the bench with support Pokémon.
+2. Evolving every Drakloak and losing Recon Directive before the replacement
+   attacker is secure.
+3. Using Crispin without first deciding which Energy is attached and which is
+   kept.
+4. Attaching Darkness to Munkidori before an exact Adrena-Brain use exists.
+5. Splitting Fire/Psychic across attackers so neither can Phantom Dive.
+6. Spreading six counters evenly without changing any knockout threshold.
+7. Benching Meowth ex or Fezandipiti ex before their ability is live.
+8. Discarding one-of techs or the last needed Energy type with Ultra Ball.
+9. Treating Area Zero's expanded bench as permanent.
+10. Using Boss's Orders for damage that does not improve the Prize map.
+11. Forgetting that current public "Dragapult" lists with the project's Hammer
+    signature are Hammer Pult, not this specialist.
+12. Borrowing partner-variant lines that the actual 60 cards cannot execute.
+
+TURN CHECKLIST
+
+Before actions
+
+- What is my exact Prize map?
+- Which Dragapult attacks this turn, and which one attacks next turn?
+- How many Fire, Psychic, and Darkness Energy are visible?
+- Which opposing Bench targets change thresholds with 10–60 damage?
+- What happens to my bench if Area Zero leaves play?
+
+Before search or draw
+
+- Can Recon Directive improve the information first?
+- Does Poké Pad find the card, or does its Rule Box require Ultra Ball?
+- Is Meowth ex worth two Prizes and a bench slot for this Supporter?
+- Which cards become recoverable if discarded now?
+
+Before attacking
+
+- Does the Active 200 damage produce or set up a Prize?
+- Where do all six counters go, and what exact future threshold does each
+  placement create?
+- Can Munkidori take a Prize or preserve the Active first?
+- Am I preserving the gust/recovery card required for the final turn?
+
+SHORT TRAINING-SYSTEM APPENDIX
+
+The human guide above is intentionally broader than any safe heuristic teacher.
+The proposed sparse teacher may label only complete legal-action stages whose
+prompt origin, current options, and relevant public/acting-seat state are fully
+resolved. It may express opening Basic priorities, exact visible search gaps,
+and conservative current-turn draw-ability use. It must abstain on typed-Energy
+routing, manual attachment, Ultra Ball discards, Phantom Dive counter
+placement, Munkidori routing, gust, attack choice, prize-map forecasts,
+matchup-specific tactics, hidden zones, future draws, and outcome-conditioned
+choices. Unsupported, ambiguous, malformed, incomplete, or low-margin stages
+are masked, never given a zero target.
+
+SOURCES REVIEWED
+
+1. The Pokémon Company International, "Pokémon Trading Card Game Live Starter
+   Deck Strategies—March 2026."
+   https://www.pokemon.com/us/strategy/pokemon-trading-card-game-live-starter-deck-strategies-march-2026
+   Official evidence for Phantom Dive's 200 Active damage and six Bench damage
+   counters, plus the basic Stage 2 setup plan.
+
+2. PokéBeach, "Enter the Dragapult — The New Format and Its Top Decks,"
+   published May 2026.
+   https://www.pokebeach.com/2026/05/enter-the-dragapult-the-new-format-and-its-top-decks
+   Evidence separating Straight Dragapult from Blaziken and Dudunsparce, and
+   for the straight shell's Dreepy, Budew, Munkidori, Yveltal, and toolbox plan.
+
+3. Limitless TCG, Dragapult by Francisco Osorio, Regional Campinas 2026, 2nd.
+   https://limitlesstcg.com/decks/list/27143
+   Exact representative provenance. The local archive is the checksum-bound
+   card-ID form used by this proposal.
+
+4. Limitless TCG, Dragapult by Kira Melville / Aurora Viets.
+   https://limitlesstcg.com/decks/list/27611
+   Current high-performing broad Dragapult shell and NAIC reuse evidence. It
+   carries the project's Hammer signature and therefore informs the metagame
+   but is explicitly not substituted for plain Dragapult.
+
+5. Play! Limitless, Dragapult POR Standard 2026 matchups.
+   https://play.limitlesstcg.com/decks/dragapult-ex/matchups/?format=standard&rotation=2026&set=POR
+   Observational testing priorities and matchup sample sizes; not causal proof
+   of a line of play.
+
+6. Simbozz, "Dragapult Deck Guide — Pokémon TCG Live Standard," updated
+   June 12, 2026.
+   https://simbozz.gg/tcg-live/decks/dragapult
+   Aggregate evidence from 363 recent lists across 42 tournaments for the core
+   line, search engine, typed Energy, and disruption plan. Its consensus list
+   is broad-archetype evidence and is Hammer Pult under the project signature.
+
+7. Limitless TCG card record, Dragapult ex TWM 130.
+   https://limitlesstcg.com/cards/TWM/130
+
+8. Limitless TCG card record, Drakloak TWM 129.
+   https://limitlesstcg.com/cards/TWM/129
+
+9. Limitless TCG card record, Munkidori TWM 95.
+   https://limitlesstcg.com/cards/TWM/95
+
+10. Limitless TCG card record, Meowth ex POR 62.
+    https://limitlesstcg.com/cards/POR/62
+
+11. Limitless TCG card record, Crispin SCR 133.
+    https://limitlesstcg.com/cards/SCR/133
+
+12. Limitless TCG card record, Lillie's Determination MEG 119.
+    https://limitlesstcg.com/cards/MEG/119
+
+13. Limitless TCG card record, Rosa's Encouragement POR 123.
+    https://limitlesstcg.com/cards/POR/123
+
+14. Limitless TCG card record, Poké Pad POR 81.
+    https://limitlesstcg.com/cards/POR/81
+
+EVIDENCE LIMITS
+
+- Public tournament labels do not enforce this project's Hammer-Pult signature.
+  Broad Dragapult aggregates mix project identities and cannot prove a plain-
+  only matchup percentage.
+- The exact representative predates NAIC but remains the locally declared
+  plain representative. A newer pure, non-Hammer, non-partner 60-card selection
+  requires a production identity audit rather than a research-agent guess.
+- Public sources explain principles, not every exact prompt encoding in the
+  simulator. Unsupported prompt types remain masked until replay-backed schema
+  validation exists.
+- Matchup percentages are observational and variant-mixed. They prioritize
+  tests; they do not become per-action teacher labels.

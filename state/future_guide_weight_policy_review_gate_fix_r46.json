@@ -1,0 +1,44 @@
+{
+  "schema": "poke_bot.future_specialist_guide_weight_review_gate_fix/v1",
+  "status": "ready",
+  "created_at_utc": "2026-07-30T09:47:39Z",
+  "scope": "future_specialist_training_runs_only",
+  "prospective_effective_specialist": "archaludon-ex",
+  "defect": {
+    "selector_semantics_revision": 46,
+    "previous_review_request_condition": 45,
+    "effect": "future_five_iteration_evidence_review_requests_would_not_emit",
+    "guide_loss_multiplier_before_backpropagation_was_already_correct": true
+  },
+  "repair": {
+    "review_request_condition": 46,
+    "trainer_sha256": "sha256:25c3da7fe85935a846d5e3717f849b61c3549c284eff798bf5e1e0972c32da27",
+    "cycle_contract_sha256": "sha256:97f001c3111600554f2cfba95f0443ab37b82be63a7f4e21cbbdcb0d2654b632",
+    "regression_test": "tests/test_goal_gateway.py::test_deck_guide_sme_workflow_cannot_regress"
+  },
+  "runtime_binding": {
+    "source_root": "/home/inzi/.local/lib/pokebot-boundary-r46",
+    "stable_target": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current",
+    "resolved_target": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30",
+    "source_trainer_sha256": "sha256:25c3da7fe85935a846d5e3717f849b61c3549c284eff798bf5e1e0972c32da27",
+    "stable_trainer_sha256": "sha256:25c3da7fe85935a846d5e3717f849b61c3549c284eff798bf5e1e0972c32da27",
+    "stable_cycle_contract_sha256": "sha256:97f001c3111600554f2cfba95f0443ab37b82be63a7f4e21cbbdcb0d2654b632",
+    "source_and_stable_checksums_equal": true
+  },
+  "supersession": {
+    "preserved_receipt": "/home/inzi/poke-bot-agent/outputs/state/future_guide_weight_policy_runtime_sync_r46.json",
+    "preserved_receipt_sha256": "sha256:2f43119d1ae91b0889104a8374e854b651410f985e1468533a9c8eb32eb19b28",
+    "scope": "trainer_and_cycle_contract_hashes_only"
+  },
+  "active_training": {
+    "specialist_id": "teal-mask-ogerpon-ex",
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "main_pid_before_and_after": 2864742,
+    "restart_count_before_and_after": 2,
+    "selector_modified": false,
+    "active_runtime_trainer_sha256": "sha256:1464d0635d66fad4a31dbf57ce7d33a9dffb02db3353bfc4af78ff0660a1b189",
+    "runtime_modified": false,
+    "training_preempted": false,
+    "service_control_used": false
+  }
+}

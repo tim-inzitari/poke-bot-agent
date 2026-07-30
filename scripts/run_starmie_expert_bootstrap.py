@@ -31,6 +31,7 @@ from poke_bot import archetypes, checkpoint, device as device_mod
 from poke_bot.model import (
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_SCHEMA,
+    DECISION_FUSION_V2_SCHEMA,
 )
 from poke_bot.strategic_heads import (
     EXPANDED_STRATEGIC_SCHEMA,
@@ -48,7 +49,12 @@ from poke_bot.pure_rl.expert_rehearsal import (
     resolve_expert_manifest,
 )
 from poke_bot.pure_rl.model_registry import freeze_model, verify_frozen_model
-from poke_bot.train import belief_card_vocab_from_state, supervised_rehearsal_step
+from poke_bot.train import (
+    GUIDE_TRAINING_MODE_LEGACY,
+    GUIDE_TRAINING_MODE_STRATEGIC,
+    belief_card_vocab_from_state,
+    supervised_rehearsal_step,
+)
 
 
 FAMILY = "starmie_expert_bootstrap_from_distilled_core_v1"
@@ -152,6 +158,8 @@ def expanded_handoff_training_contract(
 
 def decision_fusion_handoff_contract(
     protocol_path: Path = DEFAULT_RL_PROTOCOL,
+    *,
+    strategic_curriculum: bool = False,
 ) -> dict[str, Any]:
     """Project the canonical all-head action contract into each handoff."""
 
@@ -172,8 +180,43 @@ def decision_fusion_handoff_contract(
         or raw.get("applies_to_every_successor_specialist") is not True
     ):
         raise RuntimeError("canonical causal decision-fusion contract changed")
+    if strategic_curriculum:
+        guide = (
+            (payload.get("specialist_training") or {}).get(
+                "current_deck_guide"
+            )
+            or {}
+        )
+        branch = (
+            ((guide.get("training_target_modes") or {}).get(
+                "future_specialists"
+            )
+            or {}).get("strategic_branch_scope")
+            or {}
+        )
+        required = (*required, "setup_board_outcome")
+        if (
+            branch.get("owner_decision_revision") != 56
+            or branch.get("decision_fusion_schema")
+            != "option_conditioned_per_head/v2"
+            or branch.get("action_route_granularity")
+            != "one_distinct_route_per_learned_decision_head"
+            or branch.get("route_aggregation") != "fixed_mean"
+            or float(branch.get("aggregate_route_delta_logit_cap") or -1.0)
+            != 1.0
+            or branch.get("route_final_projection_initialization")
+            != "exact_zero"
+            or branch.get("guide_is_only_action_route_exception") is not True
+        ):
+            raise RuntimeError(
+                "canonical strategic decision-fusion contract changed"
+            )
     return {
-        "schema": DECISION_FUSION_SCHEMA,
+        "schema": (
+            DECISION_FUSION_V2_SCHEMA
+            if strategic_curriculum
+            else DECISION_FUSION_SCHEMA
+        ),
         "canonical_config": (
             "config/rl_protocol.yaml#/specialist_training/decision_fusion"
         ),
@@ -186,6 +229,20 @@ def decision_fusion_handoff_contract(
         "matchup_adapter_behavior": "causal_route_gated",
         "absent_deck_guide_behavior": "exact_bypass",
         "future_specialists_required": True,
+        **(
+            {
+                "owner_decision_revision": 56,
+                "route_schema": "option_conditioned_per_head/v2",
+                "one_route_per_learned_head": True,
+                "route_input": "option_hidden_plus_typed_output",
+                "route_aggregation": "fixed_mean",
+                "aggregate_absolute_logit_cap": 1.0,
+                "zero_safe_final_projection": True,
+                "guide_is_only_action_route_exception": True,
+            }
+            if strategic_curriculum
+            else {}
+        ),
     }
 
 
@@ -197,6 +254,12 @@ def current_deck_guide_handoff_contract(
     guide_version: str,
     corpus_ready_receipt: Path,
     expected_corpus_ready_sha256: str,
+    strategic_curriculum_spec: Path | None = None,
+    expected_strategic_curriculum_spec_sha256: str = "",
+    strategic_head_role_map: Path | None = None,
+    expected_strategic_head_role_map_sha256: str = "",
+    strategic_validation_receipt: Path | None = None,
+    expected_strategic_validation_receipt_sha256: str = "",
     protocol_path: Path = DEFAULT_RL_PROTOCOL,
 ) -> dict[str, Any]:
     """Validate and project one successor's checksum-bound guide schedule."""
@@ -245,6 +308,49 @@ def current_deck_guide_handoff_contract(
         or int(ready.get("guide_rows") or 0) <= 0
     ):
         raise RuntimeError("current-deck guide handoff contract changed")
+    guide_mode = str(
+        ((guide or {}).get("policy_target") or {}).get("training_mode")
+        or GUIDE_TRAINING_MODE_LEGACY
+    )
+    if guide_mode not in {
+        GUIDE_TRAINING_MODE_LEGACY,
+        GUIDE_TRAINING_MODE_STRATEGIC,
+    }:
+        raise RuntimeError("current-deck guide training mode is invalid")
+    supplied_strategic = any(
+        (
+            strategic_curriculum_spec is not None,
+            bool(expected_strategic_curriculum_spec_sha256),
+            strategic_head_role_map is not None,
+            bool(expected_strategic_head_role_map_sha256),
+            strategic_validation_receipt is not None,
+            bool(expected_strategic_validation_receipt_sha256),
+        )
+    )
+    strategic_bundle = None
+    if guide_mode == GUIDE_TRAINING_MODE_STRATEGIC:
+        from scripts.register_next_specialist_runtime import (
+            _validate_strategic_curriculum_bundle,
+        )
+
+        strategic_bundle = _validate_strategic_curriculum_bundle(
+            specialist_id=specialist_id,
+            guide_contract_sha256=contract_digest.removeprefix("sha256:"),
+            curriculum_spec=strategic_curriculum_spec,
+            curriculum_spec_sha256=(
+                expected_strategic_curriculum_spec_sha256
+            ),
+            head_role_map=strategic_head_role_map,
+            head_role_map_sha256=expected_strategic_head_role_map_sha256,
+            validation_receipt=strategic_validation_receipt,
+            validation_receipt_sha256=(
+                expected_strategic_validation_receipt_sha256
+            ),
+        )
+    elif supplied_strategic:
+        raise RuntimeError(
+            "legacy current-deck guide cannot bind strategic artifacts"
+        )
     return {
         "schema": "poke_bot.current_deck_guide_handoff/v1",
         "specialist_id": specialist_id,
@@ -253,7 +359,12 @@ def current_deck_guide_handoff_contract(
         "contract_sha256": contract_digest,
         "corpus_ready_receipt": str(corpus_ready_receipt),
         "corpus_ready_receipt_sha256": ready_digest,
-        "policy_target": "shared_flat_policy",
+        "policy_target": (
+            "observed_causal_strategic_heads_only"
+            if guide_mode == GUIDE_TRAINING_MODE_STRATEGIC
+            else "shared_flat_policy"
+        ),
+        "training_mode": guide_mode,
         "runtime_action_override": False,
         "bootstrap_schedule": {
             "ramp_epochs": [1, 5],
@@ -267,6 +378,11 @@ def current_deck_guide_handoff_contract(
             (canonical.get("adaptive_annealing") or {}).get(
                 "enabled_after_bootstrap"
             )
+        ),
+        **(
+            {"strategic_curriculum": strategic_bundle}
+            if strategic_bundle is not None
+            else {}
         ),
     }
 
@@ -519,6 +635,7 @@ def _specialist_hot_start_from_core(
     enable_expanded_heads: bool = False,
     expanded_identity: dict[str, Any] | None = None,
     enable_decision_fusion: bool = False,
+    enable_strategic_curriculum: bool = False,
 ) -> tuple[Path, str, dict[str, Any]]:
     """Build an append-only specialist hot start without rewriting the core.
 
@@ -531,6 +648,10 @@ def _specialist_hot_start_from_core(
 
     if enable_decision_fusion and not enable_expanded_heads:
         raise ValueError("decision fusion requires expanded strategic heads")
+    if enable_strategic_curriculum and not enable_decision_fusion:
+        raise ValueError(
+            "strategic curriculum requires causal decision fusion"
+        )
     payload = checkpoint.load_checkpoint(core_path, map_location="cpu")
     source_state = dict(payload.get("model_state_dict") or {})
     state = dict(source_state)
@@ -538,6 +659,10 @@ def _specialist_hot_start_from_core(
     bias_key = "aux_head.3.bias"
     old_weight = state.get(weight_key)
     old_bias = state.get(bias_key)
+    fusion_archetype_key = (
+        "decision_fusion.state_projections.archetype.weight"
+    )
+    fusion_archetype_expanded = False
     if not isinstance(old_weight, torch.Tensor) or not isinstance(
         old_bias, torch.Tensor
     ):
@@ -547,8 +672,50 @@ def _specialist_hot_start_from_core(
     target_classes = len(target_ids) + 1
     old_classes = int(old_weight.shape[0])
     parent_digest = checkpoint.checkpoint_digest(core_path)
-    if old_classes == target_classes:
+    extra = dict(payload.get("extra") or {})
+    recorded_expansion = dict(
+        extra.get("specialist_aux_archetype_head_expansion") or {}
+    )
+    recorded_ids = recorded_expansion.get("target_archetype_ids")
+    old_ids: list[str] | None = None
+    if (
+        isinstance(recorded_ids, list)
+        and len(recorded_ids) + 1 == old_classes
+    ):
+        old_ids = [str(value) for value in recorded_ids]
+        if len(old_ids) != len(set(old_ids)):
+            raise RuntimeError(
+                "shared core archetype row identity contains duplicates"
+            )
+    elif old_classes == target_classes:
+        # Backward compatibility for a current-width checkpoint created before
+        # explicit row identities were embedded. The stable registry contract
+        # makes current width unambiguous only while the full order matches.
         old_ids = list(target_ids)
+    else:
+        compatible_orders = (
+            archetypes.CUMULATIVE_V4_AUX_ARCHETYPE_IDS,
+            archetypes.PINNED_CORE_AUX_ARCHETYPE_IDS,
+            archetypes.LEGACY_AUX_ARCHETYPE_IDS,
+        )
+        matches = [
+            list(order)
+            for order in compatible_orders
+            if old_classes == len(order) + 1
+        ]
+        if len(matches) == 1:
+            old_ids = matches[0]
+    if old_ids is None:
+        raise RuntimeError(
+            "shared core archetype head cannot be append-expanded safely: "
+            f"classes={old_classes}"
+        )
+    if any(name not in target_ids for name in old_ids):
+        raise RuntimeError(
+            "shared core archetype order is not append-compatible"
+        )
+
+    if old_classes == target_classes and old_ids == target_ids:
         expansion = {
             "schema": SPECIALIST_AUX_EXPANSION_SCHEMA,
             "status": "already_current",
@@ -574,29 +741,6 @@ def _specialist_hot_start_from_core(
                 },
             )
     else:
-        compatible_orders = (
-            archetypes.CUMULATIVE_V4_AUX_ARCHETYPE_IDS,
-            archetypes.PINNED_CORE_AUX_ARCHETYPE_IDS,
-            archetypes.LEGACY_AUX_ARCHETYPE_IDS,
-        )
-        old_ids = next(
-            (
-                list(order)
-                for order in compatible_orders
-                if old_classes == len(order) + 1
-            ),
-            None,
-        )
-        if old_ids is None:
-            raise RuntimeError(
-                "shared core archetype head cannot be append-expanded safely: "
-                f"classes={old_classes}"
-            )
-        if any(name not in target_ids for name in old_ids):
-            raise RuntimeError(
-                "shared core archetype order is not append-compatible"
-            )
-
         seed_material = (
             f"{parent_digest}|{archetype}|{SPECIALIST_AUX_EXPANSION_SCHEMA}"
         ).encode("utf-8")
@@ -633,15 +777,54 @@ def _specialist_hot_start_from_core(
             "newly_initialized_rows": [
                 name for name in target_ids if name not in old_ids
             ],
-            "unknown_row_moved_to_final": True,
+            "unknown_row_moved_to_final": old_classes != target_classes,
             "expansion_seed": expansion_seed,
             "optimizer_state_imported": False,
         }
         state[weight_key] = expanded.weight.detach().clone()
         state[bias_key] = expanded.bias.detach().clone()
+        fusion_archetype = state.get(fusion_archetype_key)
+        if fusion_archetype is not None:
+            if (
+                not isinstance(fusion_archetype, torch.Tensor)
+                or fusion_archetype.ndim != 2
+                or int(fusion_archetype.shape[1]) != old_classes
+            ):
+                raise RuntimeError(
+                    "shared core decision-fusion archetype projection "
+                    "cannot be append-expanded safely"
+                )
+            expanded_fusion = fusion_archetype.new_zeros(
+                (int(fusion_archetype.shape[0]), target_classes)
+            )
+            with torch.no_grad():
+                for old_index, name in enumerate(old_ids):
+                    new_index = target_ids.index(name)
+                    expanded_fusion[:, new_index].copy_(
+                        fusion_archetype[:, old_index]
+                    )
+                expanded_fusion[:, -1].copy_(fusion_archetype[:, -1])
+            state[fusion_archetype_key] = expanded_fusion
+            fusion_archetype_expanded = True
+            expansion["decision_fusion_archetype_projection"] = {
+                "tensor": fusion_archetype_key,
+                "source_columns": old_classes,
+                "target_columns": target_classes,
+                "copied_named_columns": old_ids,
+                "new_columns_zero_initialized": [
+                    name for name in target_ids if name not in old_ids
+                ],
+                "unknown_column_moved_to_final": (
+                    old_classes != target_classes
+                ),
+                "all_inherited_columns_byte_identical": True,
+            }
 
     unchanged = []
     changed = []
+    permitted_changed = {weight_key, bias_key}
+    if fusion_archetype_expanded:
+        permitted_changed.add(fusion_archetype_key)
     for name, source_tensor in source_state.items():
         target_tensor = state.get(name)
         if not isinstance(source_tensor, torch.Tensor) or not isinstance(
@@ -656,10 +839,10 @@ def _specialist_hot_start_from_core(
         ):
             unchanged.append(name)
             continue
-        if name not in {weight_key, bias_key} or old_classes == target_classes:
+        if name not in permitted_changed or old_classes == target_classes:
             raise RuntimeError(f"hot-start inherited V5 tensor changed: {name}")
         changed.append(name)
-    if set(changed) not in (set(), {weight_key, bias_key}):
+    if set(changed) not in (set(), permitted_changed):
         raise RuntimeError("archetype append migration changed an incomplete pair")
 
     migration: dict[str, Any] | None = None
@@ -766,11 +949,23 @@ def _specialist_hot_start_from_core(
         model_config["decision_fusion_enabled"] = True
         model_config["decision_fusion_runtime_enabled"] = True
         model_config.setdefault("decision_fusion_width", 16)
+        if enable_strategic_curriculum:
+            model_config["setup_board_outcome_head_enabled"] = True
+            model_config[
+                "decision_fusion_dedicated_routes_enabled"
+            ] = True
+            model_config[
+                "decision_fusion_dedicated_routes_runtime_enabled"
+            ] = True
         payload["model_config"] = model_config
         if not source_fusion_tensor_keys:
             fusion_migration = {
                 "schema": "poke_bot.causal_decision_fusion_migration/v1",
-                "target_schema": "poke_bot.causal_decision_fusion/v1",
+                "target_schema": (
+                    DECISION_FUSION_V2_SCHEMA
+                    if enable_strategic_curriculum
+                    else DECISION_FUSION_SCHEMA
+                ),
                 "source_checkpoint": str(core_path),
                 "source_checkpoint_digest": parent_digest,
                 "zero_safe_initialization": True,
@@ -778,6 +973,9 @@ def _specialist_hot_start_from_core(
                 "activation_scope": "isolated_specialist_bootstrap",
                 "serving_eligible": False,
                 "all_inherited_tensors_preserved": True,
+                "one_option_conditioned_route_per_learned_head": (
+                    enable_strategic_curriculum
+                ),
             }
 
     payload["model_state_dict"] = state
@@ -811,7 +1009,11 @@ def _specialist_hot_start_from_core(
 
     run_dir.mkdir(parents=True, exist_ok=True)
     hot_start = run_dir / (
-        "shared_core_hot_start.expanded-v6-fused-v1.pt"
+        (
+            "shared_core_hot_start.expanded-v6-fused-archetype-v2.pt"
+            if fusion_archetype_expanded
+            else "shared_core_hot_start.expanded-v6-fused-v1.pt"
+        )
         if enable_decision_fusion
         else (
             "shared_core_hot_start.expanded-v6.pt"
@@ -841,6 +1043,14 @@ def _specialist_hot_start_from_core(
                 "decision_fusion_enabled", False
             )
             is not bool(enable_decision_fusion)
+            or dict(existing.get("model_config") or {}).get(
+                "setup_board_outcome_head_enabled", False
+            )
+            is not bool(enable_strategic_curriculum)
+            or dict(existing.get("model_config") or {}).get(
+                "decision_fusion_dedicated_routes_enabled", False
+            )
+            is not bool(enable_strategic_curriculum)
         ):
             raise RuntimeError("existing specialist hot-start identity changed")
     else:
@@ -888,6 +1098,12 @@ def main(argv: list[str] | None = None) -> int:
         "--expected-current-deck-guide-corpus-ready-sha256",
         default="",
     )
+    parser.add_argument("--strategic-curriculum-spec", type=Path)
+    parser.add_argument("--strategic-curriculum-spec-sha256", default="")
+    parser.add_argument("--strategic-head-role-map", type=Path)
+    parser.add_argument("--strategic-head-role-map-sha256", default="")
+    parser.add_argument("--strategic-validation-receipt", type=Path)
+    parser.add_argument("--strategic-validation-receipt-sha256", default="")
     args = parser.parse_args(argv)
     required_targets = tuple(args.required_target or TARGETS)
     if (
@@ -926,11 +1142,6 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.decision_fusion and not args.expanded_heads:
         raise ValueError("--decision-fusion requires --expanded-heads")
-    fusion_identity = (
-        decision_fusion_handoff_contract(args.rl_protocol)
-        if args.decision_fusion
-        else None
-    )
     guide_arguments = (
         args.current_deck_guide_contract,
         str(args.expected_current_deck_guide_sha256 or ""),
@@ -942,6 +1153,18 @@ def main(argv: list[str] | None = None) -> int:
         value not in {None, ""} for value in guide_arguments
     ):
         raise ValueError("current-deck guide arguments must be complete")
+    strategic_arguments = (
+        args.strategic_curriculum_spec,
+        str(args.strategic_curriculum_spec_sha256 or ""),
+        args.strategic_head_role_map,
+        str(args.strategic_head_role_map_sha256 or ""),
+        args.strategic_validation_receipt,
+        str(args.strategic_validation_receipt_sha256 or ""),
+    )
+    if any(value not in {None, ""} for value in strategic_arguments) and not all(
+        value not in {None, ""} for value in strategic_arguments
+    ):
+        raise ValueError("strategic curriculum arguments must be complete")
     guide_identity = (
         current_deck_guide_handoff_contract(
             specialist_id=archetype,
@@ -952,9 +1175,42 @@ def main(argv: list[str] | None = None) -> int:
             expected_corpus_ready_sha256=(
                 args.expected_current_deck_guide_corpus_ready_sha256
             ),
+            strategic_curriculum_spec=args.strategic_curriculum_spec,
+            expected_strategic_curriculum_spec_sha256=(
+                args.strategic_curriculum_spec_sha256
+            ),
+            strategic_head_role_map=args.strategic_head_role_map,
+            expected_strategic_head_role_map_sha256=(
+                args.strategic_head_role_map_sha256
+            ),
+            strategic_validation_receipt=args.strategic_validation_receipt,
+            expected_strategic_validation_receipt_sha256=(
+                args.strategic_validation_receipt_sha256
+            ),
             protocol_path=args.rl_protocol,
         )
         if all(value not in {None, ""} for value in guide_arguments)
+        else None
+    )
+    strategic_curriculum = (
+        guide_identity is not None
+        and guide_identity.get("training_mode")
+        == GUIDE_TRAINING_MODE_STRATEGIC
+    )
+    if strategic_curriculum and not args.decision_fusion:
+        raise ValueError(
+            "strategic current-deck guide requires --decision-fusion"
+        )
+    if bool(strategic_arguments[0]) != bool(strategic_curriculum):
+        raise ValueError(
+            "strategic artifacts must match the guide training mode"
+        )
+    fusion_identity = (
+        decision_fusion_handoff_contract(
+            args.rl_protocol,
+            strategic_curriculum=bool(strategic_curriculum),
+        )
+        if args.decision_fusion
         else None
     )
     corpus_argument = args.expert_corpus or args.starmie_corpus
@@ -1090,6 +1346,7 @@ def main(argv: list[str] | None = None) -> int:
             enable_expanded_heads=expanded_identity is not None,
             expanded_identity=expanded_identity,
             enable_decision_fusion=bool(args.decision_fusion),
+            enable_strategic_curriculum=bool(strategic_curriculum),
         )
     )
     state_path = run_dir / "state.json"
@@ -1284,6 +1541,38 @@ def main(argv: list[str] | None = None) -> int:
                     "lethal_threat_loss_weight": 0.025,
                     "prize_race_loss_weight": 0.025,
                     "alakazam_guide_loss_weight": guide_weight,
+                    "current_deck_guide_training_mode": (
+                        str(guide_identity["training_mode"])
+                        if guide_identity is not None
+                        else GUIDE_TRAINING_MODE_LEGACY
+                    ),
+                    "current_deck_guide_curriculum_spec": (
+                        str(
+                            guide_identity["strategic_curriculum"][
+                                "curriculum_spec"
+                            ]
+                        )
+                        if strategic_curriculum
+                        else ""
+                    ),
+                    "current_deck_guide_head_role_map": (
+                        str(
+                            guide_identity["strategic_curriculum"][
+                                "head_role_map"
+                            ]
+                        )
+                        if strategic_curriculum
+                        else ""
+                    ),
+                    "current_deck_guide_curriculum_validation_receipt": (
+                        str(
+                            guide_identity["strategic_curriculum"][
+                                "validation_receipt"
+                            ]
+                        )
+                        if strategic_curriculum
+                        else ""
+                    ),
                     "output_archetype_id": archetype,
                     "output_model_id": f"{args.run_name}.epoch{epoch:02d}",
                     "extra_updates": {
@@ -1466,15 +1755,54 @@ def main(argv: list[str] | None = None) -> int:
         fusion_inventory = dict(best_provenance.get("decision_fusion") or {})
         fusion_state = dict(best_payload.get("model_state_dict") or {})
         output_weight = fusion_state.get("decision_fusion.residual.2.weight")
+        route_weights = {
+            name: tensor
+            for name, tensor in fusion_state.items()
+            if name.startswith("decision_fusion.dedicated_routes.")
+            and name.endswith(".network.2.weight")
+        }
+        expected_fusion_schema = (
+            DECISION_FUSION_V2_SCHEMA
+            if strategic_curriculum
+            else DECISION_FUSION_SCHEMA
+        )
         if (
             best_config.get("decision_fusion_enabled") is not True
             or best_config.get("decision_fusion_runtime_enabled") is not True
-            or fusion_inventory.get("schema") != DECISION_FUSION_SCHEMA
+            or fusion_inventory.get("schema") != expected_fusion_schema
             or fusion_inventory.get("runtime_enabled") is not True
             or fusion_inventory.get("required_heads")
             != list(DECISION_FUSION_REQUIRED_HEADS)
             or not isinstance(output_weight, torch.Tensor)
             or not bool(torch.count_nonzero(output_weight).item())
+            or (
+                strategic_curriculum
+                and (
+                    best_config.get(
+                        "setup_board_outcome_head_enabled"
+                    )
+                    is not True
+                    or best_config.get(
+                        "decision_fusion_dedicated_routes_enabled"
+                    )
+                    is not True
+                    or best_config.get(
+                        "decision_fusion_dedicated_routes_runtime_enabled"
+                    )
+                    is not True
+                    or set(route_weights)
+                    != {
+                        "decision_fusion.dedicated_routes."
+                        f"{name}.network.2.weight"
+                        for name in fusion_identity["required_heads"]
+                    }
+                    or any(
+                        not isinstance(tensor, torch.Tensor)
+                        or not bool(torch.count_nonzero(tensor).item())
+                        for tensor in route_weights.values()
+                    )
+                )
+            )
         ):
             raise RuntimeError(
                 "selected specialist checkpoint lacks trained causal decision fusion"

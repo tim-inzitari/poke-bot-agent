@@ -31,15 +31,23 @@ from poke_bot.pure_rl.expert_rehearsal import (
 )
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.resolve_specialist_assets import resolve_specialist_assets
+from scripts.launch_active_specialist_gate_handler import (
+    build_prestage_command,
+)
 from scripts.run_specialist_cycle_handoff import (
     _active_specialist,
     _path,
     _read,
 )
 from scripts.run_starmie_expert_bootstrap import (
+    GUIDE_TRAINING_MODE_LEGACY,
+    GUIDE_TRAINING_MODE_STRATEGIC,
     TARGETS,
     _manifest_expanded_targets,
     load_expanded_head_contract,
+)
+from scripts.register_next_specialist_runtime import (
+    _validate_strategic_curriculum_bundle,
 )
 from scripts.select_next_specialist import (
     select as select_next_specialist,
@@ -326,11 +334,57 @@ def _deck_guide_contract(
         specialist_id,
         raw,
     )
+    training_mode = str(
+        (raw.get("policy_target") or {}).get("training_mode")
+        or GUIDE_TRAINING_MODE_LEGACY
+    )
+    if training_mode not in {
+        GUIDE_TRAINING_MODE_LEGACY,
+        GUIDE_TRAINING_MODE_STRATEGIC,
+    }:
+        raise RuntimeError("current-deck guide training mode changed")
+    strategic_curriculum = None
+    if training_mode == GUIDE_TRAINING_MODE_STRATEGIC:
+        artifact_root = corpus_pointer.parent
+        curriculum_spec = (
+            artifact_root
+            / f"{specialist_id}-strategic-curriculum-r56.json"
+        )
+        head_role_map = (
+            artifact_root
+            / f"{specialist_id}-strategic-head-roles-r56.json"
+        )
+        validation_receipt = (
+            artifact_root
+            / f"{specialist_id}-strategic-curriculum-validation-r56.json"
+        )
+        if all(
+            path.is_file()
+            for path in (
+                curriculum_spec,
+                head_role_map,
+                validation_receipt,
+            )
+        ):
+            strategic_curriculum = _validate_strategic_curriculum_bundle(
+                specialist_id=specialist_id,
+                guide_contract_sha256=sha256(path).removeprefix("sha256:"),
+                curriculum_spec=curriculum_spec,
+                curriculum_spec_sha256=sha256(curriculum_spec),
+                head_role_map=head_role_map,
+                head_role_map_sha256=sha256(head_role_map),
+                validation_receipt=validation_receipt,
+                validation_receipt_sha256=sha256(validation_receipt),
+            )
     implementation_ready = bool(
         validation.get("unit_tests_passed")
         and validation.get("scorer_canary_passed")
         and writeup_ready
         and nonlinear_support["ready"]
+        and (
+            training_mode != GUIDE_TRAINING_MODE_STRATEGIC
+            or strategic_curriculum is not None
+        )
     )
     declared_guide_rows = validation.get(
         "guide_rows_in_filtered_expert_corpus"
@@ -368,6 +422,8 @@ def _deck_guide_contract(
         "path": str(path),
         "sha256": sha256(path),
         "guide_version": raw.get("guide_version"),
+        "training_mode": training_mode,
+        "strategic_curriculum": strategic_curriculum,
         "teacher_module": raw.get("teacher_module"),
         "strategy_source_count": len(raw["strategy_sources"]),
         "expert_writeup": {
@@ -850,6 +906,41 @@ def prepare(
         specialist_id=specialist_id,
         logical_aliases=logical_aliases,
     )
+    terminal_preflight_input = {
+        "schema": SCHEMA,
+        "selected_specialist": specialist_id,
+        "runtime_assets": {
+            "candidate_tree": str(tree_path),
+            "candidate_tree_sha256": sha256(tree_path),
+            "selected_route_accepted": specialist_id in routable_ids,
+        },
+        "representative": representative,
+    }
+    try:
+        terminal_command = build_prestage_command(
+            _read(_path(runtime, "runtime_registry")),
+            terminal_preflight_input,
+            contract,
+        )
+        terminal_preflight = {
+            "status": "ready",
+            "specialist_id": specialist_id,
+            "run_name": (
+                f"pure_rl_{specialist_id}_temporal1_8k_v1_20260723"
+            ),
+            "terminal_gate_marker": (
+                f"SPECIALIST_GATE_PASSED.{specialist_id}-splus-v1"
+            ),
+            "command_sha256": _canonical_digest(terminal_command),
+            "validated_before_bootstrap": True,
+        }
+    except (OSError, RuntimeError, ValueError) as exc:
+        terminal_preflight = {
+            "status": "blocked",
+            "specialist_id": specialist_id,
+            "reason": str(exc),
+            "validated_before_bootstrap": False,
+        }
     deck_guide = _deck_guide_contract(
         contract_path.parents[1],
         specialist_id,
@@ -865,18 +956,29 @@ def prepare(
         "reason": "run_with_build_cpu_pack_on_staging_host",
     }
     if build_cpu_pack and deck_guide["status"] == "ready":
-        cpu_pack = _build_cpu_pack(
-            corpus_identity=identity,
-            core_family=_path(dict(contract["shared_core"]), "family"),
-            cpu_pack_root=cpu_pack_root,
-            pack_workers=int(prestage.get("cpu_pack_workers", 1)),
-            memory_reserve_gib=float(
-                prestage.get("cpu_pack_memory_reserve_gib", 12.0)
-            ),
-            disk_reserve_gib=float(
-                prestage.get("cpu_pack_disk_reserve_gib", 16.0)
-            ),
-        )
+        try:
+            cpu_pack = _build_cpu_pack(
+                corpus_identity=identity,
+                core_family=_path(dict(contract["shared_core"]), "family"),
+                cpu_pack_root=cpu_pack_root,
+                pack_workers=int(prestage.get("cpu_pack_workers", 1)),
+                memory_reserve_gib=float(
+                    prestage.get("cpu_pack_memory_reserve_gib", 12.0)
+                ),
+                disk_reserve_gib=float(
+                    prestage.get("cpu_pack_disk_reserve_gib", 16.0)
+                ),
+            )
+        except MemoryError as error:
+            # Pre-staging runs beside the authoritative learner. Preserve the
+            # configured reserve and publish a durable deferred state instead
+            # of crashing or borrowing memory from healthy active training.
+            cpu_pack = {
+                "status": "deferred",
+                "root": str(cpu_pack_root),
+                "reason": "insufficient_memory_reserve",
+                "detail": str(error),
+            }
     elif build_cpu_pack:
         cpu_pack = {
             "status": "deferred",
@@ -893,6 +995,8 @@ def prepare(
         blockers.append("expert_cpu_pack_not_built")
     if deck_guide["status"] != "ready":
         blockers.append(str(deck_guide["reason"]))
+    if terminal_preflight["status"] != "ready":
+        blockers.append("terminal_handler_preflight_failed")
     receipt = {
         "schema": SCHEMA,
         "status": "ready" if not blockers else "blocked",
@@ -937,6 +1041,7 @@ def prepare(
             ),
             "selected_route_accepted": specialist_id in routable_ids,
         },
+        "terminal_preflight": terminal_preflight,
         "representative": representative,
         "current_deck_guide": deck_guide,
         "cpu_pack": cpu_pack,

@@ -129,7 +129,9 @@ def test_cancelled_result_producer_cannot_remain_blocked_on_full_queue() -> None
 def test_replay_window_is_released_before_any_evaluation_or_next_collect() -> None:
     src = (ROOT / "scripts" / "train_pure_rl.py").read_text(encoding="utf-8")
     full_loop = src[src.index("def run_full_loop(") :]
-    train_at = full_loop.index("result = rl_train_step(")
+    train_at = full_loop.index(
+        "result = recovered_candidate_result or rl_train_step("
+    )
     finally_at = full_loop.index("finally:", train_at)
     delete_at = full_loop.index("del dataset", finally_at)
     trim_at = full_loop.index("release_process_heap()", delete_at)
@@ -150,7 +152,10 @@ def test_leaf_farm_does_not_overlap_replay_expansion_or_training() -> None:
     suspend_marker = full_loop.index("suspend leaf farm before rehearsal/replay")
     stop_at = full_loop.index("leaf.stop()", suspend_marker)
     dataset_at = full_loop.index("dataset = _dataset_from_replay_window(", stop_at)
-    train_at = full_loop.index("result = rl_train_step(", dataset_at)
+    train_at = full_loop.index(
+        "result = recovered_candidate_result or rl_train_step(",
+        dataset_at,
+    )
     release_at = full_loop.index("replay memory released iter=", train_at)
     restore_at = full_loop.index("_rebuild_leaves_if_needed(", release_at)
     promotion_at = full_loop.index("promotion begin", restore_at)

@@ -9,6 +9,7 @@ from poke_bot.matchup_adapters import (
     MatchupAdapterBank,
     ZERO_DORMANT_CHECKPOINT_SCHEMA,
 )
+from poke_bot.matchup_adapters_v6 import load_slot_registry
 from poke_bot.pure_rl.model_profile import model_config_dict, pure_rl_model_config
 from scripts import train_pure_rl
 
@@ -77,3 +78,26 @@ def test_missing_false_flag_and_provenanced_disabled_bank_share_pure_rl_contract
 def test_pure_rl_profile_forces_dormant_runtime_off(monkeypatch) -> None:
     monkeypatch.setenv("MATCHUP_ADAPTERS_ENABLED", "1")
     assert pure_rl_model_config().matchup_adapters_enabled is False
+
+
+def test_router_format_6_profile_binds_immutable_registry(
+    monkeypatch,
+) -> None:
+    registry_path = (
+        Path(__file__).resolve().parents[1]
+        / "state/matchup_adapter_roster.json"
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_FORMAT",
+        "poke-bot-matchup-adapter-bank-v6",
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH",
+        str(registry_path),
+    )
+
+    profile = pure_rl_model_config()
+
+    assert profile.matchup_adapter_registry == load_slot_registry(
+        registry_path
+    )

@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -345,3 +348,47 @@ def test_small_core_to_hammer_transfer_is_shape_complete(tmp_path) -> None:
     assert report["complete_shape_transfer"] is True
     assert report["loaded_count"] == report["target_tensor_count"]
     assert report["skipped_tensors"] == {}
+
+
+def test_historical_core_kernel_ignores_ambient_future_head_flags(tmp_path) -> None:
+    cfg = core_kernel_config_small_3080ti()
+    kernel = CoreKernel(cfg=cfg, device=torch.device("cpu"))
+    checkpoint_path = tmp_path / "historical-core-kernel.pt"
+    kernel.save_core_kernel(checkpoint_path)
+    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    for field in (
+        "setup_board_outcome_head_enabled",
+        "decision_fusion_dedicated_routes_enabled",
+        "decision_fusion_dedicated_routes_runtime_enabled",
+    ):
+        payload["model_config"].pop(field, None)
+    torch.save(payload, checkpoint_path)
+
+    source = """
+import json
+from poke_bot.core_kernel import CoreKernel
+k = CoreKernel.load_core_kernel(PATH)
+print(json.dumps({
+    "setup": k.cfg.setup_board_outcome_head_enabled,
+    "routes": k.cfg.decision_fusion_dedicated_routes_enabled,
+    "runtime": k.cfg.decision_fusion_dedicated_routes_runtime_enabled,
+}))
+""".replace("PATH", repr(str(checkpoint_path)))
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED": "1",
+            "POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED": "1",
+            "POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED": "1",
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", source],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+    )
+    loaded = json.loads(result.stdout.strip().splitlines()[-1])
+    assert loaded == {"setup": False, "routes": False, "runtime": False}

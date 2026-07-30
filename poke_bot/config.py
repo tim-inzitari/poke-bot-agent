@@ -309,6 +309,12 @@ class ModelConfig:
     #: Expanded outputs may feed the separately gated causal decision-fusion
     #: module. Architecture presence never implies serving activation.
     expanded_heads_enabled: bool = _env_bool("EXPANDED_HEADS_ENABLED", False)
+    #: Future-specialist-only option-conditioned board-development branch.
+    #: Its typed output enters the separately gated fusion-v2 setup route.
+    #: Historical and already-started checkpoints leave this false.
+    setup_board_outcome_head_enabled: bool = _env_bool(
+        "SETUP_BOARD_OUTCOME_HEAD_ENABLED", False
+    )
     #: Learned residual that consumes every causal auxiliary/strategic head.
     #: It trains jointly when present, but serving remains separately gated so
     #: an architecture migration can begin as an exact flat-policy no-op.
@@ -317,6 +323,16 @@ class ModelConfig:
     )
     decision_fusion_runtime_enabled: bool = _env_bool(
         "DECISION_FUSION_RUNTIME_ENABLED", False
+    )
+    #: Future-only fusion-v2 tensors: one separately ablatable, bounded,
+    #: option-conditioned action route per learned decision head. The legacy
+    #: learned v1 residual remains intact and historical checkpoints omit both
+    #: flags. Serving activation is receipt-gated independently from training.
+    decision_fusion_dedicated_routes_enabled: bool = _env_bool(
+        "DECISION_FUSION_DEDICATED_ROUTES_ENABLED", False
+    )
+    decision_fusion_dedicated_routes_runtime_enabled: bool = _env_bool(
+        "DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED", False
     )
     decision_fusion_width: int = _env_int("DECISION_FUSION_WIDTH", 16)
     dropout: float = _env_float("DROPOUT", 0.1)

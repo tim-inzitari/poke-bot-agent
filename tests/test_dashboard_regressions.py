@@ -16,6 +16,7 @@ import types
 import pytest
 
 from scripts import dashboard_snapshot as dashboard_snapshot_module
+from dashboard.lan import server as dashboard_server_module
 from dashboard.lan.server import (
     DashboardHTTPServer,
     SnapshotCache,
@@ -1481,6 +1482,7 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", tmp_path)
     path = tmp_path / "specialists.yaml"
     path.write_text("schema_version: placeholder\n", encoding="utf-8")
     payload = {
@@ -1667,6 +1669,20 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     assert same_identity_state["runtime_identity_reconciled"] is False
     assert same_identity_state["canonical_pointer_stale"] is False
 
+    payload["current"]["active_run"] = {
+        "active_specialist": "rockets-mewtwo",
+        "run_name": "pure_rl_rockets_mewtwo_stale",
+        "path": str(tmp_path / "stale-rockets-run"),
+    }
+    stale_active_run_state = specialist_protocol_state(
+        path,
+        runtime_specialist_id="alakazam",
+        runtime_run_name="pure_rl_alakazam_live",
+    )
+    assert stale_active_run_state["runtime_identity_reconciled"] is True
+    assert stale_active_run_state["canonical_pointer_stale"] is True
+    assert stale_active_run_state["active_specialist"] == "alakazam"
+
     payload["current"] = {
         "phase": "shared_core_derivation",
         "active_specialist": None,
@@ -1690,6 +1706,18 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     assert cycle_transition_state["available"] is True
     assert cycle_transition_state["active_specialist"] == ""
     assert cycle_transition_state["phase"] == "specialist_core_refresh_handoff"
+
+    payload["current"]["phase"] = (
+        "specialist_handoff_waiting_for_teal_full33_corpus"
+    )
+
+    corpus_wait_state = specialist_protocol_state(path)
+
+    assert corpus_wait_state["available"] is True
+    assert corpus_wait_state["active_specialist"] == ""
+    assert corpus_wait_state["phase"] == (
+        "specialist_handoff_waiting_for_teal_full33_corpus"
+    )
 
 
 def test_runtime_specialist_identity_prefers_explicit_command() -> None:
@@ -3191,7 +3219,9 @@ def test_dashboard_separates_accepted_holdout_next_gate_and_sampled_progress() -
     assert "requires ops/alakazam_gate_program_v1.json" in html
     assert "Number.isFinite(c.heldout_wr)" not in html
     assert "+' gate + '+researchGames" not in html
-    assert "Dashboard UI v15" in html
+    assert "Dashboard Build 17" in html
+    assert "integrityFailureSamples>=2" in html
+    assert "Confirming the mismatch across consecutive live samples" in html
 
 
 def test_live_curriculum_wins_over_stale_bootstrap_in_hero_status() -> None:
@@ -5303,6 +5333,33 @@ def test_completed_trevenant_handoff_is_not_current_during_starmie() -> None:
     assert result["historical_source_specialist_id"] is None
 
 
+def test_inactive_receipt_backed_successor_handoff_remains_current() -> None:
+    result = dashboard_snapshot_module.reconcile_current_specialist_handoff(
+        {
+            "available": True,
+            "active": False,
+            "phase": "next_specialist_rl_armed",
+            "stage": "next_specialist_rl_armed",
+            "source": "/state/post-teal-core-v13-handoff.json",
+            "source_specialist_id": "teal-mask-ogerpon-ex",
+            "next_specialist_id": "archaludon-ex",
+        },
+        active_specialist="",
+        program_progress={
+            "completed_frozen": 13,
+            "remaining_after_active": 2,
+        },
+        next_specialist="archaludon-ex",
+    )
+
+    assert result["active"] is False
+    assert result["transition_current"] is True
+    assert result["phase"] == "next_specialist_rl_armed"
+    assert result["source_specialist_id"] == "teal-mask-ogerpon-ex"
+    assert result["next_specialist_id"] == "archaludon-ex"
+    assert "remains fail-closed" in result["latest_line"]
+
+
 def test_dashboard_source_integrity_covers_every_visible_card() -> None:
     payload = {
         "observed_at": time.time(),
@@ -5423,6 +5480,116 @@ def test_dashboard_source_integrity_covers_every_visible_card() -> None:
     SnapshotCache._annotate_source_integrity(payload)
     assert payload["source_integrity"]["current"] is False
     assert "model" in payload["source_integrity"]["failed"]
+
+
+def test_dashboard_source_integrity_accepts_completed_remote_allocation() -> None:
+    payload = {
+        "observed_at": time.time(),
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 123,
+            "restart_count": 0,
+            "name": "production.service",
+            "command": "trainer --run run-a",
+        },
+        "training": {"phase": "collect:public_mix"},
+        "transition": {"active": False, "historical": True},
+        "specialist_handoff": {"active": False},
+        "baseline_eval": {"historical": True},
+        "expert_refresh": {
+            "available": True,
+            "complete": True,
+            "authoritative_for_active_run": True,
+            "archive_window_ready": True,
+            "assembled_manifest_ready": True,
+            "filtered_corpus_ready": True,
+            "window_start": "2026-07-02",
+            "window_end": "2026-07-21",
+            "source": "/expert/status.json",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "runtime_active_specialist": "teal-mask-ogerpon-ex",
+            "canonical_active_specialist": "teal-mask-ogerpon-ex",
+            "active_specialist": "teal-mask-ogerpon-ex",
+            "source": "/state/specialists.yaml",
+        },
+        "curriculum": {
+            "active": True,
+            "source_current": True,
+            "run": "run-a",
+            "iteration": 7,
+            "stage": "collect:public_mix",
+            "progress_status_source": "/run/progress.status",
+            "last_completed_iteration": 6,
+            "heldout_source": "/run/commit.json",
+            "gate_program": {
+                "source": "/config/gate.json",
+                "next_gate": {
+                    "available": True,
+                    "contract_valid": True,
+                    "contract_source": "/config/gate.json",
+                },
+            },
+        },
+        "model": {
+            "active_checkpoint": "/run/iter_00006.pt",
+            "active_checkpoint_digest": "sha256:" + "a" * 64,
+            "checkpoint_structure": {
+                "verified": True,
+                "checkpoint": "/run/iter_00006.pt",
+                "checkpoint_digest": "sha256:" + "a" * 64,
+            },
+        },
+        "gpus": [{"index": 1}],
+        "scheduler_queues": {
+            "available": True,
+            "updated_at": time.time(),
+            "source": "/run/queues.json",
+        },
+        "fleet": {
+            "inzi": {
+                "reachable": True,
+                "production_active": True,
+                "worker": {
+                    "active": True,
+                    "health_current": True,
+                    "command": "inzi-worker",
+                },
+            },
+            "elmo": {
+                "reachable": True,
+                "production_active": True,
+                "worker": {
+                    "active": True,
+                    "listening": True,
+                    "health_current": False,
+                    "allocation_state": (
+                        "ALLOCATION COMPLETE · waiting for remaining fleet"
+                    ),
+                    "command": "elmo-worker",
+                    "rate_source": "last active same-phase rate",
+                },
+            },
+            "bert": {
+                "reachable": True,
+                "production_active": False,
+                "worker": {
+                    "active": True,
+                    "health_current": True,
+                    "command": "bert-worker",
+                },
+            },
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    assert integrity["rows"]["fleet_elmo"]["required"] is True
+    assert integrity["rows"]["fleet_elmo"]["current"] is True
+    assert "fleet_elmo" not in integrity["failed"]
 
 
 def test_dashboard_source_integrity_keeps_canonical_protocol_current_while_stopped() -> None:
@@ -5590,6 +5757,119 @@ def test_dashboard_source_integrity_accepts_fresh_receipt_backed_handoff_interva
     assert "handoff" not in integrity["failed"]
 
 
+def test_dashboard_source_integrity_accepts_settled_fail_closed_transition() -> None:
+    now = time.time()
+    digest = "sha256:" + "a" * 64
+    payload = {
+        "observed_at": now,
+        "dashboard_sampled_at": now,
+        "service": {
+            "active": False,
+            "active_state": "failed",
+            "sub_state": "failed",
+            "pid": 0,
+            "restart_count": 3,
+            "name": "production.service",
+            "command": "launch-active-specialist",
+        },
+        "specialist_handoff": {
+            "available": True,
+            "active": False,
+            "transition_current": True,
+            "phase": "next_specialist_rl_armed",
+            "stage": "next_specialist_rl_armed",
+            "source": "/state/post-teal-core-v13-handoff.json",
+            "source_specialist_id": "teal-mask-ogerpon-ex",
+            "next_specialist_id": "archaludon-ex",
+        },
+        "training": {"phase": "collect:self_play"},
+        "bootstrap": {
+            "phase": "collect:self_play",
+            "compatibility_alias": True,
+            "alias_of": "training",
+        },
+        "transition": {"active": False, "historical": True},
+        "baseline_eval": {"historical": True},
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": True,
+            "runtime_identity_reconciled": False,
+            "runtime_active_specialist": None,
+            "canonical_active_specialist": "teal-mask-ogerpon-ex",
+            "active_specialist": "",
+            "required_target_count": 2,
+            "program_progress": {
+                "completed_specialist_ids": ["teal-mask-ogerpon-ex"]
+            },
+            "specialists": [
+                {
+                    "id": "teal-mask-ogerpon-ex",
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                },
+                {
+                    "id": "archaludon-ex",
+                    "active": False,
+                    "frozen": False,
+                    "public_mix_eligible": False,
+                },
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": "teal-mask-ogerpon-ex"}
+            ],
+            "source": "/state/specialists.yaml",
+        },
+        "curriculum": {
+            "active": False,
+            "source_current": True,
+            "run": "teal-run",
+            "iteration": 15,
+            "stage": "collect:self_play",
+            "progress_status_source": "/run/stale-progress.status",
+            "last_completed_iteration": 14,
+            "commit_source": "/run/commits/iter_00014.json",
+            "gate_program": {
+                "source": "/config/gate.json",
+                "next_gate": {
+                    "available": True,
+                    "contract_valid": True,
+                    "contract_source": "/config/gate.json",
+                },
+            },
+        },
+        "model": {
+            "active_checkpoint": "/run/checkpoints/iter_00014.pt",
+            "active_checkpoint_digest": digest,
+            "checkpoint_structure": {
+                "verified": True,
+                "checkpoint": "/run/checkpoints/iter_00014.pt",
+                "checkpoint_digest": digest,
+                "adapter_expert_count": 2,
+                "adapter_registry_verified": True,
+            },
+        },
+        "gpus": [{"index": 1}],
+        "fleet": {
+            "inzi": {"reachable": True, "worker": {"active": False}},
+            "elmo": {"reachable": True, "worker": {"active": True}},
+            "bert": {"reachable": True, "worker": {"active": True}},
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    integrity = payload["source_integrity"]
+    assert integrity["current"] is True
+    assert integrity["rows"]["stage"]["current"] is True
+    assert integrity["rows"]["progress"]["current"] is True
+    assert integrity["rows"]["bootstrap"]["current"] is True
+    assert integrity["rows"]["throughput"]["current"] is True
+    assert integrity["rows"]["protocol"]["current"] is True
+    assert integrity["rows"]["handoff"]["current"] is True
+    assert integrity["rows"]["latest10"]["required"] is False
+
+
 def test_dashboard_source_integrity_rejects_live_protocol_specialist_mismatch() -> None:
     payload = {
         "dashboard_sampled_at": time.time(),
@@ -5696,7 +5976,12 @@ def test_dashboard_source_integrity_rejects_canonical_frozen_pool_drift() -> Non
         },
         "model": {
             "checkpoint_structure": {
-                "adapter_expert_count": 2,
+                "adapter_expert_count": 3,
+                "adapter_expert_ids": [
+                    "alakazam",
+                    "dragapult-dusknoir",
+                    "owner-removed-slot-retained",
+                ],
             },
         },
     }
@@ -7259,6 +7544,26 @@ def test_successor_initial_learner_digest_precedes_materialized_seed() -> None:
     )
 
 
+def test_active_run_design_fingerprint_prefers_current_loop_boundary() -> None:
+    current_fingerprint = "sha256:" + "a" * 64
+    stale_manifest_fingerprint = "sha256:" + "b" * 64
+
+    assert (
+        dashboard_snapshot_module._active_run_design_fingerprint(
+            {"design_fingerprint": current_fingerprint},
+            {"design_fingerprint": stale_manifest_fingerprint},
+        )
+        == current_fingerprint
+    )
+    assert (
+        dashboard_snapshot_module._active_run_design_fingerprint(
+            {},
+            {"design_fingerprint": stale_manifest_fingerprint},
+        )
+        == stale_manifest_fingerprint
+    )
+
+
 def test_dashboard_runtime_root_follows_canonical_selector(tmp_path: Path) -> None:
     runtime_root = tmp_path / "active-runtime"
     selector = tmp_path / "specialist_runtime.env"
@@ -7346,6 +7651,139 @@ def test_successor_fusion_activation_rejects_descendant_design_mismatch(
         design_fingerprint="sha256:" + "c" * 64,
         initial_checkpoint_digest=seed_digest,
     )
+
+
+def test_successor_fusion_activation_accepts_verified_source_only_migration(
+    tmp_path: Path,
+) -> None:
+    seed_digest = "sha256:" + "a" * 64
+    learner_digest = "sha256:" + "b" * 64
+    initial_contract = {"source": {"source_tree_sha256": "old"}}
+    current_contract = {"source": {"source_tree_sha256": "new"}}
+    initial_fingerprint = (
+        dashboard_snapshot_module._canonical_design_digest(initial_contract)
+    )
+    current_fingerprint = (
+        dashboard_snapshot_module._canonical_design_digest(current_contract)
+    )
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    fusion = {
+        "schema": dashboard_snapshot_module.DECISION_FUSION_SCHEMA,
+        "runtime_enabled": True,
+        "required_heads": list(
+            dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS
+        ),
+    }
+    _write_json(
+        state_root / "garchomp-specialist-rl-activation-v7.json",
+        {
+            "schema": "poke_bot.specialist_rl_activation/v2",
+            "status": "ready",
+            "identity": {
+                "next_specialist_bootstrap": {
+                    "specialist_id": "garchomp",
+                    "checkpoint_digest": seed_digest,
+                    "decision_fusion": fusion,
+                },
+                "runtime_registration": {
+                    "specialist_id": "garchomp",
+                    "runtime_row": {
+                        "initial_checkpoint_sha256": seed_digest,
+                        "decision_fusion": {**fusion, "required": True},
+                    },
+                },
+            },
+        },
+    )
+    _write_json(
+        run_dir / "manifest.json",
+        {
+            "design_contract": initial_contract,
+            "design_fingerprint": initial_fingerprint,
+        },
+    )
+    _write_json(
+        run_dir / "commits/iter_00000.json",
+        {
+            "design_fingerprint": initial_fingerprint,
+            "completed": True,
+            "candidate": {"digest": learner_digest},
+            "learner_before": {"digest": seed_digest},
+            "learner_after": {"digest": learner_digest},
+            "next_collection_publish": {
+                "digest": learner_digest,
+                "local_ok": True,
+            },
+        },
+    )
+    _write_json(
+        run_dir / "design_migrations/migration_0001.json",
+        {
+            "schema": 1,
+            "previous_contract": initial_contract,
+            "current_contract": current_contract,
+            "previous_fingerprint": initial_fingerprint,
+            "current_fingerprint": current_fingerprint,
+            "changed_paths": ["source.source_tree_sha256"],
+        },
+    )
+
+    result = dashboard_snapshot_module._successor_decision_fusion_activation(
+        state_root=state_root,
+        specialist_id="garchomp",
+        checkpoint_digest=learner_digest,
+        run_dir=run_dir,
+        design_fingerprint=current_fingerprint,
+        initial_checkpoint_digest=seed_digest,
+    )
+
+    assert result["runtime_enabled"] is True
+    assert (
+        result["activation_scope"]
+        == "successor_committed_descendant_source_only_migration"
+    )
+
+
+def test_source_only_fusion_lineage_rejects_behavioral_migration(
+    tmp_path: Path,
+) -> None:
+    initial_contract = {"source": {"source_tree_sha256": "old"}}
+    current_contract = {
+        "source": {"source_tree_sha256": "old"},
+        "learner": {"guide_loss_weight": 0.5},
+    }
+    initial_fingerprint = (
+        dashboard_snapshot_module._canonical_design_digest(initial_contract)
+    )
+    current_fingerprint = (
+        dashboard_snapshot_module._canonical_design_digest(current_contract)
+    )
+    _write_json(
+        tmp_path / "manifest.json",
+        {
+            "design_contract": initial_contract,
+            "design_fingerprint": initial_fingerprint,
+        },
+    )
+    _write_json(
+        tmp_path / "design_migrations/migration_0001.json",
+        {
+            "schema": 1,
+            "previous_contract": initial_contract,
+            "current_contract": current_contract,
+            "previous_fingerprint": initial_fingerprint,
+            "current_fingerprint": current_fingerprint,
+            "changed_paths": ["learner.guide_loss_weight"],
+        },
+    )
+
+    assert dashboard_snapshot_module._source_only_design_lineage_fingerprints(
+        tmp_path,
+        current_fingerprint,
+    ) == {current_fingerprint}
 
 
 def test_expanded_head_checkpoint_contract_inventories_exact_tensors_and_metrics() -> None:
@@ -7781,6 +8219,88 @@ def test_dashboard_integrity_allows_legacy_v5_and_rejects_expanded_head_drift() 
     assert "expanded_heads" in payload["source_integrity"]["failed"]
 
 
+def test_dashboard_validates_router_format_6_physical_slots_separately_from_routes() -> None:
+    registry = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "state/matchup_adapter_roster.json"
+        ).read_text(encoding="utf-8")
+    )
+    config = {
+        "format": "poke-bot-matchup-adapter-bank-v6",
+        "slot_capacity": 64,
+        "slot_registry": registry,
+        "slot_registry_digest": (
+            dashboard_snapshot_module._canonical_json_digest(registry)
+        ),
+    }
+
+    result = (
+        dashboard_snapshot_module._checkpoint_adapter_registry_contract(
+            config,
+            set(range(64)),
+        )
+    )
+
+    assert result["verified"] is True
+    assert result["physical_slot_capacity"] == 64
+    assert result["routable_expert_ids"] == registry["active_expert_ids"]
+    assert len(result["routable_expert_ids"]) < 64
+
+    config["slot_registry_digest"] = "sha256:" + "0" * 64
+    rejected = (
+        dashboard_snapshot_module._checkpoint_adapter_registry_contract(
+            config,
+            set(range(64)),
+        )
+    )
+    assert rejected["verified"] is False
+
+
+def test_dashboard_protocol_accepts_verified_router_format_6_registry() -> None:
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 456,
+            "restart_count": 0,
+            "name": "production.service",
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": True,
+            "runtime_identity_reconciled": True,
+            "runtime_active_specialist": "teal-mask-ogerpon-ex",
+            "canonical_active_specialist": "",
+            "active_specialist": "teal-mask-ogerpon-ex",
+            "required_target_count": 1,
+            "specialists": [
+                {
+                    "id": "teal-mask-ogerpon-ex",
+                    "active": True,
+                    "frozen": False,
+                    "public_mix_eligible": False,
+                }
+            ],
+            "frozen_inference_opponents": [],
+            "source": "/state/specialists.yaml",
+        },
+        "model": {
+            "checkpoint_structure": {
+                "adapter_expert_count": 64,
+                "adapter_expert_ids": ["teal-mask-ogerpon-ex"],
+                "adapter_registry_verified": True,
+            },
+        },
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    protocol = payload["source_integrity"]["rows"]["protocol"]
+    assert protocol["checks"]["model_roster"] is True
+    assert protocol["current"] is True
+
+
 def test_dashboard_renders_dynamic_active_and_staged_head_observability() -> None:
     html = (
         Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
@@ -7808,10 +8328,20 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
     strict_ids = priority["strict_post_spidops_prefix"]["ids"]
     ordered_ids = priority["ordered_unfinished_ids_after_active"]
     removed_ids = set(priority["owner_removal"]["specialist_ids"])
-    required_ids = {row["id"] for row in state["specialists"]}
+    required_ids = {
+        row["id"]
+        for row in state["specialists"]
+        if row.get("required_specialist") is not False
+    }
     allowed_statuses = set(state["allowed_status_values"]["specialist"])
 
-    assert active_id == "team-rockets-spidops"
+    assert active_id == ""
+    assert state["current"]["transition_source_specialist"] == (
+        "teal-mask-ogerpon-ex"
+    )
+    assert state["current"]["staged_successor_specialist"] == (
+        "archaludon-ex"
+    )
     assert all(
         row["status"] in allowed_statuses for row in state["specialists"]
     )
@@ -7820,10 +8350,13 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
     ]
-    assert ordered_ids[:3] == strict_ids
+    assert ordered_ids[0] == "archaludon-ex"
     assert removed_ids == {
+        "dragapult",
         "dragapult-blaziken",
         "dragapult-dudunsparce",
+        "crustle",
+        "walrein",
     }
     assert removed_ids.isdisjoint(required_ids)
     assert removed_ids.isdisjoint(ordered_ids)
@@ -7836,16 +8369,53 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
     assert set(
         protocol["training_priority"]["owner_removal"]["specialist_ids"]
     ) == removed_ids
+    assert len(protocol["specialists"]) == 15
+    assert "crustle" not in {
+        row["id"] for row in protocol["specialists"]
+    }
+    retained_crustle = next(
+        row
+        for row in protocol["retained_non_specialist_opponents"]
+        if row["id"] == "crustle"
+    )
+    assert retained_crustle["role_label"] == (
+        "PUBLIC OPPONENT + ACTIVE ROUTE, NO SPECIALIST TRAIN"
+    )
+    assert retained_crustle["stable_matchup_slot"] == 0
+    assert retained_crustle["stable_matchup_slot_status"] == "active"
+    assert retained_crustle["inference_only"] is True
+    assert retained_crustle["public_practice_gate_opponent"][
+        "opponent_id"
+    ] == "pilkwang-meta-20260708"
+    first_refresh = protocol["post_fleet_refresh"]["first_refresh"]
+    assert first_refresh["specialist_id"] == "alakazam"
+    assert first_refresh["model_format"] == "final_submission_format"
+    assert first_refresh["turn_order"]["training_seat_split"] == {
+        "first": 0.5,
+        "second": 0.5,
+    }
+    assert first_refresh["turn_order"]["package_preference"] == (
+        "first_if_allowed"
+    )
+    teal = next(
+        row
+        for row in protocol["specialists"]
+        if row["id"] == "teal-mask-ogerpon-ex"
+    )
+    assert teal["name"] == "Slop Box (Teal Mask Ogerpon ex)"
+    assert teal["deck_family_name"] == (
+        "Teal Mask Ogerpon ex / Mega Kangaskhan ex"
+    )
+    assert teal["secondary_search_alias"] == "Raging Bolt Ogerpon"
 
     display_order = list(
         dict.fromkeys(
             specialist_id
-            for specialist_id in [active_id, *strict_ids, *ordered_ids]
+            for specialist_id in [*strict_ids, active_id, *ordered_ids]
             if specialist_id and specialist_id not in removed_ids
         )
     )
-    assert display_order[:4] == [
-        "team-rockets-spidops",
+    assert display_order[:3] == [
         "hammer-pult",
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
@@ -7861,13 +8431,863 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         in snapshot_source
     )
     assert '"owner_removal": owner_removal_contract' in snapshot_source
+    assert '"retained_non_specialist_opponents"' in snapshot_source
     assert 'id="protocol-goals"' in html
     assert 'id="protocol-removed"' in html
+    assert "protocol-retained-opponents" in html
+    assert "protocol-post-fleet" in html
     assert (
-        "goalOrder=[protocol.active_specialist,...strictGoalIds,"
+        "goalOrder=[...strictGoalIds,protocol.active_specialist,"
         "...(protocolPriority.ordered_unfinished_ids_after_active||[])]"
         in html
     )
     assert "!removedGoalSet.has(id)" in html
     assert "STRICT POST-SPIDOPS PREFIX" in html
     assert "REMOVED FROM REQUIRED GOALS" in html
+    assert "PUBLIC OPPONENT + ACTIVE ROUTE, NO SPECIALIST TRAIN" in html
+    assert "FIRST FINAL-FORMAT MODEL" in html
+    assert "completed?'COMPLETED PREFIX'" in html
+    assert "next?'NEXT'" in html
+    assert "phase=index===0?'ACTIVE NOW'" not in html
+    assert "row.deck_family_name" in html
+    assert "secondary alias: " in html
+
+
+def test_dashboard_projection_keeps_crustle_route_outside_trainable_roster(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    projection = tmp_path / "current_goal_requirements.json"
+    digest = (
+        "sha256:"
+        "7120bc67415e06c1cf69d64574f1a415"
+        "45fd4c2fd084a029d77c5e43a357957f"
+    )
+    projection.write_text(
+        json.dumps(
+            {
+                "current_owner_overrides": {
+                    "required_specialist_plan": {
+                        "goal_revision": 64,
+                        "required_specialists_total": 15,
+                        "ordered_unfinished_ids_after_active": [
+                            "archaludon-ex",
+                            "slowking",
+                        ],
+                        "removed_specialist_ids": ["crustle"],
+                        "removed_ids_selection_eligible": False,
+                        "removed_ids_count_toward_completion": False,
+                        "removed_ids_historical_artifacts_preserved": True,
+                    },
+                    "slowking_specialist_replacement": {
+                        "crustle": {
+                            "display_status": (
+                                "historical_artifacts_preserved_inference_"
+                                "only_not_planned_for_training"
+                            ),
+                            "required_specialist": False,
+                            "matchup_route_preserved": True,
+                            "stable_matchup_slot": 0,
+                            "stable_matchup_slot_status": "active",
+                            "public_practice_gate_opponent": {
+                                "opponent_id": "pilkwang-meta-20260708",
+                                "archetype_id": "crustle",
+                                "archetype_label": "Crustle / Great Tusk",
+                                "source": (
+                                    "pilkwang/pok-mon-tcg-ai-battle-meta-"
+                                    "snapshot-08-july"
+                                ),
+                                "content_digest": digest,
+                                "inference_only": True,
+                                "gradient_or_update_authority": False,
+                            },
+                        }
+                    },
+                    "post_fleet_alakazam_grimms_refresh": {
+                        "goal_revision": 64,
+                        "phase_id": (
+                            "post-fleet-alakazam-grimms-refresh-v1"
+                        ),
+                        "status": "staged_waiting_for_required_fleet",
+                        "ordered_specialist_ids": [
+                            "alakazam",
+                            "marnie-s-grimmsnarl-ex",
+                        ],
+                        "order_is_strict": True,
+                        "release_gates": {
+                            "final_alakazam_model_computation": {
+                                "required_receipts": [
+                                    (
+                                        "required_specialist_fleet_complete_"
+                                        "for_final_alakazam_v1"
+                                    ),
+                                    "capacity_research_resource_lease_v1",
+                                ],
+                                "all_required_before_model_computation": True,
+                                "authorization_scope": (
+                                    "final_format_alakazam_refresh_only"
+                                ),
+                                "no_receipt_no_model_work": True,
+                            },
+                            "broader_multi_archetype_capacity_program": {
+                                "required_receipt": (
+                                    "post_refresh_sequence_complete_for_"
+                                    "capacity_v2"
+                                ),
+                                "requires_final_format_alakazam_and_marnie_"
+                                "refresh_complete": True,
+                                "no_receipt_no_model_work": True,
+                            },
+                        },
+                        "first_refresh": {
+                            "specialist_id": "alakazam",
+                            "start_timing": (
+                                "immediately_after_slowking_frozen_and_"
+                                "registered"
+                            ),
+                            "model_format": "final_submission_format",
+                            "first_final_format_model": True,
+                            "turn_order": {
+                                "training_seat_split": {
+                                    "first": 0.5,
+                                    "second": 0.5,
+                                },
+                                "exact_even_split_required": True,
+                                "deterministic_assignment_required": True,
+                                "seat_count_parity_receipt_required": True,
+                                "seat_count_parity_receipt_schema": (
+                                    "poke_bot.alakazam_refresh_seat_split/v1"
+                                ),
+                                "seat_count_receipt_required_stages": [
+                                    "assigned",
+                                    "actual",
+                                    "consumed",
+                                ],
+                                "equal_first_second_counts_required_at_each_"
+                                "stage": True,
+                                "package_preference": "first_if_allowed",
+                                "second_focus_1_to_7_allowed": False,
+                                "always_second_arm_allowed": False,
+                                "second_preferring_refresh_copy_allowed": False,
+                            },
+                            "preferred_parent_migration": {
+                                "parent_checkpoint": (
+                                    "immutable_existing_alakazam"
+                                ),
+                                "genuinely_new_structures_initialization": (
+                                    "zero_safe"
+                                ),
+                                "failure_fallback": {
+                                    "migration_failure_receipt_preserved": True,
+                                    "ordinary_same_archetype_alakazam_refresh_"
+                                    "initialized_from": (
+                                        "then_latest_checksum_accepted_core"
+                                    ),
+                                    "expand_only_that_completed_alakazam_"
+                                    "derivative_to_final_format": True,
+                                    "latest_core_direct_final_format_tensor_"
+                                    "parent_allowed": False,
+                                    "partial_old_alakazam_core_overlay_"
+                                    "allowed": False,
+                                },
+                            },
+                        },
+                        "first_alakazam_migration_failure_fallback": {
+                            "migration_failure_receipt_preserved": True,
+                            "ordinary_same_archetype_alakazam_refresh_"
+                            "initialized_from": (
+                                "latest_checksum_accepted_cumulative_core"
+                            ),
+                            "expand_only_that_completed_alakazam_derivative_"
+                            "to_final_format": True,
+                            "latest_core_direct_final_format_tensor_parent_"
+                            "allowed": False,
+                            "partial_old_alakazam_core_overlay_allowed": False,
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_server_module, "GOAL_PROJECTION", projection
+    )
+    payload = {
+        "specialist_protocol": {
+            "active_specialist": "teal-mask-ogerpon-ex",
+            "training_priority": {},
+            "program_progress": {},
+            "specialists": [
+                {
+                    "id": "teal-mask-ogerpon-ex",
+                    "status": "rl_training",
+                    "active": True,
+                },
+                {
+                    "id": "crustle",
+                    "status": "unstarted",
+                    "required_specialist": False,
+                    "active": False,
+                },
+            ],
+        }
+    }
+
+    SnapshotCache._apply_goal_projection(payload)
+
+    protocol = payload["specialist_protocol"]
+    assert protocol["required_target_count"] == 15
+    assert [row["id"] for row in protocol["specialists"]] == [
+        "teal-mask-ogerpon-ex"
+    ]
+    retained = protocol["retained_non_specialist_opponents"]
+    assert len(retained) == 1
+    assert retained[0]["role_label"] == (
+        "PUBLIC OPPONENT + ACTIVE ROUTE, NO SPECIALIST TRAIN"
+    )
+    assert retained[0]["stable_matchup_slot"] == 0
+    assert retained[0]["stable_matchup_slot_status"] == "active"
+    assert retained[0]["inference_only"] is True
+    assert retained[0]["future_specialist_training_planned"] is False
+    assert retained[0]["display_status"] == (
+        "historical_artifacts_preserved_inference_only_not_planned_for_training"
+    )
+    assert retained[0]["public_practice_gate_opponent"][
+        "content_digest"
+    ] == digest
+    refresh = protocol["post_fleet_refresh"]["first_refresh"]
+    assert refresh["specialist_id"] == "alakazam"
+    assert refresh["model_format"] == "final_submission_format"
+    assert refresh["turn_order"]["training_seat_split"] == {
+        "first": 0.5,
+        "second": 0.5,
+    }
+    assert refresh["turn_order"]["deterministic_assignment_required"] is True
+    assert refresh["turn_order"]["seat_count_parity_receipt_required"] is True
+    assert refresh["turn_order"]["seat_count_receipt_required_stages"] == [
+        "assigned",
+        "actual",
+        "consumed",
+    ]
+    assert refresh["turn_order"]["package_preference"] == "first_if_allowed"
+    assert refresh["preferred_parent_migration"]["parent_checkpoint"] == (
+        "immutable_existing_alakazam"
+    )
+    assert refresh["preferred_parent_migration"]["failure_fallback"][
+        "ordinary_same_archetype_alakazam_refresh_initialized_from"
+    ] == "then_latest_checksum_accepted_core"
+    assert protocol["post_fleet_refresh"]["release_gates"][
+        "final_alakazam_model_computation"
+    ]["required_receipts"] == [
+        "required_specialist_fleet_complete_for_final_alakazam_v1",
+        "capacity_research_resource_lease_v1",
+    ]
+
+
+def test_dashboard_goal_projection_updates_labels_without_runtime_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    projection = tmp_path / "current_goal_requirements.json"
+    projection.write_text(
+        json.dumps(
+            {
+                "verified_snapshot": {
+                    "current_deck_guides": {
+                        "bootstrap_weight_ramp": [0.01, 0.05],
+                        "maximum_weight": 0.05,
+                        "maximum_weight_scope": "bootstrap",
+                        "maximum_post_bootstrap_auxiliary_weight": 0.5,
+                        "post_bootstrap_behavior": (
+                            "ramp_while_positive_then_hold_and_anneal"
+                        ),
+                        "goal_path_guidance": {
+                            "applies_to_every_future_specialist_training_run": True,
+                            "applies_retroactively_to_completed_frozen_or_started_runs": False,
+                            "owner_decision_revision": 43,
+                            "prospective_scope_revision": 44,
+                            "learning_semantics_revision": 46,
+                            "prospective_effective_specialist": "archaludon-ex",
+                            "historical_weight_or_receipt_rewrite_allowed": False,
+                            "active_teal_revision42_exception_preserved": True,
+                            "curve_shape": (
+                                "rapid_ramp_then_positive_plateau_then_"
+                                "evidence_driven_decay"
+                            ),
+                            "post_bootstrap_positive_ramp_steps": [
+                                0.15,
+                                0.25,
+                                0.35,
+                                0.5,
+                            ],
+                            "maximum_auxiliary_loss_weight": 0.5,
+                        },
+                    }
+                },
+                "current_owner_overrides": {
+                    "version_namespaces": {
+                        "goal_revision": 36,
+                    },
+                    "required_specialist_plan": {
+                        "goal_revision": 34,
+                        "required_specialists_total": 16,
+                        "strict_post_spidops_prefix": [
+                            "hammer-pult",
+                            "teal-mask-ogerpon-ex",
+                            "archaludon-ex",
+                        ],
+                        "removed_specialist_ids": [
+                            "dragapult-blaziken",
+                            "dragapult-dudunsparce",
+                            "walrein",
+                        ],
+                        "removed_ids_selection_eligible": False,
+                        "removed_ids_count_toward_completion": False,
+                        "removed_ids_historical_artifacts_preserved": True,
+                        "missing_strict_prefix_input_behavior": (
+                            "block_fallback_and_recover_public_inputs"
+                        ),
+                        "activation_boundary": (
+                            "receipt_backed_successor_handoff"
+                        ),
+                    },
+                    "teal_mask_ogerpon_ex": {
+                        "goal_revision": 35,
+                        "display_name": (
+                            "Slop Box (Teal Mask Ogerpon ex)"
+                        ),
+                        "deck_family_name": (
+                            "Teal Mask Ogerpon ex / Mega Kangaskhan ex"
+                        ),
+                        "secondary_search_alias": "Raging Bolt Ogerpon",
+                    },
+                    "teal_guide_weight_nonwinning_reduction": {
+                        "active_iteration_13_weight": 0.05,
+                    },
+                    "future_guide_strategic_branch_scope": {
+                        "goal_revision": 56,
+                        "guide_curriculum_revision": 51,
+                        "strategic_branch_scope_revision": 56,
+                        "head_action_scope_revision": 56,
+                        "scope": "future_specialist_training_runs_only",
+                        "prospective_effective_specialist": "archaludon-ex",
+                        "training_target_mode": (
+                            "bounded_strategic_head_curriculum"
+                        ),
+                        "direct_policy_cross_entropy_allowed": False,
+                        "guide_runtime_input_allowed": False,
+                        "guide_action_selection_allowed": False,
+                        "replace_observed_outcome_targets_allowed": False,
+                        "curriculum_focus": (
+                            "relevant_causal_heads_on_high_confidence_guide_rows"
+                        ),
+                        "fused_policy_learning_authority": (
+                            "realized_outcomes_and_win_objectives"
+                        ),
+                        "activation_requires_prestage_validation_receipt": True,
+                        "all_future_heads_must_influence_actions": True,
+                        "allowed_fusion_roles": ["fused_input"],
+                        "required_computation_role": "independent_head",
+                        "required_action_influence": (
+                            "bounded_option_conditioned_route"
+                        ),
+                        "decision_fusion_schema": (
+                            "option_conditioned_per_head/v2"
+                        ),
+                        "action_route_granularity": (
+                            "one_distinct_route_per_learned_decision_head"
+                        ),
+                        "parent_v1_fusion_residual_preserved": True,
+                        "route_aggregation": "fixed_mean",
+                        "aggregate_route_delta_logit_cap": 1.0,
+                        "route_final_projection_initialization": "exact_zero",
+                        "state_head_action_conditioning": (
+                            "typed_output_plus_board_state_cross_attended_"
+                            "legal_option"
+                        ),
+                        "option_head_action_conditioning": (
+                            "typed_option_output_plus_board_state_cross_"
+                            "attended_legal_option"
+                        ),
+                        "existing_learned_decision_source_count": 17,
+                        "canonical_learned_decision_source_count_with_setup": 18,
+                        "setup_source_included_when_present": True,
+                        "guide_is_only_action_route_exception": True,
+                        "independent_means_pre_fusion_computation_not_action_isolation": True,
+                        "direct_action_selection_authority": False,
+                        "fusion_selects_action": True,
+                        "materially_influences_fused_logits": True,
+                        "runtime_enabled": False,
+                        "runtime_activation_requirement": (
+                            "receipt_backed_validation"
+                        ),
+                        "setup_board_outcome_head": {
+                            "owner_decision_revision": 56,
+                            "id": "setup_board_outcome",
+                            "causal_input": (
+                                "board_state_cross_attended_option_hidden"
+                            ),
+                            "computation_role": "independent_head",
+                            "fusion_role": "fused_input",
+                            "action_influence": (
+                                "bounded_option_conditioned_route"
+                            ),
+                            "fusion_route_initialization": (
+                                "zero_safe_exact_parent_parity"
+                            ),
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_server_module, "GOAL_PROJECTION", projection
+    )
+    payload = {
+        "specialist_protocol": {
+            "active_specialist": "hammer-pult",
+            "runtime_run_name": "immutable-live-run",
+            "next_action": (
+                "Continue live Hammer Pult iteration 15. "
+                "6 specialists remain unfinished including the active "
+                "specialist; 5 remain after it. Population training remains "
+                "blocked until all 17 specialists are frozen."
+            ),
+            "program_progress": {
+                "required_specialists_total": 17,
+                "completed_frozen": 0,
+                "active_specialists": 1,
+                "remaining_unfinished": 17,
+                "remaining_after_active": 16,
+            },
+            "training_priority": {
+                "ordered_unfinished_ids_after_active": [
+                    "teal-mask-ogerpon-ex",
+                    "archaludon-ex",
+                    "walrein",
+                ]
+            },
+            "specialists": [
+                {
+                    "id": "hammer-pult",
+                    "name": "Hammer Pult",
+                    "status": "rl_training",
+                },
+                {
+                    "id": "teal-mask-ogerpon-ex",
+                    "name": "Teal Mask Ogerpon ex",
+                    "status": "unstarted",
+                },
+                {
+                    "id": "walrein",
+                    "name": "Walrein",
+                    "status": "unstarted",
+                },
+                {
+                    "id": "alakazam",
+                    "name": "Alakazam",
+                    "status": "passed_frozen",
+                },
+            ],
+        }
+    }
+
+    SnapshotCache._apply_goal_projection(payload)
+
+    protocol = payload["specialist_protocol"]
+    assert protocol["runtime_run_name"] == "immutable-live-run"
+    assert protocol["goal_projection"] == {
+        "source": str(projection),
+        "goal_revision": 56,
+        "execution_facts_overridden": False,
+    }
+    assert protocol["required_target_count"] == 16
+    assert [row["id"] for row in protocol["specialists"]] == [
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "alakazam",
+    ]
+    teal = protocol["specialists"][1]
+    assert teal["name"] == "Slop Box (Teal Mask Ogerpon ex)"
+    assert teal["deck_family_name"] == (
+        "Teal Mask Ogerpon ex / Mega Kangaskhan ex"
+    )
+    assert teal["secondary_search_alias"] == "Raging Bolt Ogerpon"
+    assert protocol["training_priority"][
+        "ordered_unfinished_ids_after_active"
+    ] == ["teal-mask-ogerpon-ex", "archaludon-ex"]
+    assert protocol["program_progress"]["required_specialists_total"] == 16
+    assert protocol["program_progress"]["completed_frozen"] == 1
+    assert protocol["program_progress"]["active_specialists"] == 1
+    assert protocol["program_progress"]["remaining_unfinished"] == 15
+    assert protocol["program_progress"]["remaining_after_active"] == 14
+    assert "15 specialists remain unfinished" in protocol["next_action"]
+    assert "14 remain after it" in protocol["next_action"]
+    assert "all 16 specialists" in protocol["next_action"]
+    assert "all 17 specialists" not in protocol["next_action"]
+    guide_policy = protocol["current_deck_guide_weight_policy"]
+    assert guide_policy[
+        "applies_to_every_future_specialist_training_run"
+    ] is True
+    assert guide_policy[
+        "applies_retroactively_to_completed_frozen_or_started_runs"
+    ] is False
+    assert guide_policy["prospective_scope_revision"] == 44
+    assert guide_policy["learning_semantics_revision"] == 46
+    assert guide_policy["prospective_effective_specialist"] == "archaludon-ex"
+    assert guide_policy["historical_weight_or_receipt_rewrite_allowed"] is False
+    assert guide_policy["active_teal_revision42_exception_preserved"] is True
+    assert guide_policy["owner_decision_revision"] == 43
+    assert guide_policy["bootstrap_weight_ramp"] == [0.01, 0.05]
+    assert guide_policy["post_bootstrap_positive_ramp_steps"] == [
+        0.15,
+        0.25,
+        0.35,
+        0.5,
+    ]
+    assert guide_policy["maximum_post_bootstrap_auxiliary_weight"] == 0.5
+    assert guide_policy["guide_curriculum_revision"] == 51
+    assert guide_policy["strategic_branch_scope_revision"] == 56
+    assert guide_policy["head_action_scope_revision"] == 56
+    assert guide_policy["learning_effect"] == (
+        "literal_multiplier_on_bounded_guide_conditioned_"
+        "strategic_head_curriculum"
+    )
+    assert guide_policy["gradient_effect"] == (
+        "scales_guide_conditioned_strategic_head_gradient_contribution"
+    )
+    assert guide_policy["direct_policy_cross_entropy_allowed"] is False
+    assert guide_policy["source"] == (
+        "dashboard_goal_compatibility_projection"
+    )
+    guide_modes = protocol["current_deck_guide_training_modes"]
+    assert guide_modes["active_started_lineage"] == {
+        "specialist_id": "teal-mask-ogerpon-ex",
+        "display_name": "Slop Box (Teal Mask Ogerpon ex)",
+        "is_active": False,
+        "scope": "already_started_legacy_run",
+        "mode": "confidence_weighted_policy_cross_entropy",
+        "guide_weight": 0.05,
+        "revision_51_retrofit_allowed": False,
+        "runtime_input_authority": False,
+        "action_selection_authority": False,
+        "serving_authority": False,
+    }
+    future_guide = guide_modes["future_lineage"]
+    assert future_guide["effective_from_specialist"] == "archaludon-ex"
+    assert future_guide["guide_curriculum_revision"] == 51
+    assert future_guide["mode"] == "bounded_strategic_head_curriculum"
+    assert future_guide["direct_policy_cross_entropy_allowed"] is False
+    assert future_guide["guide_runtime_input_allowed"] is False
+    assert future_guide["guide_action_selection_allowed"] is False
+    assert future_guide["replace_observed_outcome_targets_allowed"] is False
+    assert (
+        future_guide["fused_policy_learning_authority"]
+        == "realized_outcomes_and_win_objectives"
+    )
+    assert (
+        future_guide["activation_requires_prestage_validation_receipt"]
+        is True
+    )
+    action_contract = guide_modes["future_head_action_contract"]
+    assert action_contract["head_action_scope_revision"] == 56
+    assert action_contract["all_future_heads_must_influence_actions"] is True
+    assert action_contract["schema"] == "option_conditioned_per_head/v2"
+    assert action_contract["preserve_v1_additive_residual"] is True
+    assert action_contract["computation_role"] == "independent_head"
+    assert action_contract["fusion_role"] == "fused_input"
+    assert action_contract["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert action_contract["route_architecture"] == (
+        "one_distinct_route_per_learned_decision_head"
+    )
+    assert action_contract["existing_learned_decision_source_count"] == 17
+    assert (
+        action_contract[
+            "canonical_learned_decision_source_count_with_setup"
+        ]
+        == 18
+    )
+    assert action_contract["guide_is_sole_no_route_exception"] is True
+    assert action_contract["route_reduction"] == "fixed_mean"
+    assert action_contract["aggregate_absolute_cap"] == 1.0
+    assert action_contract["zero_safe_final_projections"] is True
+    assert action_contract["direct_action_selection_authority"] is False
+    assert action_contract["fusion_selects_action"] is True
+    assert action_contract["materially_influences_fused_logits"] is True
+    assert action_contract["runtime_enabled"] is False
+    assert (
+        action_contract["runtime_activation_requirement"]
+        == "receipt_backed_validation"
+    )
+    setup_head = action_contract["setup_board_outcome_head"]
+    assert setup_head["computation_role"] == "independent_head"
+    assert setup_head["fusion_role"] == "fused_input"
+    assert setup_head["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+
+
+def test_dashboard_separates_core_generation_from_matchup_adapter_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", root)
+    protocol = specialist_protocol_state(root / "state/specialists.yaml")
+
+    assert protocol["available"] is True, protocol.get("reason")
+    core = protocol["core_generation"]
+    assert core["core_system_revision"] == 10
+    assert core["core_system_display_name"] == "Training Core Revision 10"
+    assert (
+        core["checkpoint_display_namespace"]
+        == "Accepted Policy Generation"
+    )
+    assert core["latest_accepted_version"] == 9
+    assert core["latest_attempted_version"] == 13
+    assert core["attempted_statuses"]["10"] == "rejected_gameplay_regression"
+    assert core["attempted_statuses"]["11"] == "rejected_pretraining_validation"
+    assert core["attempted_statuses"]["12"] == "rejected_pretraining_validation"
+    assert core["attempted_statuses"]["13"] == "rejected_pretraining_validation"
+    assert core["matchup_adapter_format_version"] == 6
+    assert core["matchup_adapter_display_name"] == "Matchup Router Format 6"
+
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+    assert "Training Core Revision " in html
+    assert "\\n\\nVERSIONED SYSTEMS\\n" in html
+    assert 'id="protocol-router"' in html
+    assert 'id="protocol-policy"' in html
+    assert "POLICY ATTEMPT " in html
+    assert "accepted '+checkpointDisplayNamespace" not in html
+    policy_plan = html.split(
+        "VERSIONED SYSTEMS\\n", 1
+    )[1].split("\\n\\nNEXT SAFE ACTION\\n", 1)[0]
+    assert "coreSystemDisplayName" in policy_plan
+    assert "matchupAdapterDisplayName" in policy_plan
+    assert "checkpointDisplayNamespace" in policy_plan
+    assert "CURRENT-DECK GUIDE + FUTURE-HEAD CONTRACT" in html
+    assert "ACTIVE TEAL / SLOP BOX" in html
+    assert "BOUNDED STRATEGIC-HEAD CURRICULUM" in html
+    assert "DIRECT GUIDE-TO-POLICY CE OFF" in html
+    assert "FUSION V2" in html
+    assert "computation_role=independent_head" in html
+    assert "fusion_role=fused_input" in html
+    assert "action_influence=bounded_option_conditioned_route" in html
+    assert "17 EXISTING SOURCES + SETUP WHEN PRESENT = 18 ROUTES" in html
+    assert "GUIDE SOLE NO-ROUTE EXCEPTION" in html
+    assert (
+        "EVERY ROUTED HEAD MUST MATERIALLY INFLUENCE FUSED LOGITS"
+        in html
+    )
+    assert "shadow_unfused" not in html
+    assert "SHADOW PROMOTION" not in html
+    assert "REALIZED-WIN CURRICULUM-WEIGHT CURVE" in html
+    assert (
+        "not guide CE or direct shared-policy teaching"
+        in html
+    )
+    assert "FUTURE CURRENT-DECK GUIDE LEARNING" not in html
+    assert (
+        "Actual pre-backprop multiplier on masked guide cross-entropy"
+        not in html
+    )
+    assert (
+        "ramp scales guide gradients into shared policy learning"
+        not in html
+    )
+    assert "isolated paired-evidence worker" in html
+    assert "protocolGuidePolicy.post_bootstrap_positive_ramp_steps" in html
+
+
+def test_future_guide_curriculum_and_bounded_head_routes_are_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", root)
+    yaml = pytest.importorskip("yaml")
+    projection = json.loads(
+        (root / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        "scales_guide_gradient_contribution_to_shared_policy_learning"
+        not in json.dumps(projection)
+    )
+    assert "shadow_unfused" not in json.dumps(projection)
+    protocol_source = (root / "config/rl_protocol.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "shadow_unfused" not in protocol_source
+    protocol = yaml.safe_load(protocol_source)
+
+    scope = projection["current_owner_overrides"][
+        "future_guide_strategic_branch_scope"
+    ]
+    assert scope["guide_curriculum_revision"] == 51
+    assert scope["strategic_branch_scope_revision"] == 56
+    assert scope["head_action_scope_revision"] == 56
+    assert scope["prospective_effective_specialist"] == "archaludon-ex"
+    assert scope["training_target_mode"] == (
+        "bounded_strategic_head_curriculum"
+    )
+    assert scope["direct_policy_cross_entropy_allowed"] is False
+    assert scope["guide_runtime_input_allowed"] is False
+    assert scope["guide_action_selection_allowed"] is False
+    assert scope["replace_observed_outcome_targets_allowed"] is False
+    assert scope["fused_policy_learning_authority"] == (
+        "realized_outcomes_and_win_objectives"
+    )
+    assert scope["all_future_heads_must_influence_actions"] is True
+    assert scope["allowed_fusion_roles"] == ["fused_input"]
+    assert scope["required_computation_role"] == "independent_head"
+    assert scope["required_action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert scope["decision_fusion_schema"] == "option_conditioned_per_head/v2"
+    assert scope["action_route_granularity"] == (
+        "one_distinct_route_per_learned_decision_head"
+    )
+    assert scope["parent_v1_fusion_residual_preserved"] is True
+    assert scope["route_aggregation"] == "fixed_mean"
+    assert scope["aggregate_route_delta_logit_cap"] == 1.0
+    assert scope["route_final_projection_initialization"] == "exact_zero"
+    assert scope["existing_learned_decision_source_count"] == 17
+    assert scope["canonical_learned_decision_source_count_with_setup"] == 18
+    assert scope["guide_is_only_action_route_exception"] is True
+    assert (
+        scope[
+            "independent_means_pre_fusion_computation_not_action_isolation"
+        ]
+        is True
+    )
+    assert scope["direct_action_selection_authority"] is False
+    assert scope["fusion_selects_action"] is True
+    assert scope["materially_influences_fused_logits"] is True
+    assert scope["runtime_enabled"] is False
+    assert scope["runtime_activation_requirement"] == (
+        "receipt_backed_validation"
+    )
+    projected_setup = scope["setup_board_outcome_head"]
+    assert projected_setup["owner_decision_revision"] == 56
+    assert projected_setup["computation_role"] == "independent_head"
+    assert projected_setup["fusion_role"] == "fused_input"
+    assert projected_setup["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+
+    guide = protocol["specialist_training"]["current_deck_guide"]
+    modes = guide["training_target_modes"]
+    assert modes["legacy_started_runs"] == {
+        "mode": "confidence_weighted_policy_cross_entropy",
+        "immutable_scope": "completed_frozen_and_already_started_specialists",
+        "active_teal_remains_legacy": True,
+    }
+    future = modes["future_specialists"]
+    assert future["owner_decision_revision"] == 51
+    assert future["effective_from_specialist"] == "archaludon-ex"
+    assert future["mode"] == "bounded_strategic_head_curriculum"
+    assert future["direct_policy_cross_entropy_allowed"] is False
+    assert future["fused_policy_learning_authority"] == (
+        "realized_outcomes_and_win_objectives"
+    )
+    branch = future["strategic_branch_scope"]
+    assert branch["owner_decision_revision"] == 56
+    assert branch["allowed_fusion_roles"] == ["fused_input"]
+    assert branch["required_computation_role"] == "independent_head"
+    assert branch["required_action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert branch["decision_fusion_schema"] == "option_conditioned_per_head/v2"
+    assert branch["action_route_granularity"] == (
+        "one_distinct_route_per_learned_decision_head"
+    )
+    assert branch["parent_v1_fusion_residual_preserved"] is True
+    assert branch["route_aggregation"] == "fixed_mean"
+    assert branch["aggregate_route_delta_logit_cap"] == 1.0
+    assert branch["route_final_projection_initialization"] == "exact_zero"
+    assert branch["guide_is_only_action_route_exception"] is True
+    assert branch["omission_from_action_score_allowed"] is False
+    adaptive = guide["adaptive_annealing"]
+    assert adaptive["every_head_has_bounded_option_conditioned_route"] is True
+    assert "every_head_has_bounded_decision_fusion_route" not in adaptive
+    setup = future["setup_board_outcome_head"]
+    assert setup["owner_decision_revision"] == 56
+    assert setup["computation_role"] == "independent_head"
+    assert setup["fusion_role"] == "fused_input"
+    assert setup["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert setup["direct_action_selection_authority"] is False
+    assert setup["runtime_activation_requires_validation_receipt"] is True
+
+    snapshot_protocol = specialist_protocol_state(
+        root / "state/specialists.yaml"
+    )
+    projected_modes = snapshot_protocol[
+        "current_deck_guide_training_modes"
+    ]
+    assert projected_modes["active_started_lineage"]["mode"] == (
+        "confidence_weighted_policy_cross_entropy"
+    )
+    assert projected_modes["future_lineage"]["mode"] == (
+        "bounded_strategic_head_curriculum"
+    )
+    action_contract = projected_modes["future_head_action_contract"]
+    assert action_contract["computation_role"] == "independent_head"
+    assert action_contract["fusion_role"] == "fused_input"
+    assert action_contract["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert action_contract["preserve_v1_additive_residual"] is True
+    assert action_contract["route_reduction"] == "fixed_mean"
+    assert action_contract["aggregate_absolute_cap"] == 1.0
+    assert action_contract["zero_safe_final_projections"] is True
+    assert action_contract["direct_action_selection_authority"] is False
+    assert action_contract["materially_influences_fused_logits"] is True
+    assert action_contract["runtime_enabled"] is False
+
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+    assert 'id="protocol-guide-active"' in html
+    assert 'id="protocol-guide-future"' in html
+    assert 'id="protocol-guide-action"' in html
+    assert "bounded_option_conditioned_route" in html
+    assert (
+        "every routed head must materially influence fused logits"
+        in html.lower()
+    )
+    assert "shadow_unfused" not in html
+    assert "direct shared-policy teaching" in html
+    assert "ramp scales guide gradients into shared policy learning" not in html
+
+
+def test_active_current_deck_guide_is_not_labeled_absent_before_rehearsal() -> None:
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+
+    assert (
+        "current deck guide awaiting first rehearsal measurement"
+        in html
+    )
+    assert (
+        "currentDeckGuide.enabled&&Number.isFinite"
+        "(tuneHeads.alakazam_guide?.loss)"
+        not in html
+    )
+
+
+def test_dashboard_protocol_pointer_label_uses_explicit_stale_flag() -> None:
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+
+    assert (
+        "protocol.canonical_pointer_stale===true?'stale':'current'"
+        in html
+    )
+    assert (
+        "canonical pointer '+String(protocol.canonical_active_specialist||"
+        "'none')+' is stale"
+        not in html
+    )

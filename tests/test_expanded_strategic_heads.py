@@ -9,11 +9,16 @@ from poke_bot import checkpoint, config, features
 from poke_bot.model import (
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_SCHEMA,
+    DECISION_FUSION_V2_ROUTE_SCHEMA,
+    DECISION_FUSION_V2_SCHEMA,
+    DECISION_FUSION_V2_TOTAL_DELTA_CAP,
     EXPANDED_HEAD_KEY_PREFIXES,
     EXPANDED_HEAD_NAMES,
     EXPANDED_HEAD_SCHEMA,
     EXPANDED_HEAD_SCHEMA_VERSION,
     PackedSparse,
+    SETUP_BOARD_OUTCOME_HEAD_NAME,
+    SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
     build_model,
 )
 from poke_bot.train import load_model_from_checkpoint
@@ -24,8 +29,11 @@ def _cfg(
     enabled: bool,
     fusion: bool = False,
     fusion_runtime: bool = False,
+    setup_board_outcome: bool = False,
+    dedicated_routes: bool = False,
+    dedicated_routes_runtime: bool = False,
 ) -> config.ModelConfig:
-    return config.ModelConfig(
+    cfg = config.ModelConfig(
         d_model=16,
         spatial_layers=1,
         temporal_layers=1,
@@ -37,11 +45,17 @@ def _cfg(
         decision_context="history",
         kv_cache=True,
         expanded_heads_enabled=enabled,
+        setup_board_outcome_head_enabled=setup_board_outcome,
         decision_fusion_enabled=fusion,
         decision_fusion_runtime_enabled=fusion_runtime,
+        decision_fusion_dedicated_routes_enabled=dedicated_routes,
+        decision_fusion_dedicated_routes_runtime_enabled=(
+            dedicated_routes_runtime
+        ),
         decision_fusion_width=8,
         dropout=0.0,
     )
+    return cfg
 
 
 def _model(
@@ -49,12 +63,18 @@ def _model(
     enabled: bool,
     fusion: bool = False,
     fusion_runtime: bool = False,
+    setup_board_outcome: bool = False,
+    dedicated_routes: bool = False,
+    dedicated_routes_runtime: bool = False,
 ):
     return build_model(
         _cfg(
             enabled=enabled,
             fusion=fusion,
             fusion_runtime=fusion_runtime,
+            setup_board_outcome=setup_board_outcome,
+            dedicated_routes=dedicated_routes,
+            dedicated_routes_runtime=dedicated_routes_runtime,
         ),
         aux_archetype_classes=4,
         encoder_vocab=64,
@@ -71,6 +91,26 @@ def _options(n: int) -> features.SparseVector:
     return value
 
 
+def _fusion_sources(model, *, batch: int, options: int):
+    fusion = model.decision_fusion
+    assert fusion is not None
+    state_sources = {
+        name: torch.randn(batch, projection.in_features)
+        for name, projection in fusion.state_projections.items()
+    }
+    option_sources = {
+        name: torch.randn(batch, options, width)
+        for name, width in fusion._OPTION_DIMS.items()
+    }
+    if "setup_board_outcome" in fusion.required_heads:
+        option_sources["setup_board_outcome"] = torch.randn(
+            batch,
+            options,
+            SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
+        )
+    return state_sources, option_sources
+
+
 def test_expanded_heads_are_strictly_opt_in() -> None:
     model = _model(enabled=False)
     assert model.expanded_heads_enabled is False
@@ -80,13 +120,12 @@ def test_expanded_heads_are_strictly_opt_in() -> None:
         for key in model.state_dict()
     )
     inventory = model.expanded_head_inventory()
-    assert inventory == {
-        "schema": EXPANDED_HEAD_SCHEMA,
-        "version": 0,
-        "enabled": False,
-        "runtime_enabled_heads": [],
-        "modules": {},
-    }
+    assert inventory["schema"] == EXPANDED_HEAD_SCHEMA
+    assert inventory["version"] == 0
+    assert inventory["enabled"] is False
+    assert inventory["runtime_enabled_heads"] == []
+    assert inventory["modules"] == {}
+    assert inventory["fusion_roles"] == {}
     with pytest.raises(RuntimeError, match="disabled"):
         model.expanded_state_logits(torch.zeros(1, model.d_model))
     with pytest.raises(RuntimeError, match="disabled"):
@@ -243,6 +282,291 @@ def test_checkpoint_records_expanded_head_schema_and_tensor_inventory() -> None:
             assert tensor["numel"] > 0
             assert tensor["dtype"] == "float32"
     assert payload["provenance"]["warm_started_expanded_heads"] == []
+
+
+def test_future_setup_head_requires_dedicated_fusion_v2_routes() -> None:
+    with pytest.raises(ValueError, match="dedicated decision-fusion routes"):
+        _model(
+            enabled=True,
+            fusion=True,
+            setup_board_outcome=True,
+        )
+    with pytest.raises(ValueError, match="require decision_fusion_enabled"):
+        _model(
+            enabled=True,
+            dedicated_routes=True,
+        )
+    with pytest.raises(ValueError, match="requires route tensors"):
+        _model(
+            enabled=True,
+            fusion=True,
+            dedicated_routes_runtime=True,
+        )
+    with pytest.raises(ValueError, match="requires decision fusion runtime"):
+        _model(
+            enabled=True,
+            fusion=True,
+            dedicated_routes=True,
+            dedicated_routes_runtime=True,
+        )
+
+
+def test_fusion_v2_is_exactly_v1_safe_at_step_zero() -> None:
+    torch.manual_seed(20260730)
+    v1 = _model(enabled=True, fusion=True, fusion_runtime=True)
+    torch.manual_seed(20260730)
+    v2 = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+    )
+    v1.eval()
+    v2.eval()
+
+    v1_state = v1.state_dict()
+    v2_state = v2.state_dict()
+    for key, value in v1_state.items():
+        torch.testing.assert_close(value, v2_state[key], rtol=0, atol=0)
+    route_keys = {
+        key for key in v2_state if key.startswith("decision_fusion.dedicated_routes.")
+    }
+    setup_keys = {
+        key for key in v2_state if key.startswith("setup_board_outcome_head.")
+    }
+    assert route_keys
+    assert setup_keys
+    assert set(v2_state) == set(v1_state) | route_keys | setup_keys
+
+    spatial = torch.randn(3, features.NUM_BOARD_TOKENS, v1.d_model)
+    state = torch.randn(3, v1.d_model)
+    options = [_options(4), _options(3), _options(2)]
+    counts = [4, 3, 2]
+    v1_logits = v1.decode_options(options, spatial, state, n_options=counts)
+    v2_logits = v2.decode_options(options, spatial, state, n_options=counts)
+    torch.testing.assert_close(v1_logits, v2_logits, rtol=0, atol=0)
+    assert torch.equal(v1_logits.argmax(dim=1), v2_logits.argmax(dim=1))
+
+    inventory = v2.decision_fusion_inventory()
+    assert inventory["schema"] == DECISION_FUSION_V2_SCHEMA
+    assert inventory["required_heads"] == [
+        *DECISION_FUSION_REQUIRED_HEADS,
+        "setup_board_outcome",
+    ]
+    routes = inventory["dedicated_routes"]
+    assert routes["schema"] == DECISION_FUSION_V2_ROUTE_SCHEMA
+    assert routes["route_count"] == len(DECISION_FUSION_REQUIRED_HEADS) + 1
+    assert routes["route_names"] == inventory["required_heads"]
+    assert routes["aggregation"] == "fixed_mean"
+    assert routes["total_delta_cap"] == DECISION_FUSION_V2_TOTAL_DELTA_CAP
+    assert routes["zero_safe_final_projection"] is True
+    assert routes["action_influence"] == "bounded_option_conditioned_route"
+    assert routes["state_head_action_conditioning"] == (
+        "typed_output_plus_board_state_cross_attended_legal_option"
+    )
+    assert routes["option_head_action_conditioning"] == (
+        "typed_option_output_plus_board_state_cross_attended_legal_option"
+    )
+    assert inventory["guide_excluded"] is True
+    payload = checkpoint.build_checkpoint(model=v2, model_config=v2.cfg)
+    assert (
+        payload["model_config"]["decision_fusion_dedicated_routes_enabled"]
+        is True
+    )
+    assert (
+        payload["model_config"][
+            "decision_fusion_dedicated_routes_runtime_enabled"
+        ]
+        is True
+    )
+    assert payload["model_config"]["setup_board_outcome_head_enabled"] is True
+    assert payload["provenance"]["decision_fusion"]["schema"] == (
+        DECISION_FUSION_V2_SCHEMA
+    )
+
+    head = v2.expanded_head_inventory()["modules"][
+        SETUP_BOARD_OUTCOME_HEAD_NAME
+    ]
+    assert head["computation_role"] == "independent_head"
+    assert head["fusion_role"] == "fused_input"
+    assert head["action_influence"] == "bounded_option_conditioned_route"
+    assert head["direct_action_selection_authority"] is False
+
+
+def test_fusion_v2_routes_are_distinct_option_conditioned_and_bounded() -> None:
+    model = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+    )
+    fusion = model.decision_fusion
+    assert fusion is not None
+    with torch.no_grad():
+        for index, route in enumerate(fusion.dedicated_routes.values(), start=1):
+            route.network[-1].weight.fill_(0.01 * index)
+            route.network[-1].bias.zero_()
+
+    batch, option_count = 3, 5
+    option_hidden = torch.randn(batch, option_count, model.d_model)
+    state_sources, option_sources = _fusion_sources(
+        model,
+        batch=batch,
+        options=option_count,
+    )
+    route_deltas = fusion.dedicated_route_deltas(
+        option_hidden,
+        state_sources=state_sources,
+        option_sources=option_sources,
+    )
+    assert set(route_deltas) == set(fusion.required_heads)
+    for name, delta in route_deltas.items():
+        assert tuple(delta.shape) == (batch, option_count), name
+        # Every state-level and option-level head owns a genuinely
+        # option-conditioned route, not a row-constant diagnostic offset.
+        centered = delta - delta.mean(dim=1, keepdim=True)
+        assert bool(torch.count_nonzero(centered).item()), name
+
+    total = fusion.dedicated_action_delta(
+        option_hidden,
+        state_sources=state_sources,
+        option_sources=option_sources,
+    )
+    assert bool(
+        (
+            total.abs()
+            <= DECISION_FUSION_V2_TOTAL_DELTA_CAP + 1e-7
+        ).all()
+    )
+
+    base_logits = torch.randn(batch, option_count)
+    full = fusion(
+        option_hidden,
+        base_logits,
+        state_sources=state_sources,
+        option_sources=option_sources,
+        dedicated_routes_active=True,
+    )
+    for name, route in fusion.dedicated_routes.items():
+        saved_weight = route.network[-1].weight.detach().clone()
+        saved_bias = route.network[-1].bias.detach().clone()
+        with torch.no_grad():
+            route.network[-1].weight.zero_()
+            route.network[-1].bias.zero_()
+        ablated = fusion(
+            option_hidden,
+            base_logits,
+            state_sources=state_sources,
+            option_sources=option_sources,
+            dedicated_routes_active=True,
+        )
+        differential = full - ablated
+        differential = differential - differential.mean(dim=1, keepdim=True)
+        assert bool(torch.count_nonzero(differential).item()), name
+        with torch.no_grad():
+            route.network[-1].weight.copy_(saved_weight)
+            route.network[-1].bias.copy_(saved_bias)
+
+
+def test_fusion_v2_serving_route_is_separately_receipt_gated() -> None:
+    model = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=False,
+    )
+    model.eval()
+    fusion = model.decision_fusion
+    assert fusion is not None
+    with torch.no_grad():
+        for route in fusion.dedicated_routes.values():
+            route.network[-1].weight.fill_(0.1)
+            route.network[-1].bias.zero_()
+
+    spatial = torch.randn(2, features.NUM_BOARD_TOKENS, model.d_model)
+    state = torch.randn(2, model.d_model)
+    options = [_options(4), _options(4)]
+    before_receipt = model.decode_options(
+        options,
+        spatial,
+        state,
+        n_options=[4, 4],
+    )
+    model.decision_fusion_dedicated_routes_runtime_enabled = True
+    after_receipt = model.decode_options(
+        options,
+        spatial,
+        state,
+        n_options=[4, 4],
+    )
+    assert not torch.equal(before_receipt, after_receipt)
+    assert (
+        model.decision_fusion_inventory()["dedicated_routes"][
+            "runtime_enabled"
+        ]
+        is True
+    )
+
+
+def test_fusion_v2_policy_loss_reaches_every_head_and_dedicated_route() -> None:
+    model = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+    )
+    fusion = model.decision_fusion
+    assert fusion is not None
+    with torch.no_grad():
+        for route in fusion.dedicated_routes.values():
+            route.network[-1].weight.fill_(0.05)
+            route.network[-1].bias.zero_()
+
+    model.train()
+    spatial = torch.randn(4, features.NUM_BOARD_TOKENS, model.d_model)
+    state = torch.randn(4, model.d_model)
+    logits = model.decode_options(
+        [_options(4), _options(4), _options(4), _options(4)],
+        spatial,
+        state,
+        n_options=[4, 4, 4, 4],
+    )
+    torch.nn.functional.cross_entropy(
+        logits,
+        torch.tensor([0, 1, 2, 3], dtype=torch.long),
+    ).backward()
+
+    source_modules = (
+        model.value_head,
+        model.aux_head,
+        model.opp_hand_head,
+        model.opp_remainder_head,
+        model.lethal_threat_head,
+        model.prize_race_head,
+        *(getattr(model, name) for name in EXPANDED_HEAD_NAMES),
+        model.setup_board_outcome_head,
+    )
+    for module in source_modules:
+        assert module is not None
+        assert any(
+            parameter.grad is not None
+            and bool(torch.count_nonzero(parameter.grad).item())
+            for parameter in module.parameters()
+        )
+    for name, route in fusion.dedicated_routes.items():
+        assert any(
+            parameter.grad is not None
+            and bool(torch.count_nonzero(parameter.grad).item())
+            for parameter in route.parameters()
+        ), name
 
 
 def test_decision_fusion_is_zero_safe_and_checkpoint_declared() -> None:

@@ -1,0 +1,47 @@
+{
+  "schema": "poke_bot.future_specialist_guide_chain_runtime_sync/v1",
+  "status": "ready",
+  "created_at_utc": "2026-07-30T09:57:10Z",
+  "scope": "future_specialist_handoff_runtime_only",
+  "ordered_specialists": [
+    "archaludon-ex",
+    "dragapult",
+    "crustle"
+  ],
+  "stable_target": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-current",
+  "resolved_target": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30",
+  "files": {
+    "config/rl_protocol.yaml": "sha256:86a617d726688bbd2f681bf39c4924ed3324b0862831d3b3a54e4466b719c408",
+    "config/deck_guides/dragapult.yaml": "sha256:c61fdcffb6e2933f65d73645a723c554a7e49358ebb8c14d131baf6b2bbe8396",
+    "config/deck_guides/crustle.yaml": "sha256:1d285ee0eaca70f556e3401698ff46729eb068431063fb5067cdc6f53779853a",
+    "config/deck_guides/crustle-research-proposal.yaml": "sha256:3eeed28ce5d4f09c7760255db2416dcff2267c9eb6c02353a20ebf50fb74d66e",
+    "poke_bot/deck_guides.py": "sha256:cd133ad4d34423308bf20a4d5a1759deb86cb3e131ca553afa0c6c70ff561ad3",
+    "poke_bot/archetypes.py": "sha256:09b56869e94722c57f164999b3d2ccc2d5b7c66ca1f7248dc9d3c3d482568d49",
+    "poke_bot/dragapult_heuristics.py": "sha256:b7dd142edec31b0ee52626d6f78a4a94e9fd93295bbdd917234a6499343c479e",
+    "poke_bot/crustle_heuristics.py": "sha256:e68a759bc8c3566dab2d49420d09dff8fcec7d9563da5f659fd2e2569f73ba6d",
+    "docs/deck_guides/dragapult-expert-brief.txt": "sha256:254c29386563c8a21c456e78d996d94d43b555e4ef20d0441ef1b6eeeefa12e6",
+    "docs/deck_guides/crustle-expert-brief.txt": "sha256:ed49922091c631ec49f40a8e05126a231a00a4c46e660c06bd2d20a164d3f135",
+    "data/training_mixes/specialist_representatives.v1.json": "sha256:07f64e386aa9d416caa054b45e9f3683705346596502fc4d26490a03d08ee340"
+  },
+  "validation": {
+    "source_and_target_checksums_equal": true,
+    "guide_registry_resolves_all_ordered_specialists": true,
+    "crustle_exact_representative_classifies_as_crustle": true,
+    "dragapult_and_crustle_contracts_present": true,
+    "dragapult_and_crustle_expert_writeups_present": true,
+    "focused_tests_passed": 85,
+    "prestage_status": "ready",
+    "prestage_selected_specialist": "archaludon-ex",
+    "prestage_blockers": []
+  },
+  "active_training": {
+    "specialist_id": "teal-mask-ogerpon-ex",
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "main_pid_before_and_after": 2864742,
+    "restart_count_before_and_after": 2,
+    "selector_modified": false,
+    "runtime_modified": false,
+    "training_preempted": false,
+    "service_control_used": false
+  }
+}

@@ -79,8 +79,10 @@ def _scores(obs: dict) -> list[float] | None:
     )
 
 
-def test_exact_japan_championships_winner_matches_guide_signature() -> None:
+def test_canonical_representative_is_exact_public_slop_box() -> None:
     assert len(CANONICAL_DECK) == 60
+    assert CANONICAL_DECK == CURRENT_PUBLIC_DECK
+    assert CANONICAL_DECK.count(guide.RAGING_BOLT_EX) == 2
     assert guide.is_teal_mask_ogerpon_ex_deck(CANONICAL_DECK)
     assert guide.applies(CANONICAL_DECK)
 
@@ -197,28 +199,46 @@ def test_contract_separates_competitive_taxonomy_from_public_identity() -> None:
     evidence = contract["corpus_binding_evidence"]
 
     assert contract["guide_version"] == guide.GUIDE_VERSION
+    assert contract["deck_signature"]["minimum_card_counts"][63] == 2
     assert contract["deck_signature"]["minimum_card_counts"][272] == 1
     assert contract["deck_signature"]["maximum_card_counts"][756] == 3
-    assert contract["physical_source_archetype_id"] == "ogerpon-box"
+    assert contract["physical_source_archetype_id"] == "slop-box"
+    assert contract["competitive_family_alias"] == "Raging Bolt Ogerpon"
     assert contract["ptcgreplay_public_archetype_id"] == 151
     assert contract["ptcgreplay_public_archetype_name"] == (
         "Teal Mask Ogerpon ex"
     )
-    assert evidence["competitive_taxonomy_identity"] == "ogerpon-box"
+    assert evidence["competitive_taxonomy_identity"] == "slop-box"
     assert evidence["required_public_source_archetype_id"] == 151
-    assert evidence["source_indexed_acting_seat_games"] == 1_135
-    assert evidence["materialized_acting_seat_games"] == 2_300
-    assert evidence["materialized_decisions"] == 156_692
-    assert evidence["guide_rows"] == 10_495
-    assert evidence["daily_receipts_verified"] == 32
-    assert evidence["duplicate_episode_seat_keys"] == 0
-    assert evidence["ready_receipt_sha256"] == (
+    assert evidence["source_indexed_acting_seat_games"] == 1_442
+    assert evidence["materialized_acting_seat_games"] is None
+    assert evidence["materialized_decisions"] is None
+    assert evidence["materialized_guide_rows"] is None
+    assert evidence["daily_receipts_verified"] == 1
+    assert evidence["duplicate_episode_seat_keys"] is None
+
+    clean = evidence["clean_rebuild"]
+    assert clean["status"] == "managed_build_active"
+    assert clean["verified_completed_days"] == 1
+    assert clean["verified_completed_records"] == 307
+    assert clean["verified_completed_decisions"] == 21_536
+    assert clean["verified_completed_guide_rows"] == 1_858
+    assert clean["promotion_authorized"] is False
+    assert clean["final_ready_receipt"] is None
+
+    contaminated = evidence["contaminated_v1"]
+    assert contaminated["status"] == "quarantined_not_promotable"
+    assert contaminated["false_source_archetype_id"] == 67
+    assert contaminated["materialized_acting_seat_games"] == 2_300
+    assert contaminated["materialized_decisions"] == 156_692
+    assert contaminated["guide_rows"] == 10_495
+    assert contaminated["ready_receipt_sha256"] == (
         "sha256:216b60efe50709a7972081ad2c7df60614412a28b09b15458b659eadec8c547c"
     )
-    assert evidence["promotion_receipt_sha256"] == (
+    assert contaminated["promotion_receipt_sha256"] == (
         "sha256:db8aff2fd5076fd75c4e56384f9bd609dda79836169527a780ec2808722e2674"
     )
-    assert evidence["source_window"]["days"] == 32
+    assert evidence["source_window"]["days"] == 33
     assert evidence["public_deck_catalog"].endswith(
-        "teal-mask-ogerpon-ex-public-full32.v1.json"
+        "teal-mask-ogerpon-ex-public-full33.v1.json"
     )

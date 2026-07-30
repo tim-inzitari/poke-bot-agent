@@ -48,14 +48,14 @@
       }
     ]
   },
-  "active_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r5",
+  "active_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r11",
   "active_gate_semantics": {
     "base_premium_agents": 3,
-    "frozen_specialist_agents": 5,
+    "frozen_specialist_agents": 11,
     "frozen_specialist_tier": "S+",
     "games_per_opponent": 250,
-    "gate_games_total": 2000,
-    "gate_roster_size": 8,
+    "gate_games_total": 3500,
+    "gate_roster_size": 14,
     "historical_superseded_results_preserved": true,
     "invariant": "The active premium gate contains every non-superseded external agent plus every frozen completed specialist as S+. Each receives exactly 250 greedy games split 125/125 by seat. The original four baselines remain exact research controls only.",
     "original_base_premium_agents": 8,
@@ -74,16 +74,16 @@
   },
   "fallback_transition": {
     "activate_after_completed_iteration": 4,
-    "id": "specialist-strong-public-roster-lc50-at-iter5-v1+frozen-specialists-r5",
+    "id": "specialist-strong-public-roster-lc50-at-iter5-v1+frozen-specialists-r11",
     "label": "Strong public-agent gate (50% lower-confidence bound from iteration 5)",
     "only_if_prior_gate_unpassed": true,
     "prior_confidence_lower": 0.55,
-    "prior_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r5",
+    "prior_gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r11",
     "skill_weighted_confidence_lower": 0.5,
     "status": "staged",
     "unchanged_requirements": [
       "3 active external premium agents after configured archetype supersession plus all frozen S+ specialists",
-      "2000 exact greedy games with 5 frozen specialist(s)",
+      "3500 exact greedy games with 11 frozen specialist(s)",
       "250 games per opponent",
       "125 games in each seat per opponent",
       "skill-weighted win rate >= 0.50",
@@ -105,7 +105,7 @@
       "fixed_seed_manifest_required": true,
       "formal_eval_disjoint_from_training": true,
       "games_per_opponent": 250,
-      "games_total": 2000,
+      "games_total": 3500,
       "minimum_games_per_opponent": 250,
       "mode": "greedy",
       "package_digest_deduplicated": true,
@@ -114,7 +114,7 @@
       "seat1_games_per_opponent": 125,
       "sequential_early_stop": false
     },
-    "exact_result_pointer": "/home/inzi/poke-bot-agent/outputs/state/specialist_strong_public_plus_frozen_r5_result.json",
+    "exact_result_pointer": "/home/inzi/poke-bot-agent/outputs/state/specialist_strong_public_plus_frozen_r11_result.json",
     "excluded_aliases": [
       {
         "canonical_opponent_id": "pilkwang-meta-20260708",
@@ -122,7 +122,7 @@
         "reason": "identical package content digest; excluded to prevent double weighting"
       }
     ],
-    "id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r5",
+    "id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r11",
     "label": "Strong public-agent gate + frozen S+ specialists (55% lower-confidence bound)",
     "milestones": [
       {
@@ -238,9 +238,7 @@
         "frozen_checkpoint_digest": "sha256:87f31362158bdb16866f8be1417269aa87f4fe1c285be4a319816a35f31b0d66",
         "frozen_specialist": true,
         "opponent_id": "specialist-alakazam-owner-accepted-iter39-roster18-v5",
-        "roster_version": 5,
         "source": "owner-accepted frozen Alakazam iteration 39 checkpoint",
-        "source_passing_checkpoint_digest": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
         "tier": "S+",
         "weight": 2.0
       },
@@ -251,9 +249,7 @@
         "frozen_checkpoint_digest": "sha256:efcc8e0bb329e1fb07f970a20daf55961522e5ccd443264bc96a7b97dfd79c31",
         "frozen_specialist": true,
         "opponent_id": "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5",
-        "roster_version": 5,
         "source": "explicit owner-accepted formal protocol gate at zero-indexed iteration 10 (eleven completed iterations)",
-        "source_passing_checkpoint_digest": "sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1",
         "tier": "S+",
         "weight": 2.0
       },
@@ -264,9 +260,7 @@
         "frozen_checkpoint_digest": "sha256:19a6d35f61fb8914dccd30a88a9df3c7b36affe72ffa8c9e36c6882e614d99ab",
         "frozen_specialist": true,
         "opponent_id": "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5",
-        "roster_version": 5,
         "source": "exact protocol-gate passing Mega Starmie ex iteration 10 checkpoint 51ed1cc6ffe6",
-        "source_passing_checkpoint_digest": "sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8",
         "tier": "S+",
         "weight": 2.0
       },
@@ -277,9 +271,7 @@
         "frozen_checkpoint_digest": "sha256:806623c735f3e70ee318460692c4385c2641b99a0dbf83e21594ad5dc0338fea",
         "frozen_specialist": true,
         "opponent_id": "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5",
-        "roster_version": 5,
         "source": "exact protocol-gate passing Mega Lucario ex iteration 10 checkpoint ffa401242b2c",
-        "source_passing_checkpoint_digest": "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd",
         "tier": "S+",
         "weight": 2.0
       },
@@ -291,6 +283,72 @@
         "frozen_specialist": true,
         "opponent_id": "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1",
         "source": "owner-accepted ceiling Dragapult Dusknoir iteration 15 checkpoint b6996ed641b1; measured gate result preserved",
+        "tier": "S+",
+        "weight": 2.0
+      },
+      {
+        "archetype_id": "dudunsparce",
+        "archetype_label": "Frozen Dudunsparce specialist",
+        "content_digest": "sha256:2bbfe7218875160036d278312087ac89e4e19ec006363ee7477c23a57cb784e4",
+        "frozen_checkpoint_digest": "sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-dudunsparce-gate-iter15-a1e944fcb4c4",
+        "source": "owner-accepted ceiling Dudunsparce iteration 15 checkpoint a1e944fcb4c4; measured gate result preserved",
+        "tier": "S+",
+        "weight": 2.0
+      },
+      {
+        "archetype_id": "marnie-s-grimmsnarl-ex",
+        "archetype_label": "Frozen Marnie's Grimmsnarl ex specialist",
+        "content_digest": "sha256:ae9f3c31e2705a955aa1c51b79fbeffcab0d93dfe65da23572b18b9a52d8e8f6",
+        "frozen_checkpoint_digest": "sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98",
+        "source": "exact protocol-gate passing Marnie's Grimmsnarl ex iteration 5 checkpoint 52a5207e4c98",
+        "tier": "S+",
+        "weight": 2.0
+      },
+      {
+        "archetype_id": "garchomp",
+        "archetype_label": "Frozen Garchomp specialist",
+        "content_digest": "sha256:66937a20893561c6decaed6a280f40f616bf7601faabdd342cac809c0d7e8968",
+        "frozen_checkpoint_digest": "sha256:61fbb254944fa14452b1b623f89af4e49f86f32111219eaeb76f7f43e22daa70",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-garchomp-gate-iter5-61fbb254944f",
+        "source": "exact protocol-gate passing Garchomp iteration 5 checkpoint 61fbb254944f",
+        "tier": "S+",
+        "weight": 2.0
+      },
+      {
+        "archetype_id": "rockets-mewtwo",
+        "archetype_label": "Frozen Rocket's Mewtwo specialist",
+        "content_digest": "sha256:c16aacc578af56c676d94de3bed8744f73ba4187300c5e3b868a63562a72cf54",
+        "frozen_checkpoint_digest": "sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86",
+        "source": "exact protocol-gate passing Rocket's Mewtwo iteration 5 checkpoint fc2f9a525a86",
+        "tier": "S+",
+        "weight": 2.0
+      },
+      {
+        "archetype_id": "thwackey",
+        "archetype_label": "Frozen Thwackey specialist",
+        "content_digest": "sha256:fda5d1cff88a6b4eb2d5ff8043b930ec1077751a3134bd3320515f3cb1dcdddf",
+        "frozen_checkpoint_digest": "sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-thwackey-gate-iter5-0435f335fde6",
+        "source": "exact protocol-gate passing Thwackey iteration 5 checkpoint 0435f335fde6",
+        "tier": "S+",
+        "weight": 2.0
+      },
+      {
+        "archetype_id": "team-rockets-spidops",
+        "archetype_label": "Frozen Team Rocket's Spidops specialist",
+        "content_digest": "sha256:05a06b3640eec555e1f8c37aa06e5556a7d2a1972f34a9b65c575539b0d7073a",
+        "frozen_checkpoint_digest": "sha256:4ab63dc94d5a6b673703bcaf984be15a42c68a94e6e84ba7232b3964ac79899b",
+        "frozen_specialist": true,
+        "opponent_id": "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a",
+        "source": "exact protocol-gate passing Team Rocket's Spidops iteration 5 checkpoint 4ab63dc94d5a",
         "tier": "S+",
         "weight": 2.0
       }
@@ -306,5 +364,5 @@
     }
   },
   "schema": "poke_bot.competition_gate_program/v1",
-  "updated_at_utc": "2026-07-25T06:31:57.164230+00:00"
+  "updated_at_utc": "2026-07-29T01:00:24.495992+00:00"
 }

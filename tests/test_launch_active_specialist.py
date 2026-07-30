@@ -24,6 +24,8 @@ from scripts.launch_active_specialist import (
     _load_registry,
     _resolve,
     _sha256,
+    _validate_guide_training_contract,
+    _validate_guide_weight_policy,
 )
 
 
@@ -181,6 +183,229 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
     return path
 
 
+def _strategic_training_row(
+    tmp_path: Path,
+    *,
+    specialist_id: str = "archaludon-ex",
+) -> dict:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    guide = tmp_path / "guide.yaml"
+    guide.write_text("schema: guide\n", encoding="utf-8")
+    guide_digest = _sha256(guide)
+    implementation = tmp_path / "strategic_training.py"
+    implementation.write_text("STRATEGIC = True\n", encoding="utf-8")
+    validation_test = tmp_path / "test_strategic_training.py"
+    validation_test.write_text(
+        "def test_strategic(): assert True\n",
+        encoding="utf-8",
+    )
+    sources = list(
+        dict.fromkeys(
+            (*DECISION_FUSION_REQUIRED_HEADS, "setup_board_outcome")
+        )
+    )
+    heads = {
+        head_id: {
+            "computation_role": "independent_head",
+            "fusion_role": "fused_input",
+            "trainable": True,
+            "causal_training_targets_only": True,
+            "guide_action_target_allowed": False,
+            "enters_decision_fusion": True,
+            "action_influence": "bounded_option_conditioned_route",
+            "causal_input": "board_state_and_legal_option",
+            "direct_action_selection_authority": False,
+            "runtime_activation_requirement": "receipt_backed_validation",
+            "route_id": f"{head_id}-route",
+            "route_input": "option_hidden_plus_typed_output",
+            "route_reduction": "fixed_mean",
+            "zero_safe_final_projection": True,
+            "maximum_absolute_logit_contribution": 0.25,
+        }
+        for head_id in sources
+    }
+    role_map = tmp_path / "head-roles.json"
+    role_map.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "poke_bot.future_specialist_strategic_head_roles/v1"
+                ),
+                "specialist_id": specialist_id,
+                "training_mode": "strategic_curriculum_v1",
+                "guide_curriculum_revision": 51,
+                "strategic_branch_scope_revision": 56,
+                "action_influence_revision": 56,
+                "guide_contract_sha256": f"sha256:{guide_digest}",
+                "decision_fusion_schema": (
+                    "poke_bot.causal_decision_fusion/v2"
+                ),
+                "preserve_v1_additive_residual": True,
+                "canonical_learned_decision_sources": sources,
+                "one_route_per_learned_source": True,
+                "route_input": "option_hidden_plus_typed_output",
+                "route_reduction": "fixed_mean",
+                "aggregate_absolute_logit_cap": 1.0,
+                "zero_safe_final_projection": True,
+                "guide_is_only_action_route_exception": True,
+                "heads": heads,
+            }
+        ),
+        encoding="utf-8",
+    )
+    spec = tmp_path / "curriculum.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "poke_bot.future_specialist_strategic_curriculum/v1"
+                ),
+                "specialist_id": specialist_id,
+                "training_mode": "strategic_curriculum_v1",
+                "guide_curriculum_revision": 51,
+                "strategic_branch_scope_revision": 56,
+                "action_influence_revision": 56,
+                "guide_contract_sha256": f"sha256:{guide_digest}",
+                "head_role_map_sha256": f"sha256:{_sha256(role_map)}",
+                "curriculum_heads": sorted(sources),
+                "guide_targets": "observed_causal_strategic_heads_only",
+                "direct_policy_cross_entropy_allowed": False,
+                "guide_runtime_input_allowed": False,
+                "guide_action_selection_allowed": False,
+                "replace_observed_outcome_targets_allowed": False,
+                "all_curriculum_heads_must_influence_actions": True,
+                "computation_role": "independent_head",
+                "fusion_role": "fused_input",
+                "action_influence": "bounded_option_conditioned_route",
+                "causal_input": "board_state_and_legal_option",
+                "direct_action_selection_authority": False,
+                "runtime_activation_requirement": "receipt_backed_validation",
+                "decision_fusion_schema": (
+                    "poke_bot.causal_decision_fusion/v2"
+                ),
+                "preserve_v1_additive_residual": True,
+                "canonical_learned_decision_sources": sources,
+                "one_route_per_learned_source": True,
+                "route_input": "option_hidden_plus_typed_output",
+                "route_reduction": "fixed_mean",
+                "aggregate_absolute_logit_cap": 1.0,
+                "zero_safe_final_projection": True,
+                "guide_is_only_action_route_exception": True,
+                "pre_fleet_h10_compute_allowed": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    validation = tmp_path / "validation.json"
+    validation.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "poke_bot.future_specialist_strategic_"
+                    "curriculum_validation/v1"
+                ),
+                "status": "validated",
+                "specialist_id": specialist_id,
+                "training_mode": "strategic_curriculum_v1",
+                "guide_curriculum_revision": 51,
+                "strategic_branch_scope_revision": 56,
+                "action_influence_revision": 56,
+                "guide_contract_sha256": f"sha256:{guide_digest}",
+                "curriculum_spec_sha256": f"sha256:{_sha256(spec)}",
+                "head_role_map_sha256": f"sha256:{_sha256(role_map)}",
+                "required_training_paths": [
+                    "supervised_bootstrap",
+                    "pure_rl",
+                    "resident_expert_rehearsal",
+                ],
+                "decision_fusion_schema": (
+                    "poke_bot.causal_decision_fusion/v2"
+                ),
+                "validated_route_ids": [
+                    heads[head_id]["route_id"] for head_id in sorted(sources)
+                ],
+                "checks": {
+                    "guide_supervision_terminates_at_strategic_heads": True,
+                    "fused_policy_remains_outcome_and_win_trained": True,
+                    "direct_policy_cross_entropy_absent": True,
+                    "observed_outcome_targets_not_replaced": True,
+                    "all_curriculum_heads_have_valid_fusion_roles": True,
+                    "every_curriculum_head_has_bounded_action_scoring_route": True,
+                    "per_head_action_influence_ablation_passed": True,
+                    "exact_parent_parity_at_initialization": True,
+                    "one_option_conditioned_route_per_learned_head": True,
+                    "causal_suffix_invariance": True,
+                    "legal_option_dependence": True,
+                    "bounded_aggregate_residual": True,
+                    "all_training_paths_use_the_declared_mode": True,
+                    "active_and_historical_specialists_unchanged": True,
+                },
+                "measurements": {
+                    "guide_to_strategic_head_gradient_norm": 0.125,
+                    "guide_labeled_rows": 128,
+                    "maximum_absolute_aggregate_residual_observed": 0.5,
+                },
+                "action_influence_ablations": {
+                    head_id: {
+                        "decisions_evaluated": 128,
+                        "mean_absolute_action_logit_delta": 0.02,
+                        "maximum_absolute_logit_contribution_observed": 0.1,
+                        "selection_change_rate": 0.04,
+                    }
+                    for head_id in sources
+                },
+                "route_validation": {
+                    head_id: {
+                        "route_id": heads[head_id]["route_id"],
+                        "route_input": "option_hidden_plus_typed_output",
+                        "post_training_route_gradient_norm": 0.01,
+                        "legal_option_dependence_delta": 0.02,
+                        "causal_suffix_max_logit_delta": 0.0,
+                        "zero_safe_initial_max_logit_delta": 0.0,
+                    }
+                    for head_id in sources
+                },
+                "implementation_artifacts": [
+                    {
+                        "role": "training_implementation",
+                        "path": str(implementation.resolve()),
+                        "sha256": f"sha256:{_sha256(implementation)}",
+                    },
+                    {
+                        "role": "validation_test",
+                        "path": str(validation_test.resolve()),
+                        "sha256": f"sha256:{_sha256(validation_test)}",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "guide_id": specialist_id,
+        "guide_loss_weight": 0.05,
+        "guide_contract": str(guide.resolve()),
+        "guide_contract_sha256": guide_digest,
+        "guide_version": "north-star-v1",
+        "guide_training_mode": "strategic_curriculum_v1",
+        "guide_weight_policy": {},
+        "strategic_curriculum": {
+            "schema": "poke_bot.specialist_guide_training_contract/v1",
+            "training_mode": "strategic_curriculum_v1",
+            "guide_curriculum_revision": 51,
+            "strategic_branch_scope_revision": 56,
+            "action_influence_revision": 56,
+            "decision_fusion_schema": "poke_bot.causal_decision_fusion/v2",
+            "curriculum_spec": str(spec.resolve()),
+            "curriculum_spec_sha256": _sha256(spec),
+            "head_role_map": str(role_map.resolve()),
+            "head_role_map_sha256": _sha256(role_map),
+            "validation_receipt": str(validation.resolve()),
+            "validation_receipt_sha256": _sha256(validation),
+        },
+    }
+
+
 def test_ready_specialist_resolves_one_complete_command(tmp_path: Path) -> None:
     registry = _load_registry(_fixture(tmp_path))
     row, checkpoint, expert, runtime_tree, authorization = _resolve(
@@ -207,6 +432,197 @@ def test_ready_specialist_resolves_one_complete_command(tmp_path: Path) -> None:
     assert command[command.index("--expert-min-decisions") + 1] == "10000"
     assert command.count("--expert-required-target") == 2
     assert "--frozen-specialist-registry" in command
+
+
+def test_revision44_prospective_guide_weight_policy_is_checksum_bound(
+    tmp_path: Path,
+) -> None:
+    module = tmp_path / "deck_guide_schedule.py"
+    module.write_text("MAXIMUM_AUXILIARY_WEIGHT = 0.50\n", encoding="utf-8")
+    evidence_module = tmp_path / "guide_weight_evidence.py"
+    evidence_module.write_text("EVIDENCE_SCHEMA = 'v1'\n", encoding="utf-8")
+    review_module = tmp_path / "guide_weight_review.py"
+    review_module.write_text("REQUEST_SCHEMA = 'v1'\n", encoding="utf-8")
+    boundary_controller = tmp_path / "apply_future_guide_weight_at_boundary.py"
+    boundary_controller.write_text("BOUNDARY_SCHEMA = 'v1'\n", encoding="utf-8")
+    shadow_pair_module = tmp_path / "guide_weight_shadow_pair.py"
+    shadow_pair_module.write_text("PAIR_SCHEMA = 'v1'\n", encoding="utf-8")
+    shadow_pair_runner = tmp_path / "run_future_guide_weight_shadow_pair.py"
+    shadow_pair_runner.write_text("PAIR_RUNNER = True\n", encoding="utf-8")
+    shadow_queue_processor = (
+        tmp_path / "process_future_guide_weight_review_queue.py"
+    )
+    shadow_queue_processor.write_text("QUEUE = True\n", encoding="utf-8")
+    row = {
+        "guide_weight_policy": {
+            "schema": "poke_bot.current_deck_guide_weight_policy/v1",
+                "owner_decision_revision": 43,
+                "prospective_scope_revision": 44,
+                "learning_semantics_revision": 46,
+                "guide_curriculum_revision": 51,
+                "strategic_branch_scope_revision": 56,
+                "action_influence_revision": 56,
+                "decision_fusion_schema": (
+                    "poke_bot.causal_decision_fusion/v2"
+                ),
+            "scope": "future_specialist_training_runs_only",
+            "prospective_effective_specialist": "archaludon-ex",
+            "retroactive_application_to_completed_frozen_or_started_runs": False,
+            "historical_weight_or_receipt_rewrite_allowed": False,
+            "active_teal_revision42_exception_preserved": True,
+            "schedule_module": str(module),
+            "schedule_module_sha256": _sha256(module),
+            "evidence_module": str(evidence_module),
+            "evidence_module_sha256": _sha256(evidence_module),
+            "review_request_module": str(review_module),
+            "review_request_module_sha256": _sha256(review_module),
+            "boundary_controller": str(boundary_controller),
+            "boundary_controller_sha256": _sha256(boundary_controller),
+            "shadow_pair_module": str(shadow_pair_module),
+            "shadow_pair_module_sha256": _sha256(shadow_pair_module),
+            "shadow_pair_runner": str(shadow_pair_runner),
+            "shadow_pair_runner_sha256": _sha256(shadow_pair_runner),
+            "shadow_queue_processor": str(shadow_queue_processor),
+            "shadow_queue_processor_sha256": _sha256(shadow_queue_processor),
+            "shadow_pair_manifest_schema": (
+                "poke_bot.future_guide_weight_shadow_pair/v1"
+            ),
+            "boundary_receipt_schema": (
+                "poke_bot.future_specialist_guide_weight_boundary/v1"
+            ),
+            "review_request_schema": (
+                "poke_bot.current_deck_guide_weight_review_request/v1"
+            ),
+                "automatic_review_after_each_five_iteration_commit": True,
+                "learning_effect": (
+                    "literal_multiplier_on_bounded_guide_conditioned_"
+                    "strategic_head_curriculum"
+                ),
+                "multiplier_applied_before_backpropagation": True,
+                "gradient_effect": (
+                    "scales_guide_conditioned_strategic_head_gradient_contribution"
+                ),
+                "training_target_mode": "bounded_strategic_head_curriculum",
+                "direct_policy_cross_entropy_allowed": False,
+                "activation_requires_prestage_validation_receipt": True,
+                "allowed_fusion_roles": ["fused_input"],
+                "every_head_declares_fusion_role": True,
+                "allowed_computation_roles": ["independent_head"],
+                "every_head_declares_computation_role": True,
+                "independent_pre_fusion_branches_trainable": True,
+                "action_influence": "bounded_option_conditioned_route",
+                "causal_input": "board_state_and_legal_option",
+                "direct_action_selection_authority": False,
+                "runtime_activation_requirement": "receipt_backed_validation",
+                "per_head_action_logit_ablation_required": True,
+                "preserve_v1_additive_residual": True,
+                "canonical_learned_decision_sources": list(
+                    dict.fromkeys(
+                        (
+                            *DECISION_FUSION_REQUIRED_HEADS,
+                            "setup_board_outcome",
+                        )
+                    )
+                ),
+                "one_route_per_learned_source": True,
+                "route_input": "option_hidden_plus_typed_output",
+                "route_reduction": "fixed_mean",
+                "aggregate_absolute_logit_cap": 1.0,
+                "zero_safe_final_projection": True,
+                "guide_is_only_action_route_exception": True,
+                "elapsed_time_only_progression_allowed": False,
+                "guide_head_only_bookkeeping_allowed": False,
+                "dashboard_only_or_runtime_action_bias_allowed": False,
+            "evidence_receipt_schema": (
+                "poke_bot.current_deck_guide_paired_evaluation/v1"
+            ),
+            "schedule_receipt_schema": (
+                "poke_bot.current_deck_guide_weight_schedule/v1"
+            ),
+            "bootstrap_ramp": [0.01, 0.05],
+            "post_bootstrap_positive_ramp_steps": [0.15, 0.25, 0.35, 0.50],
+            "maximum_auxiliary_loss_weight": 0.50,
+            "review_every_completed_iterations": 5,
+            "minimum_paired_games_per_review": 1000,
+            "minimum_paired_games_per_matchup": 50,
+            "realized_win_delta_confidence_level": 0.90,
+            "positive_ramp_evidence": (
+                "training_ineligible_paired_guide_on_guide_off_"
+                "realized_win_delta_lower_confidence_bound_above_zero"
+            ),
+            "decay_after_consecutive_nonpositive_reviews": 2,
+            "decay_steps": [0.15, 0.075, 0.0],
+                "clean_boundary_schedule_receipt_required": True,
+                "schedule_records_earliest_eligible_next_iteration": True,
+                "application_boundary": (
+                    "first_available_future_five_iteration_hard_pause"
+                ),
+                "actual_application_iteration_recorded_only_by_boundary_receipt": True,
+                "consecutive_nonpositive_evaluations": 0,
+            "training_replay_and_formal_gate_tuning_allowed": False,
+            "counterfactual_checkpoint_serving_allowed": False,
+            "counterfactual_checkpoint_promotion_allowed": False,
+            "runtime_action_override_allowed": False,
+        }
+    }
+    _validate_guide_weight_policy(row)
+    module.write_text("MAXIMUM_AUXILIARY_WEIGHT = 0.25\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="digest mismatch"):
+        _validate_guide_weight_policy(row)
+
+
+def test_future_strategic_curriculum_is_checksum_and_route_bound(
+    tmp_path: Path,
+) -> None:
+    assert (
+        _validate_guide_training_contract(
+            {"guide_loss_weight": 0.05},
+            "teal-mask-ogerpon-ex",
+        )
+        == "legacy_policy_ce_v1"
+    )
+    with pytest.raises(RuntimeError, match="explicit training mode"):
+        _validate_guide_training_contract(
+            {
+                "guide_loss_weight": 0.05,
+                "guide_weight_policy": {},
+            },
+            "archaludon-ex",
+        )
+
+    row = _strategic_training_row(tmp_path)
+    assert (
+        _validate_guide_training_contract(row, "archaludon-ex")
+        == "strategic_curriculum_v1"
+    )
+    registry = _load_registry(_fixture(tmp_path / "command"))
+    command_row = dict(registry["specialists"]["dragapult-dusknoir"])
+    command_row.update(
+        _strategic_training_row(
+            tmp_path / "command-contract",
+            specialist_id="dragapult-dusknoir",
+        )
+    )
+    command = _build_command(
+        registry,
+        "dragapult-dusknoir",
+        command_row,
+        Path(command_row["initial_checkpoint"]),
+        Path(command_row["expert_manifest"]),
+        Path(command_row["matchup_runtime_tree"]),
+        Path(command_row["matchup_adapter_authorization"]),
+    )
+    assert command[
+        command.index("--current-deck-guide-training-mode") + 1
+    ] == "strategic_curriculum_v1"
+    assert "--current-deck-guide-curriculum-spec" in command
+    assert "--current-deck-guide-head-role-map" in command
+    assert "--current-deck-guide-curriculum-validation-receipt" in command
+
+    validation = Path(row["strategic_curriculum"]["validation_receipt"])
+    validation.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="digest mismatch"):
+        _validate_guide_training_contract(row, "archaludon-ex")
 
 
 def test_successor_runtime_fails_closed_without_exact_17_head_fusion(

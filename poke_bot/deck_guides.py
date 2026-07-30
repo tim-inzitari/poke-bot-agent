@@ -7,8 +7,8 @@ logits. They are never imported by serving and never choose an action.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Sequence
 from types import ModuleType
-from typing import Iterable, Optional, Sequence
 
 from . import (
     alakazam_heuristics,
@@ -17,11 +17,11 @@ from . import (
     grimmsnarl_heuristics,
     hammer_heuristics,
     rockets_mewtwo_heuristics,
-    team_rockets_spidops_heuristics,
+    slowking_heuristics,
     teal_mask_ogerpon_heuristics,
+    team_rockets_spidops_heuristics,
     thwackey_heuristics,
 )
-
 
 _GUIDES: dict[str, ModuleType] = {
     "alakazam": alakazam_heuristics,
@@ -30,6 +30,7 @@ _GUIDES: dict[str, ModuleType] = {
     "hammer-pult": hammer_heuristics,
     "marnie-s-grimmsnarl-ex": grimmsnarl_heuristics,
     "rockets-mewtwo": rockets_mewtwo_heuristics,
+    "slowking": slowking_heuristics,
     "team-rockets-spidops": team_rockets_spidops_heuristics,
     "teal-mask-ogerpon-ex": teal_mask_ogerpon_heuristics,
     "thwackey": thwackey_heuristics,
@@ -45,7 +46,7 @@ def _truthy(name: str) -> bool:
     }
 
 
-def selected_id() -> Optional[str]:
+def selected_id() -> str | None:
     """Return the explicitly selected guide, preserving Alakazam compatibility."""
     selected = os.environ.get("POKEBOT_CURRENT_DECK_GUIDE", "").strip().lower()
     if selected:
@@ -68,7 +69,7 @@ def enabled() -> bool:
     )
 
 
-def guide_version() -> Optional[str]:
+def guide_version() -> str | None:
     selected = selected_id()
     module = _GUIDES.get(selected or "")
     return None if module is None else str(module.GUIDE_VERSION)
@@ -83,7 +84,7 @@ def guide_scores(
     action_combos: Sequence[Sequence[int]],
     *,
     deck: Iterable[int],
-) -> Optional[list[float]]:
+) -> list[float] | None:
     """Dispatch a sparse score request to the selected specialist guide."""
     if not enabled():
         return None

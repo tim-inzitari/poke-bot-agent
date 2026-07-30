@@ -22,6 +22,8 @@ import torch
 
 from poke_bot.device_corpus import (
     DEVICE_CORPUS_PACKING_SCHEMA_VERSION,
+    DEVICE_CORPUS_SELECT_CONTEXT_MAX,
+    DEVICE_CORPUS_SELECT_CONTEXT_UNKNOWN,
     DeviceResidentBootstrapCorpus,
 )
 from poke_bot.strategic_heads import (
@@ -132,6 +134,8 @@ _EXPECTED_DTYPES: dict[str, torch.dtype] = {
     "sample_aux_class": torch.int16,
     "guide_target_index": torch.int16,
     "guide_confidence": torch.float32,
+    "select_context": torch.int16,
+    "selected_is_stop": torch.uint8,
     "action_index": torch.int32,
     "action_value": torch.float32,
     "action_offset": torch.int32,
@@ -279,6 +283,8 @@ def validate_cpu_corpus(
         "value_target": samples,
         "guide_target_index": samples,
         "guide_confidence": samples,
+        "select_context": samples,
+        "selected_is_stop": samples,
         "board_offset": decisions * 24 + 1,
         "action_offset": decisions + 1,
         "game_decision_offset": games + 1,
@@ -292,6 +298,24 @@ def validate_cpu_corpus(
                 f"got={None if tensor is None else list(tensor.shape)} "
                 f"expected=[{count}]"
             )
+    if bool(
+        torch.any(
+            (corpus.select_context < DEVICE_CORPUS_SELECT_CONTEXT_UNKNOWN)
+            | (corpus.select_context > DEVICE_CORPUS_SELECT_CONTEXT_MAX)
+        )
+    ):
+        raise ExpertCpuPackError(
+            "expert pack select context is outside the packed schema"
+        )
+    if bool(
+        torch.any(
+            (corpus.selected_is_stop != 0)
+            & (corpus.selected_is_stop != 1)
+        )
+    ):
+        raise ExpertCpuPackError(
+            "expert pack selected-is-stop metadata is not binary"
+        )
 
     for prefix in ("board", "option", "action"):
         index = tensors[f"{prefix}_index"]

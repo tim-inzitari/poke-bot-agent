@@ -1,431 +1,267 @@
-TEAL MASK OGERPON EX / OGERPON BOX
-Current expert pilot brief
-Reviewed 2026-07-28
-
-
-STRATEGIC IDENTITY
-
-This is the Ogerpon Box specialist, not every deck that uses Teal Mask Ogerpon
-ex. The representative is Toshiyuki Otake's first-place list from the 2026
-Japan Championships: four Teal Mask Ogerpon ex plus a Basic-Pokémon toolbox,
-Energy Switch, Prism Energy, and Area Zero Underdepths. The official winner
-interview describes Teal Mask as the trusted core and Pecharunt as an important
-comeback card. Limitless records Ogerpon Box separately from Raging Bolt,
-Ogerpon Meganium, and other Teal Mask engines.
-
-The deck converts Grass Energy in hand into tempo and cards through Teal Dance,
-then moves or reinterprets that Energy to unlock whichever Basic attacker fits
-the present board. It is nonlinear: its best attacker, bench shape, Energy
-route, and prize plan change together. Do not pilot it as a simple Myriad Leaf
-Shower deck and do not fill the eight-space bench merely because Area Zero
-permits it.
-
-
-THE EXACT REPRESENTATIVE
-
-Toshiyuki Otake, first place, Japan Championships 2026
-Official deck code: J8xJG4-TqjMpR-cJ8Gcc
-Limitless list: https://www.limitlesstcg.com/decks/list/28688
-
-Pokémon (18)
-
-- 4 Teal Mask Ogerpon ex
-- 2 Lillie's Clefairy ex
-- 2 Latias ex
-- 2 Meowth ex
-- 2 Pecharunt
-- 2 Mega Kangaskhan ex
-- 1 Munkidori
-- 1 Fezandipiti ex
-- 1 Chi-Yu
-- 1 Wellspring Mask Ogerpon ex
-
-Trainers (27)
-
-- 4 Lillie's Determination
-- 3 Boss's Orders
-- 1 Ciphermaniac's Codebreaking
-- 1 N's Plan
-- 4 Energy Switch
-- 4 Ultra Ball
-- 4 Bug Catching Set
-- 1 Night Stretcher
-- 1 Unfair Stamp
-- 1 Tera Orb
-- 3 Area Zero Underdepths
-
-Energy (15)
-
-- 11 Basic Grass Energy
-- 4 Prism Energy
-
-This exact list is the representative because it is a large-event winner,
-centers Teal Mask at four copies, and has public official provenance. It is not
-a claim that every future Ogerpon Box list must contain the same sixty cards.
-
-
-CARD ROLES AND INTERACTIONS
+SLOP BOX
+Teal Mask Ogerpon ex / Mega Kangaskhan ex specialist pilot guide
+
+Identity
+
+This guide is for the exact public PTCGReplay archetype-151 deck shown by the
+owner, known locally as “Slop Box.” The stable training ID remains
+teal-mask-ogerpon-ex. Slop Box is the Teal Mask Ogerpon ex plus Mega
+Kangaskhan ex deck shell. “Raging Bolt Ogerpon” remains a useful secondary
+search/taxonomy alias because Raging Bolt ex is one of the deck's attackers,
+but it is not the deck's primary identity and no alias permits substituting a
+different list.
+
+It is not the Toshiyuki Otake Japan Championships Ogerpon Box deck. That older
+list has a different Pokemon suite, Energy system, and game plan. The defining
+Slop Box shell is three Mega Kangaskhan ex, three Meowth ex, three Teal Mask
+Ogerpon ex, two Raging Bolt ex, four Area Zero Underdepths, four Crispin, four
+Energy Switch, two Glass Trumpet, and five Basic Energy types.
+
+Exact 60-card representative
+
+Pokemon — 17
+
+3 Mega Kangaskhan ex
+3 Meowth ex
+3 Teal Mask Ogerpon ex
+2 Latias ex
+2 Raging Bolt ex
+1 Fezandipiti ex
+1 Lillie’s Clefairy ex
+1 Passimian
+1 Wellspring Mask Ogerpon ex
+
+Trainer — 27
+
+4 Area Zero Underdepths
+4 Crispin
+4 Energy Switch
+4 Ultra Ball
+2 Boss’s Orders
+2 Cyrano
+2 Glass Trumpet
+2 Night Stretcher
+2 Xerosic’s Machinations
+1 Prime Catcher
+
+Energy — 16
+
+9 Basic Grass Energy
+2 Basic Fighting Energy
+2 Basic Lightning Energy
+2 Basic Water Energy
+1 Basic Psychic Energy
+
+The list is checksum-bound to the public catalog row with deck hash
+bcfc7b778a72d895. Its canonical terminal multiset checksum is
+sha256:f50fa3a23cdf21be7cf7d3f558b8ff0b82e8d4e7ba8f61b7b4cacc1a0080c16a;
+the ordered card-list checksum is
+sha256:10857495cddc95416052ff3b60e8686d2291da31de23ef064128534eb87cff28.
+
+What the deck is trying to do
+
+Slop Box converts a wide Basic-Pokemon bench and a hand full of typed Basic
+Energy into whichever attacker, pivot, or prize route is best now. Teal Mask
+Ogerpon ex supplies Grass acceleration and cards. Energy Switch turns that
+distributed Energy into attack access. Crispin, Glass Trumpet, and Night
+Stretcher make the non-Grass types and discarded resources matter. Area Zero
+creates enough bench space for several engines without forcing the pilot to
+choose the whole game plan on turn one.
+
+Raging Bolt ex is the scalable damage branch. Mega Kangaskhan ex is a durable
+setup and attacking branch. Meowth ex, Latias ex, Fezandipiti ex, Clefairy,
+Passimian, and Wellspring are not generic bench decorations: each must justify
+its bench slot through a current or mapped future job. The deck succeeds by
+preserving options until the public board and prize map reveal which branch
+converts most cleanly.
+
+Opening and setup
+
+Before placing Pokemon, inventory the opening hand by function:
+
+1. Which Pokemon can safely occupy the Active Spot?
+2. How many Teal Mask Ogerpon ex can actually use Grass Energy this turn?
+3. Which attacker can be powered without consuming the types another branch
+   needs?
+4. Is Latias required to make the next pivot legal and inexpensive?
+5. Which bench slots must remain open for a searched attacker or recovery
+   Pokemon?
+
+Mega Kangaskhan ex is usually a preferable blind opener to a one-of support
+Pokemon. Teal Mask Ogerpon ex is an acceptable opener when Teal Dance and a
+clean pivot are available. Avoid exposing a narrow one-of merely because the
+deck can bench many Pokemon.
+
+Bench Teal Mask Ogerpon ex only when there is a realistic Grass attachment for
+it. A second Ogerpon can be excellent because it adds acceleration, cards, and
+Energy Switch reach; a third can be wasteful if Grass is scarce or Area Zero
+is vulnerable. Latias earns its slot when mobility changes the attack sequence.
+Do not fill all eight Area Zero slots before deciding which attacker and
+recovery piece the next turn may require.
+
+Going first
 
-Teal Mask Ogerpon ex is both accelerator and draw engine. Each unused Teal
-Dance can attach one Basic Grass from hand to that Teal Mask and draw a card.
-Multiple copies create multiple independent uses. Myriad Leaf Shower starts at
-30 and gains 30 for every Energy attached to both Active Pokémon. Count the
-current Energy on both sides before committing to it.
-
-Mega Kangaskhan ex is a durable colorless attacker and an Active-only draw
-engine. Run Errand draws two while it is Active. Rapid-Fire Combo has a
-guaranteed 200 base; coin heads add damage, but a plan is sound only at the
-200-damage floor.
-
-Lillie's Clefairy ex makes opposing Dragon Pokémon Psychic Weak and attacks for
-20 plus 20 per Benched Pokémon across both boards. Area Zero can raise your
-bench capacity and therefore its deterministic ceiling. Recount both benches
-after every knockout, Stadium change, or pickup.
-
-Latias ex gives every Basic Pokémon in play free retreat. It turns an Active
-Kangaskhan draw into a no-Energy pivot and lets the deck select attackers after
-using Active-only effects. Protect it when mobility is central, but do not bench
-a redundant second copy without a concrete reason.
-
-Meowth ex searches a Supporter when played from hand to the Bench. Treat the
-bench slot as part of the Supporter cost. Boss is correct only when the gust
-changes prizes; Lillie's Determination is correct when the hand needs repair;
-Ciphermaniac needs a named immediate draw effect; N's Plan needs a named Energy
-movement line.
-
-Wellspring Mask Ogerpon ex threatens 100 to the Active and, after returning
-three Energy, 120 to one Benched Pokémon. Build the Energy route and target
-before announcing this line. The best use is usually an exact two-target prize
-conversion, not casual spread.
-
-Pecharunt's Poison Chain poisons and prevents retreat during the opponent's next
-turn. While Pecharunt is Active, Toxic Subjugation adds five more damage
-counters during Pokémon Checkup. The most valuable line is a deterministic
-between-turn knockout that changes the opponent's response or denies a
-knockout-triggered draw/disruption window. Do not count multiple future
-checkups as guaranteed.
-
-Munkidori moves up to three damage counters from one of your Pokémon to an
-opponent's Pokémon when it has Darkness Energy attached. Prism Energy supplies
-the required type only while attached to a Basic and provides one Energy at a
-time. Move counters toward an immediate knockout or exact attack threshold.
-
-Chi-Yu's relevant attack reaches 120 when a Stadium is in play and then
-discards that Stadium. Discarding an opposing Stadium may be pure upside.
-Discarding your own Area Zero can force an immediate bench collapse, so name
-the discarded bench Pokémon before choosing the attack.
-
-Fezandipiti ex supplies Flip the Script only after an opponent-turn knockout.
-It is a recovery valve, not an automatic early bench commitment.
-
-
-SETUP AND OPENING PRIORITIES
-
-Before placing Pokémon, answer four questions:
-
-1. Which attacker has a deterministic useful attack first?
-2. How many Teal Dance uses can the opening hand support?
-3. Is Latias needed to pivot after an Active-only ability?
-4. Which toolbox Basic would become stranded if the bench fills?
-
-Mega Kangaskhan is usually a comfortable Active because it can use Run Errand
-and retreat for free once Latias is present. Teal Mask is a functional Active
-when it will attack or when no better opener exists. Avoid opening a fragile
-single-purpose support Basic by choice.
-
-Bench the first Teal Mask early. A second Teal is strong when Grass in hand can
-feed both uses or when it creates the next attacker. Latias is valuable when it
-unlocks an actual pivot. Meowth should enter when the searched Supporter and
-its use are already named. Leave at least one bench space until the first
-attacker and recovery route are clear.
-
-
-GOING FIRST
-
-Use the no-attack turn to build an Energy and mobility advantage. Prioritize a
-Teal Mask, an attachment that survives the likely response, and access to the
-next attacker. If Kangaskhan is Active, Run Errand before a shuffle effect
-unless Ciphermaniac has deliberately set the top cards. Avoid exposing several
-two-Prize Pokémon before knowing which ones advance the next turn.
-
-The goal is not the largest board; it is a board that can choose between at
-least two legal pressure lines on the next turn.
-
-
-GOING SECOND
-
-Identify the best deterministic attack available now. A modest Teal Mask
-attack that accelerates the board can be better than spending every resource
-on an uncertain Kangaskhan ceiling. Clefairy is valuable into a visible Dragon
-Active or when both benches make its damage exact. Pecharunt is valuable only
-when poison and retreat denial change the opponent's next action.
-
-Use Teal Dance before committing an Energy Switch unless the move must happen
-first to preserve a legal ability target. Count the deck and hand after each
-draw; the new card can legitimately change the branch.
-
-
-TURN-BY-TURN SEQUENCING
-
-At the start of each turn:
-
-- Count Prizes remaining and public prize values.
-- Count Energy on both Active Pokémon for Myriad Leaf Shower.
-- List every unused Teal Dance and the Basic Grass actually in hand.
-- Confirm whether Latias currently makes retreat free.
-- Check the Area Zero condition and the consequence if it leaves play.
-- Name the current attacker, next attacker, and recovery target.
-
-Resolve deterministic information before destructive actions. Run Errand or
-Flip the Script can reveal options before Ultra Ball discards. Ciphermaniac is
-the exception: if it has intentionally fixed the top two cards, use the named
-draw effect after it. Use Meowth only when the Supporter search is worth its
-bench slot.
-
-Teal Dance attaches only to the Teal Mask using it. Energy Switch moves a Basic
-Energy, not Prism Energy. Prism can satisfy typed attacks on a Basic but still
-counts as only one Energy. Recompute every legal attack after each movement.
-
-
-ENERGY AND RESOURCE PLANNING
-
-Separate the Energy plan into three layers:
-
-1. Energy that enables the current deterministic attack.
-2. Energy that preserves a second attacker after a knockout.
-3. Surplus Energy that increases Teal Mask damage.
-
-Do not move the only Grass off a Teal Mask merely to create a cosmetic damage
-increase elsewhere. Do not attach Prism where a Basic Grass would do the same
-job if Prism is the only path to Clefairy, Wellspring, Pecharunt, or Munkidori.
-Before Wellspring returns three Energy, verify which attacker remains usable.
-
-Night Stretcher can recover either a Pokémon or Basic Energy. Name the unique
-missing resource before playing it. A glamorous attacker is not the right
-target if the present board instead needs the one Energy that makes an attack
-legal.
-
-
-ATTACK SELECTION AND PRIZE MAPPING
-
-Rank attacks by guaranteed prizes and board state, then by pressure:
-
-1. A guaranteed game-ending knockout.
-2. A guaranteed multi-Prize knockout.
-3. A current Active-plus-Bench conversion from Wellspring.
-4. A knockout that preserves the next attacker.
-5. A denial line that forces the opponent to miss an attack.
-6. Damage scaling that depends on future coin heads or future draws.
-
-Kangaskhan is evaluated at 200 before Weakness, Resistance, and current effects.
-Teal Mask uses exact current Energy counts. Clefairy uses exact current bench
-counts and Dragon identity. Wellspring uses its current legal target. Pecharunt
-uses only the next guaranteed checkup. Do not use the identities of face-down
-Prize cards in any plan.
-
-
-BENCH MANAGEMENT
-
-Area Zero allows up to eight Benched Pokémon only while a Tera Pokémon is in
-play. More capacity is not permission to bench every available Basic. Assign
-each slot a role: Energy engine, current attacker, next attacker, mobility,
-search/draw, damage manipulation, or matchup tool.
-
-Before playing or discarding Area Zero, choose which Pokémon leave if the bench
-must contract. Preserve a powered attacker, the next attacker, and unique
-mobility or engine pieces. A Meowth that already used its ability may be more
-dispensable than an unused Teal Mask; a stranded support Pokémon may be more
-dispensable than the only Prism-powered attacker.
-
-
-RECOVERY LINES
-
-Low Energy hand:
-
-Use Bug Catching Set before committing to an attacker that requires several
-Basic Grass. Teal Dance only with Energy actually in hand. Preserve Prism for
-typed toolbox routes.
-
-No Latias:
-
-Plan retreat costs explicitly. Avoid using an Active-only draw ability if it
-strands the wrong attacker. Keep an Energy or switching route available.
-
-Area Zero removed:
-
-Resolve the bench contraction immediately from public state. Keep the current
-and next attack lines; then keep the unique engine or matchup tool. Rebuild
-capacity only after the Stadium condition is restored.
-
-Behind on prizes:
-
-Look for a deterministic dual-target Wellspring line, a Clefairy Weakness
-knockout, or a Pecharunt between-turn knockout that disrupts response timing.
-Do not chase Kangaskhan coin heads.
-
-Ahead on prizes:
-
-Reduce variance. Use guaranteed damage, preserve Latias mobility and a second
-attacker, and avoid unnecessary two-Prize bench liabilities.
-
-
-MATCHUP PLANS
-
-The exact winner list does not yet have a defensible public matchup matrix.
-Use causal board identities rather than named-deck folklore.
-
-Against Dragons, Clefairy's Fairy Zone changes current Weakness to Psychic.
-Confirm the opposing Pokémon's type and current effects, then calculate Full
-Moon Rondo from both benches.
-
-Against low-HP benches, Wellspring can create two prizes across Active and
-Bench. Confirm protection effects and the exact target prompt.
-
-Against Energy-heavy Active attackers, Teal Mask's damage scaling may turn the
-opponent's investment against them. Count both Active Energy totals rather
-than assuming the attack is large.
-
-Against disruption, diversify Energy and attackers so one hand reset or
-knockout does not remove every legal line. Fezandipiti is strongest after the
-trigger is actually live.
-
-
-COMMON MISTAKES
-
-1. Calling every Teal Mask engine an Ogerpon Box deck.
-2. Filling eight bench spaces without a collapse plan.
-3. Treating Prism Energy as multiple Energy or moving it with Energy Switch.
-4. Planning Kangaskhan damage above its guaranteed 200 floor.
-5. Using every Teal Dance before deciding which Teal Mask should attack.
-6. Benching Meowth without naming the Supporter and its immediate use.
-7. Using Ciphermaniac without preserving an immediate draw effect.
-8. Returning three Energy with Wellspring while abandoning the next attacker.
-9. Counting more than the next guaranteed poison checkup.
-10. Moving Munkidori counters without an exact current threshold.
-11. Discarding Area Zero without naming the bench contraction.
-12. Guessing face-down Prize identities.
-13. Exposing Fezandipiti before Flip the Script has material value.
-14. Confusing generic Ogerpon aggregate results with this exact list.
-
-
-DECISION CHECKLIST
-
-Opening:
-
-- Best Active at the deterministic floor?
-- First and second attacker?
-- First two Teal Dance targets?
-- Is Latias needed now?
-- Which bench slot stays open?
-
-Before abilities:
-
-- Is the ability currently legal?
-- Does Ciphermaniac require a specific draw order?
-- Which new observation can change the branch?
-
-Before Energy movement:
-
-- Basic Energy or Prism?
-- Current attack still legal afterward?
-- Next attacker still live?
-- Does the move change guaranteed prizes?
+The first-turn objective is infrastructure, not speculative damage. Establish
+one or two usable Teal Dance engines, preserve typed Energy, and make the
+future Active flexible. Ultra Ball and Cyrano should build a coherent branch,
+not simply maximize the number of Pokemon in play.
+
+Because a Supporter cannot solve every type and board problem at once, plan the
+next turn before spending Crispin or discarding with Ultra Ball. If Raging Bolt
+is the intended attacker, count the Energy that can actually reach the board
+and the Energy that can be discarded for its attack. If Kangaskhan is the
+intended attacker, do not strip the rest of the board so aggressively that a
+return knockout ends the attack chain.
+
+Going second
+
+Going second increases the value of an immediate Supporter and may expose an
+attack line, but speed is not automatically correct. Compare:
+
+- the prizes or tempo gained by attacking now;
+- the Energy and switching resources consumed;
+- the opponent’s likely return knockout from public information;
+- whether a rushed attacker strands the bench;
+- whether keeping the Energy distributed creates a stronger two-turn line.
+
+Crispin is strongest when both Energy types have a defined job. Energy Switch
+can complete the attacker after Teal Dance or Crispin, but each copy is a
+finite routing resource. Take an immediate attack only when its prize or tempo
+value exceeds the future flexibility being spent.
+
+Energy and resource planning
+
+Track all five Basic Energy types separately. Grass is abundant, fuels Teal
+Dance, and is the main transferable bank. Fighting, Lightning, Water, and
+Psychic are scarce and should not be discarded casually. Before every Ultra
+Ball, Raging Bolt attack, or recovery decision, write the remaining legal
+attack costs in terms of exact types, not merely total Energy.
+
+Use this sequence:
+
+1. Choose the desired attacker and attack.
+2. Count its exact typed requirement.
+3. Count Energy already attached and Energy legally available this turn.
+4. Reserve scarce types needed by a later attacker.
+5. Decide which Energy Switch routes are necessary.
+6. Only then use acceleration, discard, or recovery effects.
+
+Glass Trumpet and Night Stretcher create recovery lines, but they do not make
+discarding free. A card in the discard is useful only when the recovery card,
+legal target, bench slot, and timing all exist.
+
+Attacker selection and prize mapping
+
+Raging Bolt ex is preferred when its current attached-Energy discard math
+reaches a decisive knockout without destroying the next attack. Count only
+Energy visibly attached now; never assume future topdecks or hidden Prizes.
+
+Mega Kangaskhan ex is the steadier branch when its present attack value
+advances the prize race while preserving Energy elsewhere. Treat random bonus
+damage as upside, not as the required premise of a line.
+
+Wellspring Mask Ogerpon ex is a targeted branch. Use it only when its attack
+and targets create more prize or tempo value than the single-target line, and
+when the Water requirement does not cut off a better follow-up.
+
+Clefairy and Passimian are matchup and board-state tools. Bench them because a
+specific public interaction matters, not because they appear in the list.
+Fezandipiti ex is recovery draw after the opponent takes a knockout. Meowth ex
+and Latias should likewise be evaluated by the immediate function they unlock.
+
+At the start of each turn, identify the prize route as a sequence of public
+targets. Compare a direct knockout line with a two-turn spread or gust line.
+Boss’s Orders and Prime Catcher are scarce; save them when the natural Active
+already advances the same prize route.
+
+Area Zero and bench discipline
+
+Area Zero is an engine and a liability. Each extra bench slot must have a job:
+Energy engine, current attacker, next attacker, pivot, draw recovery, or
+matchup-specific effect. Before replacing or losing Area Zero, choose which
+Pokemon are discarded by the bench collapse. Never let the interface or an
+implicit ordering make that strategic choice.
+
+When the opponent can remove the Stadium, value low-commitment benches and
+recoverable Pokemon more highly. Keep at least one route that functions with a
+normal bench whenever the matchup makes Stadium removal credible.
+
+Disruption and recovery
+
+Xerosic’s Machinations is a tempo card, not a ritual. Use it when reducing the
+opponent’s visible hand meaningfully lowers the quality of their next turn and
+your own board can still execute. Do not trade away the Supporter for a turn
+that fails to develop or attack.
+
+Night Stretcher should restore the exact Pokemon or Basic Energy that completes
+the mapped line. Glass Trumpet should be planned alongside the Basic Pokemon
+that can receive the Energy. Recovery is strongest when prepared one turn
+before the knockout rather than improvised after every resource is gone.
+
+Common mistakes
+
+- Using the older Ogerpon Box guide or representative for this deck.
+- Treating “Teal Mask Ogerpon ex” as any deck containing Teal Mask.
+- Benching every Basic simply because Area Zero permits it.
+- Spending scarce non-Grass Energy without counting all remaining attack costs.
+- Treating Energy Switch as generic acceleration instead of a finite route.
+- Building Raging Bolt damage from hoped-for future Energy.
+- Requiring favorable Kangaskhan randomness for a line to work.
+- Removing Area Zero without explicitly selecting the bench-collapse losses.
+- Benching one-of tools without a matchup-specific job.
+- Using gust or disruption when the natural board already yields the same
+  prize or tempo result.
+
+Turn checklist
+
+Before actions:
+
+- What is the current prize route?
+- Which attacker acts now, and which attacker must be ready next?
+- Which exact Energy types are required?
+- Which bench Pokemon have no current or mapped future job?
+- What changes if Area Zero disappears?
 
 Before attacking:
 
-- Deterministic damage after all current effects?
-- Guaranteed Prizes now?
-- Bench target exact and unprotected?
-- Retreat and next attacker preserved?
-- Area Zero collapse risk named?
+- Is the damage deterministic enough for the line?
+- Which attached Energy is consumed or moved?
+- Does the return knockout leave a legal follow-up?
+- Is gusting worth more than saving the gust effect?
+- Does a different attacker preserve more future branches?
 
+End of turn:
 
-EXPERT REVIEW QUESTIONS
+- Is the next pivot legal?
+- Is the next attacker powered or recoverable?
+- Are scarce Energy types protected?
+- Can the bench survive Stadium loss?
+- Did the turn improve the prize race rather than merely increase board size?
 
-- Does the opening priority overvalue Active Kangaskhan in any common current
-  board?
-- Which observable states justify a third Teal Mask rather than preserving a
-  bench slot?
-- When is the Pecharunt checkup line worth exposing a single-Prize liability?
-- Which exact Energy configurations most often make N's Plan superior to
-  Energy Switch?
-- After the first Pitch Black-legal events, does the representative or public
-  Ogerpon Box taxonomy need revision?
+Sources and evidence boundary
 
+The exact representative comes from the PTCGReplay public archetype-151 catalog
+and the owner-provided screenshot. Limitless classifies closely matching
+competitive shells under Raging Bolt Ogerpon; Toby Clark’s list and the current
+variant card distribution are useful family references:
 
-SHORT TRAINING-AUDIT APPENDIX
+https://ptcgreplay.netlify.app/
+https://limitlesstcg.com/decks/list/27922
+https://www.limitlesstcg.com/decks/280/cards?variant=4
 
-The sparse machine teacher labels only exact opening placement and currently
-legal resolved Teal Dance, Run Errand, Flip the Script, or Adrena-Brain ability
-actions. The authoritative fused policy learns the nonlinear Energy, target,
-prize, attack, bench, and recovery branches.
+Card-text references for Teal Mask Ogerpon ex, Mega Kangaskhan ex, Raging Bolt
+ex, Wellspring Mask Ogerpon ex, Meowth ex, Fezandipiti ex, Latias ex, Energy
+Switch, Crispin, Glass Trumpet, and Area Zero are cited in the machine-readable
+guide contract.
 
-The teacher masks Energy Switch routes, Prism type choices, attacks, coin
-outcomes, Wellspring targets, Pecharunt future checkups, Munkidori targets,
-Area Zero collapse, broad Supporter/search/discard choices, face-down Prizes,
-hidden opponent information, future draws, and incomplete legal stages. It has
-no serving authority.
+Training appendix
 
-
-PUBLIC SOURCES REVIEWED
-
-1. Toshiyuki Otake, Ogerpon Box, first place, Japan Championships 2026,
-   Limitless TCG.
-   https://www.limitlesstcg.com/decks/list/28688
-
-2. 2026 Japan Championships winner interview, Pokémon Card Game official site.
-   https://www.pokemon-card.com/info/005538.html
-
-3. Official deck record, code J8xJG4-TqjMpR-cJ8Gcc.
-   https://www.pokemon-card.com/deck/deck.html?deckID=J8xJG4-TqjMpR-cJ8Gcc
-
-4. Japan Championships winner deck synopsis, PokeZentrum.
-   https://pokezentrum.de/pokemon-karten-news/entdecke-die-gewinner-decks-der-pokemon-japan-championships-2026/
-
-5. Current Limitless TCG deck taxonomy and Ogerpon Box aggregate.
-   https://limitlesstcg.com/decks
-
-6. Japan Championships 2026 card and deck distribution, Limitless TCG.
-   https://limitlesstcg.com/tournaments/568/cards
-
-7. Teal Mask Ogerpon ex, Twilight Masquerade 25.
-   https://limitlesstcg.com/cards/TWM/25
-
-8. Mega Kangaskhan ex, Mega Evolution 104.
-   https://limitlesstcg.com/cards/MEG/104
-
-9. Lillie's Clefairy ex, Journey Together 56.
-   https://limitlesstcg.com/cards/JTG/56
-
-10. Wellspring Mask Ogerpon ex, Twilight Masquerade 64.
-    https://limitlesstcg.com/cards/TWM/64
-
-11. Pecharunt, Scarlet & Violet Promo 149.
-    https://limitlesstcg.com/cards/SVP/149
-
-12. Munkidori, Twilight Masquerade 95.
-    https://limitlesstcg.com/cards/TWM/95
-
-13. Meowth ex, Phantasmal Flames 62.
-    https://limitlesstcg.com/cards/POR/62
-
-14. Fezandipiti ex, Ascended Heroes 142.
-    https://limitlesstcg.com/cards/ASC/142
-
-15. Latias ex, Surging Sparks 76.
-    https://limitlesstcg.com/cards/SSP/76
-
-16. Energy Switch, Mega Evolution 115.
-    https://limitlesstcg.com/cards/MEG/115
-
-17. Prism Energy, Ascended Heroes 216.
-    https://limitlesstcg.com/cards/ASC/216
-
-18. Area Zero Underdepths, Stellar Crown 131.
-    https://limitlesstcg.com/cards/SCR/131
-
-19. Pitch Black release notice, Pokémon.
-    https://www.pokemon.com/us/news/the-pokemon-tcg-mega-evolution-pitch-black-expansion-is-available-now
-
-20. Pokémon TCG product-legality update.
-    https://community.pokemon.com/en-us/discussion/22216/pokemon-tcg-product-legality-update
+This guide is auxiliary scaffolding. The learned 17-input fused policy remains
+the action authority. Exact current legal-option labels may guide opening
+placement and resolved legal draw or acceleration abilities. Attack selection,
+Raging Bolt discard choices, Energy Switch routes, Crispin type routes, Glass
+Trumpet targets, prize identities, future draws, and hidden opponent
+information remain masked unless the exact causal state exposes them. Missing
+labels are masked, never converted to false zero targets. Guide weight changes
+require separate training-ineligible guide-on/guide-off evidence and anneal
+toward zero when the learned policy internalizes or surpasses the guide.

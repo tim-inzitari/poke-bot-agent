@@ -1,0 +1,183 @@
+# Research-only Crustle guide/teacher proposal. This file has no registry,
+# selector, runtime, pre-stage, training, gate, dashboard, or serving authority.
+schema_version: poke_bot.research_deck_guide_proposal/v1
+specialist_id: crustle
+display_name: "Crustle / Mega Kangaskhan ex"
+status: research_complete_promoted_to_inactive_canonical_contract
+guide_version: crustle-north-star-v1
+teacher_module: poke_bot.crustle_heuristics
+teacher_module_path: poke_bot/crustle_heuristics.py
+teacher_module_sha256: sha256:e68a759bc8c3566dab2d49420d09dff8fcec7d9563da5f659fd2e2569f73ba6d
+implementation_status: promoted_sparse_causal_teacher_inactive_without_selector
+promoted_contract: config/deck_guides/crustle.yaml
+
+identity_scope:
+  included: crustle_mysterious_rock_inn_with_mega_kangaskhan_ex
+  exact_representative_player: Cooper Kull
+  exact_representative_finish: "55th, NAIC 2026 New Orleans"
+  current_benchmark_player: Rahul Reddy
+  current_benchmark_finish: "5th, NAIC 2026 New Orleans"
+  benchmark_list_is_not_representative: true
+  fuzzy_display_name_matching_allowed: false
+  no_list_substitution: true
+
+research_representative_binding:
+  path: decks/competitive/the_rest/2026-06_naic-2026-new-orleans_55th_crustle.csv
+  source_url: https://limitlesstcg.com/decks/list/28292
+  source_deck_id: crustle
+  card_count: 60
+  pokemon_count: 11
+  trainer_count: 37
+  energy_count: 12
+  file_sha256: sha256:fb2997e9981d262acdb72dc2e0bda488876ab1927c2c78cb752b10fdfe516f3c
+  canonical_multiset_sha256: sha256:83f668717b7fe09f65f43bfe73235e4f96910dbe988b979c034ce6e411c6340d
+  exact_counts:
+    11: 4    # Mist Energy
+    14: 4    # Spiky Energy
+    18: 4    # Growing Grass Energy
+    344: 3   # Dwebble DRI 11
+    345: 3   # Crustle DRI 12
+    756: 4   # Mega Kangaskhan ex MEG 104
+    858: 1   # Psyduck ASC 39
+    1086: 2  # Buddy-Buddy Poffin
+    1112: 1  # Super Potion
+    1120: 4  # Crushing Hammer
+    1121: 1  # Ultra Ball
+    1122: 3  # Pokégear 3.0
+    1123: 1  # Switch
+    1147: 4  # Jumbo Ice Cream
+    1159: 1  # Hero's Cape
+    1182: 4  # Boss's Orders
+    1197: 1  # Xerosic's Machinations
+    1204: 2  # Lisia's Appeal
+    1219: 4  # Team Rocket's Petrel
+    1225: 2  # Hilda
+    1227: 4  # Lillie's Determination
+    1245: 1  # Festival Grounds
+    1257: 1  # Team Rocket's Factory
+    1267: 1  # Lumiose City
+  canonical_representative_registry_entry_exists: true
+  canonical_representative_registry_path: data/training_mixes/specialist_representatives.v1.json
+  canonical_representative_registry_pointer: /decks/crustle
+  canonical_registry_multiset_sha256: sha256:e6d7c09024d1f0b056ccbab8f51f0e3aae4c319ad4f731c9c769e971fab225ab
+  integration_blocker: null
+
+policy_target:
+  type: sparse_confidence_weighted_legal_action_preference_proposal
+  parameterized_head: false
+  serving_authority: false
+  override_authoritative_policy: false
+  prior_logit_bias: exact_zero_bypass
+
+strategy_sources:
+  - title: "Crustle by Cooper Kull"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/28292
+    evidence_role: exact_research_representative_provenance
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Crustle by Rahul Reddy"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/28252
+    evidence_role: current_fifth_place_NAIC_benchmark_list
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Crustle DRI 12"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/en/DRI/12
+    evidence_role: exact_wall_and_attack_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Dwebble DRI 11"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/11
+    evidence_role: exact_Ascension_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Mega Kangaskhan ex MEG 104"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/MEG/104
+    evidence_role: exact_Run_Errand_and_attack_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Jumbo Ice Cream PFL 91"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/PFL/91
+    evidence_role: exact_healing_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Team Rocket's Petrel DRI 176"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/DRI/176
+    evidence_role: exact_Trainer_search_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Hilda WHT 84"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/WHT/84
+    evidence_role: exact_evolution_and_energy_search_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Growing Grass Energy POR 86"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/POR/86
+    evidence_role: exact_Grass_and_HP_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Spiky Energy JTG 159"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/JTG/159
+    evidence_role: exact_retaliatory_counter_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Mist Energy TEF 161"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TEF/161
+    evidence_role: exact_attack_effect_protection_record
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+  - title: "Crustle CRI Standard 2026 matchups"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/decks/crustle-dri/matchups?combine=&format=standard&rotation=2026&set=CRI
+    evidence_role: observational_testing_priorities_not_causal_labels
+    reviewed_at_utc: 2026-07-29T00:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/crustle-expert-brief.txt
+  sha256: sha256:ed49922091c631ec49f40a8e05126a231a00a4c46e660c06bd2d20a164d3f135
+  word_count: 5099
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: crustle
+  primary_document_type: practical_human_deck_pilot_guide
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_stage_classes:
+    - initial_setup_bench
+    - buddy_buddy_poffin_search
+    - ultra_ball_search
+    - ascension_search
+    - run_errand_yes_no
+  unsupported_masked_targets:
+    - initial_setup_active
+    - energy_attachment
+    - Hilda_selection
+    - Team_Rockets_Petrel_selection
+    - attack_selection
+    - healing_timing
+    - Crushing_Hammer_play_or_target
+    - gust_target
+    - stadium_play
+    - tool_attachment
+    - retreat_or_switch
+    - disruption_timing_or_target
+    - matchup_specific_action
+    - face_down_prize_identity
+    - opponent_hidden_hand_deck_or_prize_contents
+    - future_draw_random_outcome_or_eventual_result
+    - unknown_prompt_origin
+    - unresolved_option_or_incomplete_legal_combo_set
+    - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  own_visible_board_and_current_deck_count_only: true
+  hidden_or_future_information_allowed: false
+  missing_label_behavior: mask_not_zero
+  masked_rows_contribute_zero_loss_and_zero_gradient: true
+  runtime_action_override_allowed: false
+  hard_disabled_pending_separate_integration: false
+  inactive_without_explicit_training_guide_selector: true

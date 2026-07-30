@@ -97,6 +97,37 @@
     "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
     "representatives": "data/training_mixes/specialist_representatives.v1.json",
     "submission_count": 1,
+    "default_turn_order_preference": "first_if_allowed",
+    "owner_authorized_one_off_submissions": {
+      "hops-trevenant-second-if-allowed-v1": {
+        "bundle_checksum": "sha256:0f6b10a2198a5aa368220d0d34674b020bec9fffeb1fcf9c85d529cd8d0828b5",
+        "exact_frozen_checkpoint_checksum": "sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1",
+        "exact_specialist_representative_required": true,
+        "historical_submissions_replaced": false,
+        "kaggle_status": "complete",
+        "owner_decision_revision": 33,
+        "public_score": 600.0,
+        "specialist_id": "hops-trevenant",
+        "submission_count": 1,
+        "submission_id": 55088551,
+        "submitted_at_utc": "2026-07-29T17:27:30.383000Z",
+        "turn_order_preferences": [
+          "second_if_allowed"
+        ]
+      }
+    },
+    "specialist_submission_profiles": {
+      "teal-mask-ogerpon-ex": {
+        "owner_decision_revision": 31,
+        "submission_count": 2,
+        "turn_order_preferences": [
+          "first_if_allowed",
+          "second_if_allowed"
+        ],
+        "same_frozen_checkpoint_required": true,
+        "same_exact_60_card_deck_required": true
+      }
+    },
     "submission_mode": "queue_and_continue",
     "submission_queue": "/home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json",
     "submission_receipts": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts",
@@ -105,7 +136,7 @@
   },
   "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
   "research_control_registry": "ops/research_control_registry_v1.json",
-  "runtime_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
+  "runtime_root": "/home/inzi/poke-bot-agent-deployments/specialist-runtime-r56-option-routes-v1",
   "schema": "poke_bot.specialist_runtime_registry/v1",
   "selector_environment_variable": "POKEBOT_ACTIVE_SPECIALIST",
   "specialists": {
@@ -267,7 +298,7 @@
         "lethal_threat_rows",
         "prize_race_rows"
       ],
-      "guide_contract": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/config/deck_guides/marnie-s-grimmsnarl-ex.yaml",
+      "guide_contract": "/home/inzi/poke-bot-agent-deployments/specialist-runtime-r56-option-routes-v1/config/deck_guides/marnie-s-grimmsnarl-ex.yaml",
       "guide_contract_sha256": "7ccc948f2b7c177d8ff2cb6dc40a0c1dd81a9517e38bed7d74de78e72c00e40d",
       "guide_id": "marnie-s-grimmsnarl-ex",
       "guide_loss_weight": 0.05,

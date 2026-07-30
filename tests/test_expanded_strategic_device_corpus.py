@@ -137,11 +137,15 @@ def _game() -> GameSequence:
             options=_sparse(2, 3),
             action_combos=[[0], [1]],
             target_index=1,
+            select_context=1,
+            selected_is_stop=False,
         ),
         PolicyStage(
             options=_sparse(3, 7),
             action_combos=[[0], [1], [2]],
             target_index=2,
+            select_context=1,
+            selected_is_stop=True,
         ),
     ]
     second_stages = [
@@ -149,6 +153,8 @@ def _game() -> GameSequence:
             options=_sparse(2, 11),
             action_combos=[[0], [1]],
             target_index=0,
+            select_context=2,
+            selected_is_stop=True,
         )
     ]
     factors = [
@@ -176,7 +182,7 @@ def test_expanded_targets_preserve_sample_and_decision_alignment() -> None:
         device=torch.device("cpu"),
     )
 
-    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 4
+    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 5
     assert corpus.has_expanded_strategic_targets
     assert corpus.expanded_strategic_schema == EXPANDED_STRATEGIC_SCHEMA
     assert (
@@ -184,6 +190,8 @@ def test_expanded_targets_preserve_sample_and_decision_alignment() -> None:
         == EXPANDED_STRATEGIC_SCHEMA_DIGEST
     )
     assert corpus.sample_board.tolist() == [0, 0, 1]
+    assert corpus.select_context.tolist() == [1, 1, 2]
+    assert corpus.selected_is_stop.tolist() == [0, 1, 1]
     assert corpus.strategic_action_q_target.tolist() == [1.0, 1.0, 0.0]
     assert corpus.strategic_action_q_mask.tolist() == [1, 1, 0]
     assert corpus.strategic_action_factor_mask.tolist() == [
@@ -550,6 +558,8 @@ def test_expanded_targets_survive_durable_cpu_pack_round_trip(tmp_path) -> None:
     )
     assert second["cache_hit"] is True
     assert loaded.has_expanded_strategic_targets
+    assert loaded.select_context.tolist() == [1, 1, 2]
+    assert loaded.selected_is_stop.tolist() == [0, 1, 1]
     assert loaded.strategic_action_factor_mask.tolist() == [
         [1, 0, 0],
         [0, 1, 1],
@@ -605,3 +615,22 @@ def test_cpu_validator_rejects_partial_or_misaligned_strategic_layout() -> None:
     )
     with pytest.raises(ExpertCpuPackError, match="shape mismatch"):
         validate_cpu_corpus(malformed)
+
+    for field, invalid, message in (
+        ("select_context", 49, "select context"),
+        ("selected_is_stop", 2, "selected-is-stop"),
+    ):
+        corpus = DeviceResidentBootstrapCorpus.from_splits(
+            [_game()],
+            [],
+            device=torch.device("cpu"),
+        )
+        tensors = copy.copy(corpus.tensor_state())
+        tensors[field] = tensors[field].clone()
+        tensors[field][0] = invalid
+        malformed = DeviceResidentBootstrapCorpus.from_packed_state(
+            tensors=tensors,
+            scalars=corpus.scalar_state(),
+        )
+        with pytest.raises(ExpertCpuPackError, match=message):
+            validate_cpu_corpus(malformed)

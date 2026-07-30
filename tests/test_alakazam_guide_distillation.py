@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from enum import IntEnum
+
 import pytest
 import torch
 
-from poke_bot import alakazam_heuristics, dataset, features
+from poke_bot import alakazam_heuristics, cg_env, dataset, features
 from poke_bot.dataset import DecisionSample, GameSequence, PolicyStage
 from poke_bot.pure_rl import dataset_bridge
 from poke_bot.pure_rl.shards import CompactDecision, CompactGame
@@ -104,6 +106,13 @@ def test_guide_row_count_requires_a_real_comparison() -> None:
 def test_featurize_step_attaches_deck_gated_aligned_scores(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    class _SelectContext(IntEnum):
+        MAIN = 0
+        SETUP_ACTIVE_POKEMON = 1
+        SETUP_BENCH_POKEMON = 2
+        RECOVER_SPECIAL_CONDITION = 48
+
+    monkeypatch.setitem(cg_env.__dict__, "SelectContext", _SelectContext)
     monkeypatch.setattr(
         dataset.features,
         "factorized_teacher_forcing_stages",
@@ -130,7 +139,13 @@ def test_featurize_step_attaches_deck_gated_aligned_scores(
 
     monkeypatch.setattr(alakazam_heuristics, "guide_scores", _guide)
     sample = dataset.featurize_step(
-        {"observation": {"public": True}, "action": [0]},
+        {
+            "observation": {
+                "public": True,
+                "select": {"context": "SetupActivePokemon"},
+            },
+            "action": [0],
+        },
         [743] * 60,
         verify_info_set=False,
     )
@@ -138,6 +153,8 @@ def test_featurize_step_attaches_deck_gated_aligned_scores(
     assert seen == {"combos": [[0], [1]], "deck": [743] * 60}
     assert stage.guide_target_index == 0
     assert stage.guide_confidence == 1.0
+    assert stage.select_context == 1
+    assert stage.selected_is_stop is False
 
 
 def test_featurize_step_masks_tied_or_partial_guide_rows(

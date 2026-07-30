@@ -236,6 +236,9 @@ def main() -> int:
             )
         catalog = _load(catalog_path)
         source_window = dict(catalog.get("source_window") or {})
+        catalog_identity_mode = str(
+            (catalog.get("identity_contract") or {}).get("mode") or ""
+        )
         if (
             catalog.get("schema")
             != "poke_bot.public_deck_archetype_catalog/v1"
@@ -250,8 +253,14 @@ def main() -> int:
             }
         ):
             raise RuntimeError("public deck catalog identity changed")
+        source_mode = (
+            "public_full_history_card_signature_identity"
+            if catalog_identity_mode
+            == "crustle_card_signature_public_replay_identity"
+            else "public_full_history_exact_deck_identity"
+        )
         source_policy = {
-            "mode": "public_full_history_exact_deck_identity",
+            "mode": source_mode,
             "public_deck_catalog": catalog_path.name,
             "public_deck_catalog_sha256": _sha256(catalog_path),
             "minimum_records": int(args.minimum_records),

@@ -512,10 +512,24 @@ def select(
         )
     ):
         raise RuntimeError("canonical matchup-adapter roster is invalid")
-    rows = {
+    all_rows = {
         str(row.get("id") or ""): dict(row)
         for row in (state.get("specialists") or [])
         if isinstance(row, dict) and str(row.get("id") or "")
+    }
+    owner_removed_ids = {
+        str(value)
+        for value in (
+            ((state.get("training_priority") or {}).get("owner_removal") or {})
+            .get("specialist_ids")
+            or []
+        )
+        if str(value)
+    }
+    rows = {
+        specialist_id: row
+        for specialist_id, row in all_rows.items()
+        if specialist_id not in owner_removed_ids
     }
     expected_total = int(
         ((state.get("target_registry") or {}).get("required_target_count") or 0)
@@ -567,6 +581,7 @@ def select(
         not in {len(order), len(effective_order)}
         or len(set(order)) != len(order)
         or not set(order).issubset(rows)
+        or set(order) & owner_removed_ids
         or not effective_unfinished_ids.issubset(set(effective_order))
     ):
         raise RuntimeError(

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from poke_bot import archaludon_ex_heuristics as guide
 from poke_bot import deck_guides
@@ -121,3 +122,85 @@ def test_archaludon_expert_writeup_and_teacher_are_checksum_bound() -> None:
     assert hashlib.sha256(teacher.read_bytes()).hexdigest() == (
         "4ec28e4f26c281f7488b20c31bbe17a6e4320cb54cb7dc5e1e4722e839aceca3"
     )
+
+
+def test_archaludon_contract_blocks_until_full_public_schema7_corpus() -> None:
+    contract = yaml.safe_load(
+        (
+            ROOT / "config" / "deck_guides" / "archaludon-ex.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    representative = json.loads(
+        (
+            ROOT
+            / "data"
+            / "training_mixes"
+            / "specialist_representatives.v1.json"
+        ).read_text(encoding="utf-8")
+    )["decks"]["archaludon-ex"]
+
+    assert contract["specialist_id"] == "archaludon-ex"
+    assert contract["guide_version"] == guide.GUIDE_VERSION
+    assert contract["teacher_module_sha256"] == (
+        "sha256:4ec28e4f26c281f7488b20c31bbe17a6e4320cb54cb7dc5e1e4722e839aceca3"
+    )
+    binding = contract["project_representative_binding"]
+    assert binding["card_count"] == len(representative["card_ids"]) == 60
+    assert (
+        binding["canonical_multiset_sha256"]
+        == representative["canonical_multiset_sha256"]
+    )
+    assert binding["cards_sha256"] == representative["cards_sha256"]
+
+    corpus = contract["corpus_binding_evidence"]
+    assert corpus["status"].startswith("blocked_pending_")
+    assert corpus["source_window"] == {
+        "start": "2026-06-16",
+        "end": "2026-07-29",
+        "days": 44,
+    }
+    assert corpus["minimum_matching_games"] == 16_639
+    assert corpus["audited_source_matching_acting_seats"] == 21_278
+    audit_path = ROOT / corpus["source_audit"]
+    assert corpus["source_audit_sha256"] == (
+        "sha256:" + hashlib.sha256(audit_path.read_bytes()).hexdigest()
+    )
+    assert corpus["records"] is None
+    assert corpus["decisions"] is None
+    assert corpus["guide_rows"] is None
+    assert corpus["guide_corpus_ready"] is False
+    assert corpus["dataset_schema_required"] == 7
+    assert corpus["feature_schema_required"] == 5
+    assert corpus["schema6_feature_reuse_allowed"] is False
+    assert corpus["identity_ready_receipt_sha256"] is None
+    assert corpus["guide_ready_receipt_sha256"] is None
+    assert corpus["final_validation_receipt_sha256"] is None
+    assert corpus["import_receipt_sha256"] is None
+    historical = corpus["superseded_schema6_corpus"]
+    assert historical["status"] == (
+        "historical_ineligible_for_revision56_training"
+    )
+    assert historical["records"] == 1_458
+    assert historical["decisions"] == 83_980
+    assert historical["guide_rows"] == 1_454
+    assert historical["guide_ready_receipt_sha256"] == (
+        "sha256:546ff815afdfaad5b1cb53c5596907ef81be7bcfcbbf156e6434bc98c2563d43"
+    )
+    assert historical["final_validation_receipt_sha256"] == (
+        "sha256:2ea025d2d9b1781c013ff2660ee1b0c6e1cb5dc9c73306f008884f96c4524739"
+    )
+    assert historical["import_receipt_sha256"] == (
+        "sha256:c32c1310f249a9d7c4d5df0dc494a80e974377e397175d4b6952e57169a2684e"
+    )
+    assert contract["target_safety"]["runtime_authority"] == "none"
+
+
+def test_archaludon_contract_is_registered_as_prepared_in_protocol() -> None:
+    protocol = yaml.safe_load(
+        (ROOT / "config" / "rl_protocol.yaml").read_text(encoding="utf-8")
+    )
+
+    prepared = protocol["specialist_training"]["current_deck_guide"][
+        "prepared_contracts"
+    ]
+    assert prepared["archaludon-ex"] == "config/deck_guides/archaludon-ex.yaml"

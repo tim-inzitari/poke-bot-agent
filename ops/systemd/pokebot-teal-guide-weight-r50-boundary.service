@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply owner revision 50 Teal guide-weight reduction at iteration 12 boundary
+After=pokebot-pure-rl-trevenant-staged.service
+
+[Service]
+Type=simple
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/apply_teal_guide_weight_at_boundary.py --run-dir /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/outputs/pure_rl/pure_rl_teal-mask-ogerpon-ex_temporal1_8k_v1_20260723 --unit pokebot-pure-rl-trevenant-staged.service --selector /home/inzi/.config/pokebot/specialist_runtime.env --registry /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/specialist_runtime_registry_v1.json --staged-registry /home/inzi/.local/lib/pokebot-boundary-r50/ops/specialist_runtime_registry_v1.json --trainer /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/scripts/train_pure_rl.py --staged-trainer /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/scripts/train_pure_rl.py --train-module /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/poke_bot/train.py --staged-train-module /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/poke_bot/train.py --status /home/inzi/poke-bot-agent/outputs/state/teal-guide-weight-boundary-r50.json --completed-iteration 12 --old-weight 0.25 --new-weight 0.05 --registry-only --owner-decision-revision 50 --expected-staged-trainer-sha256 sha256:1464d0635d66fad4a31dbf57ce7d33a9dffb02db3353bfc4af78ff0660a1b189 --expected-active-train-module-sha256 sha256:33787d4f6ce1cfa330f1a0f21ebf8528d4c4b2a544bf964471c136bd41ee5875 --expected-staged-train-module-sha256 sha256:33787d4f6ce1cfa330f1a0f21ebf8528d4c4b2a544bf964471c136bd41ee5875 --poll-seconds 1.0
+Restart=no
+
+[Install]
+WantedBy=default.target

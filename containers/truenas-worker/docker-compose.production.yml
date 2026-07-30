@@ -15,7 +15,7 @@ name: poke-bot-truenas-worker
 
 services:
   worker:
-    image: poke-bot-truenas-worker:matchup-v38-record-schema-runtime
+    image: poke-bot-truenas-worker:matchup-v40-v6-router-runtime
     command: ["production"]
     restart: "on-failure:3"
     init: true
@@ -33,14 +33,15 @@ services:
       LEAF_SERVERS: "4"
       LEAF_MAX_BATCH: "256"
 
-      # Never close admission for a routine job-count rotation while a trainer
-      # owns live sockets. Recycling every 16 games kept multiple replacements
-      # initializing continuously and tripped the exact-capacity watchdog. A
-      # 256-game lifetime bounds native growth while the independent 30/64 GiB
-      # guards remain authoritative.
+      # Per-child recycling every 16 games kept multiple replacements
+      # initializing continuously and tripped the exact-capacity watchdog.
+      # The measured production tree now reaches its independent 30 GiB RSS
+      # guard after roughly 1,000 whole-game jobs. Drain the complete service
+      # at 768 jobs, before that failure point, while retaining 256-game child
+      # lifetimes to avoid synchronized replacement gaps.
       POKEBOT_WORKER_RECYCLE_GAMES: "256"
       WORKER_RECYCLE_GAMES: "256"
-      POKEBOT_REMOTE_MAX_SERVICE_JOBS: "0"
+      POKEBOT_REMOTE_MAX_SERVICE_JOBS: "768"
       POKEBOT_REMOTE_PLANNED_ROTATION_EXIT_CODE: "75"
 
       # This immutable safety image validates a 30 GiB in-process guard. The

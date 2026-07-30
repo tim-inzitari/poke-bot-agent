@@ -660,14 +660,23 @@ def materialize_from_contract(
     gate = dict(source.get("gate") or {})
     frozen = dict(handler.get("frozen_model") or {})
     queued = [dict(row) for row in (handler.get("queued_submissions") or [])]
+    approved_submission_count = int(
+        handler.get("approved_submission_count", 1)
+    )
+    expected_copy_numbers = list(range(1, approved_submission_count + 1))
     checkpoint_digest = str(source.get("checkpoint_digest") or "")
     if (
         handler.get("schema") != HANDLER_SCHEMA
         or handler.get("phase") not in ALLOWED_HANDLER_PHASES
+        or approved_submission_count not in (1, 2)
         or frozen.get("checkpoint_digest") != checkpoint_digest
         or bundle.get("contents", {}).get("model_sha256") != checkpoint_digest
-        or len(queued) != 1
-        or queued[0].get("checkpoint_checksum") != checkpoint_digest
+        or [int(row.get("copy_number", -1)) for row in queued]
+        != expected_copy_numbers
+        or any(
+            row.get("checkpoint_checksum") != checkpoint_digest
+            for row in queued
+        )
         or gate.get("checkpoint_digest") != checkpoint_digest
     ):
         raise RuntimeError("source gate handler cannot materialize an S+ package")

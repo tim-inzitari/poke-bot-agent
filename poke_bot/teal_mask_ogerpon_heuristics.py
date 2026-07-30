@@ -1,10 +1,12 @@
-"""Sparse causal guide teacher for Teal Mask Ogerpon ex / Ogerpon Box.
+"""Sparse causal guide teacher for Teal Mask Ogerpon ex / Slop Box.
 
-Ogerpon Box is a nonlinear Basic-Pokemon toolbox. The learned 17-input fused
-policy owns attack, Energy routing, target, prize-map, recovery, and matchup
-decisions. This auxiliary teacher labels only complete current legal stages
-whose exact public inputs support a safe preference: opening Pokemon placement
-and currently legal, resolved draw/acceleration abilities.
+Slop Box is the public archetype-151 Raging Bolt Ogerpon family built around
+Mega Kangaskhan ex, Meowth ex, Teal Mask Ogerpon ex, Raging Bolt ex, Area Zero,
+Crispin, Energy Switch, Glass Trumpet, and five Basic Energy types. The learned
+17-input fused policy owns attack, Energy routing, target, prize-map, recovery,
+and matchup decisions. This auxiliary teacher labels only complete current
+legal stages whose exact public inputs support a safe preference: opening
+Pokemon placement and currently legal, resolved draw/acceleration abilities.
 
 Coin outcomes, future draws, face-down Prize identities, hidden opponent
 information, speculative Energy Switch routes, attack targets, and future
@@ -21,8 +23,9 @@ from typing import Any, Iterable, Optional, Sequence
 from . import archetypes
 
 
-GUIDE_VERSION = "teal-mask-ogerpon-ex-north-star-v2"
+GUIDE_VERSION = "teal-mask-ogerpon-ex-slop-box-north-star-v3"
 
+RAGING_BOLT_EX = 63
 TEAL_MASK_OGERPON_EX = 96
 WELLSPRING_MASK_OGERPON_EX = 108
 MUNKIDORI = 112
@@ -45,17 +48,14 @@ CTX_SETUP_ACTIVE = 1
 CTX_SETUP_BENCH = 2
 
 CORE_SIGNATURE_MINIMUMS = {
+    RAGING_BOLT_EX: 2,
     TEAL_MASK_OGERPON_EX: 3,
     WELLSPRING_MASK_OGERPON_EX: 1,
-    # The exact Jul24-27 public archetype-151 list runs one Clefairy.  The
-    # collision-safe Ogerpon Box gate separately requires two of the three
-    # multi-copy toolbox families and caps Kangaskhan at three.  Both known
-    # source-archetype-67 Mega Kangaskhan lists run four.
     LILLIES_CLEFAIRY_EX: 1,
-    MEGA_KANGASKHAN_EX: 2,
-    MEOWTH_EX: 2,
-    archetypes.ENERGY_SWITCH: 3,
-    archetypes.AREA_ZERO_UNDERDEPTHS: 2,
+    MEGA_KANGASKHAN_EX: 3,
+    MEOWTH_EX: 3,
+    archetypes.ENERGY_SWITCH: 4,
+    archetypes.AREA_ZERO_UNDERDEPTHS: 4,
 }
 ABSTENTION_MARGIN = 0.25
 
@@ -90,7 +90,7 @@ def _cards(zone: Any) -> list[Any]:
 
 
 def is_teal_mask_ogerpon_ex_deck(deck: Iterable[int]) -> bool:
-    """Require an exact 60-card Ogerpon Box family signature."""
+    """Require the exact 60-card Slop Box family signature."""
     try:
         card_ids = [_exact_int(card_id) for card_id in deck]
     except TypeError:

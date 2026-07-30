@@ -195,6 +195,76 @@ def test_specialist_hot_start_expands_cumulative_v4_archetype_order(
     assert expansion["unknown_row_moved_to_final"] is True
 
 
+def test_specialist_hot_start_uses_checkpoint_recorded_row_identity(
+    tmp_path: Path,
+) -> None:
+    target_ids = list(archetypes.archetype_ids())
+    old_ids = target_ids[:-1]
+    width = 3
+    old_weight = torch.arange(
+        (len(old_ids) + 1) * width, dtype=torch.float32
+    ).reshape(len(old_ids) + 1, width)
+    old_bias = torch.arange(len(old_ids) + 1, dtype=torch.float32)
+    old_fusion = torch.arange(
+        2 * (len(old_ids) + 1), dtype=torch.float32
+    ).reshape(2, len(old_ids) + 1)
+    core = tmp_path / "recorded-row-core.pt"
+    checkpoint.atomic_torch_save(
+        {
+            "model_state_dict": {
+                "aux_head.3.weight": old_weight,
+                "aux_head.3.bias": old_bias,
+                "decision_fusion.state_projections.archetype.weight": (
+                    old_fusion
+                ),
+            },
+            "extra": {
+                "specialist_aux_archetype_head_expansion": {
+                    "schema": bootstrap.SPECIALIST_AUX_EXPANSION_SCHEMA,
+                    "target_archetype_ids": old_ids,
+                    "target_classes": len(old_ids) + 1,
+                }
+            },
+        },
+        core,
+    )
+
+    hot_start, _, expansion = bootstrap._specialist_hot_start_from_core(
+        core,
+        run_dir=tmp_path / "run",
+        archetype="hammer-pult",
+    )
+    state = checkpoint.load_checkpoint(
+        hot_start, map_location="cpu"
+    )["model_state_dict"]
+
+    assert expansion["source_archetype_ids"] == old_ids
+    assert expansion["newly_initialized_rows"] == [target_ids[-1]]
+    for old_index, name in enumerate(old_ids):
+        new_index = target_ids.index(name)
+        assert torch.equal(
+            state["aux_head.3.weight"][new_index], old_weight[old_index]
+        )
+        assert torch.equal(
+            state["aux_head.3.bias"][new_index], old_bias[old_index]
+        )
+    assert torch.equal(state["aux_head.3.weight"][-1], old_weight[-1])
+    assert torch.equal(state["aux_head.3.bias"][-1], old_bias[-1])
+    fusion = state[
+        "decision_fusion.state_projections.archetype.weight"
+    ]
+    for old_index, name in enumerate(old_ids):
+        new_index = target_ids.index(name)
+        assert torch.equal(fusion[:, new_index], old_fusion[:, old_index])
+    assert torch.equal(fusion[:, -1], old_fusion[:, -1])
+    assert torch.equal(fusion[:, target_ids.index(target_ids[-1])], torch.zeros(2))
+    fusion_expansion = expansion["decision_fusion_archetype_projection"]
+    assert fusion_expansion["new_columns_zero_initialized"] == [
+        target_ids[-1]
+    ]
+    assert fusion_expansion["all_inherited_columns_byte_identical"] is True
+
+
 def test_v6_hot_start_opts_in_without_changing_inherited_tensors(
     tmp_path: Path,
 ) -> None:
@@ -245,6 +315,55 @@ def test_v6_hot_start_opts_in_without_changing_inherited_tensors(
     assert migration["append_expanded_tensor_keys"] == []
     assert expansion["expanded_head_migration"] == migration
     assert "optimizer_state_dict" not in payload
+
+
+def test_revision56_hot_start_enables_setup_and_distinct_routes_zero_safely(
+    tmp_path: Path,
+) -> None:
+    target_classes = len(archetypes.archetype_ids()) + 1
+    core = tmp_path / "core-v6-fused.pt"
+    original = {
+        "aux_head.3.weight": torch.zeros(target_classes, 4),
+        "aux_head.3.bias": torch.zeros(target_classes),
+        "shared.weight": torch.arange(12, dtype=torch.float32).reshape(3, 4),
+    }
+    checkpoint.atomic_torch_save(
+        {
+            "model_state_dict": original,
+            "model_config": {
+                "expanded_heads_enabled": False,
+                "decision_fusion_enabled": False,
+            },
+        },
+        core,
+    )
+    _raw, identity = bootstrap.load_expanded_head_contract()
+
+    hot_start, _, expansion = bootstrap._specialist_hot_start_from_core(
+        core,
+        run_dir=tmp_path / "run",
+        archetype="archaludon-ex",
+        enable_expanded_heads=True,
+        expanded_identity=identity,
+        enable_decision_fusion=True,
+        enable_strategic_curriculum=True,
+    )
+
+    payload = checkpoint.load_checkpoint(hot_start, map_location="cpu")
+    model_config = payload["model_config"]
+    assert model_config["setup_board_outcome_head_enabled"] is True
+    assert model_config["decision_fusion_dedicated_routes_enabled"] is True
+    assert (
+        model_config["decision_fusion_dedicated_routes_runtime_enabled"]
+        is True
+    )
+    assert set(payload["model_state_dict"]) == set(original)
+    for key, value in original.items():
+        assert torch.equal(payload["model_state_dict"][key], value)
+    migration = expansion["decision_fusion_migration"]
+    assert migration["target_schema"] == "poke_bot.causal_decision_fusion/v2"
+    assert migration["zero_safe_initialization"] is True
+    assert migration["one_option_conditioned_route_per_learned_head"] is True
 
 
 def test_expanded_manifest_coverage_allows_masks_but_not_zero_labels(

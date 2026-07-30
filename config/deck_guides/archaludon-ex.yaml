@@ -4,7 +4,7 @@
 schema_version: poke_bot.current_deck_guide/v1
 specialist_id: archaludon-ex
 display_name: "Archaludon ex"
-status: research_and_sparse_teacher_validated_guide_corpus_pending
+status: blocked_pending_revision56_curriculum_validation_and_corpus_rebind
 guide_version: archaludon-ex-north-star-v1
 teacher_module: poke_bot.archaludon_ex_heuristics
 implementation_status: sparse_causal_teacher_validated
@@ -24,11 +24,43 @@ project_representative_binding:
   modal_seat_count: 81
 
 policy_target:
-  type: sparse_confidence_weighted_legal_action_preference
+  type: sparse_causal_curriculum_row_selector
+  training_mode: strategic_curriculum_v1
   parameterized_head: false
-  target_logits: shared_fused_policy
+  target_logits: none
+  direct_policy_cross_entropy_allowed: false
+  guide_preference_index_role: diagnostics_and_row_qualification_only
+  guide_preference_index_may_affect_loss_or_gradient: false
+  observed_target_authority:
+    - expanded_strategic_targets
+    - setup_board_outcome
   serving_authority: false
   override_authoritative_policy: false
+
+setup_board_outcome_head:
+  owner_decision_revision: 55
+  architecture: [d_model, 512, 9]
+  input: board_state_cross_attended_option_hidden
+  computation_role: independent_head
+  fusion_role: fused_input
+  action_influence: bounded_option_conditioned_route
+  fusion_route_initialization: zero_safe_exact_parent_parity
+  base_loss_weight: 0.025
+  eligible_contexts: [initial_setup_active, initial_setup_bench]
+  target_groups:
+    next_own_decision_resource_forecast:
+      source: expanded_strategic_targets.resource_forecast
+      dimensions: 6
+    terminal_outcome:
+      source: expanded_strategic_targets.outcome_class
+      classes: [loss, draw, win]
+  selected_complete_stage_only: true
+  unchosen_candidates_are_masked: true
+  guide_curriculum_term: guide_weight_times_confidence_times_observed_target_loss
+  guide_preference_index_may_affect_loss_or_gradient: false
+  direct_action_selection_authority: false
+  runtime_activation_requires_validation_receipt: true
+  validation_receipt_required_before_bootstrap: true
 
 deck_signature:
   minimum_card_counts:
@@ -206,20 +238,54 @@ target_safety:
 weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
 
 corpus_binding_evidence:
-  status: latest20_identity_corpus_ready_guide_rows_pending
+  status: blocked_pending_full_public_schema7_rematerialization_and_revision56_validation
   logical_specialist_id: archaludon-ex
-  source_window: {start: 2026-07-08, end: 2026-07-27, days: 20}
-  records: 1458
-  decisions: 83980
-  guide_rows: 0
+  source_window: {start: "2026-06-16", end: "2026-07-29", days: 44}
+  minimum_matching_games: 16639
+  audited_source_matching_acting_seats: 21278
+  source_audit: state/archaludon_public_full44_source_audit_v1.json
+  source_audit_sha256: sha256:9603e23bf68d70c70a063eacc5aa8bcf135750ac12b76f476471d59c57feb737
+  records: null
+  decisions: null
+  guide_rows: null
+  dataset_schema_required: 7
+  feature_schema_required: 5
+  schema6_feature_reuse_allowed: false
+  all_days_require_original_public_archive_rematerialization: true
   guide_corpus_ready: false
-  identity_corpus_root: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-latest20-2026-07-08_2026-07-27-v1
-  identity_ready_receipt_sha256: sha256:53a9ce2d3bb9f8644128b692353ee1a6925217e0eef7bb2f11666af2154ecdb0
-  identity_manifest_sha256: sha256:558f2161e84c297e9f37e1d46fde3732781f6b18cadffed29ed3a67804ad1b0f
-  identity_pointer_sha256: sha256:31219b077cfcea65dc591afb7887548dbf20a668ac46c0f433804c67bd03d8b0
-  source_receipt_sha256: sha256:1048f036c697f097b2d6b8824b7e5cb258f7884e73db7a211625987135ad26ce
-  daily_receipts: 20
-  nonzero_daily_receipts: 19
+  identity_corpus_root: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-full-public-2026-06-16_2026-07-29-schema7-r56-v1
+  identity_ready_receipt: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-full-public-2026-06-16_2026-07-29-schema7-r56-v1/ARCHALUDON_EX_FULL_PUBLIC_CORPUS_READY.json
+  identity_ready_receipt_sha256: null
+  source_lock: state/archaludon_ex_schema7_source_lock_v1.json
+  source_lock_sha256: null
+  guide_corpus_root: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1
+  guide_ready_receipt: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1/CURRENT_DECK_GUIDE_CORPUS_READY.json
+  guide_ready_receipt_sha256: null
+  final_validation_receipt: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1/ARCHALUDON_EX_GUIDE_CORPUS_READY.json
+  final_validation_receipt_sha256: null
+  inzi_destination: /home/inzi/poke-bot-agent/data/bootstrap/archaludon-ex-full-public-schema7-r56-v1
+  import_receipt: /home/inzi/poke-bot-agent/outputs/state/archaludon-ex-prestage-corpus-import-v2.json
+  import_receipt_sha256: null
+  prestage_blockers:
+    - revision56_source_lock_not_yet_issued
+    - full_public_schema7_identity_corpus_not_yet_materialized
+    - full_public_schema7_guide_corpus_not_yet_materialized
+    - revision56_option_conditioned_head_route_validation_not_yet_receipted
+    - checksum_validated_import_not_yet_complete
+  zero_guide_day_policy: exact_causal_mask_not_zero_for_unsupported_single_choice_ambiguous_or_low_margin_stages
+  superseded_schema6_corpus:
+    status: historical_ineligible_for_revision56_training
+    source_window: {start: "2026-07-08", end: "2026-07-27", days: 20}
+    records: 1458
+    decisions: 83980
+    guide_rows: 1454
+    identity_corpus_root: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-latest20-2026-07-08_2026-07-27-v1
+    identity_ready_receipt_sha256: sha256:53a9ce2d3bb9f8644128b692353ee1a6925217e0eef7bb2f11666af2154ecdb0
+    guide_corpus_root: /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-latest20-v2
+    guide_ready_receipt_sha256: sha256:546ff815afdfaad5b1cb53c5596907ef81be7bcfcbbf156e6434bc98c2563d43
+    final_validation_receipt_sha256: sha256:2ea025d2d9b1781c013ff2660ee1b0c6e1cb5dc9c73306f008884f96c4524739
+    imported_destination: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/archaludon-ex
+    import_receipt_sha256: sha256:c32c1310f249a9d7c4d5df0dc494a80e974377e397175d4b6952e57169a2684e
   historical_100k_fallback_allowed: false
   active_training_modified: false
 
@@ -227,12 +293,15 @@ validation:
   research_sources_reviewed: true
   expert_writeup_under_word_limit: true
   yaml_parse_required: true
-  unit_tests_passed: true
+  unit_tests_passed: false
   scorer_canary_passed: true
-  guide_rows_in_filtered_expert_corpus: 0
+  focused_tests_passed: null
+  guide_rows_in_filtered_expert_corpus: null
   contract_checksum: null
   unresolved_evidence_gaps:
-    - guide_labeled_latest20_corpus_not_yet_materialized
+    - full_public_schema7_corpus_not_yet_materialized
+    - revision56_source_lock_not_yet_issued
+    - revision56_option_conditioned_head_routes_not_yet_receipted
     - no_world_champion_SME_approval_yet
     - no_controlled_current_matchup_matrix_found
     - no_universal_first_versus_second_rule_supported

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import ast
+import json
+import os
 from pathlib import Path
 
 import pytest
@@ -72,6 +74,39 @@ def test_submission_entrypoint_resolves_turn_order_before_runtime_imports() -> N
     assert module.agent(_prompt(yes_index=1)) == [1]
     assert module._MODEL is None
     assert module._POLICY is None
+
+
+def test_submission_entrypoint_can_choose_second_from_packaged_profile(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[1] / "submission" / "main.py"
+    main_path = tmp_path / "main.py"
+    main_path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "deck.csv").write_text("1\n" * 60, encoding="utf-8")
+    (tmp_path / "turn_order_profile.json").write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.submission_turn_order_profile/v1",
+                "turn_order_preference": "second_if_allowed",
+            }
+        ),
+        encoding="utf-8",
+    )
+    prior = Path.cwd()
+    os.chdir(tmp_path)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "isolated_submission_second",
+            main_path,
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.agent(_prompt()) == [1]
+        assert module.agent(_prompt(yes_index=1)) == [0]
+        assert module._MODEL is None
+    finally:
+        os.chdir(prior)
 
 
 def test_submission_entrypoint_enables_only_a_shipped_runtime_matchup_tree() -> None:

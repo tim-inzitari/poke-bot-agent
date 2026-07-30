@@ -15,6 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 REPRESENTATIVE_PATH = (
     ROOT / "data" / "training_mixes" / "top_ladder_representatives.v1.json"
 )
+if not REPRESENTATIVE_PATH.is_file():
+    REPRESENTATIVE_PATH = (
+        ROOT
+        / "data"
+        / "training_mixes"
+        / "specialist_representatives.v1.json"
+    )
 CANONICAL_DECK = json.loads(REPRESENTATIVE_PATH.read_text(encoding="utf-8"))[
     "decks"
 ]["hammer-pult"]["card_ids"]

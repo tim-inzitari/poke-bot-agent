@@ -1,7 +1,7 @@
 {
   "schema": "poke_bot.matchup_adapter_roster/v1",
   "slot_schema": "poke_bot.matchup_adapter_slot_registry/v1",
-  "revision": 8,
+  "revision": 9,
   "status": "staged_pending_safe_boundary",
   "checkpoint_format": "poke-bot-matchup-adapter-bank-v6",
   "slot_capacity": 64,
@@ -76,7 +76,6 @@
     "teal-mask-ogerpon-ex",
     "archaludon-ex",
     "dragapult",
-    "walrein",
     "crustle"
   ],
   "canonical_display_names": {

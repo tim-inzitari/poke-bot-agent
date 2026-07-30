@@ -803,13 +803,20 @@ def _successor_decision_fusion_activation(
                 and initial_checkpoint_digest == bootstrap_digest
             ):
                 continue
+            lineage_fingerprints = _source_only_design_lineage_fingerprints(
+                run_dir,
+                design_fingerprint,
+            )
             for commit_path in sorted(
                 (run_dir / "commits").glob("iter_*.json"),
                 key=lambda candidate: candidate.stat().st_mtime_ns,
                 reverse=True,
             ):
                 commit = read_json(commit_path)
-                if commit.get("design_fingerprint") != design_fingerprint:
+                commit_fingerprint = str(
+                    commit.get("design_fingerprint") or ""
+                )
+                if commit_fingerprint not in lineage_fingerprints:
                     continue
                 # Current commit schema keeps the complete boundary record in
                 # history[0], while the compact fixture and older schemas put
@@ -843,7 +850,14 @@ def _successor_decision_fusion_activation(
                     ):
                         continue
                     lineage_commit = commit_path
-                    activation_scope = "successor_committed_descendant"
+                    activation_scope = (
+                        "successor_committed_descendant"
+                        if commit_fingerprint == design_fingerprint
+                        else (
+                            "successor_committed_descendant_"
+                            "source_only_migration"
+                        )
+                    )
                     break
                 if lineage_commit is not None:
                     break
@@ -872,6 +886,95 @@ def _successor_decision_fusion_activation(
             ),
         }
     return {}
+
+
+def _source_only_design_lineage_fingerprints(
+    run_dir: Path,
+    current_fingerprint: str,
+) -> set[str]:
+    """Return fingerprints equivalent for checkpoint/fusion lineage.
+
+    A receipt-backed recovery may update only the source-tree identity after a
+    learner commit.  That changes the run design fingerprint without changing
+    the checkpoint, fusion tensors, or their activation.  Accept only the
+    contiguous, checksum-verified suffix of migrations whose sole changed path
+    is ``source.source_tree_sha256``; any malformed or behavioral migration
+    stops traversal and therefore fails closed.
+    """
+
+    allowed = {current_fingerprint}
+    manifest = read_json(run_dir / "manifest.json")
+    contract = manifest.get("design_contract")
+    expected = str(manifest.get("design_fingerprint") or "")
+    if (
+        not isinstance(contract, dict)
+        or not _is_sha256_digest(expected)
+        or _canonical_design_digest(contract) != expected
+    ):
+        return allowed
+
+    verified: list[tuple[str, str, tuple[str, ...]]] = []
+    effective = contract
+    for receipt_path in sorted(
+        (run_dir / "design_migrations").glob("migration_*.json")
+    ):
+        receipt = read_json(receipt_path)
+        previous = receipt.get("previous_contract")
+        current = receipt.get("current_contract")
+        previous_fingerprint = str(
+            receipt.get("previous_fingerprint") or ""
+        )
+        current_migration_fingerprint = str(
+            receipt.get("current_fingerprint") or ""
+        )
+        changed_paths = receipt.get("changed_paths")
+        if (
+            int(receipt.get("schema", -1)) != 1
+            or not isinstance(previous, dict)
+            or not isinstance(current, dict)
+            or not isinstance(changed_paths, list)
+            or not all(isinstance(path, str) for path in changed_paths)
+            or previous != effective
+            or previous_fingerprint != expected
+            or _canonical_design_digest(previous) != previous_fingerprint
+            or _canonical_design_digest(current)
+            != current_migration_fingerprint
+        ):
+            break
+        verified.append(
+            (
+                previous_fingerprint,
+                current_migration_fingerprint,
+                tuple(changed_paths),
+            )
+        )
+        effective = current
+        expected = current_migration_fingerprint
+
+    if expected != current_fingerprint:
+        return allowed
+    cursor = current_fingerprint
+    for previous, current, changed_paths in reversed(verified):
+        if current != cursor:
+            break
+        if changed_paths != ("source.source_tree_sha256",):
+            break
+        allowed.add(previous)
+        cursor = previous
+    return allowed
+
+
+def _active_run_design_fingerprint(
+    loop: dict[str, Any],
+    manifest: dict[str, Any],
+) -> str:
+    """Resolve the design identity at the current committed loop boundary."""
+
+    return str(
+        loop.get("design_fingerprint")
+        or manifest.get("design_fingerprint")
+        or ""
+    )
 
 
 def _initial_learner_checkpoint_digest(
@@ -1586,6 +1689,41 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
+    latest_any_cycle_state_path = cycle_states[0] if cycle_states else None
+    latest_any_cycle_state = (
+        read_json(latest_any_cycle_state_path)
+        if latest_any_cycle_state_path is not None
+        else {}
+    )
+    latest_any_cycle_settled = bool(
+        latest_any_cycle_state.get("phase")
+        in {
+            "next_specialist_selected",
+            "next_specialist_bootstrap_frozen",
+            "next_specialist_rl_armed",
+            "next_specialist_rl_started",
+        }
+        and str(
+            (latest_any_cycle_state.get("source") or {}).get(
+                "specialist_id"
+            )
+            or ""
+        ).strip()
+        and (
+            (
+                latest_any_cycle_state.get("selection") or {}
+            ).get("selected")
+            or latest_any_cycle_state.get("next_specialist")
+        )
+        and (
+            not POST_STARMIE_HANDOFF_STATE.is_file()
+            or (
+                latest_any_cycle_state_path is not None
+                and latest_any_cycle_state_path.stat().st_mtime
+                > POST_STARMIE_HANDOFF_STATE.stat().st_mtime
+            )
+        )
+    )
     matching_cycle_states = (
         [
             path
@@ -1601,8 +1739,46 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
         if transition_source_id
         else cycle_states
     )
+    if latest_any_cycle_settled and latest_any_cycle_state_path is not None:
+        # A completed immutable cycle receipt is newer execution truth than a
+        # stale transition-graph pointer. Keep the graph as recovery metadata,
+        # but do not let it force telemetry back to an older specialist.
+        matching_cycle_states = [latest_any_cycle_state_path]
     cycle_current = bool(current_transition and matching_cycle_states)
-    if (cycle_active or cycle_current) and matching_cycle_states:
+    latest_cycle_state = (
+        read_json(matching_cycle_states[0])
+        if matching_cycle_states
+        else {}
+    )
+    settled_cycle_current = bool(
+        latest_cycle_state.get("phase")
+        in {
+            "next_specialist_selected",
+            "next_specialist_bootstrap_frozen",
+            "next_specialist_rl_armed",
+            "next_specialist_rl_started",
+        }
+        and str(
+            (latest_cycle_state.get("source") or {}).get("specialist_id")
+            or ""
+        ).strip()
+        and (
+            (
+                latest_cycle_state.get("selection") or {}
+            ).get("selected")
+            or latest_cycle_state.get("next_specialist")
+        )
+        and (
+            not POST_STARMIE_HANDOFF_STATE.is_file()
+            or matching_cycle_states[0].stat().st_mtime
+            > POST_STARMIE_HANDOFF_STATE.stat().st_mtime
+        )
+    )
+    if (
+        cycle_active
+        or cycle_current
+        or settled_cycle_current
+    ) and matching_cycle_states:
         service = cycle_service
         state_path = matching_cycle_states[0]
         log_path = SPECIALIST_CYCLE_HANDOFF_LOG
@@ -1720,7 +1896,10 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
                 canonical_roster.get("expert_ids") or []
             )
     remaining_count = max(0, required_specialist_count - completed_count)
-    selected_value = state.get("selected_specialist")
+    selected_value = (
+        state.get("selected_specialist")
+        or (state.get("selection") or {}).get("selected")
+    )
     selected = (
         dict(selected_value)
         if isinstance(selected_value, dict)
@@ -1796,7 +1975,7 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
         rate = float(v6_sync.get("bandwidth_limit_kib_per_second") or 0.0)
         rate_unit = "KiB/s"
         latest_line = (
-            "Frozen source checkpoint is safe; checksum-bound V6 corpus sync "
+            "Frozen source checkpoint is safe; checksum-bound Matchup Router Format 6 corpus sync "
             f"is {percent:.1f}% complete before the next specialist handoff."
         )
     elif core_regression_failed:
@@ -1970,7 +2149,7 @@ def post_starmie_specialist_handoff_state() -> dict[str, Any]:
                 f"{source_label} frozen → cumulative shared core → "
                 "next unfinished specialist"
             )
-            if cycle_active
+            if cycle_active or settled_cycle_current
             else (
                 "Starmie frozen → shared core v2 → specialist "
                 f"{completed_count + 1} of {required_specialist_count}"
@@ -2044,10 +2223,31 @@ def reconcile_current_specialist_handoff(
     """Do not present a successful historical handoff as the current one."""
 
     active_specialist = str(active_specialist or "").strip().lower()
+    phase = str(handoff.get("phase") or "").strip()
+    settled_successor_phases = {
+        "next_specialist_selected",
+        "next_specialist_bootstrap_frozen",
+        "next_specialist_rl_armed",
+        "next_specialist_rl_started",
+    }
+    settled_current_transition = bool(
+        not active_specialist
+        and phase in settled_successor_phases
+        and str(
+            handoff.get("source_specialist_id")
+            or (handoff.get("source_specialist") or {}).get("specialist_id")
+            or ""
+        ).strip()
+        and (
+            str(handoff.get("next_specialist_id") or "").strip()
+            or str(next_specialist or "").strip()
+        )
+    )
     if (
         handoff.get("active") is True
         or handoff.get("terminal_failure") is True
         or active_specialist == "hops-trevenant"
+        or settled_current_transition
     ):
         result = dict(handoff)
         if not result.get("next_specialist_id"):
@@ -2061,6 +2261,19 @@ def reconcile_current_specialist_handoff(
         if "remaining_specialists_after_active" not in result:
             result["remaining_specialists_after_active"] = int(
                 result.get("remaining_specialists_after_starmie") or 0
+            )
+        if settled_current_transition:
+            result["transition_current"] = True
+            result["source_specialist_id"] = str(
+                result.get("source_specialist_id")
+                or (result.get("source_specialist") or {}).get("specialist_id")
+                or ""
+            ).strip()
+            result["latest_line"] = (
+                f"{result['source_specialist_id'].replace('-', ' ').title()} "
+                f"is frozen; {str(result['next_specialist_id']).replace('-', ' ').title()} "
+                "is selected and remains fail-closed until its readiness "
+                "receipts pass."
             )
         return result
     progress = dict(program_progress or {})
@@ -2229,6 +2442,109 @@ def checkpoint_parameter_telemetry(log_path: Path) -> dict[str, Any]:
     }
 
 
+def _checkpoint_adapter_registry_contract(
+    adapter_config: dict[str, Any],
+    expert_indexes: set[int],
+) -> dict[str, Any]:
+    """Validate legacy dense rosters and Router Format 6 slot registries."""
+
+    adapter_format = str(adapter_config.get("format") or "")
+    expert_count = max(expert_indexes) + 1 if expert_indexes else 0
+    tensor_slots_contiguous = expert_indexes == set(range(expert_count))
+    if adapter_format != "poke-bot-matchup-adapter-bank-v6":
+        expert_ids = [
+            str(value)
+            for value in (adapter_config.get("expert_ids") or [])
+            if str(value)
+        ]
+        verified = bool(
+            expert_count > 0
+            and tensor_slots_contiguous
+            and len(expert_ids) == expert_count
+            and len(set(expert_ids)) == expert_count
+        )
+        return {
+            "verified": verified,
+            "format": adapter_format or None,
+            "physical_slot_capacity": expert_count,
+            "routable_expert_ids": expert_ids,
+            "slot_registry_digest": None,
+            "reason": (
+                None
+                if verified
+                else "checkpoint adapter tensors and embedded route registry disagree"
+            ),
+        }
+
+    registry = adapter_config.get("slot_registry")
+    registry = dict(registry) if isinstance(registry, dict) else {}
+    slots = list(registry.get("slots") or [])
+    allowed_statuses = {"active", "dormant", "retired", "unused"}
+    routable_statuses = {"active", "dormant"}
+    allocated_ids: list[str] = []
+    routable_ids: list[str] = []
+    slot_rows_valid = len(slots) == expert_count
+    for expected_slot, row in enumerate(slots):
+        if not isinstance(row, dict):
+            slot_rows_valid = False
+            continue
+        status = str(row.get("status") or "")
+        identity = row.get("archetype_id")
+        if row.get("slot") != expected_slot or status not in allowed_statuses:
+            slot_rows_valid = False
+        if status == "unused":
+            if identity is not None:
+                slot_rows_valid = False
+            continue
+        if not isinstance(identity, str) or not identity:
+            slot_rows_valid = False
+            continue
+        allocated_ids.append(identity)
+        if status in routable_statuses:
+            routable_ids.append(identity)
+    configured_routable_ids = [
+        str(value)
+        for value in (registry.get("active_expert_ids") or [])
+        if str(value)
+    ]
+    compatibility_ids = [
+        str(value)
+        for value in (registry.get("expert_ids") or [])
+        if str(value)
+    ]
+    embedded_digest = str(adapter_config.get("slot_registry_digest") or "")
+    registry_digest = _canonical_json_digest(registry) if registry else ""
+    verified = bool(
+        expert_count == 64
+        and tensor_slots_contiguous
+        and int(adapter_config.get("slot_capacity") or 0) == expert_count
+        and registry.get("schema") == "poke_bot.matchup_adapter_roster/v1"
+        and registry.get("slot_schema")
+        == "poke_bot.matchup_adapter_slot_registry/v1"
+        and registry.get("checkpoint_format") == adapter_format
+        and int(registry.get("slot_capacity") or 0) == expert_count
+        and slot_rows_valid
+        and len(allocated_ids) == len(set(allocated_ids))
+        and routable_ids
+        and routable_ids == configured_routable_ids
+        and routable_ids == compatibility_ids
+        and _is_sha256_digest(embedded_digest)
+        and embedded_digest == registry_digest
+    )
+    return {
+        "verified": verified,
+        "format": adapter_format,
+        "physical_slot_capacity": expert_count,
+        "routable_expert_ids": routable_ids,
+        "slot_registry_digest": embedded_digest or None,
+        "reason": (
+            None
+            if verified
+            else "Matchup Router Format 6 tensors and embedded slot registry disagree"
+        ),
+    }
+
+
 def checkpoint_structure_telemetry(
     checkpoint_path: Path | str,
     checkpoint_digest: str,
@@ -2320,11 +2636,6 @@ def checkpoint_structure_telemetry(
         adapter_config = (
             dict(adapter_config) if isinstance(adapter_config, dict) else {}
         )
-        expert_ids = [
-            str(value)
-            for value in (adapter_config.get("expert_ids") or [])
-            if str(value)
-        ]
         adapter_keys = {
             str(key): value
             for key, value in state_dict.items()
@@ -2343,6 +2654,11 @@ def checkpoint_structure_telemetry(
         expert_count = (
             max(expert_indexes) + 1 if expert_indexes else 0
         )
+        adapter_registry = _checkpoint_adapter_registry_contract(
+            adapter_config,
+            expert_indexes,
+        )
+        expert_ids = list(adapter_registry["routable_expert_ids"])
         cached_parameter_count = int(extra.get("param_count") or 0)
         state_tensor_elements = sum(
             int(value.numel())
@@ -2368,10 +2684,8 @@ def checkpoint_structure_telemetry(
         # complete model state, adapter registry, and all executable tensors.
         # Do not turn that optional cache miss into a structural regression.
         structure_valid = bool(
-            expert_count == len(expert_ids)
-            and expert_count > 0
+            adapter_registry.get("verified") is True
             and adapter_parameters > 0
-            and len(expert_ids) == len(set(expert_ids))
             and expanded_head_training.get("verified") is True
             and decision_fusion.get("verified") is True
         )
@@ -2387,7 +2701,7 @@ def checkpoint_structure_telemetry(
                     if expanded_head_training.get("verified") is not True
                     else decision_fusion.get("reason")
                     if decision_fusion.get("verified") is not True
-                    else "checkpoint adapter tensors and embedded route registry disagree"
+                    else adapter_registry.get("reason")
                 )
             ),
             "checkpoint": str(path),
@@ -2403,6 +2717,14 @@ def checkpoint_structure_telemetry(
             "adapter_parameters": adapter_parameters,
             "adapter_expert_count": expert_count,
             "adapter_expert_ids": expert_ids,
+            "adapter_format": adapter_registry.get("format"),
+            "adapter_registry_verified": adapter_registry.get("verified"),
+            "adapter_slot_capacity": adapter_registry.get(
+                "physical_slot_capacity"
+            ),
+            "adapter_slot_registry_digest": adapter_registry.get(
+                "slot_registry_digest"
+            ),
             "model_config": dict(payload.get("model_config") or {}),
             "runtime_enabled_at_save": bool(
                 extra.get("matchup_adapters_runtime_enabled")
@@ -5565,7 +5887,7 @@ def learner_model_state(
             if run_name
             else None
         ),
-        design_fingerprint=str(manifest.get("design_fingerprint") or ""),
+        design_fingerprint=_active_run_design_fingerprint(loop, manifest),
         initial_checkpoint_digest=_initial_learner_checkpoint_digest(
             learner,
             manifest,
@@ -10482,7 +10804,8 @@ def v6_strategic_corpus_state(
         "current_pointer": str(V6_STRATEGIC_SPECIALIST_CURRENT),
         "sync_receipt": str(V6_STRATEGIC_SPECIALIST_SYNC_STATE),
         "latest_line": (
-            "NEXT BOUNDARY V6 STRATEGIC CORPUS · "
+            "NEXT BOUNDARY EXPANDED STRATEGIC CORPUS · "
+            "Accepted Policy Generation 9 · "
             f"{len(ready_days)}/20 daily feature shards ready · "
             f"{len(running_days)} running · {phase.replace('_', ' ')}"
             + (
@@ -11636,6 +11959,43 @@ def canonical_next_prestage_overlay(payload: dict[str, Any]) -> dict[str, Any]:
     the dashboard behavior regression-testable without live services.
     """
 
+    current = payload.get("current")
+    current_row = (
+        current.get("next_successor_prestage")
+        if isinstance(current, dict)
+        else None
+    )
+    if isinstance(current_row, dict):
+        corpus = dict(current_row.get("corpus") or {})
+        runtime_route = dict(current_row.get("runtime_route") or {})
+        blocker = str(
+            runtime_route.get("blocker")
+            or (current_row.get("blockers") or [None])[0]
+            or ""
+        )
+        corpus_ready = str(corpus.get("status") or "").startswith("ready")
+        return {
+            "status": str(current_row.get("status") or "") or None,
+            "blocker": blocker or None,
+            "intended_specialist": (
+                str(current_row.get("specialist_id") or "") or None
+            ),
+            "blocks_v6_handoff": current_row.get("pre_stage_ready") is not True,
+            "receipt": current_row.get("pre_stage_receipt"),
+            "cpu_pack_status": (
+                "not_built"
+                if current_row.get("pre_stage_ready") is not True
+                else "ready"
+            ),
+            "representative_ready": (
+                current_row.get("representative_ready") is True
+            ),
+            "expert_corpus_ready": corpus_ready,
+            "expert_corpus_pointer": corpus.get("protected_pointer"),
+            "expert_records": int(corpus.get("records") or 0),
+            "expert_decisions": int(corpus.get("decisions") or 0),
+            "guide_rows": int(corpus.get("guide_rows") or 0),
+        }
     archive = payload.get("expert_corpus_archive")
     policy = (
         archive.get("canonical_policy")
@@ -11710,6 +12070,7 @@ def specialist_protocol_state(
     heads_and_datasets = payload.get("heads_and_datasets")
     specialists = payload.get("specialists")
     population = payload.get("population_training")
+    post_fleet_refresh = payload.get("post_fleet_refresh")
     allowed = payload.get("allowed_status_values")
     allowed_statuses = (
         set(allowed.get("specialist") or []) if isinstance(allowed, dict) else set()
@@ -11766,8 +12127,26 @@ def specialist_protocol_state(
     runtime_specialist_id = str(runtime_specialist_id or "").strip().lower()
     runtime_run_name = str(runtime_run_name or "").strip()
     runtime_service_state = str(runtime_service_state or "").strip()
+    canonical_active_run_id = str(
+        active_run.get("active_specialist") or ""
+    ).strip().lower()
+    canonical_active_run_name = str(
+        active_run.get("run_name") or ""
+    ).strip()
     runtime_identity_reconciled = bool(
-        runtime_specialist_id and runtime_specialist_id != canonical_active_id
+        runtime_specialist_id
+        and (
+            runtime_specialist_id != canonical_active_id
+            or (
+                canonical_active_run_id
+                and canonical_active_run_id != runtime_specialist_id
+            )
+            or (
+                runtime_run_name
+                and canonical_active_run_name
+                and canonical_active_run_name != runtime_run_name
+            )
+        )
     )
     active_id = runtime_specialist_id or canonical_active_id
     live_execution = canonical_live_execution
@@ -11814,6 +12193,7 @@ def specialist_protocol_state(
         runtime_identity_reconciled or runtime_execution_reconciled
     )
     rows: list[dict[str, Any]] = []
+    retained_non_specialist_opponents: list[dict[str, Any]] = []
     ids: list[str] = []
     for raw in specialists:
         if not isinstance(raw, dict):
@@ -11831,9 +12211,12 @@ def specialist_protocol_state(
                 "source": str(source),
             }
         ids.append(specialist_id)
+        required_specialist = raw.get("required_specialist") is not False
         compact_row = {
                 "id": specialist_id,
                 "name": str(raw.get("name") or specialist_id),
+                "deck_family_name": raw.get("deck_family_name"),
+                "secondary_search_alias": raw.get("secondary_search_alias"),
                 "status": status,
                 "active": specialist_id == active_id,
                 "frozen": raw.get("frozen") is True,
@@ -11844,6 +12227,7 @@ def specialist_protocol_state(
                     if str(value)
                 ],
                 "premium_holdout_tier": raw.get("premium_holdout_tier"),
+                "required_specialist": required_specialist,
                 "bootstrap_epochs_completed": int(
                     ((raw.get("counters") or {}).get("bootstrap_epochs_completed"))
                     or 0
@@ -11859,6 +12243,59 @@ def specialist_protocol_state(
                     (raw.get("counters") or {}).get("next_iteration")
                 ),
             }
+        if not required_specialist:
+            public_opponent = dict(
+                raw.get("public_practice_gate_opponent") or {}
+            )
+            matchup_router = dict(raw.get("matchup_router") or {})
+            retained_non_specialist_opponents.append(
+                {
+                    "id": specialist_id,
+                    "name": str(raw.get("name") or specialist_id),
+                    "display_status": str(
+                        raw.get("display_status")
+                        or (
+                            "historical_artifacts_preserved_"
+                            "inference_only_not_planned_for_training"
+                        )
+                    ),
+                    "role_label": (
+                        "PUBLIC OPPONENT + ACTIVE ROUTE, "
+                        "NO SPECIALIST TRAIN"
+                    ),
+                    "required_specialist": False,
+                    "selection_eligible": (
+                        raw.get("selector_eligible") is True
+                    ),
+                    "completion_eligible": (
+                        raw.get("completion_eligible") is True
+                    ),
+                    "training_authorized": False,
+                    "submission_authorized": (
+                        raw.get("submission_authorized") is True
+                    ),
+                    "matchup_route_preserved": (
+                        raw.get(
+                            "public_opponent_and_matchup_router_preserved"
+                        )
+                        is True
+                    ),
+                    "stable_matchup_slot": matchup_router.get(
+                        "stable_matchup_slot"
+                    ),
+                    "stable_matchup_slot_status": matchup_router.get(
+                        "status"
+                    ),
+                    "public_practice_gate_opponent": public_opponent,
+                    "inference_only": (
+                        public_opponent.get("inference_only") is True
+                    ),
+                    "historical_artifacts_preserved": True,
+                    "future_specialist_training_planned": False,
+                    "source": str(source),
+                }
+            )
+            continue
         if specialist_id == active_id and live_execution.get("available") is True:
             compact_row.update(
                 {
@@ -11879,12 +12316,18 @@ def specialist_protocol_state(
     canonical_active_rows = [
         str(raw.get("id") or "")
         for raw in specialists
-        if isinstance(raw, dict) and raw.get("active") is True
+        if (
+            isinstance(raw, dict)
+            and raw.get("required_specialist") is not False
+            and raw.get("active") is True
+        )
     ]
     phase = str(current.get("phase") or "")
     allows_no_active = phase in {
         "shared_core_derivation",
         "specialist_core_refresh_handoff",
+        "specialist_handoff_waiting_for_teal_full33_corpus",
+        "next_specialist_selected_readiness_blocked",
     }
     if (
         len(ids) != len(set(ids))
@@ -11918,6 +12361,291 @@ def specialist_protocol_state(
     owner_removal_contract = dict(priority.get("owner_removal") or {})
     goal_projection = read_json(ROOT / "ops/current_goal_requirements.json")
     projected_overrides = goal_projection.get("current_owner_overrides") or {}
+    projected_guide_snapshot = (
+        (goal_projection.get("verified_snapshot") or {}).get(
+            "current_deck_guides"
+        )
+        or {}
+    )
+    projected_guide_policy = (
+        projected_guide_snapshot.get("goal_path_guidance") or {}
+    )
+    projected_future_guide_scope = (
+        projected_overrides.get("future_guide_strategic_branch_scope") or {}
+    )
+    projected_future_head_action = projected_future_guide_scope
+    projected_future_setup_head = (
+        projected_future_guide_scope.get("setup_board_outcome_head") or {}
+    )
+    projected_teal_legacy_guide = (
+        projected_overrides.get("teal_guide_weight_nonwinning_reduction")
+        or {}
+    )
+    current_deck_guide_weight_policy: dict[str, Any] = {}
+    if projected_guide_policy:
+        current_deck_guide_weight_policy = {
+            **projected_guide_policy,
+            "guide_curriculum_revision": projected_future_guide_scope.get(
+                "guide_curriculum_revision"
+            ),
+            "strategic_branch_scope_revision": (
+                projected_future_guide_scope.get(
+                    "strategic_branch_scope_revision"
+                )
+            ),
+            "head_action_scope_revision": (
+                projected_future_guide_scope.get(
+                    "head_action_scope_revision"
+                )
+            ),
+            "learning_effect": (
+                "literal_multiplier_on_bounded_guide_conditioned_"
+                "strategic_head_curriculum"
+            ),
+            "gradient_effect": (
+                "scales_guide_conditioned_strategic_head_gradient_"
+                "contribution"
+            ),
+            "direct_policy_cross_entropy_allowed": bool(
+                projected_future_guide_scope.get(
+                    "direct_policy_cross_entropy_allowed"
+                )
+            ),
+            "bootstrap_weight_ramp": projected_guide_snapshot.get(
+                "bootstrap_weight_ramp"
+            ),
+            "bootstrap_maximum_weight": projected_guide_snapshot.get(
+                "maximum_weight"
+            ),
+            "bootstrap_maximum_weight_scope": projected_guide_snapshot.get(
+                "maximum_weight_scope"
+            ),
+            "maximum_post_bootstrap_auxiliary_weight": (
+                projected_guide_snapshot.get(
+                    "maximum_post_bootstrap_auxiliary_weight"
+                )
+            ),
+            "post_bootstrap_behavior": projected_guide_snapshot.get(
+                "post_bootstrap_behavior"
+            ),
+            "source": "current_goal_requirements_owner_projection",
+        }
+    current_deck_guide_training_modes: dict[str, Any] = {}
+    if projected_future_guide_scope:
+        legacy_weight = projected_teal_legacy_guide.get(
+            "active_iteration_13_weight"
+        )
+        if legacy_weight is None:
+            legacy_weight = projected_teal_legacy_guide.get("target_weight")
+        current_deck_guide_training_modes = {
+            "active_started_lineage": {
+                "specialist_id": "teal-mask-ogerpon-ex",
+                "display_name": "Slop Box (Teal Mask Ogerpon ex)",
+                "is_active": active_id == "teal-mask-ogerpon-ex",
+                "scope": "already_started_legacy_run",
+                "mode": "confidence_weighted_policy_cross_entropy",
+                "guide_weight": legacy_weight,
+                "revision_51_retrofit_allowed": False,
+                "runtime_input_authority": False,
+                "action_selection_authority": False,
+                "serving_authority": False,
+            },
+            "future_lineage": {
+                "scope": projected_future_guide_scope.get("scope"),
+                "effective_from_specialist": (
+                    projected_future_guide_scope.get(
+                        "prospective_effective_specialist"
+                    )
+                ),
+                "guide_curriculum_revision": (
+                    projected_future_guide_scope.get(
+                        "guide_curriculum_revision"
+                    )
+                ),
+                "mode": projected_future_guide_scope.get(
+                    "training_target_mode"
+                ),
+                "direct_policy_cross_entropy_allowed": bool(
+                    projected_future_guide_scope.get(
+                        "direct_policy_cross_entropy_allowed"
+                    )
+                ),
+                "guide_runtime_input_allowed": bool(
+                    projected_future_guide_scope.get(
+                        "guide_runtime_input_allowed"
+                    )
+                ),
+                "guide_action_selection_allowed": bool(
+                    projected_future_guide_scope.get(
+                        "guide_action_selection_allowed"
+                    )
+                ),
+                "replace_observed_outcome_targets_allowed": bool(
+                    projected_future_guide_scope.get(
+                        "replace_observed_outcome_targets_allowed"
+                    )
+                ),
+                "curriculum_focus": projected_future_guide_scope.get(
+                    "curriculum_focus"
+                ),
+                "fused_policy_learning_authority": (
+                    projected_future_guide_scope.get(
+                        "fused_policy_learning_authority"
+                    )
+                ),
+                "activation_requires_prestage_validation_receipt": (
+                    projected_future_guide_scope.get(
+                        "activation_requires_prestage_validation_receipt"
+                    )
+                    is True
+                ),
+            },
+            "future_head_action_contract": {
+                "head_action_scope_revision": (
+                    projected_future_guide_scope.get(
+                        "head_action_scope_revision"
+                    )
+                ),
+                "all_future_heads_must_influence_actions": (
+                    projected_future_guide_scope.get(
+                        "all_future_heads_must_influence_actions"
+                    )
+                    is True
+                ),
+                "owner_decision_revision": (
+                    projected_future_head_action.get(
+                        "owner_decision_revision"
+                    )
+                ),
+                "schema": projected_future_head_action.get(
+                    "decision_fusion_schema"
+                ),
+                "preserve_v1_additive_residual": (
+                    projected_future_head_action.get(
+                        "parent_v1_fusion_residual_preserved"
+                    )
+                    is True
+                ),
+                "computation_role": projected_future_head_action.get(
+                    "required_computation_role"
+                ),
+                "fusion_role": (
+                    (
+                        projected_future_head_action.get(
+                            "allowed_fusion_roles"
+                        )
+                        or [None]
+                    )[0]
+                ),
+                "action_influence": projected_future_head_action.get(
+                    "required_action_influence"
+                ),
+                "state_head_action_conditioning": (
+                    projected_future_head_action.get(
+                        "state_head_action_conditioning"
+                    )
+                ),
+                "option_head_action_conditioning": (
+                    projected_future_head_action.get(
+                        "option_head_action_conditioning"
+                    )
+                ),
+                "route_architecture": projected_future_head_action.get(
+                    "action_route_granularity"
+                ),
+                "existing_learned_decision_source_count": (
+                    projected_future_head_action.get(
+                        "existing_learned_decision_source_count"
+                    )
+                ),
+                "canonical_learned_decision_source_count_with_setup": (
+                    projected_future_head_action.get(
+                        "canonical_learned_decision_source_count_with_setup"
+                    )
+                ),
+                "setup_source_included_when_present": (
+                    projected_future_head_action.get(
+                        "setup_source_included_when_present"
+                    )
+                    is True
+                ),
+                "guide_is_sole_no_route_exception": (
+                    projected_future_head_action.get(
+                        "guide_is_only_action_route_exception"
+                    )
+                    is True
+                ),
+                "route_reduction": projected_future_head_action.get(
+                    "route_aggregation"
+                ),
+                "aggregate_absolute_cap": projected_future_head_action.get(
+                    "aggregate_route_delta_logit_cap"
+                ),
+                "zero_safe_final_projections": (
+                    projected_future_head_action.get(
+                        "route_final_projection_initialization"
+                    )
+                    == "exact_zero"
+                ),
+                "independent_means_pre_fusion_computation_not_action_isolation": (
+                    projected_future_head_action.get(
+                        "independent_means_pre_fusion_computation_"
+                        "not_action_isolation"
+                    )
+                    is True
+                ),
+                "direct_action_selection_authority": (
+                    projected_future_head_action.get(
+                        "direct_action_selection_authority"
+                    )
+                    is True
+                ),
+                "fusion_selects_action": (
+                    projected_future_head_action.get("fusion_selects_action")
+                    is True
+                ),
+                "materially_influences_fused_logits": (
+                    projected_future_head_action.get(
+                        "materially_influences_fused_logits"
+                    )
+                    is True
+                ),
+                "runtime_enabled": (
+                    projected_future_head_action.get("runtime_enabled") is True
+                ),
+                "runtime_activation_requirement": (
+                    projected_future_head_action.get(
+                        "runtime_activation_requirement"
+                    )
+                ),
+                "setup_board_outcome_head": {
+                    "id": projected_future_setup_head.get("id"),
+                    "owner_decision_revision": (
+                        projected_future_setup_head.get(
+                            "owner_decision_revision"
+                        )
+                    ),
+                    "computation_role": projected_future_setup_head.get(
+                        "computation_role"
+                    ),
+                    "fusion_role": projected_future_setup_head.get(
+                        "fusion_role"
+                    ),
+                    "action_influence": projected_future_setup_head.get(
+                        "action_influence"
+                    ),
+                    "causal_input": projected_future_setup_head.get(
+                        "causal_input"
+                    ),
+                    "fusion_route_initialization": (
+                        projected_future_setup_head.get(
+                            "fusion_route_initialization"
+                        )
+                    ),
+                },
+            },
+            "source": "current_goal_requirements_owner_projection",
+        }
     projected_plan = (
         projected_overrides.get("required_specialist_plan")
         or {}
@@ -11982,7 +12710,20 @@ def specialist_protocol_state(
     planning_required_count = int(
         projected_plan.get("required_specialists_total") or expected_count
     )
-    projected_core = dict(projected_overrides.get("cumulative_core") or {})
+    projected_version_namespaces = dict(
+        projected_overrides.get("version_namespaces") or {}
+    )
+    projected_core_system = dict(
+        projected_version_namespaces.get("core_system") or {}
+    )
+    projected_core = dict(
+        projected_version_namespaces.get("cumulative_core")
+        or projected_overrides.get("cumulative_core")
+        or {}
+    )
+    projected_matchup_adapter = dict(
+        projected_version_namespaces.get("matchup_adapter") or {}
+    )
     current_core_refresh = dict(payload.get("current_cumulative_core_refresh") or {})
     accepted_core = dict(current_core_refresh.get("latest_accepted_core") or {})
     latest_accepted_core_version = int(
@@ -11991,10 +12732,6 @@ def specialist_protocol_state(
         or 0
     )
     attempted_core_versions: list[tuple[int, str]] = []
-    for key, value in projected_core.items():
-        match = re.search(r"_v(\d+)_status$", str(key))
-        if match:
-            attempted_core_versions.append((int(match.group(1)), str(value)))
     if current_core_refresh.get("output_core_version"):
         attempted_core_versions.append(
             (
@@ -12032,12 +12769,50 @@ def specialist_protocol_state(
                 or "candidate_receipt_present"
             )
         attempted_core_versions.append((version, receipt_status))
+    # The explicit owner projection is the display authority. Add it last so
+    # older mutable-state labels (for example, a fallback activation suffix)
+    # cannot overwrite the canonical rejection stage for the same generation.
+    for key, value in projected_core.items():
+        match = re.search(r"(?:^|_)v(\d+)_status$", str(key))
+        if match:
+            attempted_core_versions.append((int(match.group(1)), str(value)))
+    projected_latest_attempted_version = int(
+        projected_core.get("latest_attempted_version") or 0
+    )
+    if projected_latest_attempted_version:
+        attempted_core_versions.append(
+            (
+                projected_latest_attempted_version,
+                str(
+                    projected_core.get(
+                        f"v{projected_latest_attempted_version}_status"
+                    )
+                    or ""
+                ),
+            )
+        )
     latest_attempted_core = (
         max(attempted_core_versions, key=lambda row: row[0])
         if attempted_core_versions
         else (0, "")
     )
     core_generation = {
+        "core_system_revision": (
+            int(projected_core_system.get("current_revision") or 0) or None
+        ),
+        "core_system_display_name": (
+            (
+                f"{projected_core_system.get('display_namespace')} "
+                f"{int(projected_core_system.get('current_revision') or 0)}"
+            )
+            if projected_core_system.get("display_namespace")
+            and projected_core_system.get("current_revision")
+            else None
+        ),
+        "checkpoint_display_namespace": (
+            projected_core.get("display_namespace")
+            or "Accepted Policy Generation"
+        ),
         "latest_accepted_version": latest_accepted_core_version or None,
         "latest_accepted_checkpoint": (
             projected_core.get("latest_accepted_checkpoint")
@@ -12046,6 +12821,24 @@ def specialist_protocol_state(
         ),
         "latest_attempted_version": latest_attempted_core[0] or None,
         "latest_attempted_status": latest_attempted_core[1] or None,
+        "attempted_statuses": {
+            str(version): status
+            for version, status in sorted(
+                {
+                    version: status
+                    for version, status in attempted_core_versions
+                    if version and status
+                }.items()
+            )
+        },
+        "matchup_adapter_format_version": (
+            int(projected_matchup_adapter.get("checkpoint_format_version") or 0)
+            or None
+        ),
+        "matchup_adapter_display_name": (
+            projected_matchup_adapter.get("display_name")
+            or "Matchup Router Format 6"
+        ),
         "source": (
             "current_goal_requirements_owner_projection"
             if projected_core
@@ -12612,6 +13405,12 @@ def specialist_protocol_state(
         "shared_core_status": shared_core.get("status"),
         "shared_core_checkpoint": shared_core.get("checkpoint"),
         "core_generation": core_generation,
+        "current_deck_guide_weight_policy": (
+            current_deck_guide_weight_policy
+        ),
+        "current_deck_guide_training_modes": (
+            current_deck_guide_training_modes
+        ),
         "head_requirements": {
             "archetype_policy": head_template.get(
                 "archetype_policy_head_required"
@@ -12644,6 +13443,9 @@ def specialist_protocol_state(
         "required_target_count": planning_required_count,
         "status_counts": dashboard_status_counts,
         "specialists": dashboard_rows,
+        "retained_non_specialist_opponents": (
+            retained_non_specialist_opponents
+        ),
         "training_priority": {
             "policy": priority.get("policy"),
             "ordered_unfinished_ids_after_active": live_ordered_priority,
@@ -12713,7 +13515,9 @@ def specialist_protocol_state(
                 else []
             ),
             "prestage_representative_ready": (
-                (prestage_state.get("representative") or {}).get("ready")
+                canonical_prestage.get("representative_ready") is True
+                if v6_handoff_blocked
+                else (prestage_state.get("representative") or {}).get("ready")
                 is True
                 if prestage_available
                 else False
@@ -12736,22 +13540,31 @@ def specialist_protocol_state(
                 else None
             ),
             "expert_corpus_ready": bool(
-                selected_pointer.is_file() and not v6_handoff_blocked
+                canonical_prestage.get("expert_corpus_ready") is True
+                if v6_handoff_blocked
+                else selected_pointer.is_file()
             ),
             "expert_corpus_pointer": (
-                str(selected_pointer)
-                if selected_pointer.is_file() and not v6_handoff_blocked
+                canonical_prestage.get("expert_corpus_pointer")
+                if v6_handoff_blocked
+                else str(selected_pointer)
+                if selected_pointer.is_file()
                 else None
             ),
             "expert_records": int(
-                ((selected_corpus.get("totals") or {}).get("records_kept"))
+                canonical_prestage.get("expert_records")
+                if v6_handoff_blocked
+                else ((selected_corpus.get("totals") or {}).get("records_kept"))
                 or 0
             ),
             "expert_decisions": int(
-                ((selected_corpus.get("totals") or {}).get("decisions_kept")) or 0
+                canonical_prestage.get("expert_decisions")
+                if v6_handoff_blocked
+                else ((selected_corpus.get("totals") or {}).get("decisions_kept"))
+                or 0
             ),
             "required_expert_corpus": (
-                "v6_expanded_strategic_latest20"
+                "selected_checksum_pinned_corpus"
                 if v6_handoff_blocked
                 else "selected_checksum_pinned_corpus"
             ),
@@ -12863,6 +13676,11 @@ def specialist_protocol_state(
             ),
             "runtime": population_runtime,
         },
+        "post_fleet_refresh": (
+            dict(post_fleet_refresh)
+            if isinstance(post_fleet_refresh, dict)
+            else {}
+        ),
         "unresolved_count": len(payload.get("unresolved_facts") or []),
         "source": str(source),
         "updated_at": source.stat().st_mtime,

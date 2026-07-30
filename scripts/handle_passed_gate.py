@@ -124,6 +124,15 @@ def _verified_effective_design_fingerprint(
         last_completed_iteration = int(
             receipt.get("last_completed_iteration", -2)
         )
+        reason = str(receipt.get("reason") or "")
+        boundary_is_valid = (
+            boundary_next_iteration > 0
+            and last_completed_iteration == boundary_next_iteration - 1
+        ) or (
+            boundary_next_iteration == 0
+            and last_completed_iteration == -1
+            and reason == "receipt_backed_completed_collection_resume_v1"
+        )
         if not (
             int(receipt.get("schema", -1)) == 1
             and isinstance(previous, dict)
@@ -134,8 +143,7 @@ def _verified_effective_design_fingerprint(
             and previous == contract
             and _canonical_digest(previous) == previous_fingerprint
             and _canonical_digest(current) == current_fingerprint
-            and boundary_next_iteration > 0
-            and last_completed_iteration == boundary_next_iteration - 1
+            and boundary_is_valid
         ):
             return None, "successor design migration chain is corrupt"
 
@@ -156,7 +164,7 @@ def _verified_effective_design_fingerprint(
                     int(history_row.get("boundary_next_iteration", -1))
                     == boundary_next_iteration
                     and str(history_row.get("reason") or "")
-                    == str(receipt.get("reason") or "")
+                    == reason
                 )
             )
         ):
@@ -175,6 +183,7 @@ def _successor_decision_fusion_runtime_ready(
     *,
     state: dict[str, Any],
     learner: dict[str, Any],
+    allow_terminal_gate_evidence: bool = False,
 ) -> tuple[bool, str]:
     """Verify a generated successor's runtime-fused descendant.
 
@@ -304,7 +313,7 @@ def _successor_decision_fusion_runtime_ready(
     candidate = dict(lineage.get("candidate") or {})
     learner_after = dict(lineage.get("learner_after") or {})
     publish = dict(lineage.get("next_collection_publish") or {})
-    if not (
+    published = (
         lineage.get("completed") is True
         and candidate == learner
         and learner_after == learner
@@ -312,8 +321,53 @@ def _successor_decision_fusion_runtime_ready(
         and str(publish.get("digest") or "") == learner_digest
         and publish.get("local_ok") is True
         and publish.get("remote_ok") is True
-    ):
-        return False, "successor terminal learner was not published fleet-wide"
+    )
+    if not published:
+        result = dict(lineage.get("active_gate_result") or {})
+        audit = dict(result.get("audit") or {})
+        runtime = dict(audit.get("matchup_runtime") or {})
+        games = int(result.get("games") or 0)
+        terminal_gate_audited = bool(
+            allow_terminal_gate_evidence
+            and not publish
+            and lineage.get("completed") is True
+            and candidate == learner
+            and learner_after == learner
+            and result.get("schema") == GATE_RESULT_SCHEMA
+            and int(result.get("iteration", -1)) == completed_iteration
+            and str(result.get("checkpoint") or "") == str(learner_path)
+            and str(result.get("checkpoint_digest") or "") == learner_digest
+            and games > 0
+            and audit.get("passed") is True
+            and audit.get("exact_distribution") is True
+            and audit.get("exact_weights") is True
+            and audit.get("greedy_required") is True
+            and audit.get("greedy") is True
+            and audit.get("both_seats") is True
+            and int(audit.get("valid_games", -1)) == games
+            and int(audit.get("rows", -1)) == games
+            and int(audit.get("requested_games", -1)) == games
+            and str(audit.get("checkpoint_digest") or "") == learner_digest
+            and runtime.get("schema")
+            == "poke_bot.matchup_runtime_collection_audit/v1"
+            and runtime.get("all_games_audited") is True
+            and runtime.get("all_runtime_enabled") is True
+            and runtime.get("contract_clean") is True
+            and int(runtime.get("games", -1)) == games
+            and int(runtime.get("audited_games", -1)) == games
+            and int(runtime.get("runtime_enabled_games", -1)) == games
+            and int(runtime.get("runtime_disabled_games", -1)) == 0
+            and int(runtime.get("missing_games", -1)) == 0
+            and int(runtime.get("malformed_games", -1)) == 0
+            and int(runtime.get("transition_contract_violations", -1)) == 0
+        )
+        if not terminal_gate_audited:
+            return False, "successor terminal learner was not published fleet-wide"
+        return (
+            True,
+            "verified successor fused terminal descendant via complete audited "
+            f"active gate in {commit_path.name}",
+        )
     return (
         True,
         "verified successor fused descendant via "
@@ -321,7 +375,11 @@ def _successor_decision_fusion_runtime_ready(
     )
 
 
-def _decision_fusion_runtime_ready(run_dir: Path) -> tuple[bool, str]:
+def _decision_fusion_runtime_ready(
+    run_dir: Path,
+    *,
+    allow_terminal_gate_evidence: bool = False,
+) -> tuple[bool, str]:
     """Verify the exact learner is the receipted all-head serving checkpoint."""
     state = _read_json(Path(run_dir) / "loop_state.json")
     learner = dict(state.get("learner") or {})
@@ -342,6 +400,7 @@ def _decision_fusion_runtime_ready(run_dir: Path) -> tuple[bool, str]:
                 run_dir,
                 state=state,
                 learner=learner,
+                allow_terminal_gate_evidence=allow_terminal_gate_evidence,
             )
         )
         if successor_ready:
@@ -1036,6 +1095,7 @@ def build_submission_bundle(
     python: Path,
     archetype: str,
     matchup_tree: Path | None = None,
+    turn_order_preference: str = "first_if_allowed",
 ) -> dict[str, Any]:
     from poke_bot import checkpoint as checkpoint_mod
 
@@ -1045,10 +1105,36 @@ def build_submission_bundle(
     checkpoint_payload = checkpoint_mod.load_checkpoint(
         frozen_checkpoint, map_location="cpu"
     )
+    checkpoint_registry = dict(
+        (checkpoint_payload.get("model_config") or {}).get(
+            "matchup_adapter_registry"
+        )
+        or {}
+    )
+    checkpoint_expert_ids = tuple(
+        str(value)
+        for value in (
+            checkpoint_registry.get("expert_ids")
+            or checkpoint_registry.get("active_expert_ids")
+            or EXPERT_IDS
+        )
+    )
+    if (
+        not checkpoint_expert_ids
+        or len(checkpoint_expert_ids) != len(set(checkpoint_expert_ids))
+    ):
+        raise RuntimeError(
+            "frozen checkpoint has no unique matchup-router identity"
+        )
     checkpoint_archetype = str(
         checkpoint_payload.get("archetype_id") or ""
     ).strip().casefold()
     expected_archetype = str(archetype).strip().casefold()
+    if turn_order_preference not in {
+        "first_if_allowed",
+        "second_if_allowed",
+    }:
+        raise RuntimeError("invalid submission turn-order preference")
     if checkpoint_archetype != expected_archetype:
         raise RuntimeError(
             "frozen checkpoint archetype does not match the submission "
@@ -1064,6 +1150,7 @@ def build_submission_bundle(
             "POKEBOT_BLACKWELL_STRATEGY_HEADS": "0",
             "POKEBOT_SEARCH_MODE": "policy",
             "POKEBOT_ALLOW_ORACLE_DECK": "0",
+            "POKEBOT_SUBMISSION_TURN_ORDER": turn_order_preference,
         }
     )
     matchup_tree_digest: str | None = None
@@ -1079,8 +1166,8 @@ def build_submission_bundle(
         if (
             not matchup_tree.is_file()
             or tree.get("runtime_enabled") is not True
-            or tuple(targets) != EXPERT_IDS
-            or len(set(targets)) != len(EXPERT_IDS)
+            or tuple(targets) != checkpoint_expert_ids
+            or len(set(targets)) != len(checkpoint_expert_ids)
             or expected_archetype not in targets
             or expected_archetype not in accepted
             or runtime.get("one_route_per_decision") is not True
@@ -1111,9 +1198,24 @@ def build_submission_bundle(
     if (
         not bundle.is_file()
         or attested.get("file_sha256") != digest
-        or attested.get("go_first_if_offered") is not True
+        or attested.get("schema")
+        not in {
+            "poke_bot.submission_go_first_attestation/v1",
+            "poke_bot.submission_turn_order_attestation/v1",
+        }
+        or str(
+            attested.get("turn_order_preference")
+            or (
+                "first_if_allowed"
+                if attested.get("go_first_if_offered") is True
+                else ""
+            )
+        )
+        != turn_order_preference
     ):
-        raise RuntimeError("submission bundle lacks its digest-bound go-first proof")
+        raise RuntimeError(
+            "submission bundle lacks its digest-bound turn-order proof"
+        )
     with tarfile.open(bundle, "r:gz") as archive:
         members = {
             member.name.removeprefix("./"): member
@@ -1214,6 +1316,7 @@ def build_submission_bundle(
         "attestation": str(attestation.resolve()),
         "specialist_id": expected_archetype,
         "checkpoint_archetype_id": checkpoint_archetype,
+        "turn_order_preference": turn_order_preference,
         "deck": deck_receipt,
         "contents": {
             "model_sha256": model_digest,
@@ -1250,6 +1353,9 @@ def _copy_submission_slot(bundle: dict[str, Any], root: Path, slot: int) -> dict
         "sha256": bundle["sha256"],
         "attestation": str(target_attestation.resolve()),
         "specialist_id": str(bundle["specialist_id"]),
+        "turn_order_preference": str(
+            bundle.get("turn_order_preference") or "first_if_allowed"
+        ),
         "model_sha256": str(bundle["contents"]["model_sha256"]),
         "deck_sha256": str(bundle["contents"]["deck_sha256"]),
         "deck_cards_sha256": str(bundle["contents"]["deck_cards_sha256"]),
@@ -1315,8 +1421,13 @@ def queue_submission_copies(
         selected: list[dict[str, Any]] = []
         for copy in copies:
             slot = int(copy["slot"])
+            turn_order_preference = str(
+                copy.get("turn_order_preference") or "first_if_allowed"
+            )
             if (
                 str(copy.get("specialist_id") or "") != specialist_id
+                or turn_order_preference
+                not in {"first_if_allowed", "second_if_allowed"}
                 or str(copy.get("model_sha256") or "") != checkpoint_digest
                 or not str(copy.get("deck_sha256") or "").startswith("sha256:")
                 or not str(copy.get("deck_cards_sha256") or "").startswith(
@@ -1349,11 +1460,14 @@ def queue_submission_copies(
             label = (
                 f"{specialist_id} {outcome_label} iter "
                 f"{int(gate_plan['iteration'])} "
-                f"copy {slot}/{required_count} {checkpoint_digest[7:19]}"
+                f"copy {slot}/{required_count} "
+                f"{turn_order_preference.replace('_if_allowed', '')} "
+                f"{checkpoint_digest[7:19]}"
             )
             expected = {
                 "specialist_id": specialist_id,
                 "copy_number": slot,
+                "turn_order_preference": turn_order_preference,
                 "label": label,
                 "checkpoint_checksum": checkpoint_digest,
                 "model_checksum": str(copy["model_sha256"]),
@@ -1389,6 +1503,7 @@ def queue_submission_copies(
                 immutable = (
                     "specialist_id",
                     "copy_number",
+                    "turn_order_preference",
                     "label",
                     "checkpoint_checksum",
                     "model_checksum",
@@ -1787,6 +1902,9 @@ def submit_one_approved_copy(
         "competition": competition,
         "file_sha256": copy["sha256"],
         "message": message,
+        "turn_order_preference": str(
+            copy.get("turn_order_preference") or "first_if_allowed"
+        ),
     }
     if authorization_path.exists():
         existing = _read_json(authorization_path)
@@ -2088,6 +2206,16 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--submission-turn-order-preference",
+        action="append",
+        choices=("first_if_allowed", "second_if_allowed"),
+        default=None,
+        help=(
+            "Ordered per-copy turn-order profile. Repeat exactly once per "
+            "submission copy. Omitted means first_if_allowed for every copy."
+        ),
+    )
+    parser.add_argument(
         "--submission-mode",
         choices=("immediate", "queue_and_continue"),
         default="immediate",
@@ -2169,6 +2297,29 @@ def run(args: argparse.Namespace) -> int:
     submission_count = int(args.submission_count)
     if submission_count not in {1, 2}:
         raise RuntimeError("submission count must be one (or two for legacy audit)")
+    turn_order_preferences = list(
+        getattr(args, "submission_turn_order_preference", None) or ()
+    )
+    if not turn_order_preferences:
+        turn_order_preferences = ["first_if_allowed"] * submission_count
+    if (
+        len(turn_order_preferences) != submission_count
+        or any(
+            value not in {"first_if_allowed", "second_if_allowed"}
+            for value in turn_order_preferences
+        )
+    ):
+        raise RuntimeError(
+            "submission turn-order profiles must match submission count"
+        )
+    if (
+        len(set(turn_order_preferences)) > 1
+        and str(getattr(args, "submission_mode", "immediate"))
+        != "queue_and_continue"
+    ):
+        raise RuntimeError(
+            "distinct turn-order bundles require queue_and_continue mode"
+        )
     args.lock.parent.mkdir(parents=True, exist_ok=True)
     with args.lock.open("a+", encoding="utf-8") as lock_stream:
         fcntl.flock(lock_stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -2298,7 +2449,14 @@ def run(args: argparse.Namespace) -> int:
                 continue
             if bool(getattr(args, "require_decision_fusion_runtime", False)):
                 fusion_ready, fusion_reason = _decision_fusion_runtime_ready(
-                    args.run_dir
+                    args.run_dir,
+                    allow_terminal_gate_evidence=bool(
+                        plan is not None
+                        and plan.get("schema")
+                        == "poke_bot.ceiling_acceptance_archive_plan/v1"
+                        and plan.get("completion_authority")
+                        == "explicit_owner_ceiling_acceptance"
+                    ),
                 )
                 if not fusion_ready:
                     state = _save_state(
@@ -2434,25 +2592,42 @@ def run(args: argparse.Namespace) -> int:
                     "submission source root lacks scripts/build_submission.sh: "
                     f"{submission_repo_root}"
                 )
-            bundle = build_submission_bundle(
-                repo_root=submission_repo_root,
-                frozen_manifest=frozen,
-                deck_receipt=deck,
-                output_dir=args.submission_root / "build",
-                python=args.python,
-                archetype=args.archetype,
-                matchup_tree=getattr(args, "matchup_tree", None),
-            )
+            bundles = [
+                build_submission_bundle(
+                    repo_root=submission_repo_root,
+                    frozen_manifest=frozen,
+                    deck_receipt=deck,
+                    output_dir=(
+                        args.submission_root / "build"
+                        if submission_count == 1
+                        else args.submission_root / f"build-copy-{slot}"
+                    ),
+                    python=args.python,
+                    archetype=args.archetype,
+                    matchup_tree=getattr(args, "matchup_tree", None),
+                    turn_order_preference=preference,
+                )
+                for slot, preference in enumerate(
+                    turn_order_preferences,
+                    start=1,
+                )
+            ]
+            bundle = bundles[0]
             state = _save_state(
                 args.state,
                 state,
                 phase="submission_bundle_verified",
                 submission_bundle=bundle,
+                submission_bundles=bundles,
             )
 
             if submission_mode == "queue_and_continue":
                 copies = [
-                    _copy_submission_slot(bundle, args.submission_root, slot)
+                    _copy_submission_slot(
+                        bundles[slot - 1],
+                        args.submission_root,
+                        slot,
+                    )
                     for slot in range(1, submission_count + 1)
                 ]
                 queued = queue_submission_copies(

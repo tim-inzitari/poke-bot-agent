@@ -5,9 +5,9 @@ Elmo has two explicit lifecycles built from the same immutable image:
 - `docker-compose.yml` (or `docker-compose.host.yml`) is the observed canary:
   four sim processes, a 100-job stop, and `restart: "no"`.
 - `docker-compose.production.yml` is an override applied only after the canary.
-  It drains every 1,024 completed jobs and the durable supervisor resumes the
-  next worker. A 2,048-game Inzi iteration therefore spans two bounded service
-  lifetimes without reconnecting every few dozen seconds.
+  It drains every 768 completed jobs and the durable supervisor resumes the
+  next worker. This threshold was selected below the observed 30 GiB
+  process-tree RSS failure point while avoiding per-child recycle churn.
 
 Never use the production override by itself. Pick exactly one base file for the
 host's GPU attachment and apply the production file second.
@@ -39,7 +39,7 @@ host's GPU attachment and apply the production file second.
 
 ## Production restart circuit
 
-The remote worker reserves exit code `75` only for a completed 1,024-job drain.
+The remote worker reserves exit code `75` only for a completed 768-job drain.
 The supervisor accepts that code only after at least 60 seconds, waits 10
 seconds, and starts the next bounded lifetime. Each worker and all of its
 manager/pool/leaf descendants run in one isolated process group. The supervisor

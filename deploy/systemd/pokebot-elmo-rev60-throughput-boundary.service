@@ -1,0 +1,14 @@
+[Unit]
+Description=Activate bounded Elmo rotation at the Teal iteration-14 commit
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/apply_elmo_rotation_at_boundary.py --loop-state /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/outputs/pure_rl/pure_rl_teal-mask-ogerpon-ex_temporal1_8k_v1_20260723/loop_state.json --target-next-iteration 15 --remote-host admin@192.168.1.143 --remote-directory /mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker --staged-compose-name docker-compose.production.rev60-staged.yml --expected-staged-sha256 74f280812aa350df6f320edfc118016ac386daae4e20f714e9250a814ad09a6a --expected-rotation-jobs 768 --status /home/inzi/poke-bot-agent/outputs/state/elmo-rev60-throughput-boundary-v1.json --maintenance-lock /home/inzi/poke-bot-agent/outputs/state/managed-training-maintenance.lock --poll-seconds 0.25
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

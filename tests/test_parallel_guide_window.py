@@ -64,7 +64,10 @@ def test_teal_full32_builder_requires_exact_catalog_identity() -> None:
     assert (
         "--authoritative-only-archetype teal-mask-ogerpon-ex" in builder
     )
-    assert "--guide-version teal-mask-ogerpon-ex-north-star-v2" in builder
+    assert (
+        "--guide-version teal-mask-ogerpon-ex-slop-box-north-star-v3"
+        in builder
+    )
     assert "actual_by_day != expected_by_day" in builder
     assert '"--authoritative-only-archetype"' in parallel
     assert '"--authoritative-only-archetype"' in daily

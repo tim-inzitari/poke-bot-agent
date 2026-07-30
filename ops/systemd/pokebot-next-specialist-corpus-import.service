@@ -2,14 +2,12 @@
 Description=Import the checksum-bound one-ahead specialist corpus
 After=network-online.target
 Wants=network-online.target
-OnSuccess=pokebot-next-specialist-prestage.service
 
 [Service]
 Type=oneshot
 EnvironmentFile=%h/.config/pokebot/next_specialist_prestage.env
 WorkingDirectory=/home/inzi/poke-bot-agent
-ExecCondition=/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 ${PRESTAGE_REMOTE_HOST} /usr/bin/test -s ${PRESTAGE_REMOTE_ROOT}/CURRENT_DECK_GUIDE_CORPUS_READY.json
-ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/poke-bot-agent/scripts/import_prestaged_specialist_corpus.py --host ${PRESTAGE_REMOTE_HOST} --remote-root ${PRESTAGE_REMOTE_ROOT} --destination ${PRESTAGE_DESTINATION} --specialist-id ${PRESTAGE_SPECIALIST_ID} --guide-version ${PRESTAGE_GUIDE_VERSION} --receipt ${PRESTAGE_IMPORT_RECEIPT} --bwlimit-kib ${PRESTAGE_BWLIMIT_KIB} --minimum-records ${PRESTAGE_MINIMUM_RECORDS}
+ExecStart=/home/inzi/poke-bot-agent/scripts/poll_and_import_prestaged_specialist_corpus.sh
 TimeoutStartSec=2h
 
 [Install]

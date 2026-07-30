@@ -1,0 +1,394 @@
+# Future specialist package for the owner's exact Slowking combo/toolbox list.
+#
+# This contract is discoverable for corpus preparation, but launch remains
+# fail-closed behind Archaludon ex and the checksum-bound combo-head receipt.
+# It has no current selector, runtime, service, or gradient authority.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: slowking
+display_name: "Slowking Combo / Toolbox"
+status: blocked_behind_archaludon_pending_combo_head_validation
+guide_version: slowking-north-star-v1
+teacher_module: poke_bot.slowking_heuristics
+implementation_status: sparse_causal_teacher_validated_future_only
+teacher_module_sha256: sha256:0af6e82108cbe196b36dd6a3f146a06536266d69d84b763a5c21044b3d7fc828
+deck_complexity: nonlinear_top_deck_copy_attack_toolbox
+
+authority:
+  required_specialist: true
+  selector_eligible: false
+  completion_eligible: true
+  current_deck_guide_registry_registered: true
+  runtime_registry_registered: false
+  matchup_route_registered: false
+  prestage_registered: true
+  corpus_build_authorized: true
+  bootstrap_authorized: false
+  training_authorized: false
+  gate_authorized: false
+  freeze_authorized: false
+  submission_authorized: false
+  dashboard_training_queue_registered: true
+  service_registered: false
+  runtime_authority: none
+
+activation_guard:
+  activation_authorized: false
+  owner_decision_revisions: [57, 58, 59, 61, 62, 63, 64]
+  predecessor_specialist: archaludon-ex
+  successor_specialist: null
+  strict_order: [archaludon-ex, slowking]
+  after_completion: immediate_final_format_alakazam_refresh_then_marnie_refresh_and_final_submission_preparation
+  archaludon_must_finish_before_slowking_launch: true
+  conventional_training_contract_path: config/deck_guides/slowking.yaml
+  conventional_training_contract_created: true
+  generic_guide_registry_may_discover_this_asset: true
+  fail_closed_if_selected: true
+  fail_closed_if_combo_head_receipt_missing: true
+  fail_closed_if_exact_representative_mismatch: true
+  active_teal_modified: false
+  staged_archaludon_modified: false
+
+project_representative_binding:
+  path: config/deck_guides/slowking-representative.v1.json
+  json_pointer: /deck
+  canonical_registry_path: data/training_mixes/specialist_representatives.v1.json
+  canonical_registry_json_pointer: /decks/slowking
+  representative_schema: poke_bot.specialist_deck_representative/v1
+  source_deck_hash: e54ea8e5d444d094
+  source_archetype_id: 86
+  current_source_archetype_name: Slowking
+  owner_displayed_archetype_label: Conkeldurr
+  card_count: 60
+  pokemon_count: 22
+  trainer_count: 28
+  energy_count: 10
+  cards_sha256: sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7
+  canonical_multiset_sha256: sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7
+  representative_artifact_sha256: sha256:9e60e747219d69a9a7e8b68673b53c8dcad505f210de392c1364d8897c56c9a7
+  selection: exact_owner_shown_60_card_multiset
+  absent_from_canonical_training_representatives: false
+  generic_slowking_or_metagross_substitution_allowed: false
+
+deck_signature:
+  match_rule: exact_60_card_counter_equality
+  fuzzy_display_name_matching_allowed: false
+  name_only_routing_allowed: false
+  exact_card_counts:
+    5: 4       # Basic Psychic Energy
+    9: 2       # Boomerang Energy
+    19: 4      # Telepathic Psychic Energy
+    115: 2     # Conkeldurr TWM 105
+    140: 1     # Fezandipiti ex SFA 38
+    144: 2     # Kyurem SFA 47
+    162: 4     # Slowpoke SCR 57
+    163: 4     # Slowking SCR 58
+    183: 2     # Smoochum SSP 75
+    184: 2     # Latias ex SSP 76
+    224: 2     # Annihilape SSP 100
+    756: 2     # Mega Kangaskhan ex MEG 104
+    1071: 1    # Meowth ex POR 62
+    1092: 1    # Secret Box
+    1097: 3    # Night Stretcher
+    1121: 4    # Ultra Ball
+    1146: 3    # Wondrous Patch
+    1152: 4    # Poké Pad
+    1168: 1    # Counter Gain
+    1188: 4    # Ciphermaniac's Codebreaking
+    1227: 4    # Lillie's Determination
+    1248: 4    # Academy at Night
+  print_identity_uncertainty:
+    status: bounded_and_fail_closed
+    owner_image_has_set_codes: false
+    numeric_ids_resolved_from_current_public_exact_row: true
+    do_not_reuse_with_other_same_name_printings: true
+
+strategy_source_set:
+  authoritative_list_path: docs/deck_guides/slowking-expert-brief.txt
+  authoritative_list_heading: SOURCE SET
+  reviewed_at_utc: 2026-07-29T17:45:00Z
+  source_ids:
+    - S1
+    - S2
+    - S3
+    - S4
+    - S5
+    - S6
+    - S7
+    - S8
+    - S9
+    - S10
+    - S11
+    - S12
+    - S13
+    - S14
+    - S15
+    - S16
+    - S17
+    - S18
+    - S19
+    - S20
+    - S21
+    - S22
+    - S23
+    - S24
+    - S25
+    - S26
+    - S27
+    - S28
+    - S29
+    - S30
+    - S31
+    - S32
+    - S33
+    - S34
+  primary_evidence:
+    - id: S1
+      title: Owner-supplied exact-list image
+      evidence_role: exact_names_counts_and_displayed_136_match_snapshot
+    - id: S2
+      title: "Pokémon: Slowking, Stellar Crown 58"
+      url: https://www.pokemon.com/uk/pokemon-tcg/pokemon-cards/series/sv07/58
+      evidence_role: official_Slowking_identity
+    - id: S3
+      title: "2026 North America International Championships TCG Masters"
+      url: https://www.pokemon.com/uk/play-pokemon/internationals/2026/north-america/tcg-masters
+      evidence_role: official_current_event_lists_and_results
+    - id: S4
+      title: Limitless Slowking archetype overview
+      url: https://limitlesstcg.com/decks/322
+      evidence_role: current_tournament_history_and_guide_index
+    - id: S19
+      title: "Grant Manley: Funny Slowking"
+      publisher: PokéBeach
+      url: https://www.pokebeach.com/2026/07/funny-slowking-a-deck-that-can-dominate-major-tournaments
+      evidence_role: expert_setup_sequencing_and_matchup_reference
+    - id: S30
+      title: Current Pokémon Trading Card Game rulebook
+      url: https://www.pokemon.com/static-assets/content-assets/cms2/pdf/trading-card-game/rulebook/par_rulebook_en.pdf
+      evidence_role: official_setup_attack_knockout_prize_and_simultaneous_win_rules
+    - id: S31
+      title: "Natalie Millar: Slowking Deck Guide"
+      publisher: TCGplayer
+      url: https://www.tcgplayer.com/content/article/Slowking-Deck-Guide-Pok%C3%A9mon-TCG/80014a0e-4c46-413a-8113-7b6a0aa77c6c/
+      evidence_role: current_engine_and_sequencing_reference_for_a_different_60
+  exact_card_text_sources_are_S5_through_S18_and_S24_through_S34: true
+
+expert_writeup:
+  path: docs/deck_guides/slowking-expert-brief.txt
+  sha256: sha256:78aa617cbc1a7617fd81b773a61405e16132f8830d9af7dec914bb431add3297
+  word_count: 7320
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: slowking
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+  expert_approved: false
+
+heuristic_research:
+  proposal_path: state/slowking_heuristic_research_v1.txt
+  proposal_sha256: sha256:ba71810d335f9a8e7b9035a3ca4b522479b852b567992d0146b8f194abcc338b
+  teacher_module: poke_bot.slowking_heuristics
+  teacher_module_path: poke_bot/slowking_heuristics.py
+  teacher_module_sha256: sha256:0af6e82108cbe196b36dd6a3f146a06536266d69d84b763a5c21044b3d7fc828
+  module_registered: true
+  module_enabled_only_under_explicit_generic_selector: true
+  offline_force_enabled_required: false
+  prior_logit_bias: exact_zero_bypass
+  policy_target:
+    type: sparse_causal_curriculum_row_selector
+    training_mode: strategic_curriculum_v1
+    parameterized_head: false
+    direct_policy_cross_entropy_allowed: false
+    guide_preference_index_role: diagnostics_and_row_qualification_only
+    guide_preference_index_may_affect_loss_or_gradient: false
+    serving_authority: false
+    override_authoritative_policy: false
+    observed_target_authority:
+      - expanded_strategic_targets
+      - setup_board_outcome
+      - combo_state
+
+combo_head_coverage:
+  schema: poke_bot.slowking_combo_head_coverage/v1
+  path: state/slowking_combo_head_coverage_v1.json
+  artifact_sha256: sha256:e268b9bcdfba7be2da2a3a701f66f2ecfd5e694b9e3ab44f90485a843bf5ef89
+  status: blocked_missing_combo_state_implementation_and_validation_receipt
+  owner_decision_revision: 58
+  required_before_bootstrap: true
+  required_before_runtime_registration: true
+  required_before_launch: true
+  every_learned_head_uses_revision56_option_conditioned_route: true
+  guide_is_only_no_route_exception: true
+  generic_slowking_or_metagross_substitution_allowed: false
+
+specialist_parameter_budget:
+  owner_decision_revision: 59
+  scope: slowking_only
+  ordinary_soft_target: 2000000
+  soft_target_may_be_exceeded: true
+  initial_fail_closed_hard_ceiling: 3500000
+  global_parameter_limit_override: false
+  proposed_added_modules:
+    - id: combo_state_head.network
+      architecture: [d_model, 192, 32]
+      parameter_count_at_d_model_96: 24800
+    - id: decision_fusion.dedicated_routes.combo_state
+      architecture: [128, 16, 1]
+      parameter_count_at_d_model_96: 2081
+  proposed_added_parameter_total_at_d_model_96: 26881
+  complete_candidate_parameter_count: null
+  complete_candidate_measurement_status: pending_actual_instantiation
+  exception_receipt_required_if_above_soft_target: true
+  above_hard_ceiling_requires_new_owner_decision: true
+  dead_or_noncausal_capacity_allowed: false
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  execution_scope: future_training_metadata_only
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  missing_label_behavior: mask_not_zero
+  supported_predicates:
+    - id: establish_second_Slowpoke
+      supported_stages: [initial_setup_bench]
+      exact_inputs:
+        - select.context
+        - complete_current_legal_combos
+        - resolved_current_option_card_ids
+        - own_current_active_and_bench_card_ids
+      preference: establish_two_visible_Slowpoke_without_blindly_filling_bench
+      abstain_if:
+        - opening_active_stage
+        - any_option_unresolved
+        - legal_combo_set_incomplete
+    - id: fill_visible_Slowpoke_or_Slowking_gap
+      supported_stages:
+        - poke_pad_search
+        - ultra_ball_search
+      exact_inputs:
+        - resolved_effect_origin
+        - complete_current_legal_combos
+        - resolved_current_search_card_ids
+        - own_current_active_and_bench_card_ids
+      preference: fill_two_Slowpoke_or_open_Slowpoke_to_Slowking_gap
+      abstain_if:
+        - copied_attack_payload_route_is_the_only_difference
+        - any_option_unresolved
+    - id: telepathic_Psychic_exact_setup_gap
+      supported_stages: [telepath_psychic_energy_search]
+      exact_inputs:
+        - resolved_effect_origin
+        - exact_exposed_Basic_Psychic_options
+        - own_current_active_and_bench_card_ids
+      preference: fill_visible_Slowpoke_setup_gap
+      abstain_if:
+        - attachment_origin_or_search_options_unresolved
+        - final_bench_slot_would_be_blindly_consumed
+    - id: night_stretcher_visible_line_gap
+      supported_stages: [night_stretcher_recovery]
+      exact_inputs:
+        - resolved_effect_origin
+        - exact_discard_options
+        - own_current_active_and_bench_card_ids
+      preference: recover_the_visible_Slowpoke_or_Slowking_line_gap
+      abstain_if:
+        - any_Basic_Energy_option_requires_attachment_routing
+        - copied_attack_payload_route_is_unresolved
+
+masked_targets:
+  - global_go_first_or_go_second_choice
+  - initial_Active_choice_without_proved_turn_order_and_pivot_plan
+  - Academy_at_Night_top_deck_target
+  - Ciphermaniacs_Codebreaking_targets_and_order
+  - Seek_Inspiration_copied_attack_choice
+  - Seek_Inspiration_attack_or_damage_target
+  - Trifrost_target_set_and_post_attack_energy_forecast
+  - Gutsy_Swing_versus_Destined_Fight_prize_route
+  - simultaneous_knockout_resolution_without_complete_rules_state
+  - recursive_Seek_Inspiration
+  - manual_Energy_attachment
+  - Wondrous_Patch_target
+  - Boomerang_Energy_route
+  - Counter_Gain_target
+  - Secret_Box_discard_and_four_search_targets
+  - Ultra_Ball_discard_targets
+  - Night_Stretcher_Basic_Energy_route
+  - Mega_Kangaskhan_Run_Errand_without_top_provenance
+  - Smoochum_Delightful_Kiss_attack_and_target
+  - Fezandipiti_or_Meowth_multi_prize_benching_without_exact_current_job
+  - matchup_name_based_choice
+  - face_down_prize_identity
+  - opponent_hidden_hand_deck_or_prize_contents
+  - future_draw_coin_flip_or_opponent_response
+  - unresolved_option_or_malformed_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  own_hidden_deck_order_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_fused_policy: false
+  guide_is_runtime_head: false
+  guide_has_action_logit_route: false
+  observed_outcome_targets_may_be_replaced: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+training_staging:
+  status: blocked_behind_archaludon_and_combo_head_receipt
+  canonical_specialist_state_entry: true
+  canonical_training_representative_entry: true
+  selector_entry: false
+  runtime_registry_entry: false
+  frozen_registry_entry: false
+  matchup_adapter_entry: false
+  pre_stage_state_entry: true
+  pre_stage_contract_entry: true
+  managed_service: false
+  corpus_pointer: null
+  guide_corpus: null
+  bootstrap_checkpoint: null
+  activation_receipt: null
+  blockers:
+    - archaludon_ex_not_training_complete
+    - combo_state_head_not_implemented
+    - combo_head_coverage_validation_receipt_missing
+    - slowking_exact_corpus_not_materialized
+    - slowking_matchup_route_not_registered
+    - terminal_preflight_not_validated
+    - complete_candidate_parameter_count_not_measured
+    - no_expert_approval
+
+validation:
+  dedicated_two_task_research_agent_complete: true
+  human_pilot_guide_complete: true
+  heuristic_research_proposal_complete: true
+  exact_60_card_representative_resolved: true
+  yaml_parse_required: true
+  offline_unit_tests_required: true
+  future_package_tests_required: true
+  offline_unit_tests_passed: true
+  future_package_tests_passed: false
+  focused_test_file: tests/test_slowking_specialist_package.py
+  focused_tests_passed: 0
+  no_live_runtime_mutation: true
+  unresolved_evidence_gaps:
+    - no_world_champion_SME_approval
+    - no_set_coded_owner_export
+    - no_controlled_first_versus_second_study_for_this_exact_60
+    - no_authoritative_recursive_Seek_Inspiration_ruling_found
+    - no_exact_list_public_match_rows_for_the_displayed_136_match_snapshot
+    - no_combo_head_validation_receipt
+    - no_corpus_or_route_receipt
+    - no_terminal_preflight

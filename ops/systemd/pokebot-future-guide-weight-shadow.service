@@ -1,0 +1,16 @@
+[Unit]
+Description=Future specialist guide-weight shadow review queue
+After=default.target
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=400%
+MemoryMax=112G
+TimeoutStartSec=2d
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/specialist-handoff-current
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent-deployments/specialist-handoff-current/scripts/process_future_guide_weight_review_queue.py --selector /home/inzi/.config/pokebot/specialist_runtime.env --registry /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/specialist_runtime_registry_v1.json --baseline-manifest /home/inzi/poke-bot-agent/baselines/manifest.json --output-root /home/inzi/poke-bot-agent/outputs/guide_weight_shadow --lock /home/inzi/.local/state/pokebot/future-guide-weight-shadow.lock --training-unit pokebot-pure-rl-trevenant-staged.service --shadow-device cpu --production-device cuda:1 --workers 4
+
+[Install]
+WantedBy=default.target

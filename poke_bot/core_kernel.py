@@ -299,8 +299,22 @@ class CoreKernel(nn.Module):
                 known = {
                     f.name for f in config.ModelConfig.__dataclass_fields__.values()  # type: ignore[attr-defined]
                 }
+                filtered_snap = {
+                    k: v
+                    for k, v in snap.items()
+                    if k in known and not isinstance(v, dict)
+                }
+                # Historical checkpoints predate these future-specialist-only
+                # tensors. Ambient deployment flags must never make a legacy
+                # core kernel instantiate a wider architecture on load.
+                for field in (
+                    "setup_board_outcome_head_enabled",
+                    "decision_fusion_dedicated_routes_enabled",
+                    "decision_fusion_dedicated_routes_runtime_enabled",
+                ):
+                    filtered_snap.setdefault(field, False)
                 cfg = config.ModelConfig(
-                    **{k: v for k, v in snap.items() if k in known and not isinstance(v, dict)}
+                    **filtered_snap
                 )
             else:
                 cfg = config.MODEL

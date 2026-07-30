@@ -1,0 +1,16 @@
+[Unit]
+Description=Import checksum-bound plain Dragapult full33 guide corpus without touching runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecCondition=/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 admin@192.168.1.143 /usr/bin/test -s /mnt/Main/main/poke-bot-agent/archive/dragapult-guide-corpus-plain-full33-v1/CURRENT_DECK_GUIDE_CORPUS_READY.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/poke-bot-agent/scripts/import_prestaged_specialist_corpus.py --host admin@192.168.1.143 --remote-root /mnt/Main/main/poke-bot-agent/archive/dragapult-guide-corpus-plain-full33-v1 --destination /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/dragapult --specialist-id dragapult --guide-version dragapult-north-star-v1 --receipt /home/inzi/poke-bot-agent/outputs/state/dragapult-prestage-corpus-import-v1.json --bwlimit-kib 8000 --minimum-records 1412 --superseded-pointer-sha256=sha256:2a1e9b2b5a45ec0c7eb3b3cd791287fbf97f2a2981fbfa2d77087c94fc39e87a
+TimeoutStartSec=2h
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=5
+MemoryHigh=4G
+MemoryMax=8G

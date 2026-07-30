@@ -43,7 +43,13 @@ from poke_bot.matchup_adapters import (  # noqa: E402
     UNKNOWN_ROUTE,
     route_for_archetype,
 )
-from poke_bot.matchup_adapter_activation import TRAINING_TICKET_SCHEMA  # noqa: E402
+from poke_bot.matchup_adapter_activation import (  # noqa: E402
+    TRAINING_TICKET_SCHEMA,
+    training_route_for_archetype,
+)
+from poke_bot.matchup_adapter_routes import (  # noqa: E402
+    resolve_matchup_adapter_route_contract,
+)
 from poke_bot.feature_shards import COMPACT_MODE_TEMPORAL_EXPERT  # noqa: E402
 from poke_bot.pure_rl.aborts import evaluate_aborts  # noqa: E402
 from poke_bot.pure_rl.curriculum import (  # noqa: E402
@@ -90,6 +96,9 @@ from poke_bot.pure_rl.model_profile import (  # noqa: E402
     pure_rl_model_config,
     validate_param_budget,
 )
+from poke_bot.pure_rl.guide_weight_review import (  # noqa: E402
+    emit_review_request,
+)
 from poke_bot.process_memory import close_mp_queue, release_process_heap  # noqa: E402
 from poke_bot.pure_rl.shards import (  # noqa: E402
     CompactDecision,
@@ -97,7 +106,12 @@ from poke_bot.pure_rl.shards import (  # noqa: E402
     CompactShardWriter,
 )
 from poke_bot.train import (  # noqa: E402
+    GUIDE_TRAINING_MODE_LEGACY,
+    GUIDE_TRAINING_MODE_STRATEGIC,
+    GUIDE_TRAINING_MODES,
+    SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT,
     TrainConfig,
+    assert_strategic_curriculum_receipt_contract,
     belief_card_vocab_from_state,
     rl_train_step,
     supervised_rehearsal_step,
@@ -124,6 +138,57 @@ LADDER_DECK_REPRESENTATIVES_PATH = (
 SPECIALIST_DECK_REPRESENTATIVES_PATH = (
     ROOT / "data" / "training_mixes" / "specialist_representatives.v1.json"
 )
+
+
+def _effective_boundary_design_migration_reason(
+    args: argparse.Namespace,
+) -> str:
+    """Resolve the same clean-boundary authorization at every use site."""
+
+    return str(
+        os.environ.get("PURE_RL_BOUNDARY_MIGRATION_REASON_OVERRIDE")
+        or args.boundary_design_migration_reason
+        or ""
+    ).strip()
+
+
+def _registered_matchup_target_ids(
+    initial_checkpoint: Path | None,
+) -> tuple[str, ...]:
+    """Resolve the acting-specialist roster from the exact warm start."""
+
+    if initial_checkpoint is None:
+        if (
+            os.environ.get("POKEBOT_MATCHUP_ADAPTER_FORMAT", "").strip()
+            == "poke-bot-matchup-adapter-bank-v6"
+        ):
+            from poke_bot.matchup_adapters_v6 import load_slot_registry
+
+            registry_raw = os.environ.get(
+                "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH", ""
+            ).strip()
+            if not registry_raw:
+                raise RuntimeError(
+                    "resumed Router Format 6 run lacks its registry path"
+                )
+            registry = load_slot_registry(
+                Path(registry_raw).expanduser().resolve()
+            )
+            return tuple(str(value) for value in registry["active_expert_ids"])
+        return tuple(EXPERT_IDS)
+    import torch
+
+    saved = torch.load(
+        initial_checkpoint.expanduser().resolve(),
+        map_location="cpu",
+        weights_only=False,
+    )
+    adapter_config = dict(
+        (saved.get("extra") or {}).get("matchup_adapter_config") or {}
+    )
+    return tuple(
+        resolve_matchup_adapter_route_contract(adapter_config).target_ids
+    )
 
 
 def _default_research_control_registry() -> Path:
@@ -478,9 +543,84 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             )
         ),
         help=(
-            "Small training-only confidence-weighted CE for the versioned "
-            "current-specialist action guide. Core stays exactly 0. The "
-            "Alakazam option name remains a backward-compatible alias."
+            "Receipt-backed training-only guide multiplier. Legacy started "
+            "runs apply confidence-weighted policy CE; future strategic mode "
+            "applies it only to observed-target head losses. Core stays "
+            "exactly 0. The Alakazam option name is a compatibility alias."
+        ),
+    )
+    p.add_argument(
+        "--current-deck-guide-training-mode",
+        choices=tuple(sorted(GUIDE_TRAINING_MODES)),
+        default=os.environ.get(
+            "PURE_RL_CURRENT_DECK_GUIDE_TRAINING_MODE",
+            GUIDE_TRAINING_MODE_LEGACY,
+        ),
+        help=(
+            "Explicit guide-loss semantics. Already-started runs retain "
+            "legacy policy CE; future specialists use observed-target "
+            "strategic curriculum only."
+        ),
+    )
+    p.add_argument(
+        "--setup-board-outcome-loss-weight",
+        type=float,
+        default=float(
+            os.environ.get(
+                "PURE_RL_SETUP_BOARD_OUTCOME_LOSS_WEIGHT",
+                str(SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT),
+            )
+        ),
+        help=(
+            "Ordinary observed-target weight for the future option-conditioned "
+            "setup/bench outcome head."
+        ),
+    )
+    p.add_argument(
+        "--current-deck-guide-curriculum-spec",
+        type=Path,
+        default=(
+            Path(os.environ["PURE_RL_CURRENT_DECK_GUIDE_CURRICULUM_SPEC"])
+            if os.environ.get(
+                "PURE_RL_CURRENT_DECK_GUIDE_CURRICULUM_SPEC"
+            )
+            else None
+        ),
+        help="Checksum-bound future strategic curriculum specification.",
+    )
+    p.add_argument(
+        "--current-deck-guide-head-role-map",
+        type=Path,
+        default=(
+            Path(os.environ["PURE_RL_CURRENT_DECK_GUIDE_HEAD_ROLE_MAP"])
+            if os.environ.get("PURE_RL_CURRENT_DECK_GUIDE_HEAD_ROLE_MAP")
+            else None
+        ),
+        help="Checksum-bound per-head action-route inventory.",
+    )
+    p.add_argument(
+        "--current-deck-guide-curriculum-validation-receipt",
+        type=Path,
+        default=(
+            Path(
+                os.environ[
+                    "PURE_RL_CURRENT_DECK_GUIDE_CURRICULUM_VALIDATION_RECEIPT"
+                ]
+            )
+            if os.environ.get(
+                "PURE_RL_CURRENT_DECK_GUIDE_CURRICULUM_VALIDATION_RECEIPT"
+            )
+            else None
+        ),
+        help="Immutable validation receipt for future guide curriculum wiring.",
+    )
+    p.add_argument(
+        "--tactical-outcome-loss-weight-override",
+        type=float,
+        default=None,
+        help=(
+            "Receipt-backed clean-boundary override for the inherited expanded "
+            "tactical-outcome head. Ordinary runs must leave this unset."
         ),
     )
     p.add_argument(
@@ -1114,8 +1254,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if float(value) < 0.0:
             p.error(f"{option} cannot be negative")
     guide_weight = float(args.alakazam_guide_loss_weight)
-    if guide_weight < 0.0:
-        p.error("--current-deck-guide-loss-weight cannot be negative")
+    if not math.isfinite(guide_weight) or guide_weight < 0.0:
+        p.error(
+            "--current-deck-guide-loss-weight must be finite and nonnegative"
+        )
     if guide_weight > 0.0 and args.mode != "specialist":
         p.error(
             "--current-deck-guide-loss-weight is valid only for "
@@ -1127,24 +1269,102 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "POKEBOT_CURRENT_DECK_GUIDE and "
             "POKEBOT_CURRENT_DECK_GUIDE_TARGETS=1"
         )
+    if args.tactical_outcome_loss_weight_override is not None:
+        if float(args.tactical_outcome_loss_weight_override) < 0.0:
+            p.error("--tactical-outcome-loss-weight-override cannot be negative")
+        if (
+            _effective_boundary_design_migration_reason(args)
+            != "receipt_backed_teal_auxiliary_head_rebalance_v1"
+        ):
+            p.error(
+                "--tactical-outcome-loss-weight-override requires the exact "
+                "receipt-backed Teal auxiliary-head migration reason"
+            )
     if guide_weight > 0.0 and deck_guides.selected_id() != specialist:
         p.error(
             "current-deck guide selector must equal --specialist-archetype"
+        )
+    setup_weight = float(args.setup_board_outcome_loss_weight)
+    if not math.isfinite(setup_weight) or setup_weight < 0.0:
+        p.error("--setup-board-outcome-loss-weight must be finite and nonnegative")
+    guide_training_mode = str(args.current_deck_guide_training_mode)
+    if guide_training_mode not in GUIDE_TRAINING_MODES:
+        p.error(
+            "--current-deck-guide-training-mode has an unsupported value"
+        )
+    strategic_inputs = (
+        args.current_deck_guide_curriculum_spec,
+        args.current_deck_guide_head_role_map,
+        args.current_deck_guide_curriculum_validation_receipt,
+    )
+    if guide_training_mode == GUIDE_TRAINING_MODE_STRATEGIC:
+        if args.mode != "specialist":
+            p.error(
+                "--current-deck-guide-training-mode strategic_curriculum_v1 "
+                "requires --mode specialist"
+            )
+        if not math.isclose(
+            setup_weight,
+            SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            p.error(
+                "strategic_curriculum_v1 requires "
+                "--setup-board-outcome-loss-weight 0.025"
+            )
+        if any(value is None for value in strategic_inputs):
+            p.error(
+                "strategic_curriculum_v1 requires its curriculum spec, "
+                "head-role map, and validation receipt"
+            )
+        try:
+            assert_strategic_curriculum_receipt_contract(
+                specialist_id=specialist,
+                curriculum_spec=str(
+                    args.current_deck_guide_curriculum_spec
+                ),
+                head_role_map=str(args.current_deck_guide_head_role_map),
+                validation_receipt=str(
+                    args.current_deck_guide_curriculum_validation_receipt
+                ),
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            p.error(f"strategic curriculum receipt gate failed: {exc}")
+    elif any(value is not None for value in strategic_inputs):
+        p.error(
+            "strategic curriculum artifacts require "
+            "--current-deck-guide-training-mode strategic_curriculum_v1"
         )
     adapter_epochs = int(args.dormant_matchup_adapter_epochs)
     if adapter_epochs < 0:
         p.error("--dormant-matchup-adapter-epochs cannot be negative")
     if float(args.dormant_matchup_adapter_lr) <= 0.0:
         p.error("--dormant-matchup-adapter-lr must be positive")
+    registered_matchup_ids = tuple(EXPERT_IDS)
+    if adapter_epochs > 0:
+        try:
+            registered_matchup_ids = _registered_matchup_target_ids(
+                args.initial_learner_checkpoint
+            )
+        except Exception as exc:
+            p.error(f"cannot validate checkpoint matchup roster: {exc}")
     if adapter_epochs > 0 and not (
         args.mode == "specialist"
-        and specialist in EXPERT_IDS
+        and specialist in registered_matchup_ids
         and args.dormant_matchup_adapter_activation_receipt is not None
         and float(args.official_collect_frac) > 0.0
     ):
         p.error(
             "dormant matchup adapter training requires a registered specialist, "
-            "active-gate practice, and a boundary authorization"
+            "active-gate practice, and a boundary authorization "
+            f"(mode={args.mode!r}, specialist={specialist!r}, "
+            f"registered={specialist in registered_matchup_ids}, "
+            f"registered_count={len(registered_matchup_ids)}, "
+            f"initial_checkpoint={args.initial_learner_checkpoint!s}, "
+            "authorization="
+            f"{args.dormant_matchup_adapter_activation_receipt is not None}, "
+            f"official_collect_frac={float(args.official_collect_frac)})"
         )
     if adapter_epochs > 0 and bool(args.train_device_resident):
         p.error(
@@ -1470,6 +1690,7 @@ def _ticket_dormant_matchup_adapter_sequences(
     *,
     active_gate: dict[str, Any],
     specialist_archetype: str,
+    registered_specialist_ids: Sequence[str] = EXPERT_IDS,
 ) -> dict[str, Any]:
     """Authorize exact scheduler-labeled mirror/strong-public adapter rows.
 
@@ -1480,7 +1701,12 @@ def _ticket_dormant_matchup_adapter_sequences(
     """
 
     specialist = str(specialist_archetype or "").strip().casefold()
-    if specialist not in EXPERT_IDS:
+    registered = {
+        str(value).strip().casefold()
+        for value in registered_specialist_ids
+        if str(value).strip()
+    }
+    if specialist not in registered:
         raise ValueError(
             "dormant matchup adapter tickets require a canonical specialist"
         )
@@ -1563,7 +1789,7 @@ def _ticket_dormant_matchup_adapter_sequences(
             excluded["unsupported_or_unproven"] += 1
             continue
 
-        route = route_for_archetype(opponent_archetype)
+        route = training_route_for_archetype(opponent_archetype)
         if route == UNKNOWN_ROUTE or not re.fullmatch(
             r"sha256:[0-9a-f]{64}", package_digest
         ):
@@ -1596,7 +1822,7 @@ def _ticket_dormant_matchup_adapter_sequences(
     route_sequences: dict[str, int] = {}
     route_decisions: dict[str, int] = {}
     for sequence, opponent_id, opponent_archetype, package_digest in eligible:
-        route = route_for_archetype(opponent_archetype)
+        route = training_route_for_archetype(opponent_archetype)
         sequence.matchup_adapter_training_ticket = {
             "schema": TRAINING_TICKET_SCHEMA,
             "opponent_id": opponent_id,
@@ -2136,6 +2362,45 @@ def _design_contract(
             "current_deck_guide_loss_weight": float(
                 args.alakazam_guide_loss_weight
             ),
+            **(
+                {
+                    "current_deck_guide_training_mode": str(
+                        args.current_deck_guide_training_mode
+                    ),
+                    "setup_board_outcome_loss_weight": float(
+                        args.setup_board_outcome_loss_weight
+                    ),
+                    "current_deck_guide_strategic_curriculum": {
+                        "curriculum_spec": _path_content_identity(
+                            Path(
+                                args.current_deck_guide_curriculum_spec
+                            ).expanduser().resolve()
+                        ),
+                        "head_role_map": _path_content_identity(
+                            Path(
+                                args.current_deck_guide_head_role_map
+                            ).expanduser().resolve()
+                        ),
+                        "validation_receipt": _path_content_identity(
+                            Path(
+                                args.current_deck_guide_curriculum_validation_receipt
+                            ).expanduser().resolve()
+                        ),
+                    },
+                }
+                if args.current_deck_guide_training_mode
+                == GUIDE_TRAINING_MODE_STRATEGIC
+                else {}
+            ),
+            "expanded_head_loss_weight_overrides": (
+                {
+                    "tactical_outcome": float(
+                        args.tactical_outcome_loss_weight_override
+                    )
+                }
+                if args.tactical_outcome_loss_weight_override is not None
+                else {}
+            ),
             "current_deck_guide_archetype": deck_guides.selected_id(),
             "dormant_matchup_adapter": {
                 "epochs": int(args.dormant_matchup_adapter_epochs),
@@ -2523,6 +2788,110 @@ _DECISION_FUSION_RUNTIME_MIGRATION_PATHS = frozenset(
 )
 
 
+_CURRENT_DECK_GUIDE_WEIGHT_MIGRATION_PATHS = frozenset(
+    {
+        "learner.alakazam_guide_loss_weight",
+        "learner.current_deck_guide_loss_weight",
+        "expert_rehearsal.loss_weights.alakazam_guide",
+    }
+)
+
+_TEAL_AUXILIARY_HEAD_REBALANCE_PATHS = frozenset(
+    {"learner.expanded_head_loss_weight_overrides"}
+)
+
+
+def _safe_teal_auxiliary_head_rebalance(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only Teal's measured tactical-outcome 0.05 -> 0.01 step."""
+    if (
+        str(reason or "").strip()
+        != "receipt_backed_teal_auxiliary_head_rebalance_v1"
+    ):
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if non_source != _TEAL_AUXILIARY_HEAD_REBALANCE_PATHS:
+        return False
+    before = dict(
+        (stored.get("learner") or {}).get(
+            "expanded_head_loss_weight_overrides"
+        )
+        or {}
+    )
+    after = dict(
+        (current.get("learner") or {}).get(
+            "expanded_head_loss_weight_overrides"
+        )
+        or {}
+    )
+    return bool(
+        before == {}
+        and after == {"tactical_outcome": 0.01}
+        and (stored.get("learner") or {}).get(
+            "current_deck_guide_archetype"
+        )
+        == "teal-mask-ogerpon-ex"
+        and (current.get("learner") or {}).get(
+            "current_deck_guide_loss_weight"
+        )
+        == 0.05
+    )
+
+
+def _safe_current_deck_guide_weight_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Allow only an auxiliary guide-weight change at a clean boundary."""
+    if (
+        str(reason or "").strip()
+        != "receipt_backed_current_deck_guide_weight_curve_v1"
+    ):
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if non_source != _CURRENT_DECK_GUIDE_WEIGHT_MIGRATION_PATHS:
+        return False
+    before = dict(stored.get("learner") or {})
+    after = dict(current.get("learner") or {})
+    before_rehearsal = dict(
+        (stored.get("expert_rehearsal") or {}).get("loss_weights") or {}
+    )
+    after_rehearsal = dict(
+        (current.get("expert_rehearsal") or {}).get("loss_weights") or {}
+    )
+    before_weight = float(before.get("current_deck_guide_loss_weight", -1.0))
+    after_weight = float(after.get("current_deck_guide_loss_weight", -1.0))
+    return bool(
+        math.isfinite(before_weight)
+        and math.isfinite(after_weight)
+        and 0.0 <= before_weight <= 0.50
+        and 0.0 <= after_weight <= 0.50
+        and after_weight != before_weight
+        and float(before.get("alakazam_guide_loss_weight", -1.0))
+        == before_weight
+        and float(after.get("alakazam_guide_loss_weight", -1.0))
+        == after_weight
+        and float(before_rehearsal.get("alakazam_guide", -1.0))
+        == before_weight
+        and float(after_rehearsal.get("alakazam_guide", -1.0))
+        == after_weight
+        and before.get("current_deck_guide_archetype")
+        == after.get("current_deck_guide_archetype")
+        and before.get("current_deck_guide_version")
+        == after.get("current_deck_guide_version")
+        and before.get("current_deck_guide_targets_enabled") is True
+        and after.get("current_deck_guide_targets_enabled") is True
+    )
+
+
 def _safe_decision_fusion_warmup_migration(
     *,
     stored: dict[str, Any],
@@ -2741,6 +3110,22 @@ def _validate_or_migrate_design_fingerprint(
         changed=changed,
         reason=migration_reason,
     )
+    safe_current_deck_guide_weight = (
+        _safe_current_deck_guide_weight_migration(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
+    safe_teal_auxiliary_head_rebalance = (
+        _safe_teal_auxiliary_head_rebalance(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
     disallowed = [
         path
         for path in changed
@@ -2758,6 +3143,14 @@ def _validate_or_migrate_design_fingerprint(
             safe_decision_fusion_runtime
             and path in _DECISION_FUSION_RUNTIME_MIGRATION_PATHS
         )
+        and not (
+            safe_current_deck_guide_weight
+            and path in _CURRENT_DECK_GUIDE_WEIGHT_MIGRATION_PATHS
+        )
+        and not (
+            safe_teal_auxiliary_head_rebalance
+            and path in _TEAL_AUXILIARY_HEAD_REBALANCE_PATHS
+        )
     ]
     if disallowed:
         raise RuntimeError(
@@ -2769,10 +3162,6 @@ def _validate_or_migrate_design_fingerprint(
         and last_completed == -1
         and str(migration_reason).strip()
         == "receipt_backed_completed_collection_resume_v1"
-    )
-    initial_empty_run = bool(
-        initial_collection_resume
-        and not list(state.get("history") or ())
     )
     if (
         not initial_collection_resume
@@ -2788,6 +3177,15 @@ def _validate_or_migrate_design_fingerprint(
         _verified_completed_collection_across_design_chain(
             run_dir, state, manifest
         )
+    )
+    # No committed iteration history does not make the run empty after an
+    # immutable iteration-0 collection receipt and shard exist.  That is the
+    # exact initial-collection recovery transaction authorized above.
+    initial_empty_run = bool(
+        initial_collection_resume
+        and not list(state.get("history") or ())
+        and not next_artifacts
+        and preserved_collection is None
     )
     expected_shard = (
         Path(run_dir) / "shards" / f"iter_{next_iteration:05d}.jsonl"
@@ -3226,7 +3624,15 @@ def _verified_completed_collection_receipt(
                 collection_digest=str(receipt.get("checkpoint_digest") or ""),
             )
             or retained != expected
+            or int(receipt.get("source_games", retained)) != retained
             or int(shard_row.get("games", -1)) <= 0
+            or int(
+                receipt.get(
+                    "trajectory_records",
+                    shard_row.get("games", -1),
+                )
+            )
+            != int(shard_row.get("games", -2))
             or int(shard_row.get("decisions", -1)) <= 0
             or manifest is None
             or int(manifest.get("records", -1))
@@ -3440,6 +3846,11 @@ def _commit_completed_collection_receipt(
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "iteration": int(iteration),
         "requested_games": expected,
+        # A source game may intentionally emit two independently causal
+        # acting-seat trajectories during same-checkpoint self-play. Keep
+        # protocol game counts separate from replay-record counts everywhere.
+        "source_games": retained,
+        "trajectory_records": int(shard_row["games"]),
         "checkpoint": str(Path(checkpoint).resolve()),
         "checkpoint_digest": str(checkpoint_digest),
         "design_fingerprint_at_collection": str(
@@ -3463,7 +3874,9 @@ def _commit_completed_collection_receipt(
     _write_json_exclusive(receipt_path, payload)
     print(
         f"[pure_rl] completed collection committed iter={iteration} "
-        f"games={shard_row['games']} decisions={shard_row['decisions']} "
+        f"source_games={retained} "
+        f"trajectories={shard_row['games']} "
+        f"decisions={shard_row['decisions']} "
         f"receipt={receipt_path}",
         flush=True,
     )
@@ -5472,6 +5885,21 @@ def run_smoke_loop(args: argparse.Namespace) -> int:
                 alakazam_guide_loss_weight=float(
                     args.alakazam_guide_loss_weight
                 ),
+                current_deck_guide_training_mode=str(
+                    args.current_deck_guide_training_mode
+                ),
+                setup_board_outcome_loss_weight=float(
+                    args.setup_board_outcome_loss_weight
+                ),
+                current_deck_guide_curriculum_spec=str(
+                    args.current_deck_guide_curriculum_spec or ""
+                ),
+                current_deck_guide_head_role_map=str(
+                    args.current_deck_guide_head_role_map or ""
+                ),
+                current_deck_guide_curriculum_validation_receipt=str(
+                    args.current_deck_guide_curriculum_validation_receipt or ""
+                ),
             )
             import torch
             from poke_bot.checkpoint import atomic_torch_save, build_checkpoint
@@ -5493,6 +5921,13 @@ def run_smoke_loop(args: argparse.Namespace) -> int:
                 lethal_threat_weight=train_cfg.lethal_threat_loss_weight,
                 prize_race_weight=train_cfg.prize_race_loss_weight,
                 alakazam_guide_weight=train_cfg.alakazam_guide_loss_weight,
+                current_deck_guide_training_mode=(
+                    train_cfg.current_deck_guide_training_mode
+                ),
+                setup_board_outcome_loss_weight=(
+                    train_cfg.setup_board_outcome_loss_weight
+                ),
+                expanded_head_weights=train_cfg.expanded_head_loss_weights,
                 pure_rl=True,
                 awr_beta=train_cfg.awr_beta,
                 awr_weight_max=train_cfg.awr_weight_max,
@@ -10778,10 +11213,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
             allow_clean_boundary_migration=bool(
                 args.allow_clean_boundary_design_migration
             ),
-            migration_reason=(
-                os.environ.get("PURE_RL_BOUNDARY_MIGRATION_REASON_OVERRIDE")
-                or args.boundary_design_migration_reason
-            ),
+            migration_reason=_effective_boundary_design_migration_reason(args),
         )
 
     configured_terminal_marker_name = str(
@@ -11710,6 +12142,22 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     alakazam_guide_loss_weight=float(
                         args.alakazam_guide_loss_weight
                     ),
+                    current_deck_guide_training_mode=str(
+                        args.current_deck_guide_training_mode
+                    ),
+                    setup_board_outcome_loss_weight=float(
+                        args.setup_board_outcome_loss_weight
+                    ),
+                    current_deck_guide_curriculum_spec=str(
+                        args.current_deck_guide_curriculum_spec or ""
+                    ),
+                    current_deck_guide_head_role_map=str(
+                        args.current_deck_guide_head_role_map or ""
+                    ),
+                    current_deck_guide_curriculum_validation_receipt=str(
+                        args.current_deck_guide_curriculum_validation_receipt
+                        or ""
+                    ),
                     expanded_head_loss_weights=dict(
                         expanded_head_contract.get("loss_weights") or {}
                     ),
@@ -11879,6 +12327,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     dataset,
                     active_gate=active_gate,
                     specialist_archetype=str(args.specialist_archetype),
+                    registered_specialist_ids=_registered_matchup_target_ids(
+                        args.initial_learner_checkpoint
+                    ),
                 )
                 print(
                     "[pure_rl] dormant adapter tickets "
@@ -11951,6 +12402,21 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 alakazam_guide_loss_weight=float(
                     args.alakazam_guide_loss_weight
                 ),
+                current_deck_guide_training_mode=str(
+                    args.current_deck_guide_training_mode
+                ),
+                setup_board_outcome_loss_weight=float(
+                    args.setup_board_outcome_loss_weight
+                ),
+                current_deck_guide_curriculum_spec=str(
+                    args.current_deck_guide_curriculum_spec or ""
+                ),
+                current_deck_guide_head_role_map=str(
+                    args.current_deck_guide_head_role_map or ""
+                ),
+                current_deck_guide_curriculum_validation_receipt=str(
+                    args.current_deck_guide_curriculum_validation_receipt or ""
+                ),
                 dormant_matchup_adapter_epochs=int(
                     args.dormant_matchup_adapter_epochs
                 ),
@@ -11961,6 +12427,32 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     args.dormant_matchup_adapter_activation_receipt or ""
                 ),
             )
+            if args.tactical_outcome_loss_weight_override is not None:
+                from poke_bot import checkpoint as checkpoint_mod
+
+                parent_payload = checkpoint_mod.load_checkpoint(
+                    learner_before.path, map_location="cpu"
+                )
+                parent_expanded = dict(
+                    (parent_payload.get("extra") or {}).get(
+                        "expanded_head_training"
+                    )
+                    or {}
+                )
+                inherited_weights = dict(
+                    parent_expanded.get("loss_weights") or {}
+                )
+                if not inherited_weights:
+                    raise RuntimeError(
+                        "expanded-head weight override lacks inherited weights"
+                    )
+                inherited_weights["tactical_outcome"] = float(
+                    args.tactical_outcome_loss_weight_override
+                )
+                train_cfg.expanded_head_loss_weights = inherited_weights
+                train_cfg.expanded_head_weight_migration_reason = (
+                    _effective_boundary_design_migration_reason(args)
+                )
             train_metrics["games_per_batch"] = int(train_cfg.games_per_batch)
             train_metrics["max_decisions_per_batch"] = int(
                 train_cfg.max_decisions_per_batch
@@ -12755,6 +13247,46 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 run_dir / "commits" / f"iter_{it:05d}.json", next_state
             )
             _atomic_json(run_dir / "loop_state.json", next_state)
+            if (
+                args.mode == "specialist"
+                and float(args.alakazam_guide_loss_weight) > 0.0
+                and deck_guides.enabled()
+                and os.environ.get(
+                    "POKEBOT_FUTURE_GUIDE_WEIGHT_POLICY_REVISION"
+                )
+                == "44"
+                and os.environ.get(
+                    "POKEBOT_GUIDE_LEARNING_SEMANTICS_REVISION"
+                )
+                == "46"
+            ):
+                review_request = emit_review_request(
+                    run_dir=run_dir,
+                    specialist_id=str(args.specialist_archetype),
+                    completed_iteration=it,
+                    current_weight=float(args.alakazam_guide_loss_weight),
+                    iteration_commit=(
+                        run_dir / "commits" / f"iter_{it:05d}.json"
+                    ),
+                    guide_contract=Path(
+                        os.environ["POKEBOT_CURRENT_DECK_GUIDE_CONTRACT"]
+                    ),
+                    guide_version=deck_guides.guide_version(),
+                    prospective_policy_revision=44,
+                    learning_semantics_revision=46,
+                    consecutive_nonpositive_evaluations=int(
+                        os.environ.get(
+                            "POKEBOT_GUIDE_CONSECUTIVE_NONPOSITIVE_EVALUATIONS",
+                            "0",
+                        )
+                    ),
+                )
+                if review_request is not None:
+                    print(
+                        "[pure_rl] GUIDE_WEIGHT_REVIEW_REQUEST "
+                        f"iter={it} request={review_request}",
+                        flush=True,
+                    )
             next_it = it + 1
             if (
                 args.expert_matchup_adapter_manifest is not None

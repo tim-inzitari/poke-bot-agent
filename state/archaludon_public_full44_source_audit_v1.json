@@ -1,0 +1,369 @@
+{
+  "archive_inventory": {
+    "all_public_days_available_as_of_audit": true,
+    "daily_dataset_index": "https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes",
+    "daily_dataset_index_manifest_rows": 44,
+    "daily_dataset_index_manifest_sha256": "sha256:ecf37d1a35193af0506c4426416d54722f82b579433c3a85455a5a134814f552",
+    "latest_completed_day": "2026-07-29",
+    "latest_day_dataset": "https://www.kaggle.com/datasets/kaggle/pokemon-tcg-ai-battle-episodes-2026-07-29",
+    "license": "CC0-1.0"
+  },
+  "audit_method": {
+    "classifier_contract_sha256": "sha256:4d048e84b843d9b1a2dcfb7ae462ad92b6e68940a0452f05bbe91ef1a76c28b7",
+    "classifier_ladder_replay_sha256": "sha256:9f7d919274bcfafd06b077b057658ff0211858aea91c034f0c4e3ca4e9b1b625",
+    "classifier_required_specialist_count": 19,
+    "classifier_roster_revision": 9,
+    "classifier_roster_sha256": "sha256:3eb07e0cdff66cb3cb4a8d52db1d63df500d86d393da11e458a28c7d5e39ce2a",
+    "current_roster_streaming_reaudit": {
+      "canonical_extract_setup_decks_comparisons": 880,
+      "canonical_extract_setup_decks_mismatches": 0,
+      "matching_episode_ids_sha256": "sha256:5c739ca7b30e49641378160341bff305c35cabf2a60a19290a7b8f021131ae11",
+      "member_read_failures": 0,
+      "source_json_episode_ids_unique_across_days": true,
+      "source_json_episodes": 223126
+    },
+    "description": "Stream every original public replay archive, parse early setup actions, and classify each acting seat with the canonical LadderReplayClassifier. This is a source-eligibility count, not a schema-7 corpus-ready receipt.",
+    "matching_unit": "episode_acting_seat",
+    "setup_parse_failures": 0
+  },
+  "audited_on_utc": "2026-07-30",
+  "date_end": "2026-07-29",
+  "date_start": "2026-06-16",
+  "daily_sources": [
+    {
+      "archive_sha256": "sha256:bc7d0168e2883c976c6aa22be0c13f6e6f790dc8f3fbb442213453570a928068",
+      "date": "2026-06-16",
+      "matching_acting_seats": 3,
+      "matching_episodes": 3,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:bd983eb81938f7705e11e47fc699b5ff1eca21967a5f1758fa9dcde6104316f5",
+      "date": "2026-06-17",
+      "matching_acting_seats": 35,
+      "matching_episodes": 35,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:e5932d971bc1360ee69218f861ca0d0721f151f7cb5c85cb2200c9d5cd41cb1c",
+      "date": "2026-06-18",
+      "matching_acting_seats": 0,
+      "matching_episodes": 0,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:b6a749fe95ca267605f9c00cc9c633a8da8820ece23dcabaa78d2cbbde4e86fd",
+      "date": "2026-06-19",
+      "matching_acting_seats": 0,
+      "matching_episodes": 0,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:5ac3e4c95842ea4f573efe2ffba46206122dc2f8d456970eb836ab814f165e53",
+      "date": "2026-06-20",
+      "matching_acting_seats": 0,
+      "matching_episodes": 0,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:62990f1c14bdffd8d7d05b41c7a52b3275b322b3e73f9ffe0f693ddc2073c867",
+      "date": "2026-06-21",
+      "matching_acting_seats": 0,
+      "matching_episodes": 0,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:ae6b95c5b675547b961f3f5f0913c3c449852524592050337f6e753a1e59bc44",
+      "date": "2026-06-22",
+      "matching_acting_seats": 0,
+      "matching_episodes": 0,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:e1fc57e452ca3233a51987c8ea66aa97de7448f2dfc064d8eaf28b7d62fa6f69",
+      "date": "2026-06-23",
+      "matching_acting_seats": 20,
+      "matching_episodes": 20,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:52aef6555dd44669a51102eb9d0b7ea0a26976dfada566eac3bc9f9035324ac3",
+      "date": "2026-06-24",
+      "matching_acting_seats": 32,
+      "matching_episodes": 32,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:0714512be30d6d05a10a9c577bec39ed6be5175b3f7607649cee9e8bb4fb2280",
+      "date": "2026-06-25",
+      "matching_acting_seats": 22,
+      "matching_episodes": 22,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:891bfa6ea9f665e360a5d19fe23bc7e574678e0e482e3386e11e42623da7f5ea",
+      "date": "2026-06-26",
+      "matching_acting_seats": 974,
+      "matching_episodes": 947,
+      "mirror_episodes": 27
+    },
+    {
+      "archive_sha256": "sha256:fd7bd6ae363f64f659a5563254839a069ed6c170f2de04b89596264fc504de71",
+      "date": "2026-06-27",
+      "matching_acting_seats": 1725,
+      "matching_episodes": 1598,
+      "mirror_episodes": 127
+    },
+    {
+      "archive_sha256": "sha256:538d2deb01dad5aeb78fa6d8efb65930bc68f632248923c7137d222fa16b0ab5",
+      "date": "2026-06-28",
+      "matching_acting_seats": 3628,
+      "matching_episodes": 3099,
+      "mirror_episodes": 529
+    },
+    {
+      "archive_sha256": "sha256:d3479191f6ad1293f6af566bfddd784545773086aa167f211cc68572b1de71fa",
+      "date": "2026-06-29",
+      "matching_acting_seats": 4874,
+      "matching_episodes": 3931,
+      "mirror_episodes": 943
+    },
+    {
+      "archive_sha256": "sha256:47ff533638c986cffc25c846db8cff82963e230ce4a5fe8efc6bb69e798b5a22",
+      "date": "2026-06-30",
+      "matching_acting_seats": 3316,
+      "matching_episodes": 2801,
+      "mirror_episodes": 515
+    },
+    {
+      "archive_sha256": "sha256:ce29508045d31635ec9f1d86fbd92fc8f08e2212db20aaa9f49943d30b6c13e2",
+      "date": "2026-07-01",
+      "matching_acting_seats": 1630,
+      "matching_episodes": 1494,
+      "mirror_episodes": 136
+    },
+    {
+      "archive_sha256": "sha256:5f7ea4197b1b5cd7bc198a3945ad22705337cbbb119b75c24fcc6a67e1db526b",
+      "date": "2026-07-02",
+      "matching_acting_seats": 1355,
+      "matching_episodes": 1257,
+      "mirror_episodes": 98
+    },
+    {
+      "archive_sha256": "sha256:0ba9937e5a12b6922ff2e277ff8e76f695e1fe5a19ec8858e1f590e0509e823c",
+      "date": "2026-07-03",
+      "matching_acting_seats": 499,
+      "matching_episodes": 492,
+      "mirror_episodes": 7
+    },
+    {
+      "archive_sha256": "sha256:c6542c27f8626161aeb7a6c098a0c60036c10253c9547ddfc7db913f7e19140c",
+      "date": "2026-07-04",
+      "matching_acting_seats": 619,
+      "matching_episodes": 607,
+      "mirror_episodes": 12
+    },
+    {
+      "archive_sha256": "sha256:623efc13dcb212e72fc53794d0c426bc648d1ac68f1c2d009f6f568ec843e6f7",
+      "date": "2026-07-05",
+      "matching_acting_seats": 312,
+      "matching_episodes": 312,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:b40007ba2252c9cb367766fb0bba0a23c09599c1b25528a286fb1ad9387f4487",
+      "date": "2026-07-06",
+      "matching_acting_seats": 499,
+      "matching_episodes": 491,
+      "mirror_episodes": 8
+    },
+    {
+      "archive_sha256": "sha256:1c02e7cb95bac4d6ed3dbed70a656750ad468f52bea7f3343605cf5bf21cd395",
+      "date": "2026-07-07",
+      "matching_acting_seats": 275,
+      "matching_episodes": 272,
+      "mirror_episodes": 3
+    },
+    {
+      "archive_sha256": "sha256:55d5f63c1625b7838fc388e26a0cf33ffeef82e735c68e58e13bf94d94c7a5e1",
+      "date": "2026-07-08",
+      "matching_acting_seats": 360,
+      "matching_episodes": 355,
+      "mirror_episodes": 5
+    },
+    {
+      "archive_sha256": "sha256:2e8b35ab508e9b31d109fa4801e8181d02b67eb3ca82c11bd00e253ebc98bb77",
+      "date": "2026-07-09",
+      "matching_acting_seats": 356,
+      "matching_episodes": 355,
+      "mirror_episodes": 1
+    },
+    {
+      "archive_sha256": "sha256:c9806eb1f3056351e2c0978575a0eceac4381a69c4756192df7bd8b144dbfcae",
+      "date": "2026-07-10",
+      "matching_acting_seats": 197,
+      "matching_episodes": 192,
+      "mirror_episodes": 5
+    },
+    {
+      "archive_sha256": "sha256:18b39f3242c705097e94121e84224684632d768d29cd689af392a9c8e6c5c747",
+      "date": "2026-07-11",
+      "matching_acting_seats": 84,
+      "matching_episodes": 84,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:fba2cc8fd028109ab038dda9b2aca09bd1323cf40200cd2797d66c351fc67646",
+      "date": "2026-07-12",
+      "matching_acting_seats": 117,
+      "matching_episodes": 115,
+      "mirror_episodes": 2
+    },
+    {
+      "archive_sha256": "sha256:972100430bce2fc877651fe50a2bdf990548e968405867da14b22f9e87c33464",
+      "date": "2026-07-13",
+      "matching_acting_seats": 140,
+      "matching_episodes": 140,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:4c844694ae8fc48e595f1e9d89a4c6b8dcdc9c702e8a3407f360be1a1c803f54",
+      "date": "2026-07-14",
+      "matching_acting_seats": 16,
+      "matching_episodes": 16,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:688f708f912e02e2bc22d4703875ded648bc9cfa99f61633b05ec5f5255718c5",
+      "date": "2026-07-15",
+      "matching_acting_seats": 35,
+      "matching_episodes": 35,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:8cf39253c21c0492341c63ce27dd18f3355cc81b6da5248eb0ea0d52a7113af8",
+      "date": "2026-07-16",
+      "matching_acting_seats": 54,
+      "matching_episodes": 54,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:c8ce67d4eff30a58513bac0e427a0dde9dc4838b56ba6c782c9ffb9900ad2030",
+      "date": "2026-07-17",
+      "matching_acting_seats": 19,
+      "matching_episodes": 19,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:9378f33a1e5167b758cd89e0e7573458350f863e0cfb064f169f2f88efb06083",
+      "date": "2026-07-18",
+      "matching_acting_seats": 3,
+      "matching_episodes": 3,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:c663091e736ce872574493e8fcc9e59551d8fe5cd4241787769e957ed92f5083",
+      "date": "2026-07-19",
+      "matching_acting_seats": 6,
+      "matching_episodes": 6,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:ca4e60739e9e26cb670856b702cd1c3f470a06b8bbc72d0472cfde302dcfe3a3",
+      "date": "2026-07-20",
+      "matching_acting_seats": 10,
+      "matching_episodes": 10,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:b34b6f4f35a39b0bf4d679de4c5b5103d0f34e39a6723ad942d2e12e44a66092",
+      "date": "2026-07-21",
+      "matching_acting_seats": 3,
+      "matching_episodes": 3,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:06ee48010431a147831b83b69fe29083c8e7a41d819912c478e7699b7de9ac49",
+      "date": "2026-07-22",
+      "matching_acting_seats": 18,
+      "matching_episodes": 18,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:6f3911a7a8970f65e80aca8b3227f469115f33011507daedd1908f4067cc07af",
+      "date": "2026-07-23",
+      "matching_acting_seats": 26,
+      "matching_episodes": 26,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:68a5c1be539bef579f03b5de29b901a1fab1dc4904af78824fbf7666d73bc8ab",
+      "date": "2026-07-24",
+      "manifest_only_episode_ids": [
+        "87841523"
+      ],
+      "matching_acting_seats": 3,
+      "matching_episodes": 3,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:767af27ab6829286da723f786d0d0eb9a4f50f48a84ae78ec92b8485ce893006",
+      "date": "2026-07-25",
+      "matching_acting_seats": 2,
+      "matching_episodes": 2,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:9394d9c4c18dc476cc1fffd5a2dae29c4f2a7afbfa9b2d435876568e2c22fe95",
+      "date": "2026-07-26",
+      "matching_acting_seats": 10,
+      "matching_episodes": 10,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:89c412e1a73bea65818aaa81202a8f85e67e55be617480e22f5123103125a84a",
+      "date": "2026-07-27",
+      "matching_acting_seats": 0,
+      "matching_episodes": 0,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:067b71f93fb5ebc35b727117b5f61c30fa9881f4f7d90ce3de5c27be973573cd",
+      "date": "2026-07-28",
+      "matching_acting_seats": 0,
+      "matching_episodes": 0,
+      "mirror_episodes": 0
+    },
+    {
+      "archive_sha256": "sha256:dbe39b021aebe75c46805105604b56c6263ebb0b4f49d7bc41025517a1f4168e",
+      "date": "2026-07-29",
+      "matching_acting_seats": 1,
+      "matching_episodes": 1,
+      "mirror_episodes": 0
+    }
+  ],
+  "days": 44,
+  "label_methods": {
+    "derived_primary_ace": 20570,
+    "representative_exact": 708
+  },
+  "matching_acting_seats": 21278,
+  "matching_episodes": 18860,
+  "matching_episode_ids_sha256": "sha256:5c739ca7b30e49641378160341bff305c35cabf2a60a19290a7b8f021131ae11",
+  "mirror_episodes": 2418,
+  "single_seat_episodes": 16442,
+  "minimum_acting_seat_first_met_on": "2026-07-02",
+  "minimum_first_met_on": "2026-07-02",
+  "minimum_matching_games": 16639,
+  "minimum_met_by_public_source_scan": true,
+  "minimum_met_by_unique_episode_scan": true,
+  "minimum_unique_episode_first_met_on": "2026-07-05",
+  "notes": [
+    "The prior July-08 through July-27 materialized schema-6 corpus retained only 1,458 records and is not eligible for schema-7 reuse.",
+    "The source scan counts 21,278 classified episode/acting-seat records from 18,860 literal episodes, including 2,418 mirrors. Both counts exceed 16,639.",
+    "Schema-7 materialization must still retain at least 16,639 acting-seat records and 16,639 unique episodes after causal validation and must publish its own immutable ready receipt.",
+    "July 24 contains one known manifest-only episode ID (87841523); the archive has 4,444 JSON replays and 4,445 manifest rows."
+  ],
+  "schema": "poke_bot.archaludon_ex_public_source_audit/v1",
+  "status": "source_audit_complete_schema7_rematerialization_required"
+}

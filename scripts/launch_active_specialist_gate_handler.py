@@ -8,14 +8,17 @@ import hashlib
 import json
 import os
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from poke_bot.archetypes import classify_deck
 
 
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REGISTRY = ROOT / "ops/specialist_runtime_registry_v1.json"
 SELECTOR_ENV = "POKEBOT_ACTIVE_SPECIALIST"
 SUBMISSION_CONTRACT_INPUTS = (
     "scripts/build_submission.sh",
@@ -26,6 +29,85 @@ SUBMISSION_CONTRACT_INPUTS = (
     "data/training_mixes/top_ladder_representatives.v1.json",
     "data/training_mixes/specialist_representatives.v1.json",
 )
+
+
+def default_registry() -> Path:
+    runtime_root = str(
+        os.environ.get("POKEBOT_SPECIALIST_RUNTIME_ROOT") or ""
+    ).strip()
+    root = Path(runtime_root).expanduser() if runtime_root else ROOT
+    return root / "ops/specialist_runtime_registry_v1.json"
+
+
+def build_prestage_command(
+    registry: dict[str, Any],
+    receipt: dict[str, Any],
+    cycle_contract: dict[str, Any],
+) -> list[str]:
+    """Validate the deterministic terminal path before bootstrap exists."""
+
+    specialist_id = str(receipt.get("selected_specialist") or "").strip()
+    assets = dict(receipt.get("runtime_assets") or {})
+    representative = dict(receipt.get("representative") or {})
+    runtime = dict(cycle_contract.get("runtime") or {})
+    tree = Path(str(assets.get("candidate_tree") or "")).expanduser().resolve()
+    expected_tree_digest = str(
+        assets.get("candidate_tree_sha256") or ""
+    ).removeprefix("sha256:")
+    actual_tree_digest = (
+        hashlib.sha256(tree.read_bytes()).hexdigest()
+        if tree.is_file()
+        else ""
+    )
+    handoff_service = str(runtime.get("handoff_service") or "").strip()
+    if (
+        receipt.get("schema") != "poke_bot.next_specialist_prestage/v1"
+        or not specialist_id
+        or representative.get("ready") is not True
+        or representative.get("logical_specialist_id") != specialist_id
+        or assets.get("selected_route_accepted") is not True
+        or not expected_tree_digest
+        or actual_tree_digest != expected_tree_digest
+        or not handoff_service.startswith("pokebot-")
+        or not handoff_service.endswith(".service")
+    ):
+        raise RuntimeError("prestage terminal-handler inputs are incomplete")
+    candidate = {
+        "status": "ready",
+        "run_name": (
+            f"pure_rl_{specialist_id}_temporal1_8k_v1_20260723"
+        ),
+        "terminal_gate_marker": (
+            f"SPECIALIST_GATE_PASSED.{specialist_id}-splus-v1"
+        ),
+        "matchup_runtime_tree": str(tree),
+        "pass_handler": {
+            "family": f"{specialist_id}-protocol-gate-pass-v1",
+            "display_name": (
+                f"{specialist_id} Exact Protocol Gate Champion"
+            ),
+            "submission_root": (
+                "/home/inzi/poke-bot-agent/outputs/submissions/"
+                f"{specialist_id}-protocol-gate-pass-v1"
+            ),
+            "state": (
+                "/home/inzi/poke-bot-agent/outputs/state/"
+                f"{specialist_id}-passed-gate-handler-v1.json"
+            ),
+            "lock": (
+                "/home/inzi/.local/state/pokebot/"
+                f"{specialist_id}-passed-gate-handler-v1.lock"
+            ),
+            "handoff_service": handoff_service,
+        },
+    }
+    candidate_registry = dict(registry)
+    specialists = dict(candidate_registry.get("specialists") or {})
+    if specialist_id in specialists and specialists[specialist_id] != candidate:
+        raise RuntimeError("prestage candidate conflicts with runtime registry")
+    specialists[specialist_id] = candidate
+    candidate_registry["specialists"] = specialists
+    return build_command(candidate_registry, specialist_id)
 
 
 def _required_text(row: dict[str, Any], field: str) -> str:
@@ -143,9 +225,35 @@ def build_command(
     )
     if ceiling < minimum:
         raise RuntimeError("invalid iteration_ceiling")
-    submission_count = int(common.get("submission_count", -1))
+    profile = dict(
+        dict(common.get("specialist_submission_profiles") or {}).get(
+            specialist_id
+        )
+        or {}
+    )
+    submission_count = int(
+        profile.get("submission_count", common.get("submission_count", -1))
+    )
     if submission_count not in {1, 2}:
         raise RuntimeError("invalid pass-handler submission_count")
+    turn_order_preferences = list(
+        profile.get("turn_order_preferences")
+        or [
+            str(
+                common.get("default_turn_order_preference")
+                or "first_if_allowed"
+            )
+        ]
+        * submission_count
+    )
+    if (
+        len(turn_order_preferences) != submission_count
+        or any(
+            value not in {"first_if_allowed", "second_if_allowed"}
+            for value in turn_order_preferences
+        )
+    ):
+        raise RuntimeError("invalid pass-handler turn-order profiles")
     ceiling_behavior = str(common.get("ceiling_behavior") or "").strip()
     if ceiling_behavior not in {
         "",
@@ -238,12 +346,19 @@ def build_command(
                 runtime_exact_gate_receipt,
             ]
         )
+    for preference in turn_order_preferences:
+        command.extend(
+            [
+                "--submission-turn-order-preference",
+                preference,
+            ]
+        )
     return command
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    parser.add_argument("--registry", type=Path, default=default_registry())
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     registry = json.loads(args.registry.resolve().read_text(encoding="utf-8"))

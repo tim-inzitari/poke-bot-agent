@@ -86,6 +86,7 @@ def test_exact_passing_specialist_is_added_to_every_future_s_plus_gate(
             "schema": "poke_bot.passed_gate_handler/v1",
             "phase": "complete_handoff_started",
             "updated_at_utc": "2026-07-23T18:00:00+00:00",
+            "approved_submission_count": 2,
             "frozen_model": {"checkpoint_digest": checkpoint},
             "submission_bundle": {
                 "path": str(bundle),
@@ -96,7 +97,11 @@ def test_exact_passing_specialist_is_added_to_every_future_s_plus_gate(
                 {
                     "copy_number": 1,
                     "checkpoint_checksum": checkpoint,
-                }
+                },
+                {
+                    "copy_number": 2,
+                    "checkpoint_checksum": checkpoint,
+                },
             ],
         },
     )

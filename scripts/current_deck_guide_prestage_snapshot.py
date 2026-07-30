@@ -14,6 +14,20 @@ DEFAULT_ROOT = Path(
     "/mnt/Main/main/poke-bot-agent/archive/"
     "expert-latest20-derived/daily/current-deck-guides-v1"
 )
+DEFAULT_ADDITIONAL_ROOTS = (
+    Path(
+        "/mnt/Main/main/poke-bot-agent/archive/"
+        "teal-mask-ogerpon-ex-guide-corpus-full-v4-slop-box"
+    ),
+    Path(
+        "/mnt/Main/main/poke-bot-agent/archive/"
+        "teal-mask-ogerpon-ex-guide-corpus-full-v3"
+    ),
+    Path(
+        "/mnt/Main/main/poke-bot-agent/archive/"
+        "archaludon-ex-guide-full-public-schema7-r56-v1"
+    ),
+)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -24,8 +38,27 @@ def _read(path: Path) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _unit_state(specialist_id: str) -> dict[str, Any]:
-    unit = f"pokebot-{specialist_id}-guide-window-v1.service"
+def _unit_state(
+    specialist_id: str,
+    *,
+    corpus_root: Path | None = None,
+) -> dict[str, Any]:
+    if (
+        specialist_id == "teal-mask-ogerpon-ex"
+        and corpus_root is not None
+        and corpus_root.name
+        == "teal-mask-ogerpon-ex-guide-corpus-full-v4-slop-box"
+    ):
+        unit = "pokebot-teal-mask-slop-box-full33-guide-v4.service"
+    elif specialist_id == "teal-mask-ogerpon-ex":
+        unit = "pokebot-teal-mask-full32-guide-v3-clean.service"
+    elif specialist_id == "archaludon-ex":
+        unit = (
+            "pokebot-archaludon-ex-guide-full-public-"
+            "schema7-r56-v1.service"
+        )
+    else:
+        unit = f"pokebot-{specialist_id}-guide-window-v1.service"
     try:
         raw = subprocess.run(
             [
@@ -64,10 +97,63 @@ def _unit_state(specialist_id: str) -> dict[str, Any]:
     }
 
 
-def snapshot(root: Path = DEFAULT_ROOT) -> dict[str, Any]:
+def snapshot(
+    root: Path = DEFAULT_ROOT,
+    *,
+    additional_roots: tuple[Path, ...] | None = None,
+) -> dict[str, Any]:
     windows: list[dict[str, Any]] = []
-    for status_path in sorted(root.glob("*/status/window.json")):
-        specialist_id = status_path.parent.parent.name
+    if additional_roots is None:
+        additional_roots = (
+            DEFAULT_ADDITIONAL_ROOTS if root == DEFAULT_ROOT else ()
+        )
+    status_paths = list(root.glob("*/status/window.json"))
+    status_paths.extend(
+        candidate / "status/window.json"
+        for candidate in additional_roots
+        if (candidate / "status/window.json").is_file()
+    )
+    for status_path in sorted(set(status_paths)):
+        corpus_root = status_path.parent.parent
+        ready_path = corpus_root / (
+            "CURRENT_DECK_GUIDE_CORPUS_READY.json"
+        )
+        ready = _read(ready_path)
+        inferred_specialist_id = corpus_root.name
+        if inferred_specialist_id.startswith(
+            "teal-mask-ogerpon-ex-guide-corpus-full"
+        ):
+            inferred_specialist_id = "teal-mask-ogerpon-ex"
+        specialist_id = str(
+            ready.get("specialist_id") or inferred_specialist_id
+        )
+        ready_valid = (
+            ready.get("schema")
+            == "poke_bot.current_deck_guide_corpus_ready/v1"
+            and ready.get("status") == "ready"
+            and ready.get("specialist_id") == specialist_id
+        )
+        final_ready_path: Path | None = None
+        if specialist_id == "archaludon-ex":
+            final_ready_path = (
+                corpus_root / "ARCHALUDON_EX_GUIDE_CORPUS_READY.json"
+            )
+            final_ready = _read(final_ready_path)
+            ready_valid = ready_valid and (
+                final_ready.get("schema")
+                == "poke_bot.archaludon_ex_guide_corpus_validation/v2"
+                and final_ready.get("status") == "ready_checksum_validated"
+                and int(final_ready.get("records") or 0) >= 16_639
+                and int(final_ready.get("dataset_schema") or -1) == 7
+                and int(final_ready.get("feature_schema") or -1) == 5
+                and int(
+                    (final_ready.get("source_window") or {}).get("days")
+                    or 0
+                )
+                == 44
+                and final_ready.get("schema6_feature_reuse_allowed")
+                is False
+            )
         status = _read(status_path)
         if not status:
             continue
@@ -78,11 +164,10 @@ def snapshot(root: Path = DEFAULT_ROOT) -> dict[str, Any]:
         ]
         date_window = dict(status.get("date_window") or {})
         totals = dict(status.get("totals") or {})
-        ready_path = status_path.parent.parent / (
-            "CURRENT_DECK_GUIDE_CORPUS_READY.json"
+        service = _unit_state(
+            specialist_id,
+            corpus_root=corpus_root,
         )
-        ready = _read(ready_path)
-        service = _unit_state(specialist_id)
         expected_days = int(date_window.get("days") or 0)
         complete_days = len(completed)
         windows.append(
@@ -103,13 +188,14 @@ def snapshot(root: Path = DEFAULT_ROOT) -> dict[str, Any]:
                 "decisions": int(totals.get("decisions") or 0),
                 "guide_rows": int(totals.get("guide_rows") or 0),
                 "updated_at": status.get("updated_at"),
-                "ready": (
-                    ready.get("schema")
-                    == "poke_bot.current_deck_guide_corpus_ready/v1"
-                    and ready.get("status") == "ready"
-                    and ready.get("specialist_id") == specialist_id
-                ),
+                "ready": ready_valid,
                 "ready_receipt": str(ready_path) if ready_path.is_file() else None,
+                "final_validation_receipt": (
+                    str(final_ready_path)
+                    if final_ready_path is not None
+                    and final_ready_path.is_file()
+                    else None
+                ),
                 "service": service,
                 "status_source": str(status_path),
             }

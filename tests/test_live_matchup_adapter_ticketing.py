@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from poke_bot import features
 from poke_bot.dataset import BootstrapDataset, DecisionSample, GameSequence
 from poke_bot.matchup_adapters import UNKNOWN_ROUTE, route_for_archetype
@@ -200,3 +204,53 @@ def test_live_ticketing_supports_trevenant_mirror() -> None:
     assert training_route_for_decision(
         mirror, mirror.decisions[0]
     ) == route_for_archetype("hops-trevenant")
+
+
+def test_live_ticketing_accepts_router_format_6_registered_specialist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = (
+        Path(__file__).resolve().parents[1]
+        / "state"
+        / "matchup_adapter_roster.json"
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_FORMAT",
+        "poke-bot-matchup-adapter-bank-v6",
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH",
+        str(registry),
+    )
+    gate = {
+        "id": "teal-specialist-gate",
+        "roster": [
+            {
+                "opponent_id": "alakazam-public",
+                "archetype_id": "alakazam",
+                "content_digest": _digest("a"),
+            }
+        ],
+    }
+    mirror = _sequence(
+        "teal-mirror",
+        "teal-mask-ogerpon-ex",
+        {
+            "self_play": True,
+            "collect": "self_play",
+            "opponent_id": "self:teal.pt",
+            "opponent_archetype_id": "teal-mask-ogerpon-ex",
+            "opponent_checkpoint_digest": _digest("b"),
+        },
+        acting_archetype="teal-mask-ogerpon-ex",
+    )
+
+    receipt = _ticket_dormant_matchup_adapter_sequences(
+        BootstrapDataset([mirror]),
+        active_gate=gate,
+        specialist_archetype="teal-mask-ogerpon-ex",
+        registered_specialist_ids=["alakazam", "teal-mask-ogerpon-ex"],
+    )
+
+    assert receipt["ticketed_sequences"] == 1
+    assert receipt["route_sequences"] == {"teal-mask-ogerpon-ex": 1}

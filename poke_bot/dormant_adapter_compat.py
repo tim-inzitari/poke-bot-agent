@@ -42,6 +42,10 @@ LOADER_RUNTIME_FILES = (
     "poke_bot/model.py",
     "poke_bot/checkpoint.py",
     "poke_bot/train.py",
+    # Checkpoint staging emits the digest-bound runtime marker. Keep it in the
+    # same fleet overlay so Router Format 6 slot bindings cannot be dropped by
+    # an older controller while the workers run the newer validator.
+    "poke_bot/remote_jobs.py",
     "poke_bot/strategic_heads.py",
     "poke_bot/strategic_losses.py",
     "poke_bot/strategic_schedule.py",

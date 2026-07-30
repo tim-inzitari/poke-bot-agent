@@ -3,9 +3,11 @@
   "status": "validated",
   "specialist_id": "teal-mask-ogerpon-ex",
   "deck_complexity": "nonlinear",
-  "validated_at_utc": "2026-07-28T22:15:00Z",
-  "contract_fragment_sha256": "sha256:0216c6030f8ea632b484d83bb51be3630cf31d428db7a4c557fe80f3d6ad2b49",
-  "protocol_sha256": "sha256:14e2d6253f6b4fae7f91614b963e5fa772241415867241e6d4e9cce02a233ec1",
+  "validated_at_utc": "2026-07-29T19:18:00Z",
+  "goal_revision": 38,
+  "contract_fragment_sha256": "sha256:fcee7daf7a42c1e48e52275e622ee83557ba5b760f475041e4414d6e0a0fe594",
+  "protocol_sha256": "sha256:232b049828db3eef74308092e8a83902ece66c1866595299df7f1d14c019a56c",
+  "revalidated_reason": "goal_revision_38_preserves_the_exact_owner_shown_Slop_Box_shell_and_rebinds_its_validated_nonlinear_systems_to_the_current_protocol_checksum",
   "required_fused_head_inputs": [
     "value",
     "archetype",
@@ -45,7 +47,7 @@
     },
     {
       "path": "scripts/run_starmie_expert_bootstrap.py",
-      "sha256": "sha256:d872d11db6a02177bdb6d8264b2a89b4b8724266e69a85a50fb0d7f1525cd388"
+      "sha256": "sha256:ba0450ddf1ef5f8952db835748438987f5f8ed939c351bcaa08e978b2da4cd1a"
     },
     {
       "path": "scripts/audit_decision_fusion_checkpoint.py",
@@ -53,11 +55,11 @@
     },
     {
       "path": "poke_bot/teal_mask_ogerpon_heuristics.py",
-      "sha256": "sha256:77042e740435dcce5148e6a14d43c3d496b0ac1262937042663df11f965ac951"
+      "sha256": "sha256:58b8d9da289c5ea725e214f3b8f10fb0c58025f0838bca403deecc5b76ad5b68"
     },
     {
       "path": "scripts/prestage_next_specialist.py",
-      "sha256": "sha256:a3b0f0e378ebd77c5011d2a6ea396a9678b83996f6cc67868f7973748c3d9fb5"
+      "sha256": "sha256:378b5188b0ff4fed581bb53bba916c2aebfe926f5d8a6067f13d59835b2615d8"
     }
   ],
   "checks": {
@@ -74,9 +76,13 @@
     "expanded_strategic_head_count": 11,
     "bootstrap_epochs": 25,
     "guide_role": "causal_auxiliary_scaffolding_only",
+    "logical_specialist_id": "teal-mask-ogerpon-ex",
+    "physical_deck_identity": "slop-box",
+    "competitive_family_alias": "raging-bolt-ogerpon",
+    "exact_representative_sha256": "sha256:10857495cddc95416052ff3b60e8686d2291da31de23ef064128534eb87cff28",
     "public_exact_acting_seat_games": 1135,
     "public_source_days": 32,
-    "guide_corpus_status": "materialization_running",
+    "guide_corpus_status": "ready",
     "masked_branch_policy": "mask_not_zero",
     "guide_weight_evidence": "training_ineligible_guide_on_guide_off_pairs",
     "terminal_runtime_gate_required": true
@@ -84,6 +90,6 @@
   "activation": {
     "prestage_receipt_required": true,
     "bootstrap_allowed_before_corpus_and_route_ready": false,
-    "active_spidops_training_modified": false
+    "active_hammer_training_modified": false
   }
 }

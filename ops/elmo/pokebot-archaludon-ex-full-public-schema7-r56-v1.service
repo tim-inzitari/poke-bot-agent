@@ -1,0 +1,22 @@
+[Unit]
+Description=Archaludon ex full-public schema-7 identity corpus (inactive)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/admin/pokebot-archaludon-r56-src-v1/state/archaludon_ex_schema7_source_lock_v1.json
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/pokebot-archaludon-r56-src-v1
+ExecStart=/usr/bin/python3 /home/admin/pokebot-archaludon-r56-src-v1/scripts/materialize_archaludon_ex_full_public_schema7_corpus.py --source-root /home/admin/pokebot-archaludon-r56-src-v1 --archive-root /mnt/Main/main/poke-bot-agent/archive/episode-days --output-root /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-full-public-2026-06-16_2026-07-29-schema7-r56-v1 --source-lock /home/admin/pokebot-archaludon-r56-src-v1/state/archaludon_ex_schema7_source_lock_v1.json --source-audit /home/admin/pokebot-archaludon-r56-src-v1/state/archaludon_public_full44_source_audit_v1.json --assembler /home/admin/pokebot-archaludon-r56-src-v1/scripts/assemble_feature_manifest.py --cg-runtime /mnt/Main/main/poke-bot-agent/engine-runtimes/znver3-v1 --day-parallelism 4 --workers-per-day 3 --max-in-flight-per-day 6 --start-memory-floor-gib 30 --runtime-memory-floor-gib 20 --managed-service pokebot-archaludon-ex-full-public-schema7-r56-v1.service
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=5
+CPUQuota=1200%
+MemoryHigh=40G
+MemoryMax=48G
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

@@ -6,15 +6,18 @@ source_root="${POKEBOT_GUIDE_SOURCE:-/home/admin/pokebot-expert-guide-src-v1}"
 archive_root="${POKEBOT_EPISODE_ARCHIVE:-/mnt/Main/main/poke-bot-agent/archive/episode-days}"
 output_root="${POKEBOT_TEAL_MASK_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v2}"
 cg_runtime="${POKEBOT_CG_RUNTIME:-/mnt/Main/main/poke-bot-agent/engine-runtimes/znver3-v1}"
-catalog_source="$source_root/data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json"
+catalog_source="${POKEBOT_TEAL_MASK_CATALOG_SOURCE:-$source_root/data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json}"
 teacher_module="$source_root/poke_bot/teal_mask_ogerpon_heuristics.py"
 catalog="$output_root/PUBLIC_DECK_ARCHETYPE_CATALOG.json"
 catalog_sha256="${POKEBOT_TEAL_MASK_CATALOG_SHA256:?catalog checksum is required}"
 teacher_sha256="${POKEBOT_TEAL_MASK_TEACHER_SHA256:?teacher checksum is required}"
 status="$output_root/status/window.json"
-start_date="2026-06-26"
-end_date="2026-07-27"
-minimum_records="1135"
+start_date="${POKEBOT_TEAL_MASK_START_DATE:-2026-06-26}"
+end_date="${POKEBOT_TEAL_MASK_END_DATE:-2026-07-27}"
+minimum_records="${POKEBOT_TEAL_MASK_MINIMUM_RECORDS:-1135}"
+day_parallelism="${POKEBOT_TEAL_MASK_DAY_PARALLELISM:-4}"
+workers_per_day="${POKEBOT_TEAL_MASK_WORKERS_PER_DAY:-3}"
+max_in_flight_per_day="${POKEBOT_TEAL_MASK_MAX_IN_FLIGHT_PER_DAY:-6}"
 
 test -f "$cg_runtime/cg/__init__.py"
 test -s "$source_root/scripts/materialize_authoritative_guide_window_parallel.py"
@@ -41,6 +44,7 @@ expected_manifest_only_ids = {
 }
 expected_archive_sha256 = {
     "2026-07-24": "68a5c1be539bef579f03b5de29b901a1fab1dc4904af78824fbf7666d73bc8ab",
+    "2026-07-28": "067b71f93fb5ebc35b727117b5f61c30fa9881f4f7d90ce3de5c27be973573cd",
 }
 validated = []
 for offset in range((end - start).days + 1):
@@ -127,9 +131,9 @@ python3 scripts/materialize_authoritative_guide_window_parallel.py \
   --current-deck-guide teal-mask-ogerpon-ex \
   --authoritative-deck-catalog "$catalog" \
   --authoritative-only-archetype teal-mask-ogerpon-ex \
-  --day-parallelism 4 \
-  --workers-per-day 3 \
-  --max-in-flight-per-day 6 \
+  --day-parallelism "$day_parallelism" \
+  --workers-per-day "$workers_per_day" \
+  --max-in-flight-per-day "$max_in_flight_per_day" \
   --max-context 320 \
   --memory-floor-gib 16 \
   --min-records 0
@@ -140,7 +144,7 @@ python3 scripts/finalize_current_deck_guide_window.py \
   --start "$start_date" \
   --end "$end_date" \
   --specialist-id teal-mask-ogerpon-ex \
-  --guide-version teal-mask-ogerpon-ex-north-star-v2 \
+  --guide-version teal-mask-ogerpon-ex-slop-box-north-star-v3 \
   --minimum-records "$minimum_records" \
   --public-deck-catalog "$catalog"
 
@@ -165,7 +169,10 @@ expected_records = int(catalog.get("observed_acting_seat_games") or 0)
 recent = {
     str(row.get("date")): int(row.get("guide_rows") or 0)
     for row in ready.get("daily_shards") or []
-    if str(row.get("date")) >= "2026-07-24"
+    if expected_by_day.get(str(row.get("date")), 0) > 0
+}
+expected_nonzero_days = {
+    day for day, records in expected_by_day.items() if records > 0
 }
 if (
     ready.get("status") != "ready"
@@ -173,12 +180,7 @@ if (
     or int(ready.get("records") or 0) != expected_records
     or actual_by_day != expected_by_day
     or int(ready.get("guide_rows") or 0) <= 0
-    or set(recent) != {
-        "2026-07-24",
-        "2026-07-25",
-        "2026-07-26",
-        "2026-07-27",
-    }
+    or set(recent) != expected_nonzero_days
     or any(value <= 0 for value in recent.values())
     or (ready.get("source_policy") or {}).get("mode")
     != "public_full_history_exact_deck_identity"

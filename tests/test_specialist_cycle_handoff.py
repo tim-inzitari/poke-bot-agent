@@ -13,9 +13,11 @@ from scripts.run_specialist_cycle_handoff import (
     _is_expected_additive_gate_successor,
     _required_specialist_ids,
     _source,
+    _validated_post_fleet_refresh_progress,
     population_transition_ready,
 )
 from scripts.run_post_starmie_core_handoff import (
+    _resolve_boundary_core,
     _reusable_core_candidate,
     _reusable_core_regression,
 )
@@ -113,13 +115,23 @@ def test_cycle_contract_keeps_exact_protocol_for_later_specialists() -> None:
     assert result["runtime_registration"]["gate_handler_service"] == (
         "pokebot-specialist-passed-gate-handler.service"
     )
+    policy = result["runtime_registration"]["future_guide_weight_policy"]
+    assert policy["scope"] == "future_specialist_training_runs_only"
+    assert policy["prospective_scope_revision"] == 44
+    assert policy["learning_semantics_revision"] == 46
+    assert policy["prospective_effective_specialist"] == "archaludon-ex"
+    assert policy[
+        "retroactive_application_to_completed_frozen_or_started_runs"
+    ] is False
+    assert policy["historical_weight_or_receipt_rewrite_allowed"] is False
+    assert policy["files"]["scripts/train_pure_rl.py"].startswith("sha256:")
     fleet = result["runtime_registration"]["matchup_v6"]["fleet"]
     assert fleet["bert"]["expected_workers"] == 16
     assert fleet["bert"]["expected_leaves"] == 4
     assert fleet["elmo"]["expected_workers"] == 36
     assert fleet["elmo"]["expected_leaves"] == 4
     assert fleet["elmo"]["image"] == (
-        "poke-bot-truenas-worker:matchup-v38-record-schema-runtime"
+        "poke-bot-truenas-worker:matchup-v40-v6-router-runtime"
     )
     assert result["paths"]["state"].endswith(
         "post-lucario-dragapult-handoff-v1.json"
@@ -155,13 +167,13 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "sha256:"
     )
     assert contract["runtime"]["inactive_tree_candidate"].endswith(
-        "public-matchup-tree-calibration-roster18-v42.inactive.json"
+        "public-matchup-tree-calibration-roster19-v44.inactive.json"
     )
     assert contract["runtime"]["candidate_audit"].endswith(
-        "public-matchup-tree-calibration-roster18-v42.audit.json"
+        "public-matchup-tree-calibration-roster19-v44.audit.json"
     )
     assert contract["runtime"]["future_assets_receipt"].endswith(
-        "rare-route-assets-roster18-v42-ready.json"
+        "rare-route-assets-roster19-v44-ready.json"
     )
     assert contract["runtime"]["future_assets_scope"] == "router_only"
     assert contract["selection"]["minimum_decisions_by_specialist"] == {
@@ -225,9 +237,131 @@ def test_exact_additive_gate_successor_is_resume_safe() -> None:
         current_gate=current,
         frozen_registry=registry,
     )
+    saved["base_gate_id"] = "alakazam-strong+frozen-specialists-r5"
+    saved["gate_id"] = "specialist-lc50+frozen-specialists-r5"
+    current["active_gate_id"] = "alakazam-strong+frozen-specialists-r6"
+    current["next_gate"]["id"] = current["active_gate_id"]
+    assert _is_expected_additive_gate_successor(
+        active_id="dudunsparce",
+        saved_gate=saved,
+        current_gate=current,
+        frozen_registry=registry,
+    )
     current["next_gate"]["roster"].append({"opponent_id": "unexpected"})
     assert not _is_expected_additive_gate_successor(
         active_id="dudunsparce",
+        saved_gate=saved,
+        current_gate=current,
+        frozen_registry=registry,
+    )
+
+
+def test_ceiling_gate_resume_accepts_exact_materialization_receipt_across_namespaces() -> None:
+    checkpoint = "sha256:" + "a" * 64
+    gate_digest = "sha256:" + "b" * 64
+    saved = {
+        "base_gate_id": (
+            "specialist-strong-public-roster-lc50-at-iter5-v1"
+            "+frozen-specialists-r11"
+        ),
+        "checkpoint_digest": checkpoint,
+        "roster_ids": ["public-a", "specialist-starmie"],
+    }
+    current = {
+        "active_gate_id": (
+            "alakazam-strong-public-roster-lc55-v2"
+            "+frozen-specialists-r12"
+        ),
+        "next_gate": {
+            "id": (
+                "alakazam-strong-public-roster-lc55-v2"
+                "+frozen-specialists-r12"
+            ),
+            "roster": [
+                {"opponent_id": "public-a"},
+                {"opponent_id": "specialist-starmie"},
+                {
+                    "opponent_id": "specialist-hammer-pult",
+                    "archetype_id": "hammer-pult",
+                    "frozen_specialist": True,
+                    "frozen_checkpoint_digest": checkpoint,
+                },
+            ],
+        },
+    }
+    registry = {
+        "specialists": [
+            {
+                "specialist_id": "hammer-pult",
+                "checkpoint_digest": checkpoint,
+                "frozen": True,
+            }
+        ]
+    }
+    receipt = {
+        "schema": "poke_bot.frozen_specialist_gate_materialization/v1",
+        "specialist_id": "hammer-pult",
+        "checkpoint_digest": checkpoint,
+        "gate_id": current["active_gate_id"],
+        "gate_contract_sha256": gate_digest,
+        "opponent_id": "specialist-hammer-pult",
+        "frozen_specialist_ids": ["starmie", "hammer-pult"],
+    }
+
+    assert _is_expected_additive_gate_successor(
+        active_id="hammer-pult",
+        saved_gate=saved,
+        current_gate=current,
+        frozen_registry=registry,
+        materialization_receipt=receipt,
+        current_gate_sha256=gate_digest,
+    )
+    receipt["checkpoint_digest"] = "sha256:" + "c" * 64
+    assert not _is_expected_additive_gate_successor(
+        active_id="hammer-pult",
+        saved_gate=saved,
+        current_gate=current,
+        frozen_registry=registry,
+        materialization_receipt=receipt,
+        current_gate_sha256=gate_digest,
+    )
+
+
+def test_owner_ceiling_resume_accepts_exact_additive_successor_namespace() -> None:
+    checkpoint = "sha256:" + "a" * 64
+    saved = {
+        "base_gate_id": "specialist-lc50+frozen-specialists-r12",
+        "checkpoint_digest": checkpoint,
+        "completion_authority": "explicit_owner_ceiling_acceptance",
+        "roster_ids": ["public-a"],
+    }
+    current = {
+        "active_gate_id": "alakazam-lc55+frozen-specialists-r13",
+        "next_gate": {
+            "id": "alakazam-lc55+frozen-specialists-r13",
+            "roster": [
+                {"opponent_id": "public-a"},
+                {
+                    "opponent_id": "specialist-teal",
+                    "archetype_id": "teal",
+                    "frozen_specialist": True,
+                    "frozen_checkpoint_digest": checkpoint,
+                },
+            ],
+        },
+    }
+    registry = {
+        "specialists": [
+            {
+                "specialist_id": "teal",
+                "checkpoint_digest": checkpoint,
+                "frozen": True,
+            }
+        ]
+    }
+
+    assert _is_expected_additive_gate_successor(
+        active_id="teal",
         saved_gate=saved,
         current_gate=current,
         frozen_registry=registry,
@@ -330,6 +464,99 @@ def test_normal_gate_resume_uses_frozen_evidence_after_additive_successor(
     assert source["id"] == "garchomp"
     assert evidence["checkpoint_digest"] == digest
     assert evidence["queued_submission_copies"][0]["copy_number"] == 1
+
+
+def test_saved_source_accepts_two_explicitly_approved_copies(
+    tmp_path: Path, monkeypatch
+) -> None:
+    frozen = tmp_path / "models" / "source"
+    frozen.mkdir(parents=True)
+    digest = "sha256:" + "4" * 64
+    (frozen / "manifest.json").write_text("{}\n", encoding="utf-8")
+    gate_contract = tmp_path / "gate.json"
+    gate_contract.write_text("{}\n", encoding="utf-8")
+    frozen_identity = {
+        "family": "source",
+        "model_path": str(frozen / "model.pt"),
+        "checkpoint_digest": digest,
+    }
+    handler_state = tmp_path / "handler.json"
+    handler_state.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.passed_gate_handler/v1",
+                "phase": "complete_handoff_started",
+                "submission_mode": "queue_and_continue",
+                "approved_submission_count": 2,
+                "gate": {
+                    "commit_boundary": 14,
+                    "checkpoint_digest": digest,
+                    "contract": str(gate_contract),
+                    "validation": {"committed": True},
+                },
+                "frozen_model": frozen_identity,
+                "queued_submissions": [
+                    {
+                        "copy_number": copy_number,
+                        "label": f"source copy {copy_number}",
+                        "checkpoint_checksum": digest,
+                        "queued_at": "2026-07-30T00:00:00+00:00",
+                    }
+                    for copy_number in (1, 2)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    runtime_registry = tmp_path / "runtime.json"
+    runtime_registry.write_text(
+        json.dumps(
+                {
+                    "schema": "poke_bot.specialist_runtime_registry/v1",
+                    "minimum_terminal_iteration": 14,
+                    "specialists": {
+                    "source": {
+                        "status": "ready",
+                        "run_name": "source-run",
+                        "minimum_terminal_iteration": 14,
+                        "terminal_gate_marker": "PASSED",
+                        "matchup_runtime_tree": str(tmp_path / "tree.json"),
+                        "pass_handler": {
+                            "family": frozen.name,
+                            "state": str(handler_state),
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    frozen_registry = tmp_path / "frozen.json"
+    frozen_registry.write_text('{"specialists":[]}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        "scripts.run_specialist_cycle_handoff.verify_frozen_model",
+        lambda path: frozen_identity,
+    )
+    monkeypatch.setattr(
+        "scripts.run_specialist_cycle_handoff._is_expected_additive_gate_successor",
+        lambda **kwargs: True,
+    )
+
+    _, evidence = _source(
+        contract={
+            "runtime": {
+                "runtime_registry": str(runtime_registry),
+                "frozen_specialist_registry": str(frozen_registry),
+                "registry_root": str(frozen.parent),
+                "training_service": "trainer.service",
+            }
+        },
+        active_id="source",
+    )
+
+    assert [
+        row["copy_number"] for row in evidence["queued_submission_copies"]
+    ] == [1, 2]
 
 
 def test_lucario_runtime_row_exposes_exact_threshold_transition() -> None:
@@ -495,6 +722,98 @@ def test_prior_cumulative_contract_accepts_only_additive_selection_controls() ->
     )
     prior["next_specialist"]["minimum_decisions"] = 9_999
     assert not _compatible_prior_cumulative_contract(prior, current)
+
+
+def test_prior_cumulative_contract_accepts_only_paired_protocol_checksum_refresh() -> None:
+    old_digest = "sha256:" + "1" * 64
+    new_digest = "sha256:" + "2" * 64
+    current = {
+        "trigger": {"specialist_id": "team-rockets-spidops"},
+        "next_specialist": {"minimum_decisions": 20_000},
+        "runtime": {},
+        "core_refresh": {
+            "decision_fusion": {
+                "canonical_config_sha256": new_digest,
+                "head_count": 17,
+            },
+            "expanded_heads": {
+                "canonical_config_sha256": new_digest,
+                "head_count": 11,
+            },
+        },
+    }
+    prior = json.loads(json.dumps(current))
+    prior["core_refresh"]["decision_fusion"][
+        "canonical_config_sha256"
+    ] = old_digest
+    prior["core_refresh"]["expanded_heads"][
+        "canonical_config_sha256"
+    ] = old_digest
+
+    assert _compatible_prior_cumulative_contract(prior, current)
+
+    prior["core_refresh"]["decision_fusion"]["head_count"] = 16
+    assert not _compatible_prior_cumulative_contract(prior, current)
+
+    prior = json.loads(json.dumps(current))
+    prior["core_refresh"]["decision_fusion"][
+        "canonical_config_sha256"
+    ] = old_digest
+    assert not _compatible_prior_cumulative_contract(prior, current)
+
+
+def test_prior_cumulative_contract_accepts_versioned_v6_fleet_receipt(
+    tmp_path: Path,
+) -> None:
+    old_receipt = tmp_path / "matchup-v6-fleet-v1.json"
+    old_receipt.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.matchup_adapter_v6_fleet_activation/v1",
+                "status": "active",
+            }
+        ),
+        encoding="utf-8",
+    )
+    new_receipt = tmp_path / "matchup-v6-fleet-v2.json"
+    current = {
+        "trigger": {"specialist_id": "hammer-pult"},
+        "next_specialist": {"minimum_decisions": 20_000},
+        "runtime": {
+            "matchup_v6": {
+                "enabled": True,
+                "fleet": {
+                    "receipt": str(new_receipt),
+                    "elmo": {
+                        "endpoint": "elmo:8765",
+                        "image": "poke-bot-truenas-worker:v39",
+                        "build_context": "/srv/poke-bot",
+                        "dockerfile": "/srv/poke-bot/Dockerfile",
+                    },
+                },
+            }
+        },
+        "core_refresh": {},
+    }
+    prior = json.loads(json.dumps(current))
+    prior["runtime"]["matchup_v6"]["fleet"]["receipt"] = str(old_receipt)
+    prior["runtime"]["matchup_v6"]["fleet"]["elmo"]["image"] = (
+        "poke-bot-truenas-worker:v38"
+    )
+    prior["runtime"]["matchup_v6"]["fleet"]["elmo"].pop("build_context")
+    prior["runtime"]["matchup_v6"]["fleet"]["elmo"].pop("dockerfile")
+
+    assert _compatible_prior_cumulative_contract(prior, current)
+    old_receipt.write_text('{"schema":"wrong","status":"active"}\n')
+    assert not _compatible_prior_cumulative_contract(prior, current)
+    prior = json.loads(json.dumps(current))
+    prior["runtime"]["matchup_v6"]["fleet"]["elmo"]["image"] = (
+        "poke-bot-truenas-worker:v38"
+    )
+    prior["runtime"]["matchup_v6"]["fleet"]["elmo"].pop("build_context")
+    prior["runtime"]["matchup_v6"]["fleet"]["elmo"].pop("dockerfile")
+    assert not new_receipt.exists()
+    assert _compatible_prior_cumulative_contract(prior, current)
 
 
 def test_accepted_core_regression_survives_controller_only_change(
@@ -725,14 +1044,118 @@ def test_failed_core_regression_reuses_boundary_and_falls_back(
     assert resumed["core_failure_fallback"]["version"] == 1
 
 
+def test_pretraining_core_rejection_is_immutable_and_nonblocking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fallback_digest = "sha256:" + "9" * 64
+    fallback_family = tmp_path / "models/core-v9"
+    fallback_family.mkdir(parents=True)
+    fallback_ready = tmp_path / "state/core-v9-ready.json"
+    fallback_ready.parent.mkdir()
+    fallback_ready.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.multi_teacher_core_ready/v1",
+                "status": "ready",
+                "gameplay_regression_passed": True,
+                "checkpoint_digest": fallback_digest,
+            }
+        ),
+        encoding="utf-8",
+    )
+    attempted_ready = tmp_path / "state/core-v11-ready.json"
+    contract_path = tmp_path / "post-spidops-core-v11.json"
+    contract = {
+        "core_refresh": {
+            "version": 11,
+            "family": str(tmp_path / "models/core-v11"),
+            "ready_receipt": str(attempted_ready),
+            "initialization": {
+                "checkpoint": str(fallback_family / "model.pt"),
+                "checksum": fallback_digest,
+            },
+            "teachers": [
+                {"checksum": "sha256:" + "1" * 64},
+                {"checksum": "sha256:" + "2" * 64},
+            ],
+        },
+        "core_failure_fallback": {
+            "enabled": True,
+            "behavior": "continue_with_latest_accepted_core",
+            "continue_refresh_after_each_specialist": True,
+            "version": 9,
+            "family": str(fallback_family),
+            "checkpoint_digest": fallback_digest,
+            "ready_receipt": str(fallback_ready),
+        },
+    }
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    state_path = tmp_path / "state/handoff.json"
+    calls = {"command": 0}
+
+    def fail_command(_command: list[str]) -> None:
+        calls["command"] += 1
+        raise RuntimeError(
+            "checkpoint auxiliary row identity is unavailable or ambiguous"
+        )
+
+    monkeypatch.setattr(
+        "scripts.run_post_starmie_core_handoff._core_refresh_command",
+        lambda **_kwargs: ["refresh"],
+    )
+    monkeypatch.setattr(
+        "scripts.run_post_starmie_core_handoff._command",
+        fail_command,
+    )
+    monkeypatch.setattr(
+        "scripts.run_post_starmie_core_handoff.verify_frozen_model",
+        lambda _path: {
+            "checkpoint_digest": fallback_digest,
+            "model_path": str(fallback_family / "model.pt"),
+        },
+    )
+
+    ready, frozen, core, updated = _resolve_boundary_core(
+        contract_path=contract_path,
+        contract=contract,
+        runtime={},
+        state_path=state_path,
+    )
+
+    rejection = json.loads(attempted_ready.read_text(encoding="utf-8"))
+    assert rejection["status"] == "rejected_pretraining_validation"
+    assert rejection["training_eligible"] is False
+    assert rejection["candidate_checkpoint_created"] is False
+    assert rejection["gameplay_regression_run"] is False
+    assert ready["checkpoint_digest"] == fallback_digest
+    assert frozen["checkpoint_digest"] == fallback_digest
+    assert core["version"] == 9
+    assert updated["core_refresh"]["version"] == 9
+    assert json.loads(state_path.read_text(encoding="utf-8"))[
+        "production_continues"
+    ] is True
+
+    _resolve_boundary_core(
+        contract_path=contract_path,
+        contract=contract,
+        runtime={},
+        state_path=state_path,
+    )
+    assert calls["command"] == 1
+
+
 def test_required_specialist_ids_is_exact_canonical_roster() -> None:
     identifiers = _required_specialist_ids(ROOT / "state/specialists.yaml")
-    assert len(identifiers) == 17
+    assert len(identifiers) == 15
     assert "starmie" in identifiers
     assert "hops-trevenant" in identifiers
     assert "teal-mask-ogerpon-ex" in identifiers
     assert "dragapult-blaziken" not in identifiers
     assert "dragapult-dudunsparce" not in identifiers
+    assert "dragapult" not in identifiers
+    assert "walrein" not in identifiers
+    assert "crustle" not in identifiers
+    assert "slowking" in identifiers
 
 
 def test_required_specialist_ids_rejects_completed_specialist_in_unfinished_order(
@@ -770,14 +1193,108 @@ def test_starmie_pass_still_leaves_unfinished_roster_before_population() -> None
         "hops-trevenant",
         "starmie",
     }
-    assert len(required - completed_after_starmie) == 14
-    assert not population_transition_ready(completed_after_starmie, required)
+    assert len(required - completed_after_starmie) == 12
+    assert not population_transition_ready(
+        completed_after_starmie,
+        required,
+        completed_refresh_ids=[],
+        required_refresh_order=[
+            "alakazam",
+            "marnie-s-grimmsnarl-ex",
+        ],
+    )
 
 
-def test_population_requires_every_canonical_specialist() -> None:
+def test_population_requires_every_canonical_specialist_and_refresh() -> None:
     required = _required_specialist_ids(ROOT / "state/specialists.yaml")
-    assert population_transition_ready(set(required), required)
+    refresh_order = ["alakazam", "marnie-s-grimmsnarl-ex"]
     assert not population_transition_ready(
         set(sorted(required)[:-1]),
         required,
+        completed_refresh_ids=refresh_order,
+        required_refresh_order=refresh_order,
     )
+    assert not population_transition_ready(
+        set(required),
+        required,
+        completed_refresh_ids=[],
+        required_refresh_order=refresh_order,
+    )
+    assert not population_transition_ready(
+        set(required),
+        required,
+        completed_refresh_ids=["alakazam"],
+        required_refresh_order=refresh_order,
+    )
+    assert population_transition_ready(
+        set(required),
+        required,
+        completed_refresh_ids=refresh_order,
+        required_refresh_order=refresh_order,
+    )
+    with pytest.raises(RuntimeError, match="refresh order"):
+        population_transition_ready(
+            set(required),
+            required,
+            completed_refresh_ids=list(reversed(refresh_order)),
+            required_refresh_order=refresh_order,
+        )
+    with pytest.raises(RuntimeError, match="refresh order"):
+        population_transition_ready(
+            set(required),
+            required,
+            completed_refresh_ids=["alakazam", "unknown"],
+            required_refresh_order=refresh_order,
+        )
+
+
+def test_post_fleet_refresh_progress_is_staged_and_receipt_bound() -> None:
+    contract = json.loads(
+        (ROOT / "ops/specialist_cycle_handoff_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    refresh = contract["post_fleet_refresh"]
+    seats = refresh["first_refresh"]["turn_order"]
+    gates = refresh["release_gates"]
+    fallback = refresh["first_refresh"]["preferred_parent_migration"][
+        "failure_fallback"
+    ]
+    assert seats["training_seat_split"] == {"first": 0.5, "second": 0.5}
+    assert seats["deterministic_assignment_required"] is True
+    assert seats["seat_count_parity_receipt_required"] is True
+    assert seats["seat_count_parity_receipt_schema"] == (
+        "poke_bot.alakazam_refresh_seat_split/v1"
+    )
+    assert seats["seat_count_receipt_required_stages"] == [
+        "assigned",
+        "actual",
+        "consumed",
+    ]
+    assert seats["equal_first_second_counts_required_at_each_stage"] is True
+    assert seats["package_preference"] == "first_if_allowed"
+    assert seats["second_focus_1_to_7_allowed"] is False
+    assert seats["always_second_arm_allowed"] is False
+    assert seats["second_preferring_refresh_copy_allowed"] is False
+    assert gates["final_alakazam_model_computation"]["required_receipts"] == [
+        "required_specialist_fleet_complete_for_final_alakazam_v1",
+        "capacity_research_resource_lease_v1",
+    ]
+    assert gates["broader_multi_archetype_capacity_program"][
+        "required_receipt"
+    ] == "post_refresh_sequence_complete_for_capacity_v2"
+    assert fallback == {
+        "migration_failure_receipt_preserved": True,
+        "ordinary_same_archetype_alakazam_refresh_initialized_from": (
+            "then_latest_checksum_accepted_core"
+        ),
+        "expand_only_that_completed_alakazam_derivative_to_final_format": True,
+        "latest_core_direct_final_format_tensor_parent_allowed": False,
+        "partial_old_alakazam_core_overlay_allowed": False,
+    }
+    order, completed = _validated_post_fleet_refresh_progress(
+        state_path=ROOT / "state/specialists.yaml",
+        cycle_contract=contract,
+    )
+    assert order == ["alakazam", "marnie-s-grimmsnarl-ex"]
+    assert completed == []

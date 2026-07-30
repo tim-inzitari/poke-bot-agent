@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply Teal tactical-outcome head rebalance after iteration 13
+After=pokebot-pure-rl-trevenant-staged.service
+
+[Service]
+Type=simple
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/apply_teal_auxiliary_head_rebalance_at_boundary.py --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_teal-mask-ogerpon-ex_temporal1_8k_v1_20260723 --unit pokebot-pure-rl-trevenant-staged.service --selector /home/inzi/.config/pokebot/specialist_runtime.env --registry /home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/specialist_runtime_registry_v1.json --status /home/inzi/poke-bot-agent/outputs/state/teal-auxiliary-head-rebalance-r52.json --poll-seconds 1.0
+Restart=no
+
+[Install]
+WantedBy=default.target

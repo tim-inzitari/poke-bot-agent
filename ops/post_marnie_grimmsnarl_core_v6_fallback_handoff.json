@@ -348,10 +348,12 @@
           "expected_leaves": 4,
           "expected_workers": 36,
           "host": "elmo",
-          "image": "poke-bot-truenas-worker:matchup-v38-record-schema-runtime",
+          "image": "poke-bot-truenas-worker:matchup-v40-v6-router-runtime",
+          "build_context": "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1",
+          "dockerfile": "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/Dockerfile",
           "service": "worker"
         },
-        "receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v1.json",
+        "receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v3.json",
         "registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/matchup_adapter_roster.json",
         "source_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1"
       },

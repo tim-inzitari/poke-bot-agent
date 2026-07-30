@@ -24,6 +24,19 @@ boundary.
    from whether it appears individually submission-ready.
 5. Once the deck is selected, use the completed fleet to harden candidate
    agents for that deck and select the final submission package.
+6. Each deck already has its own model, and existing matchup adapters already
+   supply opponent-conditional adjustment. Do not propose additional
+   deck-conditioned layers, seat adapters, or a second matchup-adapter family.
+7. The research architecture is a single-forward-pass policy. External MCTS,
+   rollout search, and tree expansion are out of scope. A learned search or
+   lookahead head remains eligible only when it supplies a distinct supervised
+   target and runs inside the ordinary forward pass.
+8. Review every strength claim separately for actual going-first and
+   going-second games under the metric contract in
+   `docs/TOP_100_TURN_ORDER_OPTIMIZATION_PLAN.md`.
+9. A full-game decision replay and expert-correction surface is a planned
+   research instrument. Experts label decisions and situations; they do not
+   manually edit neural parameters.
 
 These decisions refine how research interprets specialists. They do not change
 the existing sequential-training, freeze, gate, or asynchronous submission
@@ -140,6 +153,8 @@ Create or preserve the following evidence for every specialist:
 - win rate split by opponent and seat;
 - guide, router, and architecture identity;
 - critical failure states and recurring decision errors;
+- representative checksum-bound decision traces split by actual going first
+  and going second;
 - payoff vector against the practice fleet;
 - behavior or matchup coverage not supplied by existing partners; and
 - historical checkpoints worth retaining because their payoff vectors are
@@ -210,6 +225,11 @@ For each practice partner, record:
 Action accuracy, auxiliary-head accuracy, guide agreement, and public Kaggle
 score are diagnostics, not primary strength metrics.
 
+All first/second figures must use actual engine-recorded turn order, preserve
+their own denominators and fault counts, and distinguish forced evaluation,
+natural ladder, and adaptive-training games. The standalone turn-order plan
+owns the complete view, weighting, and confidence-interval contract.
+
 ### Practice-partner roles
 
 Assign one or more evidence-backed roles:
@@ -253,7 +273,7 @@ For every serious deck candidate, evaluate:
 - strategic ceiling under improved training;
 - representation quality for its important decisions;
 - availability and quality of expert demonstrations;
-- search suitability, if search later becomes calibrated;
+- suitability for a distinct single-pass learned search/lookahead head;
 - runtime reliability and computational cost; and
 - expected value against the projected final field.
 
@@ -337,13 +357,114 @@ Run these experiment families in order:
    - Measure archetype/deck recall, per-card count calibration, support repair,
      and downstream gameplay effect.
 
-6. **Search and distillation**
-   - Keep deployment search disabled until value ranking and calibration pass.
-   - Compare greedy against trusted belief search under identical checkpoints.
-   - Test selective search on high-entropy or high-value decisions.
-   - Distill trustworthy visit and root-Q targets into the greedy policy.
-   - Prefer fast distilled greedy serving unless inference-time search has a
-     positive lower confidence bound and no timeout regression.
+6. **Single-pass learned search head**
+   - Do not run MCTS, rollout search, tree expansion, or repeated
+     simulator/model calls at inference.
+   - Treat a learned search head as another typed prediction inside one model
+     forward pass.
+   - Define a target distinct from the existing action-Q, tactical-outcome,
+     opponent-response, resource-forecast, outcome-distribution, and
+     remaining-turns heads before allocating parameters.
+   - Measure head calibration, selected-versus-runner-up ranking, causal
+     contribution through fusion, and gameplay value.
+   - Reject a head whose contribution is redundant, unstable, or improves only
+     its auxiliary metric.
+
+7. **Causal decision replay and expert correction**
+   - Replay a full public game log sequentially through an exact checkpoint,
+     stopping at the selected decision's causal prefix.
+   - Show every legal option, base logit, fusion residual, final logit,
+     probability, selected action, runner-up margin, value, and typed-head
+     outputs.
+   - Show semantic board, history, fusion-head, learned-search-head, and active
+     matchup-adapter attributions using ablation, integrated attribution, and
+     engine-valid counterfactuals.
+   - Keep later game events in a visibly separate retrospective view; they must
+     never enter the selected decision's inputs or explanation.
+   - Collect expert preferred and acceptable actions, ranked alternatives,
+     confidence, severity, rationale tags, and expected short-horizon
+     consequences.
+   - Convert reviewed records into an immutable preference corpus for a future
+     candidate derivative. Experts never tune tensor values directly.
+   - Require expert-agreement improvements to translate into split
+     going-first/going-second gameplay strength.
+
+### Decision replay and expert-feedback contract
+
+Raw neural weights do not vary by decision and are not themselves a decision
+explanation. The primary review surface therefore visualizes decision-specific
+activations, margins, head outputs, attributions, ablations, and
+counterfactual sensitivity. Raw parameter and update norms may appear only in
+a secondary checkpoint-health view.
+
+The faithful trace is:
+
+```text
+public full-game log
+    → exact acting-seat causal prefix
+    → spatial board encoding
+    → acting-seat temporal history
+    → legal-option decoding
+    → base policy logits
+    → 17-input fusion plus any distinct learned search-head input
+    → final masked greedy choice
+```
+
+For a selected decision, the planned review must provide:
+
+1. A game timeline containing actual turn order, board summary, game phase,
+   played action, model action, confidence, value, and review status.
+2. An action table for every legal option and factorized selection stage.
+3. A fusion waterfall based on leave-one-head-out deltas plus integrated
+   attribution, with nonlinear interaction remainder shown explicitly.
+4. A semantic board attribution view using grouped occlusion or valid public
+   counterfactuals rather than arbitrary token deletion.
+5. A history ribbon showing prior acting-seat observations/actions, retained
+   context, and any truncated prefix.
+6. The resolved public matchup route, adapter active/bypass state, and
+   route-versus-bypass action-margin delta.
+7. A public-state-only counterfactual comparison and an exact checkpoint
+   comparison.
+8. A secondary module-level parameter/update-norm view labeled as drift, not
+   explanation.
+
+Attention maps are not primary explanations: attention describes information
+routing and does not establish importance. Claimed important inputs or heads
+must survive ablation or perturbation sanity checks.
+
+Every expert record must bind:
+
+- replay, observation, checkpoint, deck, feature-schema, adapter, and trace
+  checksums;
+- episode, actual turn order, opponent identity, environment step, and retained
+  history length;
+- exact legal action set and factorized selection stage;
+- model choice, accepted-action set, expert-preferred action, and ranked
+  alternatives;
+- confidence, severity, reason taxonomy, and immediate/one-/two-/three-own-turn
+  expected consequences;
+- whether the label was made blind to the later outcome or retrospectively;
+  and
+- expert identity/version, independent-review status, and adjudication state.
+
+Critical decisions receive two independent reviews. Preserve disagreement and
+adjudicate it rather than manufacturing consensus. Any later fine-tuning
+creates a checksum-bound derivative of the existing per-deck model, mixes
+expert preferences with ordinary replay for anti-forgetting, caps confidence
+weights, and splits data at whole-game level. The parent checkpoint and locked
+evaluation games remain immutable and disjoint.
+
+Trace validity requires:
+
+- instrumented and ordinary inference produce identical final logits and
+  greedy choices;
+- base logit plus fusion residual equals the final pre-mask logit within a
+  declared tolerance;
+- changing a future log suffix cannot change an earlier trace;
+- private opponent information never enters model input, attribution, or
+  counterfactual generation;
+- important attribution groups pass perturbation checks; and
+- first/second-split gameplay, not expert agreement alone, determines value.
 
 ### Scaling rule
 
@@ -410,6 +531,7 @@ Purpose: rapid iteration, not release evidence.
 - Fixed official controls and strong fleet partners.
 - Approximately 1,200 games per checkpoint.
 - Balanced seats and versioned opponent packages.
+- Whole-game-disjoint expert annotations used only in development.
 
 Advance when the pooled 90% lower confidence bound on
 candidate-minus-incumbent is at least -2 percentage points, neither training
@@ -424,6 +546,7 @@ Purpose: decide which hypotheses deserve release consideration.
 - Separate current-meta, frontier, and temporal holdouts.
 - At least 500 games for important matchup claims.
 - Predeclared comparisons with multiplicity control.
+- Actual going-first and going-second views with fixed-mix opponent weights.
 
 Advance when:
 
@@ -449,6 +572,8 @@ Purpose: one final unbiased release decision.
 - Out-of-time data.
 - Stable anchors plus a rotating frontier cohort.
 - Balanced seats and production-equivalent inference.
+- No game, annotation, adjudication, or explanation example previously exposed
+  to model or expert-tuning decisions.
 
 Use a release suite once. If the candidate fails, burn that suite and version a
 new future suite before additional tuning.
@@ -494,6 +619,14 @@ These are research questions, not authorizations to modify code:
    measured gate pass.
 6. Population updates must not introduce sequential member advantage within
    what is presented as one generation.
+7. Decision traces must prove causal-prefix isolation and exact
+   instrumented-versus-ordinary inference parity.
+8. Expert annotations, adjudication games, and release games must be
+   whole-game and checksum disjoint.
+9. Explanation methods must pass perturbation sanity checks and must not be
+   represented as causal merely because they visualize attention or gradients.
+10. First/second win-rate views must preserve version, opponent, source,
+    denominator, and fault attribution rather than pooling selective samples.
 
 Do not interpret a population experiment until these questions have
 receipt-backed answers.
@@ -508,7 +641,11 @@ Stop or redirect an experiment when:
 - the improvement disappears under seat or deck-variant splits;
 - worst-decile or critical-matchup performance collapses;
 - invalid games or timeouts exceed the reliability budget;
-- search cannot beat greedy with a positive lower confidence bound;
+- a learned search head duplicates existing head targets or fails to improve
+  greedy single-pass gameplay;
+- explanation fidelity or causal-prefix isolation fails;
+- expert agreement rises while actual going-first or going-second gameplay
+  remains flat or regresses;
 - shared-core distillation fails a declared per-teacher floor;
 - a release suite has already influenced training decisions;
 - an external evaluation agent enters training data; or
@@ -528,6 +665,10 @@ Future work should produce explicit, immutable records for:
 - confirmation-panel results;
 - population mixture and historical selection;
 - value/search calibration;
+- immutable decision-trace and explanation receipts;
+- expert annotations, reviewer agreement, and adjudication records;
+- expert-tuned derivative identities and whole-game data splits;
+- actual going-first/going-second win-rate views;
 - locked release-suite identity;
 - release decision; and
 - final package and submission-slot decision.
@@ -554,6 +695,10 @@ Future work should produce explicit, immutable records for:
 - [ ] Select the exact submission deck explicitly.
 - [ ] Create multiple independently trained candidates for that deck.
 - [ ] Validate learning-signal and representation improvements.
+- [ ] Validate the single-pass learned-search-head hypothesis without MCTS.
+- [ ] Validate causal full-game decision replay and expert annotation.
+- [ ] Keep expert tuning and release evaluation whole-game disjoint.
+- [ ] Review every candidate in separate actual-first and actual-second views.
 - [ ] Run weighted fleet practice with exploiters and historical guards.
 - [ ] Confirm winners across seeds, seats, variants, and time.
 - [ ] Run one locked release evaluation.
@@ -572,5 +717,7 @@ Future work should produce explicit, immutable records for:
 - `ops/population_round_robin_v1.json`
 - `docs/AWR_SHADOW_STUDY.md`
 - `docs/STRATEGY_AUX_HEAD_ROADMAP.md`
+- `docs/TOP_100_TURN_ORDER_OPTIMIZATION_PLAN.md`
+- `docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md`
 - `docs/pokemon_rl_plateau_audit.ipynb`
 - `submission/search_config.json`

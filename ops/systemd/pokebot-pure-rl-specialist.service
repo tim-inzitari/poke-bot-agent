@@ -32,9 +32,11 @@ RestartPreventExitStatus=75 78
 TimeoutStopSec=45
 KillMode=control-group
 LimitNOFILE=16384
-MemoryHigh=110G
+# Begin cgroup reclaim/throttling before host MemAvailable reaches the
+# kernel-OOM danger zone. The hard cap remains unchanged.
+MemoryHigh=100G
 MemoryMax=116G
-MemorySwapMax=16G
+MemorySwapMax=0
 OOMPolicy=stop
 
 StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/specialist-runtime.launcher.log

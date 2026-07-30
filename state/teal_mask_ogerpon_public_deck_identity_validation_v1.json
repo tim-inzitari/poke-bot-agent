@@ -1,63 +1,83 @@
 {
   "schema": "poke_bot.public_deck_guide_identity_validation/v1",
-  "status": "validated",
+  "status": "validated_extension_materialized_full_seal_running",
   "specialist_id": "teal-mask-ogerpon-ex",
-  "validated_at_utc": "2026-07-28T21:40:00Z",
+  "validated_at_utc": "2026-07-29T17:52:31Z",
+  "goal_revision": 35,
   "source": {
     "site": "https://ptcgreplay.netlify.app/",
     "access": "site_published_config_with_supabase_rls",
     "completed_ingest_id": 17,
     "source_archetype_id": 151,
     "source_archetype_name": "Teal Mask Ogerpon ex",
-    "competitive_taxonomy_id": "ogerpon-box",
-    "competitive_taxonomy_name": "Ogerpon Box",
+    "local_deck_name": "Slop Box",
+    "competitive_taxonomy_id": "slop-box",
+    "competitive_taxonomy_name": "Slop Box",
+    "deck_family_name": "Teal Mask Ogerpon ex / Mega Kangaskhan ex",
+    "secondary_search_alias": "Raging Bolt Ogerpon",
     "deck_row_count": 1,
     "deck_hashes": [
       "bcfc7b778a72d895"
     ],
     "source_deck_rows_sha256": "sha256:36da57efa2846b352b54a6fb481dfe8d5f2af40d0958fc053787e33893381155",
-    "source_match_rows": 1135,
-    "source_match_facts_sha256": "sha256:71c83a5b23fa02cc7364c18f9570e13d9c164b6253df38a29dbbe0ad90d74e38"
+    "source_match_rows": 1442,
+    "source_match_facts_sha256": "sha256:41ca70b4ed70e2d7adad2130d28beb9460d7afa32e791ecfb34ebd9bb460ee99"
   },
   "public_catalog": {
-    "path": "data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json",
-    "sha256": "sha256:5c2f4856b5f99f5b008f5160af1c9f27dd2ae10d7bee5e964de08b64607d3e1a",
+    "path": "data/training_mixes/teal-mask-ogerpon-ex-public-full33.v1.json",
+    "sha256": "sha256:22218f65d35708cca93af7ea10b1b911e896592b7343d5889a80ddba39d54056",
     "source_window": {
       "start": "2026-06-26",
-      "end": "2026-07-27",
-      "days": 32
+      "end": "2026-07-28",
+      "days": 33
     },
-    "minimum_acting_seat_games": 1135,
-    "observed_acting_seat_games": 1135,
+    "minimum_acting_seat_games": 1442,
+    "observed_acting_seat_games": 1442,
     "deck_fingerprint_count": 1,
     "deck_fingerprints": [
       "sha256:10857495cddc95416052ff3b60e8686d2291da31de23ef064128534eb87cff28"
-    ]
+    ],
+    "owner_shown_exact_shell_asserted": true,
+    "legacy_japan_ogerpon_box_substitution_allowed": false
   },
   "raw_public_archive_validation": {
     "archive_root": "/mnt/Main/main/poke-bot-agent/archive/episode-days",
-    "days": 32,
-    "json_replays": 160576,
-    "manifest_rows": 160577,
+    "days": 33,
+    "json_replays": 164961,
+    "manifest_rows": 164962,
     "known_manifest_only_episode_ids": [
       "87841523"
     ],
     "known_manifest_only_date": "2026-07-24",
     "known_manifest_only_archive_sha256": "sha256:68a5c1be539bef579f03b5de29b901a1fab1dc4904af78824fbf7666d73bc8ab",
+    "latest_archive_date": "2026-07-28",
+    "latest_archive_json_replays": 4385,
+    "latest_archive_sha256": "sha256:067b71f93fb5ebc35b727117b5f61c30fa9881f4f7d90ce3de5c27be973573cd",
     "status": "all_public_archives_match_manifests"
   },
   "checks": {
     "exact_public_deck_fingerprint_precedes_fuzzy_classification": true,
-    "all_32_public_days_are_bound": true,
-    "recent_days_through_2026_07_27_are_included": true,
+    "all_33_public_days_are_bound": true,
+    "recent_days_through_2026_07_28_are_included": true,
+    "slop_box_alias_and_exact_fingerprint_are_bound": true,
     "competitive_taxonomy_is_not_substituted_for_public_source_identity": true,
     "hidden_or_future_information_used": false,
-    "active_spidops_training_modified": false
+    "active_hammer_pult_training_modified": false
   },
   "materialization": {
-    "managed_service": "pokebot-teal-mask-full32-guide-v1.service",
-    "output_root": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v1",
-    "status": "running",
+    "managed_service": "pokebot-teal-mask-slop-box-full33-guide-v4.service",
+    "output_root": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v4-slop-box",
+    "status": "full_33_day_seal_running",
+    "validated_extension_day": {
+      "date": "2026-07-28",
+      "records": 307,
+      "decisions": 21536,
+      "guide_rows": 1858,
+      "guide_version": "teal-mask-ogerpon-ex-slop-box-north-star-v3",
+      "classifier_sha256": "sha256:36a361f93675130035dacf0d1d3d3d5586f6fa2a674e35985b867539304e2417",
+      "receipt": "/mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v4-slop-box/teal-mask-ogerpon-ex-2026-07-28.features.receipt.json",
+      "receipt_sha256": "sha256:6471b5acfbef9c82759db6ccc4640b080df91926d1a6c3367fa1958c9d614095"
+    },
     "full_history_ready_receipt": null
   }
 }

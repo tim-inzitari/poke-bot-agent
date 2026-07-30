@@ -23,6 +23,7 @@ REMOTE_SNAPSHOT = "/home/inzi/poke-bot-agent/scripts/run_live_dashboard_snapshot
 REMOTE_PYTHON = "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python"
 LOCAL_SNAPSHOT = ROOT / "fleet_host_snapshot.py"
 RATE_STATE = ROOT / "fleet_rate_state.json"
+GOAL_PROJECTION = ROOT / "current_goal_requirements.json"
 UI_VERSION_TOKEN = b"__DASHBOARD_UI_VERSION__"
 
 
@@ -74,6 +75,619 @@ class SnapshotCache:
             temporary.replace(RATE_STATE)
         except OSError:
             pass
+
+    @staticmethod
+    def _apply_goal_projection(value: dict[str, Any]) -> None:
+        """Overlay owner planning changes without mutating the live runtime.
+
+        Execution facts still come from the selector-owned remote snapshot.
+        This local compatibility projection is limited to the user-facing
+        required-goal roster, deck naming, and prospective typed design
+        contracts, which may advance while the active learner intentionally
+        remains on an immutable runtime tree.
+        """
+
+        try:
+            projection = json.loads(GOAL_PROJECTION.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return
+        overrides = projection.get("current_owner_overrides") or {}
+        plan = overrides.get("required_specialist_plan") or {}
+        teal = overrides.get("teal_mask_ogerpon_ex") or {}
+        version_namespaces = overrides.get("version_namespaces") or {}
+        guide_projection = (
+            (projection.get("verified_snapshot") or {}).get(
+                "current_deck_guides"
+            )
+            or {}
+        )
+        guide_policy = guide_projection.get("goal_path_guidance") or {}
+        future_guide_scope = (
+            overrides.get("future_guide_strategic_branch_scope") or {}
+        )
+        future_head_action = future_guide_scope
+        future_setup_head = (
+            future_guide_scope.get("setup_board_outcome_head") or {}
+        )
+        teal_legacy_guide = (
+            overrides.get("teal_guide_weight_nonwinning_reduction") or {}
+        )
+        slowking_replacement = (
+            overrides.get("slowking_specialist_replacement") or {}
+        )
+        slowking_plan = slowking_replacement.get("slowking") or {}
+        crustle_plan = slowking_replacement.get("crustle") or {}
+        post_fleet = (
+            overrides.get("post_fleet_alakazam_grimms_refresh") or {}
+        )
+        protocol = value.get("specialist_protocol")
+        if not isinstance(protocol, dict):
+            return
+        priority = protocol.get("training_priority")
+        if not isinstance(priority, dict):
+            priority = {}
+            protocol["training_priority"] = priority
+        removed = [
+            str(item)
+            for item in (plan.get("removed_specialist_ids") or [])
+            if str(item)
+        ]
+        prefix = [
+            str(item)
+            for item in (plan.get("strict_post_spidops_prefix") or [])
+            if str(item)
+        ]
+        planned_order = [
+            str(item)
+            for item in (
+                plan.get("ordered_unfinished_ids_after_active") or []
+            )
+            if str(item)
+        ]
+        if prefix:
+            priority["strict_post_spidops_prefix"] = {
+                "decision_revision": plan.get("goal_revision"),
+                "ids": prefix,
+                "missing_input_behavior": plan.get(
+                    "missing_strict_prefix_input_behavior"
+                ),
+                "activation": plan.get("activation_boundary"),
+                "source": "dashboard_goal_compatibility_projection",
+            }
+        if removed:
+            priority["owner_removal"] = {
+                "decision_revision": plan.get("goal_revision"),
+                "specialist_ids": removed,
+                "selection_eligible": bool(
+                    plan.get("removed_ids_selection_eligible")
+                ),
+                "counts_toward_completion": bool(
+                    plan.get("removed_ids_count_toward_completion")
+                ),
+                "preserve_historical_corpus_router_and_audit_artifacts": bool(
+                    plan.get("removed_ids_historical_artifacts_preserved")
+                ),
+                "source": "dashboard_goal_compatibility_projection",
+            }
+            if planned_order:
+                removed_set = set(removed)
+                priority["ordered_unfinished_ids_after_active"] = [
+                    item for item in planned_order if item not in removed_set
+                ]
+            else:
+                ordered = priority.get("ordered_unfinished_ids_after_active")
+                if isinstance(ordered, list):
+                    removed_set = set(removed)
+                    priority["ordered_unfinished_ids_after_active"] = [
+                        str(item)
+                        for item in ordered
+                        if str(item) and str(item) not in removed_set
+                    ]
+        elif planned_order:
+            priority["ordered_unfinished_ids_after_active"] = planned_order
+        rows = protocol.get("specialists")
+        if isinstance(rows, list):
+            removed_set = set(removed)
+            filtered = [
+                row
+                for row in rows
+                if isinstance(row, dict)
+                and str(row.get("id") or "") not in removed_set
+            ]
+            if bool(slowking_plan.get("required_specialist")) and not any(
+                str(row.get("id") or "") == "slowking"
+                for row in filtered
+            ):
+                filtered.append(
+                    {
+                        "id": "slowking",
+                        "name": "Slowking Combo / Toolbox",
+                        "status": "blocked",
+                        "planning_status": slowking_plan.get("status"),
+                        "required_specialist": True,
+                        "completion_eligible": bool(
+                            slowking_plan.get("completion_eligible")
+                        ),
+                        "selector_eligible": bool(
+                            slowking_plan.get("selection_eligible")
+                        ),
+                        "active": False,
+                        "frozen": False,
+                        "training_order": {
+                            "predecessor": slowking_plan.get(
+                                "predecessor_specialist"
+                            ),
+                            "successor": slowking_plan.get(
+                                "successor_specialist"
+                            ),
+                            "strict_order": slowking_plan.get(
+                                "strict_post_teal_order"
+                            ),
+                            "after_completion": slowking_plan.get(
+                                "after_completion"
+                            ),
+                        },
+                        "combo_head_coverage": slowking_plan.get(
+                            "combo_head_coverage"
+                        ),
+                        "specialist_parameter_budget": slowking_plan.get(
+                            "specialist_parameter_budget"
+                        ),
+                        "projection_only": True,
+                        "source": (
+                            "dashboard_goal_compatibility_projection"
+                        ),
+                    }
+                )
+            for row in filtered:
+                if row.get("id") == "teal-mask-ogerpon-ex":
+                    row["name"] = str(
+                        teal.get("display_name")
+                        or "Slop Box (Teal Mask Ogerpon ex)"
+                    )
+                    row["deck_family_name"] = teal.get("deck_family_name")
+                    row["secondary_search_alias"] = teal.get(
+                        "secondary_search_alias"
+                    )
+            protocol["specialists"] = filtered
+            counts: dict[str, int] = {}
+            for row in filtered:
+                status = str(row.get("status") or "")
+                counts[status] = counts.get(status, 0) + 1
+            protocol["status_counts"] = counts
+        retained_opponents = [
+            row
+            for row in (
+                protocol.get("retained_non_specialist_opponents") or []
+            )
+            if isinstance(row, dict)
+            and str(row.get("id") or "") != "crustle"
+        ]
+        crustle_opponent = dict(
+            crustle_plan.get("public_practice_gate_opponent") or {}
+        )
+        if (
+            crustle_plan.get("required_specialist") is False
+            and crustle_plan.get("matchup_route_preserved") is True
+            and crustle_opponent
+        ):
+            retained_opponents.append(
+                {
+                    "id": "crustle",
+                    "name": "Crustle",
+                    "display_status": str(
+                        crustle_plan.get("display_status")
+                        or (
+                            "historical_artifacts_preserved_"
+                            "inference_only_not_planned_for_training"
+                        )
+                    ),
+                    "role_label": (
+                        "PUBLIC OPPONENT + ACTIVE ROUTE, "
+                        "NO SPECIALIST TRAIN"
+                    ),
+                    "required_specialist": False,
+                    "selection_eligible": False,
+                    "completion_eligible": False,
+                    "training_authorized": False,
+                    "submission_authorized": False,
+                    "matchup_route_preserved": True,
+                    "stable_matchup_slot": crustle_plan.get(
+                        "stable_matchup_slot"
+                    ),
+                    "stable_matchup_slot_status": crustle_plan.get(
+                        "stable_matchup_slot_status"
+                    ),
+                    "public_practice_gate_opponent": crustle_opponent,
+                    "inference_only": (
+                        crustle_opponent.get("inference_only") is True
+                    ),
+                    "historical_artifacts_preserved": True,
+                    "future_specialist_training_planned": False,
+                    "projection_only": True,
+                    "source": "dashboard_goal_compatibility_projection",
+                }
+            )
+        protocol["retained_non_specialist_opponents"] = retained_opponents
+        if post_fleet:
+            protocol["post_fleet_refresh"] = {
+                "goal_revision": post_fleet.get("goal_revision"),
+                "phase_id": post_fleet.get("phase_id"),
+                "status": post_fleet.get("status"),
+                "trigger": dict(post_fleet.get("trigger") or {}),
+                "ordered_specialist_ids": list(
+                    post_fleet.get("ordered_specialist_ids") or []
+                ),
+                "order_is_strict": (
+                    post_fleet.get("order_is_strict") is True
+                ),
+                "release_gates": dict(
+                    post_fleet.get("release_gates") or {}
+                ),
+                "first_refresh": dict(
+                    post_fleet.get("first_refresh") or {}
+                ),
+                "core_hot_start_selector": post_fleet.get(
+                    "core_hot_start_selector"
+                ),
+                "first_alakazam_prefer_compatible_immutable_alakazam_migration": (
+                    post_fleet.get(
+                        "first_alakazam_prefer_compatible_"
+                        "immutable_alakazam_migration"
+                    )
+                    is True
+                ),
+                "first_alakazam_migration_failure_fallback": (
+                    post_fleet.get(
+                        "first_alakazam_migration_failure_fallback"
+                    )
+                ),
+                "source": "dashboard_goal_compatibility_projection",
+            }
+        required = plan.get("required_specialists_total")
+        if isinstance(required, int) and required > 0:
+            protocol["required_target_count"] = required
+            projected_rows = protocol.get("specialists")
+            if isinstance(projected_rows, list):
+                frozen_rows = [
+                    row
+                    for row in projected_rows
+                    if isinstance(row, dict)
+                    and (
+                        str(row.get("status") or "") == "passed_frozen"
+                        or bool(row.get("frozen"))
+                    )
+                ]
+                active_id = str(protocol.get("active_specialist") or "")
+                active_rows = [
+                    row
+                    for row in projected_rows
+                    if isinstance(row, dict)
+                    and (
+                        bool(row.get("active"))
+                        or (
+                            active_id
+                            and str(row.get("id") or "") == active_id
+                        )
+                    )
+                    and row not in frozen_rows
+                ]
+                progress = protocol.get("program_progress")
+                if not isinstance(progress, dict):
+                    progress = {}
+                    protocol["program_progress"] = progress
+                frozen_count = len(frozen_rows)
+                active_count = min(len(active_rows), 1)
+                unfinished_count = max(required - frozen_count, 0)
+                remaining_after_active = max(
+                    unfinished_count - active_count, 0
+                )
+                progress.update(
+                    {
+                        "required_specialists_total": required,
+                        "completed_frozen": frozen_count,
+                        "completed_specialist_ids": [
+                            str(row.get("id") or "")
+                            for row in frozen_rows
+                            if str(row.get("id") or "")
+                        ],
+                        "active_specialists": active_count,
+                        "active_specialist_ids": [
+                            str(row.get("id") or "")
+                            for row in active_rows[:1]
+                            if str(row.get("id") or "")
+                        ],
+                        "remaining_unfinished": unfinished_count,
+                        "remaining_after_active": remaining_after_active,
+                        "population_transition_ready": (
+                            unfinished_count == 0
+                        ),
+                    }
+                )
+                next_action = str(protocol.get("next_action") or "")
+                progress_text = (
+                    f"{unfinished_count} specialists remain unfinished "
+                    "including the active specialist; "
+                    f"{remaining_after_active} remain after it."
+                )
+                if re.search(
+                    r"\d+ specialists remain unfinished including the "
+                    r"active specialist; \d+ remain after it\.",
+                    next_action,
+                ):
+                    next_action = re.sub(
+                        r"\d+ specialists remain unfinished including the "
+                        r"active specialist; \d+ remain after it\.",
+                        progress_text,
+                        next_action,
+                    )
+                elif next_action:
+                    next_action = f"{next_action.rstrip()} {progress_text}"
+                else:
+                    next_action = progress_text
+                next_action = re.sub(
+                    r"all \d+ specialists",
+                    f"all {required} specialists",
+                    next_action,
+                )
+                protocol["next_action"] = next_action
+        if isinstance(guide_policy, dict) and guide_policy:
+            protocol["current_deck_guide_weight_policy"] = {
+                **guide_policy,
+                "guide_curriculum_revision": future_guide_scope.get(
+                    "guide_curriculum_revision"
+                ),
+                "strategic_branch_scope_revision": future_guide_scope.get(
+                    "strategic_branch_scope_revision"
+                ),
+                "head_action_scope_revision": future_guide_scope.get(
+                    "head_action_scope_revision"
+                ),
+                "learning_effect": (
+                    "literal_multiplier_on_bounded_guide_conditioned_"
+                    "strategic_head_curriculum"
+                ),
+                "gradient_effect": (
+                    "scales_guide_conditioned_strategic_head_gradient_"
+                    "contribution"
+                ),
+                "direct_policy_cross_entropy_allowed": bool(
+                    future_guide_scope.get(
+                        "direct_policy_cross_entropy_allowed"
+                    )
+                ),
+                "bootstrap_weight_ramp": guide_projection.get(
+                    "bootstrap_weight_ramp"
+                ),
+                "bootstrap_maximum_weight": guide_projection.get(
+                    "maximum_weight"
+                ),
+                "bootstrap_maximum_weight_scope": guide_projection.get(
+                    "maximum_weight_scope"
+                ),
+                "maximum_post_bootstrap_auxiliary_weight": (
+                    guide_projection.get(
+                        "maximum_post_bootstrap_auxiliary_weight"
+                    )
+                ),
+                "post_bootstrap_behavior": guide_projection.get(
+                    "post_bootstrap_behavior"
+                ),
+                "source": "dashboard_goal_compatibility_projection",
+            }
+        if isinstance(future_guide_scope, dict) and future_guide_scope:
+            legacy_weight = teal_legacy_guide.get(
+                "active_iteration_13_weight"
+            )
+            if legacy_weight is None:
+                legacy_weight = teal_legacy_guide.get("target_weight")
+            protocol["current_deck_guide_training_modes"] = {
+                "active_started_lineage": {
+                    "specialist_id": "teal-mask-ogerpon-ex",
+                    "display_name": "Slop Box (Teal Mask Ogerpon ex)",
+                    "is_active": (
+                        str(protocol.get("active_specialist") or "")
+                        == "teal-mask-ogerpon-ex"
+                    ),
+                    "scope": "already_started_legacy_run",
+                    "mode": "confidence_weighted_policy_cross_entropy",
+                    "guide_weight": legacy_weight,
+                    "revision_51_retrofit_allowed": False,
+                    "runtime_input_authority": False,
+                    "action_selection_authority": False,
+                    "serving_authority": False,
+                },
+                "future_lineage": {
+                    "scope": future_guide_scope.get("scope"),
+                    "effective_from_specialist": future_guide_scope.get(
+                        "prospective_effective_specialist"
+                    ),
+                    "guide_curriculum_revision": future_guide_scope.get(
+                        "guide_curriculum_revision"
+                    ),
+                    "mode": future_guide_scope.get(
+                        "training_target_mode"
+                    ),
+                    "direct_policy_cross_entropy_allowed": bool(
+                        future_guide_scope.get(
+                            "direct_policy_cross_entropy_allowed"
+                        )
+                    ),
+                    "guide_runtime_input_allowed": bool(
+                        future_guide_scope.get(
+                            "guide_runtime_input_allowed"
+                        )
+                    ),
+                    "guide_action_selection_allowed": bool(
+                        future_guide_scope.get(
+                            "guide_action_selection_allowed"
+                        )
+                    ),
+                    "replace_observed_outcome_targets_allowed": bool(
+                        future_guide_scope.get(
+                            "replace_observed_outcome_targets_allowed"
+                        )
+                    ),
+                    "curriculum_focus": future_guide_scope.get(
+                        "curriculum_focus"
+                    ),
+                    "fused_policy_learning_authority": (
+                        future_guide_scope.get(
+                            "fused_policy_learning_authority"
+                        )
+                    ),
+                    "activation_requires_prestage_validation_receipt": (
+                        future_guide_scope.get(
+                            "activation_requires_prestage_validation_receipt"
+                        )
+                        is True
+                    ),
+                },
+                "future_head_action_contract": {
+                    "head_action_scope_revision": future_guide_scope.get(
+                        "head_action_scope_revision"
+                    ),
+                    "all_future_heads_must_influence_actions": (
+                        future_guide_scope.get(
+                            "all_future_heads_must_influence_actions"
+                        )
+                        is True
+                    ),
+                    "owner_decision_revision": future_head_action.get(
+                        "owner_decision_revision"
+                    ),
+                    "schema": future_head_action.get(
+                        "decision_fusion_schema"
+                    ),
+                    "preserve_v1_additive_residual": (
+                        future_head_action.get(
+                            "parent_v1_fusion_residual_preserved"
+                        )
+                        is True
+                    ),
+                    "computation_role": future_head_action.get(
+                        "required_computation_role"
+                    ),
+                    "fusion_role": (
+                        (future_head_action.get("allowed_fusion_roles") or [])
+                        or [None]
+                    )[0],
+                    "action_influence": future_head_action.get(
+                        "required_action_influence"
+                    ),
+                    "state_head_action_conditioning": (
+                        future_head_action.get(
+                            "state_head_action_conditioning"
+                        )
+                    ),
+                    "option_head_action_conditioning": (
+                        future_head_action.get(
+                            "option_head_action_conditioning"
+                        )
+                    ),
+                    "route_architecture": future_head_action.get(
+                        "action_route_granularity"
+                    ),
+                    "existing_learned_decision_source_count": (
+                        future_head_action.get(
+                            "existing_learned_decision_source_count"
+                        )
+                    ),
+                    "canonical_learned_decision_source_count_with_setup": (
+                        future_head_action.get(
+                            "canonical_learned_decision_source_count_"
+                            "with_setup"
+                        )
+                    ),
+                    "setup_source_included_when_present": (
+                        future_head_action.get(
+                            "setup_source_included_when_present"
+                        )
+                        is True
+                    ),
+                    "guide_is_sole_no_route_exception": (
+                        future_head_action.get(
+                            "guide_is_only_action_route_exception"
+                        )
+                        is True
+                    ),
+                    "route_reduction": future_head_action.get(
+                        "route_aggregation"
+                    ),
+                    "aggregate_absolute_cap": future_head_action.get(
+                        "aggregate_route_delta_logit_cap"
+                    ),
+                    "zero_safe_final_projections": (
+                        future_head_action.get(
+                            "route_final_projection_initialization"
+                        )
+                        == "exact_zero"
+                    ),
+                    "independent_means_pre_fusion_computation_not_action_isolation": (
+                        future_head_action.get(
+                            "independent_means_pre_fusion_computation_"
+                            "not_action_isolation"
+                        )
+                        is True
+                    ),
+                    "direct_action_selection_authority": (
+                        future_head_action.get(
+                            "direct_action_selection_authority"
+                        )
+                        is True
+                    ),
+                    "fusion_selects_action": (
+                        future_head_action.get("fusion_selects_action")
+                        is True
+                    ),
+                    "materially_influences_fused_logits": (
+                        future_head_action.get(
+                            "materially_influences_fused_logits"
+                        )
+                        is True
+                    ),
+                    "runtime_enabled": (
+                        future_head_action.get("runtime_enabled") is True
+                    ),
+                    "runtime_activation_requirement": (
+                        future_head_action.get(
+                            "runtime_activation_requirement"
+                        )
+                    ),
+                    "setup_board_outcome_head": {
+                        "id": future_setup_head.get("id"),
+                        "owner_decision_revision": future_setup_head.get(
+                            "owner_decision_revision"
+                        ),
+                        "computation_role": future_setup_head.get(
+                            "computation_role"
+                        ),
+                        "fusion_role": future_setup_head.get("fusion_role"),
+                        "action_influence": future_setup_head.get(
+                            "action_influence"
+                        ),
+                        "causal_input": future_setup_head.get("causal_input"),
+                        "fusion_route_initialization": (
+                            future_setup_head.get(
+                                "fusion_route_initialization"
+                            )
+                        ),
+                    },
+                },
+                "source": "dashboard_goal_compatibility_projection",
+            }
+        protocol["goal_projection"] = {
+            "source": str(GOAL_PROJECTION),
+            "goal_revision": max(
+                int(plan.get("goal_revision") or 0),
+                int(teal.get("goal_revision") or 0),
+                int(version_namespaces.get("goal_revision") or 0),
+                int(post_fleet.get("goal_revision") or 0),
+                int(future_guide_scope.get("goal_revision") or 0),
+                int(slowking_replacement.get("goal_revision") or 0),
+            ),
+            "execution_facts_overridden": False,
+        }
 
     @staticmethod
     def _ping_average_ms(command: list[str]) -> float | None:
@@ -1030,6 +1644,21 @@ class SnapshotCache:
             and int(handoff.get("pid") or 0) > 0
             and str(handoff.get("source") or "")
         )
+        handoff_transition_current = bool(
+            handoff.get("transition_current") is True
+            and not handoff_active
+            and not service_active
+            and str(handoff.get("source") or "")
+            and str(handoff.get("source_specialist_id") or "")
+            and str(handoff.get("next_specialist_id") or "")
+            and str(handoff.get("phase") or "")
+            in {
+                "next_specialist_selected",
+                "next_specialist_bootstrap_frozen",
+                "next_specialist_rl_armed",
+                "next_specialist_rl_started",
+            }
+        )
         handoff_progress_current = bool(
             handoff_active
             and isinstance(handoff.get("updated_at"), (int, float))
@@ -1077,7 +1706,7 @@ class SnapshotCache:
                 for row in protocol_specialists
                 if isinstance(row, dict) and row.get("active") is True
             }
-            if handoff_active:
+            if handoff_active or handoff_transition_current:
                 handoff_source_specialist = str(
                     handoff.get("source_specialist_id") or ""
                 )
@@ -1124,12 +1753,32 @@ class SnapshotCache:
             }
             protocol_frozen_pool_current = frozen_state_ids == frozen_runtime_ids
             model_adapter_count = structure.get("adapter_expert_count")
-            if isinstance(required_target_count, int) and isinstance(
-                model_adapter_count, int
-            ):
-                protocol_model_roster_current = (
-                    model_adapter_count == required_target_count
+            model_adapter_ids = structure.get("adapter_expert_ids")
+            if isinstance(model_adapter_count, int):
+                # The physical matchup bank is intentionally independent from
+                # the required specialist-training plan. Owner-removed decks
+                # keep immutable adapter slots, and newly planned decks may
+                # remain route-dormant until a safe boundary. Validate the
+                # checkpoint's physical roster against its own declared IDs,
+                # never against required_target_count.
+                registry_verified = structure.get(
+                    "adapter_registry_verified"
                 )
+                protocol_model_roster_current = bool(
+                    model_adapter_count > 0
+                    and registry_verified is not False
+                )
+                if registry_verified is not True and isinstance(
+                    model_adapter_ids, list
+                ):
+                    normalized_adapter_ids = [
+                        str(value) for value in model_adapter_ids if str(value)
+                    ]
+                    protocol_model_roster_current = bool(
+                        len(normalized_adapter_ids) == model_adapter_count
+                        and len(set(normalized_adapter_ids))
+                        == model_adapter_count
+                    )
         # The protocol card describes the canonical specialist state, which
         # remains current while production is stopped.  A live process adds a
         # stronger reconciliation requirement: its selected specialist must
@@ -1158,6 +1807,12 @@ class SnapshotCache:
             and handoff_target_specialist in specialist_ids
             and handoff_target_specialist not in completed_ids
         )
+        settled_handoff_protocol_current = bool(
+            handoff_transition_current
+            and handoff_source_specialist in completed_ids
+            and target_is_known_unfinished
+            and not active_record_ids
+        )
         handoff_protocol_current = bool(
             handoff_active
             and handoff_progress_current
@@ -1185,12 +1840,14 @@ class SnapshotCache:
                 protocol.get("canonical_pointer_stale") is not True
                 or protocol.get("runtime_identity_reconciled") is True
                 or handoff_protocol_current
+                or settled_handoff_protocol_current
             )
             and protocol_roster_current
             and protocol_frozen_pool_current
             and protocol_model_roster_current
             and (
                 handoff_protocol_current
+                or settled_handoff_protocol_current
                 or (
                     canonical_specialist
                     and not service_active
@@ -1211,6 +1868,7 @@ class SnapshotCache:
                 "required": True,
                 "current": bool(
                     handoff_progress_current
+                    or handoff_transition_current
                     or (
                         service_active
                         and int(service.get("restart_count") or 0) >= 0
@@ -1223,7 +1881,7 @@ class SnapshotCache:
                 ),
                 "source": (
                     handoff.get("source")
-                    if handoff_active
+                    if handoff_active or handoff_transition_current
                     else "systemd user cgroup"
                 ),
             },
@@ -1231,6 +1889,7 @@ class SnapshotCache:
                 "required": True,
                 "current": bool(
                     handoff_progress_current
+                    or handoff_transition_current
                     or (
                         curriculum.get("active")
                         and curriculum.get("source_current") is True
@@ -1242,13 +1901,19 @@ class SnapshotCache:
                     f"{handoff.get('epoch')}:{handoff.get('stage')}"
                     if handoff_active
                     else (
-                        f"{curriculum.get('run') or 'unknown'}:"
-                        f"{curriculum.get('iteration')}:{stage}"
+                        f"handoff:{handoff.get('source_specialist_id')}:"
+                        f"{handoff.get('next_specialist_id')}:"
+                        f"{handoff.get('phase')}"
+                        if handoff_transition_current
+                        else (
+                            f"{curriculum.get('run') or 'unknown'}:"
+                            f"{curriculum.get('iteration')}:{stage}"
+                        )
                     )
                 ),
                 "source": (
                     handoff.get("source")
-                    if handoff_active
+                    if handoff_active or handoff_transition_current
                     else curriculum.get("progress_status_source")
                     or curriculum.get("progress_source")
                 ),
@@ -1317,13 +1982,15 @@ class SnapshotCache:
                             protocol.get("canonical_pointer_stale") is not True
                             or protocol.get("runtime_identity_reconciled") is True
                             or handoff_protocol_current
+                            or settled_handoff_protocol_current
                         )
                     ),
                     "specialist_roster": protocol_roster_current,
                     "frozen_pool": protocol_frozen_pool_current,
                     "model_roster": protocol_model_roster_current,
                     "live_runtime_identity": bool(
-                        not service_active
+                        settled_handoff_protocol_current
+                        or not service_active
                         or (
                             runtime_specialist
                             and runtime_specialist
@@ -1338,7 +2005,9 @@ class SnapshotCache:
                 },
             },
             "latest10": {
-                "required": not handoff_active,
+                "required": not (
+                    handoff_active or handoff_transition_current
+                ),
                 "current": bool(
                     expert_archive_current
                     and expert.get("authoritative_for_active_run") is True
@@ -1399,6 +2068,7 @@ class SnapshotCache:
                             and training.get("mode") == "specialist_handoff"
                             and training.get("source") == handoff.get("source")
                         )
+                        or handoff_transition_current
                         or (
                             progress_current
                             and bootstrap.get("compatibility_alias") is True
@@ -1413,7 +2083,9 @@ class SnapshotCache:
                 },
                 "throughput": {
                     "required": True,
-                    "current": progress_current,
+                    "current": bool(
+                        progress_current or handoff_transition_current
+                    ),
                     "identity": f"{curriculum.get('iteration')}:{stage}",
                     "source": progress_source,
                 },
@@ -1486,13 +2158,21 @@ class SnapshotCache:
                 },
                 "curriculum": {
                     "required": not handoff_active,
-                    "current": bool(handoff_active or progress_current),
+                    "current": bool(
+                        handoff_active
+                        or handoff_transition_current
+                        or progress_current
+                    ),
                     "identity": f"{curriculum.get('run')}:{stage}",
                     "source": progress_source,
                 },
                 "pure": {
                     "required": not handoff_active,
-                    "current": bool(handoff_active or progress_current),
+                    "current": bool(
+                        handoff_active
+                        or handoff_transition_current
+                        or progress_current
+                    ),
                     "identity": curriculum.get("run"),
                     "source": progress_source,
                 },
@@ -1509,9 +2189,13 @@ class SnapshotCache:
                     "source": "complete /api/status snapshot",
                 },
                 "handoff": {
-                    "required": bool(handoff.get("active")),
+                    "required": bool(
+                        handoff.get("active")
+                        or handoff_transition_current
+                    ),
                     "current": bool(
-                        not handoff.get("active")
+                        handoff_transition_current
+                        or not handoff.get("active")
                         or (
                             handoff_progress_current
                             and source_is_transition_owner
@@ -1534,6 +2218,9 @@ class SnapshotCache:
         for host_key in ("inzi", "elmo", "bert"):
             host = fleet.get(host_key) or {}
             worker = host.get("worker") or {}
+            allocation_complete = str(
+                worker.get("allocation_state") or ""
+            ).startswith("ALLOCATION COMPLETE")
             required = bool(
                 host_key == "inzi"
                 or (
@@ -1550,7 +2237,10 @@ class SnapshotCache:
                         or not required
                         or (
                             worker.get("active") is True
-                            and worker.get("health_current") is not False
+                            and (
+                                worker.get("health_current") is not False
+                                or allocation_complete
+                            )
                         )
                     )
                 ),
@@ -1754,6 +2444,7 @@ class SnapshotCache:
                 stage = optimization.get("stage") or "CPU/MPS throughput and parity sweep"
                 bert["assignment"] = f"M4 Apple optimization · {stage}"
             value.setdefault("fleet", {})["bert"] = bert
+            self._apply_goal_projection(value)
             self._annotate_replay_progress(value)
             self._annotate_fleet_rates(value)
             self._annotate_scheduler_queues(value)

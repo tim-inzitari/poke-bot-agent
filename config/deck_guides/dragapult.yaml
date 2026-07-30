@@ -1,0 +1,260 @@
+# Checksum-bound research and sparse causal-target contract for plain
+# Dragapult. This is an inactive future-specialist guide artifact only. It has
+# no selector, runtime, transition, gate, corpus, dashboard, or serving
+# authority until the ordinary pre-stage and handoff contracts authorize it.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: dragapult
+display_name: "Straight Dragapult ex"
+status: research_sparse_teacher_validated_corpus_pending
+guide_version: dragapult-north-star-v1
+teacher_module: poke_bot.dragapult_heuristics
+implementation_status: sparse_causal_teacher_validated_inactive
+teacher_module_sha256: sha256:b7dd142edec31b0ee52626d6f78a4a94e9fd93295bbdd917234a6499343c479e
+deck_complexity: nonlinear_spread_prize_mapping_and_typed_energy
+
+identity_scope:
+  included: plain_straight_dragapult
+  excluded_specialist_ids:
+    - hammer-pult
+    - dragapult-blaziken
+    - dragapult-dudunsparce
+    - dragapult-dusknoir
+  public_label_caveat: public_Dragapult_aggregates_can_cross_project_signatures
+  no_variant_substitution: true
+
+project_representative_binding:
+  intended_canonical_path: decks/dragapult-only/2026-05_regional-campinas-2026_2nd_dragapult.csv
+  intended_canonical_path_exists: true
+  exact_archived_source_path: decks/competitive/high_performing/2026-05_regional-campinas-2026_2nd_dragapult.csv
+  source_url: https://limitlesstcg.com/decks/list/27143
+  source_deck_id: dragapult
+  card_count: 60
+  file_sha256: sha256:ce78f069b7d7172d5edf7e8ea36da1cdf801fd77412226b94120eafe9566a1e0
+  canonical_multiset_sha256: sha256:90732310b0d40256cc1e6ecd65d726648ebb620aeb4f5992c69ae789762461a6
+  local_classifier_result: dragapult
+  excluded_signature_counts:
+    crushing_hammer: 0
+    dunsparce_or_dudunsparce: 0
+    blaziken_line: 0
+    dusknoir_line: 0
+  integration_blocker: null
+
+policy_target:
+  type: sparse_confidence_weighted_legal_action_preference
+  parameterized_head: false
+  target_logits: shared_fused_policy
+  serving_authority: false
+  override_authoritative_policy: false
+
+deck_signature:
+  exact_deck_checksum_overrides_family_signature: true
+  required_minimum_card_counts:
+    119: 4  # Dreepy
+    120: 4  # Drakloak
+    121: 2  # Dragapult ex
+  forbidden_card_families:
+    crushing_hammer:
+      card_ids: [1120]
+      minimum_for_forbidden_hammer_signature: 3
+    dudunsparce:
+      card_ids: [65, 66, 305, 306]
+      maximum: 0
+    dusknoir:
+      card_ids: [131, 132, 133]
+      maximum: 0
+    blaziken:
+      card_ids: [324, 325, 326, 410, 411, 412]
+      maximum: 0
+  fuzzy_display_name_matching_allowed: false
+
+strategy_sources:
+  - title: "Pokémon Trading Card Game Live Starter Deck Strategies—March 2026"
+    publisher: The Pokemon Company International
+    url: https://www.pokemon.com/us/strategy/pokemon-trading-card-game-live-starter-deck-strategies-march-2026
+    evidence_role: official_Phantom_Dive_and_setup
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Enter the Dragapult — The New Format and Its Top Decks"
+    publisher: PokeBeach
+    url: https://www.pokebeach.com/2026/05/enter-the-dragapult-the-new-format-and-its-top-decks
+    evidence_role: straight_variant_identity_and_pilot_principles
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Dragapult by Francisco Osorio"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/27143
+    evidence_role: exact_local_representative_provenance
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Dragapult by Kira Melville / Aurora Viets"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/decks/list/27611
+    evidence_role: current_broad_shell_only_explicitly_Hammer_under_project_signature
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Dragapult POR Standard 2026 matchups"
+    publisher: Play! Limitless
+    url: https://play.limitlesstcg.com/decks/dragapult-ex/matchups/?format=standard&rotation=2026&set=POR
+    evidence_role: observational_variant_mixed_testing_priorities
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Dragapult Deck Guide — Pokémon TCG Live Standard"
+    publisher: Simbozz
+    url: https://simbozz.gg/tcg-live/decks/dragapult
+    evidence_role: 363_list_core_and_current_engine_aggregate
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Dragapult ex TWM 130"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TWM/130
+    evidence_role: exact_Phantom_Dive_card_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Drakloak TWM 129"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TWM/129
+    evidence_role: exact_Recon_Directive_card_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Munkidori TWM 95"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/TWM/95
+    evidence_role: exact_Adrena_Brain_card_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Meowth ex POR 62"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/POR/62
+    evidence_role: exact_Last_Ditch_Catch_and_Tuck_Tail_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Crispin SCR 133"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/SCR/133
+    evidence_role: exact_typed_energy_acceleration_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Lillie's Determination MEG 119"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/MEG/119
+    evidence_role: exact_draw_supporter_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Rosa's Encouragement POR 123"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/POR/123
+    evidence_role: exact_behind_on_prizes_energy_recovery_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+  - title: "Poke Pad POR 81"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/POR/81
+    evidence_role: exact_non_rule_box_search_record
+    reviewed_at_utc: 2026-07-28T00:00:00Z
+
+expert_writeup:
+  path: docs/deck_guides/dragapult-expert-brief.txt
+  sha256: sha256:254c29386563c8a21c456e78d996d94d43b555e4ef20d0441ef1b6eeeefa12e6
+  word_count: 4231
+  maximum_words: 10000
+  audience: world_champion_subject_matter_experts
+  guide_identity: dragapult
+  cites_same_strategy_source_set: true
+  primary_document_type: practical_human_deck_pilot_guide
+
+high_confidence_principles:
+  - establish_redundant_Dreepy_before_optional_rule_box_support
+  - preserve_one_Drakloak_draw_lane_when_an_attacker_is_already_online
+  - complete_one_Fire_plus_Psychic_attacker_before_splitting_typed_energy
+  - use_Phantom_Dive_counters_only_from_exact_visible_thresholds
+  - bench_Meowth_or_Fezandipiti_only_for_a_current_ability_window
+  - keep_hidden_prize_future_draw_and_future_opponent_response_out_of_labels
+
+causal_heuristic_contract:
+  schema_version: poke_bot.causal_deck_guide_heuristics/v1
+  stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
+  minimum_preference_margin: 0.25
+  supported_predicates:
+    - id: exact_initial_plain_dragapult_active
+      supported_stages: [initial_setup_active]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - current_combo_card_ids
+      preference: prefer_Dreepy_then_Budew_or_single_prize_pivot
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+    - id: exact_initial_plain_dragapult_bench
+      supported_stages: [initial_setup_bench]
+      exact_inputs:
+        - select.context
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+      preference: establish_two_Dreepy_before_one_currently_useful_support
+      abstain_if:
+        - any_legal_option_unresolved
+        - legal_combo_set_incomplete
+    - id: exact_visible_plain_dragapult_search_gap
+      supported_stages:
+        - exact_Buddy_Buddy_Poffin_search_prompt
+        - exact_Poke_Pad_search_prompt
+        - exact_Ultra_Ball_search_prompt
+        - exact_Night_Stretcher_recovery_prompt
+      exact_inputs:
+        - select.context
+        - select.effect_or_contextCard
+        - exact_current_legal_options
+        - own_active_and_bench_card_ids
+        - own_public_discard_card_ids
+      preference: fill_visible_Dreepy_Drakloak_or_Dragapult_evolution_gap
+      abstain_if:
+        - prompt_origin_not_exactly_resolved
+        - any_legal_option_unresolved
+        - choice_requires_future_or_matchup_assumption
+    - id: exact_safe_Flip_the_Script_yes_no
+      supported_stages: [exact_Flip_the_Script_yes_no]
+      exact_inputs:
+        - select.effect_or_contextCard
+        - complete_current_yes_no_stage
+        - exact_current_deck_count
+      preference: use_current_legal_draw_only_with_conservative_post_draw_reserve
+      abstain_if:
+        - ability_origin_unresolved
+        - deck_count_unresolved
+        - any_legal_option_unresolved
+
+masked_targets:
+  - Crispin_energy_type_or_destination
+  - manual_energy_attachment
+  - attack_selection
+  - Phantom_Dive_bench_counter_targets
+  - Adrena_Brain_source_or_target
+  - Recon_Directive_top_card_choice
+  - Ultra_Ball_discard_selection
+  - Boss_Prime_Catcher_or_gust_target
+  - Area_Zero_bench_discard_or_stadium_timing
+  - Meowth_Supporter_search
+  - Pecharunt_switch_target
+  - matchup_specific_action
+  - face_down_prize_identity
+  - opponent_hidden_hand_deck_or_prize_contents
+  - future_draw_future_action_or_eventual_outcome
+  - unknown_prompt_origin
+  - unresolved_option_or_malformed_legal_combo
+  - score_margin_below_0_25
+
+target_safety:
+  causal_current_and_past_state_only: true
+  exact_current_legal_options_only: true
+  publicly_visible_board_discard_counters_and_logs_only: true
+  acting_seat_prompt_revealed_option_card_ids_allowed: true
+  unselected_non_prompt_hand_or_deck_scoring_allowed: false
+  own_hidden_hand_or_deck_content_allowed: false
+  opponent_hidden_information_allowed: false
+  future_information_allowed: false
+  outcome_conditioned_labels_allowed: false
+  complete_legal_stage_scoring_required: true
+  complete_stage_failure_behavior: mask_entire_stage
+  minimum_preference_margin: 0.25
+  ambiguous_or_low_margin_behavior: mask
+  missing_label_behavior: mask_not_zero
+  runtime_action_override_allowed: false
+  runtime_authority: none
+  guide_may_override_fused_policy: false
+
+weight_schedule_source: config/rl_protocol.yaml#/specialist_training/current_deck_guide
+
+unresolved_evidence_gaps:
+  - select_and_checksum_a_newer_pure_representative_only_after_identity_audit
+  - build_plain_only_public_corpus_without_variant_label_leakage
+  - validate_exact_prompt_encodings_against_plain_Dragapult_replays
+  - obtain_plain_only_first_second_and_matchup_evidence
+  - validate_heuristic_label_coverage_precision_and_abstention_rate

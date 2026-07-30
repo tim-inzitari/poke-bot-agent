@@ -2,5 +2,7 @@ ipykernel
 jupyter
 kaggle-environments
 numpy
+scikit-learn
+scipy
 torch
 tqdm

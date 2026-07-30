@@ -1,0 +1,28 @@
+[Unit]
+Description=Archaludon ex full-public schema-7 guide corpus (inactive)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/mnt/Main/main/poke-bot-agent/archive/archaludon-ex-full-public-2026-06-16_2026-07-29-schema7-r56-v1/ARCHALUDON_EX_FULL_PUBLIC_CORPUS_READY.json
+ConditionPathExists=/home/admin/pokebot-archaludon-r56-src-v1/state/archaludon_ex_schema7_source_lock_v1.json
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/pokebot-archaludon-r56-src-v1
+Environment=POKEBOT_GUIDE_SOURCE=/home/admin/pokebot-archaludon-r56-src-v1
+Environment=POKEBOT_EPISODE_ARCHIVE=/mnt/Main/main/poke-bot-agent/archive/episode-days
+Environment=POKEBOT_ARCHALUDON_IDENTITY_ROOT=/mnt/Main/main/poke-bot-agent/archive/archaludon-ex-full-public-2026-06-16_2026-07-29-schema7-r56-v1
+Environment=POKEBOT_ARCHALUDON_GUIDE_OUTPUT=/mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1
+Environment=POKEBOT_ARCHALUDON_SOURCE_LOCK=/home/admin/pokebot-archaludon-r56-src-v1/state/archaludon_ex_schema7_source_lock_v1.json
+ExecStart=/usr/bin/bash /home/admin/pokebot-archaludon-r56-src-v1/ops/elmo/build_archaludon_ex_full_public_schema7_guide_corpus.sh
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=5
+CPUQuota=1200%
+MemoryHigh=40G
+MemoryMax=48G
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

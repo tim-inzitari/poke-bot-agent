@@ -34,6 +34,7 @@ from scripts.dashboard_snapshot import (
     annotate_collection_budget,
     annotate_expert_optimizer_sps,
     authoritative_training_state,
+    canonical_next_prestage_overlay,
     checkpoint_parameter_telemetry,
     committed_official_heldout_state,
     competition_gate_program_state,
@@ -62,6 +63,41 @@ from scripts.dashboard_snapshot import (
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_canonical_next_prestage_separates_ready_corpus_from_router_block() -> None:
+    overlay = canonical_next_prestage_overlay(
+        {
+            "current": {
+                "next_successor_prestage": {
+                    "specialist_id": "teal-mask-ogerpon-ex",
+                    "status": "blocked_validated_causal_runtime_route_missing",
+                    "representative_ready": True,
+                    "pre_stage_ready": False,
+                    "pre_stage_receipt": "/state/prestage.json",
+                    "blockers": ["protocol_valid_expert_corpus_not_ready"],
+                    "corpus": {
+                        "status": "ready_checksum_validated_imported",
+                        "records": 1135,
+                        "decisions": 76226,
+                        "guide_rows": 6814,
+                        "protected_pointer": "/data/teal/PROTECTED_EXPERT_CORPUS.json",
+                    },
+                    "runtime_route": {
+                        "blocker": "validated_causal_runtime_route_missing"
+                    },
+                }
+            }
+        }
+    )
+
+    assert overlay["intended_specialist"] == "teal-mask-ogerpon-ex"
+    assert overlay["expert_corpus_ready"] is True
+    assert overlay["expert_records"] == 1135
+    assert overlay["expert_decisions"] == 76226
+    assert overlay["representative_ready"] is True
+    assert overlay["blocks_v6_handoff"] is True
+    assert overlay["blocker"] == "validated_causal_runtime_route_missing"
 
 
 def test_canonical_router_candidate_supersedes_old_elmo_refresh() -> None:
@@ -4466,7 +4502,7 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
     required_ids = {row["id"] for row in state["specialists"]}
     allowed_statuses = set(state["allowed_status_values"]["specialist"])
 
-    assert active_id == "team-rockets-spidops"
+    assert active_id == "hammer-pult"
     assert all(
         row["status"] in allowed_statuses for row in state["specialists"]
     )
@@ -4475,10 +4511,11 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
     ]
-    assert ordered_ids[:3] == strict_ids
+    assert ordered_ids[:2] == strict_ids[1:]
     assert removed_ids == {
         "dragapult-blaziken",
         "dragapult-dudunsparce",
+        "walrein",
     }
     assert removed_ids.isdisjoint(required_ids)
     assert removed_ids.isdisjoint(ordered_ids)
@@ -4499,8 +4536,7 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
             if specialist_id and specialist_id not in removed_ids
         )
     )
-    assert display_order[:4] == [
-        "team-rockets-spidops",
+    assert display_order[:3] == [
         "hammer-pult",
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
@@ -4526,3 +4562,165 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
     assert "!removedGoalSet.has(id)" in html
     assert "STRICT POST-SPIDOPS PREFIX" in html
     assert "REMOVED FROM REQUIRED GOALS" in html
+
+
+def test_future_guide_curriculum_and_bounded_head_routes_are_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(dashboard_snapshot_module, "ROOT", root)
+    yaml = pytest.importorskip("yaml")
+    projection = json.loads(
+        (root / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        "scales_guide_gradient_contribution_to_shared_policy_learning"
+        not in json.dumps(projection)
+    )
+    assert "shadow_unfused" not in json.dumps(projection)
+    protocol_source = (root / "config/rl_protocol.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "shadow_unfused" not in protocol_source
+    protocol = yaml.safe_load(protocol_source)
+
+    scope = projection["current_owner_overrides"][
+        "future_guide_strategic_branch_scope"
+    ]
+    assert scope["guide_curriculum_revision"] == 51
+    assert scope["strategic_branch_scope_revision"] == 56
+    assert scope["head_action_scope_revision"] == 56
+    assert scope["prospective_effective_specialist"] == "archaludon-ex"
+    assert scope["training_target_mode"] == (
+        "bounded_strategic_head_curriculum"
+    )
+    assert scope["direct_policy_cross_entropy_allowed"] is False
+    assert scope["guide_runtime_input_allowed"] is False
+    assert scope["guide_action_selection_allowed"] is False
+    assert scope["replace_observed_outcome_targets_allowed"] is False
+    assert scope["fused_policy_learning_authority"] == (
+        "realized_outcomes_and_win_objectives"
+    )
+    assert scope["all_future_heads_must_influence_actions"] is True
+    assert scope["allowed_fusion_roles"] == ["fused_input"]
+    assert scope["required_computation_role"] == "independent_head"
+    assert scope["required_action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert scope["decision_fusion_schema"] == "option_conditioned_per_head/v2"
+    assert scope["action_route_granularity"] == (
+        "one_distinct_route_per_learned_decision_head"
+    )
+    assert scope["parent_v1_fusion_residual_preserved"] is True
+    assert scope["route_aggregation"] == "fixed_mean"
+    assert scope["aggregate_route_delta_logit_cap"] == 1.0
+    assert scope["route_final_projection_initialization"] == "exact_zero"
+    assert scope["existing_learned_decision_source_count"] == 17
+    assert scope["canonical_learned_decision_source_count_with_setup"] == 18
+    assert scope["guide_is_only_action_route_exception"] is True
+    assert (
+        scope[
+            "independent_means_pre_fusion_computation_not_action_isolation"
+        ]
+        is True
+    )
+    assert scope["direct_action_selection_authority"] is False
+    assert scope["fusion_selects_action"] is True
+    assert scope["materially_influences_fused_logits"] is True
+    assert scope["runtime_enabled"] is False
+    assert scope["runtime_activation_requirement"] == (
+        "receipt_backed_validation"
+    )
+    projected_setup = scope["setup_board_outcome_head"]
+    assert projected_setup["owner_decision_revision"] == 56
+    assert projected_setup["computation_role"] == "independent_head"
+    assert projected_setup["fusion_role"] == "fused_input"
+    assert projected_setup["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+
+    guide = protocol["specialist_training"]["current_deck_guide"]
+    modes = guide["training_target_modes"]
+    assert modes["legacy_started_runs"] == {
+        "mode": "confidence_weighted_policy_cross_entropy",
+        "immutable_scope": "completed_frozen_and_already_started_specialists",
+        "active_teal_remains_legacy": True,
+    }
+    future = modes["future_specialists"]
+    assert future["owner_decision_revision"] == 51
+    assert future["effective_from_specialist"] == "archaludon-ex"
+    assert future["mode"] == "bounded_strategic_head_curriculum"
+    assert future["direct_policy_cross_entropy_allowed"] is False
+    assert future["fused_policy_learning_authority"] == (
+        "realized_outcomes_and_win_objectives"
+    )
+    branch = future["strategic_branch_scope"]
+    assert branch["owner_decision_revision"] == 56
+    assert branch["allowed_fusion_roles"] == ["fused_input"]
+    assert branch["required_computation_role"] == "independent_head"
+    assert branch["required_action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert branch["decision_fusion_schema"] == "option_conditioned_per_head/v2"
+    assert branch["action_route_granularity"] == (
+        "one_distinct_route_per_learned_decision_head"
+    )
+    assert branch["parent_v1_fusion_residual_preserved"] is True
+    assert branch["route_aggregation"] == "fixed_mean"
+    assert branch["aggregate_route_delta_logit_cap"] == 1.0
+    assert branch["route_final_projection_initialization"] == "exact_zero"
+    assert branch["guide_is_only_action_route_exception"] is True
+    assert branch["omission_from_action_score_allowed"] is False
+    adaptive = guide["adaptive_annealing"]
+    assert adaptive["every_head_has_bounded_option_conditioned_route"] is True
+    assert "every_head_has_bounded_decision_fusion_route" not in adaptive
+    setup = future["setup_board_outcome_head"]
+    assert setup["owner_decision_revision"] == 56
+    assert setup["computation_role"] == "independent_head"
+    assert setup["fusion_role"] == "fused_input"
+    assert setup["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert setup["direct_action_selection_authority"] is False
+    assert setup["runtime_activation_requires_validation_receipt"] is True
+
+    snapshot_protocol = specialist_protocol_state(
+        root / "state/specialists.yaml"
+    )
+    projected_modes = snapshot_protocol[
+        "current_deck_guide_training_modes"
+    ]
+    assert projected_modes["active_started_lineage"]["mode"] == (
+        "confidence_weighted_policy_cross_entropy"
+    )
+    assert projected_modes["future_lineage"]["mode"] == (
+        "bounded_strategic_head_curriculum"
+    )
+    action_contract = projected_modes["future_head_action_contract"]
+    assert action_contract["computation_role"] == "independent_head"
+    assert action_contract["fusion_role"] == "fused_input"
+    assert action_contract["action_influence"] == (
+        "bounded_option_conditioned_route"
+    )
+    assert action_contract["preserve_v1_additive_residual"] is True
+    assert action_contract["route_reduction"] == "fixed_mean"
+    assert action_contract["aggregate_absolute_cap"] == 1.0
+    assert action_contract["zero_safe_final_projections"] is True
+    assert action_contract["direct_action_selection_authority"] is False
+    assert action_contract["materially_influences_fused_logits"] is True
+    assert action_contract["runtime_enabled"] is False
+
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+    assert 'id="protocol-guide-active"' in html
+    assert 'id="protocol-guide-future"' in html
+    assert 'id="protocol-guide-action"' in html
+    assert "bounded_option_conditioned_route" in html
+    assert (
+        "every routed head must materially influence fused logits"
+        in html.lower()
+    )
+    assert "shadow_unfused" not in html
+    assert "direct shared-policy teaching" in html
+    assert "ramp scales guide gradients into shared policy learning" not in html

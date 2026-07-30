@@ -1689,6 +1689,8 @@ def test_completed_collection_is_receipted_and_resumed_without_recollection(
         tmp_path, state, contract
     )
     assert receipt is not None and receipt["recovery_derived"] is True
+    assert receipt["source_games"] == 2
+    assert receipt["trajectory_records"] == 2
     assert receipt["shard"]["games"] == 2
     assert receipt["shard"]["decisions"] == 2
 
@@ -1725,6 +1727,66 @@ def test_completed_collection_is_receipted_and_resumed_without_recollection(
         )
         is None
     )
+
+
+def test_completed_collection_keeps_source_games_distinct_from_trajectories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "collection_receipts").mkdir()
+    checkpoint = tmp_path / "learner.pt"
+    checkpoint.write_bytes(b"learner")
+    checkpoint_digest = train_pure_rl._sha256_file(checkpoint)
+    shard = tmp_path / "iter_00001.jsonl"
+    shard.write_text("{}\n{}\n{}\n", encoding="utf-8")
+    writer = train_pure_rl.CompactShardWriter.from_completed_shard(
+        shard,
+        n_games=3,
+        n_decisions=7,
+        elapsed_sec=1.0,
+    )
+    contract = {
+        "games": {"per_iteration": 2, "minimum_usable_fraction": 0.98},
+        "learner": {"max_context": 64},
+    }
+    state = {
+        "next_iteration": 1,
+        "design_fingerprint": "sha256:design",
+        "learner": {"path": str(checkpoint), "digest": checkpoint_digest},
+    }
+
+    monkeypatch.setattr(
+        train_pure_rl,
+        "validated_replay_cache_manifest",
+        lambda path, **_kwargs: {
+            "records": 3,
+            "sequences": 3,
+            "dropped": 0,
+            "covered_bytes": path.stat().st_size,
+            "manifest_path": str(tmp_path / "cache/manifest.json"),
+            "signature": {"source": str(path)},
+        },
+    )
+    receipt = train_pure_rl._commit_completed_collection_receipt(
+        run_dir=tmp_path,
+        state=state,
+        contract=contract,
+        iteration=1,
+        shard=shard,
+        checkpoint=checkpoint,
+        checkpoint_digest=checkpoint_digest,
+        stats={
+            "retained_source_games": 2,
+            "retained_trajectories": 3,
+            "trajectories_written": 3,
+        },
+        started_at=shard.stat().st_mtime - 1.0,
+        writer=writer,
+    )
+
+    assert receipt["requested_games"] == 2
+    assert receipt["source_games"] == 2
+    assert receipt["trajectory_records"] == 3
+    assert receipt["shard"]["games"] == 3
 
 
 def test_completed_collection_scan_rejects_duplicate_and_mixed_weights(
@@ -1871,6 +1933,36 @@ def test_tampered_completed_collection_and_receipt_are_quarantined(
     }
 
 
+def _passing_active_gate(
+    candidate,
+    *,
+    win_rate: float,
+    confidence_lower: float,
+    games: int,
+) -> dict:
+    return {
+        "passed": True,
+        "skill_weighted_wr": win_rate,
+        "confidence_lower": confidence_lower,
+        "games": games,
+        "checkpoint": candidate.path,
+        "checkpoint_digest": candidate.digest,
+        "checks": {
+            "audit": True,
+            "skill_weighted_win_rate": True,
+            "skill_weighted_confidence_lower": True,
+            "s_tier_mean_floor": True,
+            "individual_opponent_floor": True,
+        },
+        "audit": {
+            "passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "both_seats": True,
+        },
+    }
+
+
 def test_terminal_gate_marker_is_recreated_and_validated(tmp_path: Path) -> None:
     checkpoint_path = tmp_path / "champion.pt"
     checkpoint_path.write_bytes(b"immutable champion")
@@ -1886,12 +1978,13 @@ def test_terminal_gate_marker_is_recreated_and_validated(tmp_path: Path) -> None
             {
                 "iteration": 3,
                 "completed": True,
-                "stage_gate": {
-                    "passed": True,
-                    "win_rate": 0.75,
-                    "confidence_lower": 0.71,
-                    "games": 200,
-                },
+                "candidate": champion.as_dict(),
+                "active_gate_result": _passing_active_gate(
+                    champion,
+                    win_rate=0.75,
+                    confidence_lower=0.71,
+                    games=200,
+                ),
             }
         ],
     }
@@ -1919,12 +2012,12 @@ def test_continue_after_gate_preserves_first_committed_pass(tmp_path: Path) -> N
         "iteration": 3,
         "completed": True,
         "candidate": first.as_dict(),
-        "stage_gate": {
-            "passed": True,
-            "win_rate": 0.75,
-            "confidence_lower": 0.71,
-            "games": 2000,
-        },
+        "active_gate_result": _passing_active_gate(
+            first,
+            win_rate=0.75,
+            confidence_lower=0.71,
+            games=2000,
+        ),
     }
     state = {
         "version": train_pure_rl.LOOP_STATE_VERSION,
@@ -1945,11 +2038,14 @@ def test_continue_after_gate_preserves_first_committed_pass(tmp_path: Path) -> N
             "iteration": 4,
             "completed": True,
             "candidate": second.as_dict(),
-            "stage_gate": {
+            "active_gate_result": {
+                **_passing_active_gate(
+                    second,
+                    win_rate=0.49,
+                    confidence_lower=0.47,
+                    games=2000,
+                ),
                 "passed": False,
-                "win_rate": 0.49,
-                "confidence_lower": 0.47,
-                "games": 2000,
             },
         }
     )
@@ -1962,8 +2058,12 @@ def test_continue_after_gate_preserves_first_committed_pass(tmp_path: Path) -> N
     assert json.loads(marker.read_text(encoding="utf-8")) == first_payload
 
     # Nor may a later pass overwrite the exact first checkpoint identity.
-    state["history"][-1]["stage_gate"].update(
-        {"passed": True, "win_rate": 0.76, "confidence_lower": 0.72}
+    state["history"][-1]["active_gate_result"].update(
+        {
+            "passed": True,
+            "skill_weighted_wr": 0.76,
+            "confidence_lower": 0.72,
+        }
     )
     assert (
         train_pure_rl._ensure_terminal_gate_marker(
@@ -1992,12 +2092,12 @@ def test_current_protocol_marker_does_not_replace_historical_marker(
                 "iteration": 30,
                 "completed": True,
                 "candidate": candidate.as_dict(),
-                "stage_gate": {
-                    "passed": True,
-                    "win_rate": 0.61,
-                    "confidence_lower": 0.56,
-                    "games": 2000,
-                },
+                "active_gate_result": _passing_active_gate(
+                    candidate,
+                    win_rate=0.61,
+                    confidence_lower=0.56,
+                    games=2000,
+                ),
             }
         ],
     }
@@ -2127,6 +2227,64 @@ def test_initial_empty_run_allows_receipted_source_migration(
     assert digest == train_pure_rl._design_fingerprint(current)
     assert state["design_fingerprint"] == digest
     assert len(list((tmp_path / "design_migrations").glob("*.json"))) == 1
+
+
+def test_initial_collection_resume_preserves_verified_iteration_zero_shard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = {
+        "learner": {
+            "games_per_batch": 96,
+            "max_decisions_per_batch": 8192,
+        },
+        "source": {"source_tree_sha256": "sha256:old"},
+        "run": {"iterations": 16},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 0,
+        "last_completed_iteration": -1,
+        "history": [],
+    }
+    manifest = {
+        "design_fingerprint": stored_digest,
+        "design_contract": stored,
+    }
+    (tmp_path / "shards").mkdir()
+    shard = tmp_path / "shards" / "iter_00000.jsonl"
+    shard.write_text("{}\n", encoding="utf-8")
+    receipt = {
+        "iteration": 0,
+        "checkpoint_digest": "sha256:behavior",
+        "design_fingerprint_at_collection": stored_digest,
+        "receipt_path": str(
+            tmp_path / "collection_receipts" / "iter_00000.json"
+        ),
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (receipt, {}),
+    )
+    current = json.loads(json.dumps(stored))
+    current["source"]["source_tree_sha256"] = "sha256:new"
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="receipt_backed_completed_collection_resume_v1",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    assert shard.is_file()
+    migration = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert migration["preserved_completed_collection"]["iteration"] == 0
 
 
 def test_clean_boundary_migration_audits_operational_batch_update(
@@ -2328,6 +2486,90 @@ def test_decision_fusion_runtime_activation_is_exact_and_fail_closed() -> None:
         current=current,
         changed=changed,
         reason="receipt_backed_decision_fusion_runtime_v1",
+    )
+
+
+def test_current_deck_guide_weight_migration_is_bounded_and_exact() -> None:
+    stored = {
+        "learner": {
+            "alakazam_guide_loss_weight": 0.05,
+            "current_deck_guide_loss_weight": 0.05,
+            "current_deck_guide_archetype": "teal-mask-ogerpon-ex",
+            "current_deck_guide_version": "slop-box-v3",
+            "current_deck_guide_targets_enabled": True,
+        },
+        "expert_rehearsal": {
+            "loss_weights": {"alakazam_guide": 0.05},
+        },
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"]["alakazam_guide_loss_weight"] = 0.25
+    current["learner"]["current_deck_guide_loss_weight"] = 0.25
+    current["expert_rehearsal"]["loss_weights"]["alakazam_guide"] = 0.25
+    changed = sorted(train_pure_rl._changed_design_paths(stored, current))
+
+    assert train_pure_rl._safe_current_deck_guide_weight_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="receipt_backed_current_deck_guide_weight_curve_v1",
+    )
+
+    too_large = json.loads(json.dumps(current))
+    too_large["learner"]["alakazam_guide_loss_weight"] = 0.75
+    too_large["learner"]["current_deck_guide_loss_weight"] = 0.75
+    too_large["expert_rehearsal"]["loss_weights"]["alakazam_guide"] = 0.75
+    assert not train_pure_rl._safe_current_deck_guide_weight_migration(
+        stored=stored,
+        current=too_large,
+        changed=sorted(train_pure_rl._changed_design_paths(stored, too_large)),
+        reason="receipt_backed_current_deck_guide_weight_curve_v1",
+    )
+    assert not train_pure_rl._safe_current_deck_guide_weight_migration(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="unreceipted_weight_change",
+    )
+
+
+def test_teal_tactical_outcome_rebalance_is_bounded_and_exact() -> None:
+    stored = {
+        "learner": {
+            "current_deck_guide_archetype": "teal-mask-ogerpon-ex",
+            "current_deck_guide_loss_weight": 0.05,
+        }
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"]["expanded_head_loss_weight_overrides"] = {
+        "tactical_outcome": 0.01
+    }
+    changed = sorted(train_pure_rl._changed_design_paths(stored, current))
+
+    assert train_pure_rl._safe_teal_auxiliary_head_rebalance(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="receipt_backed_teal_auxiliary_head_rebalance_v1",
+    )
+
+    wrong_weight = json.loads(json.dumps(current))
+    wrong_weight["learner"]["expanded_head_loss_weight_overrides"][
+        "tactical_outcome"
+    ] = 0.025
+    assert not train_pure_rl._safe_teal_auxiliary_head_rebalance(
+        stored=stored,
+        current=wrong_weight,
+        changed=sorted(
+            train_pure_rl._changed_design_paths(stored, wrong_weight)
+        ),
+        reason="receipt_backed_teal_auxiliary_head_rebalance_v1",
+    )
+    assert not train_pure_rl._safe_teal_auxiliary_head_rebalance(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="unreceipted_weight_change",
     )
 
 

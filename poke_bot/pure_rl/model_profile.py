@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Optional
 
 import torch
@@ -83,6 +84,10 @@ def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
         # RL must never activate them merely because a process inherited an
         # ambient MATCHUP_ADAPTERS_ENABLED value.
         matchup_adapters_enabled=False,
+        matchup_adapter_format=os.environ.get(
+            "POKEBOT_MATCHUP_ADAPTER_FORMAT",
+            "poke-bot-matchup-adapter-bank-v5-roster18",
+        ),
         # Preserve the process-scoped canonical expanded-head architecture.
         # Explicitly forcing this false made a valid expanded-head champion
         # unloadable when a zero-safe decision-fusion learner was introduced
@@ -93,6 +98,20 @@ def pure_rl_model_config(**overrides: Any) -> config.ModelConfig:
         # while keeping runtime serving disabled.
         dropout=_f("DROPOUT", 0.05),
     )
+    if cfg.matchup_adapter_format == "poke-bot-matchup-adapter-bank-v6":
+        from poke_bot.matchup_adapters_v6 import load_slot_registry
+
+        registry_raw = os.environ.get(
+            "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH", ""
+        ).strip()
+        if not registry_raw:
+            raise ValueError(
+                "Router Format 6 requires "
+                "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH"
+            )
+        cfg.matchup_adapter_registry = load_slot_registry(
+            Path(registry_raw).expanduser().resolve()
+        )
     for key, value in overrides.items():
         if not hasattr(cfg, key):
             raise TypeError(f"unknown ModelConfig field: {key}")

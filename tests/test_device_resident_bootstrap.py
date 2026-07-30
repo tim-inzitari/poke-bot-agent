@@ -102,7 +102,7 @@ def _exact_temporal_game(*, include_hand: bool = True) -> GameSequence:
 
 
 def test_resident_aux_packer_uses_strict_shared_label_contract() -> None:
-    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 4
+    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 5
     hand, has_hand, remainder, has_remainder, lethal, race = (
         _validated_exact_aux_targets(
             {
@@ -367,6 +367,40 @@ def test_temporal_resident_rehearsal_trains_every_available_head() -> None:
     )
     (guide_total - base_total).backward()
     assert _gradient_norm(model.policy_head) > 0.0
+
+    def _guide_only_policy_gradient(weight: float) -> torch.Tensor:
+        model.zero_grad(set_to_none=True)
+        weighted_total, _ = device_temporal_batch_losses(
+            model,
+            corpus,
+            game_ids,
+            value_weight=1.0,
+            alakazam_guide_weight=weight,
+        )
+        unweighted_total, _ = device_temporal_batch_losses(
+            model,
+            corpus,
+            game_ids,
+            value_weight=1.0,
+        )
+        (weighted_total - unweighted_total).backward()
+        return torch.cat(
+            [
+                parameter.grad.detach().flatten()
+                for parameter in model.policy_head.parameters()
+                if parameter.grad is not None
+            ]
+        )
+
+    quarter_weight_gradient = _guide_only_policy_gradient(0.25)
+    half_weight_gradient = _guide_only_policy_gradient(0.50)
+    assert float(quarter_weight_gradient.abs().sum()) > 0.0
+    torch.testing.assert_close(
+        half_weight_gradient,
+        quarter_weight_gradient * 2.0,
+        rtol=1e-5,
+        atol=1e-6,
+    )
 
 
 def test_temporal_resident_teacher_policy_targets_are_masked_and_weighted() -> None:

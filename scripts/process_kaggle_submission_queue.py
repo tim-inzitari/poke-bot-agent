@@ -121,19 +121,47 @@ def _submission_time(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _latest_submission_time(
+def _submission_times(
     submissions: list[dict[str, str]],
     queue: list[dict[str, Any]],
-) -> datetime | None:
-    timestamps = [
-        timestamp
-        for timestamp in (
-            *(_submission_time(row.get("date")) for row in submissions),
-            *(_submission_time(row.get("submitted_at")) for row in queue),
+) -> list[datetime]:
+    """Return newest-first times for distinct logical submissions.
+
+    Kaggle rows and local queue rows describe the same upload after
+    reconciliation.  Keying by submission id or checkpoint-bound label keeps
+    that upload from occupying both the newest and second-newest positions.
+    """
+
+    logical: dict[tuple[str, str], datetime] = {}
+    for index, row in enumerate(submissions):
+        timestamp = _submission_time(row.get("date"))
+        if timestamp is None:
+            continue
+        reference = str(row.get("ref") or "").strip()
+        label = str(row.get("description") or "").strip()
+        key = (
+            ("id", reference)
+            if reference
+            else ("label", label)
+            if label
+            else ("remote", str(index))
         )
-        if timestamp is not None
-    ]
-    return max(timestamps, default=None)
+        logical[key] = max(timestamp, logical.get(key, timestamp))
+    for index, row in enumerate(queue):
+        timestamp = _submission_time(row.get("submitted_at"))
+        if timestamp is None:
+            continue
+        reference = str(row.get("submission_id") or "").strip()
+        label = str(row.get("label") or "").strip()
+        key = (
+            ("id", reference)
+            if reference
+            else ("label", label)
+            if label
+            else ("queue", str(index))
+        )
+        logical[key] = max(timestamp, logical.get(key, timestamp))
+    return sorted(logical.values(), reverse=True)
 
 
 def _reconcile(
@@ -199,6 +227,9 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
         "matchup_tree": str(entry.get("matchup_tree_checksum") or ""),
         "search_config": str(entry.get("search_config_checksum") or ""),
         "belief_decks": str(entry.get("belief_decks_checksum") or ""),
+        "turn_order_preference": str(
+            entry.get("turn_order_preference") or "first_if_allowed"
+        ),
     }
     if (
         not file_path.is_file()
@@ -239,6 +270,12 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
         matchup_tree_bytes = member_bytes("matchup_tree.json")
         search_config_bytes = member_bytes("search_config.json")
         belief_decks_bytes = member_bytes("belief_decks.json")
+        turn_order_member = members.get("turn_order_profile.json")
+        turn_order_bytes = (
+            archive.extractfile(turn_order_member).read()
+            if turn_order_member is not None
+            else b""
+        )
     actual_model = "sha256:" + hashlib.sha256(model_bytes).hexdigest()
     actual_deck_file = "sha256:" + hashlib.sha256(deck_bytes).hexdigest()
     try:
@@ -256,6 +293,14 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
     try:
         search_config = json.loads(search_config_bytes)
         belief_decks = json.loads(belief_decks_bytes)
+        turn_order_profile = (
+            json.loads(turn_order_bytes)
+            if turn_order_bytes
+            else {
+                "schema": "legacy_default_first",
+                "turn_order_preference": "first_if_allowed",
+            }
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("queued belief-MCTS assets are invalid JSON") from exc
     hypotheses = belief_decks.get("deck_lists") or []
@@ -316,6 +361,12 @@ def _verify_queued_bundle_identity(entry: dict[str, Any]) -> None:
             == expected["belief_decks"]
         ),
         "belief_mcts_contract": search_contract_valid,
+        "turn_order_preference": (
+            turn_order_profile.get("turn_order_preference")
+            == expected["turn_order_preference"]
+            and expected["turn_order_preference"]
+            in {"first_if_allowed", "second_if_allowed"}
+        ),
     }
     failed = sorted(name for name, passed in checks.items() if not passed)
     if failed:
@@ -357,6 +408,9 @@ def _ensure_automatic_one_shot_authorization(
             entry.get("checkpoint_checksum") or ""
         ),
         "submission_file_checksum": str(entry.get("file_sha256") or ""),
+        "turn_order_preference": str(
+            entry.get("turn_order_preference") or "first_if_allowed"
+        ),
     }
     identity_fields = (
         "schema",
@@ -368,6 +422,7 @@ def _ensure_automatic_one_shot_authorization(
         "specialist_id",
         "frozen_checkpoint_checksum",
         "submission_file_checksum",
+        "turn_order_preference",
     )
     if authorization_path.exists():
         existing = _read_json(authorization_path)
@@ -465,10 +520,17 @@ def process_once(
                 if str(row.get("date") or "").startswith(quota_date)
             )
             _reconcile(queue, submissions)
-            last_submission_at = _latest_submission_time(submissions, queue)
+            submission_times = _submission_times(submissions, queue)
+            last_submission_at = (
+                submission_times[0] if submission_times else None
+            )
+            spacing_anchor_submission_at = (
+                submission_times[1] if len(submission_times) >= 2 else None
+            )
             next_submission_eligible_at = (
-                last_submission_at + timedelta(hours=minimum_spacing_hours)
-                if last_submission_at is not None
+                spacing_anchor_submission_at
+                + timedelta(hours=minimum_spacing_hours)
+                if spacing_anchor_submission_at is not None
                 else None
             )
             quota = dict(payload.get("quota") or {})
@@ -490,6 +552,14 @@ def process_once(
                     "last_submission_at": (
                         last_submission_at.isoformat()
                         if last_submission_at is not None
+                        else None
+                    ),
+                    "spacing_anchor_policy": (
+                        "second_most_recent_logical_submission"
+                    ),
+                    "spacing_anchor_submission_at": (
+                        spacing_anchor_submission_at.isoformat()
+                        if spacing_anchor_submission_at is not None
                         else None
                     ),
                     "next_submission_eligible_at": (
@@ -602,9 +672,22 @@ def process_once(
                 quota["known_submissions_used_today"] = min(limit, used + 1)
                 quota["quota_exhausted"] = used + 1 >= limit
                 quota["last_submission_at"] = submitted_at.isoformat()
+                quota["spacing_anchor_policy"] = (
+                    "second_most_recent_logical_submission"
+                )
+                quota["spacing_anchor_submission_at"] = (
+                    last_submission_at.isoformat()
+                    if last_submission_at is not None
+                    else None
+                )
                 quota["next_submission_eligible_at"] = (
-                    submitted_at + timedelta(hours=minimum_spacing_hours)
-                ).isoformat()
+                    (
+                        last_submission_at
+                        + timedelta(hours=minimum_spacing_hours)
+                    ).isoformat()
+                    if last_submission_at is not None
+                    else None
+                )
             elif _quota_error(output):
                 entry["attempt_started_at"] = None
                 entry["attempt_quota_date"] = quota_date

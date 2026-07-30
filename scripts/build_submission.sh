@@ -13,6 +13,8 @@ TARBALL="$OUT_DIR/submission.tar.gz"
 ARCH="${POKEBOT_PRIMARY_ARCHETYPE:-dragapult}"
 DECK_SRC="${POKEBOT_SUBMISSION_DECK:-$ROOT/submission/deck.csv}"
 MATCHUP_TREE_SRC="${POKEBOT_SUBMISSION_MATCHUP_TREE:-}"
+MATCHUP_ROSTER_SRC="$ROOT/state/matchup_adapter_roster.json"
+TURN_ORDER_PREFERENCE="${POKEBOT_SUBMISSION_TURN_ORDER:-first_if_allowed}"
 SEARCH_CONFIG_SRC="$ROOT/submission/search_config.json"
 BELIEF_PRIOR_BUILDER="$ROOT/scripts/build_submission_belief_posterior.py"
 BELIEF_PRIOR_SOURCES=(
@@ -37,6 +39,11 @@ if [[ -z "$CKPT" || ! -f "$CKPT" ]]; then
 fi
 if [[ ! -f "$DECK_SRC" ]]; then
   echo "ERROR: submission deck does not exist: $DECK_SRC" >&2
+  exit 1
+fi
+if [[ "$TURN_ORDER_PREFERENCE" != "first_if_allowed" && \
+      "$TURN_ORDER_PREFERENCE" != "second_if_allowed" ]]; then
+  echo "ERROR: invalid POKEBOT_SUBMISSION_TURN_ORDER=$TURN_ORDER_PREFERENCE" >&2
   exit 1
 fi
 if [[ ! -f "$SEARCH_CONFIG_SRC" || ! -f "$BELIEF_PRIOR_BUILDER" ]]; then
@@ -97,10 +104,13 @@ mkdir -p "$STAGE"
 echo "== build_submission"
 echo "   ckpt=$CKPT"
 echo "   deck=$DECK_SRC"
+echo "   turn_order=$TURN_ORDER_PREFERENCE"
 echo "   cg=$CG_SRC"
 echo "   out=$TARBALL"
 
 cp "$ROOT/submission/main.py" "$STAGE/main.py"
+printf '{"schema":"poke_bot.submission_turn_order_profile/v1","turn_order_preference":"%s"}\n' \
+  "$TURN_ORDER_PREFERENCE" >"$STAGE/turn_order_profile.json"
 cp "$DECK_SRC" "$STAGE/deck.csv"
 cp "$CKPT" "$STAGE/model.pt"
 cp "$SEARCH_CONFIG_SRC" "$STAGE/search_config.json"
@@ -112,6 +122,10 @@ cp -a "$CG_SRC" "$STAGE/cg"
 if [[ -n "$MATCHUP_TREE_SRC" ]]; then
   if [[ ! -f "$MATCHUP_TREE_SRC" ]]; then
     echo "ERROR: submission matchup tree does not exist: $MATCHUP_TREE_SRC" >&2
+    exit 1
+  fi
+  if [[ ! -f "$MATCHUP_ROSTER_SRC" ]]; then
+    echo "ERROR: submission matchup roster does not exist: $MATCHUP_ROSTER_SRC" >&2
     exit 1
   fi
   "$PYTHON" - "$MATCHUP_TREE_SRC" <<'PY'
@@ -130,6 +144,8 @@ print(
 )
 PY
   cp "$MATCHUP_TREE_SRC" "$STAGE/matchup_tree.json"
+  mkdir -p "$STAGE/state"
+  cp "$MATCHUP_ROSTER_SRC" "$STAGE/state/matchup_adapter_roster.json"
 fi
 
 # Vendor poke_bot package needed at runtime (model/mcts/features/…).
@@ -253,6 +269,7 @@ tar -xzf "$TARBALL" -C "$SMOKE_DIR"
     POKEBOT_SUBMISSION_SEARCH_DISABLE=1 \
     "$PYTHON" -I - "$SMOKE_DIR" <<'PY'
 import importlib.util
+import json
 import os
 from pathlib import Path
 import random
@@ -266,16 +283,20 @@ assert spec is not None and spec.loader is not None
 agent_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agent_mod)
 assert str(stage) not in sys.path, "main.py must remain lazily loaded before first act"
+turn_order = json.loads((stage / "turn_order_profile.json").read_text())[
+    "turn_order_preference"
+]
 
-for prompt, expected in (
+for prompt, first_index, second_index in (
     ({"select": {"context": 41, "minCount": 1, "maxCount": 1,
-                  "option": [{"type": 1}, {"type": 2}]}}, [0]),
+                  "option": [{"type": 1}, {"type": 2}]}}, 0, 1),
     ({"select": {"context": "IS_FIRST", "minCount": 1, "maxCount": 1,
-                  "option": [{"type": "No"}, {"type": "Yes"}]}}, [1]),
+                  "option": [{"type": "No"}, {"type": "Yes"}]}}, 1, 0),
 ):
+    expected = [first_index if turn_order == "first_if_allowed" else second_index]
     assert agent_mod.agent(prompt) == expected, (prompt, expected)
 assert agent_mod._MODEL is None, "turn-order choice must not load the model"
-print("OK: package always chooses go first before model initialization")
+print("OK: package honors", turn_order, "before model initialization")
 
 # Exercise the exact first Kaggle call.  This must add the agent directory,
 # import vendored cg, load the exact neural checkpoint, and return 60 cards.
@@ -308,12 +329,19 @@ while obs is not None and steps < 80:
     context = sel.get("context")
     if context == 41 or str(context).replace("_", "").lower() == "isfirst":
         go_first_seen = True
-        yes = [
+        desired = "yes" if turn_order == "first_if_allowed" else "no"
+        desired_integer = 1 if desired == "yes" else 2
+        selected = [
             i for i, option in enumerate(sel.get("option") or [])
-            if option.get("type") == 1
-            or str(option.get("type")).lower() == "yes"
+            if option.get("type") == desired_integer
+            or str(option.get("type")).lower() == desired
         ]
-        assert len(yes) == 1 and choice == yes, ("must choose go first", choice, yes)
+        assert len(selected) == 1 and choice == selected, (
+            "must honor packaged turn order",
+            turn_order,
+            choice,
+            selected,
+        )
     obs = battle_select(choice)
     steps += 1
 battle_finish()
@@ -402,10 +430,15 @@ import sys
 bundle = Path(sys.argv[1]).resolve()
 digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
 receipt = Path(str(bundle) + ".go-first-verified.json")
+turn_order = json.loads(
+    (bundle.parent / "stage" / "turn_order_profile.json").read_text()
+)["turn_order_preference"]
 payload = {
-    "schema": "poke_bot.submission_go_first_attestation/v1",
+    "schema": "poke_bot.submission_turn_order_attestation/v1",
     "file_sha256": "sha256:" + digest,
-    "go_first_if_offered": True,
+    "turn_order_preference": turn_order,
+    "go_first_if_offered": turn_order == "first_if_allowed",
+    "go_second_if_offered": turn_order == "second_if_allowed",
     "belief_mcts_default": False,
     "belief_mcts_leaf_evaluator": "trained_checkpoint_policy_value_head",
     "belief_mcts_leaf_evaluator_checkpoint": "submission_model_pt",

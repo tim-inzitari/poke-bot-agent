@@ -72,7 +72,16 @@ EXPANDED_HEAD_NAMES: tuple[str, ...] = tuple(
 EXPANDED_HEAD_KEY_PREFIXES: tuple[str, ...] = tuple(
     f"{name}." for name in EXPANDED_HEAD_NAMES
 )
+SETUP_BOARD_OUTCOME_HEAD_SCHEMA = "poke_bot.setup_board_outcome_head/v1"
+SETUP_BOARD_OUTCOME_HEAD_NAME = "setup_board_outcome_head"
+SETUP_BOARD_OUTCOME_HEAD_OUTPUTS = 9
+SETUP_BOARD_OUTCOME_HEAD_HIDDEN = 512
+SETUP_BOARD_OUTCOME_HEAD_KEY_PREFIX = f"{SETUP_BOARD_OUTCOME_HEAD_NAME}."
 DECISION_FUSION_SCHEMA = "poke_bot.causal_decision_fusion/v1"
+DECISION_FUSION_V2_SCHEMA = "poke_bot.causal_decision_fusion/v2"
+DECISION_FUSION_V2_ROUTE_SCHEMA = "option_conditioned_per_head/v2"
+DECISION_FUSION_V2_ROUTE_WIDTH = 16
+DECISION_FUSION_V2_TOTAL_DELTA_CAP = 1.0
 DECISION_FUSION_REQUIRED_HEADS: tuple[str, ...] = (
     "value",
     "archetype",
@@ -92,7 +101,100 @@ DECISION_FUSION_REQUIRED_HEADS: tuple[str, ...] = (
     "outcome_distribution",
     "remaining_turns",
 )
+DECISION_FUSION_V2_OPTIONAL_HEADS: tuple[str, ...] = (
+    "setup_board_outcome",
+)
 DECISION_FUSION_KEY_PREFIX = "decision_fusion."
+
+
+class SetupBoardOutcomeHead(nn.Module):
+    """Future-only independent setup-board outcome prediction branch."""
+
+    def __init__(self, d_model: int) -> None:
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Linear(int(d_model), SETUP_BOARD_OUTCOME_HEAD_HIDDEN),
+            nn.GELU(),
+            nn.Linear(
+                SETUP_BOARD_OUTCOME_HEAD_HIDDEN,
+                SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
+            ),
+        )
+
+    def forward(self, option_hidden: Tensor) -> Tensor:
+        return self.network(option_hidden)
+
+    def inventory(self) -> dict[str, object]:
+        return {
+            "schema": SETUP_BOARD_OUTCOME_HEAD_SCHEMA,
+            "enabled": True,
+            "input": "option_hidden",
+            "outputs": SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
+            "hidden_width": SETUP_BOARD_OUTCOME_HEAD_HIDDEN,
+            "computation_role": "independent_head",
+            "fusion_role": "fused_input",
+            "action_influence": "bounded_option_conditioned_route",
+            "causal_input": "board_state_cross_attended_option_hidden",
+            "action_route_input": (
+                "typed_option_output_plus_board_state_cross_attended_legal_option"
+            ),
+            "direct_action_selection_authority": False,
+            "runtime_activation": "receipt_gated",
+            "parameters": int(sum(p.numel() for p in self.parameters())),
+            "tensors": {
+                name: {
+                    "shape": list(tensor.shape),
+                    "dtype": str(tensor.dtype).removeprefix("torch."),
+                    "numel": int(tensor.numel()),
+                }
+                for name, tensor in self.state_dict().items()
+            },
+        }
+
+
+class OptionConditionedHeadRoute(nn.Module):
+    """One nonlinear, zero-safe action route for one typed prediction head."""
+
+    def __init__(self, *, d_model: int, head_dim: int, width: int) -> None:
+        super().__init__()
+        if d_model <= 0 or head_dim <= 0 or width <= 0:
+            raise ValueError("dedicated fusion-route dimensions must be positive")
+        self.d_model = int(d_model)
+        self.head_dim = int(head_dim)
+        self.width = int(width)
+        self.network = nn.Sequential(
+            nn.Linear(self.d_model + self.head_dim, self.width),
+            nn.GELU(),
+            nn.Linear(self.width, 1),
+        )
+        # A fusion-v2 migration must reproduce the learned v1 policy exactly.
+        # The hidden projection may be initialized normally, but no route can
+        # alter a logit until ordinary training updates this final projection.
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+    def forward(self, option_hidden: Tensor, typed_output: Tensor) -> Tensor:
+        if option_hidden.dim() != 3:
+            raise ValueError("option hidden must be [batch, options, d_model]")
+        if typed_output.dim() != 3:
+            raise ValueError("typed route output must be [batch, options, width]")
+        if option_hidden.shape[:2] != typed_output.shape[:2]:
+            raise ValueError("typed route output does not match option dimensions")
+        if option_hidden.size(-1) != self.d_model:
+            raise ValueError("dedicated route option-hidden width mismatch")
+        if typed_output.size(-1) != self.head_dim:
+            raise ValueError("dedicated route typed-output width mismatch")
+        bounded_input = torch.cat(
+            [
+                torch.tanh(option_hidden.float()).to(dtype=option_hidden.dtype),
+                torch.tanh(typed_output.float()).to(
+                    device=option_hidden.device,
+                    dtype=option_hidden.dtype,
+                ),
+            ],
+            dim=-1,
+        )
+        return torch.tanh(self.network(bounded_input).squeeze(-1))
 
 
 class CausalDecisionFusion(nn.Module):
@@ -130,6 +232,12 @@ class CausalDecisionFusion(nn.Module):
         width: int,
         archetype_classes: int,
         belief_card_vocab: int,
+        dedicated_routes_enabled: bool = False,
+        dedicated_route_width: int = DECISION_FUSION_V2_ROUTE_WIDTH,
+        dedicated_route_total_delta_cap: float = (
+            DECISION_FUSION_V2_TOTAL_DELTA_CAP
+        ),
+        setup_board_outcome_outputs: int = 0,
     ) -> None:
         super().__init__()
         if width <= 0:
@@ -159,6 +267,54 @@ class CausalDecisionFusion(nn.Module):
         )
         nn.init.zeros_(self.residual[-1].weight)
         nn.init.zeros_(self.residual[-1].bias)
+        self.dedicated_routes_enabled = bool(dedicated_routes_enabled)
+        self.dedicated_route_total_delta_cap = float(
+            dedicated_route_total_delta_cap
+        )
+        if (
+            not torch.isfinite(
+                torch.tensor(self.dedicated_route_total_delta_cap)
+            )
+            or self.dedicated_route_total_delta_cap <= 0.0
+        ):
+            raise ValueError(
+                "dedicated fusion-route total delta cap must be finite and positive"
+            )
+        available_route_dims = {**state_dims, **self._OPTION_DIMS}
+        route_dims = {
+            name: available_route_dims[name]
+            for name in DECISION_FUSION_REQUIRED_HEADS
+        }
+        if int(setup_board_outcome_outputs) > 0:
+            if not self.dedicated_routes_enabled:
+                raise ValueError(
+                    "setup board outcome fusion requires dedicated routes"
+                )
+            route_dims["setup_board_outcome"] = int(
+                setup_board_outcome_outputs
+            )
+        self.dedicated_route_dims = (
+            dict(route_dims) if self.dedicated_routes_enabled else {}
+        )
+        self.dedicated_routes = nn.ModuleDict(
+            {
+                name: OptionConditionedHeadRoute(
+                    d_model=d_model,
+                    head_dim=head_dim,
+                    width=dedicated_route_width,
+                )
+                for name, head_dim in self.dedicated_route_dims.items()
+            }
+        )
+
+    @property
+    def required_heads(self) -> tuple[str, ...]:
+        optional = tuple(
+            name
+            for name in DECISION_FUSION_V2_OPTIONAL_HEADS
+            if name in self.dedicated_route_dims
+        )
+        return (*DECISION_FUSION_REQUIRED_HEADS, *optional)
 
     @staticmethod
     def _bounded(value: Tensor) -> Tensor:
@@ -171,10 +327,11 @@ class CausalDecisionFusion(nn.Module):
         *,
         state_sources: dict[str, Tensor],
         option_sources: dict[str, Tensor],
+        dedicated_routes_active: bool = False,
     ) -> Tensor:
         missing = [
             name
-            for name in DECISION_FUSION_REQUIRED_HEADS
+            for name in self.required_heads
             if name not in state_sources and name not in option_sources
         ]
         if missing:
@@ -202,16 +359,134 @@ class CausalDecisionFusion(nn.Module):
         residual = self.residual(
             torch.cat([option_hidden, context, option_features], dim=-1)
         ).squeeze(-1)
-        return base_logits + residual
+        fused_logits = base_logits + residual
+        if dedicated_routes_active:
+            fused_logits = fused_logits + self.dedicated_action_delta(
+                option_hidden,
+                state_sources=state_sources,
+                option_sources=option_sources,
+            )
+        return fused_logits
 
-    def inventory(self, *, runtime_enabled: bool) -> dict[str, object]:
+    @staticmethod
+    def _option_conditioned_source(
+        source: Tensor,
+        *,
+        batch_size: int,
+        option_count: int,
+        already_option_conditioned: bool,
+    ) -> Tensor:
+        if not already_option_conditioned:
+            if source.size(0) != batch_size:
+                raise ValueError("state fusion source batch mismatch")
+            return source.reshape(batch_size, 1, -1).expand(
+                -1, option_count, -1
+            )
+        if source.dim() == 1:
+            source = source.unsqueeze(-1)
+        if source.dim() == 2:
+            source = source.unsqueeze(-1)
+        if source.dim() == 3:
+            if source.shape[:2] != (batch_size, option_count):
+                raise ValueError("option fusion source dimensions mismatch")
+            return source
+        raise ValueError("unsupported typed fusion-source shape")
+
+    def dedicated_route_deltas(
+        self,
+        option_hidden: Tensor,
+        *,
+        state_sources: dict[str, Tensor],
+        option_sources: dict[str, Tensor],
+    ) -> dict[str, Tensor]:
+        """Return independently ablatable, unit-bounded per-head route deltas."""
+
+        if not self.dedicated_routes_enabled:
+            raise RuntimeError("dedicated option-conditioned routes are disabled")
+        batch_size, option_count, _ = option_hidden.shape
+        deltas: dict[str, Tensor] = {}
+        for name, route in self.dedicated_routes.items():
+            already_option_conditioned = name in option_sources
+            source = (
+                option_sources[name]
+                if already_option_conditioned
+                else state_sources[name]
+            )
+            typed_output = self._option_conditioned_source(
+                source,
+                batch_size=batch_size,
+                option_count=option_count,
+                already_option_conditioned=already_option_conditioned,
+            )
+            deltas[name] = route(option_hidden, typed_output)
+        return deltas
+
+    def dedicated_action_delta(
+        self,
+        option_hidden: Tensor,
+        *,
+        state_sources: dict[str, Tensor],
+        option_sources: dict[str, Tensor],
+    ) -> Tensor:
+        """Return the fixed-mean all-head residual, capped at one logit."""
+
+        deltas = self.dedicated_route_deltas(
+            option_hidden,
+            state_sources=state_sources,
+            option_sources=option_sources,
+        )
+        if not deltas:
+            return torch.zeros(
+                option_hidden.shape[:2],
+                device=option_hidden.device,
+                dtype=option_hidden.dtype,
+            )
+        mean_delta = torch.stack(tuple(deltas.values()), dim=0).mean(dim=0)
+        return self.dedicated_route_total_delta_cap * mean_delta
+
+    def inventory(
+        self,
+        *,
+        runtime_enabled: bool,
+        dedicated_routes_runtime_enabled: bool = False,
+    ) -> dict[str, object]:
+        route_count = len(self.dedicated_routes)
         return {
-            "schema": DECISION_FUSION_SCHEMA,
+            "schema": (
+                DECISION_FUSION_V2_SCHEMA
+                if self.dedicated_routes_enabled
+                else DECISION_FUSION_SCHEMA
+            ),
             "enabled": True,
             "runtime_enabled": bool(runtime_enabled),
-            "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
+            "required_heads": list(self.required_heads),
             "parameters": int(sum(p.numel() for p in self.parameters())),
             "zero_safe_initialization": True,
+            "guide_excluded": True,
+            "dedicated_routes": {
+                "schema": DECISION_FUSION_V2_ROUTE_SCHEMA,
+                "enabled": self.dedicated_routes_enabled,
+                "runtime_enabled": bool(dedicated_routes_runtime_enabled),
+                "route_count": route_count,
+                "route_names": list(self.dedicated_routes),
+                "aggregation": "fixed_mean",
+                "total_delta_cap": self.dedicated_route_total_delta_cap,
+                "zero_safe_final_projection": True,
+                "computation_role": "independent_head",
+                "fusion_role": "fused_input",
+                "action_influence": "bounded_option_conditioned_route",
+                "causal_input_authority": (
+                    "current_board_state_and_legal_options_only"
+                ),
+                "state_head_action_conditioning": (
+                    "typed_output_plus_board_state_cross_attended_legal_option"
+                ),
+                "option_head_action_conditioning": (
+                    "typed_option_output_plus_board_state_cross_attended_legal_option"
+                ),
+                "direct_action_selection_authority": False,
+                "runtime_activation": "receipt_gated",
+            },
         }
 
 
@@ -787,6 +1062,45 @@ class TemporalCabtTransformer(nn.Module):
             for name in EXPANDED_HEAD_NAMES:
                 setattr(self, name, None)
         self.warm_started_expanded_heads: tuple[str, ...] = ()
+        self.setup_board_outcome_head_enabled = bool(
+            getattr(cfg, "setup_board_outcome_head_enabled", False)
+        )
+        self.decision_fusion_dedicated_routes_enabled = bool(
+            getattr(cfg, "decision_fusion_dedicated_routes_enabled", False)
+        )
+        self.decision_fusion_dedicated_routes_runtime_enabled = bool(
+            getattr(
+                cfg,
+                "decision_fusion_dedicated_routes_runtime_enabled",
+                False,
+            )
+        )
+        if (
+            self.setup_board_outcome_head_enabled
+            and not self.expanded_heads_enabled
+        ):
+            raise ValueError(
+                "setup board outcome head requires expanded strategic heads"
+            )
+        if (
+            self.setup_board_outcome_head_enabled
+            and not self.decision_fusion_dedicated_routes_enabled
+        ):
+            raise ValueError(
+                "setup board outcome head requires dedicated decision-fusion routes"
+            )
+        if self.setup_board_outcome_head_enabled:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(EXPANDED_HEAD_INIT_SEED + 2)
+                self.setup_board_outcome_head = SetupBoardOutcomeHead(
+                    cfg.d_model
+                )
+            self.aux_heads_present = (
+                *self.aux_heads_present,
+                SETUP_BOARD_OUTCOME_HEAD_NAME,
+            )
+        else:
+            self.setup_board_outcome_head = None
         self.decision_fusion_enabled = bool(
             getattr(cfg, "decision_fusion_enabled", False)
         )
@@ -804,6 +1118,27 @@ class TemporalCabtTransformer(nn.Module):
             raise ValueError(
                 "decision_fusion_runtime_enabled requires decision_fusion_enabled"
             )
+        if (
+            self.decision_fusion_dedicated_routes_enabled
+            and not self.decision_fusion_enabled
+        ):
+            raise ValueError(
+                "dedicated decision-fusion routes require decision_fusion_enabled"
+            )
+        if (
+            self.decision_fusion_dedicated_routes_runtime_enabled
+            and not self.decision_fusion_dedicated_routes_enabled
+        ):
+            raise ValueError(
+                "dedicated route runtime activation requires route tensors"
+            )
+        if (
+            self.decision_fusion_dedicated_routes_runtime_enabled
+            and not self.decision_fusion_runtime_enabled
+        ):
+            raise ValueError(
+                "dedicated route runtime activation requires decision fusion runtime"
+            )
         if self.decision_fusion_enabled:
             with torch.random.fork_rng(devices=[]):
                 torch.manual_seed(EXPANDED_HEAD_INIT_SEED + 1)
@@ -812,6 +1147,14 @@ class TemporalCabtTransformer(nn.Module):
                     width=int(getattr(cfg, "decision_fusion_width", 16)),
                     archetype_classes=aux_archetype_classes,
                     belief_card_vocab=self.belief_card_vocab,
+                    dedicated_routes_enabled=(
+                        self.decision_fusion_dedicated_routes_enabled
+                    ),
+                    setup_board_outcome_outputs=(
+                        SETUP_BOARD_OUTCOME_HEAD_OUTPUTS
+                        if self.setup_board_outcome_head_enabled
+                        else 0
+                    ),
                 )
         else:
             self.decision_fusion = None
@@ -915,19 +1258,45 @@ class TemporalCabtTransformer(nn.Module):
                 modules[name] = {
                     "input": source,
                     "outputs": int(outputs),
+                    "fusion_role": "fused_input",
+                    **(
+                        {
+                            "computation_role": "independent_head",
+                            "action_influence": (
+                                "bounded_option_conditioned_route"
+                            ),
+                            "action_route_causal_input": (
+                                "current_board_state_and_legal_options_only"
+                            ),
+                            "direct_action_selection_authority": False,
+                            "runtime_activation": "receipt_gated",
+                        }
+                        if self.decision_fusion_dedicated_routes_enabled
+                        else {}
+                    ),
                     "parameters": int(
                         sum(parameter.numel() for parameter in module.parameters())
                     ),
                     "tensors": tensors,
                 }
+        if isinstance(self.setup_board_outcome_head, SetupBoardOutcomeHead):
+            modules[SETUP_BOARD_OUTCOME_HEAD_NAME] = (
+                self.setup_board_outcome_head.inventory()
+            )
+        runtime_enabled_heads = (
+            list(modules)
+            if self.decision_fusion_dedicated_routes_runtime_enabled
+            else []
+        )
         return {
             "schema": EXPANDED_HEAD_SCHEMA,
             "version": int(self.expanded_head_schema_version),
             "enabled": bool(self.expanded_heads_enabled),
-            # Initial rollout is auxiliary/shadow-only. No expanded head is
-            # allowed to alter the production action/value path.
-            "runtime_enabled_heads": [],
+            "runtime_enabled_heads": runtime_enabled_heads,
             "modules": modules,
+            "fusion_roles": {
+                **{name: "fused_input" for name in modules},
+            },
         }
 
     def decision_fusion_inventory(self) -> dict[str, object]:
@@ -940,7 +1309,10 @@ class TemporalCabtTransformer(nn.Module):
                 "parameters": 0,
             }
         return self.decision_fusion.inventory(
-            runtime_enabled=self.decision_fusion_runtime_enabled
+            runtime_enabled=self.decision_fusion_runtime_enabled,
+            dedicated_routes_runtime_enabled=(
+                self.decision_fusion_dedicated_routes_runtime_enabled
+            ),
         )
 
     def fused_policy_logits(
@@ -969,6 +1341,10 @@ class TemporalCabtTransformer(nn.Module):
         belief = self.belief_aux_logits(state_vec)
         expanded_state = self.expanded_state_logits(state_vec)
         expanded_option = self.expanded_option_logits(option_hidden)
+        if self.setup_board_outcome_head_enabled:
+            expanded_option["setup_board_outcome"] = (
+                self.setup_board_outcome_logits(option_hidden)
+            )
         state_sources = {
             "value": torch.tanh(self.value_head(state_vec)),
             "archetype": belief["aux_logits"],
@@ -988,6 +1364,13 @@ class TemporalCabtTransformer(nn.Module):
             base_logits,
             state_sources=state_sources,
             option_sources=expanded_option,
+            dedicated_routes_active=(
+                self.decision_fusion_dedicated_routes_enabled
+                and (
+                    self.training
+                    or self.decision_fusion_dedicated_routes_runtime_enabled
+                )
+            ),
         )
 
     def expanded_option_logits(self, option_hidden: Tensor) -> dict[str, Tensor]:
@@ -1020,6 +1403,19 @@ class TemporalCabtTransformer(nn.Module):
             value = module(option_hidden)
             outputs[key] = value.squeeze(-1) if value.size(-1) == 1 else value
         return outputs
+
+    def setup_board_outcome_logits(self, option_hidden: Tensor) -> Tensor:
+        """Evaluate the future-only independent setup prediction branch."""
+
+        module = self.setup_board_outcome_head
+        if not isinstance(module, SetupBoardOutcomeHead):
+            raise RuntimeError("setup board outcome head is disabled")
+        if option_hidden.size(-1) != self.d_model:
+            raise ValueError(
+                "setup board option hidden width mismatch: "
+                f"got={option_hidden.size(-1)} expected={self.d_model}"
+            )
+        return module(option_hidden)
 
     def expanded_state_logits(self, state_vec: Tensor) -> dict[str, Tensor]:
         """Evaluate state-conditioned V6 strategic auxiliary heads.

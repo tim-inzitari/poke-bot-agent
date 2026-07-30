@@ -904,6 +904,12 @@ def compact_game_to_sequence(
                         guide_confidence=float(
                             getattr(stage, "guide_confidence", 0.0)
                         ),
+                        select_context=int(
+                            getattr(stage, "select_context", -1)
+                        ),
+                        selected_is_stop=bool(
+                            getattr(stage, "selected_is_stop", False)
+                        ),
                     )
                 )
             sample.policy_stages = stages

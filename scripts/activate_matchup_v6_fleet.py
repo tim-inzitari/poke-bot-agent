@@ -255,18 +255,48 @@ def activate_fleet(
 
     source_root = Path(str(config["source_root"])).expanduser().resolve()
     registry_path = Path(str(config["registry"])).expanduser().resolve()
+    try:
+        registry_relative = str(registry_path.relative_to(source_root))
+    except ValueError as exc:
+        raise RuntimeError("V6 registry must be inside the fleet source root") from exc
     expected = _expected_contract(source_root)
     registry = load_slot_registry(registry_path)
+    registry_raw_digest = sha256(registry_path)
     bert = dict(config["bert"])
     elmo = dict(config["elmo"])
 
-    relative_sources = list(LOADER_RUNTIME_FILES)
+    relative_sources = [*LOADER_RUNTIME_FILES, registry_relative]
     _run(
         [
             "rsync",
             "-aR",
             *relative_sources,
             f"{bert['host']}:{bert['runtime_root']}/",
+        ],
+        timeout=120,
+        cwd=source_root,
+    )
+    elmo_build_context = Path(
+        str(elmo.get("build_context") or "")
+    ).expanduser()
+    elmo_dockerfile = Path(
+        str(elmo.get("dockerfile") or "")
+    ).expanduser()
+    if (
+        not elmo_build_context.is_absolute()
+        or not elmo_dockerfile.is_absolute()
+    ):
+        raise RuntimeError("Elmo V6 image build contract is incomplete")
+    _run(
+        [
+            "rsync",
+            "-aR",
+            "--omit-dir-times",
+            "--no-perms",
+            "--no-owner",
+            "--no-group",
+            *relative_sources,
+            f"{elmo['host']}:{elmo_build_context}/",
         ],
         timeout=120,
         cwd=source_root,
@@ -293,6 +323,24 @@ def activate_fleet(
     compose_files = [
         str(Path(value).expanduser()) for value in elmo["compose_files"]
     ]
+    _run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            str(elmo["host"]),
+            "sudo",
+            "-n",
+            "docker",
+            "build",
+            "--file",
+            str(elmo_dockerfile),
+            "--tag",
+            str(elmo["image"]),
+            str(elmo_build_context),
+        ],
+        timeout=1_800,
+    )
     compose_command = ["sudo", "-n", "docker", "compose"]
     for path in compose_files:
         compose_command.extend(["-f", path])
@@ -318,6 +366,39 @@ def activate_fleet(
     )
     if bert_observed != expected:
         raise RuntimeError("Bert V6 loader deployment lacks checksum parity")
+    bert_registry_digest = _run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            str(bert["host"]),
+            "sha256sum",
+            str(Path(str(bert["runtime_root"])) / registry_relative),
+        ],
+        timeout=30,
+    ).split()[0]
+    elmo_registry_digest = _run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            str(elmo["host"]),
+            "sudo",
+            "-n",
+            "docker",
+            "exec",
+            str(elmo["container"]),
+            "sha256sum",
+            str(Path("/workspace") / registry_relative),
+        ],
+        timeout=30,
+    ).split()[0]
+    expected_registry_raw = registry_raw_digest.removeprefix("sha256:")
+    if {
+        bert_registry_digest,
+        elmo_registry_digest,
+    } != {expected_registry_raw}:
+        raise RuntimeError("Router Format 6 registry lacks raw checksum parity")
 
     receipt = {
         "schema": RECEIPT_SCHEMA,
@@ -329,6 +410,7 @@ def activate_fleet(
         "loader_source_contract": expected,
         "registry": str(registry_path),
         "registry_digest": registry_digest(registry),
+        "registry_raw_digest": registry_raw_digest,
         "bert": bert_health,
         "elmo": elmo_health,
         "elmo_image": str(elmo["image"]),

@@ -1,0 +1,885 @@
+SLOWKING HEURISTIC RESEARCH V1
+CAUSAL, ABSTAINING PROPOSAL ONLY
+
+Prepared: 2026-07-29
+Deck identity: owner's displayed 60-card Slowking/Conkeldurr list
+Companion human guide: docs/deck_guides/slowking-expert-brief.txt
+Status: future specialist curriculum proposal; training remains blocked
+
+
+FUTURE-ONLY ACTIVATION BOUNDARY
+
+This file supplies the already reviewed heuristic design behind
+config/deck_guides/slowking.yaml. It does not itself create a selector entry,
+matchup route, runtime registration, service, bootstrap, or gradient
+authority. Archaludon ex remains strictly next. Slowking stays fail-closed
+until its exact corpus, route, combo-state head, parameter accounting,
+terminal preflight, and checksum-bound validation receipts pass.
+
+
+IDENTITY ASSUMPTIONS
+
+The owner's screenshot gives names and counts but no set codes. This proposal
+assumes the same identities as the human pilot:
+
+- Slowking SCR 58 / Slowpoke SCR 57;
+- Annihilape SSP 100 (Destined Fight);
+- Conkeldurr TWM 105 (Gutsy Swing);
+- Kyurem SFA 47 (Trifrost);
+- Smoochum SSP 75 (Delightful Kiss);
+- Latias ex SSP 76;
+- Mega Kangaskhan ex MEG 104;
+- Fezandipiti ex SFA 38;
+- Meowth ex POR 62; and
+- Telepathic Psychic Energy POR 88, despite the screenshot's abbreviated
+  “Telepath Psychic Energy” label.
+
+If the exact set-coded export disagrees, every card-specific heuristic in this
+proposal must fail closed until re-reviewed. Do not route by name alone where
+multiple current cards share a name.
+
+
+PURPOSE
+
+Propose sparse auxiliary preferences that can be evaluated from the exact
+current player-observable state and supplied legal actions. The proposal is
+deliberately smaller than the human guide. It labels only local sequencing,
+setup, energy, prevention, and attack-selection decisions whose relevant
+facts are already known.
+
+It does not predict the opponent, declare whole matchups solved, choose from
+hidden deck contents, or assign hindsight labels from the eventual winner.
+
+
+OBSERVATION WHITELIST
+
+A proposed label may use only:
+
+- the exact legal action candidates supplied at the current decision;
+- the acting player's current hand;
+- both public boards: Active, Bench, evolution stage, printed identity, HP,
+  damage counters, Special Conditions, attached cards, Tools, and visible
+  effects;
+- both public discard piles and Lost Zones;
+- current Stadium and other public global effects;
+- current Prize counts, never face-down Prize identities;
+- current turn number, player-to-act, first/second status, and whether the
+  turn's Supporter, attachment, retreat, Stadium Ability, Pokémon Abilities,
+  or named once-per-turn effects have been used;
+- current deck size as a count, not its unrevealed order or contents;
+- a top-deck card only when exact current-state provenance proves it was
+  placed by Academy at Night or Ciphermaniac's Codebreaking and no later draw
+  or shuffle invalidated that fact;
+- card identities exposed by a currently resolving legal search; and
+- exact deterministic damage/effect calculations from the visible state.
+
+The fixed sixty may define which card identities are in scope, but it must not
+be used to pretend the current hidden deck or face-down Prizes are known.
+
+
+FORBIDDEN INPUTS
+
+Every heuristic must abstain rather than use:
+
+- the opponent's hidden hand;
+- either player's face-down Prize identities;
+- unrevealed deck order or the next random draw;
+- hidden cards remaining in the opponent's deck;
+- a target presumed available only because it started in the sixty;
+- opponent archetype labels as a substitute for visible cards;
+- assumed tech cards, future evolution, future Stadium, future Hammer result,
+  future coin flip, or future Special Condition;
+- a later game state, rollout result, return, winner, or gate outcome;
+- private match metadata unavailable to both players;
+- recursive Seek Inspiration behavior without a current authoritative ruling;
+- an inferred copied-card set identity when the set-coded identity is
+  unresolved; or
+- the owner's displayed 66.2% result as an action label.
+
+
+OUTPUT SHAPE
+
+Each eligible rule emits:
+
+- family: setup | sequence | energy | attack_route | prevention | recovery
+- proposal_id: stable identifier below
+- preferred_action_ids: one or more exact current legal actions
+- disfavored_action_ids: only when invalidation is deterministic
+- confidence: exact | narrow_inference
+- evidence_ids: source anchors
+- reason_code: compact machine-auditable reason
+- mask: 1 only when every eligibility condition is proved
+
+If more than one rule applies, this proposal does not define a universal
+priority override. Exact game-winning legal actions remain the policy's job.
+Conflicting preferences must be masked unless a later audited combiner
+resolves them.
+
+
+GLOBAL ABSTENTION RULE
+
+Emit mask=0 when:
+
+- any referenced card identity is ambiguous;
+- the legal-action schema does not expose the required target or effect;
+- damage, Weakness, Resistance, prevention, Prize, or simultaneous-win
+  resolution is incomplete;
+- the preference depends on comparing unknown future draws;
+- a required once-per-turn flag is missing;
+- a top-card provenance flag is missing or stale;
+- multiple proposed rules conflict; or
+- an action is merely “usually good” rather than locally justified.
+
+
+PROPOSED CAUSAL HEURISTICS
+
+H01 - PRESERVE A PROVED SEEK TARGET
+
+Family: sequence
+Confidence: exact
+
+Eligibility:
+
+- the current top card is known from Academy or Ciphermaniac provenance;
+- no draw or shuffle occurred after that placement;
+- the card is an identified non-Rule-Box Pokémon;
+- a current Slowking can legally use Seek Inspiration; and
+- no mandatory action must happen before the attack.
+
+Preference:
+
+- prefer the legal Seek Inspiration action;
+- deterministically disfavor optional draw or shuffle actions that would
+  consume or randomize the proved target.
+
+Abstain when:
+
+- the attack is not legal;
+- the top card was not provenance-tracked;
+- an exact current winning action competes; or
+- the source card's chosen copied attack is unresolved.
+
+Reason code: preserve_known_seek_source
+Evidence: E1, E4, E5
+
+
+H02 - INVALIDATE TOP KNOWLEDGE AFTER DRAW OR SHUFFLE
+
+Family: sequence
+Confidence: exact
+
+Eligibility:
+
+- a top-card fact currently has Academy or Ciphermaniac provenance; and
+- the selected legal action draws the top card or shuffles the deck.
+
+State update proposal:
+
+- clear the top-card identity and all downstream attack-source labels unless
+  the same resolving action explicitly establishes a new known top.
+
+This is a state/mask rule, not a gameplay preference.
+
+Reason code: top_provenance_invalidated
+Evidence: E4, E5, E6, E7
+
+
+H03 - USE RUN ERRAND BEFORE THE FINAL TOP LOCK
+
+Family: sequence
+Confidence: narrow_inference
+
+Eligibility:
+
+- Mega Kangaskhan ex is Active;
+- Run Errand is enabled and unused;
+- Team Rocket's Watchtower or another visible effect is not disabling it;
+- deck size is at least two;
+- no known essential Seek target is currently on top; and
+- no exact current-state penalty from drawing is represented.
+
+Preference:
+
+- prefer Run Errand before Academy's final target placement.
+
+Abstain when:
+
+- top-card provenance is known and should be preserved;
+- deck size is below two;
+- Watchtower disables the Ability;
+- drawing would trigger an exact loss condition; or
+- another exact rule conflicts.
+
+Reason code: run_errand_before_stack
+Evidence: E10, E15, E16
+
+
+H04 - CIPHERMANIAC / RUN ERRAND / ACADEMY BRIDGE
+
+Family: sequence
+Confidence: exact after search resolution
+
+Eligibility:
+
+- Ciphermaniac has resolved and the two exact chosen cards are known on top;
+- Mega Kangaskhan ex is Active with Run Errand legal;
+- Academy at Night is in play and unused this turn, or one of the two known
+  cards is Academy and playing it after Run Errand will be legal;
+- one drawn card will be an identified non-Rule-Box attack source;
+- a current Slowking can legally attack after a public/legal pivot; and
+- no shuffle will occur after Run Errand.
+
+Preference sequence:
+
+1. Run Errand to draw the two known cards.
+2. Use Academy to put the chosen attack source back on top.
+3. Take the legal pivot to Slowking.
+4. Apply H01.
+
+Abstain before Ciphermaniac resolves or if the action interface does not expose
+the selected search cards and order. Never infer the target is present in the
+hidden deck.
+
+Reason code: cipher_draw_restack_bridge
+Evidence: E4, E5, E10, E11, E15
+
+
+H05 - ACADEMY AS THE FINAL LOCK
+
+Family: sequence
+Confidence: exact
+
+Eligibility:
+
+- Academy is in play and unused;
+- an identified non-Rule-Box attack source is in hand;
+- Slowking can legally use Seek Inspiration this turn;
+- all required draw and shuffle actions are complete; and
+- the attack route for that source passes one of H13-H17 or is otherwise
+  supplied by an exact legal tactical label.
+
+Preference:
+
+- prefer Academy targeting that exact source.
+
+Abstain when the copied attack route is not locally justified. Do not label
+“put any Pokémon on top.”
+
+Reason code: academy_final_attack_lock
+Evidence: E1, E4
+
+
+H06 - ESTABLISH A SECOND SLOWPOKE
+
+Family: setup
+Confidence: narrow_inference
+
+Eligibility:
+
+- fewer than two total Slowpoke/Slowking lines are in play;
+- at least one Bench slot is open;
+- an exact current legal action benches Slowpoke;
+- no visible effect makes that placement illegal; and
+- the placement does not consume a Bench slot already required by a
+  higher-confidence exact action.
+
+Preference:
+
+- prefer reaching two total lines over adding an otherwise jobless second
+  Mega Kangaskhan or other support Pokémon.
+
+Abstain when:
+
+- damage already marks the proposed Slowpoke for a deterministic immediate
+  Knock Out;
+- the only open slot is needed by a current exact attack/pivot;
+- the choice requires hidden matchup assumptions; or
+- two lines already exist.
+
+Reason code: redundant_slowpoke_line
+Evidence: E15
+
+
+H07 - TELEPATHIC PSYCHIC ENERGY SETUP
+
+Family: setup
+Confidence: exact after legal search choices are exposed
+
+Eligibility:
+
+- Telepathic Psychic Energy is in hand;
+- the manual attachment is unused;
+- an identified Psychic Pokémon is a legal attachment target;
+- at least one Bench slot is open; and
+- the resolving action exposes at least one legal Basic Psychic search target.
+
+Preference:
+
+- when fewer than two Slowpoke/Slowking lines are in play, prefer Slowpoke
+  among the exposed legal targets;
+- use a second target only when its current role is explicit: second
+  Slowpoke, Smoochum for a planned Delightful Kiss, or Latias for a current
+  pivot.
+
+Abstain rather than infer the hidden deck contains two targets. Do not select
+Mega Kangaskhan, Fezandipiti, Meowth, or Kyurem; they are not Basic Psychic
+Pokémon.
+
+Reason code: telepathic_visible_basic_setup
+Evidence: E8, E17
+
+
+H08 - FIRST-ATTACK-TURN DELIGHTFUL KISS
+
+Family: setup
+Confidence: narrow_inference
+
+Eligibility:
+
+- Smoochum can legally become or remain Active;
+- Delightful Kiss is legal;
+- an identified Benched Slowpoke is a legal recipient;
+- the resolving deck search exposes two Basic Psychic Energy;
+- no current legal attack takes a Prize or prevents an exact immediate loss;
+  and
+- the recipient can remain a legal evolution target.
+
+Preference:
+
+- prefer Delightful Kiss attaching both Basic Psychic Energy to the intended
+  Benched Slowpoke.
+
+Abstain when only one Basic is exposed, when a prize-taking attack is legal,
+or when choosing first/second is the decision. This rule does not prescribe a
+global turn-order preference.
+
+Reason code: delightful_kiss_visible_acceleration
+Evidence: E3, E15
+
+
+H09 - EVOLVE AN ATTACK-READY SLOWPOKE
+
+Family: setup
+Confidence: exact
+
+Eligibility:
+
+- Slowking evolution is a legal current action on an identified Slowpoke;
+- that line already has enough attached Energy for Seek Inspiration, or an
+  exact remaining legal attachment/Counter Gain action completes it;
+- a legal top-lock route exists this turn; and
+- the evolution does not violate any visible effect.
+
+Preference:
+
+- prefer the legal Slowking evolution over unrelated optional setup.
+
+Abstain if the top-lock route is unknown, if the attack cannot become legal
+this turn, or if an exact alternate action wins.
+
+Reason code: evolve_current_seek_attacker
+Evidence: E1
+
+
+H10 - WONDROUS PATCH COMPLETES A BENCHED ATTACKER
+
+Family: energy
+Confidence: exact
+
+Eligibility:
+
+- a Basic Psychic Energy is visibly in the acting player's discard;
+- Wondrous Patch is a legal action;
+- an identified Benched Psychic Pokémon is a legal target; and
+- the attachment deterministically completes Seek Inspiration this turn or
+  completes the known next attacker under the current visible state.
+
+Preference:
+
+- prefer Patch to that exact target.
+
+Never target the Active, a non-Psychic Pokémon, Telepathic Psychic Energy, or
+Boomerang Energy. Abstain when the attachment is merely speculative future
+value.
+
+Reason code: patch_completes_visible_attacker
+Evidence: E9
+
+
+H11 - COUNTER GAIN ENABLES ONE-ENERGY SEEK
+
+Family: energy
+Confidence: exact
+
+Eligibility:
+
+- the acting player has more Prize cards remaining than the opponent;
+- Counter Gain is in hand and legal to attach;
+- an identified Slowking has one Psychic Energy attached;
+- Seek Inspiration is otherwise short exactly one Colorless requirement;
+- a valid attack source can be locked this turn; and
+- no Tool-blocking effect applies.
+
+Preference:
+
+- prefer Counter Gain on that Slowking.
+
+Abstain if Prize counts are tied/ahead, if the attack remains illegal, or if
+the label assumes Counter Gain will remain active after Prize counts change.
+
+Reason code: counter_gain_current_seek
+Evidence: E12
+
+
+H12 - BOOMERANG AS A TRIFROST TIE-BREAK
+
+Family: energy
+Confidence: narrow_inference
+
+Eligibility:
+
+- an attachment to Slowking is legal;
+- the selected current attack route is Kyurem's Trifrost;
+- Boomerang Energy and another otherwise equivalent Energy attachment are
+  both legal;
+- the Colorless requirement is the remaining requirement; and
+- no current setup trigger from Telepathic Psychic Energy is being sacrificed.
+
+Preference:
+
+- use Boomerang as a tie-break because Trifrost's attack effect will discard
+  it and its own text will return it.
+
+Abstain when:
+
+- the target route is Destined Fight;
+- the Energy will be discarded by retreat, Hammer, hand cost, or Knock Out;
+- Telepathic setup is currently useful; or
+- the comparison is not otherwise equivalent.
+
+Reason code: boomerang_trifrost_return
+Evidence: E2, E13, E15
+
+
+H13 - TRIFROST FOR MULTIPLE IMMEDIATE PRIZES
+
+Family: attack_route
+Confidence: exact
+
+Eligibility:
+
+- Kyurem is an identified available top-lock source from hand, current known
+  top, discard recovery, or resolving search—not inferred hidden availability;
+- Seek Inspiration is legal;
+- three legal opposing targets are represented;
+- exact current damage resolution is available;
+- visible prevention has been applied; and
+- Trifrost produces at least two immediate Knock Outs and strictly more
+  immediate Prizes than every represented legal non-Trifrost attack route.
+
+Preference:
+
+- prefer the Kyurem top-lock route.
+
+Required masks:
+
+- Flower Curtain removes protected Benched non-Rule-Box Pokémon from damage
+  and Knock-Out counts;
+- Ancient Bulwark removes all damage when the attacking Slowking has two or
+  fewer Energy attached;
+- Weakness and Resistance are ignored only for Benched targets; and
+- all Energy on Slowking is marked for discard, with only qualifying
+  Boomerang return.
+
+Abstain when target selection or prevention cannot be resolved exactly.
+
+Reason code: trifrost_multi_prize_now
+Evidence: E2, E14, E18
+
+
+H14 - GUTSY SWING OVER UNNECESSARY DESTINED FIGHT
+
+Family: attack_route
+Confidence: exact
+
+Eligibility:
+
+- Conkeldurr and Annihilape are both identified available top-lock sources;
+- exact current damage says copied Gutsy Swing Knocks Out the opposing Active;
+- damage is not prevented;
+- both routes take the same opponent Prizes; and
+- keeping Slowking in play does not trigger an exact worse current result.
+
+Preference:
+
+- prefer Gutsy Swing;
+- disfavor Destined Fight for this comparison because it also Knocks Out
+  Slowking.
+
+The damage calculation must use Psychic-type Slowking as the attacker, not
+Fighting-type Conkeldurr.
+
+Reason code: clean_250_preserves_slowking
+Evidence: E1, E19
+
+
+H15 - DESTINED FIGHT TRADES UP
+
+Family: attack_route
+Confidence: exact only with full simultaneous-state resolution
+
+Eligibility:
+
+- Annihilape SSP 100 is an identified available top-lock source;
+- Seek Inspiration is legal;
+- the opposing Active will yield at least two Prizes;
+- copied Gutsy Swing and other locally evaluated damage routes do not Knock
+  Out that Active;
+- no visible effect prevents effects of attacks;
+- the acting player has a Benched Pokémon to promote;
+- the opponent has at least two Prize cards remaining; and
+- the rules engine fully resolves simultaneous Knock Outs, Prizes, no-Bench
+  conditions, and win conditions.
+
+Preference:
+
+- prefer Destined Fight as a one-Prize-for-multiple-Prize trade.
+
+Hard abstention:
+
+- opponent has one Prize remaining;
+- either player may satisfy multiple win conditions;
+- either player has no Bench;
+- effect prevention is unresolved;
+- Boomerang-return logic is not explicit; or
+- Annihilape printing is ambiguous.
+
+Reason code: destined_fight_exact_trade_up
+Evidence: E20, E21
+
+
+H16 - BASTIODON THREE-ENERGY DAMAGE GATE
+
+Family: prevention
+Confidence: exact
+
+Eligibility:
+
+- Bastiodon PBL 62 is visibly on the opponent's Bench;
+- Ancient Bulwark is active;
+- the proposed route deals damage;
+- the attacking Slowking has two or fewer Energy cards attached; and
+- a legal third Energy attachment is currently available.
+
+Preference:
+
+- prefer the third attachment when it deterministically makes the selected
+  damage attack effective this turn.
+
+Mask:
+
+- all damage-route labels remain off while Slowking has two or fewer attached
+  Energy under active Ancient Bulwark.
+
+Counter Gain's cost reduction does not change the attached-Energy count.
+Abstain if a separate prevention effect remains.
+
+Reason code: ancient_bulwark_third_energy
+Evidence: E18
+
+
+H17 - SHAYMIN FLOWER CURTAIN DAMAGE MASK
+
+Family: prevention
+Confidence: exact
+
+Eligibility:
+
+- Shaymin DRI 10 is visibly in play with Flower Curtain active.
+
+State update proposal:
+
+- mark each opposing Benched non-Rule-Box Pokémon as protected from attack
+  damage;
+- do not mark the Active or Benched Rule-Box Pokémon protected by this rule;
+- recalculate H13 after applying the mask.
+
+This is a damage mask, not a whole-matchup concession label.
+
+Reason code: flower_curtain_bench_mask
+Evidence: E14
+
+
+H18 - REPLACE WATCHTOWER BEFORE COLORLESS ABILITY
+
+Family: prevention
+Confidence: exact
+
+Eligibility:
+
+- Team Rocket's Watchtower is the current Stadium;
+- an identified Colorless Pokémon's Ability is required now;
+- Mega Kangaskhan's Run Errand or Meowth's Last-Ditch Catch is otherwise
+  legal;
+- Academy at Night is an exact legal Stadium action; and
+- replacing the Stadium re-enables the Ability under all visible effects.
+
+Preference:
+
+1. play Academy;
+2. then use the re-enabled Ability.
+
+Abstain when another Ability lock remains or the Ability's other conditions
+are not met.
+
+Reason code: replace_watchtower_for_colorless_ability
+Evidence: E4, E16
+
+
+H19 - NIGHT STRETCHER ENABLES AN EXACT CURRENT ROUTE
+
+Family: recovery
+Confidence: exact
+
+Eligibility:
+
+- Night Stretcher is legal;
+- an identified Pokémon or Basic Psychic Energy is visibly in discard;
+- returning it to hand enables an exact current-turn top-lock, evolution,
+  attachment, or knockout route; and
+- all subsequent actions in that route are currently legal.
+
+Preference:
+
+- return the exact blocking resource.
+
+Examples eligible only when fully represented:
+
+- Conkeldurr to hand, Academy to top, Gutsy Swing for an exact Knock Out;
+- Annihilape to hand, Academy to top, H15 passes;
+- Slowking to hand, legal evolution, current Seek attack;
+- Basic Psychic to hand, manual attachment, current Seek attack.
+
+Abstain when the benefit is only future access or when multiple targets have
+unresolved strategic tradeoffs.
+
+Reason code: stretcher_unblocks_current_route
+Evidence: E22
+
+
+H20 - MULTI-PRIZE BENCHING NEEDS A CURRENT JOB
+
+Family: setup
+Confidence: exact as a positive-label gate
+
+Rule:
+
+- do not emit a positive setup label for benching Mega Kangaskhan ex, Latias
+  ex, Fezandipiti ex, or Meowth ex merely because the action is legal.
+
+Permitted positive labels require one exact current job:
+
+- Mega Kangaskhan is part of a represented Active/Run Errand/pivot sequence;
+- Latias immediately changes a legal Retreat or pivot cost to zero;
+- Meowth's Last-Ditch Catch is enabled and a represented Supporter search is
+  used this turn; or
+- Fezandipiti's Flip the Script condition is currently satisfied, unused, and
+  the draw action is explicitly selected by a higher-level legal planner.
+
+This rule does not automatically disfavor benching; it withholds heuristic
+approval because the opponent's future gust and Prize route are strategic.
+
+Reason code: multiprize_bench_requires_job
+Evidence: E10, E11, E23, E24, E15
+
+
+H21 - BOOMERANG RETURN CONDITION MASK
+
+Family: energy
+Confidence: exact
+
+State update:
+
+- mark Boomerang Energy to return only when the currently resolving attack
+  effect used by the Pokémon it is attached to discards that card;
+- do not mark return after Hammer, retreat, hand discard, Tool/Ability
+  discard, Knock Out, or Destined Fight's Knock Out.
+
+This prevents false energy-forecast labels.
+
+Reason code: exact_boomerang_trigger
+Evidence: E13
+
+
+H22 - ACTIVE-ONLY AND BASIC-ONLY MOBILITY MASK
+
+Family: sequence
+Confidence: exact
+
+State update:
+
+- Run Errand is eligible only while Mega Kangaskhan ex is Active;
+- Skyliner sets Retreat Cost to zero only for Basic Pokémon in play;
+- never apply Skyliner's zero Retreat to Slowking;
+- never apply Wondrous Patch to the Active.
+
+This is an eligibility mask, not an action preference.
+
+Reason code: exact_position_and_stage_constraints
+Evidence: E9, E10, E11
+
+
+EXPLICITLY EXCLUDED HUMAN-GUIDE IDEAS
+
+The following remain human strategic advice and must not become labels from
+this proposal:
+
+- “always go first” or “always go second”;
+- matchup-name-based attack choice;
+- a universal two- or three-Slowpoke rule after the opening;
+- direct Fezandipiti Cruel Arrow into Shaymin;
+- direct Mega Kangaskhan Rapid-Fire Combo;
+- Meowth Tuck Tail to remove a Prize liability;
+- Slowpoke Dangle Tail recovery when several targets compete;
+- Smoochum as a copied attack source;
+- Super Psy Bolt by discarding a Slowking;
+- Tantrum and its Confusion tradeoff;
+- recursive Seek Inspiration;
+- speculative one-Trifrost-plus-one-Gutsy-Swing two-turn plans;
+- playing around an unseen Hammer, Watchtower, Shaymin, Special Red Card, or
+  Bastiodon;
+- interpreting absence from an unobserved deck as a face-down Prize;
+- generic hand-size thresholds for Meowth or Fezandipiti; and
+- any heuristic weight based on the displayed 66.2% result.
+
+
+PROPOSED AUDIT CASES
+
+Any later offline validator should include at least:
+
+1. Academy target on top, then optional Ultra Ball: H01 prefers attack and
+   H02 invalidates top knowledge if Ultra Ball is selected.
+2. Ciphermaniac stacks Conkeldurr plus Academy, active Mega Kangaskhan:
+   H04 draws both, replays Academy, and preserves the exact target.
+3. Ciphermaniac target on top without Academy: Run Errand is not labeled.
+4. Watchtower active: Run Errand and Last-Ditch Catch are masked until
+   Academy replaces it.
+5. Telepathic Psychic Energy attaches to Slowpoke with two open slots:
+   only exposed legal Basic Psychic targets are considered.
+6. Smoochum with two exposed Basic Psychic and Benched Slowpoke: H08 labels
+   Delightful Kiss only when no prize-taking attack exists.
+7. Basic Psychic in discard, Benched one-Energy Slowking: H10 labels Patch
+   only if it completes a known attack route.
+8. Player behind, one-Psychic Slowking, Counter Gain in hand: H11 labels only
+   when the top-lock route is also legal.
+9. Two 70-HP Benched targets and no prevention: H13 labels Trifrost.
+10. Shaymin protects those same non-Rule-Box targets: H17 masks them and H13
+    abstains.
+11. Two Rule-Box targets behind Shaymin: H17 does not protect them.
+12. Bastiodon Benched and Slowking has two Energy: damage routes are masked.
+13. Third attachment under Bastiodon: H16 may enable the current damage route.
+14. Gutsy Swing 250 takes the Active Knock Out: H14 prefers it over Destined
+    Fight.
+15. Active three-Prize Pokémon survives 250, opponent has two or more Prizes,
+    both Benches nonempty, no protection: H15 may label Destined Fight.
+16. Opponent has one Prize: H15 always abstains.
+17. Trifrost discards Boomerang: H21 returns it.
+18. Crushing Hammer discards Boomerang: H21 does not return it.
+19. Destined Fight Knocks Out Slowking with Boomerang attached: H21 does not
+    return it.
+20. Latias in play and Slowking Active: H22 does not grant free Retreat.
+
+
+SOURCE ANCHORS
+
+E1. Slowking SCR 58:
+    https://limitlesstcg.com/cards/SCR/58
+
+E2. Kyurem SFA 47:
+    https://limitlesstcg.com/cards/SFA/47
+
+E3. Smoochum SSP 75:
+    https://limitlesstcg.com/cards/SSP/75
+
+E4. Academy at Night SFA 54:
+    https://limitlesstcg.com/cards/SFA/54
+
+E5. Ciphermaniac's Codebreaking TEF 145:
+    https://limitlesstcg.com/cards/TEF/145
+
+E6. Poké Pad POR 81:
+    https://limitlesstcg.com/cards/POR/81
+
+E7. Lillie's Determination MEG 119:
+    https://limitlesstcg.com/cards/MEG/119
+
+E8. Telepathic Psychic Energy POR 88:
+    https://limitlesstcg.com/cards/POR/88
+
+E9. Wondrous Patch PFL 94:
+    https://limitlesstcg.com/cards/PFL/94
+
+E10. Mega Kangaskhan ex MEG 104:
+     https://limitlesstcg.com/cards/MEG/104
+
+E11. Latias ex SSP 76:
+     https://limitlesstcg.com/cards/SSP/76
+
+E12. Counter Gain SSP 169:
+     https://limitlesstcg.com/cards/SSP/169
+
+E13. Boomerang Energy TWM 166:
+     https://limitlesstcg.com/cards/TWM/166
+
+E14. Shaymin DRI 10:
+     https://limitlesstcg.com/cards/DRI/10
+
+E15. Grant Manley, “Funny Slowking,” PokéBeach, 2026-07-10:
+     https://www.pokebeach.com/2026/07/funny-slowking-a-deck-that-can-dominate-major-tournaments
+
+E16. Team Rocket's Watchtower ASC 210:
+     https://limitlesstcg.com/cards/ASC/210
+
+E17. Pokémon official Pitch Black Battle Pass strategy:
+     https://www.pokemon.com/us/features/pokemon-tcg-mega-evolution-pitch-black-battle-pass-deck-strategies
+
+E18. Bastiodon PBL 62:
+     https://limitlesstcg.com/cards/PBL/62
+
+E19. Conkeldurr TWM 105:
+     https://limitlesstcg.com/cards/TWM/105
+
+E20. Annihilape SSP 100:
+     https://limitlesstcg.com/cards/SSP/100
+
+E21. Pokémon official current rulebook:
+     https://www.pokemon.com/static-assets/content-assets/cms2/pdf/trading-card-game/rulebook/par_rulebook_en.pdf
+
+E22. Night Stretcher SFA 61:
+     https://limitlesstcg.com/cards/SFA/61
+
+E23. Fezandipiti ex SFA 38:
+     https://limitlesstcg.com/cards/SFA/38
+
+E24. Meowth ex POR 62:
+     https://limitlesstcg.com/cards/POR/62
+
+E25. Natalie Millar, “Slowking Deck Guide,” TCGplayer, 2026-06-09:
+     https://www.tcgplayer.com/content/article/Slowking-Deck-Guide-Pok%C3%A9mon-TCG/80014a0e-4c46-413a-8113-7b6a0aa77c6c/
+
+
+MECHANICS AND EVIDENCE GAPS
+
+- The exact set-coded sixty is not available; card-name ambiguity remains.
+- No controlled turn-order study for the exact list was found.
+- No authoritative ruling found in this review resolves recursive Seek
+  Inspiration; it is excluded.
+- Destined Fight requires a complete simultaneous-win and effect-prevention
+  resolver; absent that resolver, H15 must always abstain.
+- The current Pitch Black interaction set is young. Bastiodon is handled
+  from printed text, not matchup outcome data.
+- No rule labels direct Fezandipiti anti-Shaymin play because its prize and
+  energy tradeoffs are not locally monotonic.
+- Public guides use different sixty-card lists. They support mechanics and
+  recurring sequencing concepts, not exact-list action values.
+- The owner's 136-match aggregate cannot be audited from the screenshot.

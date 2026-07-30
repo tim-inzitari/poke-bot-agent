@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from scripts.prepare_population_round_robin import prepare
 from scripts.run_population_round_robin import (
     _member_command,
     validate_contract,
@@ -87,6 +90,28 @@ def test_population_service_is_the_declared_terminal_target() -> None:
         ROOT / "deploy/systemd/pokebot-population-round-robin.service"
     ).read_text(encoding="utf-8")
     assert "scripts/run_population_round_robin.py" in unit
+
+
+def test_direct_population_preparation_requires_post_fleet_refreshes(
+    tmp_path: Path,
+) -> None:
+    contract = json.loads(
+        (ROOT / "ops/specialist_cycle_handoff_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract["selection"]["state"] = str(
+        ROOT / "state/specialists.yaml"
+    )
+    contract["runtime"]["lock"] = str(tmp_path / "cycle.lock")
+    path = tmp_path / "cycle.json"
+    path.write_text(json.dumps(contract), encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match="post-fleet specialist refresh phase is incomplete",
+    ):
+        prepare(path, launch=False)
 
 
 def test_population_controller_reuses_immutable_cycle_boundary() -> None:

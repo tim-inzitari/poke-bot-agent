@@ -1,0 +1,17 @@
+[Unit]
+Description=Import checksum-bound Archaludon ex guide corpus without touching runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecCondition=/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 admin@192.168.1.143 /usr/bin/test -s /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1/ARCHALUDON_EX_GUIDE_CORPUS_READY.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/poke-bot-agent/scripts/import_prestaged_specialist_corpus.py --host admin@192.168.1.143 --remote-root /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1 --destination /home/inzi/poke-bot-agent/data/bootstrap/archaludon-ex-full-public-schema7-r56-v1 --specialist-id archaludon-ex --guide-version archaludon-ex-north-star-v1 --receipt /home/inzi/poke-bot-agent/outputs/state/archaludon-ex-prestage-corpus-import-v2.json --bwlimit-kib 8000 --minimum-records 16639 --finalization-receipt-name ARCHALUDON_EX_GUIDE_CORPUS_READY.json --finalization-receipt-schema poke_bot.archaludon_ex_guide_corpus_validation/v2
+ExecStartPost=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/poke-bot-agent/scripts/validate_future_specialist_strategic_curriculum.py --specialist-id archaludon-ex --guide-contract /home/inzi/poke-bot-agent/config/deck_guides/archaludon-ex.yaml --guide-ready-receipt /home/inzi/poke-bot-agent/data/bootstrap/archaludon-ex-full-public-schema7-r56-v1/CURRENT_DECK_GUIDE_CORPUS_READY.json --output-root /home/inzi/poke-bot-agent/data/bootstrap/archaludon-ex-full-public-schema7-r56-v1 --training-implementation /home/inzi/poke-bot-agent/poke_bot/train.py
+TimeoutStartSec=2h
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=5
+MemoryHigh=4G
+MemoryMax=8G

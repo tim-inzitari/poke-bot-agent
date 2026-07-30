@@ -34,7 +34,7 @@ from .matchup_adapters import (
     UNKNOWN_ROUTE,
     ZERO_DORMANT_CHECKPOINT_SCHEMA,
     MatchupAdapterBank,
-    route_for_archetype,
+    route_for_archetype as _v5_route_for_archetype,
 )
 from .public_matchup_router import visible_opponent_card_ids
 
@@ -56,6 +56,52 @@ TRAINING_TICKET_SCHEMA = "poke_bot.matchup_adapter_training_ticket/v1"
 PUBLIC_RECOGNIZER_SCHEMA = "poke_bot.public_matchup_recognizer/v1"
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def training_route_target_ids() -> tuple[str, ...]:
+    """Resolve the process-pinned route roster used by offline supervision."""
+
+    if (
+        os.environ.get("POKEBOT_MATCHUP_ADAPTER_FORMAT", "").strip()
+        != "poke-bot-matchup-adapter-bank-v6"
+    ):
+        return tuple(EXPERT_IDS)
+    from .matchup_adapters_v6 import load_slot_registry
+
+    registry_raw = os.environ.get(
+        "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH", ""
+    ).strip()
+    if not registry_raw:
+        raise RuntimeError(
+            "Router Format 6 adapter training lacks its immutable registry"
+        )
+    registry = load_slot_registry(Path(registry_raw).expanduser().resolve())
+    return tuple(str(value) for value in registry["active_expert_ids"])
+
+
+def training_route_for_archetype(archetype_id: str | None) -> int:
+    """Return the physical training slot under the process-pinned format."""
+
+    if (
+        os.environ.get("POKEBOT_MATCHUP_ADAPTER_FORMAT", "").strip()
+        != "poke-bot-matchup-adapter-bank-v6"
+    ):
+        return _v5_route_for_archetype(archetype_id)
+    from .matchup_adapters_v6 import load_slot_registry, route_for_archetype
+
+    registry_raw = os.environ.get(
+        "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH", ""
+    ).strip()
+    if not registry_raw:
+        raise RuntimeError(
+            "Router Format 6 adapter training lacks its immutable registry"
+        )
+    registry = load_slot_registry(Path(registry_raw).expanduser().resolve())
+    return route_for_archetype(archetype_id, registry=registry)
+
+
+# Historical public-router and V5 activation paths retain the legacy mapping.
+route_for_archetype = _v5_route_for_archetype
 
 
 def normalize_matchup_identity(value: Any) -> str:
@@ -950,6 +996,52 @@ def validate_adapter_training_authorization(
         manifest = json.loads(protected_manifest.read_text(encoding="utf-8"))
         provenance = dict(manifest.get("provenance") or {})
         evidence = dict(manifest.get("evidence") or {})
+        training_manifest = manifest
+        if provenance.get("kind") == "matchup_adapter_v6_runtime_derivative":
+            source_family = Path(
+                str(provenance.get("source_family") or "")
+            ).expanduser().resolve()
+            source_manifest = source_family / "manifest.json"
+            source_checkpoint = source_family / "model.pt"
+            source_manifest_digest = _require_digest(
+                provenance.get("source_family_manifest_sha256"),
+                field_name="source family manifest digest",
+            )
+            source_checkpoint_digest = _require_digest(
+                provenance.get("source_checkpoint_digest"),
+                field_name="source checkpoint digest",
+            )
+            if (
+                evidence.get("training_evidence_inherited_from_source")
+                is not True
+                or provenance.get("source_family_immutable") is not True
+                or not source_manifest.is_file()
+                or _file_digest(source_manifest) != source_manifest_digest
+                or not source_checkpoint.is_file()
+                or _file_digest(source_checkpoint)
+                != source_checkpoint_digest
+            ):
+                raise ValueError(
+                    "specialist bootstrap inherited training evidence is invalid"
+                )
+            training_manifest = json.loads(
+                source_manifest.read_text(encoding="utf-8")
+            )
+            if (
+                str(training_manifest.get("checkpoint_digest") or "").lower()
+                != source_checkpoint_digest
+                or Path(
+                    str(training_manifest.get("model_path") or "")
+                ).expanduser().resolve()
+                != source_checkpoint
+            ):
+                raise ValueError(
+                    "specialist bootstrap inherited training evidence is invalid"
+                )
+        training_provenance = dict(
+            training_manifest.get("provenance") or {}
+        )
+        training_evidence = dict(training_manifest.get("evidence") or {})
         specialist_id = normalize_matchup_identity(payload.get("specialist_id"))
         required_target_coverage = tuple(
             str(value)
@@ -957,7 +1049,9 @@ def validate_adapter_training_authorization(
         )
         trained_target_coverage = tuple(
             str(value)
-            for value in provenance.get("trained_target_coverage") or ()
+            for value in training_provenance.get(
+                "trained_target_coverage"
+            ) or ()
         )
         sparse_bootstrap_coverage_valid = bool(
             required_target_coverage
@@ -983,13 +1077,14 @@ def validate_adapter_training_authorization(
             or Path(str(manifest.get("model_path") or "")).expanduser().resolve()
             != parent
             or normalize_matchup_identity(
-                provenance.get("acting_seat_archetype")
+                training_provenance.get("acting_seat_archetype")
             )
             != specialist_id
-            or int(evidence.get("epochs_completed", -1)) != 25
-            or int(provenance.get("epochs_max", -1)) != 25
+            or int(training_evidence.get("epochs_completed", -1)) != 25
+            or int(training_provenance.get("epochs_max", -1)) != 25
             or (
-                provenance.get("all_auxiliary_heads_trained") is not True
+                training_provenance.get("all_auxiliary_heads_trained")
+                is not True
                 and not sparse_bootstrap_coverage_valid
             )
         ):
@@ -1775,7 +1870,7 @@ def training_route_for_decision(
         or type(raw_sequence_seat) is not int
         or raw_sequence_seat not in (0, 1)
         or raw_sequence_seat != ticket.seat
-        or route_for_archetype(ticket.archetype_id) != int(ticket.route)
+        or training_route_for_archetype(ticket.archetype_id) != int(ticket.route)
     ):
         raise RuntimeError("matchup-adapter training ticket no longer matches sequence")
     raw_route = getattr(decision, "matchup_adapter_oracle_route", UNKNOWN_ROUTE)
@@ -1843,9 +1938,10 @@ def adapter_training_ticket(sequence: "GameSequence") -> AdapterTrainingTicket:
     if not isinstance(ticket, AdapterTrainingTicket) or ticket.schema != TRAINING_TICKET_SCHEMA:
         raise RuntimeError("sequence lacks an audited matchup-adapter training ticket")
     if (
-        ticket.archetype_id not in EXPERT_IDS
-        or ticket.acting_archetype_id not in EXPERT_IDS
-        or route_for_archetype(ticket.archetype_id) != int(ticket.route)
+        ticket.archetype_id not in training_route_target_ids()
+        or ticket.acting_archetype_id not in training_route_target_ids()
+        or training_route_for_archetype(ticket.archetype_id)
+        != int(ticket.route)
         or not ticket.opponent_id
         or not ticket.episode_id
         or type(ticket.route) is not int
@@ -2071,6 +2167,8 @@ __all__ = [
     "build_adapter_rehearsal_authorization",
     "assert_prepared_adapter_corpus_coverage",
     "adapter_training_ticket",
+    "training_route_for_archetype",
+    "training_route_target_ids",
     "gate_exclusions",
     "merge_dormant_adapter_checkpoint",
     "normalize_matchup_identity",

@@ -286,11 +286,18 @@ def test_standing_rule_materializes_exact_single_use_authorization(
     assert authorization["message"] == entry["label"]
 
 
-def test_pending_copy_waits_until_four_hours_after_previous_submission(
+def test_pending_copy_waits_until_four_hours_after_second_most_recent_submission(
     tmp_path: Path, monkeypatch
 ) -> None:
     queue_path, _ = _queue(tmp_path)
     submissions = [
+        {
+            "ref": "55000000",
+            "date": "2026-07-23 17:30:00",
+            "description": "the newest checkpoint",
+            "status": "SubmissionStatus.COMPLETE",
+            "publicScore": "710.0",
+        },
         {
             "ref": "54999999",
             "date": "2026-07-23 16:00:01",
@@ -325,6 +332,51 @@ def test_pending_copy_waits_until_four_hours_after_previous_submission(
     assert (
         stored["quota"]["next_submission_eligible_at"]
         == "2026-07-23T20:00:01+00:00"
+    )
+    assert stored["quota"]["spacing_anchor_submission_at"] == (
+        "2026-07-23T16:00:01+00:00"
+    )
+    assert stored["quota"]["spacing_anchor_policy"] == (
+        "second_most_recent_logical_submission"
+    )
+
+
+def test_one_previous_submission_does_not_create_spacing_wait(
+    tmp_path: Path, monkeypatch
+) -> None:
+    queue_path, _ = _queue(tmp_path)
+    submissions = [
+        {
+            "ref": "54999999",
+            "date": "2026-07-23 17:59:59",
+            "description": "the only prior checkpoint",
+            "status": "SubmissionStatus.COMPLETE",
+            "publicScore": "700.0",
+        }
+    ]
+    monkeypatch.setattr(processor, "_now", lambda: NOW)
+    monkeypatch.setattr(processor, "_list_submissions", lambda *_: submissions)
+    monkeypatch.setattr(
+        processor.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout="uploaded", stderr=""
+        ),
+    )
+
+    result = processor.process_once(
+        queue_path=queue_path,
+        kaggle=Path("/fake/kaggle"),
+        default_competition="pokemon-tcg-ai-battle",
+    )
+
+    assert result["status"] == "submitted"
+    stored = json.loads(queue_path.read_text(encoding="utf-8"))
+    assert stored["quota"]["spacing_anchor_submission_at"] == (
+        "2026-07-23T17:59:59+00:00"
+    )
+    assert stored["quota"]["next_submission_eligible_at"] == (
+        "2026-07-23T21:59:59+00:00"
     )
 
 

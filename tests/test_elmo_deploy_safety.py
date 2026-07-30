@@ -125,7 +125,7 @@ def test_production_override_is_bounded_and_preserves_hard_limits() -> None:
     )
     assert re.search(r'^\s*WORKER_RECYCLE_GAMES: ["\']256["\']', text, re.M)
     assert re.search(
-        r'^\s*POKEBOT_REMOTE_MAX_SERVICE_JOBS: ["\']0["\']', text, re.M
+        r'^\s*POKEBOT_REMOTE_MAX_SERVICE_JOBS: ["\']768["\']', text, re.M
     )
     assert re.search(
         r'^\s*POKEBOT_REMOTE_PLANNED_ROTATION_EXIT_CODE: ["\']75["\']',

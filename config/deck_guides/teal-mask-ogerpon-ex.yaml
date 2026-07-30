@@ -1,34 +1,39 @@
-# Research-complete, checksum-bound staging contract for the Teal Mask
-# Ogerpon ex logical specialist and the public Ogerpon Box archetype.
+# Checksum-bound staging contract for the Teal Mask Ogerpon ex logical
+# specialist and the exact public archetype-151 Slop Box shell.
 schema_version: poke_bot.current_deck_guide/v1
 specialist_id: teal-mask-ogerpon-ex
-display_name: "Teal Mask Ogerpon ex"
-physical_source_archetype_id: ogerpon-box
-physical_source_archetype_name: "Ogerpon Box"
+display_name: "Slop Box (Teal Mask Ogerpon ex)"
+physical_source_archetype_id: slop-box
+physical_source_archetype_name: "Slop Box"
+deck_family_name: "Teal Mask Ogerpon ex / Mega Kangaskhan ex"
+secondary_search_alias: "Raging Bolt Ogerpon"
+# Backward-compatible key; this alias is secondary, not the primary deck label.
+competitive_family_alias: "Raging Bolt Ogerpon"
 ptcgreplay_public_archetype_id: 151
 ptcgreplay_public_archetype_name: "Teal Mask Ogerpon ex"
-status: research_sparse_teacher_and_full_history_corpus_validated_router_pending
-guide_version: teal-mask-ogerpon-ex-north-star-v2
+status: research_sparse_teacher_validated_clean_corpus_and_router_pending
+guide_version: teal-mask-ogerpon-ex-slop-box-north-star-v3
 teacher_module: poke_bot.teal_mask_ogerpon_heuristics
 implementation_status: sparse_causal_teacher_validated
-teacher_module_sha256: sha256:475a4e67897aab17dd9a65f47431fdb44134c6e9f6a07d350d653226b99ef59f
+teacher_module_sha256: sha256:58b8d9da289c5ea725e214f3b8f10fb0c58025f0838bca403deecc5b76ad5b68
 deck_complexity: nonlinear
 
 project_representative_binding:
   path: data/training_mixes/specialist_representatives.v1.json
   json_pointer: /decks/teal-mask-ogerpon-ex
   logical_specialist_id: teal-mask-ogerpon-ex
-  physical_source_id: ogerpon-box
-  official_deck_code: J8xJG4-TqjMpR-cJ8Gcc
-  source_deck_url: https://www.limitlesstcg.com/decks/list/28688
-  source_event: Japan_Championships_2026
-  source_player: Toshiyuki_Otake
-  source_finish: 1
+  physical_source_id: slop-box
+  deck_family_id: teal-mask-ogerpon-ex-mega-kangaskhan-ex
+  secondary_search_alias: raging-bolt-ogerpon
+  competitive_family_alias: raging-bolt-ogerpon
+  source_deck_url: data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json#/source_deck_rows/0
+  source_archetype_id: 151
+  source_deck_hash: bcfc7b778a72d895
   card_count: 60
-  canonical_multiset_sha256: sha256:ec97474ff3a01876bd2f7002569c78a8e5bb19592fa204f2074fa764d321e1d4
-  terminal_multiset_sha256: sha256:bb071ddaa81e321b493ed69d35800220d417173a0f551117ee694a04b2bdb584
-  cards_sha256: sha256:d7b99fcf1b2f5bc49525024b0ad7a80eb91571cc6305293035e0ee8826eaee5f
-  selection: exact_Japan_Championships_2026_winning_Ogerpon_Box_list
+  canonical_multiset_sha256: sha256:f50fa3a23cdf21be7cf7d3f558b8ff0b82e8d4e7ba8f61b7b4cacc1a0080c16a
+  terminal_multiset_sha256: sha256:f50fa3a23cdf21be7cf7d3f558b8ff0b82e8d4e7ba8f61b7b4cacc1a0080c16a
+  cards_sha256: sha256:10857495cddc95416052ff3b60e8686d2291da31de23ef064128534eb87cff28
+  selection: exact_owner_shown_public_archetype_151_slop_box_list
 
 policy_target:
   type: sparse_confidence_weighted_legal_action_preference
@@ -39,38 +44,42 @@ policy_target:
 
 deck_signature:
   minimum_card_counts:
+    63: 2    # Raging Bolt ex
     96: 3    # Teal Mask Ogerpon ex
     108: 1   # Wellspring Mask Ogerpon ex
-    272: 1   # Lillie's Clefairy ex; exact Jul24-27 public list runs one
-    756: 2   # Mega Kangaskhan ex
-    1071: 2  # Meowth ex
-    1116: 3  # Energy Switch
-    1250: 2  # Area Zero Underdepths
+    272: 1   # Lillie's Clefairy ex
+    756: 3   # Mega Kangaskhan ex
+    1071: 3  # Meowth ex
+    1116: 4  # Energy Switch
+    1250: 4  # Area Zero Underdepths
   maximum_card_counts:
-    756: 3   # Four-copy public lists are source-archetype-67 Mega Kangaskhan
+    63: 2
+    96: 3
+    756: 3
+    1071: 3
   representative_supporting_card_ids:
     1: Basic Grass Energy
-    16: Prism Energy
-    31: Chi-Yu
-    112: Munkidori
+    3: Basic Water Energy
+    4: Basic Lightning Energy
+    5: Basic Psychic Energy
+    6: Basic Fighting Energy
+    63: Raging Bolt ex
     140: Fezandipiti ex
     184: Latias ex
-    230: Pecharunt
-    1080: Unfair Stamp
-    1094: Bug Catching Set
+    978: Passimian
     1097: Night Stretcher
+    1098: Glass Trumpet
     1121: Ultra Ball
-    1127: Tera Orb
     1182: "Boss's Orders"
-    1188: "Ciphermaniac's Codebreaking"
-    1221: "N's Plan"
-    1227: "Lillie's Determination"
+    1197: Cyrano
+    1198: Crispin
+    1205: "Xerosic's Machinations"
   positive_family_rule: >-
-    Require Teal Mask, Wellspring, at least one Clefairy, two or three
-    Kangaskhan, Energy Switch, Area Zero, and at least two multi-copy toolbox
-    markers among Clefairy, Kangaskhan, and Meowth.
+    Require the public archetype-151 Slop Box core: two Raging Bolt ex, three
+    each of Mega Kangaskhan ex, Meowth ex, and Teal Mask Ogerpon ex, plus
+    Wellspring, Clefairy, four Energy Switch, and four Area Zero.
   prohibited_cross_archetype_capture:
-    - raging-bolt-ogerpon
+    - legacy-ogerpon-box
     - hydrapple
     - ogerpon-meganium
     - mega-venusaur
@@ -82,36 +91,21 @@ deck_signature:
   fuzzy_display_name_matching_allowed: false
 
 strategy_sources:
-  - title: "Ogerpon Box by Toshiyuki Otake"
+  - title: "PTCGReplay public archetype 151 exact deck row"
+    publisher: PTCGReplay
+    url: https://ptcgreplay.netlify.app/
+    evidence_role: exact_owner_shown_Slop_Box_60_card_identity
+    reviewed_at_utc: 2026-07-29T17:15:00Z
+  - title: "Raging Bolt Ogerpon by Toby Clark"
     publisher: Limitless TCG
-    url: https://www.limitlesstcg.com/decks/list/28688
-    evidence_role: exact_Japan_Championships_2026_winning_60_card_list
-    reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "2026 Japan Championships winner interview"
-    publisher: The Pokemon Company
-    url: https://www.pokemon-card.com/info/005538.html
-    evidence_role: official_pilot_and_deck_selection_evidence
-    reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "Official deck record J8xJG4-TqjMpR-cJ8Gcc"
-    publisher: The Pokemon Company
-    url: https://www.pokemon-card.com/deck/deck.html?deckID=J8xJG4-TqjMpR-cJ8Gcc
-    evidence_role: official_exact_deck_identity
-    reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "Japan Championships 2026 winning decks"
-    publisher: PokeZentrum
-    url: https://pokezentrum.de/pokemon-karten-news/entdecke-die-gewinner-decks-der-pokemon-japan-championships-2026/
-    evidence_role: independent_card_role_and_strategy_synopsis
-    reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "Current deck taxonomy"
+    url: https://limitlesstcg.com/decks/list/27922
+    evidence_role: competitive_family_shell_and_pilot_reference
+    reviewed_at_utc: 2026-07-29T17:15:00Z
+  - title: "Raging Bolt Ogerpon current card distribution"
     publisher: Limitless TCG
-    url: https://limitlesstcg.com/decks
-    evidence_role: separates_Ogerpon_Box_from_other_Teal_Mask_engines
-    reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "Japan Championships 2026 card distribution"
-    publisher: Limitless TCG
-    url: https://limitlesstcg.com/tournaments/568/cards
-    evidence_role: event_scale_and_Ogerpon_Box_finish_evidence
-    reviewed_at_utc: 2026-07-28T00:00:00Z
+    url: https://www.limitlesstcg.com/decks/280/cards?variant=4
+    evidence_role: competitive_family_card_frequency_reference
+    reviewed_at_utc: 2026-07-29T17:15:00Z
   - title: "Teal Mask Ogerpon ex TWM 25"
     publisher: Limitless TCG
     url: https://limitlesstcg.com/cards/TWM/25
@@ -132,16 +126,11 @@ strategy_sources:
     url: https://limitlesstcg.com/cards/TWM/64
     evidence_role: exact_Torrential_Pump_text
     reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "Pecharunt SVP 149"
+  - title: "Raging Bolt ex TEF 123"
     publisher: Limitless TCG
-    url: https://limitlesstcg.com/cards/SVP/149
-    evidence_role: exact_Toxic_Subjugation_and_Poison_Chain_text
-    reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "Munkidori TWM 95"
-    publisher: Limitless TCG
-    url: https://limitlesstcg.com/cards/TWM/95
-    evidence_role: exact_Adrena_Brain_text
-    reviewed_at_utc: 2026-07-28T00:00:00Z
+    url: https://limitlesstcg.com/cards/TEF/123
+    evidence_role: exact_Bursting_Roar_and_Bellowing_Thunder_text
+    reviewed_at_utc: 2026-07-29T17:15:00Z
   - title: "Meowth ex POR 62"
     publisher: Limitless TCG
     url: https://limitlesstcg.com/cards/POR/62
@@ -162,11 +151,16 @@ strategy_sources:
     url: https://limitlesstcg.com/cards/MEG/115
     evidence_role: exact_Basic_Energy_movement_text
     reviewed_at_utc: 2026-07-28T00:00:00Z
-  - title: "Prism Energy ASC 216"
+  - title: "Crispin SCR 133"
     publisher: Limitless TCG
-    url: https://limitlesstcg.com/cards/ASC/216
-    evidence_role: exact_Basic_only_type_and_single_Energy_rule
-    reviewed_at_utc: 2026-07-28T00:00:00Z
+    url: https://limitlesstcg.com/cards/SCR/133
+    evidence_role: exact_two_type_Basic_Energy_acceleration_text
+    reviewed_at_utc: 2026-07-29T17:15:00Z
+  - title: "Glass Trumpet SCR 135"
+    publisher: Limitless TCG
+    url: https://limitlesstcg.com/cards/SCR/135
+    evidence_role: exact_discard_Basic_Energy_acceleration_text
+    reviewed_at_utc: 2026-07-29T17:15:00Z
   - title: "Area Zero Underdepths SCR 131"
     publisher: Limitless TCG
     url: https://limitlesstcg.com/cards/SCR/131
@@ -183,16 +177,16 @@ strategy_sources:
     evidence_role: current_two_week_legality_timing
     reviewed_at_utc: 2026-07-28T00:00:00Z
 public_corpus_sources:
-  - title: "PTCGReplay full public ingest 17"
+  - title: "PTCGReplay full public ingest 17 plus published July 28 day"
     publisher: PTCGReplay
     url: https://ptcgreplay.netlify.app/
-    evidence_role: exact_public_archetype_151_deck_fingerprint_and_full_32_day_match_facts
-    reviewed_at_utc: 2026-07-28T21:40:00Z
+    evidence_role: exact_public_archetype_151_deck_fingerprint_and_full_33_day_match_facts
+    reviewed_at_utc: 2026-07-29T17:52:31Z
 
 expert_writeup:
   path: docs/deck_guides/teal-mask-ogerpon-ex-expert-brief.txt
-  sha256: sha256:acbc8bc3f037890bd03de047d6c7bcd249f06c5d105921a0cdfff366757357ff
-  word_count: 2488
+  sha256: sha256:82bd9e9cebfb6ef8b85aee55e78cc707c484558c9be398d9a429da0a296ac564
+  word_count: 1820
   maximum_words: 10000
   audience: world_champion_subject_matter_experts
   guide_identity: teal-mask-ogerpon-ex
@@ -202,7 +196,8 @@ expert_writeup:
 high_confidence_principles:
   - establish_multiple_Teal_Mask_engines_only_when_Grass_in_hand_supports_them
   - route_only_Basic_Energy_with_Energy_Switch
-  - count_Prism_as_one_Energy_and_all_types_only_on_a_Basic
+  - preserve_distinct_Basic_Energy_types_for_Crispin_and_attack_requirements
+  - use_Raging_Bolt_discard_math_only_from_current_attached_Energy
   - use_deterministic_Kangaskhan_200_damage_floor_not_future_coin_heads
   - preserve_Latias_mobility_when_it_enables_the_current_pivot
   - name_Area_Zero_bench_collapse_before_removing_the_Stadium
@@ -214,7 +209,7 @@ causal_heuristic_contract:
   stage_completeness_rule: score_every_supplied_legal_combo_or_mask_entire_stage
   minimum_preference_margin: 0.25
   supported_predicates:
-    - id: exact_initial_Ogerpon_Box_active
+    - id: exact_initial_Slop_Box_active
       supported_stages: [initial_setup_active]
       exact_inputs:
         - select.context
@@ -224,7 +219,7 @@ causal_heuristic_contract:
       abstain_if:
         - any_legal_option_unresolved
         - legal_combo_set_incomplete
-    - id: exact_initial_Ogerpon_Box_bench
+    - id: exact_initial_Slop_Box_bench
       supported_stages: [initial_setup_bench]
       exact_inputs:
         - select.context
@@ -239,7 +234,7 @@ causal_heuristic_contract:
       exact_inputs:
         - exact_current_legal_options
         - exact_ability_origin_card_id
-      preference: prefer_legal_Teal_Dance_Run_Errand_Flip_the_Script_or_Adrena_Brain
+      preference: prefer_legal_Teal_Dance_Run_Errand_or_Flip_the_Script
       abstain_if:
         - ability_origin_unresolved
         - any_legal_option_unresolved
@@ -247,12 +242,12 @@ causal_heuristic_contract:
 masked_targets:
   - Teal_Dance_attachment_if_the_legal_action_does_not_expose_exact_target
   - Energy_Switch_source_or_destination
-  - Prism_Energy_type_route
+  - Crispin_type_pair_and_Energy_Switch_route
   - attack_selection_or_damage_target
+  - Raging_Bolt_Energy_discard_source_or_damage_target
   - Kangaskhan_coin_result_or_bonus_damage
   - Wellspring_Torrential_Pump_bench_target
-  - Pecharunt_future_checkups_beyond_the_next_deterministic_check
-  - Munkidori_Adrena_Brain_source_or_target
+  - Glass_Trumpet_recovery_target
   - Area_Zero_future_bench_or_collapse_target
   - Supporter_search_discard_or_recovery_choice
   - face_down_prize_identity
@@ -310,7 +305,7 @@ nonlinear_decision_support:
   required_branch_systems:
     branching_setup_and_pivot:
       causal_head_inputs: [value, action_q, action_type, action_target, resource_forecast, game_phase]
-      guide_scaffold: [exact_initial_Ogerpon_Box_active, exact_initial_Ogerpon_Box_bench]
+      guide_scaffold: [exact_initial_Slop_Box_active, exact_initial_Slop_Box_bench]
       evaluation_gate: balanced_first_second_toolbox_setup_scenarios
     attacker_and_engine_preservation:
       causal_head_inputs: [value, action_target, tactical_outcomes, resource_forecast, remaining_turns]
@@ -319,18 +314,18 @@ nonlinear_decision_support:
     typed_energy_and_resource_planning:
       causal_head_inputs: [action_resource, action_utility, resource_forecast, game_phase, remaining_turns]
       guide_scaffold: []
-      evaluation_gate: Basic_Grass_Prism_and_Energy_Switch_route_scenarios
+      evaluation_gate: five_type_Basic_Energy_Crispin_Trumpet_and_Energy_Switch_scenarios
     attack_target_and_prize_routing:
       causal_head_inputs: [prize_race, action_q, action_target, action_utility, tactical_outcomes, outcome_distribution]
       guide_scaffold: []
-      evaluation_gate: Teal_Kangaskhan_Clefairy_Wellspring_Pecharunt_prize_scenarios
+      evaluation_gate: Raging_Bolt_Teal_Kangaskhan_Clefairy_Wellspring_prize_scenarios
     stochastic_disruption_timing:
       causal_head_inputs: [opponent_hand, action_q, action_utility, opponent_response, outcome_distribution]
       guide_scaffold: []
       evaluation_gate: Kangaskhan_floor_and_opponent_response_scenarios
     bench_and_recovery_routing:
       causal_head_inputs: [action_target, action_resource, action_utility, resource_forecast, game_phase, remaining_turns]
-      guide_scaffold: [exact_initial_Ogerpon_Box_bench]
+      guide_scaffold: [exact_initial_Slop_Box_bench]
       evaluation_gate: Area_Zero_collapse_and_Night_Stretcher_scenarios
     guide_weight_annealing:
       causal_head_inputs: [action_q, outcome_distribution]
@@ -347,29 +342,59 @@ nonlinear_decision_support:
   validation_receipt: state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json
 
 corpus_binding_evidence:
-  status: ready_checksum_validated_promoted_on_inzi
+  status: blocked_pending_full33_slop_box_v3_seal
   logical_specialist_id: teal-mask-ogerpon-ex
-  competitive_taxonomy_identity: ogerpon-box
+  competitive_taxonomy_identity: slop-box
+  deck_family_identity: teal-mask-ogerpon-ex-mega-kangaskhan-ex
+  secondary_search_alias: raging-bolt-ogerpon
+  competitive_family_alias: raging-bolt-ogerpon
   required_public_source_archetype_id: 151
   required_public_source_archetype_name: "Teal Mask Ogerpon ex"
-  public_deck_catalog: data/training_mixes/teal-mask-ogerpon-ex-public-full32.v1.json
-  public_deck_catalog_sha256: sha256:5c2f4856b5f99f5b008f5160af1c9f27dd2ae10d7bee5e964de08b64607d3e1a
-  source_window: {start: 2026-06-26, end: 2026-07-27, days: 32}
-  minimum_acting_seat_games: 1135
-  source_indexed_acting_seat_games: 1135
-  materialized_acting_seat_games: 2300
-  materialized_decisions: 156692
-  daily_receipts_verified: 32
-  duplicate_episode_seat_keys: 0
+  public_deck_catalog: data/training_mixes/teal-mask-ogerpon-ex-public-full33.v1.json
+  public_deck_catalog_sha256: sha256:22218f65d35708cca93af7ea10b1b911e896592b7343d5889a80ddba39d54056
+  source_window: {start: 2026-06-26, end: 2026-07-28, days: 33}
+  minimum_acting_seat_games: 1442
+  source_indexed_acting_seat_games: 1442
+  materialized_acting_seat_games: null
+  materialized_decisions: null
+  materialized_guide_rows: null
+  daily_receipts_verified: 1
+  duplicate_episode_seat_keys: null
   exact_public_deck_fingerprints: 1
   identity_validation_receipt: state/teal_mask_ogerpon_public_deck_identity_validation_v1.json
-  ready_receipt: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json
-  ready_receipt_sha256: sha256:216b60efe50709a7972081ad2c7df60614412a28b09b15458b659eadec8c547c
-  manifest_sha256: sha256:da6c63179ac879a68955ba0819768100d08b12f7b2e4f6dcff4eebb5733dd668
-  protected_pointer_sha256: sha256:ab6a383ab332c58b2f44a23f5f11bb737216a03fc3e2fa407971ebf4f157100c
-  promotion_receipt: /home/inzi/poke-bot-agent/outputs/state/teal-mask-ogerpon-ex-guide-corpus-promotion-v1.json
-  promotion_receipt_sha256: sha256:db8aff2fd5076fd75c4e56384f9bd609dda79836169527a780ec2808722e2674
-  guide_rows: 10495
+  clean_rebuild:
+    status: managed_build_active
+    service: pokebot-teal-mask-slop-box-full33-guide-v4.service
+    verified_completed_days: 1
+    verified_completed_records: 307
+    verified_completed_decisions: 21536
+    verified_completed_guide_rows: 1858
+    current_dates: [2026-06-26, 2026-06-27]
+    verified_at_utc: 2026-07-29T17:52:31Z
+    source_root: /home/admin/pokebot-teal-clean-src-v2
+    output_root: /mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v4-slop-box
+    expected_exact_daily_counts_source: public_deck_catalog.observed_by_day
+    validated_extension_day_receipt: /mnt/Main/main/poke-bot-agent/archive/teal-mask-ogerpon-ex-guide-corpus-full-v4-slop-box/teal-mask-ogerpon-ex-2026-07-28.features.receipt.json
+    validated_extension_day_receipt_sha256: sha256:6471b5acfbef9c82759db6ccc4640b080df91926d1a6c3367fa1958c9d614095
+    final_ready_receipt: null
+    final_ready_receipt_sha256: null
+    final_manifest_sha256: null
+    final_protected_pointer_sha256: null
+    promotion_authorized: false
+  contaminated_v1:
+    status: quarantined_not_promotable
+    false_source_archetype_id: 67
+    false_source_archetype_name: "Mega Kangaskhan ex"
+    false_deck_fingerprint: sha256:3339847ed8e48d4410471886db604b48190495dde36b8c8ece70e92ee88c25ab
+    materialized_acting_seat_games: 2300
+    materialized_decisions: 156692
+    guide_rows: 10495
+    daily_receipts: 32
+    duplicate_episode_seat_keys: 0
+    ready_receipt_sha256: sha256:216b60efe50709a7972081ad2c7df60614412a28b09b15458b659eadec8c547c
+    manifest_sha256: sha256:da6c63179ac879a68955ba0819768100d08b12f7b2e4f6dcff4eebb5733dd668
+    protected_pointer_sha256: sha256:ab6a383ab332c58b2f44a23f5f11bb737216a03fc3e2fa407971ebf4f157100c
+    promotion_receipt_sha256: sha256:db8aff2fd5076fd75c4e56384f9bd609dda79836169527a780ec2808722e2674
   full_public_history_required: true
   active_training_modified: false
 
@@ -381,12 +406,13 @@ validation:
   unit_tests_passed: true
   scorer_canary_passed: true
   focused_tests_passed: 7
-  guide_rows_in_filtered_expert_corpus: 10495
+  guide_rows_in_filtered_expert_corpus: null
   nonlinear_systems_validation_required: true
   nonlinear_systems_validation_receipt: state/teal_mask_ogerpon_nonlinear_systems_validation_v1.json
   contract_checksum: null
   unresolved_evidence_gaps:
     - no_world_champion_SME_approval_yet
     - no_universal_first_versus_second_rule_supported
-    - exact_causal_matchup_route_not_materialized
+    - clean_exact_archetype_151_corpus_not_yet_sealed
+    - additive_19_route_candidate_not_yet_audited
     - first_Pitch_Black_legal_event_refresh_pending

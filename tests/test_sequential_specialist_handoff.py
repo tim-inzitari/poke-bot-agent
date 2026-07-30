@@ -380,6 +380,92 @@ def test_source_ceiling_uses_exact_fused_child_receipt(
     assert evidence["gate"] == plan
 
 
+def test_source_ceiling_uses_committed_parent_gate_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = "sha256:" + "b" * 64
+    plan = {
+        "schema": "poke_bot.ceiling_acceptance_archive_plan/v1",
+        "completion_authority": "explicit_owner_ceiling_acceptance",
+        "checkpoint_digest": digest,
+        "commit_boundary": 15,
+        "contract": str(tmp_path / "gate.json"),
+        "contract_sha256": digest,
+    }
+    frozen = {"checkpoint_digest": digest}
+    handler_state = {
+        "schema": handoff.HANDLER_SCHEMA,
+        "phase": "complete_handoff_started",
+        "submission_mode": "queue_and_continue",
+        "gate": plan,
+        "frozen_model": frozen,
+        "queued_submissions": [
+            {
+                "copy_number": 1,
+                "label": "hammer-pult ceiling accepted iter 15 copy 1",
+                "checkpoint_checksum": digest,
+                "queued_at": "2026-07-29T18:40:15+00:00",
+            }
+        ],
+    }
+    paths = {
+        "handler_state": tmp_path / "handler.json",
+        "run_dir": tmp_path / "run",
+        "gate_contract": tmp_path / "gate.json",
+        "passed_family": tmp_path / "frozen",
+    }
+    monkeypatch.setattr(
+        handoff,
+        "path_value",
+        lambda _contract, _group, key: paths[key],
+    )
+    monkeypatch.setattr(handoff, "read_json", lambda _path: handler_state)
+    monkeypatch.setattr(
+        handoff,
+        "validate_exact_pass",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("no pass marker after failed terminal gate")
+        ),
+    )
+    seen: list[int] = []
+
+    def validate_ceiling(
+        _run: Path,
+        _contract: Path,
+        iteration: int,
+    ) -> dict:
+        seen.append(iteration)
+        return plan
+
+    monkeypatch.setattr(
+        handoff,
+        "validate_ceiling_completion",
+        validate_ceiling,
+    )
+    monkeypatch.setattr(
+        handoff,
+        "validate_runtime_exact_gate",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("flat terminal gate is not a runtime-child receipt")
+        ),
+    )
+    monkeypatch.setattr(handoff, "verify_frozen_model", lambda _path: frozen)
+    monkeypatch.setattr(handoff, "sha256", lambda _path: digest)
+
+    evidence = handoff.validate_source(
+        {
+            "source_specialist": {
+                "id": "hammer-pult",
+                "minimum_completed_iteration": 5,
+                "gate_marker_name": "unused-failed-gate-marker",
+            }
+        }
+    )
+
+    assert seen == [15]
+    assert evidence["gate"] == plan
+
+
 def test_next_specialist_gate_rejects_stale_source_checkpoint(
     tmp_path: Path,
 ) -> None:
@@ -550,6 +636,141 @@ def test_candidate_router_is_bound_after_bootstrap_before_registration() -> None
     assert "!= 0.93" in source
     assert "minimum_validation_weighted_support" in source
     assert "!= 10_000" in source
+
+
+def test_future_guide_policy_install_precedes_bootstrap_wall_time() -> None:
+    source = (
+        ROOT / "scripts/run_sequential_specialist_handoff.py"
+    ).read_text(encoding="utf-8")
+    source_guard = source.index(
+        'if service_active(source_service):'
+    )
+    install = source.index(
+        "policy_install = install_future_guide_weight_policy(",
+        source_guard,
+    )
+    bootstrap = source.index("run_checked(bootstrap_command(contract))", install)
+    register = source.index(
+        "registration = register_specialist_runtime(",
+        bootstrap,
+    )
+    assert source_guard < install < bootstrap < register
+
+
+def test_future_guide_policy_installs_only_after_source_stops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "prospective"
+    target_root = tmp_path / "runtime"
+    relative = Path("poke_bot/pure_rl/guide_weight_review.py")
+    source = source_root / relative
+    target = target_root / relative
+    source.parent.mkdir(parents=True)
+    target.parent.mkdir(parents=True)
+    source.write_text("prospective = 44\n", encoding="utf-8")
+    target.write_text("historical = True\n", encoding="utf-8")
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps({"runtime_root": str(target_root)}),
+        encoding="utf-8",
+    )
+    receipt_template = str(
+        tmp_path / "{specialist_id}-guide-policy-install.json"
+    )
+    contract = {
+        "runtime_registration": {
+            "runtime_registry": str(registry),
+            "future_guide_weight_policy": {
+                "enabled": True,
+                "scope": "future_specialist_training_runs_only",
+                "prospective_scope_revision": 44,
+                "learning_semantics_revision": 46,
+                "prospective_effective_specialist": "archaludon-ex",
+                "retroactive_application_to_completed_frozen_or_started_runs": False,
+                "historical_weight_or_receipt_rewrite_allowed": False,
+                "source_root": str(source_root),
+                "receipt_template": receipt_template,
+                "files": {
+                    str(relative): handoff.sha256(source),
+                },
+            },
+        }
+    }
+    monkeypatch.setattr(handoff, "service_active", lambda name: False)
+
+    installed = handoff.install_future_guide_weight_policy(
+        contract,
+        source_specialist_id="teal-mask-ogerpon-ex",
+        specialist_id="archaludon-ex",
+        source_service="pokebot-source.service",
+    )
+
+    assert installed is not None
+    assert installed["status"] == "installed_for_future_specialist"
+    assert target.read_bytes() == source.read_bytes()
+    identity = installed["identity"]
+    assert identity["scope"] == "future_specialist_training_runs_only"
+    assert identity["completed_or_frozen_specialists_modified"] is False
+    assert identity["active_or_started_source_runtime_modified"] is False
+    assert installed["previous_target_sha256"][str(relative)] is not None
+    assert (
+        handoff.install_future_guide_weight_policy(
+            contract,
+            source_specialist_id="teal-mask-ogerpon-ex",
+            specialist_id="archaludon-ex",
+            source_service="pokebot-source.service",
+        )
+        == installed
+    )
+
+
+def test_future_guide_policy_refuses_active_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "prospective"
+    target_root = tmp_path / "runtime"
+    source = source_root / "scripts/train_pure_rl.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("future = True\n", encoding="utf-8")
+    target_root.mkdir()
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps({"runtime_root": str(target_root)}),
+        encoding="utf-8",
+    )
+    contract = {
+        "runtime_registration": {
+            "runtime_registry": str(registry),
+            "future_guide_weight_policy": {
+                "enabled": True,
+                "scope": "future_specialist_training_runs_only",
+                "prospective_scope_revision": 44,
+                "learning_semantics_revision": 46,
+                "prospective_effective_specialist": "archaludon-ex",
+                "retroactive_application_to_completed_frozen_or_started_runs": False,
+                "historical_weight_or_receipt_rewrite_allowed": False,
+                "source_root": str(source_root),
+                "receipt_template": str(
+                    tmp_path / "{specialist_id}-install.json"
+                ),
+                "files": {
+                    "scripts/train_pure_rl.py": handoff.sha256(source),
+                },
+            },
+        }
+    }
+    monkeypatch.setattr(handoff, "service_active", lambda name: True)
+
+    with pytest.raises(RuntimeError, match="source specialist is active"):
+        handoff.install_future_guide_weight_policy(
+            contract,
+            source_specialist_id="teal-mask-ogerpon-ex",
+            specialist_id="archaludon-ex",
+            source_service="pokebot-source.service",
+        )
+    assert not (target_root / "scripts/train_pure_rl.py").exists()
 
 
 def test_verified_preflight_is_resumable_after_gate_materialization() -> None:

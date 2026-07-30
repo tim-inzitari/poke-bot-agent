@@ -42,14 +42,14 @@ THWACKEY = 90
 THWACKEY_DIPPLIN = 93
 FESTIVAL_GROUNDS = 1245
 TEAL_MASK_OGERPON_EX = 96
+RAGING_BOLT_EX = 63
 WELLSPRING_MASK_OGERPON_EX = 108
 LILLIES_CLEFAIRY_EX = 272
 MEGA_KANGASKHAN_EX = 756
 MEOWTH_EX = 1071
 ENERGY_SWITCH = 1116
 AREA_ZERO_UNDERDEPTHS = 1250
-OGERPON_BOX_KANGASKHAN_MIN = 2
-OGERPON_BOX_KANGASKHAN_MAX = 3
+SLOP_BOX_KANGASKHAN_COUNT = 3
 
 # Exact top-ladder modal representative.  Full multiset equality is deliberate:
 # Archaludon shares generic Metal engines with other decks, so a loose marker
@@ -74,6 +74,39 @@ ARCHALUDON_EX_MODAL_REPRESENTATIVE: tuple[int, ...] = (
 )
 _ARCHALUDON_EX_MODAL_MULTISET = tuple(
     sorted(ARCHALUDON_EX_MODAL_REPRESENTATIVE)
+)
+
+# Exact current Crustle specialist representative. Full multiset equality is
+# deliberate: Mega Kangaskhan ex is shared with Slop Box and generic marker
+# signatures would steal unrelated decks.
+CRUSTLE_NAIC_2026_REPRESENTATIVE: tuple[int, ...] = (
+    756, 756, 756, 756,
+    344, 344, 344,
+    345, 345, 345,
+    858,
+    1227, 1227, 1227, 1227,
+    1219, 1219, 1219, 1219,
+    1182, 1182, 1182, 1182,
+    1204, 1204,
+    1225, 1225,
+    1197,
+    1120, 1120, 1120, 1120,
+    1147, 1147, 1147, 1147,
+    1122, 1122, 1122,
+    1086, 1086,
+    1121,
+    1123,
+    1112,
+    1159,
+    1245,
+    1257,
+    1267,
+    11, 11, 11, 11,
+    14, 14, 14, 14,
+    18, 18, 18, 18,
+)
+_CRUSTLE_NAIC_2026_MULTISET = tuple(
+    sorted(CRUSTLE_NAIC_2026_REPRESENTATIVE)
 )
 
 #: Minimum Crushing Hammers for the Hammer-Pult signature (list runs 3-4).
@@ -248,10 +281,10 @@ register(Archetype(
     id="teal-mask-ogerpon-ex",
     name="Teal Mask Ogerpon ex",
     description=(
-        "Nonlinear Ogerpon Box toolbox centered on Teal Mask acceleration, "
-        "Wellspring spread, Energy Switch, Area Zero, and Basic attackers. "
-        "Exact card-signature classification prevents cross-archetype capture "
-        "from Raging Bolt, Hydrapple, Meganium, or Cornerstone Ogerpon."
+        "Nonlinear Slop Box toolbox: the public archetype-151 Raging Bolt "
+        "Ogerpon family centered on Mega Kangaskhan ex, Meowth ex, Teal Mask "
+        "acceleration, Energy Switch, Crispin, Glass Trumpet, and Area Zero. "
+        "The stable logical program ID remains Teal Mask Ogerpon ex."
     ),
     signature_only=True,
 ))
@@ -298,27 +331,18 @@ def is_hammer_signature(card_ids: Iterable[int]) -> bool:
 
 
 def is_teal_mask_ogerpon_box_signature(card_ids: Iterable[int]) -> bool:
-    """True for the exact Ogerpon Box family, not any Teal Mask engine deck."""
+    """True for Slop Box; legacy function name retained for compatibility."""
 
     c = _counts(card_ids)
-    toolbox_markers = sum(
-        c.get(card_id, 0) >= 2
-        for card_id in (
-            LILLIES_CLEFAIRY_EX,
-            MEGA_KANGASKHAN_EX,
-            MEOWTH_EX,
-        )
-    )
     return (
-        c.get(TEAL_MASK_OGERPON_EX, 0) >= 3
+        c.get(RAGING_BOLT_EX, 0) >= 2
+        and c.get(TEAL_MASK_OGERPON_EX, 0) >= 3
         and c.get(WELLSPRING_MASK_OGERPON_EX, 0) >= 1
         and c.get(LILLIES_CLEFAIRY_EX, 0) >= 1
-        and OGERPON_BOX_KANGASKHAN_MIN
-        <= c.get(MEGA_KANGASKHAN_EX, 0)
-        <= OGERPON_BOX_KANGASKHAN_MAX
-        and c.get(ENERGY_SWITCH, 0) >= 3
-        and c.get(AREA_ZERO_UNDERDEPTHS, 0) >= 2
-        and toolbox_markers >= 2
+        and c.get(MEGA_KANGASKHAN_EX, 0) == SLOP_BOX_KANGASKHAN_COUNT
+        and c.get(MEOWTH_EX, 0) >= 3
+        and c.get(ENERGY_SWITCH, 0) >= 4
+        and c.get(AREA_ZERO_UNDERDEPTHS, 0) >= 4
     )
 
 
@@ -328,6 +352,12 @@ def is_archaludon_ex_modal_representative(
     """Match only the pinned exact 60-card Archaludon ex modal multiset."""
 
     return tuple(sorted(card_ids)) == _ARCHALUDON_EX_MODAL_MULTISET
+
+
+def is_crustle_naic_2026_representative(card_ids: Iterable[int]) -> bool:
+    """Match only the checksum-bound current Crustle representative."""
+
+    return tuple(sorted(card_ids)) == _CRUSTLE_NAIC_2026_MULTISET
 
 
 def classify_deck(card_ids: Iterable[int]) -> str:
@@ -340,6 +370,8 @@ def classify_deck(card_ids: Iterable[int]) -> str:
     card_ids = list(card_ids)
     if is_archaludon_ex_modal_representative(card_ids):
         return "archaludon-ex"
+    if is_crustle_naic_2026_representative(card_ids):
+        return "crustle"
     if is_hammer_signature(card_ids):
         return "hammer-pult"
     if is_teal_mask_ogerpon_box_signature(card_ids):

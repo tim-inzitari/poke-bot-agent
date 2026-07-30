@@ -8,9 +8,10 @@ import copy
 import fcntl
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -32,6 +33,10 @@ from scripts.run_starmie_expert_bootstrap import (
 
 
 SCHEMA = "poke_bot.specialist_cycle_handoff_contract/v1"
+POST_FLEET_REFRESH_SCHEMA = "poke_bot.post_fleet_specialist_refresh/v1"
+POST_FLEET_REFRESH_COMPLETION_SCHEMA = (
+    "poke_bot.post_fleet_specialist_refresh_completion/v1"
+)
 SELECTOR = "POKEBOT_ACTIVE_SPECIALIST"
 GATE_REVISION = re.compile(
     r"^(?P<prefix>.+\+frozen-specialists-r)(?P<revision>\d+)$"
@@ -60,7 +65,7 @@ def _compatible_prior_cumulative_contract(
     existing: dict[str, Any],
     current: dict[str, Any],
 ) -> bool:
-    """Accept only known additive controller fields from an older receipt."""
+    """Accept only known controller-only changes from an older contract."""
 
     variants: list[dict[str, Any]] = []
     for remove_transition in (False, True):
@@ -142,6 +147,110 @@ def _compatible_prior_cumulative_contract(
                                 "gate_contract"
                             ] = existing["trigger"]["gate_contract"]
                             variants.append(prior_assets_and_gate)
+    # A generated boundary contract may predate a validated canonical protocol
+    # refresh performed while the outgoing gate handler is still completing.
+    # Both fused-policy sections bind the whole protocol file, so even a
+    # Hammer-only validation receipt changes both digests. Permit exactly that
+    # paired checksum refresh while requiring every structural field to remain
+    # identical. Unequal or malformed paired digests remain fail-closed.
+    try:
+        existing_core = existing["core_refresh"]
+        current_core = current["core_refresh"]
+        existing_digests = (
+            existing_core["decision_fusion"]["canonical_config_sha256"],
+            existing_core["expanded_heads"]["canonical_config_sha256"],
+        )
+        current_digests = (
+            current_core["decision_fusion"]["canonical_config_sha256"],
+            current_core["expanded_heads"]["canonical_config_sha256"],
+        )
+    except (KeyError, TypeError):
+        existing_digests = ()
+        current_digests = ()
+    valid_paired_refresh = (
+        len(existing_digests) == 2
+        and len(current_digests) == 2
+        and existing_digests[0] == existing_digests[1]
+        and current_digests[0] == current_digests[1]
+        and all(
+            isinstance(value, str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+            for value in (*existing_digests, *current_digests)
+        )
+    )
+    if valid_paired_refresh:
+        for candidate in list(variants):
+            prior_protocol = copy.deepcopy(candidate)
+            prior_protocol["core_refresh"]["decision_fusion"][
+                "canonical_config_sha256"
+            ] = existing_digests[0]
+            prior_protocol["core_refresh"]["expanded_heads"][
+                "canonical_config_sha256"
+            ] = existing_digests[1]
+            variants.append(prior_protocol)
+    try:
+        old_fleet_config = copy.deepcopy(
+            existing["runtime"]["matchup_v6"]["fleet"]
+        )
+        new_fleet_config = copy.deepcopy(
+            current["runtime"]["matchup_v6"]["fleet"]
+        )
+        old_fleet_receipt = Path(
+            old_fleet_config["receipt"]
+        ).expanduser().resolve()
+        new_fleet_receipt = Path(
+            new_fleet_config["receipt"]
+        ).expanduser().resolve()
+    except (KeyError, TypeError, ValueError):
+        old_fleet_config = None
+        new_fleet_config = None
+        old_fleet_receipt = None
+        new_fleet_receipt = None
+    prior_fleet_receipt_valid = False
+    pending_same_receipt = False
+    if (
+        old_fleet_receipt is not None
+        and new_fleet_receipt is not None
+    ):
+        if old_fleet_receipt != new_fleet_receipt and old_fleet_receipt.is_file():
+            old_fleet = _read(old_fleet_receipt)
+            prior_fleet_receipt_valid = (
+                old_fleet.get("schema")
+                == "poke_bot.matchup_adapter_v6_fleet_activation/v1"
+                and old_fleet.get("status") == "active"
+            )
+        pending_same_receipt = (
+            old_fleet_receipt == new_fleet_receipt
+            and not new_fleet_receipt.exists()
+        )
+    if prior_fleet_receipt_valid or pending_same_receipt:
+        old_fleet_identity = copy.deepcopy(old_fleet_config)
+        new_fleet_identity = copy.deepcopy(new_fleet_config)
+        for fleet in (old_fleet_identity, new_fleet_identity):
+            fleet.pop("receipt", None)
+            elmo = dict(fleet.get("elmo") or {})
+            for key in ("image", "build_context", "dockerfile"):
+                elmo.pop(key, None)
+            fleet["elmo"] = elmo
+        new_elmo_config = dict(new_fleet_config.get("elmo") or {})
+        if (
+            old_fleet_identity == new_fleet_identity
+            and str(new_elmo_config.get("image") or "").startswith(
+                "poke-bot-truenas-worker:"
+            )
+            and all(
+                Path(str(new_elmo_config.get(key) or ""))
+                .expanduser()
+                .is_absolute()
+                for key in ("build_context", "dockerfile")
+            )
+        ):
+            for candidate in list(variants):
+                prior_fleet_receipt = copy.deepcopy(candidate)
+                prior_fleet_receipt["runtime"]["matchup_v6"][
+                    "fleet"
+                ] = old_fleet_config
+                variants.append(prior_fleet_receipt)
     return existing in variants
 
 
@@ -251,10 +360,24 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
     legacy_prefix_length = int(
         roster.get("legacy_v5_prefix_length") or 0
     )
-    rows = {
+    all_rows = {
         str(row.get("id") or ""): dict(row)
         for row in (state.get("specialists") or [])
         if isinstance(row, dict) and str(row.get("id") or "")
+    }
+    owner_removed_ids = {
+        str(value)
+        for value in (
+            ((state.get("training_priority") or {}).get("owner_removal") or {})
+            .get("specialist_ids")
+            or []
+        )
+        if str(value)
+    }
+    rows = {
+        specialist_id: row
+        for specialist_id, row in all_rows.items()
+        if specialist_id not in owner_removed_ids
     }
     identifiers = set(rows)
     order = [
@@ -297,6 +420,7 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
         or len(route_ids) != len(roster.get("expert_ids") or [])
         or "" in identifiers
         or len(order) != len(set(order))
+        or set(order) & owner_removed_ids
         or set(order) != unfinished
         or int(remaining if remaining is not None else -1) != len(order)
     ):
@@ -309,8 +433,11 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
 def population_transition_ready(
     completed_ids: set[str],
     required_ids: set[str],
+    *,
+    completed_refresh_ids: Sequence[str],
+    required_refresh_order: Sequence[str],
 ) -> bool:
-    """Require the exact canonical roster before population training can start."""
+    """Require the exact fleet and ordered refresh phase before population."""
 
     if not required_ids:
         raise RuntimeError("population transition requires canonical roster")
@@ -318,7 +445,261 @@ def population_transition_ready(
         raise RuntimeError(
             "frozen registry contains specialists outside canonical roster"
         )
-    return completed_ids == required_ids
+    refresh_order = [str(value) for value in required_refresh_order]
+    completed_refreshes = [str(value) for value in completed_refresh_ids]
+    if (
+        not refresh_order
+        or len(refresh_order) != len(set(refresh_order))
+        or len(completed_refreshes) != len(set(completed_refreshes))
+        or completed_refreshes
+        != refresh_order[: len(completed_refreshes)]
+    ):
+        raise RuntimeError("post-fleet refresh order or completion changed")
+    return (
+        completed_ids == required_ids
+        and completed_refreshes == refresh_order
+    )
+
+
+def _validated_post_fleet_refresh_progress(
+    *,
+    state_path: Path,
+    cycle_contract: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Validate checksum-bound post-fleet refresh completion evidence."""
+
+    contract = dict(cycle_contract.get("post_fleet_refresh") or {})
+    state = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+    if not isinstance(state, dict):
+        raise RuntimeError("canonical specialist state is not an object")
+    phase = dict(state.get("post_fleet_refresh") or {})
+    required_order = [
+        str(value)
+        for value in (contract.get("ordered_specialist_ids") or [])
+    ]
+    state_order = [
+        str(value)
+        for value in (phase.get("ordered_specialist_ids") or [])
+    ]
+    completed_ids = [
+        str(value)
+        for value in (
+            phase.get("completed_refresh_specialist_ids") or []
+        )
+    ]
+    receipt_rows = list(phase.get("completed_refresh_receipts") or [])
+    pending_ids = [
+        str(value)
+        for value in (phase.get("pending_specialist_ids") or [])
+    ]
+    contract_first_refresh = dict(contract.get("first_refresh") or {})
+    state_first_refresh = dict(phase.get("first_refresh") or {})
+    contract_release_gates = dict(contract.get("release_gates") or {})
+    state_release_gates = dict(phase.get("release_gates") or {})
+    final_alakazam_gate = dict(
+        contract_release_gates.get("final_alakazam_model_computation") or {}
+    )
+    broader_capacity_gate = dict(
+        contract_release_gates.get(
+            "broader_multi_archetype_capacity_program"
+        )
+        or {}
+    )
+    migration = dict(
+        contract_first_refresh.get("preferred_parent_migration") or {}
+    )
+    migration_fallback = dict(migration.get("failure_fallback") or {})
+    turn_order = dict(contract_first_refresh.get("turn_order") or {})
+    originals = dict(phase.get("original_checkpoint_identities") or {})
+    phase_complete = len(completed_ids) == len(required_order)
+    if (
+        contract.get("schema") != POST_FLEET_REFRESH_SCHEMA
+        or contract.get("completion_receipt_schema")
+        != POST_FLEET_REFRESH_COMPLETION_SCHEMA
+        or int(contract.get("owner_decision_revision") or 0) != 64
+        or int(contract.get("required_fleet_count") or 0) != 15
+        or contract.get("terminal_required_specialist_id") != "slowking"
+        or contract.get(
+            "slowking_freeze_and_registration_"
+            "immediately_triggers_first_refresh"
+        )
+        is not True
+        or required_order
+        != ["alakazam", "marnie-s-grimmsnarl-ex"]
+        or phase.get("schema") != POST_FLEET_REFRESH_SCHEMA
+        or phase.get("completion_receipt_schema")
+        != POST_FLEET_REFRESH_COMPLETION_SCHEMA
+        or int(phase.get("owner_decision_revision") or 0) != 64
+        or int(phase.get("required_fleet_count") or 0) != 15
+        or dict(phase.get("trigger") or {}).get(
+            "terminal_required_specialist_id"
+        )
+        != "slowking"
+        or dict(phase.get("trigger") or {}).get(
+            "slowking_freeze_and_registration_"
+            "immediately_triggers_first_refresh"
+        )
+        is not True
+        or contract_release_gates != state_release_gates
+        or final_alakazam_gate.get("required_receipts")
+        != [
+            "required_specialist_fleet_complete_for_final_alakazam_v1",
+            "capacity_research_resource_lease_v1",
+        ]
+        or final_alakazam_gate.get(
+            "all_required_before_model_computation"
+        )
+        is not True
+        or final_alakazam_gate.get("authorization_scope")
+        != "final_format_alakazam_refresh_only"
+        or final_alakazam_gate.get("no_receipt_no_model_work") is not True
+        or broader_capacity_gate.get("required_receipt")
+        != "post_refresh_sequence_complete_for_capacity_v2"
+        or broader_capacity_gate.get(
+            "requires_final_format_alakazam_and_marnie_refresh_complete"
+        )
+        is not True
+        or broader_capacity_gate.get("no_receipt_no_model_work") is not True
+        or contract_first_refresh != state_first_refresh
+        or contract_first_refresh.get("specialist_id") != "alakazam"
+        or contract_first_refresh.get("model_format")
+        != "final_submission_format"
+        or turn_order.get("training_seat_split")
+        != {"first": 0.5, "second": 0.5}
+        or turn_order.get("exact_even_split_required") is not True
+        or turn_order.get("deterministic_assignment_required") is not True
+        or turn_order.get("seat_count_parity_receipt_required") is not True
+        or turn_order.get("seat_count_parity_receipt_schema")
+        != "poke_bot.alakazam_refresh_seat_split/v1"
+        or turn_order.get("seat_count_receipt_required_stages")
+        != ["assigned", "actual", "consumed"]
+        or turn_order.get(
+            "equal_first_second_counts_required_at_each_stage"
+        )
+        is not True
+        or turn_order.get("package_preference") != "first_if_allowed"
+        or turn_order.get("second_focus_1_to_7_allowed") is not False
+        or turn_order.get("always_second_arm_allowed") is not False
+        or turn_order.get("second_preferring_refresh_copy_allowed") is not False
+        or migration.get("parent_checkpoint_sha256")
+        != (
+            "sha256:270b5156781b0a95f703abe3e8fe13866"
+            "d2fbb4c85a8f32534f99af74aece2ea"
+        )
+        or migration_fallback.get(
+            "migration_failure_receipt_preserved"
+        )
+        is not True
+        or migration_fallback.get(
+            "ordinary_same_archetype_alakazam_refresh_initialized_from"
+        )
+        != "then_latest_checksum_accepted_core"
+        or migration_fallback.get(
+            "expand_only_that_completed_alakazam_derivative_to_final_format"
+        )
+        is not True
+        or migration_fallback.get(
+            "latest_core_direct_final_format_tensor_parent_allowed"
+        )
+        is not False
+        or migration_fallback.get(
+            "partial_old_alakazam_core_overlay_allowed"
+        )
+        is not False
+        or state_order != required_order
+        or len(completed_ids) != len(receipt_rows)
+        or completed_ids != required_order[: len(completed_ids)]
+        or pending_ids != required_order[len(completed_ids) :]
+        or set(originals) != set(required_order)
+        or dict(originals.get("alakazam") or {}).get("immutable") is not True
+        or dict(originals.get("alakazam") or {}).get(
+            "may_satisfy_new_refresh_gate"
+        )
+        is not False
+        or phase.get("population_transition_blocked_until_complete")
+        is not True
+        or (
+            phase_complete
+            and (
+                phase.get("status") != "complete"
+                or phase.get("active_refresh_specialist_id") is not None
+                or phase.get("next_refresh_specialist_id") is not None
+                or dict(phase.get("trigger") or {}).get(
+                    "all_required_specialists_training_complete"
+                )
+                is not True
+                or dict(phase.get("trigger") or {}).get(
+                    "all_required_specialists_frozen_and_registered"
+                )
+                is not True
+            )
+        )
+    ):
+        raise RuntimeError("post-fleet refresh state contract changed")
+
+    repository_root = state_path.parent.parent
+    for specialist_id, receipt_row in zip(completed_ids, receipt_rows):
+        if not isinstance(receipt_row, dict):
+            raise RuntimeError("post-fleet refresh receipt row is invalid")
+        receipt_path = Path(str(receipt_row.get("receipt") or "")).expanduser()
+        if not receipt_path.is_absolute():
+            receipt_path = (repository_root / receipt_path).resolve()
+        receipt_digest = str(receipt_row.get("receipt_sha256") or "")
+        if (
+            str(receipt_row.get("specialist_id") or "") != specialist_id
+            or not receipt_path.is_file()
+            or not receipt_digest.startswith("sha256:")
+            or sha256(receipt_path) != receipt_digest
+        ):
+            raise RuntimeError(
+                f"post-fleet refresh receipt identity failed: {specialist_id}"
+            )
+        receipt = _read(receipt_path)
+        original_digest = str(
+            dict(originals[specialist_id]).get("checksum") or ""
+        )
+        checkpoint_digest = str(
+            receipt.get("refresh_checkpoint_checksum") or ""
+        )
+        core = dict(receipt.get("resolved_core") or {})
+        training = dict(receipt.get("training_contract") or {})
+        if (
+            receipt.get("schema")
+            != POST_FLEET_REFRESH_COMPLETION_SCHEMA
+            or receipt.get("status") != "passed_frozen_registered"
+            or str(receipt.get("specialist_id") or "") != specialist_id
+            or not str(receipt.get("refresh_model_version") or "")
+            or not checkpoint_digest.startswith("sha256:")
+            or checkpoint_digest == original_digest
+            or receipt.get("original_checkpoint_checksum")
+            != original_digest
+            or receipt.get("current_gate_pass") is not True
+            or receipt.get("frozen") is not True
+            or receipt.get("registered") is not True
+            or not str(receipt.get("gate_receipt_sha256") or "").startswith(
+                "sha256:"
+            )
+            or not str(receipt.get("freeze_receipt_sha256") or "").startswith(
+                "sha256:"
+            )
+            or not str(
+                receipt.get("registration_receipt_sha256") or ""
+            ).startswith("sha256:")
+            or core.get("status") != "checksum_accepted"
+            or not str(core.get("checkpoint_checksum") or "").startswith(
+                "sha256:"
+            )
+            or not str(core.get("ready_receipt_sha256") or "").startswith(
+                "sha256:"
+            )
+            or training.get("canonical_source")
+            != "config/rl_protocol.yaml#/specialist_training"
+            or not str(training.get("sha256") or "").startswith("sha256:")
+        ):
+            raise RuntimeError(
+                f"post-fleet refresh completion failed: {specialist_id}"
+            )
+    return required_order, completed_ids
 
 
 def _is_expected_additive_gate_successor(
@@ -327,23 +708,45 @@ def _is_expected_additive_gate_successor(
     saved_gate: dict[str, Any],
     current_gate: dict[str, Any],
     frozen_registry: dict[str, Any],
+    materialization_receipt: dict[str, Any] | None = None,
+    current_gate_sha256: str | None = None,
 ) -> bool:
     """Recognize only the idempotent local half of a materialization retry."""
 
     checkpoint_digest = str(saved_gate.get("checkpoint_digest") or "")
     if not checkpoint_digest.startswith("sha256:"):
         return False
-    saved_gate_id = str(saved_gate.get("gate_id") or "")
+    saved_gate_id = str(
+        saved_gate.get("base_gate_id")
+        or saved_gate.get("gate_id")
+        or ""
+    )
     current_gate_id = str(current_gate.get("active_gate_id") or "")
     saved_revision = GATE_REVISION.fullmatch(saved_gate_id)
     current_revision = GATE_REVISION.fullmatch(current_gate_id)
-    if (
-        saved_revision is None
-        or current_revision is None
-        or saved_revision.group("prefix") != current_revision.group("prefix")
-        or int(current_revision.group("revision"))
-        != int(saved_revision.group("revision")) + 1
-    ):
+    sequential_revision = (
+        saved_revision is not None
+        and current_revision is not None
+        and int(current_revision.group("revision"))
+        == int(saved_revision.group("revision")) + 1
+        and (
+            saved_revision.group("prefix")
+            == current_revision.group("prefix")
+            or saved_gate.get("completion_authority")
+            == "explicit_owner_ceiling_acceptance"
+        )
+    )
+    receipt = dict(materialization_receipt or {})
+    receipt_bound_revision = (
+        receipt.get("schema")
+        == "poke_bot.frozen_specialist_gate_materialization/v1"
+        and receipt.get("specialist_id") == active_id
+        and receipt.get("checkpoint_digest") == checkpoint_digest
+        and receipt.get("gate_id") == current_gate_id
+        and str(receipt.get("gate_contract_sha256") or "")
+        == str(current_gate_sha256 or "")
+    )
+    if not sequential_revision and not receipt_bound_revision:
         return False
     next_gate = dict(current_gate.get("next_gate") or {})
     if str(next_gate.get("id") or "") != current_gate_id:
@@ -368,6 +771,13 @@ def _is_expected_additive_gate_successor(
         or not saved_roster
         or not saved_roster.issubset(current_roster)
         or len(current_roster) != len(saved_roster) + 1
+    ):
+        return False
+    if receipt_bound_revision and (
+        receipt.get("opponent_id")
+        != matching_rows[0].get("opponent_id")
+        or active_id
+        not in set(receipt.get("frozen_specialist_ids") or ())
     ):
         return False
     registry_rows = [
@@ -420,6 +830,19 @@ def _source(
         and handler_state.get("phase") == "complete_handoff_started"
         and saved_gate_path.is_file()
     ):
+        state_root_raw = str(runtime.get("state_root") or "").strip()
+        materialization_path = (
+            Path(state_root_raw).expanduser().resolve()
+            / f"{active_id}-splus-gate-materialization.json"
+            if state_root_raw
+            else None
+        )
+        materialization_receipt = (
+            _read(materialization_path)
+            if materialization_path is not None
+            and materialization_path.is_file()
+            else None
+        )
         expected_additive_successor = _is_expected_additive_gate_successor(
             active_id=active_id,
             saved_gate=saved_gate,
@@ -427,6 +850,8 @@ def _source(
             frozen_registry=_read(
                 _path(runtime, "frozen_specialist_registry")
             ),
+            materialization_receipt=materialization_receipt,
+            current_gate_sha256=sha256(saved_gate_path),
         )
     if (
         saved_gate.get("completion_authority")
@@ -480,16 +905,24 @@ def _source(
             dict(value)
             for value in (handler_state.get("queued_submissions") or [])
         ]
+        approved_submission_count = int(
+            handler_state.get("approved_submission_count", 1)
+        )
+        expected_copy_numbers = list(
+            range(1, approved_submission_count + 1)
+        )
         validation = dict(saved_gate.get("validation") or {})
         if (
             handler_state.get("schema")
             != "poke_bot.passed_gate_handler/v1"
             or handler_state.get("phase") != "complete_handoff_started"
             or handler_state.get("submission_mode") != "queue_and_continue"
+            or approved_submission_count not in (1, 2)
             or not validation
             or not all(value is True for value in validation.values())
             or handler_state.get("frozen_model") != frozen
-            or [int(value.get("copy_number", -1)) for value in queued] != [1]
+            or [int(value.get("copy_number", -1)) for value in queued]
+            != expected_copy_numbers
             or any(
                 value.get("checkpoint_checksum")
                 != saved_gate.get("checkpoint_digest")
@@ -558,6 +991,10 @@ def _generated(
     if runtime.get("matchup_v6") is not None:
         runtime_registration["matchup_v6"] = copy.deepcopy(
             runtime["matchup_v6"]
+        )
+    if runtime.get("future_guide_weight_policy") is not None:
+        runtime_registration["future_guide_weight_policy"] = copy.deepcopy(
+            runtime["future_guide_weight_policy"]
         )
     if runtime.get("inactive_tree_candidate"):
         candidate_tree = candidate_tree or _path(
@@ -948,12 +1385,29 @@ def run(contract_path: Path) -> int:
             if row.get("frozen") is True
         }
         completed_ids.add(active_id)
-        required_ids = _required_specialist_ids(
-            _path(dict(contract["selection"]), "state")
-        )
-        if population_transition_ready(completed_ids, required_ids):
-            _start_population_handoff(runtime)
-            return 0
+        state_path = _path(dict(contract["selection"]), "state")
+        required_ids = _required_specialist_ids(state_path)
+        if completed_ids == required_ids:
+            (
+                required_refresh_order,
+                completed_refresh_ids,
+            ) = _validated_post_fleet_refresh_progress(
+                state_path=state_path,
+                cycle_contract=contract,
+            )
+            if population_transition_ready(
+                completed_ids,
+                required_ids,
+                completed_refresh_ids=completed_refresh_ids,
+                required_refresh_order=required_refresh_order,
+            ):
+                _start_population_handoff(runtime)
+                return 0
+            next_refresh = required_refresh_order[len(completed_refresh_ids)]
+            raise RuntimeError(
+                "post-fleet specialist refresh is pending before population: "
+                f"{next_refresh}"
+            )
         template = _read(_path(contract, "core_refresh_template"))
         cumulative = _cumulative_core_contract(
             template=template,

@@ -27,8 +27,10 @@ from .replay_import import assert_info_set, InfoSetViolation
 # v5 invalidated cached/sharded decisions built before official JSON enum-name
 # scalars (for example "IsFirst" / "Yes" / "Hand") were normalized to the
 # same feature rows as their IntEnum values. v6 attaches expanded strategic
-# targets from the complete trajectory before context truncation.
-DATASET_CACHE_SCHEMA_VERSION = 6
+# targets from the complete trajectory before context truncation. v7 preserves
+# the exact select context and demonstrated STOP status on every policy stage
+# for future setup-active/setup-bench objectives.
+DATASET_CACHE_SCHEMA_VERSION = 7
 
 
 @dataclass
@@ -45,6 +47,11 @@ class PolicyStage:
     guide_target_index: int = -1
     #: Unique-best margin, clamped to [0, 1], used to weight guide CE.
     guide_confidence: float = 0.0
+    #: Exact public SelectContext for stage-gated future auxiliary objectives.
+    select_context: int = -1
+    #: Whether the recorded candidate stopped the autoregressive selection at
+    #: this stage. This is diagnostic/stratification metadata, never an input.
+    selected_is_stop: bool = False
 
 
 @dataclass
@@ -132,6 +139,16 @@ def featurize_step(
     action = [int(x) for x in (step.get("action") or [])]
     stage_defs = features.factorized_teacher_forcing_stages(obs, action)
     policy_stages: list[PolicyStage] = []
+    raw_context = (obs.get("select") or {}).get("context", -1)
+    try:
+        # Use the same enum-name normalization as the option feature builder.
+        # Public traces may encode this scalar as either ``1`` or
+        # ``"SetupActivePokemon"``; treating the latter as unknown would
+        # silently remove the exact setup rows from the future curriculum.
+        select_context = features._validated_context(raw_context)
+    except (features.FeatureContractError, TypeError, ValueError, OverflowError):
+        select_context = -1
+    prefix: list[int] = []
     for combos, target_index in stage_defs:
         stage_combos = [list(combo) for combo in combos]
         raw_guide = (
@@ -169,8 +186,15 @@ def featurize_step(
                 target_index=target_index,
                 guide_target_index=guide_target_index,
                 guide_confidence=guide_confidence,
+                select_context=select_context,
+                selected_is_stop=(
+                    0 <= int(target_index) < len(stage_combos)
+                    and stage_combos[int(target_index)] == prefix
+                ),
             )
         )
+        if 0 <= int(target_index) < len(stage_combos):
+            prefix = list(stage_combos[int(target_index)])
     combos = policy_stages[0].action_combos
     board = features.build_board_tokens(obs, deck)
     option_sv = policy_stages[0].options

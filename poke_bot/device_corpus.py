@@ -50,8 +50,12 @@ BOARD_WORDS = 24
 DEFAULT_MIN_FREE_GIB = 12.0
 # v3 guarantees every present exact-card/strategy target passed strict
 # validation. v4 adds the versioned expanded-strategic target layout while
-# retaining decision/sample boundaries explicitly.
-DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 4
+# retaining decision/sample boundaries explicitly. v5 preserves each policy
+# stage's exact select context and whether the demonstrated choice was STOP so
+# setup-active/setup-bench curricula never infer either fact from option text.
+DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 5
+DEVICE_CORPUS_SELECT_CONTEXT_UNKNOWN = -1
+DEVICE_CORPUS_SELECT_CONTEXT_MAX = 48
 
 DEVICE_CORPUS_REQUIRED_TENSOR_FIELDS = (
     "board_index",
@@ -78,6 +82,8 @@ DEVICE_CORPUS_OPTIONAL_TENSOR_FIELDS = (
     "sample_aux_class",
     "guide_target_index",
     "guide_confidence",
+    "select_context",
+    "selected_is_stop",
     "action_index",
     "action_value",
     "action_offset",
@@ -663,6 +669,8 @@ class DeviceResidentBootstrapCorpus:
     sample_aux_class: torch.Tensor | None = None
     guide_target_index: torch.Tensor | None = None
     guide_confidence: torch.Tensor | None = None
+    select_context: torch.Tensor | None = None
+    selected_is_stop: torch.Tensor | None = None
     action_index: torch.Tensor | None = None
     action_value: torch.Tensor | None = None
     action_offset: torch.Tensor | None = None
@@ -901,6 +909,8 @@ class DeviceResidentBootstrapCorpus:
         value_target = array("f")
         guide_target_index = array("h")
         guide_confidence = array("f")
+        select_context = array("h")
+        selected_is_stop = array("B")
         sample_aux_class = array("h")
         hand_index = array("h")
         hand_offset = array("I", [0])
@@ -1022,6 +1032,20 @@ class DeviceResidentBootstrapCorpus:
                         guide_confidence.append(
                             float(getattr(stage, "guide_confidence", 0.0))
                         )
+                        context = int(getattr(stage, "select_context", -1))
+                        if not (
+                            DEVICE_CORPUS_SELECT_CONTEXT_UNKNOWN
+                            <= context
+                            <= DEVICE_CORPUS_SELECT_CONTEXT_MAX
+                        ):
+                            raise ValueError(
+                                "select context is outside the packed schema: "
+                                f"{context}"
+                            )
+                        select_context.append(context)
+                        selected_is_stop.append(
+                            1 if bool(getattr(stage, "selected_is_stop", False)) else 0
+                        )
                         if exact_card_vocab is not None:
                             sample_aux_class.append(-1)
                         options.add(stage.options)
@@ -1064,8 +1088,14 @@ class DeviceResidentBootstrapCorpus:
             raise AssertionError("one option CSR row is required per training sample")
         if options.words_total != sum(n_options):
             raise AssertionError("option word-prefix accounting mismatch")
-        if len(guide_target_index) != len(sample_board):
-            raise AssertionError("resident guide target shape mismatch")
+        if not (
+            len(guide_target_index)
+            == len(guide_confidence)
+            == len(select_context)
+            == len(selected_is_stop)
+            == len(sample_board)
+        ):
+            raise AssertionError("resident guide/setup target shape mismatch")
         strategic.validate_counts(
             decisions=decisions,
             samples=len(sample_board),
@@ -1106,6 +1136,8 @@ class DeviceResidentBootstrapCorpus:
             + len(value_target) * value_target.itemsize
             + len(guide_target_index) * guide_target_index.itemsize
             + len(guide_confidence) * guide_confidence.itemsize
+            + len(select_context) * select_context.itemsize
+            + len(selected_is_stop) * selected_is_stop.itemsize
             + (
                 sum(len(values) * values.itemsize for values in exact_arrays)
                 if exact_card_vocab is not None
@@ -1221,6 +1253,12 @@ class DeviceResidentBootstrapCorpus:
             guide_confidence=_to_tensor(
                 guide_confidence, torch.float32, device
             ),
+            select_context=_to_tensor(
+                select_context, torch.int16, device
+            ),
+            selected_is_stop=_to_tensor(
+                selected_is_stop, torch.uint8, device
+            ),
             **strategic.tensor_kwargs(device),
             expanded_strategic_schema=(
                 EXPANDED_STRATEGIC_SCHEMA if strategic.has_targets else ""
@@ -1245,6 +1283,7 @@ class DeviceResidentBootstrapCorpus:
         sample_board = game_decision_offset = game_sample_offset = None
         option_word_start = n_options = target_index = value_target = None
         guide_target_index = guide_confidence = None
+        select_context = selected_is_stop = None
         hand_index = hand_offset = hand_present = None
         remainder_index = remainder_offset = remainder_present = None
         lethal_target = prize_race_target = sample_aux_class = None
@@ -1297,6 +1336,8 @@ class DeviceResidentBootstrapCorpus:
         value_target = array("f")
         guide_target_index = array("h")
         guide_confidence = array("f")
+        select_context = array("h")
+        selected_is_stop = array("B")
         sample_aux_class = array("h")
         hand_index = array("h")
         hand_offset = array("I", [0])
@@ -1388,6 +1429,20 @@ class DeviceResidentBootstrapCorpus:
                     guide_confidence.append(
                         float(getattr(stage, "guide_confidence", 0.0))
                     )
+                    context = int(getattr(stage, "select_context", -1))
+                    if not (
+                        DEVICE_CORPUS_SELECT_CONTEXT_UNKNOWN
+                        <= context
+                        <= DEVICE_CORPUS_SELECT_CONTEXT_MAX
+                    ):
+                        raise ValueError(
+                            "select context is outside the packed schema: "
+                            f"{context}"
+                        )
+                    select_context.append(context)
+                    selected_is_stop.append(
+                        1 if bool(getattr(stage, "selected_is_stop", False)) else 0
+                    )
                     sample_aux_class.append(-1)
                     options.add(stage.options)
                     strategic.add_sample(
@@ -1449,9 +1504,11 @@ class DeviceResidentBootstrapCorpus:
         if not (
             len(guide_target_index)
             == len(guide_confidence)
+            == len(select_context)
+            == len(selected_is_stop)
             == len(sample_board)
         ):
-            raise AssertionError("exact guide target shape mismatch")
+            raise AssertionError("exact guide/setup target shape mismatch")
         strategic.validate_counts(
             decisions=decisions,
             samples=len(sample_board),
@@ -1479,6 +1536,8 @@ class DeviceResidentBootstrapCorpus:
             + len(value_target) * value_target.itemsize
             + len(guide_target_index) * guide_target_index.itemsize
             + len(guide_confidence) * guide_confidence.itemsize
+            + len(select_context) * select_context.itemsize
+            + len(selected_is_stop) * selected_is_stop.itemsize
             + sum(len(values) * values.itemsize for values in exact_arrays)
             + (
                 sum(len(values) * values.itemsize for values in strategic_arrays)
@@ -1540,6 +1599,12 @@ class DeviceResidentBootstrapCorpus:
             guide_confidence=_to_tensor(
                 guide_confidence, torch.float32, device
             ),
+            select_context=_to_tensor(
+                select_context, torch.int16, device
+            ),
+            selected_is_stop=_to_tensor(
+                selected_is_stop, torch.uint8, device
+            ),
             **strategic.tensor_kwargs(device),
             expanded_strategic_schema=(
                 EXPANDED_STRATEGIC_SCHEMA if strategic.has_targets else ""
@@ -1565,6 +1630,7 @@ class DeviceResidentBootstrapCorpus:
         remainder_index = remainder_offset = remainder_present = None
         lethal_target = prize_race_target = sample_aux_class = None
         guide_target_index = guide_confidence = None
+        select_context = selected_is_stop = None
         strategic = None
         gc.collect()
         if device.type == "cuda":

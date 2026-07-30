@@ -9,6 +9,7 @@ from scripts.kaggle_cli_guard import (
     AUTH_SCHEMA,
     GO_FIRST_ATTESTATION_SCHEMA,
     GO_FIRST_VERIFIED_CASES,
+    TURN_ORDER_ATTESTATION_SCHEMA,
     _is_submit,
     _validate_authorization,
 )
@@ -66,6 +67,52 @@ def test_authorization_is_bound_to_exact_upload_identity(tmp_path: Path) -> None
     assert reason == "authorized"
 
     authorization["remaining_uses"] = 0
+    assert _validate_authorization(authorization, argv)[0] is False
+
+
+def test_second_preference_requires_matching_digest_bound_attestation(
+    tmp_path: Path,
+) -> None:
+    bundle = tmp_path / "submission.tar.gz"
+    bundle.write_bytes(b"second-preferring bundle")
+    digest = "sha256:" + hashlib.sha256(bundle.read_bytes()).hexdigest()
+    Path(str(bundle) + ".go-first-verified.json").write_text(
+        json.dumps(
+            {
+                "schema": TURN_ORDER_ATTESTATION_SCHEMA,
+                "file_sha256": digest,
+                "turn_order_preference": "second_if_allowed",
+                "go_first_if_offered": False,
+                "go_second_if_offered": True,
+                "verified_cases": sorted(GO_FIRST_VERIFIED_CASES),
+            }
+        ),
+        encoding="utf-8",
+    )
+    argv = [
+        "competitions",
+        "submit",
+        "-c",
+        "pokemon-tcg-ai-battle",
+        "-f",
+        str(bundle),
+        "-m",
+        "teal mask copy 2 second",
+    ]
+    authorization = {
+        "schema": AUTH_SCHEMA,
+        "explicit_user_approval": True,
+        "remaining_uses": 1,
+        "nonce": "teal-second",
+        "expires_at_epoch": time.time() + 60,
+        "competition": "pokemon-tcg-ai-battle",
+        "file_sha256": digest,
+        "message": "teal mask copy 2 second",
+        "turn_order_preference": "second_if_allowed",
+    }
+
+    assert _validate_authorization(authorization, argv)[0] is True
+    authorization["turn_order_preference"] = "first_if_allowed"
     assert _validate_authorization(authorization, argv)[0] is False
     authorization["remaining_uses"] = 1
     authorization["message"] = "different"

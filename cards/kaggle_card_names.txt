@@ -1,0 +1,2022 @@
+Basic {G} Energy
+Basic {R} Energy
+Basic {W} Energy
+Basic {L} Energy
+Basic {P} Energy
+Basic {F} Energy
+Basic {D} Energy
+Basic {M} Energy
+Boomerang Energy
+Neo Upper Energy
+Mist Energy
+Legacy Energy
+Enriching Energy
+Spiky Energy
+Team Rocket's Energy
+Prism Energy
+Ignition Energy
+Grow Grass Energy
+Telepath Psychic Energy
+Rock Fighting Energy
+Scrafty
+Scrafty
+Hippopotas
+Hippowdon
+Hippowdon
+Team Rocket's Kangaskhan ex
+Team Rocket's Kangaskhan ex
+Pinsir
+Pinsir
+Leafeon
+Leafeon
+Iron Leaves
+Iron Leaves
+Poltchageist
+Poltchageist
+Sinistcha ex
+Sinistcha ex
+Magcargo ex
+Magcargo ex
+Magcargo ex
+Chi-Yu
+Chi-Yu
+Glaceon
+Glaceon
+Froakie
+Froakie
+Frogadier
+Walking Wake
+Walking Wake
+Morpeko
+Morpeko
+Iron Thorns ex
+Iron Thorns ex
+Girafarig
+Enamorus
+Enamorus
+Greninja ex
+Greninja ex
+Greninja ex
+Ting-Lu
+Ting-Lu
+Applin
+Applin
+Eevee
+Eevee
+Bloodmoon Ursaluna ex
+Bloodmoon Ursaluna ex
+Shaymin
+Shaymin
+Gouging Fire ex
+Gouging Fire ex
+Totodile
+Croconaw
+Feraligatr
+Feraligatr
+Wiglett
+Wiglett
+Palafin
+Palafin
+Wugtrio ex
+Wugtrio ex
+Wugtrio ex
+Marill
+Marill
+Bronzor
+Bronzong
+Bronzong
+Flutter Mane
+Flutter Mane
+Relicanth
+Relicanth
+Great Tusk
+Great Tusk
+Gastly
+Gastly
+Haunter
+Roaring Moon
+Roaring Moon
+Koraidon
+Koraidon
+Raging Bolt ex
+Raging Bolt ex
+Hoothoot
+Dunsparce
+Dunsparce
+Dudunsparce
+Dudunsparce
+Pineco
+Seedot
+Seedot
+Nuzleaf
+Nuzleaf
+Shiftry
+Shiftry
+Deerling
+Deerling
+Sawsbuck
+Sawsbuck
+Rellor
+Rabsca
+Rabsca
+Iron Leaves ex
+Iron Leaves ex
+Slugma
+Litten
+Torracat
+Torracat
+Incineroar ex
+Incineroar ex
+Iron Crown ex
+Iron Crown ex
+Drilbur
+Drilbur
+Excadrill
+Excadrill
+Farigiraf ex
+Farigiraf ex
+Farigiraf ex
+Scizor ex
+Scizor ex
+Beldum
+Beldum
+Metang
+Metang
+Miraidon
+Miraidon
+Volbeat
+Volbeat
+Grookey
+Grookey
+Thwackey
+Thwackey
+Rillaboom
+Rillaboom
+Applin
+Dipplin
+Dipplin
+Sinistcha
+Sinistcha
+Teal Mask Ogerpon
+Teal Mask Ogerpon
+Teal Mask Ogerpon ex
+Teal Mask Ogerpon ex
+Teal Mask Ogerpon ex
+Litwick
+Litwick
+Chandelure
+Chandelure
+Hearthflame Mask Ogerpon ex
+Hearthflame Mask Ogerpon ex
+Hearthflame Mask Ogerpon ex
+Goldeen
+Goldeen
+Jynx
+Jynx
+Milotic
+Milotic
+Snorunt
+Froslass
+Froslass
+Finizen
+Palafin
+Palafin
+Palafin ex
+Palafin ex
+Wellspring Mask Ogerpon ex
+Wellspring Mask Ogerpon ex
+Wellspring Mask Ogerpon ex
+Abra
+Abra
+Slurpuff
+Sandygast
+Sandygast
+Munkidori
+Munkidori
+Timburr
+Gurdurr
+Gurdurr
+Conkeldurr
+Conkeldurr
+Okidogi
+Okidogi
+Cornerstone Mask Ogerpon ex
+Cornerstone Mask Ogerpon ex
+Cornerstone Mask Ogerpon ex
+Heatran
+Heatran
+Dreepy
+Dreepy
+Drakloak
+Drakloak
+Dragapult ex
+Dragapult ex
+Dragapult ex
+Tatsugiri
+Tatsugiri
+Farfetch'd
+Farfetch'd
+Chansey
+Chansey
+Blissey ex
+Blissey ex
+Galvantula
+Galvantula
+Rowlet
+Rowlet
+Dartrix
+Dartrix
+Decidueye
+Decidueye
+Revavroom ex
+Revavroom ex
+Revavroom ex
+Duskull
+Duskull
+Dusclops
+Dusclops
+Dusknoir
+Dusknoir
+Sylveon
+Sylveon
+Bloodmoon Ursaluna
+Bloodmoon Ursaluna
+Zorua
+Zorua
+Zoroark
+Zoroark
+Okidogi ex
+Okidogi ex
+Munkidori ex
+Munkidori ex
+Fezandipiti ex
+Fezandipiti ex
+Pecharunt ex
+Pecharunt ex
+Genesect
+Genesect
+Varoom
+Varoom
+Kyurem
+Kyurem
+Eevee
+Eevee
+Lileep
+Cradily
+Cradily
+Mow Rotom
+Applin
+Hydrapple ex
+Hydrapple ex
+Scorbunny
+Raboot
+Raboot
+Cinderace ex
+Cinderace ex
+Cinderace ex
+Lapras ex
+Lapras ex
+Lapras ex
+Carracosta
+Carracosta
+Crabominable
+Crabominable
+Chewtle
+Drednaw
+Drednaw
+Veluza
+Veluza
+Joltik
+Galvantula ex
+Galvantula ex
+Galvantula ex
+Slowpoke
+Slowpoke
+Slowking
+Slowking
+Comfey
+Comfey
+Klink
+Klink
+Klang
+Klinklang
+Klinklang
+Meltan
+Meltan
+Duraludon
+Duraludon
+Archaludon
+Archaludon
+Raging Bolt
+Raging Bolt
+Hoothoot
+Noctowl
+Noctowl
+Fan Rotom
+Fan Rotom
+Bouffalant
+Bouffalant
+Terapagos ex
+Terapagos ex
+Terapagos ex
+Exeggcute
+Zarude
+Zarude
+Black Kyurem ex
+Black Kyurem ex
+Bruxish
+Bruxish
+Quaxwell
+Quaquaval
+Quaquaval
+Smoochum
+Latias ex
+Latias ex
+Flittle
+Gimmighoul
+Gimmighoul
+Trapinch
+Trapinch
+Vibrava
+Vibrava
+Flygon ex
+Flygon ex
+Flygon ex
+Archaludon ex
+Archaludon ex
+Gholdengo
+Gholdengo
+Iron Crown
+Iron Crown
+Alolan Exeggutor ex
+Alolan Exeggutor ex
+Alolan Exeggutor ex
+Altaria
+Altaria
+Dialga
+Dialga
+Turtonator
+Turtonator
+Swablu
+Durant ex
+Durant ex
+Scatterbug
+Spewpa
+Spewpa
+Wo-Chien
+Wo-Chien
+Victini
+Victini
+Skeledirge
+Skeledirge
+Charcadet
+Charcadet
+Scovillain ex
+Scovillain ex
+Feebas
+Milotic ex
+Milotic ex
+Shellos
+Chien-Pao
+Chien-Pao
+Pikachu ex
+Pikachu ex
+Pikachu ex
+Magneton
+Magneton
+Rotom
+Rotom
+Tapu Koko
+Tapu Koko
+Togekiss
+Togekiss
+Uxie
+Mesprit
+Mesprit
+Azelf
+Yamask
+Yamask
+Cofagrigus
+Cofagrigus
+Espurr
+Espurr
+Meowstic
+Meowstic
+Dedenne
+Dedenne
+PalossandEX
+PalossandEX
+PalossandEX
+Annihilape
+Annihilape
+Gastrodon
+Gastrodon
+Koraidon
+Koraidon
+Deino
+Deino
+Zweilous
+Zweilous
+Hydreigon ex
+Hydreigon ex
+Hydreigon ex
+Pecharunt
+Pecharunt
+Tatsugiri ex
+Tatsugiri ex
+Tatsugiri ex
+Slaking ex
+Slaking ex
+Bouffalant
+Bouffalant
+Terapagos
+Terapagos
+Budew
+Leafeon ex
+Leafeon ex
+Leafeon ex
+Cottonee
+Whimsicott
+Whimsicott
+Flareon ex
+Flareon ex
+Flareon ex
+Seaking
+Seaking
+Vaporeon ex
+Vaporeon ex
+Vaporeon ex
+Feebas
+Glaceon ex
+Glaceon ex
+Glaceon ex
+Jolteon ex
+Jolteon ex
+Jolteon ex
+Alakazam
+Alakazam
+Espeon ex
+Espeon ex
+Espeon ex
+Swirlix
+Swirlix
+Umbreon ex
+Umbreon ex
+Umbreon ex
+Eevee ex
+Eevee ex
+Eevee ex
+Hoothoot
+Hoothoot
+Regigigas
+Caterpie
+Metapod
+Butterfree
+Maractus
+Maractus
+Magmortar
+Magmortar
+N’s Darumaka
+N’s Darumaka
+N’s Darmanitan
+N’s Darmanitan
+Volcanion ex
+Volcanion ex
+Lotad
+Lombre
+Ludicolo
+Ludicolo
+Wailmer
+Wailord
+Iono’s Voltorb
+Iono’s Electrode
+Iono’s Electrode
+N’s Joltik
+Iono’s Tadbulb
+Iono’s Bellibolt ex
+Iono’s Bellibolt ex
+Iono’s Wattrel
+Iono’s Kilowattrel
+Iono’s Kilowattrel
+Lillie’s Clefairy ex
+Lillie’s Clefairy ex
+Banette
+Banette
+Beldum
+Beldum
+Metang
+Metang
+Metagross
+Metagross
+N’s Sigilyph
+N’s Sigilyph
+Lillie’s Cutiefly
+Lillie’s Ribombee
+Lillie’s Ribombee
+Lillie’s Comfey
+Lillie’s Comfey
+Swinub
+Swinub
+Piloswine
+Piloswine
+Mamoswine ex
+Mamoswine ex
+Larvitar
+Pupitar
+Rockruff
+Rockruff
+Lycanroc
+Lycanroc
+Hop’s Silicobra
+Hop’s Silicobra
+Hop’s Sandaconda
+Hop’s Sandaconda
+Tyranitar
+Tyranitar
+N’s Purrloin
+N’s Zorua
+N’s Zoroark ex
+N’s Zoroark ex
+N’s Klink
+N’s Klang
+N’s Klang
+N’s Klinklang
+N’s Klinklang
+Magearna
+Magearna
+Hop’s Corviknight
+Hop’s Corviknight
+Hop’s Zacian ex
+Hop’s Zacian ex
+Bagon
+Bagon
+Shelgon
+Shelgon
+Salamence ex
+Salamence ex
+N’s Reshiram
+N’s Reshiram
+Hop’s Snorlax
+Hop’s Snorlax
+Dunsparce
+Dunsparce
+Dudunsparce ex
+Dudunsparce ex
+Hop’s Rookidee
+Hop’s Rookidee
+Hop’s Corvisquire
+Hop’s Corvisquire
+Hop’s Wooloo
+Hop’s Dubwool
+Hop’s Dubwool
+Hop’s Cramorant
+Sandy Shocks
+Sandy Shocks
+Miraidon ex
+Miraidon ex
+Marill
+Azumarill
+Azumarill
+Sylveon ex
+Sylveon ex
+Sylveon ex
+Eevee
+Eevee
+Ho-Oh
+Ho-Oh
+Charcadet
+Ceruledge ex
+Ceruledge ex
+Ceruledge ex
+Petilil
+Lilligant
+Lilligant
+Nymble
+Torchic
+Combusken
+Blaziken ex
+Blaziken ex
+Slowpoke
+Slowpoke
+Pikachu ex
+Pikachu ex
+Tapu Koko ex
+Sylveon
+Sylveon
+XerneasEX
+XerneasEX
+Dhelmise
+Dhelmise
+Riolu
+Sneasel
+Bronzor
+Zacian ex
+Zacian ex
+LugiaEX
+Ethan's Pinsir
+Ethan's Pinsir
+Yanma
+Yanma
+Yanmega ex
+Yanmega ex
+Cynthia's Roselia
+Cynthia's Roserade
+Cynthia's Roserade
+Shaymin
+Shaymin
+Dwebble
+Crustle
+Crustle
+Applin
+Dipplin
+Hydrapple
+Hydrapple
+Teal Mask Ogerpon
+Teal Mask Ogerpon
+Ponyta
+Rapidash
+Rapidash
+Ethan's Cyndaquil
+Ethan's Quilava
+Ethan's Quilava
+Ethan's Typhlosion
+Ethan's Typhlosion
+Ethan's Slugma
+Ethan's Magcargo
+Ethan's Magcargo
+Ethan's Ho-Oh ex
+Ethan's Ho-Oh ex
+Hearthflame Mask Ogerpon
+Hearthflame Mask Ogerpon
+Misty's Psyduck
+Misty's Psyduck
+Misty's Staryu
+Misty's Starmie
+Misty's Magikarp
+Misty's Magikarp
+Misty's Gyarados
+Misty's Gyarados
+Misty's Lapras
+Misty's Lapras
+Cynthia's Feebas
+Cynthia's Milotic
+Buizel
+Buizel
+Floatzel
+Floatzel
+Dondozo ex
+Dondozo ex
+Wellspring Mask Ogerpon
+Wellspring Mask Ogerpon
+Electabuzz
+Electivire ex
+Electivire ex
+Ethan's Pichu
+Electrike
+Electrike
+Manectric
+Manectric
+Rotom
+Rotom
+Zeraora
+Zeraora
+Ethan's Sudowoodo
+Ethan's Sudowoodo
+Cynthia's Gible
+Cynthia's Gabite
+Cynthia's Gabite
+Cynthia's Garchomp ex
+Cynthia's Garchomp ex
+Mudbray
+Mudsdale
+Mudsdale
+Arven's Toedscool
+Arven's Toedscruel
+Arven's Toedscruel
+Cornerstone Mask Ogerpon
+Cornerstone Mask Ogerpon
+Cynthia's Spiritomb
+Arven's Maschiff
+Arven's Maschiff
+Arven's Mabosstiff ex
+Arven's Mabosstiff ex
+Tauros
+Tauros
+Arven's Skwovet
+Arven's Greedent
+Arven's Greedent
+Pineco
+Shroomish
+Breloom
+Breloom
+Mow Rotom
+Mow Rotom
+Fomantis
+Lurantis
+Lurantis
+Team Rocket's Blipbug
+Team Rocket's Tarountula
+Team Rocket's Spidops
+Team Rocket's Spidops
+Smoliv
+Dolliv
+Dolliv
+Arboliva ex
+Arboliva ex
+Growlithe
+Growlithe
+Arcanine
+Arcanine
+Team Rocket's Moltres ex
+Team Rocket's Moltres ex
+Team Rocket's Houndour
+Team Rocket's Houndoom
+Team Rocket's Houndoom
+Torchic
+Torchic
+Combusken
+Combusken
+Blaziken
+Blaziken
+Heat Rotom
+Heat Rotom
+Team Rocket's Articuno
+Team Rocket's Articuno
+Clamperl
+Huntail
+Huntail
+Gorebyss
+Snover
+Snover
+Abomasnow
+Abomasnow
+Wash Rotom
+Wash Rotom
+Arrokuda
+Barraskewda
+Barraskewda
+Cetoddle
+Cetoddle
+Cetitan ex
+Cetitan ex
+Team Rocket's Zapdos
+Team Rocket's Zapdos
+Team Rocket's Mareep
+Team Rocket's Mareep
+Team Rocket's Flaaffy
+Team Rocket's Ampharos
+Team Rocket's Ampharos
+Team Rocket's Drowzee
+Team Rocket's Hypno
+Team Rocket's Hypno
+Team Rocket's Mewtwo ex
+Team Rocket's Mewtwo ex
+Team Rocket's Wobbuffet
+Team Rocket's Wobbuffet
+Team Rocket's Chingling
+Team Rocket's Mimikyu
+Team Rocket's Dottler
+Team Rocket's Dottler
+Team Rocket's Orbeetle
+Team Rocket's Orbeetle
+Mankey
+Primeape
+Annihilape
+Annihilape
+Team Rocket's Larvitar
+Team Rocket's Pupitar
+Team Rocket's Tyranitar
+Team Rocket's Tyranitar
+Nosepass
+Nosepass
+Probopass
+Probopass
+Meditite
+Medicham
+Regirock ex
+Regirock ex
+Team Rocket's Ekans
+Team Rocket's Ekans
+Team Rocket's Arbok
+Team Rocket's Arbok
+Team Rocket's Nidoran♀
+Team Rocket's Nidorina
+Team Rocket's Nidorina
+Team Rocket's Nidoqueen
+Team Rocket's Nidoqueen
+Team Rocket's Nidoran♂
+Team Rocket's Nidoran♂
+Team Rocket's Nidorino
+Team Rocket's Nidorino
+Team Rocket's Nidoking ex
+Team Rocket's Nidoking ex
+Team Rocket's Zubat
+Team Rocket's Golbat
+Team Rocket's Golbat
+Team Rocket's Crobat ex
+Team Rocket's Crobat ex
+Team Rocket's Grimer
+Team Rocket's Muk
+Team Rocket's Muk
+Team Rocket's Koffing
+Team Rocket's Koffing
+Team Rocket's Weezing
+Team Rocket's Murkrow
+Team Rocket's Murkrow
+Team Rocket's Sneasel
+Team Rocket's Sneasel
+Forretress
+Forretress
+Skarmory
+Skarmory
+Zamazenta
+Team Rocket's Rattata
+Team Rocket's Raticate
+Team Rocket's Meowth
+Team Rocket's Meowth
+Team Rocket's Persian ex
+Team Rocket's Persian ex
+Kangaskhan
+Kangaskhan
+Team Rocket's Porygon
+Team Rocket's Porygon2
+Team Rocket's Porygon-Z
+Team Rocket's Porygon-Z
+Taillow
+Swellow
+Swellow
+Squawkabilly
+Snivy
+Snivy
+Servine
+Servine
+Serperior ex
+Serperior ex
+Pansage
+Pansage
+Simisage
+Petilil
+Petilil
+Lilligant
+Lilligant
+Maractus
+Maractus
+Karrablast
+Karrablast
+Foongus
+Amoonguss
+Amoonguss
+Victini
+Darumaka
+Darmanitan
+Darmanitan
+Litwick
+Lampent
+Chandelure
+Chandelure
+Larvesta
+Volcarona
+Volcarona
+Panpour
+Panpour
+Simipour
+Tympole
+Palpitoad
+Palpitoad
+Seismitoad
+Seismitoad
+Tirtouga
+Tirtouga
+Carracosta
+Carracosta
+Alomomola
+Alomomola
+Cubchoo
+Beartic
+Beartic
+Cryogonal
+Cryogonal
+Kyurem ex
+Kyurem ex
+Emolga
+Emolga
+Tynamo
+Eelektrik
+Eelektrik
+Eelektross
+Eelektross
+Thundurus
+Thundurus
+Zekrom ex
+Zekrom ex
+Munna
+Munna
+Musharna
+Musharna
+Solosis
+Duosion
+Duosion
+Reuniclus
+Reuniclus
+Elgyem
+Elgyem
+Beheeyem
+Beheeyem
+Golett
+Golurk
+Golurk
+Meloetta ex
+Meloetta ex
+Drilbur
+Drilbur
+Excadrill ex
+Excadrill ex
+Timburr
+Timburr
+Gurdurr
+Gurdurr
+Conkeldurr
+Conkeldurr
+Throh
+Dwebble
+Dwebble
+Crustle
+Crustle
+Landorus
+Landorus
+Venipede
+Whirlipede
+Scolipede
+Scolipede
+Sandile
+Krokorok
+Krookodile
+Krookodile
+Vullaby
+Mandibuzz
+Mandibuzz
+Escavalier
+Pawniard
+Bisharp
+Bisharp
+Cobalion
+Cobalion
+Genesect ex
+Genesect ex
+Axew
+Fraxure
+Fraxure
+Haxorus
+Haxorus
+Pidove
+Pidove
+Tranquill
+Unfezant
+Unfezant
+Audino
+Minccino
+Cinccino
+Sewaddle
+Swadloon
+Swadloon
+Leavanny
+Leavanny
+Cottonee
+Whimsicott ex
+Whimsicott ex
+Deerling
+Sawsbuck
+Sawsbuck
+Shelmet
+Shelmet
+Accelgor
+Virizion
+Virizion
+Tepig
+Tepig
+Pignite
+Pignite
+Emboar
+Emboar
+Pansear
+Pansear
+Simisear
+Heatmor
+Heatmor
+Reshiram ex
+Reshiram ex
+Oshawott
+Oshawott
+Dewott
+Samurott
+Samurott
+Basculin
+Basculin
+Ducklett
+Ducklett
+Swanna
+Swanna
+Vanillite
+Vanillite
+Vanillish
+Vanillish
+Vanilluxe
+Vanilluxe
+Keldeo ex
+Keldeo ex
+Blitzle
+Blitzle
+Zebstrika
+Zebstrika
+Joltik
+Galvantula
+Stunfisk
+Stunfisk
+Woobat
+Swoobat
+Swoobat
+Sigilyph
+Sigilyph
+Yamask
+Cofagrigus
+Cofagrigus
+Gothita
+Gothorita
+Gothorita
+Gothitelle
+Gothitelle
+Frillish
+Jellicent ex
+Jellicent ex
+Roggenrola
+Roggenrola
+Boldore
+Boldore
+Gigalith
+Gigalith
+Sawk
+Sawk
+Archen
+Archeops
+Archeops
+Mienfoo
+Mienshao
+Mienshao
+Terrakion
+Terrakion
+Purrloin
+Liepard
+Scraggy
+Scraggy
+Scrafty
+Trubbish
+Trubbish
+Garbodor
+Garbodor
+Zorua
+Zoroark
+Zoroark
+Deino
+Deino
+Zweilous
+Zweilous
+Hydreigon ex
+Hydreigon ex
+Ferroseed
+Ferroseed
+Ferrothorn
+Ferrothorn
+Klink
+Klang
+Klinklang
+Klinklang
+Durant
+Durant
+Druddigon
+Druddigon
+Patrat
+Patrat
+Watchog
+Watchog
+Lillipup
+Herdier
+Herdier
+Stoutland
+Stoutland
+Bouffalant ex
+Bouffalant ex
+Rufflet
+Rufflet
+Braviary
+Braviary
+Tornadus
+Tornadus
+Steven's Baltoy
+Steven's Baltoy
+Steven's Claydol
+Steven's Claydol
+Steven's Carbink
+Steven's Carbink
+Steven's Skarmory
+Steven's Skarmory
+Steven's Beldum
+Steven's Metang
+Steven's Metagross ex
+Steven's Metagross ex
+Marnie's Purrloin
+Marnie's Liepard
+Marnie's Scraggy
+Marnie's Scrafty
+Marnie's Scrafty
+Marnie's Impidimp
+Marnie's Impidimp
+Marnie's Morgrem
+Marnie's Grimmsnarl ex
+Marnie's Grimmsnarl ex
+Marnie's Morpeko
+Bulbasaur
+Ivysaur
+Mega Venusaur ex
+Mega Venusaur ex
+Exeggcute
+Exeggutor
+Exeggutor
+Celebi
+Celebi
+Seedot
+Seedot
+Nuzleaf
+Nuzleaf
+Shiftry
+Shiftry
+Vulpix
+Vulpix
+Ninetales
+Ninetales
+Numel
+Numel
+Mega Camerupt ex
+Mega Camerupt ex
+Volcanion
+Volcanion
+Scorbunny
+Raboot
+Cinderace
+Cinderace
+Corphish
+Corphish
+Gimmighoul
+Sandshrew
+Sandshrew
+Sandslash
+Sandslash
+Onix
+Onix
+Tyrogue
+Makuhita
+Makuhita
+Hariyama
+Hariyama
+Lunatone
+Lunatone
+Solrock
+Riolu
+Mega Lucario ex
+Mega Lucario ex
+Croagunk
+Toxicroak
+Marshadow
+Stonjourner
+Stonjourner
+Nacli
+Naclstack
+Garganacl
+Garganacl
+Crawdaunt
+Crawdaunt
+Mega Absol ex
+Mega Absol ex
+Spiritomb
+Spiritomb
+Yveltal
+Yveltal
+Nickit
+Thievul
+Thievul
+Shroodle
+Grafaiai
+Steelix
+Steelix
+Mega Mawile ex
+Mega Mawile ex
+Dialga
+Dialga
+Tinkatink
+Tinkatuff
+Tinkatuff
+Tinkaton
+Gholdengo
+Gholdengo
+Spearow
+Fearow
+Miltank
+Miltank
+Yungoos
+Yungoos
+Gumshoos
+Gumshoos
+Tangela
+Tangela
+Tangrowth
+Tangrowth
+Chikorita
+Bayleef
+Meganium
+Meganium
+Shuckle
+Shuckle
+Nincada
+Ninjask
+Ninjask
+Dhelmise
+Litleo
+Pyroar
+Pyroar
+Sizzlipede
+Sizzlipede
+Centiskorch
+Centiskorch
+Chi-Yu
+Mantine
+Mantine
+Kyogre
+Kyogre
+Snover
+Snover
+Mega Abomasnow ex
+Mega Abomasnow ex
+Clauncher
+Clawitzer
+Clawitzer
+Sobble
+Drizzile
+Inteleon
+Inteleon
+Snom
+Frosmoth
+Eiscue
+Eiscue
+Magnemite
+Magneton
+Magnezone
+Magnezone
+Raikou
+Electrike
+Mega Manectric ex
+Mega Manectric ex
+Pachirisu
+Helioptile
+Heliolisk
+Heliolisk
+Abra
+Kadabra
+Kadabra
+Alakazam
+Alakazam
+Jynx
+Ralts
+Ralts
+Kirlia
+Kirlia
+Mega Gardevoir ex
+Mega Gardevoir ex
+Shedinja
+Shedinja
+Spoink
+Grumpig
+Grumpig
+Xerneas
+Xerneas
+Greavard
+Greavard
+Houndstone
+Houndstone
+Mega Latias ex
+Mega Latias ex
+Latios
+Latios
+Mega Kangaskhan ex
+Mega Kangaskhan ex
+Delibird
+Delibird
+Buneary
+Buneary
+Lopunny
+Lopunny
+Stufful
+Stufful
+Bewear
+Bewear
+Snubbull
+Granbull
+Granbull
+Cresselia
+Cresselia
+Meloetta
+Meloetta
+Mega Diancie ex
+Mega Diancie ex
+Mimikyu
+Mimikyu
+Milcery
+Alcremie
+Gastly
+Haunter
+Mega Gengar ex
+Mega Gengar ex
+Murkrow
+Honchkrow
+Honchkrow
+Sableye
+Absol
+Absol
+Eternatus
+Eternatus
+Oddish
+Gloom
+Vileplume
+Vileplume
+Mega Heracross ex
+Mega Heracross ex
+Lotad
+Lombre
+Ludicolo
+Ludicolo
+Genesect
+Genesect
+Nymble
+Lokix
+Lokix
+Charmander
+Charmander
+Charmeleon
+Mega Charizard X ex
+Moltres
+Darumaka
+Darmanitan
+Reshiram
+Reshiram
+Oricorio ex
+Oricorio ex
+Charcadet
+Charcadet
+Ceruledge
+Seel
+Dewgong
+Dewgong
+Swinub
+Swinub
+Piloswine
+Piloswine
+Mamoswine
+Mamoswine
+Suicune
+Piplup
+Piplup
+Prinplup
+Prinplup
+Rotom ex
+Rotom ex
+Yamper
+Boltund
+Pawmi
+Pawmi
+Pawmo
+Pawmot
+Misdreavus
+Mismagius ex
+Mismagius ex
+Cottonee
+Whimsicott
+Whimsicott
+Zacian
+Bramblin
+Brambleghast
+Brambleghast
+Paldean Tauros
+Paldean Tauros
+Gligar
+Gliscor
+Trapinch
+Vibrava
+Flygon
+Flygon
+Sneasel
+Sneasel
+Weavile
+Weavile
+Carvanha
+Mega Sharpedo ex
+Mega Sharpedo ex
+Seviper
+Seviper
+Sandile
+Sandile
+Krokorok
+Krokorok
+Krookodile
+Krookodile
+Toxel
+Toxel
+Toxtricity
+Toxtricity
+Empoleon ex
+Empoleon ex
+Bronzor
+Bronzor
+Bronzong
+Bronzong
+Togedemaru
+Togedemaru
+Duraludon
+Archaludon
+Jigglypuff
+Wigglytuff
+Wigglytuff
+Aipom
+Ambipom
+Ambipom
+Smeargle
+Smeargle
+Zigzagoon
+Linoone
+Linoone
+Buneary
+Buneary
+Mega Lopunny ex
+Mega Lopunny ex
+Wurmple
+Silcoon
+Silcoon
+Beautifly
+Beautifly
+Cascoon
+Dustox
+Dustox
+Entei
+Numel
+Numel
+Camerupt
+Camerupt
+Psyduck
+Psyduck
+Golduck
+Golduck
+Snorunt
+Mega Froslass ex
+Mega Froslass ex
+N's Vanillite
+N's Vanillite
+N's Vanillish
+N's Vanillish
+N's Vanilluxe
+N's Vanilluxe
+Snom
+Frosmoth
+Frosmoth
+Glastrier
+Glastrier
+Mega Eelektross ex
+Mega Eelektross ex
+Stunfisk
+Helioptile
+Heliolisk
+Heliolisk
+Tapu Koko
+Tapu Koko
+Team Rocket's Exeggcute
+Team Rocket's Exeggutor
+Team Rocket's Exeggutor
+Misdreavus
+Mismagius
+Rotom
+Rotom
+Hop's Phantump
+Hop's Trevenant
+Hop's Trevenant
+Spectrier
+Spectrier
+Team Rocket's Diglett
+Team Rocket's Dugtrio
+Team Rocket's Dugtrio
+Meditite
+Meditite
+Medicham
+Pancham
+Mega Hawlucha ex
+Mega Hawlucha ex
+Rolycoly
+Carkol
+Carkol
+Coalossal
+Coalossal
+Okidogi
+Okidogi
+Team Rocket's Honchkrow
+Team Rocket's Honchkrow
+Galarian Zigzagoon
+Galarian Linoone
+Galarian Linoone
+Galarian Obstagoon
+Galarian Obstagoon
+Scraggy
+Mega Scrafty ex
+Mega Scrafty ex
+Pangoro
+Pangoro
+Pecharunt
+Pecharunt
+Pawniard
+Bisharp
+Kingambit
+Kingambit
+Dratini
+Dragonair
+Dragonair
+Mega Dragonite ex
+Mega Dragonite ex
+Rayquaza
+Rayquaza
+N's Zekrom
+N's Zekrom
+Noibat
+Noibat
+Noivern
+Noivern
+Erika's Oddish
+Erika's Gloom
+Erika's Vileplume ex
+Erika's Vileplume ex
+Erika's Bellsprout
+Erika's Weepinbell
+Erika's Weepinbell
+Erika's Victreebel
+Erika's Victreebel
+Erika's Tangela
+Erika's Tangela
+Scyther
+Scyther
+Chikorita
+Chikorita
+Bayleef
+Mega Meganium ex
+Tapu Bulu
+Dipplin
+Sprigatito
+Floragato
+Meowscarada
+Meowscarada
+Capsakid
+Charmander
+Charmeleon
+Mega Charizard Y ex
+Magmar
+Tepig
+Pignite
+Mega Emboar ex
+Larvesta
+Larvesta
+Centiskorch
+Centiskorch
+Fuecoco
+Crocalor
+Totodile
+Croconaw
+Mega Feraligatr ex
+Glalie
+Glalie
+Spheal
+Sealeo
+Sealeo
+Walrein
+Walrein
+Regice ex
+Regice ex
+Froakie
+Cramorant
+Cramorant
+Quaxly
+Pikachu
+Pikachu
+Raichu
+Raichu
+Magnemite
+Voltorb ex
+Zapdos
+Zapdos
+Zapdos
+Zapdos
+Luxray ex
+Luxray ex
+Helioptile
+Helioptile
+Zeraora
+Miraidon ex
+Miraidon ex
+Miraidon ex
+Clefable
+Clefable
+Togepi
+Togetic
+Marill
+Marill
+Azumarill ex
+Azumarill ex
+Shuppet
+Beheeyem
+Swirlix
+Slurpuff
+Slurpuff
+Fidough
+Fidough
+Dachsbun ex
+Dachsbun ex
+Scream Tail ex
+Scream Tail ex
+Fezandipiti
+Fezandipiti
+Iron Boulder
+Hitmontop
+Hitmontop
+Groudon
+Groudon
+Riolu
+Stunfisk ex
+Stunfisk ex
+Carbink
+Carbink
+Crabrawler
+Crabrawler
+Passimian
+Koraidon ex
+Koraidon ex
+Koraidon ex
+Venipede
+Venipede
+Whirlipede
+Whirlipede
+Scolipede
+Scolipede
+Vullaby
+Mandibuzz ex
+Mandibuzz ex
+Hoopa
+Hoopa
+Brute Bonnet
+Brute Bonnet
+Mawile
+Mawile
+Registeel ex
+Registeel ex
+Bronzor
+Togedemaru ex
+Togedemaru ex
+Melmetal
+Melmetal
+Duraludon
+Duraludon
+Orthworm ex
+Orthworm ex
+Fraxure
+Fraxure
+Haxorus
+Haxorus
+Larry's Dunsparce
+Larry's Dudunsparce ex
+Slakoth
+Vigoroth
+Skitty
+Delcatty
+Delcatty
+Zangoose ex
+Zangoose ex
+Larry's Starly
+Larry's Starly
+Larry's Staravia
+Larry's Staravia
+Larry's Staraptor
+Larry's Staraptor
+Mega Audino ex
+Mega Audino ex
+Larry's Rufflet
+Larry's Braviary
+Larry's Braviary
+Larry's Komala
+Larry's Komala
+Drampa
+Drampa
+Spinarak
+Ariados
+Shaymin
+Shaymin
+Snivy
+Servine
+Serperior
+Serperior
+Scatterbug
+Spewpa
+Vivillon
+Vivillon
+Rowlet
+Rowlet
+Dartrix
+Dartrix
+Decidueye ex
+Decidueye ex
+Fletchinder
+Talonflame
+Talonflame
+Salandit
+Salazzle ex
+Salazzle ex
+Turtonator
+Turtonator
+Seel
+Seel
+Dewgong
+Dewgong
+Staryu
+Mega Starmie ex
+Mega Starmie ex
+Amaura
+Aurorus
+Aurorus
+Volcanion
+Volcanion
+Shinx
+Luxio
+Luxio
+Luxray
+Luxray
+Dedenne
+Dedenne
+Clefairy
+Clefairy
+Mega Clefable ex
+Mega Clefable ex
+Mawile
+Espurr
+Espurr
+Meowstic
+Meowstic
+Spritzee
+Spritzee
+Aromatisse
+Aromatisse
+Nosepass
+Probopass
+Probopass
+Hippopotas
+Hippopotas
+Hippowdon
+Hippowdon
+Landorus
+Landorus
+Binacle
+Binacle
+Barbaracle
+Barbaracle
+Tyrunt
+Tyrantrum
+Tyrantrum
+Hawlucha
+Mega Zygarde ex
+Mega Zygarde ex
+Gastly
+Haunter
+Gengar
+Gengar
+Skorupi
+Drapion
+Drapion
+Yveltal ex
+Yveltal ex
+Chien-Pao
+Chien-Pao
+Mega Skarmory ex
+Honedge
+Doublade
+Aegislash
+Aegislash
+Klefki
+Rattata
+Raticate
+Raticate
+Meowth ex
+Meowth ex
+Snorlax
+Snorlax
+Bunnelby
+Diggersby
+Diggersby
+Fletchling
+Fletchling
+Furfrou
+Furfrou
+Roto-Stick
+Hole-Digging Shovel
+Rare Candy
+Unfair Stamp
+Enhanced Hammer
+Hyper Aroma
+Love Ball
+Boxed Order
+Awakening Drum
+Buddy-Buddy Poffin
+Hand Trimmer
+Prime Catcher
+Reboot Pod
+Ogre’s Mask
+Accompanying Flute
+Secret Box
+Scoop Up Cyclone
+Bug Catching Set
+Dangerous Laser
+Poké Vital A
+Night Stretcher
+Glass Trumpet
+Antique Root Fossil
+Antique Root Fossil
+Energy Search Pro
+Call Bell
+Dusk Ball
+Meddling Memo
+Megaton Blower
+Dragon Elixir
+Deduction Kit
+Scramble Switch
+Chill Teaser Toy
+Miracle Headset
+Max Rod
+Treasure Tracker
+Super Potion
+N’s PP Up
+Redeemable Ticket
+Hop’s Bag
+Energy Switch
+Potion
+Energy Retrieval
+Energy Search
+Crushing Hammer
+Ultra Ball
+Pokégear 3.0
+Switch
+Pokémon Catcher
+Master Ball
+Precious Trolley
+Tera Orb
+Brilliant Blender
+Sacred Ash
+Arven's Sandwich
+Team Rocket's Bother-Bot
+Team Rocket's Great Ball
+Team Rocket's Venture Bomb
+Team Rocket's Transceiver
+Energy Coin
+Antique Cover Fossil
+Antique Cover Fossil
+Tool Scrapper
+Antique Plume Fossil
+Antique Plume Fossil
+Energy Recycler
+Iron Defender
+Premium Power Pro
+Fighting Gong
+Repel
+Strange Timepiece
+Mega Signal
+Wondrous Patch
+Jumbo Ice Cream
+Blowtorch
+Energy Swatter
+Antique Jaw Fossil
+Antique Jaw Fossil
+Antique Sail Fossil
+Antique Sail Fossil
+Poké Pad
+Lumiose Galette
+Team Rocket’s Hypnotizer
+Survival Brace
+Lucky Helmet
+Rescue Board
+Maximum Belt
+Hero’s Cape
+Heavy Baton
+Handheld Fan
+Binding Mochi
+Powerglass
+Payapa Berry
+Sparkling Crystal
+Gravity Gemstone
+Deluxe Bomb
+Counter Gain
+Amulet of Hope
+Haban Berry
+Hop’s Choice Band
+Lillie’s Pearl
+Cynthia's Power Weight
+Air Balloon
+Brave Bangle
+Punk Helmet
+Sacred Charm
+Light Ball
+Thick Scale
+Core Memory
+Core Memory
+Billy & O'Nare
+Boss’s Orders
+Perrin
+Lana’s Aid
+Explorer’s Guidance
+Eri
+Morty’s Conviction
+Ciphermaniac’s Codebreaking
+Salvatore
+Bianca’s Devotion
+Kieran
+Carmine
+Hassel
+Colress’s Tenacity
+Janine’s Secret Art
+Cassiopeia
+Xerosic’s Machinations
+Crispin
+Lacey
+Kofu
+Briar
+Drayton
+Surfer
+Lisia’s Appeal
+Cyrano
+Larry’s Skill
+Amarys
+Iris’s Fighting Spirit
+Ruffian
+Brock’s Scouting
+Black Belt’s Training
+Cook
+Judge
+Emcee's Hype
+Ethan's Adventure
+Team Rocket's Ariana
+Team Rocket's Archer
+Team Rocket's Giovanni
+Team Rocket's Petrel
+Team Rocket's Proton
+N's Plan
+Fennel
+Harlequin
+Cheren
+Hilda
+Lt. Surge's Bargain
+Lillie's Determination
+Acerola's Mischief
+Wally's Compassion
+Grimsley's Move
+Dawn
+Firebreather
+Canari
+Anthea & Concordia
+Waitress
+Urbain
+Lucian
+Tarragon
+Naveen
+Rosa's Encouragement
+Jacinthe
+Community Center
+Perilous Jungle
+Full Metal Lab
+Festival Grounds
+Jamming Tower
+Neutralization Zone
+Academy at Night
+Grand Tree
+Area Zero Underdepths
+Lively Stadium
+Gravity Mountain
+N’s Castle
+Levincia
+Postwick
+Team Rocket's Watchtower
+Team Rocket's Factory
+Granite Cave
+Spikemuth Gym
+Risky Ruins
+Forest of Vitality
+Surfing Beach
+Mystery Garden
+Battle Cage
+Dizzying Valley
+Nighttime Mine
+Lumiose City

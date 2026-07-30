@@ -149,6 +149,111 @@ def test_generated_successor_fusion_requires_fleet_publication(
     assert "not published fleet-wide" in reason
 
 
+def test_generated_successor_fusion_accepts_complete_terminal_gate_for_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    commit = json.loads(commit_path.read_text(encoding="utf-8"))
+    learner = commit["learner"]
+    games = 3500
+    commit["history"][0]["next_collection_publish"] = None
+    commit["history"][0]["active_gate_result"] = {
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "iteration": 5,
+        "games": games,
+        "checkpoint": learner["path"],
+        "checkpoint_digest": learner["digest"],
+        "passed": False,
+        "audit": {
+            "passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "greedy_required": True,
+            "greedy": True,
+            "both_seats": True,
+            "valid_games": games,
+            "rows": games,
+            "requested_games": games,
+            "checkpoint_digest": learner["digest"],
+            "matchup_runtime": {
+                "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+                "all_games_audited": True,
+                "all_runtime_enabled": True,
+                "contract_clean": True,
+                "games": games,
+                "audited_games": games,
+                "runtime_enabled_games": games,
+                "runtime_disabled_games": 0,
+                "missing_games": 0,
+                "malformed_games": 0,
+                "transition_contract_violations": 0,
+            },
+        },
+    }
+    _write(commit_path, commit)
+    _write(run_dir / "loop_state.json", commit)
+
+    ready, reason = _decision_fusion_runtime_ready(
+        run_dir,
+        allow_terminal_gate_evidence=True,
+    )
+
+    assert ready is True
+    assert "complete audited active gate" in reason
+
+
+def test_generated_successor_fusion_rejects_incomplete_terminal_gate_for_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    commit = json.loads(commit_path.read_text(encoding="utf-8"))
+    commit["history"][0]["next_collection_publish"] = None
+    commit["history"][0]["active_gate_result"] = {
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "iteration": 5,
+        "games": 3500,
+        "checkpoint": commit["learner"]["path"],
+        "checkpoint_digest": commit["learner"]["digest"],
+        "audit": {
+            "passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "greedy_required": True,
+            "greedy": True,
+            "both_seats": True,
+            "valid_games": 3500,
+            "rows": 3500,
+            "requested_games": 3500,
+            "checkpoint_digest": commit["learner"]["digest"],
+            "matchup_runtime": {
+                "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+                "all_games_audited": True,
+                "all_runtime_enabled": False,
+                "contract_clean": True,
+                "games": 3500,
+                "audited_games": 3500,
+                "runtime_enabled_games": 3499,
+                "runtime_disabled_games": 1,
+                "missing_games": 0,
+                "malformed_games": 0,
+                "transition_contract_violations": 0,
+            },
+        },
+    }
+    _write(commit_path, commit)
+    _write(run_dir / "loop_state.json", commit)
+
+    ready, reason = _decision_fusion_runtime_ready(
+        run_dir,
+        allow_terminal_gate_evidence=True,
+    )
+
+    assert ready is False
+    assert "not published fleet-wide" in reason
+
+
 def test_generated_successor_fusion_accepts_verified_design_migration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -190,6 +295,50 @@ def test_generated_successor_fusion_accepts_verified_design_migration(
 
     assert ready is True
     assert "verified successor fused descendant" in reason
+
+
+def test_generated_successor_fusion_accepts_initial_resume_migration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    previous_contract = manifest["design_contract"]
+    previous_fingerprint = manifest["design_fingerprint"]
+    current_contract = {**previous_contract, "source": {"revision": 2}}
+    current_fingerprint = _canonical_digest(current_contract)
+    migration_path = run_dir / "design_migrations" / "migration_0001.json"
+    reason = "receipt_backed_completed_collection_resume_v1"
+    migration = {
+        "schema": 1,
+        "receipt": str(migration_path.resolve()),
+        "reason": reason,
+        "boundary_next_iteration": 0,
+        "last_completed_iteration": -1,
+        "previous_fingerprint": previous_fingerprint,
+        "current_fingerprint": current_fingerprint,
+        "previous_contract": previous_contract,
+        "current_contract": current_contract,
+    }
+    _write(migration_path, migration)
+    history = [
+        {
+            "receipt": str(migration_path.resolve()),
+            "fingerprint": current_fingerprint,
+            "boundary_next_iteration": 0,
+            "reason": reason,
+        }
+    ]
+    for path in (run_dir / "loop_state.json", commit_path):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["design_fingerprint"] = current_fingerprint
+        payload["design_migration_history"] = history
+        _write(path, payload)
+
+    ready, reason_text = _decision_fusion_runtime_ready(run_dir)
+
+    assert ready is True
+    assert "verified successor fused descendant" in reason_text
 
 
 def test_generated_successor_fusion_rejects_corrupt_design_migration(
@@ -628,9 +777,12 @@ def test_live_handler_waits_for_iteration_30_versioned_marker() -> None:
     unit = (
         root / "deploy/systemd/pokebot-passed-gate-handler.service"
     ).read_text(encoding="utf-8")
-    runtime = (
+    runtime_path = (
         root / ".staging/zzzzzzzzzzzzzzzzzz-v31-matchup-runtime.conf"
-    ).read_text(encoding="utf-8")
+    )
+    if not runtime_path.is_file():
+        pytest.skip("host-only V31 runtime staging artifact is unavailable")
+    runtime = runtime_path.read_text(encoding="utf-8")
 
     marker = "SPECIALIST_GATE_PASSED.alakazam-lc55-v2"
     assert f"--marker-name {marker}" in unit

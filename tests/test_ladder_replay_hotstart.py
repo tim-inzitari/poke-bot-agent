@@ -183,7 +183,7 @@ def test_public_deck_catalog_overrides_stale_cross_archetype_signature(
     assert contract["sha256"].startswith("sha256:")
 
 
-def test_authoritative_only_teal_corpus_rejects_every_fallback_identity() -> None:
+def test_authoritative_only_teal_corpus_accepts_exact_slop_box_identity_only() -> None:
     catalog = json.loads(TEAL_PUBLIC_CATALOG.read_text(encoding="utf-8"))
     audit = json.loads(TEAL_SIGNATURE_AUDIT.read_text(encoding="utf-8"))
     representative = json.loads(
@@ -204,10 +204,11 @@ def test_authoritative_only_teal_corpus_rejects_every_fallback_identity() -> Non
     assert intended.deck_id == "teal-mask-ogerpon-ex"
     assert intended.method == "authoritative_public_deck_identity"
 
-    rejected_representative = classifier.classify_deck(representative)
-    assert rejected_representative.deck_id == "unknown"
-    assert rejected_representative.method == (
-        "authoritative_public_deck_identity_required"
+    assert representative == catalog["source_deck_rows"][0]["card_ids"]
+    accepted_representative = classifier.classify_deck(representative)
+    assert accepted_representative.deck_id == "teal-mask-ogerpon-ex"
+    assert accepted_representative.method == (
+        "authoritative_public_deck_identity"
     )
     for row in audit["mega_kangaskhan_collision_rows"]:
         assert classifier.classify_deck(row["card_ids"]).deck_id != (

@@ -1,0 +1,13 @@
+[Unit]
+Description=Poll for the completed Archaludon ex guide corpus
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=pokebot-archaludon-ex-corpus-import.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

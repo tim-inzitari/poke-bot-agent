@@ -30,9 +30,25 @@ GATE_ARCHETYPES = {
     "makthanithin-1084-5": "lucario",
     "lucifer19-battlecore": "archaludon-ex",
 }
+
+
+def _public_current() -> dict:
+    """Minimal causal public state required by expanded-label materialization."""
+
+    return {
+        "yourIndex": 0,
+        "turn": 1,
+        "result": -1,
+        "energyAttached": False,
+        "retreated": False,
+        "players": [{}, {}],
+    }
+
+
 def _history_target() -> dict:
     return {
         "observation": {
+            "current": _public_current(),
             "select": {
                 "option": [{"type": 14}, {"type": 14}],
                 "minCount": 1,
@@ -105,6 +121,7 @@ def test_worker_record_preserves_package_and_canonical_archetype_separately() ->
 def test_forced_go_first_row_does_not_create_a_mixed_policy_source() -> None:
     forced = {
         "observation": {
+            "current": _public_current(),
             "select": {
                 "option": [{"type": 14}, {"type": 14}],
                 "minCount": 1,

@@ -3,9 +3,9 @@
   "status": "validated",
   "specialist_id": "hammer-pult",
   "deck_complexity": "nonlinear",
-  "validated_at_utc": "2026-07-28T21:12:00Z",
+  "validated_at_utc": "2026-07-29T19:20:00Z",
   "contract_fragment_sha256": "sha256:11ae3117b4a3de8560c2dc885dd55216a74a9ba299ddc0afef632fde2808eff1",
-  "protocol_sha256": "sha256:14e2d6253f6b4fae7f91614b963e5fa772241415867241e6d4e9cce02a233ec1",
+  "protocol_sha256": "sha256:232b049828db3eef74308092e8a83902ece66c1866595299df7f1d14c019a56c",
   "required_fused_head_inputs": [
     "value",
     "archetype",
@@ -45,7 +45,7 @@
     },
     {
       "path": "scripts/run_starmie_expert_bootstrap.py",
-      "sha256": "sha256:d872d11db6a02177bdb6d8264b2a89b4b8724266e69a85a50fb0d7f1525cd388"
+      "sha256": "sha256:ba0450ddf1ef5f8952db835748438987f5f8ed939c351bcaa08e978b2da4cd1a"
     },
     {
       "path": "scripts/audit_decision_fusion_checkpoint.py",
@@ -57,7 +57,7 @@
     },
     {
       "path": "scripts/prestage_next_specialist.py",
-      "sha256": "sha256:a3b0f0e378ebd77c5011d2a6ea396a9678b83996f6cc67868f7973748c3d9fb5"
+      "sha256": "sha256:378b5188b0ff4fed581bb53bba916c2aebfe926f5d8a6067f13d59835b2615d8"
     }
   ],
   "checks": {
@@ -82,9 +82,8 @@
     "terminal_runtime_gate_required": true
   },
   "activation": {
-    "existing_prestage_receipt_remains_valid": false,
-    "reissued_prestage_receipt_required": true,
-    "bootstrap_allowed_before_reissue": false,
-    "active_spidops_training_modified": false
+    "revalidation_only_no_runtime_change": true,
+    "current_bootstrap_and_activation_receipts_unchanged": true,
+    "active_hammer_training_modified": false
   }
 }

@@ -18,6 +18,27 @@ import torch.nn.functional as F
 from .strategic_schedule import EXPANDED_HEAD_IDS, canonical_head_id
 
 
+GUIDE_OUTCOME_BACKED_HEAD_IDS: tuple[str, ...] = (
+    "action_q",
+    "action_utility",
+    "tactical_outcome",
+    "opponent_response",
+    "resource_forecast",
+    "outcome_distribution",
+    "remaining_turns",
+)
+
+
+def guide_outcome_backed_loss_weights() -> dict[str, float]:
+    """Equal-weight the outcome-backed heads used by future guide curricula."""
+
+    weight = 1.0 / len(GUIDE_OUTCOME_BACKED_HEAD_IDS)
+    return {
+        name: weight if name in GUIDE_OUTCOME_BACKED_HEAD_IDS else 0.0
+        for name in EXPANDED_HEAD_IDS
+    }
+
+
 @dataclass
 class ExpandedStrategicLossMetrics:
     """Per-head loss/coverage plus outcome calibration diagnostics."""
@@ -141,12 +162,35 @@ def _masked_mixed_loss(
     *,
     binary_columns: Sequence[int],
     count_event_columns: Sequence[int] = (),
+    row_weights: torch.Tensor | None = None,
 ) -> torch.Tensor:
     parts: list[torch.Tensor] = []
     binary = set(int(value) for value in binary_columns)
     count_events = set(int(value) for value in count_event_columns)
     if not count_events.issubset(binary):
         raise ValueError("count-event columns must also be binary columns")
+    expanded_row_weights: torch.Tensor | None = None
+    if row_weights is not None:
+        expanded_row_weights = row_weights.to(
+            device=prediction.device,
+            dtype=prediction.dtype,
+        )
+        while expanded_row_weights.dim() < prediction.dim() - 1:
+            expanded_row_weights = expanded_row_weights.unsqueeze(-1)
+        try:
+            expanded_row_weights = expanded_row_weights.expand(
+                prediction.shape[:-1]
+            )
+        except RuntimeError as exc:
+            raise ValueError(
+                "expanded strategic row weights do not broadcast to predictions"
+            ) from exc
+        if not bool(torch.isfinite(expanded_row_weights).all()) or bool(
+            (expanded_row_weights < 0.0).any()
+        ):
+            raise ValueError(
+                "expanded strategic row weights must be finite and nonnegative"
+            )
     for column in range(int(prediction.shape[-1])):
         selected = mask[..., column]
         if not bool(selected.any()):
@@ -171,12 +215,35 @@ def _masked_mixed_loss(
                 truth = truth.gt(0.0).to(dtype=pred.dtype)
             elif bool(((truth < 0.0) | (truth > 1.0)).any()):
                 raise ValueError("binary expanded target is outside [0, 1]")
-            parts.append(F.binary_cross_entropy_with_logits(pred, truth))
+            per_value = F.binary_cross_entropy_with_logits(
+                pred, truth, reduction="none"
+            )
         else:
-            parts.append(F.smooth_l1_loss(pred, truth))
+            per_value = F.smooth_l1_loss(pred, truth, reduction="none")
+        if expanded_row_weights is not None:
+            per_value = per_value * expanded_row_weights[selected]
+        parts.append(per_value.mean())
     if not parts:
         return prediction.sum() * 0.0
     return torch.stack(parts).mean()
+
+
+def _weighted_mean(
+    values: torch.Tensor,
+    row_weights: torch.Tensor | None,
+) -> torch.Tensor:
+    if values.dim() != 1:
+        raise ValueError("weighted expanded loss expects one value per row")
+    if row_weights is None:
+        return values.mean()
+    weights = row_weights.to(device=values.device, dtype=values.dtype).reshape(-1)
+    if int(weights.numel()) != int(values.numel()):
+        raise ValueError("expanded loss row weights do not align")
+    if not bool(torch.isfinite(weights).all()) or bool((weights < 0.0).any()):
+        raise ValueError(
+            "expanded strategic row weights must be finite and nonnegative"
+        )
+    return (values * weights).mean()
 
 
 def _outcome_calibration(
@@ -244,6 +311,8 @@ def resident_expanded_strategic_losses(
     sample_ids: torch.Tensor,
     decision_ids: torch.Tensor,
     weights: Mapping[str, Any] | None,
+    sample_row_weights: torch.Tensor | None = None,
+    decision_row_weights: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, ExpandedStrategicLossMetrics]:
     """Compute exact masked V6 losses without moving targets off the device.
 
@@ -277,6 +346,22 @@ def resident_expanded_strategic_losses(
     counts = option_counts.to(dtype=torch.long).reshape(-1)
     sample_rows = int(sample_ids.numel())
     decision_rows = int(decision_ids.numel())
+    if sample_row_weights is not None:
+        sample_row_weights = sample_row_weights.to(
+            device=device, dtype=reference.dtype
+        ).reshape(-1)
+        if int(sample_row_weights.numel()) != sample_rows:
+            raise ValueError(
+                "resident expanded sample row weights do not align"
+            )
+    if decision_row_weights is not None:
+        decision_row_weights = decision_row_weights.to(
+            device=device, dtype=reference.dtype
+        ).reshape(-1)
+        if int(decision_row_weights.numel()) != decision_rows:
+            raise ValueError(
+                "resident expanded decision row weights do not align"
+            )
     metrics = ExpandedStrategicLossMetrics(
         losses={name: 0.0 for name in EXPANDED_HEAD_IDS},
         labeled={name: 0 for name in EXPANDED_HEAD_IDS},
@@ -400,8 +485,15 @@ def resident_expanded_strategic_losses(
         if not bool(torch.isfinite(target).all()):
             raise ValueError("resident expanded action-Q target is non-finite")
         pred = selected_option_outputs["action_q"][action_q_mask]
-        losses["action_q"] = F.smooth_l1_loss(
-            pred, target.to(dtype=pred.dtype)
+        losses["action_q"] = _weighted_mean(
+            F.smooth_l1_loss(
+                pred, target.to(dtype=pred.dtype), reduction="none"
+            ),
+            (
+                None
+                if sample_row_weights is None
+                else sample_row_weights[action_q_mask]
+            ),
         )
     else:
         losses["action_q"] = selected_option_outputs["action_q"].sum() * 0.0
@@ -425,7 +517,16 @@ def resident_expanded_strategic_losses(
                 >= local_counts.unsqueeze(1)
             )
             logits = logits.masked_fill(padding, float("-inf"))
-            losses[name] = F.cross_entropy(logits, indices[usable])
+            losses[name] = _weighted_mean(
+                F.cross_entropy(
+                    logits, indices[usable], reduction="none"
+                ),
+                (
+                    None
+                    if sample_row_weights is None
+                    else sample_row_weights[usable]
+                ),
+            )
         else:
             losses[name] = option_outputs[name].sum() * 0.0
         metrics.labeled[name] = int(usable.sum().item())
@@ -455,6 +556,11 @@ def resident_expanded_strategic_losses(
             utility_mask[utility_rows],
             binary_columns=(5,),
             count_event_columns=(5,),
+            row_weights=(
+                None
+                if sample_row_weights is None
+                else sample_row_weights[utility_rows]
+            ),
         )
     else:
         losses["action_utility"] = (
@@ -487,6 +593,11 @@ def resident_expanded_strategic_losses(
             target.to(dtype=state_outputs["tactical_outcome"].dtype),
             tactical_mask[tactical_rows],
             binary_columns=(2, 3),
+            row_weights=(
+                None
+                if decision_row_weights is None
+                else decision_row_weights[tactical_rows]
+            ),
         )
     else:
         losses["tactical_outcome"] = (
@@ -526,6 +637,11 @@ def resident_expanded_strategic_losses(
                 selected_mask,
                 binary_columns=binary_columns,
                 count_event_columns=count_event_columns,
+                row_weights=(
+                    None
+                    if decision_row_weights is None
+                    else decision_row_weights[usable]
+                ),
             ),
             int(usable.sum().item()),
         )
@@ -564,8 +680,17 @@ def resident_expanded_strategic_losses(
         target = phase_target[phase_mask].to(dtype=torch.long)
         if bool(((target < 0) | (target >= 5)).any()):
             raise ValueError("resident expanded game-phase target is outside [0, 5)")
-        losses["game_phase"] = F.cross_entropy(
-            state_outputs["game_phase"][phase_mask], target
+        losses["game_phase"] = _weighted_mean(
+            F.cross_entropy(
+                state_outputs["game_phase"][phase_mask],
+                target,
+                reduction="none",
+            ),
+            (
+                None
+                if decision_row_weights is None
+                else decision_row_weights[phase_mask]
+            ),
         )
     else:
         losses["game_phase"] = state_outputs["game_phase"].sum() * 0.0
@@ -586,7 +711,14 @@ def resident_expanded_strategic_losses(
         if bool(((target < 0) | (target >= 3)).any()):
             raise ValueError("resident expanded outcome target is outside [0, 3)")
         logits = state_outputs["outcome_distribution"][outcome_mask]
-        losses["outcome_distribution"] = F.cross_entropy(logits, target)
+        losses["outcome_distribution"] = _weighted_mean(
+            F.cross_entropy(logits, target, reduction="none"),
+            (
+                None
+                if decision_row_weights is None
+                else decision_row_weights[outcome_mask]
+            ),
+        )
         (
             metrics.outcome_brier,
             metrics.outcome_ece,
@@ -616,8 +748,15 @@ def resident_expanded_strategic_losses(
         ):
             raise ValueError("resident expanded remaining-turns target is invalid")
         pred = state_outputs["remaining_turns"][remaining_mask].squeeze(-1)
-        losses["remaining_turns"] = F.smooth_l1_loss(
-            pred, target.to(dtype=pred.dtype)
+        losses["remaining_turns"] = _weighted_mean(
+            F.smooth_l1_loss(
+                pred, target.to(dtype=pred.dtype), reduction="none"
+            ),
+            (
+                None
+                if decision_row_weights is None
+                else decision_row_weights[remaining_mask]
+            ),
         )
     else:
         losses["remaining_turns"] = (
@@ -650,6 +789,8 @@ def expanded_strategic_losses(
     stage_indices: Sequence[int],
     decision_aux: Sequence[Mapping[str, Any]],
     weights: Mapping[str, Any] | None,
+    row_weights: torch.Tensor | None = None,
+    state_row_weights: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, ExpandedStrategicLossMetrics]:
     """Compute exact masked V6 head losses for a flattened policy-stage batch."""
 
@@ -679,6 +820,36 @@ def expanded_strategic_losses(
         raise ValueError("expanded strategic flattened row alignment mismatch")
     if bool(((indices < 0) | (indices >= counts)).any()):
         raise ValueError("expanded strategic selected option is outside row")
+    if row_weights is not None:
+        row_weights = row_weights.to(
+            device=device, dtype=reference.dtype
+        ).reshape(-1)
+        if int(row_weights.numel()) != rows:
+            raise ValueError("expanded strategic row weights do not align")
+        if not bool(torch.isfinite(row_weights).all()) or bool(
+            (row_weights < 0.0).any()
+        ):
+            raise ValueError(
+                "expanded strategic row weights must be finite and nonnegative"
+            )
+    if state_row_weights is not None:
+        state_row_weights = state_row_weights.to(
+            device=device, dtype=reference.dtype
+        ).reshape(-1)
+        if int(state_row_weights.numel()) != rows:
+            raise ValueError(
+                "expanded strategic state row weights do not align"
+            )
+        if not bool(torch.isfinite(state_row_weights).all()) or bool(
+            (state_row_weights < 0.0).any()
+        ):
+            raise ValueError(
+                "expanded strategic state row weights must be finite and "
+                "nonnegative"
+            )
+    effective_state_row_weights = (
+        row_weights if state_row_weights is None else state_row_weights
+    )
 
     metrics = ExpandedStrategicLossMetrics(
         losses={name: 0.0 for name in EXPANDED_HEAD_IDS},
@@ -713,10 +884,21 @@ def expanded_strategic_losses(
     ]
     if action_q_rows:
         selected = torch.tensor(action_q_rows, device=device, dtype=torch.long)
-        losses["action_q"] = F.smooth_l1_loss(
-            selected_option_outputs["action_q"].index_select(0, selected),
-            values.index_select(0, selected).to(
-                dtype=selected_option_outputs["action_q"].dtype
+        prediction = selected_option_outputs["action_q"].index_select(
+            0, selected
+        )
+        losses["action_q"] = _weighted_mean(
+            F.smooth_l1_loss(
+                prediction,
+                values.index_select(0, selected).to(
+                    dtype=prediction.dtype
+                ),
+                reduction="none",
+            ),
+            (
+                None
+                if row_weights is None
+                else row_weights.index_select(0, selected)
             ),
         )
     else:
@@ -751,8 +933,17 @@ def expanded_strategic_losses(
                 >= local_counts.unsqueeze(1)
             )
             logits = logits.masked_fill(padding, float("-inf"))
-            losses[name] = F.cross_entropy(
-                logits, indices.index_select(0, selected)
+            losses[name] = _weighted_mean(
+                F.cross_entropy(
+                    logits,
+                    indices.index_select(0, selected),
+                    reduction="none",
+                ),
+                (
+                    None
+                    if row_weights is None
+                    else row_weights.index_select(0, selected)
+                ),
             )
         else:
             losses[name] = option_outputs[name].sum() * 0.0
@@ -797,6 +988,11 @@ def expanded_strategic_losses(
             mask,
             binary_columns=(5,),
             count_event_columns=(5,),
+            row_weights=(
+                None
+                if row_weights is None
+                else row_weights.index_select(0, selected)
+            ),
         )
     else:
         losses["action_utility"] = (
@@ -849,7 +1045,15 @@ def expanded_strategic_losses(
         )
         mask = torch.tensor(tactical_masks, device=device, dtype=torch.bool)
         losses["tactical_outcome"] = _masked_mixed_loss(
-            pred, target, mask, binary_columns=(2, 3)
+            pred,
+            target,
+            mask,
+            binary_columns=(2, 3),
+            row_weights=(
+                None
+                if effective_state_row_weights is None
+                else effective_state_row_weights.index_select(0, selected)
+            ),
         )
     else:
         losses["tactical_outcome"] = (
@@ -898,6 +1102,11 @@ def expanded_strategic_losses(
                 mask,
                 binary_columns=binary_columns,
                 count_event_columns=count_event_columns,
+                row_weights=(
+                    None
+                    if effective_state_row_weights is None
+                    else effective_state_row_weights.index_select(0, selected)
+                ),
             ),
             len(usable),
         )
@@ -954,9 +1163,17 @@ def expanded_strategic_losses(
 
     if phase_rows:
         selected = torch.tensor(phase_rows, device=device, dtype=torch.long)
-        losses["game_phase"] = F.cross_entropy(
-            state_outputs["game_phase"].index_select(0, selected),
-            torch.tensor(phase_targets, device=device, dtype=torch.long),
+        losses["game_phase"] = _weighted_mean(
+            F.cross_entropy(
+                state_outputs["game_phase"].index_select(0, selected),
+                torch.tensor(phase_targets, device=device, dtype=torch.long),
+                reduction="none",
+            ),
+            (
+                None
+                if effective_state_row_weights is None
+                else effective_state_row_weights.index_select(0, selected)
+            ),
         )
     else:
         losses["game_phase"] = state_outputs["game_phase"].sum() * 0.0
@@ -970,8 +1187,15 @@ def expanded_strategic_losses(
         outcome_target = torch.tensor(
             outcome_targets, device=device, dtype=torch.long
         )
-        losses["outcome_distribution"] = F.cross_entropy(
-            outcome_logits, outcome_target
+        losses["outcome_distribution"] = _weighted_mean(
+            F.cross_entropy(
+                outcome_logits, outcome_target, reduction="none"
+            ),
+            (
+                None
+                if effective_state_row_weights is None
+                else effective_state_row_weights.index_select(0, selected)
+            ),
         )
         (
             metrics.outcome_brier,
@@ -989,9 +1213,19 @@ def expanded_strategic_losses(
         pred = state_outputs["remaining_turns"].index_select(0, selected).squeeze(
             -1
         )
-        losses["remaining_turns"] = F.smooth_l1_loss(
-            pred,
-            torch.tensor(remaining_targets, device=device, dtype=pred.dtype),
+        losses["remaining_turns"] = _weighted_mean(
+            F.smooth_l1_loss(
+                pred,
+                torch.tensor(
+                    remaining_targets, device=device, dtype=pred.dtype
+                ),
+                reduction="none",
+            ),
+            (
+                None
+                if effective_state_row_weights is None
+                else effective_state_row_weights.index_select(0, selected)
+            ),
         )
     else:
         losses["remaining_turns"] = (

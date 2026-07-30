@@ -5,11 +5,18 @@ import json
 from pathlib import Path
 
 import pytest
+import torch
 
 from scripts.train_pure_rl import (
     LADDER_DECK_REPRESENTATIVES_PATH,
     _our_decks,
     _parse_args,
+)
+from poke_bot.matchup_adapters_v6 import (
+    ADAPTER_CHECKPOINT_FORMAT,
+    SLOT_CAPACITY,
+    load_slot_registry,
+    registry_digest,
 )
 
 
@@ -59,6 +66,78 @@ def test_specialist_requires_an_explicit_archetype() -> None:
     assert parsed.opp_remainder_loss_weight > 0.0
     assert parsed.lethal_threat_loss_weight > 0.0
     assert parsed.prize_race_loss_weight > 0.0
+
+
+def test_router_format_6_checkpoint_registers_teal_for_adapter_training(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = load_slot_registry()
+    checkpoint = tmp_path / "router-format-6.pt"
+    torch.save(
+        {
+            "extra": {
+                "matchup_adapter_config": {
+                    "format": ADAPTER_CHECKPOINT_FORMAT,
+                    "slot_capacity": SLOT_CAPACITY,
+                    "slot_registry_digest": registry_digest(registry),
+                    "slot_registry": registry,
+                }
+            }
+        },
+        checkpoint,
+    )
+
+    parsed = _parse_args(
+        [
+            "--run-name",
+            "teal-router-format-6",
+            "--mode",
+            "specialist",
+            "--specialist-archetype",
+            "teal-mask-ogerpon-ex",
+            "--initial-learner-checkpoint",
+            str(checkpoint),
+            "--dormant-matchup-adapter-epochs",
+            "1",
+            "--dormant-matchup-adapter-activation-receipt",
+            str(tmp_path / "authorization.json"),
+            "--official-collect-frac",
+            "0.50",
+        ]
+    )
+
+    assert parsed.specialist_archetype == "teal-mask-ogerpon-ex"
+
+    registry_path = (
+        Path(__file__).resolve().parents[1]
+        / "state/matchup_adapter_roster.json"
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_FORMAT",
+        "poke-bot-matchup-adapter-bank-v6",
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH",
+        str(registry_path),
+    )
+    resumed = _parse_args(
+        [
+            "--run-name",
+            "teal-router-format-6-resume",
+            "--mode",
+            "specialist",
+            "--specialist-archetype",
+            "teal-mask-ogerpon-ex",
+            "--dormant-matchup-adapter-epochs",
+            "1",
+            "--dormant-matchup-adapter-activation-receipt",
+            str(tmp_path / "authorization.json"),
+            "--official-collect-frac",
+            "0.50",
+        ]
+    )
+    assert resumed.initial_learner_checkpoint is None
 
 
 def test_specialist_accepts_audited_official_exploit_mix() -> None:

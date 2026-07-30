@@ -38,6 +38,7 @@ COPY cards/ /workspace/cards/
 COPY decks/ /workspace/decks/
 COPY baselines/ /workspace/baselines/
 COPY kaggle/ /workspace/kaggle/
+COPY state/matchup_adapter_roster.json /workspace/state/matchup_adapter_roster.json
 COPY containers/truenas-worker/entrypoint.sh /entrypoint.sh
 COPY containers/truenas-worker/supervise-production.sh /supervise-production.sh
 

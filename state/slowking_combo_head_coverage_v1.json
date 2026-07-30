@@ -1,0 +1,308 @@
+{
+  "schema": "poke_bot.slowking_combo_head_coverage/v1",
+  "artifact_sha256": "sha256:e268b9bcdfba7be2da2a3a701f66f2ecfd5e694b9e3ab44f90485a843bf5ef89",
+  "status": "blocked_missing_combo_state_implementation_and_validation_receipt",
+  "specialist_id": "slowking",
+  "owner_decision_revisions": [
+    57,
+    58,
+    59,
+    61,
+    62,
+    63,
+    64
+  ],
+  "scope": {
+    "predecessor_specialist": "archaludon-ex",
+    "successor_specialist": null,
+    "strict_post_teal_order": [
+      "archaludon-ex",
+      "slowking"
+    ],
+    "after_completion": "immediate_final_format_alakazam_refresh_then_marnie_refresh_and_final_submission_preparation",
+    "selector_authority": false,
+    "runtime_registry_authority": false,
+    "bootstrap_authority": false,
+    "training_authority": false,
+    "active_teal_modified": false,
+    "staged_archaludon_modified": false
+  },
+  "deck_identity": {
+    "representative": "config/deck_guides/slowking-representative.v1.json",
+    "canonical_registry": "data/training_mixes/specialist_representatives.v1.json#/decks/slowking",
+    "card_count": 60,
+    "pokemon_count": 22,
+    "trainer_count": 28,
+    "energy_count": 10,
+    "canonical_multiset_sha256": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7",
+    "required_engine_cards": {
+      "Slowking": 4,
+      "Slowpoke": 4,
+      "Annihilape": 2,
+      "Conkeldurr": 2,
+      "Kyurem": 2,
+      "Latias ex": 2,
+      "Mega Kangaskhan ex": 2,
+      "Smoochum": 2,
+      "Fezandipiti ex": 1,
+      "Meowth ex": 1,
+      "Academy at Night": 4,
+      "Ciphermaniac's Codebreaking": 4,
+      "Lillie's Determination": 4,
+      "Poké Pad": 4,
+      "Ultra Ball": 4,
+      "Night Stretcher": 3,
+      "Wondrous Patch": 3,
+      "Counter Gain": 1,
+      "Secret Box": 1,
+      "Basic Psychic Energy": 4,
+      "Telepath Psychic Energy": 4,
+      "Boomerang Energy": 2
+    },
+    "generic_slowking_substitution_allowed": false,
+    "slowking_metagross_substitution_allowed": false
+  },
+  "fusion_contract": {
+    "schema": "poke_bot.causal_decision_fusion/v2",
+    "route_schema": "option_conditioned_per_head/v2",
+    "computation_role": "independent_head",
+    "fusion_role": "fused_input",
+    "action_influence": "bounded_option_conditioned_route",
+    "one_distinct_route_per_learned_head": true,
+    "state_head_route_input": "typed_output_plus_board_state_cross_attended_legal_option",
+    "option_head_route_input": "typed_option_output_plus_board_state_cross_attended_legal_option",
+    "aggregate_route_delta_logit_cap": 1.0,
+    "route_final_projection_initialization": "exact_zero",
+    "guide_is_only_no_route_exception": true,
+    "guide_is_training_only_metadata": true,
+    "guide_runtime_input_allowed": false,
+    "guide_action_logit_route_allowed": false
+  },
+  "coverage_requirements": [
+    {
+      "id": "top_deck_construction_and_consumption",
+      "primary_heads": [
+        "combo_state"
+      ],
+      "supporting_heads": [
+        "action_type",
+        "action_resource",
+        "action_utility",
+        "resource_forecast"
+      ],
+      "required_causal_state": [
+        "academy_or_ciphermaniac_top_provenance",
+        "draw_or_shuffle_invalidation",
+        "known_top_consumption",
+        "current_legal_options"
+      ],
+      "existing_head_coverage": "insufficient_no_typed_top_provenance_target",
+      "coverage_status": "blocked_on_combo_state"
+    },
+    {
+      "id": "copied_non_rule_box_attack_legality_and_choice",
+      "primary_heads": [
+        "combo_state",
+        "action_q",
+        "action_target",
+        "action_utility"
+      ],
+      "supporting_heads": [
+        "tactical_outcomes",
+        "prize_race",
+        "outcome_distribution"
+      ],
+      "required_causal_state": [
+        "known_top_non_rule_box_identity",
+        "seek_inspiration_legality",
+        "copied_attack_legal_target_mask",
+        "visible_damage_prevention",
+        "current_prize_counts"
+      ],
+      "existing_head_coverage": "insufficient_no_typed_copied_attack_legality_target",
+      "coverage_status": "blocked_on_combo_state"
+    },
+    {
+      "id": "visible_combo_piece_search_and_recovery",
+      "primary_heads": [
+        "combo_state",
+        "action_resource",
+        "resource_forecast"
+      ],
+      "supporting_heads": [
+        "action_q",
+        "action_utility",
+        "setup_board_outcome"
+      ],
+      "required_causal_state": [
+        "visible_hand_board_discard",
+        "currently_exposed_search_options",
+        "night_stretcher_options",
+        "secret_box_and_ultra_ball_current_costs"
+      ],
+      "existing_head_coverage": "partial",
+      "coverage_status": "blocked_on_combo_state_and_labeled_row_evidence"
+    },
+    {
+      "id": "psychic_telepath_boomerang_and_acceleration",
+      "primary_heads": [
+        "combo_state",
+        "action_resource",
+        "resource_forecast"
+      ],
+      "supporting_heads": [
+        "action_utility",
+        "tactical_outcomes"
+      ],
+      "required_causal_state": [
+        "basic_psychic_locations",
+        "telepath_psychic_attachment_and_search",
+        "boomerang_return_trigger",
+        "wondrous_patch_legal_bench_targets",
+        "counter_gain_legality",
+        "manual_attachment_availability"
+      ],
+      "existing_head_coverage": "partial_no_typed_energy_route_readiness_target",
+      "coverage_status": "blocked_on_combo_state"
+    },
+    {
+      "id": "slowpoke_slowking_and_next_attacker_bench_continuity",
+      "primary_heads": [
+        "combo_state",
+        "setup_board_outcome",
+        "resource_forecast"
+      ],
+      "supporting_heads": [
+        "action_utility",
+        "tactical_outcomes",
+        "remaining_turns"
+      ],
+      "required_causal_state": [
+        "slowpoke_and_slowking_board_counts",
+        "open_bench_slots",
+        "next_attacker_energy_readiness",
+        "latias_pivot_availability"
+      ],
+      "existing_head_coverage": "partial",
+      "coverage_status": "blocked_on_combo_state_and_slowking_state_validation"
+    },
+    {
+      "id": "opponent_disruption_and_response",
+      "primary_heads": [
+        "opponent_response",
+        "tactical_outcomes"
+      ],
+      "supporting_heads": [
+        "opponent_hand",
+        "opponent_remainder",
+        "resource_forecast",
+        "outcome_distribution"
+      ],
+      "required_causal_state": [
+        "public_opponent_board",
+        "observed_hand_reduction",
+        "active_change",
+        "board_energy_change",
+        "end_without_attack"
+      ],
+      "existing_head_coverage": "representationally_sufficient_pending_slowking_validation",
+      "coverage_status": "validation_not_run"
+    },
+    {
+      "id": "prize_mapping_and_remaining_turn_outcome_timing",
+      "primary_heads": [
+        "prize_race",
+        "tactical_outcomes",
+        "outcome_distribution",
+        "remaining_turns"
+      ],
+      "supporting_heads": [
+        "action_q",
+        "action_target",
+        "action_utility",
+        "game_phase"
+      ],
+      "required_causal_state": [
+        "public_prize_counts",
+        "visible_knockout_and_damage_map",
+        "complete_terminal_outcome",
+        "complete_remaining_turn_count"
+      ],
+      "existing_head_coverage": "representationally_sufficient_pending_slowking_validation",
+      "coverage_status": "validation_not_run"
+    }
+  ],
+  "missing_typed_head": {
+    "id": "combo_state",
+    "implementation_status": "not_implemented",
+    "architecture_status": "proposed_not_validated",
+    "input": "board_state_cross_attended_option_hidden",
+    "architecture": [
+      "d_model",
+      192,
+      32
+    ],
+    "typed_output_layout": {
+      "top_deck_provenance_and_consumption_classes": 5,
+      "seek_source_identity_classes": 7,
+      "copied_attack_legality_vector": 6,
+      "visible_combo_piece_availability_vector": 5,
+      "energy_route_readiness_vector": 5,
+      "bench_continuity_vector": 4
+    },
+    "outputs": 32,
+    "target_authority": "exact_causal_current_or_observed_transition_state_only",
+    "hidden_or_future_information_allowed": false,
+    "guide_preference_index_allowed_as_target": false,
+    "computation_role": "independent_head",
+    "fusion_role": "fused_input",
+    "action_influence": "bounded_option_conditioned_route",
+    "fusion_route_id": "decision_fusion.dedicated_routes.combo_state",
+    "runtime_activation_requires_validation_receipt": true
+  },
+  "parameter_budget": {
+    "scope": "slowking_only",
+    "ordinary_soft_target": 2000000,
+    "soft_target_may_be_exceeded_with_receipt": true,
+    "initial_fail_closed_hard_ceiling": 3500000,
+    "global_override_allowed": false,
+    "added_module_count": 2,
+    "added_modules": [
+      {
+        "id": "combo_state_head.network",
+        "parameter_count_at_d_model_96": 24800
+      },
+      {
+        "id": "decision_fusion.dedicated_routes.combo_state",
+        "parameter_count_at_d_model_96": 2081
+      }
+    ],
+    "added_parameter_total_at_d_model_96": 26881,
+    "complete_candidate_parameter_count": null,
+    "complete_candidate_count_is_measured": false,
+    "exception_receipt": null,
+    "above_hard_ceiling_requires_separate_owner_decision": true
+  },
+  "required_validation": {
+    "receipt_schema": "poke_bot.slowking_combo_head_validation/v1",
+    "receipt": null,
+    "receipt_sha256": null,
+    "exact_deck_binding": false,
+    "labeled_row_coverage_by_requirement": false,
+    "loss_and_calibration_by_typed_output": false,
+    "finite_nonzero_gradient_norms": false,
+    "finite_nonzero_update_norms": false,
+    "step_zero_parent_parity": false,
+    "causal_suffix_invariance": false,
+    "legal_option_dependence": false,
+    "bounded_aggregate_residual": false,
+    "leave_one_head_out_logit_attribution": false,
+    "leave_one_head_out_action_attribution": false,
+    "complete_parameter_count_and_module_inventory": false,
+    "peak_memory_and_latency": false,
+    "package_size_and_final_submission_compatibility": false,
+    "unused_capacity_rejected_by_ablation": false
+  },
+  "training_ready": false,
+  "launch_ready": false
+}

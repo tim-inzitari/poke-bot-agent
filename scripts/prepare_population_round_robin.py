@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finalize specialist 22 and authorize the own-model population phase."""
+"""Authorize the own-model population phase after all required refreshes."""
 
 from __future__ import annotations
 
@@ -7,11 +7,9 @@ import argparse
 import fcntl
 import json
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from typing import Any
-
-import yaml
 
 from poke_bot.baselines_runtime import baseline_content_digest
 from poke_bot.pure_rl.model_registry import sha256
@@ -22,6 +20,7 @@ from scripts.run_specialist_cycle_handoff import (
     _read,
     _required_specialist_ids,
     _source,
+    _validated_post_fleet_refresh_progress,
 )
 
 
@@ -124,6 +123,18 @@ def prepare(contract_path: Path, *, launch: bool = True) -> dict[str, Any]:
     lock.parent.mkdir(parents=True, exist_ok=True)
     with lock.open("a+", encoding="utf-8") as stream:
         fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        state_path = _path(dict(contract["selection"]), "state")
+        (
+            required_refresh_order,
+            completed_refresh_ids,
+        ) = _validated_post_fleet_refresh_progress(
+            state_path=state_path,
+            cycle_contract=contract,
+        )
+        if completed_refresh_ids != required_refresh_order:
+            raise RuntimeError(
+                "post-fleet specialist refresh phase is incomplete"
+            )
         active_id = _active_specialist(runtime)
         source_contract, source_evidence = _source(
             contract=contract,
@@ -153,7 +164,7 @@ def prepare(contract_path: Path, *, launch: bool = True) -> dict[str, Any]:
             source_evidence,
         )
         roster = _population_roster(
-            state_path=_path(dict(contract["selection"]), "state"),
+            state_path=state_path,
             frozen_registry_path=_path(runtime, "frozen_specialist_registry"),
             runtime_registry_path=_path(runtime, "runtime_registry"),
             baseline_root=Path(str(gate["baseline_root"])).resolve(),
@@ -163,6 +174,8 @@ def prepare(contract_path: Path, *, launch: bool = True) -> dict[str, Any]:
             "status": "ready",
             "member_count": len(roster),
             "members": roster,
+            "post_fleet_refresh_order": required_refresh_order,
+            "post_fleet_refresh_specialist_ids": completed_refresh_ids,
             "final_specialist_materialization": materialized,
             "training_opponent_scope": "own_models_only",
             "external_agents_training_eligible": False,

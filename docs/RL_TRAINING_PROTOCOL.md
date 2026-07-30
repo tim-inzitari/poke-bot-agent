@@ -98,14 +98,17 @@ replay-eligible. This transfer check is separate from, and does not alter, any
 specialist baseline gate threshold. A failed candidate remains rejected,
 immutable, and ineligible to initialize a specialist. It does not stop
 production: the handoff immediately selects the latest checksum-accepted
-cumulative core and hot-starts the next specialist from that accepted
-fallback. Cumulative core V9 is the current accepted fallback. The
-post-Thwackey V10 candidate is preserved as a rejected gameplay-regression
-attempt and is not bootstrap-eligible. Matchup Adapter V6 is a separate
-checkpoint-format version and must never be displayed or interpreted as the
-current cumulative-core generation. The controller still attempts a new
-cumulative refresh from all frozen teachers after every later completed
-specialist.
+cumulative policy and hot-starts the next specialist from that accepted
+fallback. Accepted Policy Generation 9 is the current accepted fallback. The
+post-Thwackey Policy Generation 10 candidate is preserved as a rejected gameplay-regression
+attempt and is not bootstrap-eligible. The post-Spidops Policy Generation 11 attempt is likewise
+preserved as a rejected pretraining-validation attempt: it created no candidate
+and ran no gameplay regression. Hammer Pult therefore started from
+Accepted Policy Generation 9. Matchup Router Format 6 is a separate checkpoint-layout
+version and must never be displayed or interpreted as the Training Core
+Revision or Accepted Policy Generation. The
+controller still attempts a new cumulative refresh from all frozen teachers
+after every later completed specialist.
 
 ## 2. Sequential specialist training
 
@@ -154,28 +157,100 @@ recorded identities are unchanged.
 ### Current-deck guide north star
 
 Preparation of every new specialist must research and checksum-bind one
-specialist-specific current-deck guide contract before bootstrap. The guide
-follows the validated Alakazam pattern: a sparse teacher ranks the complete
-legal action stage only when cited strategy evidence and the causally
-observable public state support a high-confidence preference. The resulting
-masked, confidence-weighted loss shapes the existing shared policy logits. It
-is not a separate serving action path, may not inspect hidden or future state,
-and never overrides the authoritative fused policy.
+specialist-specific current-deck guide contract before bootstrap. A sparse
+teacher ranks the complete legal action stage only when cited strategy
+evidence and the causally observable public state support a high-confidence
+preference. In the already-started legacy Slop Box lineage only, the resulting
+masked, confidence-weighted guide cross-entropy may shape shared policy logits.
+For every future run beginning with Archaludon ex, the guide instead selects
+relevant causal rows and scales only outcome-backed strategic-head objectives;
+the guide preference index is not a policy target and direct guide-to-policy
+cross-entropy is forbidden. The guide is not a serving action path, may not
+inspect hidden or future state, and never overrides the authoritative fused
+policy.
 
 The guide is temporary scaffolding. Its loss weight ramps from 0.01 to 0.05
 during bootstrap epochs 1–5 and remains at no more than 0.05 through the exact
-25-epoch bootstrap. After bootstrap, a separate training-ineligible,
-replay-ineligible evaluation estimates the association between guide/policy
-agreement and wins, both overall and by matchup. The weight remains fixed only
-while the lower confidence bound of that win-agreement lift is positive. Two
-consecutive non-positive evaluations multiply the weight by 0.8; values below
-0.005 become zero. The weight may never rise above its bootstrap maximum.
-Every change requires a checksum-bound schedule receipt.
+25-epoch bootstrap. Post-bootstrap every future training run covered by the
+prospective policy follows the owner's realized-importance curve. Separate
+training-ineligible guide-on/guide-off evidence may
+ramp the weight through 0.15, 0.25, 0.35, and 0.50 while its realized-win lower
+confidence bound remains positive. The guide then holds at its evidence-
+supported plateau and decays toward zero as the policy internalizes it or its
+marginal contribution becomes non-positive. Revision 43 authorizes the fleet
+controller to make those adjustments without a new per-deck decision, but
+revision 44 scopes that authority to future specialist training runs only,
+beginning with Archaludon ex. It does not retrofit any completed, frozen, or
+already-started run. Historical checkpoints, guide weights, and receipts remain
+byte-for-byte unchanged. Every prospective change still requires a
+checksum-bound clean-boundary receipt. The absolute auxiliary ceiling is 0.50.
+The future-policy runtime modules are installed atomically only after the
+predecessor training service is verified inactive and immediately before the
+future specialist is registered. The install uses no service control, records
+the exact source and target checksums in a
+`poke_bot.future_specialist_guide_weight_policy_install/v1` receipt, and fails
+closed if an active predecessor or changed staged module is observed.
+For an eligible future run, the current receipt-backed weight is not merely
+descriptive: it is the literal multiplier on bounded, guide-conditioned losses
+whose labels remain observed causal strategic-head targets. It changes the
+gradients that train those independently computed learned heads and their
+shared representation; it does not create a guide-imitation target or a direct
+guide-to-policy loss and remains absent from the serving-time action-selection
+path.
 
-This ramp/hold/anneal lifecycle is the owner's protected goal-path guide
-vision. It may not be silently removed, replaced with a permanently fixed
-weight, or driven by ordinary training outcomes. It remains a required part of
-the guide contract alongside the dedicated two-task research workflow.
+For the active Slop Box lineage, revision 42 authorized one historical increase
+from 0.05 to 0.25 after the immutable iteration-5 commit, and revision 50 later
+returned the legacy guide weight to exactly 0.05 after the immutable
+iteration-12 commit because the higher imitation pressure did not improve
+wins. That run remains an explicit legacy exception; the revision-43 automatic
+review lifecycle is not attached to it. For future runs, plateau and decay
+decisions use balanced,
+training-ineligible and replay-ineligible paired guide-on/guide-off
+counterfactual evaluations, reported overall and by matchup. The counterfactual
+checkpoint is never eligible for serving or promotion. A positive lower
+confidence bound holds the plateau; two consecutive non-positive reviews move
+through 0.15, 0.075, then 0.0. Training outcomes and formal gate games cannot
+control this schedule. Every change requires a checksum-bound schedule receipt.
+Each fleet review contains at least 1,000 exact matched guide-on/guide-off
+opponent-seat-seed pairs, at least 50 pairs for every reported matchup, balanced
+first/second seats, and a 90% one-sided realized-win-delta lower confidence
+bound. `poke_bot/pure_rl/guide_weight_evidence.py` validates those isolation and
+identity guarantees and `scripts/compile_guide_weight_schedule.py` emits the
+immutable schedule receipt. Newly registered future guide specialists checksum-bind
+the generic schedule, evidence, and review-request modules before launch.
+After every committed five-iteration boundary in a run started under this
+prospective policy,
+`poke_bot/pure_rl/guide_weight_review.py` automatically emits an immutable,
+non-blocking shadow-pair request bound to the exact five collection receipts,
+seed checkpoint, guide contract, and iteration commit. The production learner
+does not run the shadow fit inline and never changes a weight from the request
+alone; only separate paired evidence plus a compiled schedule can authorize
+the next clean-boundary weight.
+The managed future-only shadow queue consumes that request outside the
+production learner. It trains guide-on and guide-off checkpoints from the same
+parent, five committed replay shards, split, batch order, optimizer, and seed;
+the guide multiplier is the only changed training input. It then runs 1,000
+greedy matched opponent/seat/seed pairs locally without publishing either
+checkpoint to serving workers. The worker is CPU- and I/O-bounded, is
+ineligible for active Teal, and writes only training-ineligible,
+replay-ineligible, non-gate evidence. Its compiled schedule is passed to the
+managed clean-boundary controller. Weight-hold reviews still persist their
+non-positive evidence counter through the same receipt-backed restart so the
+second consecutive non-positive review cannot be forgotten.
+Because the 1,000-pair shadow study is deliberately non-blocking, its schedule
+records the earliest eligible next iteration rather than claiming that the
+study will finish during the same 30-second pause. The generic boundary
+controller applies a completed schedule at the first later available
+five-iteration hard pause and writes the actual application iteration into a
+`poke_bot.future_specialist_guide_weight_boundary/v1` receipt.
+
+This ramp/hold/anneal lifecycle applies to every future specialist training run
+started under the prospective policy and is the owner's protected goal-path
+guide vision. It may not be silently removed, replaced with a permanently
+fixed weight, or driven by ordinary training outcomes. It remains a required
+part of future guide contracts alongside the dedicated two-task research
+workflow. It may not be backfilled into completed, frozen, or already-started
+runs.
 
 Training games and formal gate games never tune the guide weight. Missing,
 ambiguous, or partially scored legal stages are masked, not assigned a false
@@ -260,7 +335,7 @@ For each specialist:
 
 The current corrected Dudunsparce learner and every subsequent cumulative core
 and specialist contain the complete expanded strategic-head architecture. No
-frozen V5 checkpoint is rewritten. During each ordinary full-model RL epoch and
+frozen Model Format 5 checkpoint is rewritten. During each ordinary full-model RL epoch and
 each scheduled expert-rehearsal epoch, every architecture-present head with
 valid exact causal labels participates in the loss and receives gradients.
 Rows without a valid target are masked and contribute neither a fabricated
@@ -342,6 +417,114 @@ provenance digest, and are never placed in board, option, history, routing, or
 serving inputs. A malformed present label fails closed before an optimizer
 step.
 
+Beginning with the Archaludon ex pre-stage, a future specialist's deck guide
+is a bounded curriculum for causal strategic objectives rather than a
+policy-imitation target. Every strategic head is an independently computed
+view of the current causal board state and, where option-conditioned, each
+current legal option. Every such view must enter the checksum-bound learned
+decision-fusion action score through its own explicit bounded route:
+
+- `computation_role: independent_head`;
+- `fusion_role: fused_input`; and
+- `action_influence: bounded_option_conditioned_route`.
+
+“Independent” describes the computation before fusion; it does not permit a
+head to be omitted from action choice. A state-targeted head may keep its
+state-level supervised target, but its action route combines that typed output
+with each legal option representation after board/state cross-attention. An
+option-targeted head combines its typed per-option output with the same causal
+option representation. The future fusion schema owns one attributable bounded
+route per learned decision head and adds their capped aggregate to the
+preserved parent fusion output; it may not first average every state head into
+one option-blind context. The guide itself is the sole exception: it is
+training-only curriculum metadata, not a learned runtime head, is not a
+runtime input, never directly selects an action, and never replaces observed
+outcomes. This future-only rule does not retrofit Slop Box or any completed,
+frozen, or already-started specialist, and it does not authorize pre-fleet H10
+computation.
+
+The first required new branch is `setup_board_outcome`. It is an
+option-conditioned `d_model → 512 → 9` MLP that trains only on selected,
+complete setup-active or setup-bench stages. Its nine outputs reuse existing
+causal targets: the six next-own-decision resource-forecast components and
+terminal loss/draw/win. Unchosen candidates, incomplete games, unavailable
+resource components, malformed stages, and non-setup contexts are masked.
+Setup-active and setup-bench losses are reduced separately and then averaged,
+so rare bench-development rows cannot disappear inside the main-phase volume.
+The ordinary head weight is `0.025`.
+
+On a high-confidence guide-labeled setup row, the guide multiplier may add
+`guide_confidence × observed-target loss` for this branch. The guide's
+preferred action index is deliberately not consumed: permuting that index must
+leave the setup-head loss and gradients unchanged. The observed next board and
+game outcome supply the learning direction. The branch may update its own MLP
+and the shared option representation. Its option representation cross-attends
+the current board/state, and its nine typed outputs enter a bounded, zero-safe,
+versioned decision-fusion route. The zero-safe initialization preserves the
+parent's exact logits and choices at migration; after training, runtime
+activation requires measured finite nonzero action-logit influence and
+leave-one-head-out attribution.
+
+Future guide predicates must also implement their stated causal
+preconditions. If a guide says a bench choice depends on a resource such as
+Energy support, that support must be proven from the permitted current state
+or the entire stage abstains. STOP and non-STOP candidates are scored under
+the same preconditions. This prevents an unconditional positive Basic score
+from turning every legal bench opportunity into a supposed policy error.
+
+Archaludon bootstrap remains fail-closed until its validation receipt binds the
+training mode, head-role map, curriculum map, code and target digests, and
+proves selected-only masking, target parity, guide-index permutation
+invariance, nonzero branch/shared-representation gradients, exact step-zero
+parent action parity, nonzero fusion-route gradients after the zero-safe warm
+step, bounded finite action-logit influence, causal board/option dependence,
+one declared route and nonzero leave-one-head-out attribution for every
+learned decision head, a bounded aggregate route delta, STOP/non-STOP coverage,
+calibration, and update norms.
+
+Slowking is the next planned specialist after Archaludon ex, not an alternate
+successor that can bypass it. It is a combo/toolbox deck bound only to the
+owner's exact 4 Slowking / 4 Slowpoke list with the Annihilape, Conkeldurr,
+Kyurem, Latias ex, Mega Kangaskhan ex, Smoochum, Fezandipiti ex, Meowth ex,
+Academy at Night, Ciphermaniac's Codebreaking, Poké Pad, Wondrous Patch,
+Counter Gain, and Psychic/Telepath/Boomerang Energy engine. A generic
+Slowking/Metagross list is not a valid representative, guide, corpus identity,
+or terminal package.
+
+Before Slowking can bootstrap, the checksum-bound
+`state/slowking_combo_head_coverage_v1.json` map must prove learned decision
+coverage for top-deck construction and consumption, copied non-Rule-Box attack
+legality and choice, visible combo pieces and search/recovery, every relevant
+Energy attachment/return/acceleration route, replacement-attacker Bench
+continuity, disruption response, prize mapping, and remaining-turn/outcome
+timing. Existing action, resource, tactical, opponent-response, prize-race,
+outcome, remaining-turn, and setup heads cover parts of that contract. They do
+not provide an explicit causal target for known-top provenance or copied-attack
+legality, so the current map declares a missing generic `combo_state` typed
+head. It proposes a `d_model → 192 → 32` option branch plus its own revision-56
+bounded option-conditioned fusion route. This is an identified design gap, not
+a completed implementation or validation claim.
+
+Slowking therefore remains fail-closed until the combo head is implemented and
+an immutable receipt proves exact-deck row coverage, typed losses and
+calibration, finite nonzero gradient/update norms, step-zero parent parity,
+causal suffix invariance, legal-option dependence, bounded aggregate residuals,
+and leave-one-head-out logit and action attribution on Slowking states. The
+guide remains the sole no-route exception and may only weight observed-target
+learning; it is never an imitation policy or serving input.
+
+The ordinary two-million-parameter goal is a soft target for Slowking. Its
+specialist-scoped exception may accept a measured candidate above two million
+only when the receipt accounts for every added module and demonstrates useful
+causal gradients and ablation gain. The initial hard ceiling remains the
+existing 3.5 million parameters; no global environment default changes. The
+currently proposed `combo_state` MLP contributes 24,800 parameters at d96 and
+its dedicated route contributes 2,081, for 26,881 explicitly named added
+parameters. The complete candidate total is deliberately unset until an actual
+checkpoint is instantiated and measured. Exceeding 3.5 million requires a
+separate owner decision plus memory, latency, package-size, gradient-use,
+ablation, and final-submission compatibility receipts.
+
 The exact 25 supervised bootstrap epochs use one cumulative schedule:
 
 - epochs 1–5 train action Q, action-type, action-target, action-resource, and
@@ -386,8 +569,8 @@ restart, or preempt healthy production training.
 
 #### Retrofitting expanded heads onto completed specialists
 
-After the first cumulative core containing the expanded V6 architecture is
-frozen and checksum-registered, completed V5 specialists may receive the
+After the first cumulative core containing the expanded Model Format 6 architecture is
+frozen and checksum-registered, completed Model Format 5 specialists may receive the
 architecture only as new, separately identified compatibility derivatives.
 The exact original passing checkpoints remain immutable and continue to be the
 authoritative historical gate and Kaggle artifacts. A retrofit must never
@@ -405,7 +588,7 @@ retrofit phase in which that specialist is the sole active learner. All other
 completed specialists and their derivatives remain frozen and inference-only.
 The retrofit uses the same exact-label masking, 25-epoch expanded-head
 bootstrap schedule, rehearsal contract, and research/training separation as a
-new V6 specialist. It may not affect policy actions, search, matchup routing,
+new Model Format 6 specialist. It may not affect policy actions, search, matchup routing,
 public-mix inference, or holdouts until it independently passes compatibility,
 regression, and gameplay validation and receives a separate activation
 receipt. Until then, eligible public-mix and gate opponents continue using the
@@ -545,6 +728,31 @@ their recorded order; the remaining targets then return to the normal
 availability/meta ordering. An owner-removed target is absent from selection
 and completion accounting, while historical corpus, audit, and stable matchup
 slot evidence remains immutable.
+The current owner-removed targets are plain Dragapult, Dragapult/Blaziken,
+Dragapult/Dudunsparce, Crustle, and Walrein. Plain Dragapult's completed
+corpora, route, guide, and audits remain immutable non-planning evidence.
+Slowking replaces that required-fleet slot after Archaludon ex and is the last
+remaining specialist. Its successful freeze and registration immediately
+trigger the separately versioned final-format Alakazam refresh described
+below; no final-format model computation is allowed before that boundary. Its exact
+owner-shown 60-card list, expert guide, generic guide registration, canonical
+representative, and blocked pre-stage package are discoverable under
+`config/deck_guides/slowking.yaml`,
+`config/deck_guides/slowking-representative.v1.json`,
+`docs/deck_guides/slowking-expert-brief.txt`,
+`state/slowking_combo_head_coverage_v1.json`, and
+`poke_bot/slowking_heuristics.py`. This preparation does not make Slowking
+selectable or trainable: Archaludon ex must complete first, and Slowking still
+requires exact corpus, route, combo-head, parameter, terminal-preflight, and
+validation receipts.
+Crustle is not a required specialist and may not be selected, bootstrapped,
+trained, gated, frozen, submitted, or counted toward completion. Its existing
+Matchup Router Format 6 identity remains active at stable slot 0 and may not be
+deleted, disabled, reindexed, or reused. The canonical inference-only public
+practice/gate opponent is `pilkwang-meta-20260708`, archetype `crustle`,
+label `Crustle / Great Tusk`, source
+`pilkwang/pok-mon-tcg-ai-battle-meta-snapshot-08-july`, content digest
+`sha256:7120bc67415e06c1cf69d64574f1a41545fd4c2fd084a029d77c5e43a357957f`.
 An overlap deferral may move a distinct missing-model target ahead of an
 unfinished target substantially covered by the active or completed specialist
 design. Neither mechanism removes a target, marks it complete, weakens a gate,
@@ -584,7 +792,7 @@ be described as absent. This does not mean that every route contributes to
 every decision. At each decision, the causal router selects at most one route,
 and unknown or insufficient evidence uses the exact base-policy bypass.
 
-### Canonical specialist roster and Matchup Adapter V6
+### Canonical specialist roster and Router Format 6
 
 The logical authoritative matchup roster is
 `state/matchup_adapter_roster.json#/active_expert_ids`; it is not itself the
@@ -593,8 +801,8 @@ required specialist-plan list. The live run remains on the immutable
 boundary. The staged successor format is the roster-neutral
 `poke-bot-matchup-adapter-bank-v6`.
 
-V6 always contains 64 physical adapter slots. Slots 0 through 17 preserve the
-exact V5 route identities and tensor values; unused slots are entirely zero and
+Router Format 6 always contains 64 physical adapter slots. Slots 0 through 17 preserve the
+exact Router Format 5 route identities and tensor values; unused slots are entirely zero and
 have no optimizer state. Adding an archetype allocates the lowest never-used
 slot. Removing one marks its slot retired and disables routing, gradients,
 optimizer steps, replay updates, and rehearsal updates without deleting or
@@ -603,8 +811,8 @@ ordinary roster edit changes registry data, not model shape, state-dict keys,
 parameter count, or checkpoint format.
 
 Raging Bolt, Gardevoir, N's Zoroark, Lopunny, and Cornerstone Ogerpon remain
-retired from the logical roster. Historical V4 and V5 artifacts remain
-immutable lineage. V6 activation may not replace or rewrite any passing V5
+retired from the logical roster. Historical Router Format 4 and Router Format 5 artifacts remain
+immutable lineage. Router Format 6 activation may not replace or rewrite any passing Model Format 5
 checkpoint.
 
 The v4 `festival-lead` route was migrated by route identity to the canonical
@@ -616,7 +824,7 @@ non-prefix-compatible migration. The migrated active checkpoint, causal
 router, authorization receipt, and fleet copies must share their recorded
 checksums.
 
-Head-count and parameter checks must never encode a copied total. In V6 the
+Head-count and parameter checks must never encode a copied total. In Router Format 6 the
 physical adapter count is the registry's fixed `slot_capacity`; the active
 logical count is the length of `active_expert_ids`. The parameter expectation
 is derived as:
@@ -628,12 +836,12 @@ Tests and monitoring must derive both factors from those authoritative
 structures. A roster change does not update the physical parameter expectation.
 A per-head architecture change still requires an explicit model migration.
 
-The V6 loader accepts only the exact known V5 18-row contract. It copies those
+The Router Format 6 loader accepts only the exact known Router Format 5 18-row contract. It copies those
 rows and name-keyed optimizer moments byte-for-byte into slots 0 through 17,
 adds no optimizer state for unused slots, and preserves the trunk, other heads,
 counters, RNG state, and provenance. Positional optimizer state without a
-verified parameter-name mapping fails closed. A V6-to-V5 projection is allowed
-only when no active or trained V6-only slot would be lost.
+verified parameter-name mapping fails closed. A Router Format 6-to-5 projection is allowed
+only when no active or trained Router Format 6-only slot would be lost.
 
 PTCGReplay is authoritative for meta analysis and specialist priority. A
 separately checksum-bound exact submitted-deck-to-archetype catalog from its
@@ -663,18 +871,24 @@ current PTCGReplay public identity is numeric archetype 151 with the exact name
 `Teal Mask Ogerpon ex`; those identities must not be substituted for one
 another. Completed ingest 17's catalog/index binds one exact public deck
 fingerprint and a 1,135-game acting-seat floor across the full June 26 through
-July 27 window. Exact raw replay materialization expands that floor to 2,300
-unique acting-seat games, 156,692 decisions, and 10,495 causal guide rows under
-32 verified daily receipts with no duplicate episode-seat keys. It includes
-all four nonzero recent days from July 24 through July 27: 42, 259, 413, and
-421 games respectively. Its V6 matchup identity is allocated dormant at stable
-slot 18 until its causal route passes the ordinary precision and
-weighted-support audit.
-Dragapult/Blaziken and Dragapult/Dudunsparce are removed from the required
-specialist plan and completion count; their historical corpus, router, and
-audit artifacts remain evidence only, and their stable matchup slots are not
-deleted or reused. Other retained unfinished specialists resume only after
-Archaludon ex.
+July 27 window. The clean exact-archetype-151 materialization contains 1,135
+unique acting-seat games, 76,226 decisions, and 6,814 causal guide rows under
+32 verified daily receipts with no duplicate episode-seat keys. The earlier
+2,300-game artifact is bound to Mega Kangaskhan source identity and remains
+quarantined and non-promotable. Teal's Router Format 6 matchup identity remains allocated at
+stable slot 18. The combined inactive Router Candidate 44 passed all 19 routes under
+the unchanged precision, weighted-support, and zero-state-bypass audit and is
+registered for boundary-only activation; it does not change the current
+production router.
+Plain Dragapult, Dragapult/Blaziken, Dragapult/Dudunsparce, and Crustle are
+removed from the required specialist plan and completion count; their
+historical corpus, router, guide, and audit artifacts remain evidence only,
+and their stable matchup slots are not deleted or reused. After Teal, the
+remaining unfinished specialist order is exactly Archaludon ex then Slowking.
+Slowking preparation may run in parallel, but it cannot receive selection or
+launch authority before Archaludon ex completes and its own fail-closed
+receipts pass. Crustle remains a public opponent and active matchup route only;
+it is not a third specialist step.
 
 The active specialist's own matchup route is mandatory for mirror self-play.
 For example, a Hop's Trevenant specialist must contain the
@@ -760,12 +974,12 @@ an `S+` opponent. Historical results against the removed external Lucario
 agents remain immutable and visible. This rule does not alter the separate
 official research-control roster and never removes any non-Lucario opponent.
 In the current catalog this removes five external Lucario opponents, leaving
-three external premium opponents. The frozen registry currently contains eight
-specialists, so the current premium holdout is 2,750 games across eleven
-opponents and the official-plus-premium research total is 3,750 games. These
-two current totals grow by 250 whenever another completed specialist is frozen
-and registered; the three-external count remains unchanged unless another
-explicit supersession decision is recorded.
+three external premium opponents. The frozen registry currently contains
+twelve specialists, so the current premium holdout is 3,750 games across
+fifteen opponents and the official-plus-premium research total is 4,750 games.
+These two current totals grow by 250 whenever another completed specialist is
+frozen and registered; the three-external count remains unchanged unless
+another explicit supersession decision is recorded.
 
 These games must never enter training datasets, replay buffers, rehearsal
 data, expert corpora, advantage calculations, optimizer inputs, or any other
@@ -847,23 +1061,115 @@ and issue the same checksum-bound single-use authorization oldest-first. Never
 use this recovery rule to retry an upload with an unknown network outcome.
 
 The submission queue is processed oldest-first whenever quota becomes
-available, but every upload must also be spaced at least four hours after the
-immediately preceding Kaggle submission. The processor reconciles the latest
-submission timestamp, records the next eligible upload time, and leaves an
-otherwise-ready copy pending until that time. This spacing wait is not a
-failure and must not interrupt active specialist training. Queue work runs
-without interrupting active specialist training. After Kaggle reports that the
-daily limit has been reached, do not repeatedly retry during the exhausted
-quota window. Every delayed copy remains pinned to its original frozen passing
-checkpoint: delay must never cause retraining, modification, replacement, or
+available. Reconcile Kaggle and local queue rows into logical submissions,
+deduplicating the same upload by submission ID or checkpoint-bound label, then
+anchor the unchanged four-hour spacing window to the second-most-recent
+logical submission—not the newest row. With fewer than two prior logical
+submissions there is no spacing anchor. The processor records the next eligible
+upload time and leaves an otherwise-ready copy pending until that time. This
+spacing wait is not a failure and must not interrupt active specialist
+training. Queue work runs without interrupting active specialist training.
+After Kaggle reports that the daily limit has been reached, do not repeatedly
+retry during the exhausted quota window. Every delayed copy remains pinned to
+its original frozen passing checkpoint: delay must never cause retraining,
+modification, replacement, or
 re-freezing of the specialist.
+
+The revision-33 Hops exception is a single-use operational request for exactly
+one additional `hops-trevenant` upload from the immutable owner-accepted
+iteration-10 checkpoint and exact representative. Only that upload uses
+`second_if_allowed`; it does not alter Hops' default behavior, replace either
+historical Hops submission, or change any future specialist profile.
 
 No completed specialist may be updated until every required specialist is
 gate-passing frozen.
 
+## 5a. Ordered post-fleet specialist refresh
+
+After all 15 current required specialists are training-complete, frozen, and
+registered, run a dedicated refresh phase before population training. The
+strict order is Alakazam first and Marnie's Grimmsnarl ex second. These are new
+separately versioned model generations under the same logical archetypes; they
+are not new required-roster rows, do not change the required count of 15, and
+must never overwrite, replace, re-freeze, or relabel either original passing
+checkpoint or its historical gate and Kaggle evidence.
+
+Slowking is the terminal required specialist, so its successful freeze and
+registration immediately starts the Alakazam refresh. Alakazam is the first
+model built in the final-submission format specified by
+`docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md`; it requires that
+format's checksum-bound compatibility, validation, packaging, and causal-route
+receipts and may not silently fall back to the legacy format. Prefer a
+function-preserving migration from immutable existing Alakazam checkpoint
+`sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea`
+when exact key/shape coverage permits it. Genuinely new structures use
+zero-safe initialization and require step-zero parity and causality receipts.
+The original checkpoint remains byte-for-byte immutable. If direct migration
+fails closed, preserve its failure receipt and discard the partial child.
+Then build an ordinary new same-archetype Alakazam refresh from the then-latest
+checksum-accepted core under the revision-36 fallback contract, and expand only
+that completed Alakazam derivative to final format. The generic core is never
+the direct tensor parent of final-format expansion, and no partial
+old-Alakazam/core overlay is allowed.
+
+“Immediately starts” means the controller enters the dedicated Alakazam bridge
+lane; it does not authorize model computation by itself. Before any
+final-format Alakazam model work, both
+`required_specialist_fleet_complete_for_final_alakazam_v1` and
+`capacity_research_resource_lease_v1` must exist and pass. Those receipts
+authorize only the final-format Alakazam refresh. The broader
+multi-archetype capacity program remains blocked until
+`post_refresh_sequence_complete_for_capacity_v2` proves that both the
+final-format Alakazam refresh and the following Marnie's Grimmsnarl ex refresh
+are complete. No applicable receipt means no model work.
+
+This Alakazam refresh trains on a deterministic exact even 50/50
+candidate-first and candidate-second seat split. A checksum-bound
+`poke_bot.alakazam_refresh_seat_split/v1` receipt must prove the final
+first-seat and second-seat counts are equal before the result can pass. It
+packages one `first_if_allowed` preference. It may not use the
+`second_focus_1_to_7` curriculum, an always-second arm, or a second-preferring
+Alakazam refresh copy. Marnie's Grimmsnarl ex remains the second refresh unless
+a later owner decision supersedes it.
+
+Resolve inputs independently at the start of each refresh. Hot-start from the
+newest checksum-accepted cumulative core available at that boundary, not from
+a core generation named in planning prose. Attempt the normal cumulative-core
+refresh after the preceding frozen model; if its candidate is rejected,
+preserve the rejection immutably and use the newest accepted fallback. After
+the new Alakazam version passes and freezes, perform that normal core boundary
+before resolving the base for the Grimmsnarl refresh.
+
+Also checksum-bind the then-current complete canonical specialist-training
+contract at each bootstrap. At minimum it must retain the exact 25-epoch
+bootstrap, current latest-20 specialist corpus and current-deck guide,
+causally masked learned decision fusion with every then-canonical available
+head, current matchup architecture, 8,192 new games per RL iteration, the
+5-RL-epoch/5-expert-rehearsal-epoch cadence, terminal preflight, and unchanged
+gameplay gates. Today's Accepted Policy Generation 9 number, current schema
+digests, or an old runtime package must not be pinned as the future contract.
+
+This is full current-structure training, not the old dormant expanded-head
+compatibility materialization. In particular, the Model Format 5-bound dormant Alakazam
+derivative is evidence that the old checkpoint could be migrated; it is not
+the requested new Alakazam version and cannot satisfy this phase. Each new
+version requires its own current-gate pass, immutable freeze, version-preserving
+registration, and checksum-bound
+`poke_bot.post_fleet_specialist_refresh_completion/v1` receipt. The historical
+Alakazam waiver and both original checkpoint rows remain evidence only.
+
+The phase is staged as future work only. Neither refresh enters the current
+selector, one-ahead pre-stage, runtime registry, service set, training queue, or
+gradient scope while the required fleet is still training. At the
+fleet-complete boundary, the ordinary cycle controller and direct population
+preparation both fail closed until the ordered pair of refresh receipts is
+complete.
+
 ## 6. Population phase
 
-After every required specialist is gate-passing frozen:
+After every required specialist is gate-passing frozen and both ordered
+post-fleet specialist refreshes have independently passed, frozen, and
+registered:
 
 1. Unfreeze the population.
 2. Begin local round-robin self-play against current and selected historical

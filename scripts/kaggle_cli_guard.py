@@ -32,6 +32,7 @@ DEFAULT_RECEIPTS = Path(
 )
 AUTH_SCHEMA = "poke_bot.kaggle_submission_authorization/v1"
 GO_FIRST_ATTESTATION_SCHEMA = "poke_bot.submission_go_first_attestation/v1"
+TURN_ORDER_ATTESTATION_SCHEMA = "poke_bot.submission_turn_order_attestation/v1"
 GO_FIRST_VERIFIED_CASES = {
     "integer_enum",
     "string_enum_reversed_options",
@@ -66,18 +67,43 @@ def _sha256(path: Path) -> str:
 
 
 def _validate_go_first_attestation(
-    file_path: Path, file_digest: str
+    file_path: Path,
+    file_digest: str,
+    expected_preference: str = "first_if_allowed",
 ) -> tuple[bool, str, dict[str, Any]]:
-    """Require a digest-bound build receipt proving the package chooses first."""
+    """Require a digest-bound proof for the authorized turn-order profile."""
+
+    if expected_preference not in {
+        "first_if_allowed",
+        "second_if_allowed",
+    }:
+        return False, "invalid expected turn-order preference", {}
     receipt_path = Path(str(file_path) + ".go-first-verified.json")
     receipt = _read_json(receipt_path)
     verified_cases = {
         str(item) for item in (receipt.get("verified_cases") or [])
     }
+    schema = str(receipt.get("schema") or "")
+    legacy_first = schema == GO_FIRST_ATTESTATION_SCHEMA
+    declared_preference = str(
+        receipt.get("turn_order_preference")
+        or ("first_if_allowed" if legacy_first else "")
+    )
     checks = {
-        "schema": receipt.get("schema") == GO_FIRST_ATTESTATION_SCHEMA,
+        "schema": schema
+        in {GO_FIRST_ATTESTATION_SCHEMA, TURN_ORDER_ATTESTATION_SCHEMA},
         "file_sha256": str(receipt.get("file_sha256") or "") == file_digest,
-        "go_first_if_offered": receipt.get("go_first_if_offered") is True,
+        "turn_order_preference": declared_preference == expected_preference,
+        "go_first_if_offered": (
+            receipt.get("go_first_if_offered")
+            is (expected_preference == "first_if_allowed")
+        ),
+        "go_second_if_offered": (
+            legacy_first
+            and expected_preference == "first_if_allowed"
+            or receipt.get("go_second_if_offered")
+            is (expected_preference == "second_if_allowed")
+        ),
         "verified_cases": GO_FIRST_VERIFIED_CASES <= verified_cases,
     }
     failed = [name for name, passed in checks.items() if not passed]
@@ -88,7 +114,9 @@ def _validate_go_first_attestation(
             "path": str(receipt_path),
             "schema": receipt.get("schema"),
             "file_sha256": receipt.get("file_sha256"),
+            "turn_order_preference": declared_preference,
             "go_first_if_offered": receipt.get("go_first_if_offered"),
+            "go_second_if_offered": receipt.get("go_second_if_offered"),
             "verified_cases": sorted(verified_cases),
             "checks": checks,
         },
@@ -126,8 +154,15 @@ def _validate_authorization(
         digest = _sha256(file_path)
     except OSError as exc:
         return False, f"submission file cannot be hashed: {exc}", {}
+    expected_turn_order = str(
+        authorization.get("turn_order_preference") or "first_if_allowed"
+    )
     go_first_valid, go_first_reason, go_first_details = (
-        _validate_go_first_attestation(file_path, digest)
+        _validate_go_first_attestation(
+            file_path,
+            digest,
+            expected_preference=expected_turn_order,
+        )
     )
 
     now = time.time()
@@ -145,6 +180,8 @@ def _validate_authorization(
         "competition": expected_competition == competition,
         "file_sha256": bool(expected_digest) and expected_digest == digest,
         "message": expected_message == message,
+        "turn_order_preference": expected_turn_order
+        in {"first_if_allowed", "second_if_allowed"},
         "go_first_attestation": go_first_valid,
     }
     failed = [name for name, passed in checks.items() if not passed]
@@ -153,6 +190,7 @@ def _validate_authorization(
         "file": str(file_path),
         "file_sha256": digest,
         "message": message,
+        "turn_order_preference": expected_turn_order,
         "nonce": nonce,
         "checks": checks,
         "go_first_attestation": go_first_details,

@@ -1,0 +1,25 @@
+[Unit]
+Description=Crustle family full33 guide corpus
+After=pokebot-crustle-full33-catalog-v1.service
+ConditionPathExists=/mnt/Main/main/poke-bot-agent/archive/crustle-public-family-full33-v1.json
+OnSuccess=pokebot-crustle-full33-label-audit-v1.service
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/pokebot-expert-guide-src-v1
+Environment=POKEBOT_CRUSTLE_TEACHER_SHA256=e68a759bc8c3566dab2d49420d09dff8fcec7d9563da5f659fd2e2569f73ba6d
+Environment=POKEBOT_CRUSTLE_DAY_PARALLELISM=2
+Environment=POKEBOT_CRUSTLE_WORKERS_PER_DAY=2
+Environment=POKEBOT_CRUSTLE_MAX_IN_FLIGHT_PER_DAY=4
+ExecStart=/usr/bin/bash /home/admin/pokebot-expert-guide-src-v1/ops/elmo/build_crustle_full33_corpus.sh
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=400%
+MemoryHigh=12G
+MemoryMax=16G
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

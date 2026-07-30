@@ -12,7 +12,8 @@ from scripts import activate_matchup_v6_fleet as subject
 def _config(tmp_path: Path) -> dict[str, object]:
     source = tmp_path / "candidate"
     source.mkdir()
-    registry = tmp_path / "registry.json"
+    registry = source / "state" / "matchup_adapter_roster.json"
+    registry.parent.mkdir()
     registry.write_text("{}\n", encoding="utf-8")
     return {
         "source_root": str(source),
@@ -30,6 +31,8 @@ def _config(tmp_path: Path) -> dict[str, object]:
             "container": "poke-bot",
             "service": "worker",
             "image": "poke-bot:v6",
+            "build_context": "/srv/poke-bot-agent",
+            "dockerfile": "/srv/poke-bot-agent/containers/worker/Dockerfile",
             "compose_files": ["/srv/host.yml", "/srv/production.yml"],
             "endpoint": "192.168.1.143:8765",
             "expected_workers": 36,
@@ -67,6 +70,7 @@ def test_activation_uses_relative_rsync_and_managed_services(
     monkeypatch.setattr(subject, "_expected_contract", lambda _root: expected)
     monkeypatch.setattr(subject, "load_slot_registry", lambda _path: {"slots": []})
     monkeypatch.setattr(subject, "registry_digest", lambda _registry: "sha256:registry")
+    monkeypatch.setattr(subject, "sha256", lambda _path: "sha256:" + ("a" * 64))
     monkeypatch.setattr(subject, "_remote_digests", lambda _host, _root: expected)
     monkeypatch.setattr(
         subject,
@@ -90,6 +94,8 @@ def test_activation_uses_relative_rsync_and_managed_services(
         commands.append((argv, cwd))
         if argv[-2:] == ["id", "-u"]:
             return "501\n"
+        if "sha256sum" in argv:
+            return ("a" * 64) + "  state/matchup_adapter_roster.json\n"
         return ""
 
     monkeypatch.setattr(subject, "_run", fake_run)
@@ -111,11 +117,26 @@ def test_activation_uses_relative_rsync_and_managed_services(
 
     rsync, rsync_cwd = commands[0]
     assert rsync[:2] == ["rsync", "-aR"]
-    assert rsync[2:-1] == list(LOADER_RUNTIME_FILES)
+    assert rsync[2:-1] == [
+        *LOADER_RUNTIME_FILES,
+        "state/matchup_adapter_roster.json",
+    ]
     assert rsync_cwd == source.resolve()
     assert all(not value.startswith(str(source)) for value in rsync[2:-1])
+    elmo_rsync, elmo_rsync_cwd = commands[1]
+    assert elmo_rsync[:2] == ["rsync", "-aR"]
+    assert "--omit-dir-times" in elmo_rsync
+    assert "--no-perms" in elmo_rsync
+    assert elmo_rsync[-1] == "elmo:/srv/poke-bot-agent/"
+    assert elmo_rsync_cwd == source.resolve()
+    assert "state/matchup_adapter_roster.json" in elmo_rsync
     assert any(
         "launchctl" in " ".join(command) for command, _cwd in commands
+    )
+    assert any(
+        "docker build" in " ".join(command)
+        and "poke-bot:v6" in command
+        for command, _cwd in commands
     )
     assert any(
         command[:5] == ["ssh", "-o", "BatchMode=yes", "elmo", "sudo"]
