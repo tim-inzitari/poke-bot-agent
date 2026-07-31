@@ -10,15 +10,14 @@
 
 #include "wave_dispatch/client.hpp"
 #include "wave_dispatch/frame.hpp"
+#include "wave_dispatch/pool.hpp"
 #include "wave_dispatch/scheduler.hpp"
 
 namespace wave_dispatch {
 
-/** Per-endpoint claim credits with atomics (no mutex on claim hot path). */
 class ClaimLedger {
  public:
   explicit ClaimLedger(int total_jobs);
-
   void set_endpoint_targets(const std::unordered_map<std::string, int>& targets);
   bool try_claim_remote(const std::string& endpoint, int n);
   int claimed(const std::string& endpoint) const;
@@ -44,17 +43,28 @@ struct CollectConfig {
   int remote_chunk = 128;
   std::string kind = "play";
   bool prefer_binary = true;
+  /** Proto v2 multi-job frames per socket round-trip. */
+  int batch_size = 16;
+  bool compress_blobs = true;
+  /** Reuse warm connections across the wave (and across waves if pool given). */
+  bool use_connection_pool = true;
+  /** Prefer Unix domain sockets for localhost. */
+  bool prefer_uds = true;
+  /** Async io worker threads for remote submits (0 → hardware_concurrency). */
+  int async_threads = 0;
 };
 
 int run_scheduled_wave(const std::vector<Json>& jobs, LocalSubmitFn local_submit,
                        std::vector<JobClient*>& remote_clients,
                        MidWaveScheduler& scheduler, CollectConfig config,
-                       ResultCallback on_result);
+                       ResultCallback on_result,
+                       ConnectionPool* pool = nullptr);
 
 int run_scheduled_wave_bin(const std::vector<Message>& jobs,
                            LocalMessageFn local_submit,
                            std::vector<JobClient*>& remote_clients,
                            MidWaveScheduler& scheduler, CollectConfig config,
-                           MessageResultCallback on_result);
+                           MessageResultCallback on_result,
+                           ConnectionPool* pool = nullptr);
 
 }  // namespace wave_dispatch

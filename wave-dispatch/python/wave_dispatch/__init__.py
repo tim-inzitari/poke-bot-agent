@@ -3,10 +3,6 @@
 Install::
 
     pip install -e /path/to/wave-dispatch
-
-Example::
-
-    from wave_dispatch import JobClient, MidWaveScheduler, run_scheduled_wave
 """
 
 from __future__ import annotations
@@ -27,6 +23,7 @@ from wave_dispatch._native import (  # noqa: F401
     JobClient,
     parse_endpoint,
     WorkerFarm,
+    ConnectionPool,
     ServerConfig,
     serve_forever,
     HardwareSignals,
@@ -42,7 +39,7 @@ from wave_dispatch._native import (  # noqa: F401
 try:
     from wave_dispatch._native import __version__ as __version__
 except ImportError:  # pragma: no cover
-    __version__ = "0.1.0"
+    __version__ = "0.3.0"
 
 __all__ = [
     "__version__",
@@ -61,6 +58,7 @@ __all__ = [
     "JobClient",
     "parse_endpoint",
     "WorkerFarm",
+    "ConnectionPool",
     "ServerConfig",
     "serve_forever",
     "HardwareSignals",

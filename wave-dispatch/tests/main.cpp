@@ -4,6 +4,7 @@ int test_frame();
 int test_scheduler();
 int test_roundtrip();
 int test_binary();
+int test_batch_pool();
 
 int main() {
   int failed = 0;
@@ -11,6 +12,7 @@ int main() {
   failed += test_scheduler();
   failed += test_roundtrip();
   failed += test_binary();
+  failed += test_batch_pool();
   if (failed == 0) {
     std::cout << "ALL_TESTS_PASSED\n";
   } else {

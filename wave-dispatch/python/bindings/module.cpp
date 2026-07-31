@@ -186,6 +186,23 @@ PYBIND11_MODULE(_native, m) {
           },
           py::arg("meta"), py::arg("blob") = py::bytes(), py::arg("kind") = "play")
       .def(
+          "submit_batch",
+          [](JobClient& c, const py::list& jobs, const std::string& kind,
+             bool compress) {
+            std::vector<Message> batch;
+            batch.reserve(py::len(jobs));
+            for (auto item : jobs) batch.push_back(py_to_message(item.cast<py::object>()));
+            std::vector<Message> replies;
+            {
+              py::gil_scoped_release release;
+              replies = c.submit_batch(batch, kind, compress);
+            }
+            py::list out;
+            for (const auto& r : replies) out.append(message_to_py(r));
+            return out;
+          },
+          py::arg("jobs"), py::arg("kind") = "play", py::arg("compress") = true)
+      .def(
           "control",
           [](JobClient& c, const py::object& msg) {
             Json j = py_to_json(msg);
@@ -230,12 +247,22 @@ PYBIND11_MODULE(_native, m) {
       .def(py::init<>())
       .def_readwrite("host", &ServerConfig::host)
       .def_readwrite("port", &ServerConfig::port)
+      .def_readwrite("unix_path", &ServerConfig::unix_path)
+      .def_readwrite("auto_uds", &ServerConfig::auto_uds)
       .def_readwrite("backlog", &ServerConfig::backlog)
       .def_readwrite("max_connections", &ServerConfig::max_connections)
       .def_readwrite("idle_timeout_s", &ServerConfig::idle_timeout_s)
       .def_readwrite("io_threads", &ServerConfig::io_threads)
       .def_readwrite("tcp_nodelay", &ServerConfig::tcp_nodelay)
-      .def_readwrite("reuse_port", &ServerConfig::reuse_port);
+      .def_readwrite("reuse_port", &ServerConfig::reuse_port)
+      .def_readwrite("use_io_uring", &ServerConfig::use_io_uring);
+
+  py::class_<ConnectionPool>(m, "ConnectionPool")
+      .def(py::init<>())
+      .def("ensure", &ConnectionPool::ensure, py::arg("endpoint"), py::arg("n"))
+      .def("close", &ConnectionPool::close)
+      .def("idle_count", &ConnectionPool::idle_count)
+      .def("live_count", &ConnectionPool::live_count);
 
   m.def(
       "serve_forever",
@@ -376,12 +403,18 @@ PYBIND11_MODULE(_native, m) {
       .def_readwrite("local_workers", &CollectConfig::local_workers)
       .def_readwrite("remote_chunk", &CollectConfig::remote_chunk)
       .def_readwrite("kind", &CollectConfig::kind)
-      .def_readwrite("prefer_binary", &CollectConfig::prefer_binary);
+      .def_readwrite("prefer_binary", &CollectConfig::prefer_binary)
+      .def_readwrite("batch_size", &CollectConfig::batch_size)
+      .def_readwrite("compress_blobs", &CollectConfig::compress_blobs)
+      .def_readwrite("use_connection_pool", &CollectConfig::use_connection_pool)
+      .def_readwrite("prefer_uds", &CollectConfig::prefer_uds)
+      .def_readwrite("async_threads", &CollectConfig::async_threads);
 
   m.def(
       "run_scheduled_wave",
       [](const py::list& jobs, py::function local_submit, const py::list& remote_clients,
-         MidWaveScheduler& scheduler, CollectConfig config, py::object on_result) {
+         MidWaveScheduler& scheduler, CollectConfig config, py::object on_result,
+         ConnectionPool* pool) {
         std::vector<Json> cpp_jobs;
         cpp_jobs.reserve(py::len(jobs));
         for (auto item : jobs) cpp_jobs.push_back(py_to_json(item.cast<py::object>()));
@@ -403,11 +436,11 @@ PYBIND11_MODULE(_native, m) {
         {
           py::gil_scoped_release release;
           n = run_scheduled_wave(cpp_jobs, cpp_local, clients, scheduler, config,
-                                 cpp_on);
+                                 cpp_on, pool);
         }
         return n;
       },
       py::arg("jobs"), py::arg("local_submit"), py::arg("remote_clients"),
       py::arg("scheduler"), py::arg("config") = CollectConfig{},
-      py::arg("on_result") = py::none());
+      py::arg("on_result") = py::none(), py::arg("pool") = nullptr);
 }

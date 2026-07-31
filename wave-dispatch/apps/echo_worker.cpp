@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
   std::atomic<bool> stop{false};
   ServerConfig cfg;
   cfg.port = port;
+  cfg.auto_uds = true;
   cfg.idle_timeout_s = 120.0;
   cfg.io_threads = io_threads;
   cfg.max_connections = 4096;

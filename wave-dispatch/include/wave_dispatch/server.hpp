@@ -15,19 +15,20 @@ using HelloFn = std::function<Json()>;
 struct ServerConfig {
   std::string host = "0.0.0.0";
   int port = kDefaultPort;
+  /** If set, also (or only) listen on this Unix domain socket path. */
+  std::string unix_path;
+  /** If true and unix_path empty, auto unix:/tmp/wave_dispatch_<port>.sock */
+  bool auto_uds = true;
   int backlog = 512;
   int max_connections = 4096;
   double idle_timeout_s = 60.0;
-  /** Asio io_context threads (accept + socket reactor). */
-  int io_threads = 0;  // 0 → hardware_concurrency
+  int io_threads = 0;
   bool tcp_nodelay = true;
   bool reuse_port = true;
+  /** Prefer Linux io_uring when compiled with support. */
+  bool use_io_uring = true;
 };
 
-/**
- * Asio multi-threaded accept loop. One in-flight job per socket.
- * Prefers MessageHandler (JSON+blob); JobHandler wrapped if only JSON given.
- */
 void serve_forever(MessageHandler handler, ServerConfig config = {},
                    HelloFn hello = {},
                    const std::atomic<bool>* stop = nullptr);

@@ -20,9 +20,13 @@ struct WorkerInfo {
   Json raw_hello;
 };
 
-/** One TCP session (Asio socket) to a remote worker. */
+/** One TCP or Unix-domain session to a remote worker. */
 class JobClient {
  public:
+  /**
+   * host: hostname, IPv4, or "unix:/path/to.sock"
+   * port: ignored for unix: endpoints
+   */
   JobClient(std::string host, int port = kDefaultPort, double timeout_s = 30.0,
             double connect_timeout_s = 60.0, double control_timeout_s = 300.0);
   ~JobClient();
@@ -34,7 +38,8 @@ class JobClient {
 
   const std::string& host() const { return host_; }
   int port() const { return port_; }
-  std::string endpoint() const { return host_ + ":" + std::to_string(port_); }
+  bool is_unix() const { return unix_path_.has_value(); }
+  std::string endpoint() const;
   const WorkerInfo* info() const { return info_ ? &*info_ : nullptr; }
   bool connected() const;
 
@@ -44,8 +49,11 @@ class JobClient {
 
   Json ping();
   Json submit_job(const Json& job, const std::string& kind = "play");
-  /** Fast path: opaque blob rides beside small JSON meta. */
   Message submit_message(const Message& msg, const std::string& kind = "play");
+  /** Proto v2: many jobs in one round-trip. */
+  std::vector<Message> submit_batch(const std::vector<Message>& jobs,
+                                    const std::string& kind = "play",
+                                    bool compress = true);
   Json control(const Json& msg);
 
  private:
@@ -54,6 +62,7 @@ class JobClient {
 
   std::string host_;
   int port_ = kDefaultPort;
+  std::optional<std::string> unix_path_;
   double timeout_s_ = 30.0;
   double connect_timeout_s_ = 60.0;
   double control_timeout_s_ = 300.0;
