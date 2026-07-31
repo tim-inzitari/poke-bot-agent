@@ -1,0 +1,49 @@
+{
+  "schema": "poke_bot.elmo_memory_guard_activation/v1",
+  "owner_decision_revision": 84,
+  "activated_at_utc": "2026-07-31T17:35:47Z",
+  "recorded_at_utc": "2026-07-31T17:38:07Z",
+  "status": "activated_and_runtime_verified",
+  "change": {
+    "previous_process_tree_guard_gib": 30,
+    "active_process_tree_guard_gib": 45,
+    "minimum_host_free_ram_gib": 24,
+    "container_memory_limit_gib": 64,
+    "container_swap_limit_gib": 64
+  },
+  "canonical_sources": {
+    "compose": "containers/truenas-worker/docker-compose.production.yml",
+    "compose_sha256": "sha256:88e4b1255133a3285bcada9ccab864c00688631d2ab384905531999ee083fb28",
+    "entrypoint": "containers/truenas-worker/entrypoint.sh",
+    "entrypoint_sha256": "sha256:62398dda08803a4bf368517f8cacffa9e6105873882585a5e86fcaa995de239f"
+  },
+  "runtime": {
+    "host": "elmo",
+    "container_id": "ce3614d4b5da5fc699a7147fec91865b4476a2ca15494605cea2908a0a7cc0b8",
+    "image": "poke-bot-truenas-worker:final-format-alakazam-h10-r79-full",
+    "image_id": "sha256:d1f6cf646e056b367aa4e767c333412dfe569781aa4eccfb3236a3273b0ca150",
+    "container_health": "healthy",
+    "workers": 36,
+    "leaf_servers": 4,
+    "active_jobs": 72,
+    "queued_jobs": 36,
+    "gpu_utilization_percent": 99.0,
+    "host_memory_available_bytes": 42899996672,
+    "jobs_failed": 0
+  },
+  "learner": {
+    "service": "pokebot-final-format-alakazam-r79-h10.service",
+    "pid": 393963,
+    "service_restart_count": 0,
+    "stage": "collect:self_play",
+    "checkpoint_sha256": "sha256:e65123a13abb61332fe89e66946103a83c766e2f15315b945bfe9b6bf0c2d32e",
+    "model_parameters": 10428046,
+    "blackwell_workers": 96,
+    "elmo_workers": 36,
+    "observed_games_per_second": 13.63
+  },
+  "dashboard": {
+    "source_integrity_current": true,
+    "failed_sources": []
+  }
+}

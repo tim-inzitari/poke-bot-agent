@@ -1680,7 +1680,12 @@ def test_specialist_protocol_state_validates_roster_and_restart(
         runtime_run_name="pure_rl_alakazam_live",
     )
     assert stale_active_run_state["runtime_identity_reconciled"] is True
-    assert stale_active_run_state["canonical_pointer_stale"] is True
+    assert stale_active_run_state["canonical_pointer_stale"] is False
+    assert (
+        stale_active_run_state["accuracy_warning"]
+        == "Selected production runtime supersedes stale active-run metadata "
+        "in the canonical planning snapshot."
+    )
     assert stale_active_run_state["active_specialist"] == "alakazam"
 
     payload["current"] = {
@@ -3361,6 +3366,38 @@ def test_zero_queue_without_log_hint_is_still_starved_mid_collection() -> None:
     )
     assert payload["fleet"]["bert"]["worker"]["allocation_state"] == (
         "STARVED · 0/16 workers fed · refill pending"
+    )
+
+
+def test_all_games_claimed_with_results_pending_is_draining_not_starved() -> None:
+    payload = _fleet_payload(active=True, elmo_jobs=5, bert_jobs=2)
+    payload["curriculum"]["scheduler_queues"] = {"unassigned": 0}
+    payload["curriculum"]["progress"].update(current=6505, total=7168)
+    SnapshotCache()._annotate_fleet_rates(payload)
+
+    expected = "DRAINING · all games claimed · 663 fleet results pending"
+    assert payload["fleet"]["elmo"]["worker"]["allocation_state"] == expected
+    assert payload["fleet"]["bert"]["worker"]["allocation_state"] == expected
+
+
+def test_zero_instantaneous_queue_with_live_completion_rate_is_bursty_not_starved() -> None:
+    cache = SnapshotCache()
+    first = _fleet_payload(active=True, elmo_jobs=0, bert_jobs=0)
+    cache._annotate_fleet_rates(first)
+    second = _fleet_payload(active=True, elmo_jobs=0, bert_jobs=0)
+    second["observed_at"] = float(first["observed_at"]) + 10.0
+    second["fleet"]["elmo"]["worker"]["jobs_completed"] = 110
+    second["fleet"]["elmo"]["worker"]["decisions_completed"] = 1600
+    second["fleet"]["bert"]["worker"]["jobs_completed"] = 55
+    second["fleet"]["bert"]["worker"]["decisions_completed"] = 800
+
+    cache._annotate_fleet_rates(second)
+
+    assert second["fleet"]["elmo"]["worker"]["allocation_state"] == (
+        "BURSTY FEED · 0/48 at sample · 1.00 GPS completing"
+    )
+    assert second["fleet"]["bert"]["worker"]["allocation_state"] == (
+        "BURSTY FEED · 0/16 at sample · 0.50 GPS completing"
     )
 
 
@@ -5099,6 +5136,30 @@ def test_dashboard_page_reloads_when_server_ui_version_changes() -> None:
     assert "__DASHBOARD_UI_VERSION__" not in rendered
     assert f"const DASHBOARD_UI_VERSION='{dashboard_ui_version()}'" in rendered
     assert "d.dashboard_ui_version!==DASHBOARD_UI_VERSION" in html
+
+
+def test_dashboard_parameter_card_shows_both_alakazam_capacity_stages() -> None:
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+    inventory = json.loads(
+        (root / "state/final_format_alakazam_model_inventory_r79.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "model-refresh-ordinary-params" in html
+    assert "model-refresh-h10-params" in html
+    assert "model-refresh-delta" in html
+    assert "model-new-inventory" in html
+    assert "model-new-ordinary" in html
+    assert "model-new-h10" in html
+    assert "50% FIRST / 50% SECOND" in html
+    assert "no second-focused arm" in html
+    assert "actual epoch-25 migration pending" in html
+    assert inventory["ordinary_refresh"]["learned_parameters"] == 1_684_103
+    assert inventory["h10_target"]["learned_parameters"] == 10_352_606
+    assert inventory["parameter_delta_ordinary_to_h10"] == 8_668_503
+    assert inventory["h10_target"]["canary_promotable"] is False
     assert "window.location.replace" in html
 
 
@@ -5201,6 +5262,54 @@ def test_scheduler_unassigned_never_leaks_from_preceding_phase(monkeypatch) -> N
 
     assert state["available"] is True
     assert state["unassigned"] is None
+
+
+def test_scheduler_queue_keeps_prefetch_across_large_practice_line(monkeypatch) -> None:
+    raw = "\n".join(
+        [
+            "[remote] 192.168.1.143:8765 socket_prefetch=36 (36 workers × 1)",
+            "[remote] 192.168.1.158:8766 socket_prefetch=16 (16 workers × 1)",
+            "[pure_rl] adaptive practice weights=" + ("x" * 12_000),
+            "[remote] endpoint_owned_queues "
+            "depths={'192.168.1.143:8765': 372, '192.168.1.158:8766': 192} "
+            "high_water={'192.168.1.143:8765': 372, '192.168.1.158:8766': 192} "
+            "shared_endpoint_race=disabled",
+        ]
+    )
+    monkeypatch.setattr("scripts.dashboard_snapshot.read_tail", lambda *_args: raw)
+
+    state = scheduler_queue_state("active-run")
+
+    assert state["endpoints"]["elmo"]["controller_reserve_target"] == 336
+    assert state["endpoints"]["bert"]["controller_reserve_target"] == 176
+
+
+def test_scheduler_queue_does_not_reuse_prior_prefetch_generation(monkeypatch) -> None:
+    queue = (
+        "[remote] endpoint_owned_queues "
+        "depths={'192.168.1.143:8765': 372, '192.168.1.158:8766': 192} "
+        "high_water={'192.168.1.143:8765': 372, '192.168.1.158:8766': 192} "
+        "shared_endpoint_race=disabled"
+    )
+    raw = "\n".join(
+        [
+            "[remote] 192.168.1.143:8765 socket_prefetch=180 (36 workers × 5)",
+            "[remote] 192.168.1.158:8766 socket_prefetch=80 (16 workers × 5)",
+            queue,
+            "[pure_rl] mid_iter_rebalance=start scheduler=mid_iter",
+            "[remote] 192.168.1.143:8765 demand=36 slots=36/36",
+            "[remote] 192.168.1.158:8766 demand=16 slots=16/16",
+            queue,
+        ]
+    )
+    monkeypatch.setattr("scripts.dashboard_snapshot.read_tail", lambda *_args: raw)
+
+    state = scheduler_queue_state("active-run")
+
+    assert state["endpoints"]["elmo"]["socket_capacity"] == 36
+    assert state["endpoints"]["elmo"]["controller_reserve_target"] == 336
+    assert state["endpoints"]["bert"]["socket_capacity"] == 16
+    assert state["endpoints"]["bert"]["controller_reserve_target"] == 176
 
 
 def test_scheduler_unassigned_uses_current_phase_heartbeat(monkeypatch) -> None:
@@ -7270,6 +7379,85 @@ def test_decision_fusion_checkpoint_contract_requires_exact_all_head_inventory()
     assert result["required_head_count"] == 17
 
 
+def test_decision_fusion_checkpoint_contract_includes_enabled_optional_heads() -> None:
+    required = [
+        *dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS,
+        "setup_board_outcome",
+        "combo_state",
+    ]
+    result = dashboard_snapshot_module._decision_fusion_checkpoint_contract(
+        {
+            "decision_fusion.residual.2.weight": _DashboardFakeFusionTensor(4, 4),
+        },
+        {
+            "model_config": {
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": False,
+                "setup_board_outcome_head_enabled": True,
+                "combo_state_head_enabled": True,
+            },
+            "provenance": {
+                "decision_fusion": {
+                    "schema": dashboard_snapshot_module.DECISION_FUSION_SCHEMA,
+                    "required_heads": required,
+                    "runtime_enabled": False,
+                }
+            },
+        },
+    )
+
+    assert result["verified"] is True
+    assert result["phase"] == "training_warmup"
+    assert result["required_head_count"] == 19
+    assert result["expected_required_head_count"] == 19
+
+
+def test_decision_fusion_checkpoint_contract_validates_v2_dedicated_routes() -> None:
+    required = [
+        *dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS,
+        "setup_board_outcome",
+    ]
+    result = dashboard_snapshot_module._decision_fusion_checkpoint_contract(
+        {
+            "decision_fusion.residual.2.weight": _DashboardFakeFusionTensor(4, 4),
+        },
+        {
+            "model_config": {
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": True,
+                "decision_fusion_dedicated_routes_enabled": True,
+                "decision_fusion_dedicated_routes_runtime_enabled": True,
+                "setup_board_outcome_head_enabled": True,
+            },
+            "provenance": {
+                "decision_fusion": {
+                    "schema": dashboard_snapshot_module.DECISION_FUSION_V2_SCHEMA,
+                    "required_heads": required,
+                    "runtime_enabled": True,
+                    "guide_excluded": True,
+                    "dedicated_routes": {
+                        "schema": (
+                            dashboard_snapshot_module
+                            .DECISION_FUSION_V2_ROUTE_SCHEMA
+                        ),
+                        "runtime_enabled": True,
+                        "route_names": required,
+                        "route_count": len(required),
+                        "aggregation": "fixed_mean",
+                        "total_delta_cap": 1.0,
+                        "zero_safe_final_projection": True,
+                    },
+                }
+            },
+        },
+    )
+
+    assert result["verified"] is True
+    assert result["schema"] == dashboard_snapshot_module.DECISION_FUSION_V2_SCHEMA
+    assert result["phase"] == "runtime_active"
+    assert result["required_head_count"] == 18
+
+
 def test_decision_fusion_checkpoint_contract_fails_closed_if_successor_drops_head() -> None:
     required = list(dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS)
     result = dashboard_snapshot_module._decision_fusion_checkpoint_contract(
@@ -8335,13 +8523,11 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
     }
     allowed_statuses = set(state["allowed_status_values"]["specialist"])
 
-    assert active_id == ""
+    assert active_id == "slowking"
     assert state["current"]["transition_source_specialist"] == (
-        "teal-mask-ogerpon-ex"
-    )
-    assert state["current"]["staged_successor_specialist"] == (
         "archaludon-ex"
     )
+    assert state["current"]["staged_successor_specialist"] is None
     assert all(
         row["status"] in allowed_statuses for row in state["specialists"]
     )
@@ -8350,7 +8536,7 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
     ]
-    assert ordered_ids[0] == "archaludon-ex"
+    assert ordered_ids == []
     assert removed_ids == {
         "dragapult",
         "dragapult-blaziken",
@@ -8420,6 +8606,7 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
     ]
+    assert display_order[-1] == "slowking"
     assert removed_ids.isdisjoint(display_order)
 
     snapshot_source = (
@@ -9291,3 +9478,107 @@ def test_dashboard_protocol_pointer_label_uses_explicit_stale_flag() -> None:
         "'none')+' is stale"
         not in html
     )
+
+
+def test_final_format_alakazam_progress_prefers_live_h10_rl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = tmp_path / "h10.progress.status"
+    progress_log = tmp_path / "h10.progress.log"
+    trainer_log = tmp_path / "h10.log"
+    run_dir = tmp_path / "run"
+    registry = tmp_path / "registry.json"
+    run_dir.mkdir()
+    line = (
+        "pure_rl collect:self_play iter=0:  12%|x| 3318/27853 "
+        "[05:31<35:04, 11.66game/s, rdmd=52, remotes=104, sps=407.7]"
+    )
+    status.write_text(line, encoding="utf-8")
+    progress_log.write_text(line, encoding="utf-8")
+    trainer_log.write_text(
+        "[pure_rl] loaded checkpoint params=10428046 path=/models/h10.pt\n",
+        encoding="utf-8",
+    )
+    (run_dir / "loop_state.json").write_text(
+        json.dumps({"next_iteration": 0}), encoding="utf-8"
+    )
+    registry.write_text(
+        json.dumps(
+            {
+                "isolated_refresh_contract": {
+                    "maximum_iterations": 189,
+                    "games_per_iteration": 32768,
+                    "blackwell_workers": 96,
+                    "elmo_workers": 36,
+                    "bert_workers": 16,
+                    "training_seat_split": {"first": 0.5, "second": 0.5},
+                    "premium_skill_weighted_win_rate": 0.65,
+                    "kaggle_rating_simulation_projected_lower_bound": 1000,
+                    "strength_gate_and_rating_simulation_are_independent": True,
+                },
+                "specialists": {
+                    "alakazam": {
+                        "run_name": "final_format_alakazam_r79_h10_i_v6_8k",
+                        "initial_checkpoint": "/models/h10.pt",
+                        "initial_checkpoint_sha256": "abc123",
+                        "decision_fusion": {
+                            "required_heads": [f"head-{index}" for index in range(19)]
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_STATUS",
+        status,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_LOG",
+        progress_log,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_ALAKAZAM_H10_LOG",
+        trainer_log,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_ALAKAZAM_H10_RUN_DIR",
+        run_dir,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_ALAKAZAM_H10_REGISTRY",
+        registry,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, user=False: {
+            "name": name,
+            "active": name
+            == dashboard_snapshot_module.FINAL_FORMAT_ALAKAZAM_H10_SERVICE,
+            "active_state": "active",
+            "sub_state": "running",
+            "pid": 1234,
+        },
+    )
+
+    result = dashboard_snapshot_module.final_format_alakazam_progress()
+
+    assert result["status"] == "running"
+    assert result["mode"] == "final_format_alakazam_h10_rl"
+    assert result["phase"] == "collect:self_play"
+    assert result["current"] == 3318
+    assert result["total"] == 27853
+    assert result["model_parameters"] == 10_428_046
+    assert result["learned_head_count"] == 19
+    assert result["blackwell_workers"] == 96
+    assert result["premium_strength_gate"] == 0.65
+    assert result["kaggle_rating_lower_bound"] == 1000.0
+    assert result["rating_gate_separate"] is True

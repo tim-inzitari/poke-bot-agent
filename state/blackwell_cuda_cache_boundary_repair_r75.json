@@ -1,0 +1,117 @@
+{
+  "schema": "poke_bot.blackwell_cuda_cache_boundary_repair/v1",
+  "status": "activated_evaluation_continuity_verified_pending_first_nonzero_cache_sample",
+  "created_at_utc": "2026-07-30T23:44:39Z",
+  "owner_goal_revision": 75,
+  "diagnosis": {
+    "classification": "long_lived_trainer_cuda_caching_allocator_retained_freed_device_resident_training_blocks",
+    "affected_boundary": "Archaludon iteration-3 train to formal and diagnostic evaluation",
+    "training_process_pid": 1159186,
+    "training_process_gpu1_memory_gib": 42.19,
+    "gpu1_total_capacity_gib": 47.27,
+    "failed_leaf_allocation_mib": 32,
+    "first_failure_log": "/home/inzi/poke-bot-agent/outputs/logs/pure_rl_archaludon-ex_temporal1_8k_v2_20260730.progress.log",
+    "first_failure_log_line": 8532,
+    "first_failure_log_line_sha256": "sha256:0e9afc83a7e6f67233086de4cbf32ef22e638393eb555ddb3cd8b44f0bababa2",
+    "failed_research_control_progress": {
+      "requested_games": 1000,
+      "progressed_jobs": 1000,
+      "valid_games": 814,
+      "valid_fraction": 0.814,
+      "committed": false
+    },
+    "fail_closed_result": "research-control measurement failed its exact row audit",
+    "fail_closed_launcher_log": "/home/inzi/poke-bot-agent/outputs/logs/specialist-runtime.launcher.log",
+    "fail_closed_launcher_log_line": 31167,
+    "fail_closed_launcher_log_line_sha256": "sha256:f711107aec1a194866eedb2f73923e4d47cc3925c6d758c8d692c6311bc02bc4",
+    "checkpoint_or_training_corruption": false
+  },
+  "implementation": {
+    "source": "scripts/train_pure_rl.py",
+    "source_sha256": "sha256:95b516045e733d610a78c9c26f093db46cf6bb0a30c2ce3135a61b3f6865b3ff",
+    "boundary": "immediately_after_rl_train_step_and_replay_heap_release_before_leaf_farm_rebuild_promotion_or_evaluation",
+    "sequence": [
+      "delete_replay_dataset_reference",
+      "collect_python_cycles_and_trim_host_heap",
+      "synchronize_training_cuda_device",
+      "record_cuda_reserved_before",
+      "empty_cuda_caching_allocator",
+      "record_cuda_reserved_after",
+      "rebuild_inference_leaf_farm"
+    ],
+    "model_weights_changed": false,
+    "optimizer_state_changed": false,
+    "training_data_changed": false,
+    "simulator_workers_changed": false,
+    "blackwell_simulator_workers": 96,
+    "leaf_topology_changed": false,
+    "blackwell_leaf_replicas": {
+      "gpu0": 4,
+      "gpu1": 12
+    }
+  },
+  "activation": {
+    "method": "managed_systemd_restart",
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "activated_at_utc": "2026-07-30T23:29:32Z",
+    "pre_activation_pid": 1371823,
+    "post_activation_pid": 1387831,
+    "post_activation_restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "manual_stop_protection_restored": true,
+    "remote_active_jobs_before_restart": {
+      "elmo": 0,
+      "bert": 0
+    },
+    "preserved_collection_iteration": 3,
+    "preserved_collection_receipt_sha256": "sha256:43d3a2df50b009dde08853eb8d6c2508c8563c0ca3b5f826a05192ddd81b1949",
+    "preserved_candidate_checkpoint_sha256": "sha256:91b4cf7dd133c473a9e8102427933142ab5981199c2b2320249d7348a16a7d82",
+    "recollection_performed": false,
+    "candidate_retrained": false,
+    "source_migration_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/design_migrations/migration_0003.json",
+    "source_migration_receipt_sha256": "sha256:b251bc3b98847518f512aeeda3648fac967ae05aae31529b46e87990c0d9567b"
+  },
+  "validation": {
+    "focused_tests_passed": 30,
+    "python_compile_passed": true,
+    "recovery_path_cache_telemetry": {
+      "cuda_reserved_before_bytes": 0,
+      "cuda_reserved_after_bytes": 0,
+      "interpretation": "the immutable trained candidate was recovered in a fresh process, so no training cache existed in this activation replay"
+    },
+    "post_fix_gpu1_memory_during_evaluation_mib": 6532,
+    "post_fix_cuda_oom_events": 0,
+    "post_fix_fail_closed_leaf_events": 0,
+    "formal_gate": {
+      "requested_games": 4000,
+      "valid_games": 4000,
+      "audit_passed": true,
+      "win_rate": 0.6873333333333334
+    },
+    "research_controls": {
+      "requested_games": 1000,
+      "valid_games": 1000,
+      "audit_passed": true,
+      "win_rate": 0.578
+    },
+    "iteration_commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/commits/iter_00003.json",
+    "iteration_commit_sha256": "sha256:c43e1805a67960224003efff9955082abd65e385c8cbc7e00c979d52fc6320f1",
+    "formal_eval_sha256": "sha256:a5ca4b13330942f2e2e01da0625da26a9cdaf98d090eb822bf863eacaa2c59f7",
+    "research_control_result_sha256": "sha256:1709b8d2f89e3a8962531961152553f179f97640194b9846786cee0812371e04",
+    "next_iteration_started": 4,
+    "first_nonzero_cuda_reserved_before_after_proof": "pending_next_completed_training_step"
+  },
+  "scope": {
+    "proves": [
+      "the invalid 814-row diagnostic evaluation was rejected and never committed",
+      "the patch is active in the managed trainer without changing model or topology",
+      "the exact preserved candidate completed 4000 formal and 1000 diagnostic games with exact audits",
+      "the previous GPU1 allocator starvation did not recur in the repaired evaluation replay"
+    ],
+    "does_not_claim": [
+      "the recovery replay exercised a nonzero training allocator cache",
+      "the first later ordinary training step has already emitted nonzero before and near-zero after telemetry"
+    ]
+  }
+}

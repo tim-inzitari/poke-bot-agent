@@ -1,0 +1,22 @@
+{
+  "schema": "poke_bot.alakazam_refresh_seat_split/v1",
+  "template_only": true,
+  "status": "unissued",
+  "runtime_authority": "none",
+  "specialist_id": "alakazam",
+  "research_derivative": null,
+  "stage": null,
+  "allowed_stages": [
+    "assigned",
+    "actual",
+    "consumed"
+  ],
+  "first_games": null,
+  "second_games": null,
+  "total_games": null,
+  "exact_even_split": null,
+  "deterministic_assignment_manifest_sha256": null,
+  "second_focus_1_to_7_used": false,
+  "package_preference": "first_if_allowed",
+  "issued_at_utc": null
+}

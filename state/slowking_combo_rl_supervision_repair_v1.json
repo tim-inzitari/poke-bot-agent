@@ -1,0 +1,98 @@
+{
+  "schema": "poke_bot.slowking_combo_rl_supervision_repair/v1",
+  "created_at_utc": "2026-07-31T04:50:25Z",
+  "specialist_id": "slowking",
+  "goal_revision": 78,
+  "status": "active_iteration_1_collection_combo_labels_verified_checkpoint_loss_pending",
+  "root_cause": {
+    "iteration_0_formal_win_rate": 0.0390625,
+    "iteration_0_formal_valid_games": 4250,
+    "iteration_0_audit_passed": true,
+    "iteration_0_commit_sha256": "sha256:ae1b86801a720d6b9f045aec7af4709b36edc46322f60ec19de9266c9ea671c3",
+    "candidate_checkpoint_sha256": "sha256:77bc9aba98f745e213514d214719fa698bbda2258f872f711a6c4ab1c99b7a5c",
+    "combo_state_loss_in_iteration_0_checkpoint": 0.0,
+    "combo_state_metrics_in_iteration_0_checkpoint": {},
+    "combo_state_base_loss_weight_in_iteration_0_checkpoint": 0.0,
+    "live_rl_combo_state_labels_before_repair": 0,
+    "diagnosis": [
+      "The Slowking combo head and bounded fusion route were present in the validated Model Format 6 runtime.",
+      "The ordinary specialist RL launch did not pass a nonzero combo-state loss weight.",
+      "Live RL compaction did not attach causal Slowking combo-state targets, so ordinary RL could not directly supervise the combo head."
+    ]
+  },
+  "repair": {
+    "combo_state_base_loss_weight": 0.025,
+    "guide_loss_weight": 0.05,
+    "guide_runtime_authority": "none",
+    "live_label_source": "masked_current_observation_and_current_action_only",
+    "expert_rehearsal_required_target": "combo_state_rows",
+    "missing_target_behavior": "mask_not_zero",
+    "immutable_iteration_0_preserved": true,
+    "iteration_0_rewritten_or_recollected": false,
+    "next_iteration_learner": "sha256:77bc9aba98f745e213514d214719fa698bbda2258f872f711a6c4ab1c99b7a5c"
+  },
+  "source": {
+    "train_pure_rl": {
+      "path": "scripts/train_pure_rl.py",
+      "sha256": "sha256:eab56f22bf840ef527df5da28d0f8a8b4c287f08d2f119b55ad7c6955a11e7fe"
+    },
+    "launch_active_specialist": {
+      "path": "scripts/launch_active_specialist.py",
+      "sha256": "sha256:22f5914e02693f1a22230dc0c4473ec86b61fcf715b3a17fd99a14e618bd6545"
+    },
+    "local_and_active_runtime_source_checksums_equal": true
+  },
+  "activation": {
+    "boundary_next_iteration": 1,
+    "design_migration_receipt": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/design_migrations/migration_0001.json",
+    "design_migration_receipt_sha256": "sha256:09455f7bab80167d1caead5d1f53041a9d8b8b47ba92a8f82ad95997b56a2148",
+    "changed_contract_paths": [
+      "expert_rehearsal.required_target_coverage",
+      "source.source_tree_sha256"
+    ],
+    "managed_service": "pokebot-pure-rl-trevenant-staged.service",
+    "main_pid": 2328779,
+    "active_state": "active",
+    "sub_state": "running",
+    "restart_count": 0,
+    "manual_stop_protection_restored": true
+  },
+  "hardware": {
+    "blackwell_simulator_workers": 96,
+    "blackwell_games_in_flight": 96,
+    "blackwell_inference_leaves": {
+      "gpu0": 4,
+      "gpu1": 12,
+      "total": 16
+    },
+    "elmo_workers": 36,
+    "bert_workers": 16
+  },
+  "live_replay_observation": {
+    "iteration": 1,
+    "shard": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/shards/iter_00001.jsonl",
+    "observed_valid_games": 454,
+    "observed_decisions": 50492,
+    "games_with_combo_state": 454,
+    "combo_state_rows": 50492,
+    "games_with_combo_target_provenance": 454,
+    "causal_masking_observed": true
+  },
+  "verification": {
+    "focused_tests_passed": 28,
+    "parser_accepts_combo_state_rows": true,
+    "live_command_contains_combo_state_loss_weight_0_025": true,
+    "live_command_requires_combo_state_rows": true,
+    "design_migration_receipt_exists": true,
+    "fresh_replay_contains_nonzero_combo_state_labels": true,
+    "post_repair_checkpoint_combo_state_loss_nonzero": null,
+    "post_repair_checkpoint_combo_state_eligible_rows_nonzero": null,
+    "release_ready": false
+  },
+  "next_required_evidence": [
+    "Complete iteration-1 exact collection without invalid rows.",
+    "Emit the post-repair iteration-1 checkpoint.",
+    "Verify nonzero finite combo_state_loss and nonzero eligible-row metrics in that checkpoint.",
+    "Continue unchanged formal and research-control gates; do not freeze or register Slowking until its terminal gate passes."
+  ]
+}

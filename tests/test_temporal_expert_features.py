@@ -79,6 +79,7 @@ def test_temporal_expert_compaction_preserves_history_and_aux_targets() -> None:
         "lethal_threat_rows": 1,
         "prize_race_rows": 1,
         "guide_rows": 1,
+        "combo_state_rows": 0,
     }
 
 

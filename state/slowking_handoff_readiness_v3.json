@@ -1,0 +1,76 @@
+{
+  "schema": "poke_bot.slowking_handoff_readiness/v3",
+  "status": "ready_waiting_for_archaludon_completion_boundary",
+  "created_at_utc": "2026-07-31T00:00:50.451323+00:00",
+  "specialist_id": "slowking",
+  "predecessor_specialist": "archaludon-ex",
+  "managed_prestage": {
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/next-specialist-prestage-v1.json",
+    "receipt_sha256": "sha256:452b55f6d78d7644963423855b4193bd77251948317569cb74356e18346aa114",
+    "status": "ready",
+    "selected_specialist": "slowking",
+    "blockers": [],
+    "live_training_modified": false,
+    "terminal_preflight_validated": true,
+    "terminal_command_sha256": "sha256:1524ea77bb9464e54c71317e9e643e377391c9cbf1d67a81b7995109379f5154"
+  },
+  "selection": {
+    "sealed_decisions": 19251,
+    "specialist_floor_decisions": 19000,
+    "sealed_corpus_floor_receipt": "state/slowking_sealed_corpus_floor_v1.json",
+    "sealed_corpus_floor_receipt_sha256": "sha256:b1a7d1b876525269e6a928c94afb32ff53024034bff6ecf48c1ad95487ca9526",
+    "duplicate_or_synthetic_rows_used": false
+  },
+  "router": {
+    "format": 6,
+    "slot": 19,
+    "promotion_receipt": "state/slowking_router_promotion_v1.json",
+    "promotion_receipt_sha256": "sha256:8486bb3454c4cac37969b17de45bc401dd1128b6131af51be46f20c1086a245c",
+    "candidate_tree_sha256": "sha256:be99297caa43546dd021032b99abb38cbf0241444784de00ca425a5f1c38b482",
+    "candidate_audit_sha256": "sha256:217e17ca87641da71d345dfef274ba888b83ead2376f388f0b5346e05f43167d",
+    "selected_route_accepted": true,
+    "runtime_enabled": false
+  },
+  "guide": {
+    "training_mode": "strategic_curriculum_v1",
+    "guide_contract_sha256": "sha256:5f473fa4f22142372734d25b566008ae3941c75a51f5dd7579a1985b0ab95154",
+    "strategic_curriculum_spec_sha256": "sha256:745f6e54aa6ee493287b8379f47a8803e7cd8e232f0f2348916c2539fc2c2bde",
+    "strategic_head_role_map_sha256": "sha256:071f8e612e6aa1c33a5eda3616977ef1cb378d436838b8f42a45a128ce300565",
+    "strategic_validation_receipt_sha256": "sha256:14d9489cf6f7fa63b9adf334280a7c0ad613c8899fe10955b0aa98ccd2bd3864",
+    "direct_policy_cross_entropy_allowed": false,
+    "runtime_authority": "none"
+  },
+  "combo_head": {
+    "typed_head": "combo_state",
+    "fusion_role": "bounded_option_conditioned_route",
+    "implementation_receipt_sha256": "sha256:3499535560366c205e9a772184df03b8263918b4dc828a425d672ebf846e5d78",
+    "corpus_validation_receipt_sha256": "sha256:08f818ac554b33f7caa5a8c83dd5968ad1a2e3bccd69d8e825ba5d18a96d13ac",
+    "all_decisions_have_causal_combo_targets": true,
+    "cpu_pack_status": "ready",
+    "cpu_pack_cache_hit": true,
+    "cpu_pack_payload_sha256": "sha256:3e80f5ecd26abd8e83a878458931997fc8bad0619c42e3850775996c86b134ce"
+  },
+  "candidate_shape": {
+    "training_core_revision": 10,
+    "model_format": 6,
+    "matchup_router_format": 6,
+    "decision_fusion_schema": "poke_bot.causal_decision_fusion/v2",
+    "required_learned_heads": 19,
+    "total_parameters": 1910963
+  },
+  "validation": {
+    "focused_tests_passed": 44,
+    "exact_representative_pass_handler_preflight": true,
+    "boundary_bootstrap_ready": true,
+    "training_launch_ready": true,
+    "terminal_combo_ablation_required_after_training": true
+  },
+  "activation": {
+    "selector_eligible_now": false,
+    "runtime_registered_now": false,
+    "gradient_authority_now": false,
+    "safe_boundary": "after_archaludon_ex_checksum_bound_completion",
+    "automatic_handoff_ready": true,
+    "active_archaludon_training_modified": false
+  }
+}

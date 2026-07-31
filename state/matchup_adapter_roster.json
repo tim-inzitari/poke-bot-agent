@@ -1,12 +1,12 @@
 {
   "schema": "poke_bot.matchup_adapter_roster/v1",
   "slot_schema": "poke_bot.matchup_adapter_slot_registry/v1",
-  "revision": 9,
+  "revision": 10,
   "status": "staged_pending_safe_boundary",
   "checkpoint_format": "poke-bot-matchup-adapter-bank-v6",
   "slot_capacity": 64,
   "legacy_v5_prefix_length": 18,
-  "required_specialist_count": 19,
+  "required_specialist_count": 20,
   "physical_checkpoint_rows": 18,
   "v6_physical_checkpoint_slots": 64,
   "runtime_enabled": false,
@@ -41,7 +41,8 @@
     "dragapult-blaziken",
     "thwackey",
     "team-rockets-spidops",
-    "teal-mask-ogerpon-ex"
+    "teal-mask-ogerpon-ex",
+    "slowking"
   ],
   "expert_ids": [
     "crustle",
@@ -62,7 +63,8 @@
     "dragapult-blaziken",
     "thwackey",
     "team-rockets-spidops",
-    "teal-mask-ogerpon-ex"
+    "teal-mask-ogerpon-ex",
+    "slowking"
   ],
   "specialist_priority": [
     "dragapult-dusknoir",
@@ -75,6 +77,7 @@
     "hammer-pult",
     "teal-mask-ogerpon-ex",
     "archaludon-ex",
+    "slowking",
     "dragapult",
     "crustle"
   ],
@@ -86,7 +89,8 @@
     "lucario": "Mega Lucario ex",
     "thwackey": "Thwackey",
     "team-rockets-spidops": "Team Rocket's Spidops",
-    "teal-mask-ogerpon-ex": "Teal Mask Ogerpon ex"
+    "teal-mask-ogerpon-ex": "Teal Mask Ogerpon ex",
+    "slowking": "Slowking Combo / Toolbox"
   },
   "logical_aliases": {
     "festival-lead": "thwackey"
@@ -137,7 +141,8 @@
       "dragapult-blaziken": {"source_id": 58, "source_name": "Dragapult ex", "status": "card_signature", "allowed_source_family_ids": [58]},
       "thwackey": {"source_id": 76, "source_name": "Thwackey", "status": "exact"},
       "team-rockets-spidops": {"source_id": 75, "source_name": "Team Rocket's Spidops", "status": "exact"},
-      "teal-mask-ogerpon-ex": {"source_id": 151, "source_name": "Teal Mask Ogerpon ex", "status": "exact"}
+      "teal-mask-ogerpon-ex": {"source_id": 151, "source_name": "Teal Mask Ogerpon ex", "status": "exact"},
+      "slowking": {"source_id": 86, "source_name": "Slowking", "status": "exact"}
     }
   },
   "slots": [
@@ -160,7 +165,7 @@
     {"slot": 16, "archetype_id": "thwackey", "status": "active", "lineage": "v5:16;renamed-from:festival-lead"},
     {"slot": 17, "archetype_id": "team-rockets-spidops", "status": "active", "lineage": "v5:17"},
     {"slot": 18, "archetype_id": "teal-mask-ogerpon-ex", "status": "dormant", "lineage": "goal-r27:public-archetype-151"},
-    {"slot": 19, "archetype_id": null, "status": "unused", "lineage": null},
+    {"slot": 19, "archetype_id": "slowking", "status": "dormant", "lineage": "goal-r57:public-archetype-86"},
     {"slot": 20, "archetype_id": null, "status": "unused", "lineage": null},
     {"slot": 21, "archetype_id": null, "status": "unused", "lineage": null},
     {"slot": 22, "archetype_id": null, "status": "unused", "lineage": null},

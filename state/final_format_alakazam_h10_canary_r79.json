@@ -1,0 +1,45 @@
+{
+  "schema": "poke_bot.final_format_alakazam_h10_canary/v1",
+  "status": "passed_nonpromotable_parent_canary",
+  "created_at_utc": "2026-07-31T13:54:32Z",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "parent_kind": "ordinary_fallback_core9_hot_start_before_alakazam_training",
+  "parent_checkpoint_sha256": "sha256:13be5f2579c5de307d5dfbf92d8bf7a81b8107b025af2679c8ad94a0a024ffdd",
+  "promotable": false,
+  "child": {
+    "path": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/output/h10_canary/core9_hotstart_h10_nonpromotable_v2.pt",
+    "sha256": "sha256:1d2b6f04f75fd9e0f735bd2cc515c019f5d993a3adf654e3f2e3c0cae7010459",
+    "learned_parameters": 10352606,
+    "architecture": {
+      "d_model": 96,
+      "spatial_layers": 7,
+      "temporal_layers": 3,
+      "option_layers": 7,
+      "feed_forward_width": 2496,
+      "history_context": 320,
+      "learned_head_count": 19,
+      "distinct_bounded_action_route_count": 19,
+      "setup_board_outcome": true,
+      "combo_state": true,
+      "guide_runtime_routes": 0
+    }
+  },
+  "evidence": {
+    "migration_receipt": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/h10_canary_core9_hotstart_migration_nonpromotable_v2.json",
+    "migration_receipt_sha256": "sha256:0d154aa96783dff2b688cae85c761e31649701bbd05d7c1ac0013ce5576a62d8",
+    "role_route_receipt": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/h10_canary_core9_hotstart_role_route_nonpromotable_v2.json",
+    "role_route_receipt_sha256": "sha256:b0ef27179c3cf8668d6fe39b6f6a81ca561d6b077ddac0d8ca2ae5ae8bbaf910",
+    "step_zero_parity_passed": true,
+    "all_measured_max_abs_differences": 0.0,
+    "legal_masks_exact": true,
+    "greedy_actions_exact": true,
+    "full_320_decision_history_passed": true,
+    "checkpoint_reload_passed": true,
+    "focused_tests_passed": 40
+  },
+  "next_required_parent": "best_immutable_passing_ordinary_alakazam_refresh_checkpoint",
+  "runtime_authority": "none",
+  "selector_eligible": false,
+  "kaggle_eligible": false
+}

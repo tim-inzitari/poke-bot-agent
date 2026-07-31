@@ -11,6 +11,9 @@ from scripts.build_public_plain_dragapult_catalog import (
     canonical_deck_sha256,
 )
 from poke_bot.crustle_heuristics import CANONICAL_DECK_COUNTS
+from poke_bot.slowking_heuristics import (
+    CANONICAL_DECK_COUNTS as SLOWKING_CANONICAL_DECK_COUNTS,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +44,11 @@ DUSKNOIR[-1] = 131
 CRUSTLE = [
     card_id
     for card_id, count in CANONICAL_DECK_COUNTS.items()
+    for _ in range(count)
+]
+SLOWKING = [
+    card_id
+    for card_id, count in SLOWKING_CANONICAL_DECK_COUNTS.items()
     for _ in range(count)
 ]
 
@@ -176,6 +184,80 @@ def test_catalog_supports_crustle_family_without_changing_representative(
     )
     assert catalog["identity_contract"]["mode"] == (
         "crustle_card_signature_public_replay_identity"
+    )
+    assert catalog["identity_contract"]["excluded_specialist_ids"] == []
+
+
+def test_catalog_keeps_only_owner_exact_slowking_acting_seats(
+    tmp_path: Path,
+) -> None:
+    assert len(SLOWKING) == 60
+    generic_slowking = list(SLOWKING)
+    generic_slowking[-1] = 1
+    archive = (
+        tmp_path / "pokemon-tcg-ai-battle-episodes-2026-07-28.zip"
+    )
+    _archive(
+        archive,
+        {
+            "1": _episode("1", SLOWKING, generic_slowking),
+            "2": _episode("2", generic_slowking, SLOWKING),
+        },
+    )
+
+    catalog = build_catalog(
+        archive_dir=tmp_path,
+        start="2026-07-28",
+        end="2026-07-28",
+        specialist_id="slowking",
+        auxiliary_fingerprints={
+            "other-exact-deck": frozenset(
+                {canonical_deck_sha256(generic_slowking)}
+            )
+        },
+    )
+
+    assert catalog["specialist_id"] == "slowking"
+    assert catalog["source_archetype"] == {"id": 86, "name": "Slowking"}
+    assert catalog["observed_acting_seat_games"] == 2
+    assert catalog["deck_fingerprints"] == [
+        canonical_deck_sha256(SLOWKING)
+    ]
+    assert catalog["source_match_facts"] == [
+        [
+            "2026-07-28",
+            "1",
+            0,
+            canonical_deck_sha256(SLOWKING),
+        ],
+        [
+            "2026-07-28",
+            "2",
+            1,
+            canonical_deck_sha256(SLOWKING),
+        ],
+    ]
+    assert catalog["auxiliary_source_match_indexes"][
+        "other-exact-deck"
+    ]["source_match_facts"] == [
+        [
+            "2026-07-28",
+            "1",
+            1,
+            canonical_deck_sha256(generic_slowking),
+        ],
+        [
+            "2026-07-28",
+            "2",
+            0,
+            canonical_deck_sha256(generic_slowking),
+        ],
+    ]
+    assert catalog["identity_contract"]["predicate"] == (
+        "poke_bot.slowking_heuristics.is_slowking_deck"
+    )
+    assert catalog["identity_contract"]["mode"] == (
+        "owner_exact_60_card_slowking_public_replay_identity"
     )
     assert catalog["identity_contract"]["excluded_specialist_ids"] == []
 

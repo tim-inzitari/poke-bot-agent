@@ -837,7 +837,11 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--tree-rss-limit-gb",
         type=float,
         default=float(os.environ.get("POKEBOT_REMOTE_TREE_RSS_LIMIT_GB", "32")),
-        help="Fail closed when parent+descendant RSS reaches this bound (0 disables)",
+        help=(
+            "Legacy flag name for the service-memory guard. Uses cgroup-v2 "
+            "charged memory when available, then PSS, with summed RSS only as "
+            "a final fallback (0 disables)."
+        ),
     )
     p.add_argument(
         "--min-free-ram-gb",
@@ -937,7 +941,13 @@ def _free_ram_gb() -> Optional[float]:
 
 
 def _process_tree_rss_gb() -> Optional[float]:
-    """Best-effort RSS for this service and every current descendant."""
+    """Best-effort summed RSS for diagnostics only.
+
+    Summed RSS double-counts shared pages across ``spawn`` descendants, so it
+    is not suitable as the production memory guard for the multiprocess Elmo
+    worker. Keep it on the health payload because it remains useful when
+    comparing individual process lifetimes.
+    """
     try:
         import psutil
 
@@ -952,6 +962,53 @@ def _process_tree_rss_gb() -> Optional[float]:
         return float(total) / (1024**3)
     except Exception:
         return None
+
+
+def _cgroup_v2_memory_current_gb(
+    path: Path = Path("/sys/fs/cgroup/memory.current"),
+) -> Optional[float]:
+    """Return the uniquely charged cgroup-v2 memory total when available."""
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        value = int(raw)
+        if value < 0:
+            return None
+        return float(value) / (1024**3)
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
+def _process_tree_pss_gb() -> Optional[float]:
+    """Best-effort process-tree PSS fallback without shared-page overcount."""
+    try:
+        import psutil
+
+        root = psutil.Process()
+        processes = [root, *root.children(recursive=True)]
+        total = 0
+        sampled = 0
+        for proc in processes:
+            try:
+                total += int(getattr(proc.memory_full_info(), "pss"))
+                sampled += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                continue
+        if sampled <= 0:
+            return None
+        return float(total) / (1024**3)
+    except Exception:
+        return None
+
+
+def _memory_guard_sample() -> tuple[Optional[float], str]:
+    """Return one non-double-counted service-memory sample and its source."""
+    cgroup_gb = _cgroup_v2_memory_current_gb()
+    if cgroup_gb is not None:
+        return cgroup_gb, "cgroup_v2_memory_current"
+    pss_gb = _process_tree_pss_gb()
+    if pss_gb is not None:
+        return pss_gb, "process_tree_pss"
+    return _process_tree_rss_gb(), "process_tree_rss_fallback"
 
 
 def _close_mp_queue(queue_obj: object) -> None:
@@ -1383,6 +1440,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         "trajectories_completed": 0,
         "started_at": time.time(),
         "tree_rss_gb": None,
+        "guard_memory_gb": None,
+        "guard_memory_source": None,
         "free_ram_gb": _free_ram_gb(),
         "live_worker_pids": list(pool.ready_worker_pids),
         "worker_capacity_unhealthy_for_s": 0.0,
@@ -1536,6 +1595,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             "terminal_reload_failure": bool(state["terminal_reload_failure"]),
             "free_ram_gb": state.get("free_ram_gb"),
             "tree_rss_gb": state.get("tree_rss_gb"),
+            "guard_memory_gb": state.get("guard_memory_gb"),
+            "guard_memory_source": state.get("guard_memory_source"),
             "tree_rss_limit_gb": float(args.tree_rss_limit_gb),
             "live_worker_pids": list(state.get("live_worker_pids") or []),
             "worker_capacity_healthy": pool.worker_capacity_healthy,
@@ -2046,6 +2107,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             ready_pids = pool.ready_worker_pids
             state["live_worker_pids"] = list(ready_pids)
             state["tree_rss_gb"] = _process_tree_rss_gb()
+            (
+                state["guard_memory_gb"],
+                state["guard_memory_source"],
+            ) = _memory_guard_sample()
             state["free_ram_gb"] = _free_ram_gb()
 
             now = time.monotonic()
@@ -2111,16 +2176,17 @@ def main(argv: Optional[list[str]] = None) -> int:
             elif capacity_reason is not None:
                 reason = capacity_reason
 
-            rss_gb = state.get("tree_rss_gb")
+            guard_memory_gb = state.get("guard_memory_gb")
             if (
                 reason is None
                 and float(args.tree_rss_limit_gb) > 0
-                and rss_gb is not None
-                and float(rss_gb) >= float(args.tree_rss_limit_gb)
+                and guard_memory_gb is not None
+                and float(guard_memory_gb) >= float(args.tree_rss_limit_gb)
             ):
                 reason = (
-                    f"process-tree RSS {float(rss_gb):.2f}GiB reached "
-                    f"limit {float(args.tree_rss_limit_gb):.2f}GiB"
+                    f"service memory {float(guard_memory_gb):.2f}GiB reached "
+                    f"limit {float(args.tree_rss_limit_gb):.2f}GiB "
+                    f"source={state.get('guard_memory_source')}"
                 )
 
             free_gb = state.get("free_ram_gb")

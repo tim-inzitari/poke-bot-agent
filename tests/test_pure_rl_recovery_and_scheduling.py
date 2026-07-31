@@ -14,6 +14,310 @@ from poke_bot.pure_rl.eval_public import OFFICIAL_BASELINE_IDS, aggregate_heldou
 from scripts import train_pure_rl
 
 
+def test_exact_training_seat_stage_requires_literal_half_split() -> None:
+    balanced = train_pure_rl._training_seat_stage(
+        "assigned_source_games", [0, 1, 0, 1], expected_total=4
+    )
+    assert balanced == {
+        "stage": "assigned_source_games",
+        "seat0": 2,
+        "seat1": 2,
+        "total": 4,
+        "expected_total": 4,
+        "invalid_seats": [],
+        "exact_50_50": True,
+    }
+    train_pure_rl._assert_exact_training_seat_stage(balanced)
+
+    imbalanced = train_pure_rl._training_seat_stage(
+        "retained_source_games", [0, 0, 0, 1], expected_total=4
+    )
+    assert imbalanced["exact_50_50"] is False
+    with pytest.raises(RuntimeError, match="exact 50/50 training-seat contract"):
+        train_pure_rl._assert_exact_training_seat_stage(imbalanced)
+
+
+def test_final_alakazam_seat_flag_rejects_odd_or_core_runs() -> None:
+    with pytest.raises(SystemExit):
+        train_pure_rl._parse_args(
+            [
+                "--run-name",
+                "bad-core",
+                "--require-exact-training-seat-split",
+            ]
+        )
+    with pytest.raises(SystemExit):
+        train_pure_rl._parse_args(
+            [
+                "--run-name",
+                "bad-odd",
+                "--mode",
+                "specialist",
+                "--specialist-archetype",
+                "alakazam",
+                "--games-per-iter",
+                "8191",
+                "--require-exact-training-seat-split",
+            ]
+        )
+
+
+def test_final_alakazam_8192_job_schedule_is_exactly_seat_balanced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        train_pure_rl, "_spec_payload", lambda spec: {"id": spec.id}
+    )
+    specs = [SimpleNamespace(id=f"public-{index}") for index in range(8)]
+    self_jobs, public_jobs = train_pure_rl._build_collect_jobs(
+        n_games=8192,
+        ckpt=Path("/tmp/alakazam-h10.pt"),
+        digest="sha256:" + "a" * 64,
+        model_generation=1,
+        decks=[("alakazam", [1] * 60)],
+        specs=specs,
+        seed=20260731,
+        game_timeout_s=600,
+        mode="specialist",
+        self_play_frac=0.875,
+        iteration=0,
+    )
+    stage = train_pure_rl._training_seat_stage(
+        "assigned_source_games",
+        [job["our_seat"] for job in [*self_jobs, *public_jobs]],
+        expected_total=8192,
+    )
+    train_pure_rl._assert_exact_training_seat_stage(stage)
+    assert stage["seat0"] == stage["seat1"] == 4096
+
+
+def test_final_alakazam_16384_job_schedule_rebalances_public_matchup_odds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        train_pure_rl, "_spec_payload", lambda spec: {"id": spec.id}
+    )
+    specs = [SimpleNamespace(id=f"public-{index}") for index in range(17)]
+    self_jobs, public_jobs = train_pure_rl._build_collect_jobs(
+        n_games=16384,
+        ckpt=Path("/tmp/alakazam-h10.pt"),
+        digest="sha256:" + "a" * 64,
+        model_generation=1,
+        decks=[("alakazam", [1] * 60)],
+        specs=specs,
+        seed=20260731,
+        game_timeout_s=600,
+        mode="specialist",
+        self_play_frac=0.125,
+        iteration=0,
+        exact_training_seat_split=True,
+    )
+    rows = sorted(
+        [*self_jobs, *public_jobs], key=lambda row: int(row["job_index"])
+    )
+    stage = train_pure_rl._training_seat_stage(
+        "assigned_source_games",
+        [row["our_seat"] for row in rows],
+        expected_total=16384,
+    )
+    train_pure_rl._assert_exact_training_seat_stage(stage)
+    assert len(self_jobs) == 2048
+    assert len(public_jobs) == 14336
+    assert stage["seat0"] == stage["seat1"] == 8192
+    assert all(
+        row["target_provenance"]["seat_schedule"]
+        == "per_opponent_balanced_global_exact_v1"
+        for row in rows
+    )
+    for opponent_id in {row["opponent_id"] for row in public_jobs}:
+        opponent_rows = [
+            row for row in public_jobs if row["opponent_id"] == opponent_id
+        ]
+        seat0 = sum(row["our_seat"] == 0 for row in opponent_rows)
+        seat1 = sum(row["our_seat"] == 1 for row in opponent_rows)
+        assert abs(seat0 - seat1) <= 1
+
+
+def test_training_seat_receipt_binds_consumed_replay_population(
+    tmp_path: Path,
+) -> None:
+    collection_path = tmp_path / "collection.json"
+    collection_path.write_text("{}", encoding="utf-8")
+    stage_assigned = train_pure_rl._training_seat_stage(
+        "assigned_source_games", [0, 1, 0, 1], expected_total=4
+    )
+    stage_retained = train_pure_rl._training_seat_stage(
+        "retained_source_games", [0, 1, 0, 1], expected_total=4
+    )
+    collection = {
+        "design_fingerprint_at_collection": "sha256:" + "a" * 64,
+        "receipt_path": str(collection_path),
+        "stats": {
+            "training_seat_split": {
+                "assigned_source_games": stage_assigned,
+                "retained_source_games": stage_retained,
+                "stage_manifest_sha256": {
+                    "assigned": "sha256:" + "c" * 64,
+                    "actual": "sha256:" + "d" * 64,
+                },
+            }
+        },
+    }
+    sequences = [
+        SimpleNamespace(
+            episode_id=f"game-{index}",
+            seat=index % 2,
+            archetype="alakazam",
+            source="pure_rl",
+        )
+        for index in range(8)
+    ]
+
+    receipt = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=tmp_path,
+        iteration=0,
+        design_fingerprint="sha256:" + "b" * 64,
+        collection_receipt=collection,
+        sequences=sequences,
+    )
+    assert receipt["schema"] == "poke_bot.alakazam_refresh_seat_split_index/v1"
+    assert receipt["passed"] is True
+    assert receipt["second_seat_priority"] is False
+    assert receipt["replay_sequences_consumed"]["seat0"] == 4
+    assert receipt["replay_sequences_consumed"]["seat1"] == 4
+    assert Path(receipt["receipt_path"]).is_file()
+    for stage in ("assigned", "actual", "consumed"):
+        stage_path = Path(receipt["stage_receipts"][stage]["path"])
+        stage_receipt = json.loads(stage_path.read_text(encoding="utf-8"))
+        assert stage_receipt["schema"] == "poke_bot.alakazam_refresh_seat_split/v1"
+        assert stage_receipt["stage"] == stage
+        assert stage_receipt["exact_even_split"] is True
+        assert stage_receipt["second_focus_1_to_7_used"] is False
+        assert stage_receipt["package_preference"] == "first_if_allowed"
+
+    recovered = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=tmp_path,
+        iteration=0,
+        design_fingerprint="sha256:" + "e" * 64,
+        collection_receipt=collection,
+        sequences=sequences,
+    )
+    assert recovered == receipt
+    assert receipt["design_fingerprint"] == "sha256:" + "a" * 64
+
+
+def test_training_seat_receipt_recovers_canonical_collection_path(
+    tmp_path: Path,
+) -> None:
+    collection_path = train_pure_rl._collection_receipt_path(tmp_path, 0)
+    collection_path.parent.mkdir(parents=True)
+    collection_path.write_text("{}", encoding="utf-8")
+    stage_assigned = train_pure_rl._training_seat_stage(
+        "assigned_source_games", [0, 1], expected_total=2
+    )
+    stage_retained = train_pure_rl._training_seat_stage(
+        "retained_source_games", [0, 1], expected_total=2
+    )
+    collection = {
+        "stats": {
+            "training_seat_split": {
+                "assigned_source_games": stage_assigned,
+                "retained_source_games": stage_retained,
+                "stage_manifest_sha256": {
+                    "assigned": "sha256:" + "c" * 64,
+                    "actual": "sha256:" + "d" * 64,
+                },
+            }
+        }
+    }
+    sequences = [
+        SimpleNamespace(
+            episode_id=f"game-{index}",
+            seat=index,
+            archetype="alakazam",
+            source="pure_rl",
+        )
+        for index in range(2)
+    ]
+
+    receipt = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=tmp_path,
+        iteration=0,
+        design_fingerprint="sha256:" + "b" * 64,
+        collection_receipt=collection,
+        sequences=sequences,
+    )
+
+    assert receipt["collection_receipt"]["path"] == str(collection_path)
+
+
+def test_rehearsal_seat_receipts_bind_balanced_pack_at_all_three_stages(
+    tmp_path: Path,
+) -> None:
+    pack_manifest = tmp_path / "expert-pack.json"
+    pack_manifest.write_text('{"schema":"test"}\n', encoding="utf-8")
+    evidence = {
+        "schema": "poke_bot.expert_rehearsal_seat_selection/v1",
+        "policy": "exact_50_50_per_train_and_validation_partition",
+        "source": {"games": 9, "seat0": 4, "seat1": 5},
+        "partitions": {
+            "train": {
+                "first_games": 3,
+                "second_games": 3,
+                "total_games": 6,
+                "exact_even_split": True,
+            },
+            "validation": {
+                "first_games": 1,
+                "second_games": 1,
+                "total_games": 2,
+                "exact_even_split": True,
+            },
+        },
+        "selected_games": 8,
+        "selected_raw_decisions": 80,
+        "selected_packed_decisions": 72,
+        "deterministic_assignment_manifest_sha256": "sha256:" + "a" * 64,
+        "second_focus_1_to_7_used": False,
+        "package_preference": "first_if_allowed",
+        "passed": True,
+    }
+    identity = train_pure_rl._commit_expert_rehearsal_seat_split_receipts(
+        run_dir=tmp_path,
+        before_iteration=5,
+        design_fingerprint="sha256:" + "b" * 64,
+        evidence=evidence,
+        pack_info={
+            "key": "c" * 64,
+            "manifest": str(pack_manifest),
+        },
+    )
+
+    assert identity["schema"] == (
+        "poke_bot.alakazam_refresh_rehearsal_seat_split_index/v1"
+    )
+    index = json.loads(Path(identity["path"]).read_text(encoding="utf-8"))
+    assert index["passed"] is True
+    assert index["selected_games"] == 8
+    for stage in ("assigned", "actual", "consumed"):
+        row = json.loads(
+            Path(index["stage_receipts"][stage]["path"]).read_text(
+                encoding="utf-8"
+            )
+        )
+        assert row["training_phase"] == "expert_rehearsal"
+        assert row["first_games"] == row["second_games"] == 4
+        assert row["exact_even_split"] is True
+
+    assert train_pure_rl._commit_expert_rehearsal_seat_split_receipts(
+        run_dir=tmp_path,
+        before_iteration=5,
+        design_fingerprint="sha256:" + "b" * 64,
+        evidence=evidence,
+        pack_info={"key": "c" * 64, "manifest": str(pack_manifest)},
+    ) == identity
+
+
 def test_exact_regression_rollback_uses_runtime_activated_anchor(
     tmp_path: Path,
 ) -> None:
@@ -3187,6 +3491,10 @@ def test_clean_boundary_migration_records_continuous_behavior_policy(
 
 def test_clean_boundary_migration_allows_versioned_expert_contract() -> None:
     assert (
+        "collection.self_play_fraction"
+        in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
+    )
+    assert (
         "expert_rehearsal.rolling_manifest_pointer"
         in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
     )
@@ -3213,6 +3521,7 @@ def test_clean_boundary_migration_allows_explicit_opponent_scope_schema() -> Non
         "collection.external_agents_training_eligible"
         in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
     )
+    assert "remotes.endpoints" in train_pure_rl._BOUNDARY_MIGRATABLE_DESIGN_PATHS
 
 
 def test_clean_boundary_migration_allows_only_pinned_hidden_engine_bytes(

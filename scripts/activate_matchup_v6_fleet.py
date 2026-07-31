@@ -287,6 +287,26 @@ def activate_fleet(
         or not elmo_dockerfile.is_absolute()
     ):
         raise RuntimeError("Elmo V6 image build contract is incomplete")
+    compose_files = [
+        str(Path(value).expanduser()) for value in elmo["compose_files"]
+    ]
+    try:
+        elmo_deployment_files = [
+            str(elmo_dockerfile.relative_to(elmo_build_context)),
+            *[
+                str(Path(path).relative_to(elmo_build_context))
+                for path in compose_files
+            ],
+        ]
+    except ValueError as exc:
+        raise RuntimeError(
+            "Elmo build and compose files must be inside the build context"
+        ) from exc
+    if any(
+        not (source_root / relative).is_file()
+        for relative in elmo_deployment_files
+    ):
+        raise RuntimeError("Elmo deployment source files are incomplete")
     _run(
         [
             "rsync",
@@ -296,6 +316,21 @@ def activate_fleet(
             "--no-owner",
             "--no-group",
             *relative_sources,
+            f"{elmo['host']}:{elmo_build_context}/",
+        ],
+        timeout=120,
+        cwd=source_root,
+    )
+    _run(
+        [
+            "rsync",
+            "-aR",
+            "--omit-dir-times",
+            "--no-perms",
+            "--no-owner",
+            "--no-group",
+            "--rsync-path=sudo -n rsync",
+            *elmo_deployment_files,
             f"{elmo['host']}:{elmo_build_context}/",
         ],
         timeout=120,
@@ -320,9 +355,6 @@ def activate_fleet(
         timeout=20,
     )
 
-    compose_files = [
-        str(Path(value).expanduser()) for value in elmo["compose_files"]
-    ]
     _run(
         [
             "ssh",
@@ -341,12 +373,22 @@ def activate_fleet(
         ],
         timeout=1_800,
     )
-    compose_command = ["sudo", "-n", "docker", "compose"]
+    compose_command = ["docker", "compose"]
     for path in compose_files:
         compose_command.extend(["-f", path])
     compose_command.extend(["up", "-d", "--force-recreate", str(elmo["service"])])
     _run(
-        ["ssh", "-o", "BatchMode=yes", str(elmo["host"]), *compose_command],
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            str(elmo["host"]),
+            "sudo",
+            "-n",
+            "env",
+            f"POKEBOT_ELMO_IMAGE={elmo['image']}",
+            *compose_command,
+        ],
         timeout=240,
     )
 

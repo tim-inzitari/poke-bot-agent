@@ -254,8 +254,42 @@
       "research_eligible": false,
       "source": "owner-accepted ceiling Hammer Pult iteration 15 checkpoint c256a0ababee; measured gate result preserved",
       "specialist_id": "hammer-pult"
+    },
+    {
+      "archetype_id": "teal-mask-ogerpon-ex",
+      "archetype_label": "Frozen Teal Mask Ogerpon ex specialist",
+      "baseline_dir": "teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626",
+      "baseline_group": "specialists",
+      "checkpoint_digest": "sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821",
+      "content_digest": "sha256:d5b5432ec25aafc68f74e96c2f4a6538b66f6fcc41698e3dd70269ce7d8f6dee",
+      "frozen": true,
+      "kaggle_submission_eligible": false,
+      "matchup_tree_checksum": "sha256:3dcf40e5d794d3b6a4948bcf87376597d30a91c2d08eff2a7d16c3f60c7f190e",
+      "opponent_id": "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626",
+      "public_mix_eligible": true,
+      "registered_at_utc": "2026-07-30T16:48:19.866077+00:00",
+      "research_eligible": false,
+      "source": "owner-accepted ceiling Teal Mask Ogerpon ex iteration 14 checkpoint 5c74cfb63626; measured gate result preserved",
+      "specialist_id": "teal-mask-ogerpon-ex"
+    },
+    {
+      "archetype_id": "archaludon-ex",
+      "archetype_label": "Frozen Archaludon ex specialist",
+      "baseline_dir": "archaludon-ex-gate-iter5-251298117902",
+      "baseline_group": "specialists",
+      "checkpoint_digest": "sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9",
+      "content_digest": "sha256:32f00f128d988fdaee2af6d7b1666898f9f1ebe7b38e6a9bf5e26a0a78e7a3e7",
+      "frozen": true,
+      "kaggle_submission_eligible": false,
+      "matchup_tree_checksum": "sha256:e283438049d3d3ba51b037caf4a3285e56461045e417777f189c856238f1e063",
+      "opponent_id": "specialist-archaludon-ex-gate-iter5-251298117902",
+      "public_mix_eligible": true,
+      "registered_at_utc": "2026-07-31T01:51:50.562225+00:00",
+      "research_eligible": false,
+      "source": "exact protocol-gate passing Archaludon ex iteration 5 checkpoint 251298117902",
+      "specialist_id": "archaludon-ex"
     }
   ],
-  "updated_at_utc": "2026-07-29T18:40:15.212129+00:00",
-  "version": 12
+  "updated_at_utc": "2026-07-31T01:51:50.562225+00:00",
+  "version": 14
 }

@@ -6,8 +6,9 @@ decks.  This scanner reads each acting seat's submitted 60-card list and keeps
 only lists accepted by the canonical straight-Dragapult identity predicate.
 Hammer-Pult, Dragapult/Blaziken, Dragapult/Dudunsparce, and
 Dragapult/Dusknoir are therefore excluded before feature materialization.
-The same scanner also supports the checksum-bound current Crustle
-representative without widening either identity.
+The same scanner also supports the checksum-bound current Crustle family and
+the owner's exact 60-card Slowking combo representative without widening
+either identity.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from typing import Any, Iterable
 from poke_bot.crustle_heuristics import is_crustle_family_deck
 from poke_bot.dragapult_heuristics import is_plain_dragapult_deck
 from poke_bot.replay_import import episode_id_of, extract_setup_decks
+from poke_bot.slowking_heuristics import is_slowking_deck
 
 
 SCHEMA = "poke_bot.public_deck_archetype_catalog/v1"
@@ -80,13 +82,18 @@ def _dates(start: str, end: str) -> list[str]:
 
 
 def _archive_rows(
-    archive_and_specialist: tuple[Path, str],
-) -> tuple[list[tuple[str, int, tuple[int, ...]]], dict[str, Any]]:
+    task: tuple[Path, str, dict[str, frozenset[str]]],
+) -> tuple[
+    list[tuple[str, int, tuple[int, ...]]],
+    dict[str, list[tuple[str, int, tuple[int, ...]]]],
+    dict[str, Any],
+]:
     """Return exact specialist seats plus manifest/checksum evidence for one day."""
-    archive, specialist_id = archive_and_specialist
+    archive, specialist_id, auxiliary_fingerprints = task
     predicates = {
         "dragapult": is_plain_dragapult_deck,
         "crustle": is_crustle_family_deck,
+        "slowking": is_slowking_deck,
     }
     try:
         predicate = predicates[specialist_id]
@@ -121,6 +128,9 @@ def _archive_rows(
             )
 
         matched: list[tuple[str, int, tuple[int, ...]]] = []
+        auxiliary_matched = {
+            target_id: [] for target_id in auxiliary_fingerprints
+        }
         for replay_name in replay_names:
             payload = json.loads(source.read(replay_name))
             episode_id = episode_id_of(payload, Path(replay_name).stem)
@@ -142,16 +152,23 @@ def _archive_rows(
                     raise RuntimeError(
                         f"invalid submitted deck: episode={episode_id} seat={seat}"
                     )
+                sorted_deck = tuple(sorted(int(card_id) for card_id in deck))
+                fingerprint = canonical_deck_sha256(sorted_deck)
                 if predicate(deck):
                     matched.append(
                         (
                             episode_id,
                             seat,
-                            tuple(sorted(int(card_id) for card_id in deck)),
+                            sorted_deck,
                         )
                     )
+                for target_id, allowed in auxiliary_fingerprints.items():
+                    if fingerprint in allowed:
+                        auxiliary_matched[target_id].append(
+                            (episode_id, seat, sorted_deck)
+                        )
 
-    return matched, {
+    return matched, auxiliary_matched, {
         "archive": archive.name,
         "archive_sha256": _sha256(archive),
         "manifest_rows": len(manifest_ids),
@@ -168,6 +185,7 @@ def build_catalog(
     minimum_records: int = 1,
     workers: int = 1,
     specialist_id: str = SPECIALIST_ID,
+    auxiliary_fingerprints: dict[str, frozenset[str]] | None = None,
 ) -> dict[str, Any]:
     days = _dates(start, end)
     if workers < 1:
@@ -176,6 +194,10 @@ def build_catalog(
     unique_decks: dict[str, tuple[int, ...]] = {}
     match_facts: list[tuple[str, str, int, str]] = []
     source_archives: list[dict[str, Any]] = []
+    auxiliary_fingerprints = dict(auxiliary_fingerprints or {})
+    auxiliary_match_facts: dict[str, list[tuple[str, str, int, str]]] = {
+        target_id: [] for target_id in auxiliary_fingerprints
+    }
 
     archives = [
         (
@@ -190,19 +212,23 @@ def build_catalog(
 
     if workers == 1:
         daily_results = [
-            _archive_rows((archive, specialist_id)) for archive in archives
+            _archive_rows((archive, specialist_id, auxiliary_fingerprints))
+            for archive in archives
         ]
     else:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             daily_results = list(
                 executor.map(
                     _archive_rows,
-                    [(archive, specialist_id) for archive in archives],
+                    [
+                        (archive, specialist_id, auxiliary_fingerprints)
+                        for archive in archives
+                    ],
                     chunksize=1,
                 )
             )
 
-    for day, (rows, archive_evidence) in zip(
+    for day, (rows, auxiliary_rows, archive_evidence) in zip(
         days, daily_results, strict=True
     ):
         observed_by_day[day] = len(rows)
@@ -216,6 +242,16 @@ def build_catalog(
                     f"deck fingerprint collision detected: {fingerprint}"
                 )
             match_facts.append((day, episode_id, seat, fingerprint))
+        for target_id, target_rows in auxiliary_rows.items():
+            for episode_id, seat, cards in target_rows:
+                auxiliary_match_facts[target_id].append(
+                    (
+                        day,
+                        episode_id,
+                        seat,
+                        canonical_deck_sha256(cards),
+                    )
+                )
 
     observed = sum(observed_by_day.values())
     if minimum_records < 1 or observed < minimum_records:
@@ -248,6 +284,17 @@ def build_catalog(
             ),
             "excluded_specialist_ids": [],
         },
+        "slowking": {
+            "source_archetype_id": 86,
+            "source_archetype_name": "Slowking",
+            "predicate": (
+                "poke_bot.slowking_heuristics.is_slowking_deck"
+            ),
+            "identity_mode": (
+                "owner_exact_60_card_slowking_public_replay_identity"
+            ),
+            "excluded_specialist_ids": [],
+        },
     }
     try:
         specialist_contract = specialist_contracts[specialist_id]
@@ -272,6 +319,7 @@ def build_catalog(
         not {
             "dragapult": is_plain_dragapult_deck,
             "crustle": is_crustle_family_deck,
+            "slowking": is_slowking_deck,
         }[specialist_id](row["card_ids"])
         for row in source_deck_rows
     ):
@@ -300,7 +348,17 @@ def build_catalog(
         "source_deck_rows": source_deck_rows,
         "source_deck_rows_sha256": _canonical_digest(source_deck_rows),
         "source_match_rows": observed,
+        "source_match_facts": [list(row) for row in match_facts],
         "source_match_facts_sha256": _canonical_digest(match_facts),
+        "auxiliary_source_match_indexes": {
+            target_id: {
+                "deck_fingerprints": sorted(auxiliary_fingerprints[target_id]),
+                "source_match_rows": len(rows),
+                "source_match_facts": [list(row) for row in rows],
+                "source_match_facts_sha256": _canonical_digest(rows),
+            }
+            for target_id, rows in sorted(auxiliary_match_facts.items())
+        },
         "source_archives_sha256": _canonical_digest(source_archives),
         "source_archives": source_archives,
         "identity_contract": {
@@ -347,11 +405,50 @@ def main() -> int:
     parser.add_argument("--minimum-records", type=int, default=1)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument(
+        "--auxiliary-fingerprint-catalog",
+        action="append",
+        default=[],
+        metavar="TARGET_ID=PATH",
+        help=(
+            "Also retain a digest-bound public match index for the exact deck "
+            "fingerprints in another catalog while each archive is open."
+        ),
+    )
+    parser.add_argument(
         "--specialist-id",
-        choices=("dragapult", "crustle"),
+        choices=("dragapult", "crustle", "slowking"),
         default=SPECIALIST_ID,
     )
     args = parser.parse_args()
+
+    auxiliary_fingerprints: dict[str, frozenset[str]] = {}
+    for raw_binding in args.auxiliary_fingerprint_catalog:
+        target_id, separator, raw_path = str(raw_binding).partition("=")
+        target_id = target_id.strip()
+        raw_path = raw_path.strip()
+        if (
+            separator != "="
+            or not target_id
+            or not raw_path
+            or target_id == args.specialist_id
+            or target_id in auxiliary_fingerprints
+        ):
+            raise ValueError(
+                "auxiliary fingerprint catalog requires unique TARGET_ID=PATH"
+            )
+        catalog = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+        fingerprints = frozenset(
+            str(value) for value in catalog.get("deck_fingerprints") or ()
+        )
+        if (
+            catalog.get("schema") != SCHEMA
+            or catalog.get("specialist_id") != target_id
+            or not fingerprints
+        ):
+            raise RuntimeError(
+                f"auxiliary fingerprint catalog identity changed: {raw_path}"
+            )
+        auxiliary_fingerprints[target_id] = fingerprints
 
     payload = build_catalog(
         archive_dir=args.archive_dir.resolve(),
@@ -360,6 +457,7 @@ def main() -> int:
         minimum_records=args.minimum_records,
         workers=args.workers,
         specialist_id=args.specialist_id,
+        auxiliary_fingerprints=auxiliary_fingerprints,
     )
     output = args.out.resolve()
     if output.is_file():

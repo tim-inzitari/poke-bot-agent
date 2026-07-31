@@ -1,0 +1,81 @@
+{
+  "schema": "poke_bot.slowking_runtime_activation_repair/v1",
+  "goal_revision": 78,
+  "created_at_utc": "2026-07-31T03:46:10Z",
+  "status": "active_iteration_0_collection",
+  "specialist_id": "slowking",
+  "managed_service": {
+    "name": "pokebot-pure-rl-trevenant-staged.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "result": "success",
+    "main_pid_at_activation": 2138092,
+    "restart_count_after_final_activation": 0
+  },
+  "selector": {
+    "path": "/home/inzi/.config/pokebot/specialist_runtime.env",
+    "sha256": "sha256:5231dbaea8f52e2fec7bef6ff476f3adacb3b174768a90b883a6103d2fe30493",
+    "active_specialist": "slowking",
+    "runtime_root": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30",
+    "expanded_heads_enabled": true,
+    "setup_board_outcome_head_enabled": true,
+    "combo_state_head_enabled": true,
+    "decision_fusion_enabled": true,
+    "decision_fusion_runtime_enabled": true
+  },
+  "runtime_registry": {
+    "path": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/ops/specialist_runtime_registry_v1.json",
+    "sha256": "sha256:57a0efbb0f4ebed6245ab5a794cff33d3f31140d33d076272f6cfec919f9f7c1",
+    "schema": "poke_bot.specialist_runtime_registry/v1",
+    "content_version": 3,
+    "registered_required_head_count": 19,
+    "registered_extra_head": "combo_state"
+  },
+  "checkpoint": {
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/slowking_expert_bootstrap_from_core_v9_matchup_v6_roster20/model.pt",
+    "sha256": "sha256:33268fa03d568588390336ab4790f10eb105f9c38e0e4eb77da5c8822dc9ee84",
+    "parameter_count": 1910963,
+    "model_format": 6,
+    "training_core_revision": 10,
+    "matchup_router_format": 6
+  },
+  "combo_validation": {
+    "path": "/home/inzi/poke-bot-agent/outputs/bootstrap/slowking-expert-bootstrap-from-core-v9/slowking_combo_head_validation.json",
+    "sha256": "sha256:25b85243e6ea1b78e561baeccb7b62809375fa4c04083ff445580e76e597e6d4",
+    "status": "validated"
+  },
+  "hardware": {
+    "blackwell_simulator_workers": 96,
+    "blackwell_games_in_flight": 96,
+    "blackwell_inference_leaves_gpu0": 4,
+    "blackwell_inference_leaves_gpu1": 12,
+    "elmo_workers": 36,
+    "elmo_leaves": 4,
+    "bert_workers": 16,
+    "bert_leaves": 4,
+    "remote_additive_capacity": 52
+  },
+  "fleet": {
+    "activation_receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v4.json",
+    "activation_receipt_sha256": "sha256:40aa314b90307429eb0f972e89878570a593c7f9ef3aa89d39d01ef8e75618dc",
+    "between_iteration_hard_gate_passed": true,
+    "formal_heldout_remotes_verified": true,
+    "elmo_runtime_routes": 20,
+    "bert_runtime_routes": 20
+  },
+  "iteration_zero": {
+    "stage": "collect:self_play",
+    "games_target": 1024,
+    "observed_games_at_receipt": 15,
+    "local_workers": 96,
+    "remote_workers": 52,
+    "source": "/home/inzi/poke-bot-agent/outputs/logs/pure_rl_slowking_temporal1_8k_v1_20260723.progress.status"
+  },
+  "repair": {
+    "registry_content_version_guard": "schema_v1_and_positive_monotonic_content_version",
+    "fusion_inventory_guard": "canonical_required_prefix_plus_exact_registered_specialist_heads",
+    "selector_architecture_binding": "registered_setup_and_combo_heads_enable_their_exact_runtime_architecture",
+    "stale_uncommitted_seed_preserved_at": "/home/inzi/poke-bot-agent/outputs/pure_rl/_rejected/slowking-pre-combo-env-seed-20260731T0340Z",
+    "bert_failure_history_preserved_at": "/Users/tsinzitari/workspace/poke-bot-agent/outputs/state/bert_worker_supervisor/failures.epoch.pre-slowking-runtime-rotation-20260731T0341Z"
+  }
+}

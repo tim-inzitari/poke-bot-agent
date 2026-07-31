@@ -142,6 +142,29 @@ def load_active_gate_contract(path: Path) -> dict[str, Any]:
     if any(float(row.get("weight") or 0.0) <= 0.0 for row in roster):
         raise ValueError("every active-gate opponent must have positive weight")
 
+    rating_simulation = gate.get("kaggle_rating_simulation")
+    if rating_simulation is not None:
+        if not isinstance(rating_simulation, dict):
+            raise ValueError("kaggle_rating_simulation must be an object")
+        anchors = [
+            float(row["kaggle_rating_anchor"])
+            for row in roster
+            if row.get("kaggle_rating_anchor") is not None
+        ]
+        if (
+            rating_simulation.get("separate_from_premium_strength_gate") is not True
+            or rating_simulation.get("training_eligible") is not False
+            or rating_simulation.get("replay_eligible") is not False
+            or int(rating_simulation.get("minimum_anchor_count") or 0) < 1
+            or len(anchors)
+            < int(rating_simulation.get("minimum_anchor_count") or 0)
+            or not 0.5 < float(rating_simulation.get("confidence_level") or 0.0) < 1.0
+            or float(rating_simulation.get("projected_rating_lower_bound") or 0.0)
+            <= 0.0
+            or any(not 0.0 < rating < 5000.0 for rating in anchors)
+        ):
+            raise ValueError("invalid independent Kaggle rating simulation contract")
+
     research_ids = [str(row.get("opponent_id") or "") for row in research]
     if (
         len(set(research_ids)) != len(research_ids)
@@ -306,6 +329,101 @@ def _weighted_cluster_interval(
     return center, _quantile(samples, alpha), _quantile(samples, 1.0 - alpha)
 
 
+def _bradley_terry_rating(
+    samples: dict[str, list[tuple[float, float]]],
+    anchors: dict[str, float],
+) -> float:
+    """Fit one candidate rating against fixed Kaggle-rated opponents."""
+
+    def residual(candidate_rating: float) -> float:
+        value = 0.0
+        for opponent_id, pairs in samples.items():
+            observed = sum(score for pair in pairs for score in pair)
+            games = 2 * len(pairs)
+            expected = games / (
+                1.0
+                + 10.0
+                ** ((float(anchors[opponent_id]) - candidate_rating) / 400.0)
+            )
+            value += observed - expected
+        return value
+
+    low, high = -1000.0, 3000.0
+    for _ in range(80):
+        middle = (low + high) / 2.0
+        if residual(middle) > 0.0:
+            low = middle
+        else:
+            high = middle
+    return (low + high) / 2.0
+
+
+def _kaggle_rating_simulation(
+    clusters: dict[str, list[tuple[float, float]]],
+    roster: list[dict[str, Any]],
+    contract: dict[str, Any],
+    *,
+    seed: int,
+) -> dict[str, Any]:
+    """Project rating from actual balanced-seat games, independently of WR."""
+
+    anchors = {
+        str(row["opponent_id"]): float(row["kaggle_rating_anchor"])
+        for row in roster
+        if row.get("kaggle_rating_anchor") is not None
+    }
+    minimum_anchors = int(contract["minimum_anchor_count"])
+    confidence = float(contract.get("confidence_level", 0.90))
+    resamples = int(contract.get("bootstrap_resamples", 4000))
+    minimum_rating = float(contract["projected_rating_lower_bound"])
+    exact = (
+        len(anchors) >= minimum_anchors
+        and all(opponent_id in clusters and clusters[opponent_id] for opponent_id in anchors)
+    )
+    if not exact:
+        return {
+            "schema": "poke_bot.kaggle_rating_simulation/v1",
+            "passed": False,
+            "anchor_count": len(anchors),
+            "minimum_anchor_count": minimum_anchors,
+            "projected_rating": None,
+            "confidence_lower": None,
+            "projected_rating_lower_bound": minimum_rating,
+            "reason": "insufficient_exact_rating_anchors",
+        }
+    selected = {opponent_id: clusters[opponent_id] for opponent_id in anchors}
+    center = _bradley_terry_rating(selected, anchors)
+    rng = random.Random(int(seed) ^ 0xA1A2A3)
+    estimates: list[float] = []
+    for _ in range(resamples):
+        sampled = {
+            opponent_id: [pairs[rng.randrange(len(pairs))] for _ in range(len(pairs))]
+            for opponent_id, pairs in selected.items()
+        }
+        estimates.append(_bradley_terry_rating(sampled, anchors))
+    estimates.sort()
+    alpha = 1.0 - confidence
+    lower = _quantile(estimates, alpha)
+    return {
+        "schema": "poke_bot.kaggle_rating_simulation/v1",
+        "passed": lower >= minimum_rating,
+        "training_eligible": False,
+        "replay_eligible": False,
+        "estimator": "multiplayer_bradley_terry_elo_mle",
+        "actual_simulated_games": sum(2 * len(pairs) for pairs in selected.values()),
+        "balanced_seat_pairs": sum(len(pairs) for pairs in selected.values()),
+        "anchor_count": len(anchors),
+        "minimum_anchor_count": minimum_anchors,
+        "anchors": anchors,
+        "projected_rating": center,
+        "confidence_level": confidence,
+        "confidence_lower": lower,
+        "bootstrap_resamples": resamples,
+        "projected_rating_lower_bound": minimum_rating,
+        "separate_from_skill_weighted_win_rate": True,
+    }
+
+
 def _s_plus_floor_check(
     roster: list[dict[str, Any]],
     by_id: dict[str, dict[str, Any]],
@@ -405,6 +523,15 @@ def build_active_gate_result(
         )
     if "s_plus_individual_floor" in criteria:
         checks["s_plus_matchup_floor_allowance"] = s_plus_ok
+    rating_simulation = None
+    if isinstance(active.get("kaggle_rating_simulation"), dict):
+        rating_simulation = _kaggle_rating_simulation(
+            clusters,
+            roster,
+            dict(active["kaggle_rating_simulation"]),
+            seed=gate_seed,
+        )
+        checks["kaggle_rating_simulation"] = bool(rating_simulation["passed"])
     seed_manifest = {
         "gate_seed": int(gate_seed),
         "gate_games": int(evaluation["games_total"]),
@@ -416,7 +543,7 @@ def build_active_gate_result(
     seed_digest = "sha256:" + hashlib.sha256(
         json.dumps(seed_manifest, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    return {
+    result = {
         "schema": GATE_RESULT_SCHEMA,
         "gate_id": active["id"],
         "iteration": int(iteration),
@@ -449,6 +576,9 @@ def build_active_gate_result(
             "fixed_seed_manifest_digest": seed_digest,
         },
     }
+    if rating_simulation is not None:
+        result["kaggle_rating_simulation"] = rating_simulation
+    return result
 
 
 def build_strong_public_gate_result(

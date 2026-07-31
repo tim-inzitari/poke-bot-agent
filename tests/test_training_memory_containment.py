@@ -135,7 +135,11 @@ def test_replay_window_is_released_before_any_evaluation_or_next_collect() -> No
     finally_at = full_loop.index("finally:", train_at)
     delete_at = full_loop.index("del dataset", finally_at)
     trim_at = full_loop.index("release_process_heap()", delete_at)
-    promotion_at = full_loop.index("promotion begin", trim_at)
+    synchronize_at = full_loop.index(
+        "torch.cuda.synchronize(train_dev)", trim_at
+    )
+    empty_cache_at = full_loop.index("torch.cuda.empty_cache()", synchronize_at)
+    promotion_at = full_loop.index("promotion begin", empty_cache_at)
     heldout_at = full_loop.index(
         "heldout_rows, heldout_audit = _heldout_eval(", promotion_at
     )
@@ -143,7 +147,8 @@ def test_replay_window_is_released_before_any_evaluation_or_next_collect() -> No
         "pending_collect = _kick_collect(\n                    next_it", heldout_at
     )
     assert train_at < finally_at < delete_at < trim_at
-    assert trim_at < promotion_at < heldout_at < next_collect_at
+    assert trim_at < synchronize_at < empty_cache_at
+    assert empty_cache_at < promotion_at < heldout_at < next_collect_at
 
 
 def test_leaf_farm_does_not_overlap_replay_expansion_or_training() -> None:

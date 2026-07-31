@@ -358,6 +358,7 @@ def test_historical_core_kernel_ignores_ambient_future_head_flags(tmp_path) -> N
     payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     for field in (
         "setup_board_outcome_head_enabled",
+        "combo_state_head_enabled",
         "decision_fusion_dedicated_routes_enabled",
         "decision_fusion_dedicated_routes_runtime_enabled",
     ):
@@ -370,6 +371,7 @@ from poke_bot.core_kernel import CoreKernel
 k = CoreKernel.load_core_kernel(PATH)
 print(json.dumps({
     "setup": k.cfg.setup_board_outcome_head_enabled,
+    "combo": k.cfg.combo_state_head_enabled,
     "routes": k.cfg.decision_fusion_dedicated_routes_enabled,
     "runtime": k.cfg.decision_fusion_dedicated_routes_runtime_enabled,
 }))
@@ -378,6 +380,7 @@ print(json.dumps({
     environment.update(
         {
             "POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED": "1",
+            "POKEBOT_COMBO_STATE_HEAD_ENABLED": "1",
             "POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED": "1",
             "POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED": "1",
         }
@@ -391,4 +394,9 @@ print(json.dumps({
         env=environment,
     )
     loaded = json.loads(result.stdout.strip().splitlines()[-1])
-    assert loaded == {"setup": False, "routes": False, "runtime": False}
+    assert loaded == {
+        "setup": False,
+        "combo": False,
+        "routes": False,
+        "runtime": False,
+    }

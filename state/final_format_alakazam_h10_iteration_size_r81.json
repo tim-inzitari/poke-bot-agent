@@ -1,0 +1,20 @@
+{
+  "schema": "poke_bot.final_format_alakazam_h10_iteration_size_activation/v1",
+  "status": "activated",
+  "owner_decision_revision": 81,
+  "activated_at_utc": "2026-07-31T17:00:08Z",
+  "specialist_id": "alakazam",
+  "run_name": "final_format_alakazam_r79_h10_i_v6_8k",
+  "games_per_iteration": 16384,
+  "learner_epochs_per_iteration": 1,
+  "maximum_iterations": 189,
+  "maximum_training_games": 3096576,
+  "training_seat_split": {"first": 0.5, "second": 0.5},
+  "managed_service": "pokebot-final-format-alakazam-r79-h10.service",
+  "managed_pid": 262970,
+  "service_restarts": 0,
+  "checkpoint_sha256": "sha256:e65123a13abb61332fe89e66946103a83c766e2f15315b945bfe9b6bf0c2d32e",
+  "runtime_registry_sha256": "sha256:f6fb94cd07cdc69d8ab1747831486068f71ae11dcff3b5c6755756dc5a288d31",
+  "production_selector_write_authority": false,
+  "terminal_gates_unchanged": true
+}

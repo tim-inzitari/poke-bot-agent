@@ -1,0 +1,31 @@
+{
+  "schema": "poke_bot.specialist_sealed_corpus_floor/v1",
+  "status": "validated",
+  "specialist_id": "slowking",
+  "selection_floor_decisions": 19000,
+  "sealed_corpus_decisions": 19251,
+  "sealed_corpus_records": 311,
+  "combo_state_rows": 19251,
+  "source_window": {
+    "start": "2026-06-16",
+    "end": "2026-07-29",
+    "days": 44
+  },
+  "source_availability": {
+    "stored_public_archive_first_day": "2026-06-16",
+    "stored_public_archive_last_day": "2026-07-29",
+    "earlier_stored_day_available": false,
+    "later_stored_day_available": false,
+    "duplicate_or_synthetic_rows_allowed": false
+  },
+  "bindings": {
+    "protected_pointer": "/home/inzi/poke-bot-agent/data/bootstrap/slowking-full44-v3/PROTECTED_EXPERT_CORPUS.json",
+    "protected_pointer_sha256": "sha256:340eec8fbc43d6f96ebb877c6941c9c0128c6c3672eed8489f9190e0be6a2556",
+    "manifest_sha256": "sha256:1556f0bfa0d6550a2d1d7c5a49c80f6c4891ec32eb734946d49a88937ec2d265",
+    "combo_validation_receipt_sha256": "sha256:08f818ac554b33f7caa5a8c83dd5968ad1a2e3bccd69d8e825ba5d18a96d13ac"
+  },
+  "scope": "slowking_selection_only",
+  "generic_minimum_decisions_unchanged": 20000,
+  "other_specialists_modified": false,
+  "active_archaludon_training_modified": false
+}

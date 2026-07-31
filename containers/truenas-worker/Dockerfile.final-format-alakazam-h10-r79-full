@@ -1,0 +1,9 @@
+FROM poke-bot-truenas-worker:matchup-v41-v6-slowking-runtime
+
+LABEL org.opencontainers.image.title="poke-bot Elmo H10 remote worker" \
+      org.opencontainers.image.version="final-format-alakazam-h10-r79-full" \
+      org.opencontainers.image.description="Slowking runtime base with the complete checksum-consistent final-format Alakazam H10 Python package"
+
+COPY containers/truenas-worker/h10-r79-full-overlay/poke_bot/ /workspace/poke_bot/
+
+RUN python -m compileall -q /workspace/poke_bot

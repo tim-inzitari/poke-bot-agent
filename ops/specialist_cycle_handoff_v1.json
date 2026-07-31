@@ -18,6 +18,7 @@
     "minimum_decisions_by_specialist": {
       "dragapult-dusknoir": 10000,
       "dudunsparce": 2000,
+      "slowking": 19000,
       "team-rockets-spidops": 20000
     },
     "minimum_records_by_specialist": {
@@ -116,15 +117,24 @@
   },
   "post_fleet_refresh": {
     "schema": "poke_bot.post_fleet_specialist_refresh/v1",
-    "owner_decision_revision": 64,
+    "owner_decision_revision": 79,
     "owner_decision_revisions": [
       36,
-      64
+      64,
+      79
     ],
     "state_source": "selection.state#/post_fleet_refresh",
     "required_fleet_count": 15,
     "terminal_required_specialist_id": "slowking",
-    "slowking_freeze_and_registration_immediately_triggers_first_refresh": true,
+    "frozen_required_specialist_count": 14,
+    "terminal_exception": {
+      "specialist_id": "slowking",
+      "disposition": "failed_experiment",
+      "receipt": "state/slowking_failed_experiment_transition_r79.json",
+      "grants_passing_or_completion_credit": false,
+      "releases_final_format_alakazam_only": true
+    },
+    "slowking_terminal_disposition_immediately_triggers_first_refresh": true,
     "ordered_specialist_ids": [
       "alakazam",
       "marnie-s-grimmsnarl-ex"
@@ -147,11 +157,11 @@
     },
     "first_refresh": {
       "specialist_id": "alakazam",
-      "start_timing": "immediately_after_slowking_frozen_and_registered",
+      "start_timing": "immediately_after_slowking_failed_experiment_receipt_and_g0_g1",
       "model_format": "final_submission_format",
       "format_contract": "docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md",
       "first_final_format_model": true,
-      "final_format_computation_before_slowking_completion_allowed": false,
+      "final_format_computation_before_slowking_terminal_disposition_allowed": false,
       "validation_and_compatibility_receipts_required": true,
       "silent_legacy_format_fallback_allowed": false,
       "turn_order": {
@@ -215,16 +225,17 @@
     "python": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python",
     "registry_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models",
     "runtime_tree": "/home/inzi/poke-bot-agent/outputs/state/trevenant-public-matchup-tree-iter5-v1.json",
-    "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster19-v44.inactive.json",
-    "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster19-v44.audit.json",
-    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/rare-route-assets-roster19-v44-ready.json",
+    "inactive_tree_candidate": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster20-v45.inactive.json",
+    "candidate_audit": "/home/inzi/poke-bot-agent/outputs/state/public-matchup-tree-calibration-roster20-v45.audit.json",
+    "future_assets_receipt": "/home/inzi/poke-bot-agent/outputs/state/slowking_router_promotion_v1.json",
     "future_assets_scope": "router_only",
-    "runtime_registry": "/home/inzi/poke-bot-agent-deployments/specialist-runtime-r56-option-routes-v1/ops/specialist_runtime_registry_v1.json",
+    "runtime_registry": "/home/inzi/poke-bot-agent-deployments/archaludon-decision-fusion-v2/ops/specialist_runtime_registry_v1.json",
     "frozen_specialist_registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/ops/frozen_specialist_registry_v1.json",
     "selector_env": "/home/inzi/.config/pokebot/specialist_runtime.env",
     "state_root": "/home/inzi/poke-bot-agent/outputs/state",
     "training_service": "pokebot-pure-rl-trevenant-staged.service",
     "handoff_service": "pokebot-specialist-cycle-handoff.service",
+    "post_fleet_refresh_handoff_service": "pokebot-final-format-alakazam-handoff.service",
     "population_handoff_service": "pokebot-population-round-robin-handoff.service",
     "population_training_service": "pokebot-population-round-robin.service",
     "gate_handler_service": "pokebot-specialist-passed-gate-handler.service",
@@ -266,14 +277,15 @@
     },
     "matchup_v6": {
       "enabled": true,
-      "registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/matchup_adapter_roster.json",
+      "registry": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/state/matchup_adapter_roster.json",
       "staging_root": "/home/inzi/poke-bot-agent/outputs/staging/matchup-v6-runtime-families",
       "receipt_root": "/home/inzi/poke-bot-agent/outputs/state",
-      "family_suffix": "_matchup_v6",
+      "family_suffix": "_matchup_v6_roster20",
+      "receipt_suffix": "-roster20",
       "fleet": {
-        "source_root": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1",
-        "registry": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/state/matchup_adapter_roster.json",
-        "receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v3.json",
+        "source_root": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30",
+        "registry": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/state/matchup_adapter_roster.json",
+        "receipt": "/home/inzi/poke-bot-agent/outputs/state/matchup-v6-fleet-activation-v4.json",
         "bert": {
           "host": "192.168.1.158",
           "runtime_root": "/Users/tsinzitari/workspace/poke-bot-agent",
@@ -286,7 +298,7 @@
           "host": "elmo",
           "container": "poke-bot-truenas-worker",
           "service": "worker",
-        "image": "poke-bot-truenas-worker:matchup-v40-v6-router-runtime",
+        "image": "poke-bot-truenas-worker:matchup-v41-v6-slowking-runtime-r74-memory-v1",
         "build_context": "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1",
         "dockerfile": "/mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/Dockerfile",
           "compose_files": [

@@ -11,22 +11,28 @@ from pathlib import Path
 from poke_bot.ladder_replay import canonical_deck_sha256
 try:
     from scripts.retrain_public_matchup_tree_teal_mask_v43 import (
+        _causal_calibration_rows,
         _catalog,
         _drop_zero_nnz_rows,
+        _exact_catalog_bindings,
         _public_calibration_day,
     )
 except ModuleNotFoundError as exc:
-    if exc.name != "sklearn":
+    if exc.name not in {"scipy", "sklearn"}:
         raise
     _catalog = None
+    _causal_calibration_rows = None
     _drop_zero_nnz_rows = None
+    _exact_catalog_bindings = None
     _public_calibration_day = None
 
 
 def _require_router_dependencies() -> None:
     if (
         _catalog is None
+        or _causal_calibration_rows is None
         or _drop_zero_nnz_rows is None
+        or _exact_catalog_bindings is None
         or _public_calibration_day is None
     ):
         raise unittest.SkipTest(
@@ -117,6 +123,8 @@ def test_public_calibration_day_uses_exact_deck_and_facing_public_view(
             day,
             archive,
             receipt,
+            None,
+            None,
             frozenset({canonical_deck_sha256(target_deck)}),
             18,
             4095,
@@ -137,6 +145,134 @@ def test_public_calibration_day_uses_exact_deck_and_facing_public_view(
     assert 998 not in state
     assert 997 not in state
     assert result["source"]["archive_validation_receipt"] == str(receipt)
+    temporary.cleanup()
+
+
+def test_public_calibration_day_accepts_catalog_bound_archive_evidence() -> None:
+    _require_router_dependencies()
+    temporary = tempfile.TemporaryDirectory()
+    tmp_path = Path(temporary.name)
+    day = "2026-07-29"
+    target_deck = [163] * 60
+    other_deck = [7] * 60
+    payload = {
+        # Public archives may carry an internal UUID that differs from the
+        # immutable member stem used by the checksum-bound catalog index.
+        "id": "internal-uuid-distinct-from-member-stem",
+        "steps": [
+            [
+                {"action": target_deck, "observation": {"current": None}},
+                {"action": other_deck, "observation": {"current": None}},
+            ],
+            [
+                {},
+                {
+                    "observation": {
+                        "current": {
+                            "yourIndex": 1,
+                            "players": [
+                                {
+                                    "active": [{"id": 163}],
+                                    "bench": [],
+                                    "discard": [],
+                                },
+                                {"active": [], "bench": [], "discard": []},
+                            ],
+                        }
+                    }
+                },
+            ],
+        ],
+    }
+    archive = tmp_path / f"pokemon-tcg-ai-battle-episodes-{day}.zip"
+    with zipfile.ZipFile(archive, "w") as stream:
+        stream.writestr("episode-exact-slowking.json", json.dumps(payload))
+    evidence = {
+        "date": day,
+        "archive": archive.name,
+        "archive_sha256": "sha256:" + ("e" * 64),
+        "manifest_rows": 1,
+        "json_replays": 1,
+    }
+
+    result = _public_calibration_day(
+        (
+            day,
+            archive,
+            None,
+            evidence,
+            [[day, "episode-exact-slowking", 0, canonical_deck_sha256(target_deck)]],
+            frozenset({canonical_deck_sha256(target_deck)}),
+            19,
+            4095,
+            42,
+            20,
+        )
+    )
+
+    assert result["matching_acting_seats"] == 1
+    assert result["source"]["archive_sha256"] == evidence["archive_sha256"]
+    assert (
+        result["source"]["archive_validation_source"]
+        == "exact_public_catalog_source_archive_evidence"
+    )
+    assert result["source"]["archive_validation_receipt"] is None
+    temporary.cleanup()
+
+
+def test_generic_causal_calibration_archive_binds_slowking_label() -> None:
+    _require_router_dependencies()
+    temporary = tempfile.TemporaryDirectory()
+    tmp_path = Path(temporary.name)
+    archive = tmp_path / "slowking-calibration.zip"
+    payload = {
+        "id": "router-slowking-1",
+        "steps": [
+            [
+                {"observation": {"current": None}},
+                {
+                    "observation": {
+                        "current": {
+                            "yourIndex": 1,
+                            "players": [
+                                {
+                                    "active": [{"id": 163}],
+                                    "bench": [],
+                                    "discard": [],
+                                },
+                                {"active": [], "bench": [], "discard": []},
+                            ],
+                        }
+                    }
+                },
+            ]
+        ],
+        "router_calibration": {
+            "schema": "poke_bot.router_calibration_episode/v1",
+            "target_archetype": "slowking",
+            "target_seat": 0,
+            "causal_public_zones_only": True,
+            "hidden_fields_written": False,
+        },
+    }
+    with zipfile.ZipFile(archive, "w") as stream:
+        stream.writestr("router-slowking-1.json", json.dumps(payload))
+
+    matrix, labels, weights, splits, source = _causal_calibration_rows(
+        archive,
+        target_id="slowking",
+        label=19,
+        max_card_id=4095,
+        split_seed=42,
+        validation_percent=20,
+    )
+
+    assert matrix.shape[0] == 1
+    assert matrix.getrow(0).indices.tolist() == [163]
+    assert labels.tolist() == [19]
+    assert weights.tolist() == [1.0]
+    assert splits.tolist()[0] in (0, 1)
+    assert source["independent_simulation_label"] == "slowking"
     temporary.cleanup()
 
 
@@ -197,6 +333,8 @@ def test_public_calibration_day_rejects_receipt_for_different_archive(
                 day,
                 archive,
                 receipt,
+                None,
+                None,
                 frozenset({"sha256:" + ("b" * 64)}),
                 18,
                 4095,
@@ -239,3 +377,53 @@ def test_catalog_requires_complete_daily_window_and_count() -> None:
     with _raises(RuntimeError, "catalog identity changed"):
         _catalog(catalog_path)
     temporary.cleanup()
+
+
+def test_catalog_can_bind_a_different_exact_specialist() -> None:
+    _require_router_dependencies()
+    temporary = tempfile.TemporaryDirectory()
+    tmp_path = Path(temporary.name)
+    catalog_path = tmp_path / "catalog.json"
+    payload = {
+        "schema": "poke_bot.public_deck_archetype_catalog/v1",
+        "specialist_id": "slowking",
+        "source_archetype": {"id": 86, "name": "Slowking"},
+        "source_window": {
+            "start": "2026-07-28",
+            "end": "2026-07-28",
+            "days": 1,
+        },
+        "observed_acting_seat_games": 2,
+        "observed_by_day": {"2026-07-28": 2},
+        "deck_fingerprints": ["sha256:" + ("d" * 64)],
+    }
+    catalog_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    catalog, fingerprints, dates = _catalog(
+        catalog_path,
+        target_id="slowking",
+    )
+
+    assert catalog["specialist_id"] == "slowking"
+    assert fingerprints == frozenset({"sha256:" + ("d" * 64)})
+    assert dates == ["2026-07-28"]
+    temporary.cleanup()
+
+
+def test_multiple_exact_catalog_bindings_preserve_existing_routes() -> None:
+    _require_router_dependencies()
+    bindings = _exact_catalog_bindings(
+        "slowking",
+        Path("/catalogs/slowking.json"),
+        ["teal-mask-ogerpon-ex=/catalogs/teal.json"],
+    )
+    assert bindings == [
+        ("slowking", Path("/catalogs/slowking.json")),
+        ("teal-mask-ogerpon-ex", Path("/catalogs/teal.json")),
+    ]
+    with _raises(RuntimeError, "unique TARGET_ID=PATH"):
+        _exact_catalog_bindings(
+            "slowking",
+            Path("/catalogs/slowking.json"),
+            ["slowking=/catalogs/duplicate.json"],
+        )

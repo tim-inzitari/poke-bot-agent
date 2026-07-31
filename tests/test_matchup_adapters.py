@@ -919,6 +919,7 @@ def test_live_dormant_phase_trains_lucario_and_mirror_only(
         max_decisions_per_batch=32,
         dormant_matchup_adapter_epochs=1,
         dormant_matchup_adapter_lr=1e-2,
+        dormant_matchup_adapter_max_decisions_per_batch=1,
         dormant_matchup_adapter_activation_receipt=str(receipt_path),
     )
 
@@ -938,7 +939,7 @@ def test_live_dormant_phase_trains_lucario_and_mirror_only(
     assert fit["route_sequences"]["lucario"] == 1
     assert fit["route_sequences"]["alakazam"] == 1
     assert fit["route_sequences"]["archaludon-ex"] == 0
-    assert fit["steps"] == 1
+    assert fit["steps"] == 2
     assert fit["rows"] > 0
     assert optimizer_state
     assert model.matchup_adapter_bank.enabled is False

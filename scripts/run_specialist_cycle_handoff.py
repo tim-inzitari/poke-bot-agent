@@ -16,6 +16,11 @@ from typing import Any
 
 import yaml
 
+from poke_bot.dormant_adapter_compat import LOADER_RUNTIME_FILES
+from poke_bot.matchup_adapters_v6 import (
+    allocate_archetype,
+    load_slot_registry,
+)
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.run_sequential_specialist_handoff import (
     run as run_sequential_handoff,
@@ -59,6 +64,83 @@ def _atomic(path: Path, value: dict[str, Any]) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+
+
+def _append_only_v6_registry_upgrade(old_path: Path, new_path: Path) -> bool:
+    """Accept one fixed-slot allocation while preserving every prior identity."""
+
+    try:
+        old = load_slot_registry(old_path)
+        new = load_slot_registry(new_path)
+        changed_slots = [
+            (old_row, new_row)
+            for old_row, new_row in zip(
+                old["slots"], new["slots"], strict=True
+            )
+            if old_row != new_row
+        ]
+        if len(changed_slots) != 1:
+            return False
+        old_row, new_row = changed_slots[0]
+        new_id = str(new_row.get("archetype_id") or "")
+        if (
+            old_row.get("status") != "unused"
+            or old_row.get("archetype_id") is not None
+            or new_row.get("status") not in {"active", "dormant"}
+            or not new_id
+        ):
+            return False
+        expected = allocate_archetype(
+            old,
+            new_id,
+            status=str(new_row["status"]),
+            lineage=str(new_row.get("lineage") or ""),
+        )
+        structural_keys = {
+            "revision",
+            "required_specialist_count",
+            "active_expert_ids",
+            "expert_ids",
+            "slots",
+        }
+        if any(expected[key] != new[key] for key in structural_keys):
+            return False
+        metadata_keys = {
+            "canonical_display_names",
+            "meta_analysis_source",
+            "specialist_priority",
+        }
+        if any(
+            old.get(key) != new.get(key)
+            for key in set(old) - structural_keys - metadata_keys
+        ):
+            return False
+        old_names = dict(old.get("canonical_display_names") or {})
+        new_names = dict(new.get("canonical_display_names") or {})
+        if any(new_names.get(key) != value for key, value in old_names.items()):
+            return False
+        if set(new_names) - set(old_names) - {new_id}:
+            return False
+        old_priority = list(old.get("specialist_priority") or ())
+        new_priority = list(new.get("specialist_priority") or ())
+        if [item for item in new_priority if item != new_id] != old_priority:
+            return False
+        old_meta = copy.deepcopy(dict(old.get("meta_analysis_source") or {}))
+        new_meta = copy.deepcopy(dict(new.get("meta_analysis_source") or {}))
+        old_crosswalk = dict(old_meta.pop("crosswalk", {}) or {})
+        new_crosswalk = dict(new_meta.pop("crosswalk", {}) or {})
+        if (
+            old_meta != new_meta
+            or any(
+                new_crosswalk.get(key) != value
+                for key, value in old_crosswalk.items()
+            )
+            or set(new_crosswalk) - set(old_crosswalk) - {new_id}
+        ):
+            return False
+        return True
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
 
 
 def _compatible_prior_cumulative_contract(
@@ -188,6 +270,40 @@ def _compatible_prior_cumulative_contract(
                 "canonical_config_sha256"
             ] = existing_digests[1]
             variants.append(prior_protocol)
+            # A successor-scoped optional-head authorization lives inside the
+            # canonical decision-fusion section and therefore changes that
+            # section's source digest even though every projected core field
+            # remains identical. Preserve the already completed cumulative
+            # core's old source identity while permitting only this exact
+            # structural no-op. The newly generated Slowking handoff still
+            # binds the current combo-aware projection independently.
+            existing_source_digest = str(
+                (existing_core.get("decision_fusion") or {}).get(
+                    "source_digest"
+                )
+                or ""
+            )
+            current_source_digest = str(
+                (current_core.get("decision_fusion") or {}).get(
+                    "source_digest"
+                )
+                or ""
+            )
+            if (
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", existing_source_digest
+                )
+                is not None
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", current_source_digest
+                )
+                is not None
+            ):
+                prior_source = copy.deepcopy(prior_protocol)
+                prior_source["core_refresh"]["decision_fusion"][
+                    "source_digest"
+                ] = existing_source_digest
+                variants.append(prior_source)
     try:
         old_fleet_config = copy.deepcopy(
             existing["runtime"]["matchup_v6"]["fleet"]
@@ -208,6 +324,7 @@ def _compatible_prior_cumulative_contract(
         new_fleet_receipt = None
     prior_fleet_receipt_valid = False
     pending_same_receipt = False
+    loader_generation_upgrade = False
     if (
         old_fleet_receipt is not None
         and new_fleet_receipt is not None
@@ -223,6 +340,43 @@ def _compatible_prior_cumulative_contract(
             old_fleet_receipt == new_fleet_receipt
             and not new_fleet_receipt.exists()
         )
+    if (
+        prior_fleet_receipt_valid
+        and old_fleet_receipt != new_fleet_receipt
+        and new_fleet_receipt is not None
+        and not new_fleet_receipt.exists()
+    ):
+        try:
+            old_source_raw = Path(str(old_fleet_config["source_root"])).expanduser()
+            new_source_raw = Path(str(new_fleet_config["source_root"])).expanduser()
+            old_registry = Path(
+                str(old_fleet_config["registry"])
+            ).expanduser().resolve()
+            new_registry = Path(
+                str(new_fleet_config["registry"])
+            ).expanduser().resolve()
+            new_source = new_source_raw.resolve()
+            new_registry.relative_to(new_source)
+            loader_generation_upgrade = bool(
+                old_source_raw.is_absolute()
+                and new_source_raw.is_absolute()
+                and old_source_raw.resolve() != new_source
+                and new_source.is_dir()
+                and old_registry.is_file()
+                and new_registry.is_file()
+                and (
+                    sha256(old_registry) == sha256(new_registry)
+                    or _append_only_v6_registry_upgrade(
+                        old_registry, new_registry
+                    )
+                )
+                and all(
+                    (new_source / relative).is_file()
+                    for relative in LOADER_RUNTIME_FILES
+                )
+            )
+        except (KeyError, TypeError, ValueError, OSError):
+            loader_generation_upgrade = False
     if prior_fleet_receipt_valid or pending_same_receipt:
         old_fleet_identity = copy.deepcopy(old_fleet_config)
         new_fleet_identity = copy.deepcopy(new_fleet_config)
@@ -232,6 +386,9 @@ def _compatible_prior_cumulative_contract(
             for key in ("image", "build_context", "dockerfile"):
                 elmo.pop(key, None)
             fleet["elmo"] = elmo
+            if loader_generation_upgrade:
+                fleet.pop("source_root", None)
+                fleet.pop("registry", None)
         new_elmo_config = dict(new_fleet_config.get("elmo") or {})
         if (
             old_fleet_identity == new_fleet_identity
@@ -250,7 +407,123 @@ def _compatible_prior_cumulative_contract(
                 prior_fleet_receipt["runtime"]["matchup_v6"][
                     "fleet"
                 ] = old_fleet_config
+                if loader_generation_upgrade:
+                    existing_matchup = dict(
+                        existing["runtime"]["matchup_v6"]
+                    )
+                    current_matchup = dict(
+                        current["runtime"]["matchup_v6"]
+                    )
+                    old_runtime_registry = str(
+                        existing_matchup.get("registry") or ""
+                    )
+                    new_runtime_registry = str(
+                        current_matchup.get("registry") or ""
+                    )
+                    if (
+                        old_runtime_registry
+                        and new_runtime_registry
+                        and Path(old_runtime_registry).expanduser().resolve()
+                        == Path(
+                            str(old_fleet_config["registry"])
+                        ).expanduser().resolve()
+                        and Path(new_runtime_registry).expanduser().resolve()
+                        == Path(
+                            str(new_fleet_config["registry"])
+                        ).expanduser().resolve()
+                    ):
+                        prior_fleet_receipt["runtime"]["matchup_v6"][
+                            "registry"
+                        ] = old_runtime_registry
                 variants.append(prior_fleet_receipt)
+    # The fleet receipt may commit first and leave only the outer runtime-tree
+    # registry pointer to advance on the next idempotent controller pass.
+    # Accept that one-field completion only when the active fleet receipt
+    # already binds the exact append-only target registry.
+    try:
+        old_runtime_registry = Path(
+            str(existing["runtime"]["matchup_v6"]["registry"])
+        ).expanduser().resolve()
+        new_runtime_registry = Path(
+            str(current["runtime"]["matchup_v6"]["registry"])
+        ).expanduser().resolve()
+        current_fleet = dict(current["runtime"]["matchup_v6"]["fleet"])
+        current_fleet_registry = Path(
+            str(current_fleet["registry"])
+        ).expanduser().resolve()
+        current_fleet_receipt = Path(
+            str(current_fleet["receipt"])
+        ).expanduser().resolve()
+        fleet_receipt = _read(current_fleet_receipt)
+        staged_outer_registry_completion = bool(
+            old_runtime_registry != new_runtime_registry
+            and new_runtime_registry == current_fleet_registry
+            and old_runtime_registry.is_file()
+            and new_runtime_registry.is_file()
+            and _append_only_v6_registry_upgrade(
+                old_runtime_registry, new_runtime_registry
+            )
+            and fleet_receipt.get("schema")
+            == "poke_bot.matchup_adapter_v6_fleet_activation/v1"
+            and fleet_receipt.get("status") == "active"
+            and Path(
+                str(fleet_receipt.get("registry") or "")
+            ).expanduser().resolve()
+            == new_runtime_registry
+            and fleet_receipt.get("registry_raw_digest")
+            == sha256(new_runtime_registry)
+        )
+    except (KeyError, TypeError, ValueError, OSError):
+        staged_outer_registry_completion = False
+    if staged_outer_registry_completion:
+        for candidate in list(variants):
+            prior_outer_registry = copy.deepcopy(candidate)
+            prior_outer_registry["runtime"]["matchup_v6"][
+                "registry"
+            ] = str(old_runtime_registry)
+            variants.append(prior_outer_registry)
+    try:
+        old_matchup_runtime = dict(existing["runtime"]["matchup_v6"])
+        new_matchup_runtime = dict(current["runtime"]["matchup_v6"])
+        old_family_suffix = str(old_matchup_runtime["family_suffix"])
+        new_family_suffix = str(new_matchup_runtime["family_suffix"])
+        old_receipt_suffix = str(
+            old_matchup_runtime.get("receipt_suffix") or ""
+        )
+        new_receipt_suffix = str(
+            new_matchup_runtime.get("receipt_suffix") or ""
+        )
+        active_fleet_receipt = _read(
+            Path(
+                str(new_matchup_runtime["fleet"]["receipt"])
+            ).expanduser().resolve()
+        )
+        versioned_runtime_derivative = bool(
+            old_family_suffix == "_matchup_v6"
+            and re.fullmatch(
+                r"_matchup_v6_roster[0-9]+", new_family_suffix
+            )
+            is not None
+            and old_receipt_suffix == ""
+            and re.fullmatch(
+                r"-roster[0-9]+", new_receipt_suffix
+            )
+            is not None
+            and new_family_suffix.removeprefix("_matchup_v6")
+            == new_receipt_suffix.replace("-", "_", 1)
+            and active_fleet_receipt.get("schema")
+            == "poke_bot.matchup_adapter_v6_fleet_activation/v1"
+            and active_fleet_receipt.get("status") == "active"
+        )
+    except (KeyError, TypeError, ValueError, OSError):
+        versioned_runtime_derivative = False
+    if versioned_runtime_derivative:
+        for candidate in list(variants):
+            prior_runtime_derivative = copy.deepcopy(candidate)
+            prior_matchup = prior_runtime_derivative["runtime"]["matchup_v6"]
+            prior_matchup["family_suffix"] = old_family_suffix
+            prior_matchup.pop("receipt_suffix", None)
+            variants.append(prior_runtime_derivative)
     return existing in variants
 
 
@@ -516,30 +789,39 @@ def _validated_post_fleet_refresh_progress(
         contract.get("schema") != POST_FLEET_REFRESH_SCHEMA
         or contract.get("completion_receipt_schema")
         != POST_FLEET_REFRESH_COMPLETION_SCHEMA
-        or int(contract.get("owner_decision_revision") or 0) != 64
+        or int(contract.get("owner_decision_revision") or 0) != 79
         or int(contract.get("required_fleet_count") or 0) != 15
         or contract.get("terminal_required_specialist_id") != "slowking"
+        or int(contract.get("frozen_required_specialist_count") or 0) != 14
+        or dict(contract.get("terminal_exception") or {}).get("specialist_id")
+        != "slowking"
+        or dict(contract.get("terminal_exception") or {}).get("disposition")
+        != "failed_experiment"
         or contract.get(
-            "slowking_freeze_and_registration_"
-            "immediately_triggers_first_refresh"
-        )
-        is not True
+            "slowking_terminal_disposition_immediately_triggers_first_refresh"
+        ) is not True
         or required_order
         != ["alakazam", "marnie-s-grimmsnarl-ex"]
         or phase.get("schema") != POST_FLEET_REFRESH_SCHEMA
         or phase.get("completion_receipt_schema")
         != POST_FLEET_REFRESH_COMPLETION_SCHEMA
-        or int(phase.get("owner_decision_revision") or 0) != 64
+        or int(phase.get("owner_decision_revision") or 0) != 79
         or int(phase.get("required_fleet_count") or 0) != 15
         or dict(phase.get("trigger") or {}).get(
             "terminal_required_specialist_id"
         )
         != "slowking"
+        or int(dict(phase.get("trigger") or {}).get(
+            "frozen_required_specialist_count") or 0) != 14
         or dict(phase.get("trigger") or {}).get(
-            "slowking_freeze_and_registration_"
-            "immediately_triggers_first_refresh"
-        )
-        is not True
+            "terminal_exception_specialist_id"
+        ) != "slowking"
+        or dict(phase.get("trigger") or {}).get(
+            "terminal_exception_disposition"
+        ) != "failed_experiment"
+        or dict(phase.get("trigger") or {}).get(
+            "slowking_terminal_disposition_immediately_triggers_first_refresh"
+        ) is not True
         or contract_release_gates != state_release_gates
         or final_alakazam_gate.get("required_receipts")
         != [
@@ -801,6 +1083,38 @@ def _start_population_handoff(runtime: dict[str, Any]) -> None:
     if completed.returncode:
         raise RuntimeError(
             f"population handoff service failed to start: {service}"
+        )
+
+
+def _start_post_fleet_refresh_handoff(
+    runtime: dict[str, Any],
+    *,
+    specialist_id: str,
+) -> None:
+    """Start the separately managed post-fleet refresh state machine.
+
+    The specialist cycle owns the fleet-completion boundary, but it must not
+    perform final-format model work inside the cycle lock.  The dedicated
+    service revalidates the immutable completion evidence, issues the G0/G1
+    receipts, and owns the refresh learner.  Restrict this bridge to the exact
+    canonical first refresh so a malformed mutable projection cannot start an
+    arbitrary service or skip Alakazam.
+    """
+
+    if specialist_id != "alakazam":
+        raise RuntimeError(
+            "post-fleet refresh handoff must begin with alakazam"
+        )
+    service = str(runtime.get("post_fleet_refresh_handoff_service") or "")
+    if not service.startswith("pokebot-") or not service.endswith(".service"):
+        raise RuntimeError("post-fleet refresh handoff service is not configured")
+    completed = subprocess.run(
+        ["/usr/bin/systemctl", "--user", "start", service],
+        check=False,
+    )
+    if completed.returncode:
+        raise RuntimeError(
+            f"post-fleet refresh handoff service failed to start: {service}"
         )
 
 
@@ -1404,10 +1718,11 @@ def run(contract_path: Path) -> int:
                 _start_population_handoff(runtime)
                 return 0
             next_refresh = required_refresh_order[len(completed_refresh_ids)]
-            raise RuntimeError(
-                "post-fleet specialist refresh is pending before population: "
-                f"{next_refresh}"
+            _start_post_fleet_refresh_handoff(
+                runtime,
+                specialist_id=next_refresh,
             )
+            return 0
         template = _read(_path(contract, "core_refresh_template"))
         cumulative = _cumulative_core_contract(
             template=template,

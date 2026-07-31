@@ -182,7 +182,7 @@ def test_expanded_targets_preserve_sample_and_decision_alignment() -> None:
         device=torch.device("cpu"),
     )
 
-    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 5
+    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 6
     assert corpus.has_expanded_strategic_targets
     assert corpus.expanded_strategic_schema == EXPANDED_STRATEGIC_SCHEMA
     assert (

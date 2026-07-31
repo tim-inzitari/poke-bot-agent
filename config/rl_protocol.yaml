@@ -13,7 +13,7 @@ allowed_phases:
   - complete
 
 training_hardware_throughput:
-  objective: owner_pinned_blackwell_128_local_workers
+  objective: owner_pinned_blackwell_96_local_workers
   raw_simulator_slot_count_is_not_the_objective: false
   active_teal_local_profile:
     simulator_workers: 48
@@ -26,16 +26,23 @@ training_hardware_throughput:
       retained_as_historical_evidence: true
       rejection_superseded_by_owner_revision: 65
   next_boundary_blackwell_profile:
-    goal_revision: 66
-    boundary: committed_iteration_only
-    simulator_workers: 128
-    games_in_flight: 128
+    goal_revision: 73
+    boundary: immediate_managed_restart_during_uncommitted_archaludon_iteration_0
+    simulator_workers: 96
+    games_in_flight: 96
     environments_per_worker: 4
-    effective_environment_slots: 512
-    worker_floor: 128
-    worker_target: 128
-    worker_ceiling: 128
-    live_pool_max_workers: 128
+    effective_environment_slots: 384
+    worker_floor: 96
+    worker_target: 96
+    worker_ceiling: 96
+    live_pool_max_workers: 96
+    inference_leaf_replicas:
+      gpu0: 4
+      gpu1: 12
+      total: 16
+      simulator_worker_count_modified: false
+      both_local_gpus_required: true
+      reason: measured_leaf_process_pss_caused_repeated_cgroup_pressure
     adaptive_worker_rebalance_allowed: false
     automatic_worker_fallback_allowed: false
     throughput_comparison_required: false
@@ -53,18 +60,72 @@ training_hardware_throughput:
     minimum_host_available_ram_gib: 12
     memory_guards_may_lower_worker_count: false
     memory_guard_behavior: fail_closed_without_profile_substitution
+    train_to_eval_cuda_cache_release:
+      goal_revision: 75
+      status: active_nonzero_cache_release_full_evaluation_continuity_verified
+      synchronize_training_device_before_empty_cache: true
+      telemetry_before_after_required: true
+      activation_receipt: state/blackwell_cuda_cache_boundary_repair_r75.json
+      activation_receipt_sha256: sha256:880bde6079dbe7471d21d77ec164f5c5c0cc1757cc36fd23dd41634fbf3aadcb
+      continuity_receipt: state/blackwell_cuda_cache_boundary_continuity_r75.json
+      continuity_receipt_sha256: sha256:b517a04bf544866445fa16220380a2b383c1e83f2245e1791318280699ed49d6
+      evaluation_continuity_receipt: state/blackwell_cuda_cache_evaluation_continuity_r75.json
+      evaluation_continuity_receipt_sha256: sha256:fa2da0f04d15a820b8d137c0edc0bd91e9851b983c41364c542386ae4b247a8a
+      first_nonzero_sample_iteration: 4
+      cuda_reserved_before_bytes: 45116030976
+      cuda_reserved_after_bytes: 104857600
+      post_release_formal_valid_games: 4000
+      post_release_research_control_valid_games: 1000
+      simulator_workers_modified: false
+      leaf_topology_modified: false
+    expert_rehearsal_schema_compatibility:
+      goal_revision: 76
+      status: active_iteration_5_training_resumed
+      active_dataset_schema: 7
+      accepted_protected_legacy_dataset_schema: 6
+      unavailable_setup_metadata_policy: unknown_context_mask
+      fabricated_setup_labels_allowed: false
+      preserved_preexisting_causal_targets: true
+      runtime_cpu_pack_key: 7c5091c9d2d4fe6d1ae6ddd39373082014b8e9c3be6da01b68037218f5ba253d
+      runtime_cpu_pack_schema: 5
+      runtime_cpu_pack_split_seed: 5000000
+      completed_collection_reused: true
+      collection_replayed_or_recollected: false
+      repair_receipt: state/archaludon_expert_rehearsal_schema6_compat_repair_r76.json
+      repair_receipt_sha256: sha256:4d9b6c22d93551f716048f914cac45ffafca7a14dec889626756b46fc187e837
   remote_fleet:
     repair_endpoint_stalls_before_adding_local_workers: true
+    shared_mid_iteration_backlog_enabled: true
+    endpoint_owned_reserves_enabled: true
+    socket_prefetch_factor: 1
+    socket_prefetch_max_factor: 2
+    dashboard_dispatch_generation_scoping_required: true
     elmo:
       endpoint: 192.168.1.143:8765
       simulator_workers: 36
       process_tree_rss_limit_gib: 30
+      process_tree_rss_role: diagnostic_only
+      service_memory_guard_limit_gib: 30
+      service_memory_guard_source_priority:
+        - cgroup_v2_memory_current
+        - process_tree_pss
+        - process_tree_rss_fallback
+      memory_guard_goal_revision: 74
+      memory_guard_activation_status: active_continuity_verified
+      memory_guard_activation_receipt: state/elmo_memory_guard_repair_r74.json
+      memory_guard_activation_receipt_sha256: sha256:50ab7e11f9c6f8cf81650e90a197c5027dde4fc3b54e906c96286a4acef46e84
+      memory_guard_continuity_receipt: state/elmo_memory_guard_collection_continuity_r74.json
+      memory_guard_continuity_receipt_sha256: sha256:5f05e84150a014be3558e302421dd6cfb5715bd9b78d301abf1aa3e2265c621a
       container_memory_limit_gib: 64
       host_available_ram_floor_gib: 24
-      planned_service_rotation_completed_jobs: 768
+      planned_service_rotation_completed_jobs: 0
       drain_active_jobs_before_exit: true
       preserve_active_checkpoint_digest: true
       activation_boundary: next_committed_boundary_with_no_active_remote_jobs
+      durable_image: poke-bot-truenas-worker:archaludon-fusion-v2-r74-memory-v1
+      durable_image_id: sha256:fe3604f77aead38bcb349a4fbefb4cdfe02513df4135abc8ce58c3fca0ac234f
+      base_durable_image: poke-bot-truenas-worker:archaludon-fusion-v2-r72
+      older_image_runtime_allowed: false
     bert:
       endpoint: 192.168.1.158:8766
       preserve_current_managed_profile: true
@@ -90,6 +151,47 @@ active_specialist_owner_transition_override:
   direct_process_signal_allowed: false
   managed_service_stop_required: true
   uncommitted_iteration_15_training_or_gate_evidence_allowed: false
+
+archaludon_stored_corpus_owner_override:
+  goal_revision: 68
+  activation: immediate_managed_boundary
+  stop_full_window_expansion: true
+  use_only_completed_checksum_backed_daily_receipts: true
+  partial_or_in_progress_days_training_eligible: false
+  minimum_matching_games: 16639
+  dataset_schema: 7
+  feature_schema: 5
+  exact_stored_window_resolved_at_seal: true
+  matching_guide_window_required: true
+  revision_56_strategic_validation_required: true
+  bootstrap_and_terminal_preflight_required: true
+  blackwell_simulator_workers: 96
+  blackwell_games_in_flight: 96
+
+archaludon_immediate_existing_corpus_override:
+  goal_revision: 69
+  scope: current_archaludon_run_only
+  supersedes_revision_68_launch_gate: true
+  deferred_schema7_snapshot_may_replace_active_run: false
+  expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/archaludon-ex/PROTECTED_EXPERT_CORPUS.json
+  expert_manifest_sha256: sha256:972a09b0be08c9de854724c4dc425921a1fb1ec00bb28a9b22cbefbe975ca0c2
+  records: 1458
+  decisions: 83980
+  satisfies_revision_68_minimum_game_floor: false
+  launch_authorized_from_existing_import: true
+  decision_fusion_schema: poke_bot.causal_decision_fusion/v2
+  learned_decision_sources: 18
+  guide_training_mode: strategic_curriculum_v1
+  guide_loss_weight: 0.05
+  initial_checkpoint_sha256: sha256:57a3172d46e429cb9ba39187cf126f763fdbb10c15012ccdb31ef993010227be
+  run_name: pure_rl_archaludon-ex_temporal1_8k_v2_20260730
+  blackwell_simulator_workers: 96
+  blackwell_games_in_flight: 96
+  activation_evidence:
+    runtime_registration_receipt: /home/inzi/poke-bot-agent/outputs/state/archaludon-ex-runtime-registration-v1.json
+    runtime_registration_receipt_sha256: sha256:af5e8489a5e2920eb3516d36d97b8043187e556f9cf1244ce15207a10e64fb95
+    selector_specialist: archaludon-ex
+    managed_service: pokebot-pure-rl-trevenant-staged.service
 
 shared_core_derivation:
   source_specialist: alakazam
@@ -359,17 +461,30 @@ specialist_training:
     meta_share_training_eligible: false
     authoritative_runtime_values: state/specialists.yaml#/training_priority
   post_fleet_refresh:
-    owner_decision_revision: 64
-    owner_decision_revisions: [36, 64]
+    owner_decision_revision: 83
+    owner_decision_revisions: [36, 64, 79, 80, 81, 82, 83]
     phase_id: post-fleet-alakazam-grimms-refresh-v1
     enabled: true
-    status: staged_waiting_for_required_fleet
+    status: alakazam_h10_high_volume_rl_active
+    static_preparation:
+      status: static_preparation_complete_slowking_failed_experiment_boundary_reached
+      contract: ops/final_submission/final_format_alakazam_static_preparation_v1.json
+      contract_sha256: sha256:078704f45a8f0958c977cec8bbe4827db1326989ef0ae0be80181d4705a90a9c
+      validation_receipt: state/final_format_alakazam_static_preparation_validation_v11.json
+      validation_receipt_sha256: sha256:2e2eb9f11705e1ee9a7935ed78dc088842cadb07932e6170f1a85fe76c61a593
+      receipt_template_count: 8
+      model_computation_started: true
+      active_runtime_modified: false
     trigger:
       required_specialists_total: 15
-      all_required_specialists_training_complete: true
-      all_required_specialists_frozen_and_registered: true
+      frozen_required_specialist_count: 14
+      terminal_exception_count: 1
+      terminal_exception_specialist_id: slowking
+      terminal_exception_disposition: failed_experiment
+      terminal_exception_receipt: state/slowking_failed_experiment_transition_r79.json
+      terminal_exception_grants_passing_or_completion_credit: false
       terminal_required_specialist_id: slowking
-      slowking_freeze_and_registration_immediately_triggers_first_refresh: true
+      slowking_terminal_disposition_immediately_triggers_first_refresh: true
       pending_kaggle_submissions_block_trigger: false
     ordered_specialist_ids:
       - alakazam
@@ -389,11 +504,11 @@ specialist_training:
         no_receipt_no_model_work: true
     first_refresh:
       specialist_id: alakazam
-      start_timing: immediately_after_slowking_frozen_and_registered
+      start_timing: immediately_after_slowking_failed_experiment_receipt_and_g0_g1
       model_format: final_submission_format
       format_contract: docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md
       first_final_format_model: true
-      final_format_computation_before_slowking_completion_allowed: false
+      final_format_computation_before_slowking_terminal_disposition_allowed: false
       validation_and_compatibility_receipts_required: true
       silent_legacy_format_fallback_allowed: false
       turn_order:
@@ -408,6 +523,71 @@ specialist_training:
         second_focus_1_to_7_allowed: false
         always_second_arm_allowed: false
         second_preferring_refresh_copy_allowed: false
+      high_volume_final_submit_gate:
+        games_per_iteration: 16384
+        self_play_fraction: 0.125
+        self_play_games_per_iteration: 2048
+        public_opponent_games_per_iteration: 14336
+        remote_phase_eligibility:
+          elmo: [self_play, public_mix, holdout, evaluation]
+          bert_after_iteration_0_commit_if_stable: [self_play, public_mix, holdout, evaluation]
+          public_mix_local_only: false
+          minimum_blackwell_fraction: 0.50
+        apple_benchmark:
+          games: 512
+          checkpoint_format: exact_h10
+          production_eligible_during_benchmark: false
+          optimized_mps_required: true
+          workers: 16
+          mps_leaf_servers: 4
+          home_leaf_affinity_required: true
+          mps_autocast_required: true
+          mps_empty_cache_every_batches: 0
+          tree_rss_limit_gib: 45
+          select_backend_from_completed_whole_game_receipt: true
+        learner_epochs_per_iteration: 1
+        learner_batch:
+          games_per_batch_cap: 240
+          decisions_per_batch_cap: 4096
+          warmup_decisions_per_batch_cap: 4096
+          dormant_matchup_adapter_decisions_per_batch_cap: 2048
+          dormant_matchup_adapter_oom_splitting: true
+          cuda_cache_release_before_adapter_phase: true
+          completed_collection_reuse_required: true
+          recollection_allowed: false
+          status: recovery_staged_after_adapter_oom
+          baseline_preparation:
+            value_only_forward_required: true
+            bypass_policy_decoder_fusion_guides_and_auxiliary_heads: true
+            cpu_prefetch_batches: 1
+            competing_cuda_python_workers_allowed: false
+            packed_temporal:
+              implementation: length_bucketed_padded_causal
+              status: staged_shadow_only
+              activation_requires_exact_cached_value_parity: true
+              activation_requires_exact_awr_weight_parity: true
+            optional_multi_gpu_sharding_order: after_value_only_packed_and_prefetch
+        maximum_iterations: 189
+        maximum_training_games: 3096576
+        minimum_terminal_iteration: 5
+        ordinary_iteration_ceiling_acceptance_allowed: false
+        ordinary_lc50_fallback_allowed: false
+        premium_gate_games: 4250
+        premium_skill_weighted_win_rate: 0.65
+        premium_skill_weighted_confidence_lower: 0.60
+        official_control_games: 1000
+        official_control_win_rate: 0.60
+        kaggle_rating_target: 1000
+        kaggle_rating_simulation:
+          separate_from_premium_strength_gate: true
+          source: actual_balanced_seat_simulations_against_checksum_bound_frozen_rating_anchors
+          estimator: multiplayer_bradley_terry_elo_mle
+          confidence_level: 0.90
+          minimum_anchor_count: 8
+          projected_rating_lower_bound: 1000
+          training_eligible: false
+          replay_eligible: false
+        exact_training_seat_split: {first: 0.5, second: 0.5}
       preferred_parent_migration:
         parent_specialist_id: alakazam
         parent_checkpoint: immutable_existing_alakazam
@@ -463,7 +643,8 @@ specialist_training:
       baseline_games_per_iteration: 8192
       rl_epochs_per_iteration: 5
       expert_rehearsal_epochs_per_iteration: 5
-      established_gate_thresholds_unchanged: true
+      established_gate_thresholds_unchanged: false
+      final_alakazam_gate_override: '#/specialist_program/post_fleet_refresh/first_refresh/high_volume_final_submit_gate'
     legacy_compatibility_derivatives:
       old_v5_bound_alakazam_derivative_counts_as_refresh_output: false
       old_materialization_receipt_is_compatibility_evidence_only: true
@@ -949,8 +1130,28 @@ specialist_training:
           gradient_or_update_authority: false
         selection_training_completion_and_submission_authority: false
   slowking_combo_specialist:
-    owner_decision_revisions: [57, 58, 59, 61, 62, 63, 64]
-    status: blocked_behind_archaludon_pending_combo_head_validation
+    owner_decision_revisions: [57, 58, 59, 61, 62, 63, 64, 77, 78]
+    status: active_iteration_3_collection_combo_rl_supervision_verified
+    active_runtime:
+      run_name: pure_rl_slowking_temporal1_8k_v1_20260723
+      managed_service: pokebot-pure-rl-trevenant-staged.service
+      model_format: 6
+      decision_fusion_schema: poke_bot.causal_decision_fusion/v2
+      learned_decision_sources: 19
+      latest_completed_iteration: 2
+      next_iteration: 3
+      learner_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/checkpoints/iter_00002.pt
+      learner_checkpoint_sha256: sha256:6b2d027ae5f8517fdb1cb4658eeecadaf97ecbb467d0567c0e42f1d9fd66e97d
+      learner_lineage_preserved: true
+      combo_supervision_repair_receipt: state/slowking_combo_rl_supervision_repair_v1.json
+      combo_supervision_repair_receipt_sha256: sha256:647a6b286a008b3285cc49cff6a1839f41ff6b5c43db1b08c453b3787ae73dbb
+      combo_supervision_continuity_receipt: state/slowking_combo_rl_supervision_continuity_v3.json
+      combo_supervision_continuity_receipt_sha256: sha256:cb0f3fc7ca93073d2b6c741c81608b6dba08f3e54ae8a49f0215dc465efff109
+      last_formal_gate:
+        iteration: 2
+        games: 4250
+        win_rate: 0.04718750000000001
+        passed: false
     training_order:
       predecessor: archaludon-ex
       successor: null
@@ -964,8 +1165,8 @@ specialist_training:
       exact_60_card_only: true
       generic_slowking_or_metagross_substitution_allowed: false
     combo_head_coverage:
-      map: state/slowking_combo_head_coverage_v1.json
-      schema: poke_bot.slowking_combo_head_coverage/v1
+      map: state/slowking_combo_head_coverage_v2.json
+      schema: poke_bot.slowking_combo_head_coverage/v2
       required_decision_classes:
         - top_deck_construction_and_consumption
         - copied_non_rule_box_attack_legality_and_choice
@@ -974,10 +1175,35 @@ specialist_training:
         - slowpoke_slowking_and_next_attacker_bench_continuity
         - opponent_disruption_and_response
         - prize_mapping_and_remaining_turn_outcome_timing
-      missing_typed_head: combo_state
-      missing_head_behavior: block_bootstrap_registration_and_launch
+      typed_head: combo_state
+      implementation_status: implementation_causal_corpus_and_ordinary_rl_supervision_validated_terminal_gate_pending
+      implementation_validation_receipt: state/slowking_combo_head_implementation_validation_v2.json
+      implementation_validation_receipt_sha256: sha256:3499535560366c205e9a772184df03b8263918b4dc828a425d672ebf846e5d78
+      causal_corpus_validation_receipt: state/slowking_combo_corpus_validation_v1.json
+      causal_corpus_validation_receipt_sha256: sha256:08f818ac554b33f7caa5a8c83dd5968ad1a2e3bccd69d8e825ba5d18a96d13ac
+      resident_pack_validation_receipt: state/slowking_expert_cpu_pack_validation_v1.json
+      pretraining_authorization:
+        schema: poke_bot.slowking_combo_pretraining_authorization/v1
+        authorizes_candidate_training_only: true
+        authorizes_freeze_registration_or_launch: false
+        required_receipts:
+          - state/slowking_combo_head_implementation_validation_v2.json
+          - state/slowking_combo_corpus_validation_v1.json
+          - state/slowking_expert_cpu_pack_validation_v1.json
+          - state/slowking_candidate_parameter_inventory_v1.json
+      incomplete_final_validation_behavior: allow_candidate_training_block_freeze_registration_and_launch
       validation_receipt_schema: poke_bot.slowking_combo_head_validation/v1
+      validation_generation_boundary: after_exact_25_epoch_candidate_before_freeze
       validation_receipt: null
+      ordinary_rl_supervision:
+        base_loss_weight: 0.025
+        latest_iteration: 2
+        latest_training_loss: 0.008085192875935865
+        latest_training_eligible_rows: 1208378
+        latest_validation_loss: 0.007456179773919508
+        latest_validation_eligible_rows: 136514
+        continuity_receipt: state/slowking_combo_rl_supervision_continuity_v3.json
+        continuity_receipt_sha256: sha256:cb0f3fc7ca93073d2b6c741c81608b6dba08f3e54ae8a49f0215dc465efff109
       required_evidence:
         - exact_deck_binding
         - labeled_row_coverage_by_requirement
@@ -989,7 +1215,7 @@ specialist_training:
         - bounded_aggregate_residual
         - leave_one_head_out_logit_and_action_attribution
     combo_state_head:
-      status: proposed_not_implemented
+      status: active_fused_runtime_with_nonzero_ordinary_rl_supervision_terminal_gate_pending
       input: board_state_cross_attended_option_hidden
       architecture: [d_model, 192, 32]
       computation_role: independent_head
@@ -999,6 +1225,16 @@ specialist_training:
       fusion_route_id: decision_fusion.dedicated_routes.combo_state
       guide_preference_index_allowed_as_target: false
       hidden_or_future_information_allowed: false
+    matchup_router:
+      format: 6
+      slot: 19
+      status: active_runtime_verified
+      receipt: state/slowking_matchup_route_v1.json
+      minimum_precision: 0.93
+      measured_precision: 0.9300849526413436
+      minimum_weighted_support: 10000
+      measured_weighted_support: 24940
+      runtime_enabled: true
     parameter_budget:
       scope: slowking_only
       ordinary_soft_target: 2000000
@@ -1010,16 +1246,23 @@ specialist_training:
         combo_state_head.network: 24800
         decision_fusion.dedicated_routes.combo_state: 2081
       added_parameter_total_at_d_model_96: 26881
-      complete_candidate_parameter_count: null
+      complete_candidate_parameter_count: 1910963
+      trainable_parameters_before_specialist_optimizer_scope: 1806003
+      candidate_inventory_receipt: state/slowking_candidate_parameter_inventory_v1.json
+      soft_target_exceeded: false
+      hard_ceiling_exceeded: false
       exception_receipt_required_if_above_soft_target: true
       above_hard_ceiling_requires_separate_owner_decision: true
       dead_or_noncausal_capacity_allowed: false
     authority:
       corpus_preparation_allowed: true
-      selector_eligible: false
-      runtime_registry_eligible: false
-      bootstrap_authorized: false
-      training_authorized: false
+      selector_eligible: true
+      runtime_registry_eligible: true
+      candidate_bootstrap_authorized: true
+      supervised_candidate_training_authorized: true
+      freeze_authorized_before_final_candidate_receipt: false
+      registration_authorized_before_final_candidate_receipt: false
+      rl_launch_authorized_before_final_candidate_receipt: true
       active_teal_may_be_modified: false
       staged_archaludon_may_be_modified: false
   matchup_heads:
@@ -1271,7 +1514,11 @@ specialist_training:
         bypass_when_unrouted: true
       combo_state:
         specialist_scope: slowking_only
-        status: proposed_not_implemented
+        status: implemented_with_exact_causal_corpus_and_resident_pack_pending_final_candidate_validation
+        implementation_validation_receipt: state/slowking_combo_head_implementation_validation_v2.json
+        implementation_validation_receipt_sha256: sha256:3499535560366c205e9a772184df03b8263918b4dc828a425d672ebf846e5d78
+        causal_corpus_validation_receipt: state/slowking_combo_corpus_validation_v1.json
+        resident_pack_validation_receipt: state/slowking_expert_cpu_pack_validation_v1.json
         required_for_slowking_bootstrap_and_runtime: true
         route: one_distinct_bounded_option_conditioned_route
         absent_or_unvalidated_behavior: block_slowking_registration_and_launch
@@ -1406,14 +1653,14 @@ research_evaluations:
     catalog_agents_before_supersession: 8
     frozen_specialists_added: all_registered_completed_specialists
     eligible_frozen_specialists_remain_required: true
-    current_frozen_specialists: 12
+    current_frozen_specialists: 14
     current_frozen_specialists_source: ops/frozen_specialist_registry_v1.json#/specialists[frozen=true]
     superseded_external_agents: 5
     active_external_agents_after_supersession: 3
-    current_agents: 15
+    current_agents: 17
     catalog_games_before_supersession: 2000
     active_external_games_total: 750
-    current_games_total: 3750
+    current_games_total: 4250
     games_total_formula: 250_times_active_external_agents_after_supersession_plus_current_frozen_specialists
     games_per_agent: 250
     going_first_per_agent: 125
@@ -1453,7 +1700,7 @@ research_evaluations:
       authorized_at_utc: 2026-07-24T12:00:00Z
       authorization: operator-directed future-gate change
     authoritative_threshold_source: config/rl_protocol.yaml#/research_evaluations/premium_competition/gate_threshold
-  current_all_holdouts_games_total: 4750
+  current_all_holdouts_games_total: 5250
   all_holdouts_games_total_formula: 1000_official_plus_current_premium_competition_games
   use_established_thresholds_only: true
   allow_threshold_weakening: false

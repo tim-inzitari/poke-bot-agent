@@ -1,0 +1,91 @@
+{
+  "schema": "poke_bot.slowking_prestage_readiness/v1",
+  "status": "staged_inputs_ready_fail_closed_pending_boundary_validation",
+  "created_at_utc": "2026-07-30T21:40:00Z",
+  "specialist_id": "slowking",
+  "predecessor_specialist": "archaludon-ex",
+  "strict_order": [
+    "archaludon-ex",
+    "slowking"
+  ],
+  "bindings": {
+    "deck": {
+      "path": "config/deck_guides/slowking-representative.v1.json",
+      "card_count": 60,
+      "canonical_multiset_sha256": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7"
+    },
+    "guide": {
+      "path": "config/deck_guides/slowking.yaml",
+      "sha256": "sha256:4a70c252f884eb2a2b17563663234a6185f9b592739b534488a932b2fd06d3e8",
+      "training_mode": "strategic_curriculum_v1",
+      "direct_policy_cross_entropy_allowed": false,
+      "runtime_route_present": false
+    },
+    "corpus": {
+      "receipt": "state/slowking_corpus_ready_v1.json",
+      "receipt_sha256": "sha256:b3cec70efa10c0bd3db91265cc382c1721e5c70c84866d8b93cd3b67a72f705f",
+      "protected_pointer_sha256": "sha256:cee478084d88f039ab60d6c2cd607a251bd85c9c9871aee82518660cf5019ac3",
+      "records": 311,
+      "decisions": 19251,
+      "guide_rows": 527
+    },
+    "matchup_router": {
+      "receipt": "state/slowking_matchup_route_v1.json",
+      "receipt_sha256": "sha256:5562d5d9f92534c5fe189d3053e3af20c8af6464a80607d6a02cdca2c136c142",
+      "format": 6,
+      "slot": 19,
+      "precision": 0.9300849526413436,
+      "weighted_support": 24940,
+      "runtime_enabled": false
+    },
+    "combo_head": {
+      "coverage_map": "state/slowking_combo_head_coverage_v1.json",
+      "coverage_map_sha256": "sha256:11f5881e0afff328a0b4d62deb606c110d900d2bd5d0e685bf85e209fff6d2ab",
+      "coverage_payload_sha256": "sha256:45872dd7388078754a837a7ab88afe52df411363c042d44cb75cc4bd2e0a61ff",
+      "implementation_receipt": "state/slowking_combo_head_implementation_validation_v1.json",
+      "implementation_receipt_sha256": "sha256:db6301951004930b3e867570d539e3c4787bce9a4889a65b99fbad8ed490b6bb",
+      "typed_head": "combo_state",
+      "fusion_route": "decision_fusion.dedicated_routes.combo_state",
+      "fusion_role": "fused_input",
+      "action_influence": "bounded_option_conditioned_route"
+    },
+    "candidate_shape": {
+      "receipt": "state/slowking_candidate_parameter_inventory_v1.json",
+      "receipt_sha256": "sha256:a43ca32f4ffbb885ea16d2d73cb2efd9d2a94052ed18fb285d4d12d16cde283c",
+      "training_core_revision": 10,
+      "model_format": 6,
+      "matchup_router_format": 6,
+      "decision_fusion_schema": "poke_bot.causal_decision_fusion/v2",
+      "required_learned_heads": 19,
+      "total_parameters": 1910963,
+      "soft_target_exceeded": false,
+      "hard_ceiling_exceeded": false
+    }
+  },
+  "checks": {
+    "exact_owner_deck_bound": true,
+    "current_guide_bound": true,
+    "guide_is_training_only_not_imitation": true,
+    "exact_public_corpus_sealed": true,
+    "router_gate_passed_unchanged_thresholds": true,
+    "router_inactive_until_boundary": true,
+    "current_fusion_v2_shape_instantiated": true,
+    "setup_head_present_and_fused": true,
+    "combo_head_present_and_fused": true,
+    "all_learned_heads_have_distinct_causal_action_routes": true,
+    "candidate_under_soft_parameter_target": true,
+    "combo_labeled_coverage_and_final_validation_complete": false,
+    "boundary_hot_start_resolved": false,
+    "terminal_preflight_validated": false,
+    "archaludon_complete": false
+  },
+  "activation": {
+    "selector_eligible": false,
+    "runtime_registered": false,
+    "bootstrap_authorized": false,
+    "training_authorized": false,
+    "gradient_authority": false,
+    "safe_boundary": "after_archaludon_ex_checksum_bound_completion",
+    "active_archaludon_training_modified": false
+  }
+}

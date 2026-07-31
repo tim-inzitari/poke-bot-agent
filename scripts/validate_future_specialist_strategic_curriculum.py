@@ -15,6 +15,7 @@ from typing import Any
 import torch
 
 from poke_bot.model import (
+    COMBO_STATE_HEAD_OUTPUTS,
     CausalDecisionFusion,
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_V2_SCHEMA,
@@ -201,10 +202,14 @@ def _sources(
     option["setup_board_outcome"] = torch.randn(
         batch, options, SETUP_BOARD_OUTCOME_HEAD_OUTPUTS
     )
+    if "combo_state" in fusion.dedicated_routes:
+        option["combo_state"] = torch.randn(
+            batch, options, COMBO_STATE_HEAD_OUTPUTS
+        )
     return state, option
 
 
-def _route_measurements() -> tuple[
+def _route_measurements(*, include_combo_state: bool = False) -> tuple[
     dict[str, dict[str, float | int]],
     dict[str, dict[str, float | str]],
     float,
@@ -218,6 +223,9 @@ def _route_measurements() -> tuple[
         belief_card_vocab=32,
         dedicated_routes_enabled=True,
         setup_board_outcome_outputs=SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
+        combo_state_outputs=(
+            COMBO_STATE_HEAD_OUTPUTS if include_combo_state else 0
+        ),
     )
     hidden = torch.randn(batch, options, d_model)
     state, option = _sources(fusion, batch=batch, options=options)
@@ -308,6 +316,7 @@ def materialize(
     guide_ready_receipt: Path,
     output_root: Path,
     training_implementation: Path,
+    include_combo_state: bool = False,
 ) -> dict[str, Path]:
     specialist_id = specialist_id.strip().casefold()
     if not specialist_id or any(
@@ -330,6 +339,11 @@ def materialize(
         raise RuntimeError("strategic curriculum source artifacts are not ready")
 
     guide_digest = _sha256(guide_contract)
+    learned_sources = tuple(
+        dict.fromkeys(
+            (*LEARNED_SOURCES, *(("combo_state",) if include_combo_state else ()))
+        )
+    )
     heads = {
         name: {
             "computation_role": "independent_head",
@@ -348,7 +362,7 @@ def materialize(
             "zero_safe_final_projection": True,
             "maximum_absolute_logit_contribution": 0.25,
         }
-        for name in LEARNED_SOURCES
+        for name in learned_sources
     }
     output_root = output_root.expanduser().resolve()
     role_path = output_root / f"{specialist_id}-strategic-head-roles-r56.json"
@@ -366,7 +380,7 @@ def materialize(
         "guide_contract_sha256": guide_digest,
         "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
         "preserve_v1_additive_residual": True,
-        "canonical_learned_decision_sources": list(LEARNED_SOURCES),
+        "canonical_learned_decision_sources": list(learned_sources),
         "one_route_per_learned_source": True,
         "route_input": "option_hidden_plus_typed_output",
         "route_reduction": "fixed_mean",
@@ -385,7 +399,7 @@ def materialize(
         "action_influence_revision": ACTION_REVISION,
         "guide_contract_sha256": guide_digest,
         "head_role_map_sha256": _sha256(role_path),
-        "curriculum_heads": sorted(LEARNED_SOURCES),
+        "curriculum_heads": sorted(learned_sources),
         "guide_targets": "observed_causal_strategic_heads_only",
         "direct_policy_cross_entropy_allowed": False,
         "guide_runtime_input_allowed": False,
@@ -400,7 +414,7 @@ def materialize(
         "runtime_activation_requirement": "receipt_backed_validation",
         "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
         "preserve_v1_additive_residual": True,
-        "canonical_learned_decision_sources": list(LEARNED_SOURCES),
+        "canonical_learned_decision_sources": list(learned_sources),
         "one_route_per_learned_source": True,
         "route_input": "option_hidden_plus_typed_output",
         "route_reduction": "fixed_mean",
@@ -411,7 +425,9 @@ def materialize(
     }
     _atomic_json(spec_path, spec)
     gradient_norm = _guide_gradient_measurement()
-    ablations, route_validation, maximum_aggregate = _route_measurements()
+    ablations, route_validation, maximum_aggregate = _route_measurements(
+        include_combo_state=include_combo_state
+    )
     checks = {
         "guide_supervision_terminates_at_strategic_heads": True,
         "fused_policy_remains_outcome_and_win_trained": True,
@@ -442,7 +458,7 @@ def materialize(
         "required_training_paths": REQUIRED_TRAINING_PATHS,
         "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
         "validated_route_ids": [
-            heads[name]["route_id"] for name in sorted(LEARNED_SOURCES)
+            heads[name]["route_id"] for name in sorted(learned_sources)
         ],
         "checks": checks,
         "measurements": {
@@ -486,6 +502,14 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "poke_bot/train.py",
     )
+    parser.add_argument(
+        "--include-combo-state",
+        action="store_true",
+        help=(
+            "Include the optional combo_state head and its bounded "
+            "option-conditioned fusion route in the receipt."
+        ),
+    )
     args = parser.parse_args()
     outputs = materialize(
         specialist_id=args.specialist_id,
@@ -493,6 +517,7 @@ def main() -> int:
         guide_ready_receipt=args.guide_ready_receipt,
         output_root=args.output_root,
         training_implementation=args.training_implementation,
+        include_combo_state=args.include_combo_state,
     )
     print(
         json.dumps(

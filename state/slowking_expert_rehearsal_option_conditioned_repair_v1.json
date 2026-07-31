@@ -1,0 +1,57 @@
+{
+  "schema": "poke_bot.slowking_expert_rehearsal_option_conditioned_repair/v1",
+  "status": "activated_recovery_and_continuity_verified",
+  "created_at_utc": "2026-07-31T11:08:11Z",
+  "specialist_id": "slowking",
+  "run_name": "pure_rl_slowking_temporal1_8k_v1_20260723",
+  "failure": {
+    "stage": "scheduled_expert_rehearsal_receipt_validation_before_iteration_5",
+    "reason": "combo_state was present in the checkpoint loss metadata but absent from the historical flat rehearsal receipt contract",
+    "completed_collection_rejected": false,
+    "completed_collection_recollected": false,
+    "orphan_rehearsal_checkpoint_retrained": false
+  },
+  "repair": {
+    "receipt_schema_version": 4,
+    "base_loss_contract_unchanged": true,
+    "option_conditioned_loss_weights": {
+      "combo_state": 0.025
+    },
+    "combo_weight_mismatch_fails_closed": true,
+    "legacy_zero_weight_metadata_compatible": true,
+    "setup_board_outcome_training_weight_changed": false,
+    "guide_weight_changed": false
+  },
+  "source": {
+    "expert_rehearsal_module": "poke_bot/pure_rl/expert_rehearsal.py",
+    "expert_rehearsal_module_sha256": "sha256:bd5fdc9be619672e34e0828d493972c26c636d785573a6396e251762934439c6",
+    "trainer": "scripts/train_pure_rl.py",
+    "trainer_sha256": "sha256:c7f221bae7c9092dbb18c204d09bb239937adae7f2dedebb1df78e09881c9e0e"
+  },
+  "recovered_artifacts": {
+    "collection_receipt": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/collection_receipts/iter_00005.json",
+    "source_games": 8192,
+    "trajectory_records": 8396,
+    "decisions": 655188,
+    "rehearsal_checkpoint": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/checkpoints/expert_before_iter_00005.pt",
+    "rehearsal_checkpoint_sha256": "sha256:b81db61aae8a29099d1064d9e30959be3f87fa1ffbeb092b2a6425386eaf1f1f",
+    "rehearsal_receipt": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/rehearsals/before_iter_00005.json",
+    "rehearsal_receipt_sha256": "sha256:048acd126638829b6291d592000ecd6315a2b95e935f98c7986f1abbcb5fb2eb",
+    "rehearsal_reused": true
+  },
+  "validation": {
+    "focused_tests_passed": 7,
+    "focused_tests_failed": 0,
+    "test_file": "tests/test_expert_rehearsal_contract.py",
+    "managed_service": "pokebot-pure-rl-trevenant-staged.service",
+    "main_pid": 3474547,
+    "restart_count_after_repaired_start": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "replay_cache_recovery_started": true,
+    "immutable_iteration_4_replay_sequences": 8448,
+    "active_training_identity_changed": false,
+    "selector_identity_changed": false,
+    "blackwell_simulator_workers": 96
+  }
+}

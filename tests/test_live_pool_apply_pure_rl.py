@@ -95,6 +95,18 @@ def test_leaf_cuda_devices_stripes_both_gpus() -> None:
     qs[g0_idx[1]] = _Q(0)
     assert pick_leaf_server_index(req_qs=qs, devices=devices) == g0_idx[1]
 
+    # Equal-depth queues retain each simulator's sticky home. Without this
+    # tiebreak every synchronous client collapses onto replica zero.
+    equal_qs = [_Q(0) for _ in devices]
+    assert (
+        pick_leaf_server_index(
+            req_qs=equal_qs,
+            devices=devices,
+            preferred_index=17,
+        )
+        == 17
+    )
+
 
 def test_apply_honors_explicit_leaf_gpu_split(monkeypatch) -> None:
     monkeypatch.setenv("POKEBOT_LIVE_POOL", "1")

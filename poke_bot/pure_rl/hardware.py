@@ -138,13 +138,26 @@ def pick_leaf_server_index(
     req_qs: list,
     devices: list[int],
     alive_evts: list | None = None,
+    preferred_index: int | None = None,
 ) -> int:
-    """Least-queue leaf pick; empty GPU0 queues win ties (feed the 3080)."""
+    """Pick the least-loaded leaf while preserving a client's home on ties.
+
+    Synchronous policy clients commonly observe every request queue at depth
+    zero. Always breaking that tie by list order collapses the worker pool onto
+    replica zero. A valid ``preferred_index`` retains the sticky assignment
+    when depths are equal, while a genuinely shorter queue can still steal the
+    request.
+    """
     n = len(req_qs)
     if n <= 0:
         raise ValueError("req_qs must be non-empty")
     best_i = 0
-    best_key: tuple[int, int, int] | None = None
+    preferred = (
+        int(preferred_index)
+        if preferred_index is not None and 0 <= int(preferred_index) < n
+        else None
+    )
+    best_key: tuple[int, int, int, int] | None = None
     for i, q in enumerate(req_qs):
         if alive_evts is not None and i < len(alive_evts):
             ev = alive_evts[i]
@@ -155,8 +168,9 @@ def pick_leaf_server_index(
         except (AttributeError, NotImplementedError, OSError):
             depth = 0
         dev = int(devices[i]) if i < len(devices) else 1
-        # Lower depth first; prefer GPU0 on ties; stable by index.
-        key = (depth, 0 if dev == 0 else 1, i)
+        # Lower depth first; keep this client's sticky home on a tie, then use
+        # the heterogeneous-GPU preference and a stable index fallback.
+        key = (depth, 0 if i == preferred else 1, 0 if dev == 0 else 1, i)
         if best_key is None or key < best_key:
             best_key = key
             best_i = i

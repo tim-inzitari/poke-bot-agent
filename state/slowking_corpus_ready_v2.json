@@ -1,0 +1,72 @@
+{
+  "schema": "poke_bot.slowking_corpus_ready/v2",
+  "status": "validated_inactive_combo_labeled",
+  "created_at_utc": "2026-07-30T22:45:34.275947+00:00",
+  "specialist_id": "slowking",
+  "deck_identity": {
+    "mode": "owner_exact_60_card_slowking_public_replay_identity",
+    "card_count": 60,
+    "canonical_multiset_sha256": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7",
+    "generic_slowking_or_metagross_substitution_allowed": false
+  },
+  "public_catalog": {
+    "path": "data/training_mixes/slowking-public-full44.v1.json",
+    "sha256": "sha256:86485030fe237d3cb04dd9a0bc58527160315f1820a0b1a62abd405209b23952",
+    "source_window": {
+      "start": "2026-06-16",
+      "end": "2026-07-29",
+      "days": 44
+    },
+    "records": 311
+  },
+  "guide_corpus": {
+    "root": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v3",
+    "ready_receipt": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v3/CURRENT_DECK_GUIDE_CORPUS_READY.json",
+    "ready_receipt_sha256": "sha256:0c8535335b39279ffe994ee4a79e714fce0ecca101eecf56b4189ae6ef28b5e9",
+    "manifest": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v3/manifest.json",
+    "manifest_sha256": "sha256:1556f0bfa0d6550a2d1d7c5a49c80f6c4891ec32eb734946d49a88937ec2d265",
+    "protected_pointer": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v3/PROTECTED_EXPERT_CORPUS.json",
+    "protected_pointer_sha256": "sha256:340eec8fbc43d6f96ebb877c6941c9c0128c6c3672eed8489f9190e0be6a2556",
+    "dataset_schema": 8,
+    "feature_schema": 5,
+    "compact_mode": "temporal-expert-v1",
+    "max_context": 320,
+    "guide_version": "slowking-north-star-v1",
+    "records": 311,
+    "decisions": 19251,
+    "guide_rows": 527,
+    "target_coverage": {
+      "combo_state_rows": 19251,
+      "top_deck_labels": 887,
+      "seek_source_labels": 4948,
+      "copied_attack_legality_cells": 22611,
+      "visible_combo_piece_cells": 96255,
+      "energy_route_cells": 96255,
+      "bench_continuity_cells": 77004
+    },
+    "nonempty_source_days": {
+      "2026-07-06": {
+        "records": 158,
+        "decisions": 9686,
+        "guide_rows": 273,
+        "feature_sha256": "sha256:269c4e826bd723bc8bb553bd85855779e51c849e2072e2a066e8af36ad981e6f"
+      },
+      "2026-07-07": {
+        "records": 153,
+        "decisions": 9565,
+        "guide_rows": 254,
+        "feature_sha256": "sha256:a21ed50783f005c27846ff9475fd5dfe8b09c4e64abf78ae3271a993f17b3fb7"
+      }
+    },
+    "validation_receipt": "state/slowking_combo_corpus_validation_v1.json",
+    "validation_receipt_remote_sha256": "sha256:08f818ac554b33f7caa5a8c83dd5968ad1a2e3bccd69d8e825ba5d18a96d13ac"
+  },
+  "activation": {
+    "selector_authority": false,
+    "runtime_enabled": false,
+    "gradient_authority": false,
+    "requires_archaludon_completion": true,
+    "requires_final_slowking_combo_head_validation_receipt": true,
+    "active_archaludon_training_modified": false
+  }
+}

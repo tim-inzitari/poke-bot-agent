@@ -62,6 +62,7 @@ def main() -> int:
     parser.add_argument("--pack-workers", type=int, default=1)
     parser.add_argument("--pack-memory-reserve-gib", type=float, default=12.0)
     parser.add_argument("--pack-disk-reserve-gib", type=float, default=16.0)
+    parser.add_argument("--require-combo-state", action="store_true")
     parser.add_argument(
         "--allow-unprotected",
         action="store_true",
@@ -96,6 +97,8 @@ def main() -> int:
         raise RuntimeError("built expert CPU pack lacks temporal/all-head layout")
     if int(corpus.decisions) <= 0 or int(corpus.total_samples) <= 0:
         raise RuntimeError("built expert CPU pack is empty")
+    if bool(args.require_combo_state) and not corpus.has_combo_state_targets:
+        raise RuntimeError("built expert CPU pack lacks combo-state targets")
     pack_info = dict(cache.pack_info or {})
     receipt = {
         "schema": "poke_bot.expert_cpu_pack_prebuild/v1",
@@ -116,6 +119,7 @@ def main() -> int:
         "tensor_bytes": int(corpus.tensor_bytes),
         "temporal_layout": bool(corpus.has_temporal_layout),
         "exact_targets": bool(corpus.has_exact_targets),
+        "combo_state_targets": bool(corpus.has_combo_state_targets),
         "pack": pack_info,
         "max_rss_kib": int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss),
     }

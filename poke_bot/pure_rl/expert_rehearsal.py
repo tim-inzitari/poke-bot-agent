@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 REHEARSAL_RECEIPT_SCHEMA_VERSION = 2
 EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION = 3
+OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION = 4
 REHEARSAL_LOSS_WEIGHT_KEYS = (
     "value",
     "archetype",
@@ -60,6 +61,7 @@ def canonical_rehearsal_loss_weights(
 def canonical_checkpoint_rehearsal_loss_weights(
     values: dict[str, Any],
     expanded_head_contract: Optional[dict[str, Any]] = None,
+    option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
 ) -> dict[str, float]:
     """Validate checkpoint/result loss metadata and return its base losses.
 
@@ -72,6 +74,34 @@ def canonical_checkpoint_rehearsal_loss_weights(
 
     raw = dict(values)
     embedded_expanded = raw.pop("expanded_strategic", None)
+    expected_option_conditioned = {
+        str(name): float(weight)
+        for name, weight in dict(option_conditioned_loss_weights or {}).items()
+    }
+    if any(
+        not math.isfinite(weight) or weight <= 0.0
+        for weight in expected_option_conditioned.values()
+    ):
+        raise ValueError(
+            "option-conditioned rehearsal weights must be finite/positive"
+        )
+    actual_option_conditioned: dict[str, float] = {}
+    # TrainConfig records these known option-conditioned losses even when a
+    # specialist leaves them disabled. Zero-valued metadata is compatible
+    # with historical receipts; a positive value must be explicitly bound by
+    # the caller and receipt.
+    for name in ("setup_board_outcome", "combo_state"):
+        if name not in raw:
+            continue
+        weight = float(raw.pop(name))
+        if name in expected_option_conditioned or weight != 0.0:
+            actual_option_conditioned[name] = weight
+    if actual_option_conditioned != expected_option_conditioned:
+        raise ValueError(
+            "option-conditioned rehearsal checkpoint weights mismatch: "
+            f"expected={expected_option_conditioned} "
+            f"actual={actual_option_conditioned}"
+        )
     expected_expanded = canonical_expanded_rehearsal_contract(
         expanded_head_contract
     )
@@ -431,16 +461,26 @@ def _validate_receipt(
     loss_weights: dict[str, Any],
     corpus_split_seed: int,
     expanded_head_contract: Optional[dict[str, Any]] = None,
+    option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
+    training_seat_split_receipt: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     from poke_bot.promotion import CheckpointIdentity
 
     expected_expanded = canonical_expanded_rehearsal_contract(
         expanded_head_contract
     )
+    expected_option_conditioned = {
+        str(name): float(weight)
+        for name, weight in dict(option_conditioned_loss_weights or {}).items()
+    }
     expected_schema = (
-        EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-        if expected_expanded
-        else REHEARSAL_RECEIPT_SCHEMA_VERSION
+        OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+        if expected_option_conditioned
+        else (
+            EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if expected_expanded
+            else REHEARSAL_RECEIPT_SCHEMA_VERSION
+        )
     )
     if int(receipt.get("schema", -1)) != expected_schema:
         raise RuntimeError("expert receipt schema mismatch")
@@ -472,8 +512,31 @@ def _validate_receipt(
         raise RuntimeError(f"expert receipt loss contract invalid: {exc}") from exc
     if actual_loss_weights != expected_loss_weights:
         raise RuntimeError("expert receipt loss-weight contract mismatch")
+    actual_option_conditioned = dict(
+        receipt.get("option_conditioned_loss_weights") or {}
+    )
+    if actual_option_conditioned != expected_option_conditioned:
+        raise RuntimeError(
+            "expert receipt option-conditioned loss-weight contract mismatch"
+        )
     if int(receipt.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("expert receipt corpus split-seed mismatch")
+    expected_seat_receipt = dict(training_seat_split_receipt or {})
+    actual_seat_receipt = dict(
+        receipt.get("training_seat_split_receipt") or {}
+    )
+    if actual_seat_receipt != expected_seat_receipt:
+        raise RuntimeError("expert receipt training-seat contract mismatch")
+    if expected_seat_receipt:
+        seat_path = Path(str(expected_seat_receipt.get("path") or ""))
+        if not (
+            expected_seat_receipt.get("schema")
+            == "poke_bot.alakazam_refresh_rehearsal_seat_split_index/v1"
+            and seat_path.is_file()
+            and _sha256(seat_path)
+            == str(expected_seat_receipt.get("sha256") or "")
+        ):
+            raise RuntimeError("expert training-seat receipt identity is invalid")
     if expected_expanded:
         _validate_expanded_training_record(
             dict(receipt.get("expanded_head_training") or {}),
@@ -493,6 +556,8 @@ def recover_rehearsal(
     loss_weights: dict[str, Any],
     corpus_split_seed: int,
     expanded_head_contract: Optional[dict[str, Any]] = None,
+    option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
+    training_seat_split_receipt: Optional[dict[str, Any]] = None,
 ) -> Optional[dict[str, Any]]:
     """Reuse a receipt, or reconstruct it after checkpoint-before-receipt crash."""
     from poke_bot import checkpoint
@@ -511,6 +576,8 @@ def recover_rehearsal(
             loss_weights=loss_weights,
             corpus_split_seed=corpus_split_seed,
             expanded_head_contract=expanded_head_contract,
+            option_conditioned_loss_weights=option_conditioned_loss_weights,
+            training_seat_split_receipt=training_seat_split_receipt,
         )
     if not checkpoint_path.is_file():
         return None
@@ -534,6 +601,7 @@ def recover_rehearsal(
         record_loss_weights = canonical_checkpoint_rehearsal_loss_weights(
             dict(record.get("loss_weights") or {}),
             expected_expanded,
+            option_conditioned_loss_weights,
         )
         expected_loss_weights = canonical_rehearsal_loss_weights(loss_weights)
     except ValueError as exc:
@@ -544,6 +612,10 @@ def recover_rehearsal(
         raise RuntimeError("orphan expert checkpoint loss-weight mismatch")
     if int(record.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("orphan expert checkpoint corpus split-seed mismatch")
+    if dict(record.get("training_seat_split_receipt") or {}) != dict(
+        training_seat_split_receipt or {}
+    ):
+        raise RuntimeError("orphan expert checkpoint training-seat mismatch")
     expanded_training = dict(
         (payload.get("extra") or {}).get("expanded_head_training") or {}
     )
@@ -555,9 +627,13 @@ def recover_rehearsal(
     identity = CheckpointIdentity.from_path(checkpoint_path)
     receipt = {
         "schema": (
-            EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-            if expected_expanded
-            else REHEARSAL_RECEIPT_SCHEMA_VERSION
+            OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if option_conditioned_loss_weights
+            else (
+                EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+                if expected_expanded
+                else REHEARSAL_RECEIPT_SCHEMA_VERSION
+            )
         ),
         "before_iteration": int(before_iteration),
         "parent_digest": str(parent_digest),
@@ -567,7 +643,28 @@ def recover_rehearsal(
         "epochs": int(epochs),
         "learning_rate": float(learning_rate),
         "loss_weights": expected_loss_weights,
+        **(
+            {
+                "option_conditioned_loss_weights": {
+                    str(name): float(weight)
+                    for name, weight in dict(
+                        option_conditioned_loss_weights or {}
+                    ).items()
+                }
+            }
+            if option_conditioned_loss_weights
+            else {}
+        ),
         "corpus_split_seed": int(corpus_split_seed),
+        **(
+            {
+                "training_seat_split_receipt": dict(
+                    training_seat_split_receipt or {}
+                )
+            }
+            if training_seat_split_receipt
+            else {}
+        ),
         "batch_size": int(record.get("batch_size") or 0),
         "metrics": {
             "train": record.get("train_metrics"),
@@ -591,6 +688,8 @@ def recover_rehearsal(
         loss_weights=loss_weights,
         corpus_split_seed=corpus_split_seed,
         expanded_head_contract=expanded_head_contract,
+        option_conditioned_loss_weights=option_conditioned_loss_weights,
+        training_seat_split_receipt=training_seat_split_receipt,
     )
 
 
@@ -606,6 +705,8 @@ def commit_rehearsal_receipt(
     corpus_split_seed: int,
     result: dict[str, Any],
     expanded_head_contract: Optional[dict[str, Any]] = None,
+    option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
+    training_seat_split_receipt: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Commit the small durable receipt after the immutable checkpoint exists."""
     from poke_bot.promotion import CheckpointIdentity
@@ -627,6 +728,7 @@ def commit_rehearsal_receipt(
         actual_loss_weights = canonical_checkpoint_rehearsal_loss_weights(
             dict(rehearsal.get("loss_weights") or {}),
             expected_expanded,
+            option_conditioned_loss_weights,
         )
     except ValueError as exc:
         raise RuntimeError(
@@ -636,6 +738,10 @@ def commit_rehearsal_receipt(
         raise RuntimeError("rehearsal result loss-weight contract mismatch")
     if int(rehearsal.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("rehearsal result corpus split-seed mismatch")
+    if dict(rehearsal.get("training_seat_split_receipt") or {}) != dict(
+        training_seat_split_receipt or {}
+    ):
+        raise RuntimeError("rehearsal result training-seat contract mismatch")
     expanded_training = dict(result.get("expanded_head_training") or {})
     if expected_expanded:
         _validate_expanded_training_record(
@@ -644,9 +750,13 @@ def commit_rehearsal_receipt(
         )
     receipt = {
         "schema": (
-            EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-            if expected_expanded
-            else REHEARSAL_RECEIPT_SCHEMA_VERSION
+            OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if option_conditioned_loss_weights
+            else (
+                EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+                if expected_expanded
+                else REHEARSAL_RECEIPT_SCHEMA_VERSION
+            )
         ),
         "before_iteration": int(before_iteration),
         "parent_digest": str(parent_digest),
@@ -656,7 +766,28 @@ def commit_rehearsal_receipt(
         "epochs": int(epochs),
         "learning_rate": float(learning_rate),
         "loss_weights": expected_loss_weights,
+        **(
+            {
+                "option_conditioned_loss_weights": {
+                    str(name): float(weight)
+                    for name, weight in dict(
+                        option_conditioned_loss_weights or {}
+                    ).items()
+                }
+            }
+            if option_conditioned_loss_weights
+            else {}
+        ),
         "corpus_split_seed": int(corpus_split_seed),
+        **(
+            {
+                "training_seat_split_receipt": dict(
+                    training_seat_split_receipt or {}
+                )
+            }
+            if training_seat_split_receipt
+            else {}
+        ),
         "batch_size": int(result.get("batch_size") or 0),
         "metrics": {
             "train": result.get("train_metrics"),
@@ -680,6 +811,8 @@ def commit_rehearsal_receipt(
         loss_weights=expected_loss_weights,
         corpus_split_seed=corpus_split_seed,
         expanded_head_contract=expanded_head_contract,
+        option_conditioned_loss_weights=option_conditioned_loss_weights,
+        training_seat_split_receipt=training_seat_split_receipt,
     )
 
 
@@ -698,6 +831,8 @@ class ResidentExpertCorpusCache:
         self.device: Optional[str] = None
         self.belief_card_vocab: Optional[int] = None
         self.pack_info: Optional[dict[str, Any]] = None
+        self.require_exact_seat_split = False
+        self.seat_split_evidence: dict[str, Any] = {}
         root = (
             Path(cpu_pack_root).expanduser().resolve()
             if cpu_pack_root is not None
@@ -715,6 +850,8 @@ class ResidentExpertCorpusCache:
         self.device = None
         self.belief_card_vocab = None
         self.pack_info = None
+        self.require_exact_seat_split = False
+        self.seat_split_evidence = {}
         gc.collect()
         try:
             import torch
@@ -736,6 +873,7 @@ class ResidentExpertCorpusCache:
         pack_workers: int = 1,
         pack_memory_reserve_gib: float = 12.0,
         pack_disk_reserve_gib: float = 16.0,
+        require_exact_seat_split: bool = False,
     ) -> Any:
         if (
             self.corpus is not None
@@ -752,6 +890,8 @@ class ResidentExpertCorpusCache:
                 if belief_card_vocab is not None
                 else None
             )
+            and self.require_exact_seat_split
+            == bool(require_exact_seat_split)
         ):
             return self.corpus
 
@@ -778,7 +918,14 @@ class ResidentExpertCorpusCache:
                 if belief_card_vocab is not None
                 else None
             ),
+            seat_split_policy=(
+                "exact_50_50_per_partition_v1"
+                if bool(require_exact_seat_split)
+                else ""
+            ),
         )
+
+        seat_metadata: dict[str, Any] = {}
 
         def build_cpu_pack() -> DeviceResidentBootstrapCorpus:
             plan = EpisodeGroupedFeatureManifest.open(
@@ -795,14 +942,37 @@ class ResidentExpertCorpusCache:
                     else None
                 ),
                 workers=max(1, int(pack_workers)),
+                require_exact_seat_split=bool(require_exact_seat_split),
             )
             try:
-                if plan.decisions != int(identity.decisions):
+                source_decisions = int(
+                    getattr(plan, "source_decisions", plan.decisions)
+                )
+                if source_decisions != int(identity.decisions):
                     raise RuntimeError(
                         "loaded expert decision count differs from immutable "
-                        f"manifest: loaded={plan.decisions} "
+                        f"manifest: loaded={source_decisions} "
                         f"manifest={identity.decisions}"
                     )
+                if bool(require_exact_seat_split):
+                    if int(pack_workers) != 1:
+                        raise RuntimeError(
+                            "exact expert seat selection currently requires "
+                            "the deterministic single-stream packer"
+                        )
+                    seat_metadata.update(plan.exact_seat_split_evidence())
+                    partitions = dict(seat_metadata.get("partitions") or {})
+                    for name in ("train", "validation"):
+                        row = dict(partitions.get(name) or {})
+                        if not (
+                            row.get("exact_even_split") is True
+                            and int(row.get("first_games", -1))
+                            == int(row.get("second_games", -2))
+                            and int(row.get("total_games", -1)) > 0
+                        ):
+                            raise RuntimeError(
+                                f"exact expert seat selection failed for {name}"
+                            )
                 if plan.max_context is not None:
                     print(
                         "[device-corpus] expert temporal layout "
@@ -845,8 +1015,43 @@ class ResidentExpertCorpusCache:
                 release_process_heap()
 
         cpu_corpus, pack_info = self.cpu_pack_cache.load_or_build(
-            key, build_cpu_pack
+            key,
+            build_cpu_pack,
+            derived_metadata_provider=(
+                (lambda: {"exact_seat_split": dict(seat_metadata)})
+                if bool(require_exact_seat_split)
+                else None
+            ),
         )
+        loaded_seat_metadata = dict(
+            (pack_info.get("derived_metadata") or {}).get("exact_seat_split")
+            or {}
+        )
+        if bool(require_exact_seat_split):
+            if (
+                loaded_seat_metadata.get("schema")
+                != "poke_bot.expert_rehearsal_seat_selection/v1"
+                or loaded_seat_metadata.get("passed") is not True
+                or int(
+                    (loaded_seat_metadata.get("partitions") or {})
+                    .get("train", {})
+                    .get("total_games", -1)
+                )
+                != int(cpu_corpus.train_games)
+                or int(
+                    (loaded_seat_metadata.get("partitions") or {})
+                    .get("validation", {})
+                    .get("total_games", -1)
+                )
+                != int(cpu_corpus.val_games)
+            ):
+                raise RuntimeError(
+                    "exact expert CPU pack lacks valid seat-split evidence"
+                )
+        elif loaded_seat_metadata:
+            raise RuntimeError(
+                "ordinary expert CPU pack unexpectedly carries exact-seat metadata"
+            )
         try:
             corpus = cpu_corpus.to_device(torch.device(device))
         finally:
@@ -864,6 +1069,8 @@ class ResidentExpertCorpusCache:
             else None
         )
         self.pack_info = pack_info
+        self.require_exact_seat_split = bool(require_exact_seat_split)
+        self.seat_split_evidence = loaded_seat_metadata
         return corpus
 
 

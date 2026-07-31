@@ -120,6 +120,10 @@ class SnapshotCache:
         post_fleet = (
             overrides.get("post_fleet_alakazam_grimms_refresh") or {}
         )
+        slowking_failure = (
+            overrides.get("slowking_failed_experiment_alakazam_transition")
+            or {}
+        )
         protocol = value.get("specialist_protocol")
         if not isinstance(protocol, dict):
             return
@@ -240,6 +244,20 @@ class SnapshotCache:
                     }
                 )
             for row in filtered:
+                if (
+                    row.get("id") == "slowking"
+                    and slowking_failure.get("status") == "activated"
+                ):
+                    row["status"] = "failed_experiment"
+                    row["active"] = False
+                    row["frozen"] = False
+                    row["public_mix_eligible"] = False
+                    row["terminal_disposition"] = (
+                        slowking_failure.get("terminal_disposition")
+                    )
+                    row["terminal_receipt"] = (
+                        slowking_failure.get("failed_experiment_receipt")
+                    )
                 if row.get("id") == "teal-mask-ogerpon-ex":
                     row["name"] = str(
                         teal.get("display_name")
@@ -342,6 +360,11 @@ class SnapshotCache:
                         "first_alakazam_migration_failure_fallback"
                     )
                 ),
+                "source": "dashboard_goal_compatibility_projection",
+            }
+        if slowking_failure:
+            protocol["terminal_specialist_transition"] = {
+                **slowking_failure,
                 "source": "dashboard_goal_compatibility_projection",
             }
         required = plan.get("required_specialists_total")
@@ -685,6 +708,7 @@ class SnapshotCache:
                 int(post_fleet.get("goal_revision") or 0),
                 int(future_guide_scope.get("goal_revision") or 0),
                 int(slowking_replacement.get("goal_revision") or 0),
+                int(slowking_failure.get("goal_revision") or 0),
             ),
             "execution_facts_overridden": False,
         }
@@ -890,7 +914,17 @@ class SnapshotCache:
         marked from the fleet's observed decisions/game.
         """
         curriculum = value.get("curriculum") or {}
+        queues = curriculum.get("scheduler_queues") or {}
         progress = curriculum.get("progress") or {}
+        progress_current = progress.get("current")
+        progress_total = progress.get("total")
+        all_games_claimed = queues.get("unassigned") == 0
+        claimed_results_pending = (
+            max(0, int(progress_total) - int(progress_current))
+            if isinstance(progress_current, (int, float))
+            and isinstance(progress_total, (int, float))
+            else None
+        )
         remote_dispatch = curriculum.get("remote_dispatch") or {}
         fleet = value.get("fleet") or {}
         now = float(value.get("observed_at") or time.time())
@@ -1217,7 +1251,16 @@ class SnapshotCache:
             elif training:
                 worker["allocation_state"] = "ALLOCATION COMPLETE · optimizer phase"
             elif remote_phase_active:
-                if (
+                if all_games_claimed:
+                    worker["allocation_state"] = (
+                        "DRAINING · all games claimed"
+                        + (
+                            f" · {claimed_results_pending} fleet results pending"
+                            if claimed_results_pending
+                            else ""
+                        )
+                    )
+                elif (
                     execution_slots is not None
                     and admitted is not None
                     and admitted >= execution_slots
@@ -1230,6 +1273,19 @@ class SnapshotCache:
                     worker["allocation_state"] = (
                         f"REFILLING · {int(fed_workers or 0)}/{execution_slots or '?'} "
                         "workers fed · queue empty"
+                    )
+                elif (
+                    rate_live is True
+                    and isinstance(gps, (int, float))
+                    and float(gps) > 0.0
+                ):
+                    # ``active_jobs`` is an instantaneous sample while GPS is
+                    # a monotonic completion-counter rate over the interval.
+                    # Short remote games can finish between health polls; call
+                    # that bursty feed, not starvation.
+                    worker["allocation_state"] = (
+                        f"BURSTY FEED · 0/{execution_slots or '?'} at sample · "
+                        f"{float(gps):.2f} GPS completing"
                     )
                 elif buffered_results > 0:
                     worker["allocation_state"] = (
@@ -1497,6 +1553,12 @@ class SnapshotCache:
         for host_key in ("elmo", "bert"):
             host = fleet.get(host_key) or {}
             worker = host.get("worker") or {}
+            # Keep isolated hardware experiments visible in fleet telemetry,
+            # but never present them as scheduler-eligible endpoints. Bert's
+            # port-8776 MPS benchmark is deliberately outside production.
+            if host.get("production_active") is False:
+                endpoint_rows.pop(host_key, None)
+                continue
             row = endpoint_rows.get(host_key)
             if not isinstance(row, dict):
                 row = {}
@@ -1546,6 +1608,11 @@ class SnapshotCache:
                     else None
                 ),
                 flow_source="remote admitted/completed monotonic counters",
+            )
+        live_remote_demand = progress.get("remotes")
+        if isinstance(live_remote_demand, (int, float)):
+            queues["live_remote_worker_demand"] = max(
+                0, int(live_remote_demand)
             )
         # ``progress.current/total`` changes grain with the phase. During
         # collection it counts games, but during learner prep/training it
@@ -1605,6 +1672,7 @@ class SnapshotCache:
         service = value.get("service") or {}
         handoff = value.get("specialist_handoff") or {}
         protocol = value.get("specialist_protocol") or {}
+        training = value.get("training") or {}
         model = value.get("model") or {}
         structure = model.get("checkpoint_structure") or {}
         expanded_heads = structure.get("expanded_head_training") or {}
@@ -1638,6 +1706,23 @@ class SnapshotCache:
         )
         service_active = bool(
             service.get("active") and int(service.get("pid") or 0) > 0
+        )
+        post_fleet_refresh = protocol.get("post_fleet_refresh") or {}
+        terminal_transition = protocol.get("terminal_specialist_transition") or {}
+        final_refresh_current = bool(
+            service_active
+            and training.get("mode")
+            in {
+                "final_format_alakazam_ordinary_refresh",
+                "final_format_alakazam_h10_rl",
+            }
+            and runtime_specialist == "alakazam"
+            and int(post_fleet_refresh.get("goal_revision") or 0) >= 79
+            and post_fleet_refresh.get("status")
+            == "alakazam_ordinary_fallback_bootstrap_active"
+            and terminal_transition.get("status") == "activated"
+            and terminal_transition.get("terminal_disposition")
+            == "failed_experiment"
         )
         handoff_active = bool(
             handoff.get("active")
@@ -1723,6 +1808,11 @@ class SnapshotCache:
                     frozenset(active_record_ids)
                     in allowed_transition_active_records
                 )
+            elif final_refresh_current:
+                # The post-fleet refresh is a separately versioned derivative,
+                # not a reopened specialist slot. No fleet row should become
+                # active merely because Alakazam is being refreshed.
+                active_records_current = not active_record_ids
             else:
                 active_records_current = active_record_ids == {
                     effective_protocol_specialist
@@ -1841,6 +1931,7 @@ class SnapshotCache:
                 or protocol.get("runtime_identity_reconciled") is True
                 or handoff_protocol_current
                 or settled_handoff_protocol_current
+                or final_refresh_current
             )
             and protocol_roster_current
             and protocol_frozen_pool_current
@@ -1848,6 +1939,7 @@ class SnapshotCache:
             and (
                 handoff_protocol_current
                 or settled_handoff_protocol_current
+                or final_refresh_current
                 or (
                     canonical_specialist
                     and not service_active
@@ -1983,6 +2075,7 @@ class SnapshotCache:
                             or protocol.get("runtime_identity_reconciled") is True
                             or handoff_protocol_current
                             or settled_handoff_protocol_current
+                            or final_refresh_current
                         )
                     ),
                     "specialist_roster": protocol_roster_current,
@@ -1990,6 +2083,7 @@ class SnapshotCache:
                     "model_roster": protocol_model_roster_current,
                     "live_runtime_identity": bool(
                         settled_handoff_protocol_current
+                        or final_refresh_current
                         or not service_active
                         or (
                             runtime_specialist
@@ -2049,7 +2143,6 @@ class SnapshotCache:
         model_source = rows["model"]["source"]
         protocol_current = rows["protocol"]["current"]
         expert_current = rows["latest10"]["current"]
-        training = value.get("training") or {}
         bootstrap = value.get("bootstrap") or {}
         transition = value.get("transition") or {}
         baseline = value.get("baseline_eval") or {}

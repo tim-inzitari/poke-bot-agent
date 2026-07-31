@@ -1,0 +1,86 @@
+{
+  "schema": "poke_bot.archaludon_memory_topology_repair/v1",
+  "goal_revision": 73,
+  "specialist_id": "archaludon-ex",
+  "run_name": "pure_rl_archaludon-ex_temporal1_8k_v2_20260730",
+  "repair_boundary": {
+    "iteration": 0,
+    "iteration_committed_before_repair": false,
+    "managed_service_only": true,
+    "direct_process_signal_used": false,
+    "interactive_session_touched": false
+  },
+  "preserved_identity": {
+    "checkpoint_sha256": "sha256:57a3172d46e429cb9ba39187cf126f763fdbb10c15012ccdb31ef993010227be",
+    "checkpoint_unchanged": true,
+    "simulator_workers": 96,
+    "games_in_flight": 96,
+    "environments_per_simulator": 4,
+    "guide_weight": 0.05,
+    "fusion_schema": "poke_bot.causal_decision_fusion/v2",
+    "learned_decision_sources": 18
+  },
+  "diagnosis": {
+    "before_service_pid": 604944,
+    "before_memory_current_bytes": 110034833408,
+    "before_host_mem_available_kib": 4260752,
+    "before_memory_pressure_full_avg10": 46.73,
+    "before_memory_high_events": 844915,
+    "before_replay_result_buffer_items": 0,
+    "before_leaf_replicas": {
+      "gpu0": 10,
+      "gpu1": 24,
+      "total": 34
+    },
+    "measured_leaf_process_pss_kib": 1455068,
+    "measured_simulator_process_pss_kib": 586841,
+    "root_cause": "The 34 independently spawned CUDA inference leaves consumed roughly 49 GiB aggregate proportional set size before the 96 simulator processes and parent were counted. The bounded replay/result buffer was empty and was not the retained-memory source."
+  },
+  "activated_topology": {
+    "selector_path": "/home/inzi/.config/pokebot/specialist_runtime.env",
+    "selector_sha256": "sha256:eed1caf17518df5d048de1c433cb9520c3850c1436b7c17a69f14b6bb08f6730",
+    "simulator_workers": 96,
+    "games_in_flight": 96,
+    "leaf_replicas": {
+      "gpu0": 4,
+      "gpu1": 12,
+      "total": 16
+    },
+    "both_local_gpus_retained": true,
+    "simulator_worker_count_reduced": false
+  },
+  "post_restart_validation": {
+    "managed_service_pid": 691996,
+    "managed_restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "stop_protection_restored": true,
+    "memory_current_bytes": 62209257472,
+    "memory_peak_bytes": 62358507520,
+    "host_mem_available_kib": 42288536,
+    "memory_pressure_some_avg10": 0.0,
+    "memory_pressure_full_avg10": 0.0,
+    "memory_high_events": 0,
+    "memory_max_events": 0,
+    "oom_events": 0,
+    "oom_kill_events": 0,
+    "gpu_processes_total": 16,
+    "gpu0_processes": 4,
+    "gpu1_processes": 12,
+    "observed_active_collection_gpu0_utilization_percent": 99,
+    "observed_active_collection_gpu1_utilization_percent": 86,
+    "observed_local_completion_gps": 7.02,
+    "source_integrity_current": true
+  },
+  "remote_validation": {
+    "elmo_image": "poke-bot-truenas-worker:archaludon-fusion-v2-r72",
+    "elmo_image_id": "sha256:a42451105dcf58f9e5cb09a96297254ca8dd1fd678f688c657ae5c6e25369d43",
+    "elmo_health": "healthy",
+    "elmo_restart_count": 0,
+    "elmo_completion_flow_observed": true,
+    "bert_completion_flow_observed": true,
+    "all_games_claimed_with_results_pending_dashboard_state": "draining_not_starved",
+    "ping_cache_age_used_as_staleness_signal": false
+  },
+  "status": "activated_and_validated"
+}

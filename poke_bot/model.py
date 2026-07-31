@@ -77,6 +77,28 @@ SETUP_BOARD_OUTCOME_HEAD_NAME = "setup_board_outcome_head"
 SETUP_BOARD_OUTCOME_HEAD_OUTPUTS = 9
 SETUP_BOARD_OUTCOME_HEAD_HIDDEN = 512
 SETUP_BOARD_OUTCOME_HEAD_KEY_PREFIX = f"{SETUP_BOARD_OUTCOME_HEAD_NAME}."
+COMBO_STATE_HEAD_SCHEMA = "poke_bot.combo_state_head/v1"
+COMBO_STATE_HEAD_NAME = "combo_state_head"
+COMBO_STATE_HEAD_OUTPUTS = 32
+COMBO_STATE_HEAD_HIDDEN = 192
+COMBO_STATE_HEAD_KEY_PREFIX = f"{COMBO_STATE_HEAD_NAME}."
+H10_CAPACITY_SCHEMA = "poke_bot.h10_capacity/v1"
+H10_CAPACITY_INIT_SEED = 0x10_2026_07
+H10_STRATEGIC_OUTPUT_DIMS: dict[str, int] = {
+    "action_q": 1,
+    "action_type": 1,
+    "action_target": 1,
+    "action_resource": 1,
+    "action_utility": 6,
+    "tactical_outcome": 18,
+    "opponent_response": 7,
+    "resource_forecast": 6,
+    "game_phase": 5,
+    "outcome_distribution": 3,
+    "remaining_turns": 1,
+    "setup_board_outcome": SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
+    "combo_state": COMBO_STATE_HEAD_OUTPUTS,
+}
 DECISION_FUSION_SCHEMA = "poke_bot.causal_decision_fusion/v1"
 DECISION_FUSION_V2_SCHEMA = "poke_bot.causal_decision_fusion/v2"
 DECISION_FUSION_V2_ROUTE_SCHEMA = "option_conditioned_per_head/v2"
@@ -103,6 +125,7 @@ DECISION_FUSION_REQUIRED_HEADS: tuple[str, ...] = (
 )
 DECISION_FUSION_V2_OPTIONAL_HEADS: tuple[str, ...] = (
     "setup_board_outcome",
+    "combo_state",
 )
 DECISION_FUSION_KEY_PREFIX = "decision_fusion."
 
@@ -150,6 +173,59 @@ class SetupBoardOutcomeHead(nn.Module):
                 for name, tensor in self.state_dict().items()
             },
         }
+
+
+class ComboStateHead(nn.Module):
+    """Slowking-scoped causal option-conditioned combo-state branch."""
+
+    def __init__(self, d_model: int) -> None:
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Linear(int(d_model), COMBO_STATE_HEAD_HIDDEN),
+            nn.GELU(),
+            nn.Linear(COMBO_STATE_HEAD_HIDDEN, COMBO_STATE_HEAD_OUTPUTS),
+        )
+
+    def forward(self, option_hidden: Tensor) -> Tensor:
+        return self.network(option_hidden)
+
+    def inventory(self) -> dict[str, object]:
+        return {
+            "schema": COMBO_STATE_HEAD_SCHEMA,
+            "enabled": True,
+            "outputs": COMBO_STATE_HEAD_OUTPUTS,
+            "hidden_width": COMBO_STATE_HEAD_HIDDEN,
+            "input": "board_state_cross_attended_option_hidden",
+            "computation_role": "independent_head",
+            "fusion_role": "fused_input",
+            "action_influence": "bounded_option_conditioned_route",
+            "target_authority": (
+                "exact_causal_current_or_observed_transition_state_only"
+            ),
+            "guide_preference_index_allowed_as_target": False,
+            "parameters": int(
+                sum(parameter.numel() for parameter in self.parameters())
+            ),
+        }
+
+
+class H10StrategicResidual(nn.Module):
+    """Zero-safe H10-I capacity branch for one typed strategic output."""
+
+    def __init__(self, d_model: int, width: int, outputs: int) -> None:
+        super().__init__()
+        if min(int(d_model), int(width), int(outputs)) <= 0:
+            raise ValueError("H10 strategic residual dimensions must be positive")
+        self.network = nn.Sequential(
+            nn.Linear(int(d_model), int(width)),
+            nn.GELU(),
+            nn.Linear(int(width), int(outputs)),
+        )
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+    def forward(self, hidden: Tensor) -> Tensor:
+        return self.network(hidden)
 
 
 class OptionConditionedHeadRoute(nn.Module):
@@ -238,6 +314,7 @@ class CausalDecisionFusion(nn.Module):
             DECISION_FUSION_V2_TOTAL_DELTA_CAP
         ),
         setup_board_outcome_outputs: int = 0,
+        combo_state_outputs: int = 0,
     ) -> None:
         super().__init__()
         if width <= 0:
@@ -293,6 +370,12 @@ class CausalDecisionFusion(nn.Module):
             route_dims["setup_board_outcome"] = int(
                 setup_board_outcome_outputs
             )
+        if int(combo_state_outputs) > 0:
+            if not self.dedicated_routes_enabled:
+                raise ValueError(
+                    "combo state fusion requires dedicated routes"
+                )
+            route_dims["combo_state"] = int(combo_state_outputs)
         self.dedicated_route_dims = (
             dict(route_dims) if self.dedicated_routes_enabled else {}
         )
@@ -1065,6 +1148,9 @@ class TemporalCabtTransformer(nn.Module):
         self.setup_board_outcome_head_enabled = bool(
             getattr(cfg, "setup_board_outcome_head_enabled", False)
         )
+        self.combo_state_head_enabled = bool(
+            getattr(cfg, "combo_state_head_enabled", False)
+        )
         self.decision_fusion_dedicated_routes_enabled = bool(
             getattr(cfg, "decision_fusion_dedicated_routes_enabled", False)
         )
@@ -1082,12 +1168,23 @@ class TemporalCabtTransformer(nn.Module):
             raise ValueError(
                 "setup board outcome head requires expanded strategic heads"
             )
+        if self.combo_state_head_enabled and not self.expanded_heads_enabled:
+            raise ValueError(
+                "combo state head requires expanded strategic heads"
+            )
         if (
             self.setup_board_outcome_head_enabled
             and not self.decision_fusion_dedicated_routes_enabled
         ):
             raise ValueError(
                 "setup board outcome head requires dedicated decision-fusion routes"
+            )
+        if (
+            self.combo_state_head_enabled
+            and not self.decision_fusion_dedicated_routes_enabled
+        ):
+            raise ValueError(
+                "combo state head requires dedicated decision-fusion routes"
             )
         if self.setup_board_outcome_head_enabled:
             with torch.random.fork_rng(devices=[]):
@@ -1101,6 +1198,47 @@ class TemporalCabtTransformer(nn.Module):
             )
         else:
             self.setup_board_outcome_head = None
+        if self.combo_state_head_enabled:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(EXPANDED_HEAD_INIT_SEED + 3)
+                self.combo_state_head = ComboStateHead(cfg.d_model)
+            self.aux_heads_present = (
+                *self.aux_heads_present,
+                COMBO_STATE_HEAD_NAME,
+            )
+        else:
+            self.combo_state_head = None
+        self.h10_capacity_enabled = bool(
+            getattr(cfg, "h10_capacity_enabled", False)
+        )
+        self.h10_head_residual_width = int(
+            getattr(cfg, "h10_head_residual_width", 512)
+        )
+        if self.h10_capacity_enabled:
+            if not (
+                self.expanded_heads_enabled
+                and self.setup_board_outcome_head_enabled
+                and self.combo_state_head_enabled
+                and self.decision_fusion_dedicated_routes_enabled
+            ):
+                raise ValueError(
+                    "H10 capacity requires expanded, setup, combo, and "
+                    "dedicated-route architecture"
+                )
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(H10_CAPACITY_INIT_SEED)
+                self.h10_head_residuals = nn.ModuleDict(
+                    {
+                        name: H10StrategicResidual(
+                            cfg.d_model,
+                            self.h10_head_residual_width,
+                            outputs,
+                        )
+                        for name, outputs in H10_STRATEGIC_OUTPUT_DIMS.items()
+                    }
+                )
+        else:
+            self.h10_head_residuals = nn.ModuleDict()
         self.decision_fusion_enabled = bool(
             getattr(cfg, "decision_fusion_enabled", False)
         )
@@ -1153,6 +1291,11 @@ class TemporalCabtTransformer(nn.Module):
                     setup_board_outcome_outputs=(
                         SETUP_BOARD_OUTCOME_HEAD_OUTPUTS
                         if self.setup_board_outcome_head_enabled
+                        else 0
+                    ),
+                    combo_state_outputs=(
+                        COMBO_STATE_HEAD_OUTPUTS
+                        if self.combo_state_head_enabled
                         else 0
                     ),
                 )
@@ -1278,11 +1421,21 @@ class TemporalCabtTransformer(nn.Module):
                         sum(parameter.numel() for parameter in module.parameters())
                     ),
                     "tensors": tensors,
+                    "h10_residual_parameters": int(
+                        sum(
+                            parameter.numel()
+                            for parameter in self.h10_head_residuals[
+                                name.removesuffix("_head")
+                            ].parameters()
+                        )
+                    ) if self.h10_capacity_enabled else 0,
                 }
         if isinstance(self.setup_board_outcome_head, SetupBoardOutcomeHead):
             modules[SETUP_BOARD_OUTCOME_HEAD_NAME] = (
                 self.setup_board_outcome_head.inventory()
             )
+        if isinstance(self.combo_state_head, ComboStateHead):
+            modules[COMBO_STATE_HEAD_NAME] = self.combo_state_head.inventory()
         runtime_enabled_heads = (
             list(modules)
             if self.decision_fusion_dedicated_routes_runtime_enabled
@@ -1296,6 +1449,12 @@ class TemporalCabtTransformer(nn.Module):
             "modules": modules,
             "fusion_roles": {
                 **{name: "fused_input" for name in modules},
+            },
+            "capacity": {
+                "schema": H10_CAPACITY_SCHEMA,
+                "enabled": self.h10_capacity_enabled,
+                "residual_width": self.h10_head_residual_width,
+                "zero_safe_final_projections": self.h10_capacity_enabled,
             },
         }
 
@@ -1344,6 +1503,10 @@ class TemporalCabtTransformer(nn.Module):
         if self.setup_board_outcome_head_enabled:
             expanded_option["setup_board_outcome"] = (
                 self.setup_board_outcome_logits(option_hidden)
+            )
+        if self.combo_state_head_enabled:
+            expanded_option["combo_state"] = self.combo_state_logits(
+                option_hidden
             )
         state_sources = {
             "value": torch.tanh(self.value_head(state_vec)),
@@ -1401,6 +1564,8 @@ class TemporalCabtTransformer(nn.Module):
             if not isinstance(module, nn.Linear):
                 raise RuntimeError(f"expanded head {name} is unavailable")
             value = module(option_hidden)
+            if self.h10_capacity_enabled:
+                value = value + self.h10_head_residuals[key](option_hidden)
             outputs[key] = value.squeeze(-1) if value.size(-1) == 1 else value
         return outputs
 
@@ -1415,7 +1580,30 @@ class TemporalCabtTransformer(nn.Module):
                 "setup board option hidden width mismatch: "
                 f"got={option_hidden.size(-1)} expected={self.d_model}"
             )
-        return module(option_hidden)
+        value = module(option_hidden)
+        if self.h10_capacity_enabled:
+            value = value + self.h10_head_residuals[
+                "setup_board_outcome"
+            ](option_hidden)
+        return value
+
+    def combo_state_logits(self, option_hidden: Tensor) -> Tensor:
+        """Evaluate the Slowking-scoped causal combo-state branch."""
+
+        module = self.combo_state_head
+        if not isinstance(module, ComboStateHead):
+            raise RuntimeError("combo state head is disabled")
+        if option_hidden.size(-1) != self.d_model:
+            raise ValueError(
+                "combo-state option hidden width mismatch: "
+                f"got={option_hidden.size(-1)} expected={self.d_model}"
+            )
+        value = module(option_hidden)
+        if self.h10_capacity_enabled:
+            value = value + self.h10_head_residuals["combo_state"](
+                option_hidden
+            )
+        return value
 
     def expanded_state_logits(self, state_vec: Tensor) -> dict[str, Tensor]:
         """Evaluate state-conditioned V6 strategic auxiliary heads.
@@ -1438,7 +1626,12 @@ class TemporalCabtTransformer(nn.Module):
             module = getattr(self, name)
             if not isinstance(module, nn.Linear):
                 raise RuntimeError(f"expanded head {name} is unavailable")
-            return module(state_vec)
+            value = module(state_vec)
+            if self.h10_capacity_enabled:
+                value = value + self.h10_head_residuals[
+                    name.removesuffix("_head")
+                ](state_vec)
+            return value
 
         tactical = run("tactical_outcome_head")
         return {
@@ -1612,8 +1805,8 @@ class TemporalCabtTransformer(nn.Module):
 
     def _activation_dtype(self, device: torch.device) -> torch.dtype:
         """Match autocast activation dtype so zero buffers don't fight bf16."""
-        if device.type == "cuda" and torch.is_autocast_enabled("cuda"):
-            return torch.get_autocast_dtype("cuda")
+        if device.type in {"cuda", "mps"} and torch.is_autocast_enabled(device.type):
+            return torch.get_autocast_dtype(device.type)
         return next(self.parameters()).dtype
 
     def history_tokens(

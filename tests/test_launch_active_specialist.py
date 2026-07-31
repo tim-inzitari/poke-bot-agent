@@ -22,6 +22,7 @@ from poke_bot.model import (
 from scripts.launch_active_specialist import (
     _build_command,
     _load_registry,
+    _required_runtime_fusion_heads,
     _resolve,
     _sha256,
     _validate_guide_training_contract,
@@ -183,10 +184,59 @@ def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
     return path
 
 
+def test_load_registry_accepts_monotonic_content_version(
+    tmp_path: Path,
+) -> None:
+    path = _fixture(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["version"] = 3
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert _load_registry(path)["version"] == 3
+
+
+def test_load_registry_rejects_nonpositive_content_version(
+    tmp_path: Path,
+) -> None:
+    path = _fixture(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["version"] = 0
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="invalid specialist runtime registry"):
+        _load_registry(path)
+
+
+def test_runtime_fusion_inventory_allows_registered_specialist_heads() -> None:
+    mandatory = list(
+        dict.fromkeys(
+            (*DECISION_FUSION_REQUIRED_HEADS, "setup_board_outcome")
+        )
+    )
+    row = {
+        "guide_training_mode": "strategic_curriculum_v1",
+        "decision_fusion": {
+            "required_heads": [*mandatory, "combo_state"],
+        },
+    }
+    assert _required_runtime_fusion_heads(row) == [
+        *mandatory,
+        "combo_state",
+    ]
+
+    row["decision_fusion"]["required_heads"] = [
+        *mandatory[:-1],
+        "combo_state",
+    ]
+    with pytest.raises(RuntimeError, match="weaken or reorder"):
+        _required_runtime_fusion_heads(row)
+
+
 def _strategic_training_row(
     tmp_path: Path,
     *,
     specialist_id: str = "archaludon-ex",
+    additional_sources: tuple[str, ...] = (),
 ) -> dict:
     tmp_path.mkdir(parents=True, exist_ok=True)
     guide = tmp_path / "guide.yaml"
@@ -201,7 +251,11 @@ def _strategic_training_row(
     )
     sources = list(
         dict.fromkeys(
-            (*DECISION_FUSION_REQUIRED_HEADS, "setup_board_outcome")
+            (
+                *DECISION_FUSION_REQUIRED_HEADS,
+                "setup_board_outcome",
+                *additional_sources,
+            )
         )
     )
     heads = {
@@ -396,6 +450,9 @@ def _strategic_training_row(
             "strategic_branch_scope_revision": 56,
             "action_influence_revision": 56,
             "decision_fusion_schema": "poke_bot.causal_decision_fusion/v2",
+            "require_all_registered_learned_sources": bool(
+                additional_sources
+            ),
             "curriculum_spec": str(spec.resolve()),
             "curriculum_spec_sha256": _sha256(spec),
             "head_role_map": str(role_map.resolve()),
@@ -404,6 +461,36 @@ def _strategic_training_row(
             "validation_receipt_sha256": _sha256(validation),
         },
     }
+
+
+def test_strategic_curriculum_binds_registered_specialist_head(
+    tmp_path: Path,
+) -> None:
+    row = _strategic_training_row(
+        tmp_path,
+        specialist_id="alakazam",
+        additional_sources=("combo_state",),
+    )
+    registered = tuple(
+        dict.fromkeys(
+            (
+                *DECISION_FUSION_REQUIRED_HEADS,
+                "setup_board_outcome",
+                "combo_state",
+            )
+        )
+    )
+    assert (
+        _validate_guide_training_contract(row, "alakazam", registered)
+        == "strategic_curriculum_v1"
+    )
+
+    with pytest.raises(RuntimeError, match="head-role map is invalid"):
+        _validate_guide_training_contract(
+            row,
+            "alakazam",
+            registered[:-1],
+        )
 
 
 def test_ready_specialist_resolves_one_complete_command(tmp_path: Path) -> None:
@@ -432,6 +519,32 @@ def test_ready_specialist_resolves_one_complete_command(tmp_path: Path) -> None:
     assert command[command.index("--expert-min-decisions") + 1] == "10000"
     assert command.count("--expert-required-target") == 2
     assert "--frozen-specialist-registry" in command
+    assert command[command.index("--combo-state-loss-weight") + 1] == "0.0"
+
+
+def test_slowking_command_enables_typed_combo_loss(tmp_path: Path) -> None:
+    registry = _load_registry(_fixture(tmp_path))
+    row, checkpoint, expert, runtime_tree, authorization = _resolve(
+        registry, "dragapult-dusknoir"
+    )
+
+    command = _build_command(
+        registry,
+        "slowking",
+        row,
+        checkpoint,
+        expert,
+        runtime_tree,
+        authorization,
+    )
+
+    assert command[command.index("--combo-state-loss-weight") + 1] == "0.025"
+    required_targets = [
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "--expert-required-target"
+    ]
+    assert required_targets[-1] == "combo_state_rows"
 
 
 def test_revision44_prospective_guide_weight_policy_is_checksum_bound(
@@ -639,7 +752,7 @@ def test_successor_runtime_fails_closed_without_exact_17_head_fusion(
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="mandatory 17-head"):
+    with pytest.raises(RuntimeError, match="mandatory all-head"):
         _resolve(_load_registry(path), "dragapult-dusknoir")
 
     checkpoint = Path(row["initial_checkpoint"])

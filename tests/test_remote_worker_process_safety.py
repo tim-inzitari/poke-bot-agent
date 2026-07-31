@@ -1,7 +1,9 @@
 from pathlib import Path
 
 from scripts.run_remote_worker import (
+    _cgroup_v2_memory_current_gb,
     _close_mp_queue,
+    _memory_guard_sample,
     _parse_args,
     _remote_worker_arm_error,
     _shutdown_leaf_servers,
@@ -83,6 +85,33 @@ def test_remote_worker_has_signal_watchdog_and_full_cleanup() -> None:
     assert 'default=int(os.environ.get("SIM_WORKERS", "4"))' in source
     assert 'default=int(os.environ.get("LEAF_SERVERS", "1"))' in source
     assert 'os.environ.get("POKEBOT_REMOTE_TREE_RSS_LIMIT_GB", "32")' in source
+    assert 'state["guard_memory_gb"]' in source
+    assert "guard_memory_source" in source
+    assert "service memory" in source
+
+
+def test_cgroup_memory_sample_is_unique_charged_memory(tmp_path: Path) -> None:
+    current = tmp_path / "memory.current"
+    current.write_text(str(25 * 1024**3), encoding="utf-8")
+    assert _cgroup_v2_memory_current_gb(current) == 25.0
+
+
+def test_memory_guard_prefers_cgroup_over_summed_rss(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.run_remote_worker._cgroup_v2_memory_current_gb",
+        lambda: 24.7,
+    )
+    monkeypatch.setattr(
+        "scripts.run_remote_worker._process_tree_pss_gb",
+        lambda: 26.0,
+    )
+    monkeypatch.setattr(
+        "scripts.run_remote_worker._process_tree_rss_gb",
+        lambda: 30.01,
+    )
+    value, source = _memory_guard_sample()
+    assert value == 24.7
+    assert source == "cgroup_v2_memory_current"
 
 
 def test_capacity_watchdog_allows_full_monotonic_recycle_grace() -> None:

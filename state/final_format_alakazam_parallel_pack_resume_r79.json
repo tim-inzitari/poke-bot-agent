@@ -1,0 +1,43 @@
+{
+  "schema": "poke_bot.final_format_alakazam_parallel_pack_resume/v1",
+  "status": "activated_training_active",
+  "created_at_utc": "2026-07-31T13:54:32Z",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "corpus": {
+    "manifest_sha256": "sha256:3836852129511fdffd2767f6701dcc562d1723bb0c345c3cf5068ad9774b9acb",
+    "acting_seat_games": 64411,
+    "decisions": 5152754,
+    "unchanged": true
+  },
+  "cpu_pack": {
+    "key": "36cba04598064888f6829b8f04e41f52d3f916ccba2403829c4258ec1ac4f393",
+    "payload_bytes": 10036474943,
+    "workers": 4,
+    "elapsed_seconds": 263.3223373889923,
+    "receipt": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/ordinary_alakazam_refresh_cpu_pack.json",
+    "receipt_sha256": "sha256:87a314a51bbb26239bfd505219ec19333042afb5c44058512e06c82838af538e",
+    "exact_targets": true,
+    "temporal_layout": true
+  },
+  "resume_repair": {
+    "cause": "idempotency_check_compared_inherited_decision_fusion_migration_to_null",
+    "fix": "compare_and_return_effective_inherited_decision_fusion_migration",
+    "hot_start_mutated": false,
+    "hot_start_sha256": "sha256:13be5f2579c5de307d5dfbf92d8bf7a81b8107b025af2679c8ad94a0a024ffdd"
+  },
+  "managed_service": {
+    "name": "pokebot-final-format-alakazam-r79-ordinary-bootstrap.service",
+    "main_pid": 3928690,
+    "restart_count_after_repaired_start": 0,
+    "active": true,
+    "source_root": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79"
+  },
+  "training": {
+    "epochs_required": 25,
+    "epoch_1_completed": true,
+    "epoch_2_active": true,
+    "guide_runtime_route_count": 0,
+    "guide_imitation_weight": 0.0
+  }
+}

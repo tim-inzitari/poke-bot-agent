@@ -1,0 +1,88 @@
+{
+  "schema": "poke_bot.blackwell_cuda_cache_evaluation_continuity/v1",
+  "status": "full_post_release_evaluation_continuity_verified",
+  "created_at_utc": "2026-07-31T00:39:39Z",
+  "owner_goal_revision": 75,
+  "parents": {
+    "activation_receipt": "state/blackwell_cuda_cache_boundary_repair_r75.json",
+    "activation_receipt_sha256": "sha256:880bde6079dbe7471d21d77ec164f5c5c0cc1757cc36fd23dd41634fbf3aadcb",
+    "nonzero_release_receipt": "state/blackwell_cuda_cache_boundary_continuity_r75.json",
+    "nonzero_release_receipt_sha256": "sha256:b517a04bf544866445fa16220380a2b383c1e83f2245e1791318280699ed49d6"
+  },
+  "runtime": {
+    "host": "blackwell",
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "run_name": "pure_rl_archaludon-ex_temporal1_8k_v2_20260730",
+    "specialist_id": "archaludon-ex",
+    "main_pid": 1387831,
+    "restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running"
+  },
+  "iteration_commit": {
+    "iteration": 4,
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/commits/iter_00004.json",
+    "sha256": "sha256:4b536d8686645e7da29f71a4155bccd426038791e45f743a821b955a7e7ed36f",
+    "updated_at_utc": "2026-07-31T00:38:29.982468+00:00",
+    "learner_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/checkpoints/iter_00004.pt",
+    "learner_checkpoint_sha256": "sha256:fe7ab3e19c7dd97e7018da7c48f6e9ffa6596f7bba376eb2a82b34d488a5d47c",
+    "promoted_to_champion": false,
+    "retained_as_continuous_learner": true
+  },
+  "formal_active_gate": {
+    "gate_id": "alakazam-strong-public-roster-lc55-v2+frozen-specialists-r13",
+    "requested_games": 4000,
+    "valid_games": 4000,
+    "seat0_games": 2000,
+    "seat1_games": 2000,
+    "audit_passed": true,
+    "exact_distribution": true,
+    "exact_weights": true,
+    "matchup_runtime_contract_clean": true,
+    "stage_gate_passed": true,
+    "skill_weighted_win_rate": 0.6850666666666668,
+    "confidence_lower_90": 0.6741333333333334,
+    "confidence_upper_90": 0.6958666666666666,
+    "candidate_safety_passed": true
+  },
+  "research_controls": {
+    "result": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/research_controls/iter_00004.json",
+    "result_sha256": "sha256:6b60a5ea9f0634b8fed48fe7a1d6357fa941225b6cf10dd8dab882bb98f5e0fd",
+    "requested_games": 1000,
+    "valid_games": 1000,
+    "audit_passed": true,
+    "seed_disjoint": true,
+    "package_disjoint_from_active_gate": true,
+    "diagnostic_only": true,
+    "gate_weight": 0,
+    "win_rate": 0.599
+  },
+  "terminal_floor": {
+    "minimum_terminal_iteration": 5,
+    "iteration_4_pass_retained_in_immutable_history": true,
+    "terminal_marker_written": false,
+    "next_iteration": 5,
+    "iteration_5_collection_started": true,
+    "interpretation": "the measured gate passed before the terminal floor, so the managed loop correctly continued one more curriculum iteration"
+  },
+  "post_release_failures": {
+    "cuda_oom_events": 0,
+    "failed_leaf_events": 0,
+    "tracebacks": 0,
+    "service_restarts": 0
+  },
+  "scope": {
+    "proves": [
+      "the first ordinary nonzero CUDA cache-release boundary completed its full 4000-game formal evaluation",
+      "the formal exact-row and matchup-runtime audits passed",
+      "the disjoint 1000-game research-control audit passed",
+      "the managed trainer committed iteration 4 and started iteration 5 without a restart",
+      "the pre-terminal pass was retained rather than incorrectly writing a terminal marker before iteration 5"
+    ],
+    "does_not_claim": [
+      "Archaludon has reached its terminal boundary",
+      "iteration 5 has completed",
+      "Slowking has activated"
+    ]
+  }
+}

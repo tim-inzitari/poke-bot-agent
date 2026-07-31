@@ -1,0 +1,94 @@
+{
+  "schema": "poke_bot.required_specialist_fleet_complete_for_final_alakazam/v1",
+  "template_only": false,
+  "status": "issued_terminal_fleet_disposition",
+  "authorization_scope": "final_format_alakazam_refresh_only",
+  "runtime_authority": "g0_only_requires_g1",
+  "selector_eligible": false,
+  "kaggle_eligible": false,
+  "goal_revision": 79,
+  "required_specialist_count": 15,
+  "required_frozen_specialist_count": 14,
+  "allowed_terminal_exception_count": 1,
+  "required_roster_sha256": "sha256:1c12f4072d18350345d20a5fbc2e19b277baf2388a2cc032132f1394d1f45084",
+  "completed_required_specialist_count": 14,
+  "remaining_order_terminally_disposed": ["archaludon-ex", "slowking"],
+  "frozen_specialists": [
+    {"specialist_id":"alakazam","checkpoint_sha256":"sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea"},
+    {"specialist_id":"archaludon-ex","checkpoint_sha256":"sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9"},
+    {"specialist_id":"dragapult-dusknoir","checkpoint_sha256":"sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef"},
+    {"specialist_id":"dudunsparce","checkpoint_sha256":"sha256:a1e944fcb4c466c0e6eeceee85239866ee07b3cc30eb69a0218338926c60446a"},
+    {"specialist_id":"garchomp","checkpoint_sha256":"sha256:61fbb254944fa14452b1b623f89af4e49f86f32111219eaeb76f7f43e22daa70"},
+    {"specialist_id":"hammer-pult","checkpoint_sha256":"sha256:c256a0ababee147a09d87773c74e2aa11cf46f04c492a1c20b3fb6ead8da0dce"},
+    {"specialist_id":"hops-trevenant","checkpoint_sha256":"sha256:462f201f8de6c07eef07b3e8f58229360972d1d64308db9c155f211d2ce3faf1"},
+    {"specialist_id":"lucario","checkpoint_sha256":"sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd"},
+    {"specialist_id":"marnie-s-grimmsnarl-ex","checkpoint_sha256":"sha256:52a5207e4c98dce80b49b6403cbb17f14d6fc4d2ac5b625532020a1a25f233ac"},
+    {"specialist_id":"rockets-mewtwo","checkpoint_sha256":"sha256:fc2f9a525a869b76606518417c7453da8d9422f58ca3eab8123188a0a3ed4a2f"},
+    {"specialist_id":"starmie","checkpoint_sha256":"sha256:51ed1cc6ffe61be01556e738bbe60117ba9e0f99d20dfe1925b9e9d1bd8bc2d8"},
+    {"specialist_id":"teal-mask-ogerpon-ex","checkpoint_sha256":"sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821"},
+    {"specialist_id":"team-rockets-spidops","checkpoint_sha256":"sha256:4ab63dc94d5a6b673703bcaf984be15a42c68a94e6e84ba7232b3964ac79899b"},
+    {"specialist_id":"thwackey","checkpoint_sha256":"sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce"}
+  ],
+  "slowking_terminal_exception": {
+    "disposition": "failed_experiment",
+    "owner_goal_revision": 79,
+    "failed_experiment_receipt": "state/slowking_failed_experiment_transition_r79.json",
+    "failed_experiment_receipt_sha256": "sha256:25ecc49d386fa9c3d38350765d5ad189796fcdf7df1369585e7c2c52d3cf2f77",
+    "passing_status_granted": false,
+    "completion_credit_granted": false,
+    "frozen_or_registered": false,
+    "submission_or_serving_allowed": false
+  },
+  "cumulative_core_dispositions": [
+    {"generation":9,"status":"checksum_accepted"},
+    {"generation":10,"status":"rejected"},
+    {"generation":11,"status":"rejected"},
+    {"generation":12,"status":"rejected"}
+  ],
+  "newest_checksum_accepted_core": {
+    "generation": 9,
+    "checkpoint_sha256": "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056",
+    "acceptance_receipt_sha256": "sha256:37ef4c69094475a71dfc3d962efedfb2f02eddb5c2202b1afb6be4c1c64fa478"
+  },
+  "canonical_schema_digests": {
+    "model": "sha256:66d914b1bbaa74cbaf41523a43d6d12ade4b5abd480916d16090c073102ed83e",
+    "feature": "sha256:87ca106f17acdeb00ddcc583ceea396e09cc13b1094e52c738c9509352e29afb",
+    "option": "sha256:c7f221bae7c9092dbb18c204d09bb239937adae7f2dedebb1df78e09881c9e0e",
+    "temporal": "sha256:82c8073a4c158e06f922fe56102049ad299ed5552ee18b95f53debf5ff13c8e7",
+    "strategic_head": "sha256:071f8e612e6aa1c33a5eda3616977ef1cb378d436838b8f42a45a128ce300565",
+    "target": "sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f",
+    "guide": "sha256:745f6e54aa6ee493287b8379f47a8803e7cd8e232f0f2348916c2539fc2c2bde",
+    "decision_fusion": "sha256:5fbfd0ca2919d6fecfd94d4510b28a17df4ed7d2502ac24a3a148e827f4d25a4",
+    "matchup_adapter": "sha256:08322efe30c0f8b75d922aae8b882b4e78a20df03a63ed997ec8288165bfd1bc"
+  },
+  "registry_digests": {
+    "frozen_specialist_registry": "sha256:1c12f4072d18350345d20a5fbc2e19b277baf2388a2cc032132f1394d1f45084",
+    "runtime_registry": "sha256:4a09611178d1726e6c80240129e0ed5ba5f5bbc2fe30966f60370f2763589042",
+    "selector_snapshot": "sha256:5231dbaea8f52e2fec7bef6ff476f3adacb3b174768a90b883a6103d2fe30493",
+    "practice_opponent_snapshot": "sha256:fcb8a5c5b9a6c28fc26745d0321598bfb545a887fc240b1073b1e08c1b60729b"
+  },
+  "crustle_inference_only_binding": {
+    "opponent_id": "pilkwang-meta-20260708",
+    "checkpoint_sha256": "sha256:7120bc67415e06c1cf69d64574f1a41545fd4c2fd084a029d77c5e43a357957f",
+    "distinct_matchup_route_preserved": true,
+    "training_eligible": false
+  },
+  "learned_role_route_inventory": {
+    "role_map_sha256": "sha256:071f8e612e6aa1c33a5eda3616977ef1cb378d436838b8f42a45a128ce300565",
+    "route_inventory_sha256": "sha256:25b85243e6ea1b78e561baeccb7b62809375fa4c04083ff445580e76e597e6d4",
+    "learned_head_count": 19,
+    "learned_route_count": 19,
+    "one_distinct_route_per_learned_head": true,
+    "guide_runtime_route_count": 0
+  },
+  "preferred_alakazam_parent": {
+    "checkpoint_sha256": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+    "model_config_sha256": "sha256:cdad51d0bebf836979aeef2f12963abd95b5c4dcbd5df7ba0f59989bb5c2c5a7"
+  },
+  "fallback_core_parent": {
+    "checkpoint_sha256": "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056",
+    "acceptance_receipt_sha256": "sha256:37ef4c69094475a71dfc3d962efedfb2f02eddb5c2202b1afb6be4c1c64fa478"
+  },
+  "no_active_or_pending_old_system_transition_through_slowking": true,
+  "issued_at_utc": "2026-07-31T13:18:36Z"
+}

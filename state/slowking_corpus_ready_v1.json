@@ -1,0 +1,75 @@
+{
+  "schema": "poke_bot.slowking_corpus_ready/v1",
+  "status": "validated_inactive",
+  "created_at_utc": "2026-07-30T21:38:23.011894+00:00",
+  "specialist_id": "slowking",
+  "deck_identity": {
+    "mode": "owner_exact_60_card_slowking_public_replay_identity",
+    "card_count": 60,
+    "canonical_multiset_sha256": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7",
+    "generic_slowking_or_metagross_substitution_allowed": false
+  },
+  "public_catalog": {
+    "path": "data/training_mixes/slowking-public-full44.v1.json",
+    "local_sha256": "sha256:86485030fe237d3cb04dd9a0bc58527160315f1820a0b1a62abd405209b23952",
+    "remote_path": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v1/PUBLIC_DECK_ARCHETYPE_CATALOG.json",
+    "remote_sha256": "sha256:86485030fe237d3cb04dd9a0bc58527160315f1820a0b1a62abd405209b23952",
+    "source_window": {
+      "start": "2026-06-16",
+      "end": "2026-07-29",
+      "days": 44
+    },
+    "records": 311
+  },
+  "guide_corpus": {
+    "root": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v1",
+    "ready_receipt": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v1/CURRENT_DECK_GUIDE_CORPUS_READY.json",
+    "ready_receipt_sha256": "sha256:5f86c17db809a2b5af3d7ed24ada438cf93232c3d6c452519541b2550f33da4c",
+    "manifest": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v1/manifest.json",
+    "manifest_sha256": "sha256:d468ba05637dd63a2d1dce304f785f3a2b8012355341d4a0e3ca8d5151e61ac4",
+    "protected_pointer": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v1/PROTECTED_EXPERT_CORPUS.json",
+    "protected_pointer_sha256": "sha256:cee478084d88f039ab60d6c2cd607a251bd85c9c9871aee82518660cf5019ac3",
+    "dataset_schema": 7,
+    "feature_schema": 5,
+    "compact_mode": "temporal-expert-v1",
+    "max_context": 320,
+    "guide_version": "slowking-north-star-v1",
+    "records": 311,
+    "decisions": 19251,
+    "guide_rows": 527,
+    "nonempty_source_days": {
+      "2026-07-06": {
+        "records": 158,
+        "decisions": 9686,
+        "guide_rows": 273,
+        "feature_sha256": "sha256:28f8f475649ab058595cf2e691290b5f676d557ab7901953489d4c010b22cfe9"
+      },
+      "2026-07-07": {
+        "records": 153,
+        "decisions": 9565,
+        "guide_rows": 254,
+        "feature_sha256": "sha256:499de0e7ecee40f6c90b101b68f1201e7012c312ab359bfdc44c40f2168edbdd"
+      }
+    },
+    "target_coverage": {
+      "acting_archetype_rows": 19251,
+      "guide_rows": 527,
+      "lethal_threat_rows": 19251,
+      "opponent_deck_order_rows": 19251,
+      "opponent_hand_rows": 19251,
+      "opponent_private_prize_rows": 19251,
+      "opponent_remainder_rows": 19251,
+      "own_private_prize_rows": 19251,
+      "prize_race_rows": 19251,
+      "temporal_action_rows": 19251
+    }
+  },
+  "activation": {
+    "selector_authority": false,
+    "runtime_enabled": false,
+    "gradient_authority": false,
+    "requires_archaludon_completion": true,
+    "requires_slowking_combo_validation_receipt": true,
+    "active_archaludon_training_modified": false
+  }
+}

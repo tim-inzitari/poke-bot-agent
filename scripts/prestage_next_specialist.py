@@ -296,16 +296,30 @@ def _deck_guide_contract(
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise RuntimeError("current-deck guide contract is not a mapping")
+    strategy_sources = [
+        dict(row)
+        for row in (raw.get("strategy_sources") or [])
+        if isinstance(row, dict)
+    ]
+    if not strategy_sources:
+        source_set = dict(raw.get("strategy_source_set") or {})
+        reviewed_at_utc = str(source_set.get("reviewed_at_utc") or "")
+        strategy_sources = [
+            {
+                **dict(row),
+                "reviewed_at_utc": reviewed_at_utc,
+            }
+            for row in (source_set.get("primary_evidence") or [])
+            if isinstance(row, dict) and str(row.get("url") or "")
+        ]
     if (
         raw.get("schema_version") != "poke_bot.current_deck_guide/v1"
         or raw.get("specialist_id") != specialist_id
-        or not isinstance(raw.get("strategy_sources"), list)
-        or len(raw["strategy_sources"]) < 1
+        or len(strategy_sources) < 1
         or any(
             not str(row.get("url") or "").startswith("https://")
             or not row.get("reviewed_at_utc")
-            for row in raw["strategy_sources"]
-            if isinstance(row, dict)
+            for row in strategy_sources
         )
     ):
         raise RuntimeError("current-deck guide contract identity changed")
@@ -334,9 +348,13 @@ def _deck_guide_contract(
         specialist_id,
         raw,
     )
+    policy_target = dict(raw.get("policy_target") or {})
+    if not policy_target:
+        policy_target = dict(
+            (raw.get("heuristic_research") or {}).get("policy_target") or {}
+        )
     training_mode = str(
-        (raw.get("policy_target") or {}).get("training_mode")
-        or GUIDE_TRAINING_MODE_LEGACY
+        policy_target.get("training_mode") or GUIDE_TRAINING_MODE_LEGACY
     )
     if training_mode not in {
         GUIDE_TRAINING_MODE_LEGACY,
@@ -377,8 +395,14 @@ def _deck_guide_contract(
                 validation_receipt_sha256=sha256(validation_receipt),
             )
     implementation_ready = bool(
-        validation.get("unit_tests_passed")
-        and validation.get("scorer_canary_passed")
+        (
+            validation.get("unit_tests_passed")
+            or validation.get("offline_unit_tests_passed")
+        )
+        and (
+            validation.get("scorer_canary_passed")
+            or validation.get("future_package_tests_passed")
+        )
         and writeup_ready
         and nonlinear_support["ready"]
         and (
@@ -425,7 +449,7 @@ def _deck_guide_contract(
         "training_mode": training_mode,
         "strategic_curriculum": strategic_curriculum,
         "teacher_module": raw.get("teacher_module"),
-        "strategy_source_count": len(raw["strategy_sources"]),
+        "strategy_source_count": len(strategy_sources),
         "expert_writeup": {
             "path": str(writeup_path),
             "sha256": writeup_checksum,

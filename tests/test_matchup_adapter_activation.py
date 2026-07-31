@@ -31,6 +31,7 @@ from poke_bot.matchup_adapter_activation import (
     prepare_adapter_corpus_records,
     runtime_model_route,
     training_route_for_decision,
+    training_routes_for_sequence,
     validate_adapter_training_authorization,
 )
 from poke_bot.matchup_adapters import (
@@ -1102,6 +1103,67 @@ def test_training_route_rejects_coercible_or_tampered_route_and_seat_ids() -> No
             out_of_range_seat,
             out_of_range_seat.decisions[0],
         )
+
+
+def test_sequence_route_validation_parses_ticket_once_and_checks_every_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import poke_bot.matchup_adapter_activation as activation_mod
+
+    sequence = _ticketed_split_sequence(EXPERT_IDS[1], "sequence-route-batch")
+    sequence.decisions.append(copy.deepcopy(sequence.decisions[0]))
+    expected = route_for_archetype(EXPERT_IDS[1])
+    original = activation_mod.adapter_training_ticket
+    calls = 0
+
+    def counted(sequence_arg: GameSequence):
+        nonlocal calls
+        calls += 1
+        return original(sequence_arg)
+
+    monkeypatch.setattr(activation_mod, "adapter_training_ticket", counted)
+    assert training_routes_for_sequence(sequence) == (expected, expected)
+    assert calls == 1
+
+    sequence.decisions[1].matchup_adapter_public_route = route_for_archetype(
+        EXPERT_IDS[2]
+    )
+    with pytest.raises(RuntimeError, match="public-prefix audit route"):
+        training_routes_for_sequence(sequence)
+
+
+def test_sequence_route_validation_bounds_v6_registry_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import poke_bot.matchup_adapters_v6 as adapters_v6
+
+    registry_path = Path(__file__).resolve().parents[1] / "state" / (
+        "matchup_adapter_roster.json"
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_FORMAT",
+        "poke-bot-matchup-adapter-bank-v6",
+    )
+    monkeypatch.setenv(
+        "POKEBOT_MATCHUP_ADAPTER_REGISTRY_PATH",
+        str(registry_path),
+    )
+    sequence = _ticketed_split_sequence(EXPERT_IDS[1], "v6-bounded-registry")
+    sequence.decisions = [copy.deepcopy(sequence.decisions[0]) for _ in range(32)]
+    original = adapters_v6.load_slot_registry
+    reads = 0
+
+    def counted(path: Path | str):
+        nonlocal reads
+        reads += 1
+        return original(path)
+
+    monkeypatch.setattr(adapters_v6, "load_slot_registry", counted)
+    expected = route_for_archetype(EXPERT_IDS[1])
+    assert training_routes_for_sequence(sequence) == (expected,) * 32
+    # Ticket and sequence identity remain independently fail-closed, but the
+    # registry work is bounded per sequence instead of scaling with decisions.
+    assert reads <= 4
 
 
 def test_route_stratified_split_contract_is_complete_disjoint_and_stable() -> None:

@@ -383,3 +383,21 @@ def test_pure_rl_parser_accepts_receipt_bound_strategic_mode(
         GUIDE_TRAINING_MODE_STRATEGIC
     )
     assert parsed.setup_board_outcome_loss_weight == pytest.approx(0.025)
+
+
+def test_slowking_requires_typed_combo_loss_during_pure_rl() -> None:
+    base = [
+        "--run-name",
+        "slowking-combo-rl",
+        "--mode",
+        "specialist",
+        "--specialist-archetype",
+        "slowking",
+    ]
+    with pytest.raises(SystemExit):
+        _parse_args(base)
+
+    parsed = _parse_args(
+        [*base, "--combo-state-loss-weight", "0.025"]
+    )
+    assert parsed.combo_state_loss_weight == pytest.approx(0.025)

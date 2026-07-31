@@ -920,9 +920,12 @@ model instantiation, replay scan, data materialization, or model computation.
 ### G0 — Two completion barriers
 
 `G0-A` requires
-`required_specialist_fleet_complete_for_final_alakazam_v1`. It proves all 15
-required specialists frozen, including the exact remaining Archaludon ex then
-Slowking order and every cumulative disposition through Slowking. The preserved
+`required_specialist_fleet_complete_for_final_alakazam_v1`. Under owner
+revision 79 it proves the terminal 15-slot disposition: 14 required specialists
+frozen plus Slowking preserved explicitly as a failed experiment with no pass,
+freeze, registration, submission, serving, or completion credit. It also proves
+the exact remaining Archaludon ex then Slowking order and every cumulative
+disposition through the stopped Slowking iteration-6 boundary. The preserved
 inference-only Crustle opponent and matchup route do not count as a specialist.
 Together with G1, G0-A authorizes model work only for the mandatory Alakazam
 final-format refresh.
@@ -1630,7 +1633,8 @@ Rollback requires no production reversal:
 
 ## 22. Required research records
 
-- Required-specialist fleet completion-through-Slowking receipt.
+- Required-specialist terminal-fleet receipt: 14 frozen specialists plus the
+  explicit revision-79 failed-experiment Slowking disposition.
 - Resource lease and writable-path audit.
 - Immutable historical Alakazam preferred-parent lock.
 - Alakazam direct-migration compatibility receipt, or its preserved failure
@@ -1667,11 +1671,11 @@ Rollback requires no production reversal:
 
 ## 23. Review checklist
 
-- [ ] Keep work static-only before the Slowking fleet boundary: schemas, templates,
+- [x] Keep work static-only before the Slowking fleet boundary: schemas, templates,
       tests, and non-runnable manifests; no model or replay computation.
-- [ ] Require all 15 canonical specialists, with Archaludon then Slowking as
-      the remaining order.
-- [ ] Immediately after Slowking, run the separately versioned Alakazam
+- [x] Resolve all 15 canonical slots, with Archaludon frozen and Slowking
+      terminally preserved as a failed experiment under revision 79.
+- [ ] Immediately after Slowking's terminal disposition, run the separately versioned Alakazam
       refresh as the first final-submission-format model.
 - [ ] Prefer the immutable historical Alakazam checkpoint; on incompatibility,
       preserve the failure and use the exact same-archetype latest-core

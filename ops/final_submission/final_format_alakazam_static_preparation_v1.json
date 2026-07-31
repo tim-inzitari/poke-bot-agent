@@ -1,0 +1,109 @@
+{
+  "schema": "poke_bot.final_format_alakazam_static_preparation/v1",
+  "status": "static_preparation_complete_slowking_failed_experiment_boundary_reached_waiting_for_g0_g1",
+  "owner_goal_revision": 79,
+  "canonical_plan": "docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md",
+  "canonical_plan_sha256": "sha256:34338711cb4b15f35dff54eef5711f75f475132afddb94eb2f611527c92e67b9",
+  "authority": {
+    "static_implementation": true,
+    "model_computation": false,
+    "checkpoint_loading": false,
+    "model_instantiation": false,
+    "replay_scanning": false,
+    "corpus_materialization": false,
+    "benchmarking": false,
+    "training": false,
+    "evaluation": false,
+    "package_construction": false,
+    "submission_construction": false,
+    "runtime": "none",
+    "selector": "none",
+    "registry": "none",
+    "kaggle_queue": "none"
+  },
+  "bridge": {
+    "specialist_id": "alakazam",
+    "model_format": "final_submission_format",
+    "capacity_profile": "H10-I/v1",
+    "search_schema": "none",
+    "start_after_terminal_disposition": "slowking_failed_experiment",
+    "required_fleet_count": 15,
+    "required_frozen_specialist_count": 14,
+    "terminal_failed_experiment_exception_count": 1,
+    "slowking_failed_experiment_receipt": "state/slowking_failed_experiment_transition_r79.json",
+    "preferred_parent_checkpoint_sha256": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+    "fallback": "ordinary_same_archetype_alakazam_refresh_from_then_latest_checksum_accepted_core_before_final_format_expansion",
+    "partial_old_alakazam_core_overlay_allowed": false,
+    "training_seat_split": {
+      "first": 0.5,
+      "second": 0.5
+    },
+    "package_preference": "first_if_allowed",
+    "second_focus_1_to_7_allowed": false,
+    "guide_runtime_route_count": 0
+  },
+  "model_computation_release_receipts": [
+    "required_specialist_fleet_complete_for_final_alakazam_v1",
+    "capacity_research_resource_lease_v1"
+  ],
+  "broader_capacity_release_receipt": "post_refresh_sequence_complete_for_capacity_v2",
+  "specifications": {
+    "final_format_alakazam_model_spec_v1": {
+      "path": "ops/final_submission/final_format_alakazam_model_spec_v1.json",
+      "sha256": "sha256:09758ebeadb692e29cdb873d935ac43ab048d8856f1e9e8d5214a9afaf45fd6f"
+    },
+    "final_format_alakazam_source_compatibility_v1": {
+      "path": "ops/final_submission/final_format_alakazam_source_compatibility_v1.json",
+      "sha256": "sha256:a6a1688382e7a168bbee63f5d5afe738ff80fb8a53818175e052b6c30ba7ae00"
+    }
+  },
+  "templates": {
+    "required_specialist_fleet_complete_for_final_alakazam_v1": {
+      "path": "ops/final_submission/templates/required_specialist_fleet_complete_for_final_alakazam_v1.template.json",
+      "sha256": "sha256:b0ce0b28a6d6ef769042ea2c32af6071e4d478661ae3e726910be0b0db33996d"
+    },
+    "capacity_research_resource_lease_v1": {
+      "path": "ops/final_submission/templates/capacity_research_resource_lease_v1.template.json",
+      "sha256": "sha256:3e8938992eca8a9ffdd8ebce1f334c9682723b518fb91a12099734392a1f3db9"
+    },
+    "final_format_alakazam_parent_lock_v1": {
+      "path": "ops/final_submission/templates/final_format_alakazam_parent_lock_v1.template.json",
+      "sha256": "sha256:2ed3df334e94a7631fdc1d42a2a23a558c0636ccac47ad56106d802052b42f07"
+    },
+    "final_format_alakazam_direct_migration_failure_v1": {
+      "path": "ops/final_submission/templates/final_format_alakazam_direct_migration_failure_v1.template.json",
+      "sha256": "sha256:b56dcd028ee36f507e6bfc58b592d877ca80d87483d332dd90ec95ff3c60828f"
+    },
+    "final_format_alakazam_migration_v1": {
+      "path": "ops/final_submission/templates/final_format_alakazam_migration_v1.template.json",
+      "sha256": "sha256:567380fe57e57ddb4769e3ec7f389baf18d8b7664489479a61dd0c98c50d812a"
+    },
+    "final_format_learned_role_route_inventory_v1": {
+      "path": "ops/final_submission/templates/final_format_learned_role_route_inventory_v1.template.json",
+      "sha256": "sha256:7022a57a3da0edaa3decb5ea72411830c16b7ae9644105492630e437314db490"
+    },
+    "alakazam_refresh_seat_split_v1": {
+      "path": "ops/final_submission/templates/alakazam_refresh_seat_split_v1.template.json",
+      "sha256": "sha256:bac5ee80493b469b3694421c8f7592102b66c50272bd1a18eedc96de08d96ccc"
+    },
+    "final_format_alakazam_offline_package_v1": {
+      "path": "ops/final_submission/templates/final_format_alakazam_offline_package_v1.template.json",
+      "sha256": "sha256:f75801d186d0a8bc685e3ece3137ef4b809680397bae54b632abdbc4bfc2cbe1"
+    }
+  },
+  "activation_requirements": {
+    "all_templates_must_be_copied_to_a_new_immutable_receipt": true,
+    "template_only_must_be_false_on_issued_receipts": true,
+    "all_null_required_evidence_fields_must_be_resolved": true,
+    "all_referenced_artifact_sha256_values_must_verify": true,
+    "one_distinct_bounded_option_conditioned_route_per_learned_head": true,
+    "every_learned_head_must_influence_action_scores": true,
+    "guide_runtime_route_count": 0,
+    "historical_alakazam_checkpoint_rewritten": false,
+    "non_runnable_template_may_not_be_queued_or_submitted": true
+  },
+  "active_runtime_modified": false,
+  "active_selector_modified": false,
+  "active_registry_modified": false,
+  "created_at_utc": "2026-07-31T00:45:56Z"
+}

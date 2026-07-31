@@ -2,10 +2,11 @@
 # Stable launchd entrypoint for Bert's remote self-play worker.
 #
 # POKEBOT_BERT_MEMORY_GUARD_V2
-# Bert's validated production topology is CPU-only: the M4 CPU leaf completed
-# 2,048 games at 7.66 GPS / 930 SPS with flat memory, while the optimized MPS
-# path was 6.74x slower. Keep the whole tree in an isolated process group and
-# stop it before launchd is allowed to retry if a guard is crossed.
+# Bert's production backend is selected only from the completed exact-H10
+# whole-game receipt.  The current optimized topology uses four MPS leaves,
+# home-leaf worker affinity, BF16 autocast, and no per-batch cache eviction.
+# Keep the whole tree in an isolated process group and stop it before launchd
+# is allowed to retry if a guard is crossed.
 set -euo pipefail
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 
@@ -23,7 +24,8 @@ export POKEBOT_REMOTE_REQUEST_TIMEOUT_S="120"
 export POKEBOT_REMOTE_WORKER_SAFETY_VERSION="20260717"
 export PYTORCH_MPS_HIGH_WATERMARK_RATIO="0.25"
 export PYTORCH_MPS_LOW_WATERMARK_RATIO="0.20"
-export POKEBOT_MPS_EMPTY_CACHE_EVERY_BATCHES="1"
+export POKEBOT_MPS_EMPTY_CACHE_EVERY_BATCHES="0"
+export POKEBOT_MPS_AUTOCAST_DTYPE="bfloat16"
 
 # One thread per inference process prevents BLAS oversubscription. Sixteen
 # simulator processes and four CPU policy leaves keep the 14-core M4 supplied
@@ -39,7 +41,7 @@ sim_workers="${POKEBOT_BERT_SIM_WORKERS:-16}"
 default_workers="${POKEBOT_BERT_DEFAULT_WORKERS:-16}"
 leaf_servers="${POKEBOT_BERT_LEAF_SERVERS:-4}"
 leaf_max_batch="${POKEBOT_BERT_LEAF_MAX_BATCH:-32}"
-leaf_queue_depth="${POKEBOT_BERT_LEAF_QUEUE_DEPTH:-8}"
+leaf_queue_depth="${POKEBOT_BERT_LEAF_QUEUE_DEPTH:-32}"
 # Keep four complete waves admitted to the local process queue while a second
 # bounded set of request handlers may be returning trajectories to Inzi.  The
 # launchd plist owns the cap so changing it cannot be silently ignored here.
@@ -71,7 +73,7 @@ seed_checkpoint_script="$repo/scripts/seed_remote_active_checkpoint.py"
 # Trainer-staged Bert checkpoints always live in the native checkout.  The
 # durable record is authoritative after the first reload, so a whole-service
 # MPS rotation cannot silently fall back to the bootstrap pointer.
-checkpoint_root="/Users/tsinzitari/workspace/poke-bot-agent"
+checkpoint_root="$repo"
 export POKEBOT_REMOTE_ACTIVE_CHECKPOINT_FILE="$active_checkpoint_file"
 export POKEBOT_REMOTE_CHECKPOINT_ROOT="$checkpoint_root"
 runtime_marker_source="${POKEBOT_MATCHUP_RUNTIME_MARKER_SOURCE:-}"
@@ -385,7 +387,7 @@ trap 'handle_stop INT' INT
 trap 'handle_stop HUP' HUP
 trap 'terminate_worker_group "supervisor exit" || true' EXIT
 
-log "starting validated CPU fleet worker on :$port workers=$sim_workers default=$default_workers leaf_servers=$leaf_servers checkpoint=$(readlink "$checkpoint" 2>/dev/null || printf '%s' "$checkpoint")"
+log "starting validated optimized MPS fleet worker on :$port workers=$sim_workers default=$default_workers leaf_servers=$leaf_servers checkpoint=$(readlink "$checkpoint" 2>/dev/null || printf '%s' "$checkpoint")"
 cd "$repo"
 
 # setsid places the parent, pool workers, resource tracker, manager, and MPS
@@ -403,11 +405,11 @@ os.execv(sys.argv[1], sys.argv[1:])
 ' "$python" -u "$worker" \
   --host 0.0.0.0 --port "$port" \
   --workers "$sim_workers" --default-workers "$default_workers" \
-  --leaf-servers "$leaf_servers" --leaf-gpu cpu \
+  --leaf-servers "$leaf_servers" --leaf-gpu mps \
   --leaf-max-batch "$leaf_max_batch" --leaf-queue-depth "$leaf_queue_depth" \
-  --leaf-coalesce-ms "1" \
+  --leaf-coalesce-ms "2" \
   --max-connections "$max_connections" \
-  --tree-rss-limit-gb "18" --min-free-ram-gb "20" \
+  --tree-rss-limit-gb "45" --min-free-ram-gb "8" \
   --max-service-jobs "$max_service_jobs" --watchdog-interval-s "5" \
   --checkpoint "$checkpoint" \
   --cg-lib-path "$cg_lib" &

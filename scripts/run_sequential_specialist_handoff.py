@@ -35,6 +35,9 @@ from poke_bot.pure_rl.model_registry import (  # noqa: E402
     sha256,
     verify_frozen_model,
 )
+from poke_bot.slowking_candidate_validation import (  # noqa: E402
+    validate_final_receipt as validate_slowking_final_receipt,
+)
 from scripts.handle_passed_gate import (  # noqa: E402
     HANDLER_SCHEMA,
     validate_ceiling_completion,
@@ -109,8 +112,15 @@ def strategic_guide_enabled(contract: dict[str, Any]) -> bool:
 def expected_decision_fusion(
     contract: dict[str, Any],
 ) -> dict[str, Any]:
+    target = dict(contract.get("next_specialist") or {})
     return decision_fusion_handoff_contract(
-        strategic_curriculum=strategic_guide_enabled(contract)
+        strategic_curriculum=strategic_guide_enabled(contract),
+        combo_state_head=bool(
+            target.get(
+                "combo_state_head",
+                str(target.get("id") or "") == "slowking",
+            )
+        ),
     )
 
 
@@ -370,11 +380,27 @@ def load_contract(path: Path) -> tuple[dict[str, Any], str]:
             raise RuntimeError("runtime registration contract changed")
         matchup_v6 = registration.get("matchup_v6")
         if matchup_v6 is not None:
+            family_suffix = str(matchup_v6.get("family_suffix") or "")
+            receipt_suffix = str(matchup_v6.get("receipt_suffix") or "")
+            valid_runtime_derivative = bool(
+                (family_suffix == "_matchup_v6" and receipt_suffix == "")
+                or (
+                    re.fullmatch(
+                        r"_matchup_v6_roster[0-9]+", family_suffix
+                    )
+                    is not None
+                    and re.fullmatch(
+                        r"-roster[0-9]+", receipt_suffix
+                    )
+                    is not None
+                    and family_suffix.removeprefix("_matchup_v6")
+                    == receipt_suffix.replace("-", "_", 1)
+                )
+            )
             if (
                 not isinstance(matchup_v6, dict)
                 or matchup_v6.get("enabled") is not True
-                or str(matchup_v6.get("family_suffix") or "")
-                != "_matchup_v6"
+                or not valid_runtime_derivative
             ):
                 raise RuntimeError("Matchup Adapter V6 handoff contract changed")
             for key in ("registry", "staging_root", "receipt_root"):
@@ -428,7 +454,10 @@ def runtime_bootstrap(
     specialist_id = str(bootstrap["specialist_id"])
     receipt_path = (
         Path(str(matchup_v6["receipt_root"])).expanduser().resolve()
-        / f"{specialist_id}-matchup-v6-runtime-family.json"
+        / (
+            f"{specialist_id}-matchup-v6-runtime-family"
+            f"{str(matchup_v6.get('receipt_suffix') or '')}.json"
+        )
     )
     kwargs = {
         "source_family": source_family,
@@ -1190,6 +1219,41 @@ def bootstrap_command(contract: dict[str, Any]) -> list[str]:
                 str(validated["target_schema_digest"]),
             ]
         )
+        combo_state_head = bool(
+            target.get(
+                "combo_state_head",
+                str(target.get("id") or "").casefold() == "slowking",
+            )
+        )
+        if combo_state_head:
+            command.append("--combo-state-head")
+            combo = training.get("combo_state")
+            if not isinstance(combo, dict):
+                raise RuntimeError(
+                    "Slowking handoff lacks combo pretraining authorization"
+                )
+            command.extend(
+                [
+                    "--combo-state-implementation-receipt",
+                    str(combo["implementation_receipt"]),
+                    "--combo-state-implementation-receipt-sha256",
+                    str(combo["implementation_receipt_sha256"]),
+                    "--combo-state-corpus-validation-receipt",
+                    str(combo["corpus_validation_receipt"]),
+                    "--combo-state-corpus-validation-receipt-sha256",
+                    str(combo["corpus_validation_receipt_sha256"]),
+                    "--combo-state-cpu-pack-validation-receipt",
+                    str(combo["cpu_pack_validation_receipt"]),
+                    "--combo-state-cpu-pack-validation-receipt-sha256",
+                    str(combo["cpu_pack_validation_receipt_sha256"]),
+                    "--combo-state-parameter-inventory-receipt",
+                    str(combo["parameter_inventory_receipt"]),
+                    "--combo-state-parameter-inventory-receipt-sha256",
+                    str(combo["parameter_inventory_receipt_sha256"]),
+                    "--combo-state-validation-output",
+                    str(combo["final_validation_output"]),
+                ]
+            )
     guide = training.get("current_deck_guide")
     if guide is not None:
         command.extend(
@@ -1319,6 +1383,32 @@ def validate_bootstrap(
             == expanded_expected["target_schema_digest"]
         )
     )
+    combo_valid = True
+    if str(target.get("id") or "") == "slowking":
+        combo_contract = contract["training"].get("combo_state")
+        combo_ready = dict(
+            ready.get("slowking_combo_state_validation") or {}
+        )
+        combo_path = Path(
+            str(combo_ready.get("receipt") or "")
+        ).expanduser().resolve()
+        combo_valid = bool(
+            isinstance(combo_contract, dict)
+            and combo_path
+            == Path(
+                str(combo_contract.get("final_validation_output") or "")
+            ).expanduser().resolve()
+            and combo_path.is_file()
+            and checkpoint.checkpoint_digest(combo_path)
+            == combo_ready.get("receipt_sha256")
+        )
+        if combo_valid:
+            combo_payload = read_json(combo_path)
+            validate_slowking_final_receipt(
+                combo_payload,
+                checkpoint_path=Path(str(frozen["model_path"])).resolve(),
+            )
+            combo_valid = combo_ready.get("payload") == combo_payload
     if (
         ready.get("schema") != "poke_bot.specialist_expert_bootstrap_ready/v1"
         or ready.get("status") != "ready"
@@ -1334,6 +1424,7 @@ def validate_bootstrap(
         or not expanded_valid
         or not fusion_valid
         or not guide_valid
+        or not combo_valid
     ):
         raise RuntimeError("next specialist bootstrap identity changed")
     return {
@@ -1415,8 +1506,13 @@ def validate_runtime_registration(
         return None
     target = dict(contract["next_specialist"])
     state_root = path_value(contract, "runtime_registration", "state_root")
+    expected_fusion = expected_decision_fusion(contract)
+    combo_registration = (
+        "combo_state" in expected_fusion["required_heads"]
+    )
     receipt_path = state_root / (
-        f"{str(target['id'])}-runtime-registration-v1.json"
+        f"{str(target['id'])}-runtime-registration-v1"
+        f"{'-combo-v2' if combo_registration else ''}.json"
     )
     receipt = read_json(receipt_path)
     row = dict(receipt.get("runtime_row") or {})
@@ -1433,7 +1529,6 @@ def validate_runtime_registration(
         if line.startswith("POKEBOT_ACTIVE_SPECIALIST=")
     ]
     selector_rows = set(selector.read_text(encoding="utf-8").splitlines())
-    expected_fusion = expected_decision_fusion(contract)
     row_fusion = dict(row.get("decision_fusion") or {})
     guide = contract["training"].get("current_deck_guide")
     if (
@@ -1813,6 +1908,19 @@ def run(contract_path: Path) -> int:
                     )
                 ),
                 matchup_target_ids=canonical_matchup_target_ids(contract),
+                decision_fusion_required_heads=tuple(
+                    expected_decision_fusion(contract)["required_heads"]
+                ),
+                receipt_suffix=(
+                    "-combo-v2"
+                    if "combo_state"
+                    in expected_decision_fusion(contract)["required_heads"]
+                    else ""
+                ),
+                replace_unpassed=(
+                    "combo_state"
+                    in expected_decision_fusion(contract)["required_heads"]
+                ),
                 guide_id=(
                     str(contract["training"]["current_deck_guide"][
                         "specialist_id"

@@ -1,0 +1,77 @@
+{
+  "schema": "poke_bot.required_specialist_fleet_complete_for_final_alakazam/v1",
+  "template_only": true,
+  "status": "unissued",
+  "authorization_scope": "final_format_alakazam_refresh_only",
+  "runtime_authority": "none",
+  "selector_eligible": false,
+  "kaggle_eligible": false,
+  "goal_revision": null,
+  "required_specialist_count": 15,
+  "required_frozen_specialist_count": 14,
+  "allowed_terminal_exception_count": 1,
+  "required_roster_sha256": null,
+  "completed_required_specialist_count": null,
+  "remaining_order_terminally_disposed": [
+    "archaludon-ex",
+    "slowking"
+  ],
+  "frozen_specialists": [],
+  "slowking_terminal_exception": {
+    "disposition": "failed_experiment",
+    "owner_goal_revision": 79,
+    "failed_experiment_receipt": "state/slowking_failed_experiment_transition_r79.json",
+    "failed_experiment_receipt_sha256": null,
+    "passing_status_granted": false,
+    "completion_credit_granted": false,
+    "frozen_or_registered": false,
+    "submission_or_serving_allowed": false
+  },
+  "cumulative_core_dispositions": [],
+  "newest_checksum_accepted_core": {
+    "generation": null,
+    "checkpoint_sha256": null,
+    "acceptance_receipt_sha256": null
+  },
+  "canonical_schema_digests": {
+    "model": null,
+    "feature": null,
+    "option": null,
+    "temporal": null,
+    "strategic_head": null,
+    "target": null,
+    "guide": null,
+    "decision_fusion": null,
+    "matchup_adapter": null
+  },
+  "registry_digests": {
+    "frozen_specialist_registry": null,
+    "runtime_registry": null,
+    "selector_snapshot": null,
+    "practice_opponent_snapshot": null
+  },
+  "crustle_inference_only_binding": {
+    "opponent_id": "pilkwang-meta-20260708",
+    "checkpoint_sha256": "sha256:7120bc67415e06c1cf69d64574f1a41545fd4c2fd084a029d77c5e43a357957f",
+    "distinct_matchup_route_preserved": null,
+    "training_eligible": false
+  },
+  "learned_role_route_inventory": {
+    "role_map_sha256": null,
+    "route_inventory_sha256": null,
+    "learned_head_count": null,
+    "learned_route_count": null,
+    "one_distinct_route_per_learned_head": null,
+    "guide_runtime_route_count": 0
+  },
+  "preferred_alakazam_parent": {
+    "checkpoint_sha256": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+    "model_config_sha256": null
+  },
+  "fallback_core_parent": {
+    "checkpoint_sha256": null,
+    "acceptance_receipt_sha256": null
+  },
+  "no_active_or_pending_old_system_transition_through_slowking": null,
+  "issued_at_utc": null
+}

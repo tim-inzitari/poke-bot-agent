@@ -194,6 +194,7 @@ def test_concurrent_bert_checkpoint_stage_publishes_exactly_once(
     digest = checkpoint_digest(checkpoint)
     publishes = 0
     published = False
+    companion_stages = 0
 
     def remote_digest(_path: Path) -> str | None:
         return digest if published else None
@@ -204,11 +205,16 @@ def test_concurrent_bert_checkpoint_stage_publishes_exactly_once(
         time.sleep(0.02)
         published = True
 
+    def stage_companions(_remote_dir: Path) -> None:
+        nonlocal companion_stages
+        companion_stages += 1
+
     monkeypatch.setattr(remote_jobs, "_TRAIN_ROOT", train_root)
     monkeypatch.setattr(remote_jobs, "_BERT_ROOT", bert_root)
     monkeypatch.setattr(remote_jobs, "_bert_sftp_root", lambda: None)
     monkeypatch.setattr(remote_jobs, "_bert_remote_digest", remote_digest)
     monkeypatch.setattr(remote_jobs, "_rsync_to_bert", publish)
+    monkeypatch.setattr(remote_jobs, "_stage_bert_runtime_companions", stage_companions)
     remote_jobs._BERT_STAGE_CACHE.clear()
     barrier = threading.Barrier(24)
     results: list[str] = []
@@ -225,6 +231,7 @@ def test_concurrent_bert_checkpoint_stage_publishes_exactly_once(
 
     assert all(not thread.is_alive() for thread in threads)
     assert publishes == 1
+    assert companion_stages == 1
     assert len(set(results)) == 1
     assert digest.split(":", 1)[-1][:16] in results[0]
 
@@ -239,6 +246,7 @@ def test_concurrent_elmo_checkpoint_stage_publishes_exactly_once(
     checkpoint_dir = tmp_path / "elmo-checkpoint"
     checkpoint_dir.mkdir()
     publishes = 0
+    companion_stages = 0
 
     def publish(src: Path, dest: Path) -> None:
         nonlocal publishes
@@ -246,8 +254,13 @@ def test_concurrent_elmo_checkpoint_stage_publishes_exactly_once(
         time.sleep(0.02)
         dest.write_bytes(src.read_bytes())
 
+    def stage_companions(_checkpoint_dir: Path) -> None:
+        nonlocal companion_stages
+        companion_stages += 1
+
     monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: checkpoint_dir)
     monkeypatch.setattr(remote_jobs, "_gvfs_safe_copy", publish)
+    monkeypatch.setattr(remote_jobs, "_stage_elmo_runtime_companions", stage_companions)
     remote_jobs._ELMO_STAGE_CACHE.clear()
     barrier = threading.Barrier(24)
     results: list[str] = []
@@ -269,6 +282,7 @@ def test_concurrent_elmo_checkpoint_stage_publishes_exactly_once(
 
     assert all(not thread.is_alive() for thread in threads)
     assert publishes == 1
+    assert companion_stages == 1
     assert len(set(results)) == 1
     assert checkpoint_digest(checkpoint).split(":", 1)[-1][:16] in results[0]
 

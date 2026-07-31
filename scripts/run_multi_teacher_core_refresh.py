@@ -106,6 +106,8 @@ _ADDITIVE_HEAD_PREFIXES = (
     "game_phase_head.",
     "outcome_distribution_head.",
     "remaining_turns_head.",
+    "setup_board_outcome_head.",
+    "combo_state_head.",
     "decision_fusion.",
 )
 

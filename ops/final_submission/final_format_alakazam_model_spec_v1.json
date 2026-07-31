@@ -1,0 +1,103 @@
+{
+  "schema": "poke_bot.final_format_alakazam_model_spec/v1",
+  "status": "static_non_runnable_slowking_failed_experiment_boundary_reached_waiting_for_g0_g1",
+  "runnable": false,
+  "model_computation_authority": false,
+  "specialist_id": "alakazam",
+  "derivative_kind": "separately_versioned_post_fleet_refresh",
+  "final_submission_format_revision": 1,
+  "capacity_profile": "H10-I/v1",
+  "search_schema": "none",
+  "architecture": {
+    "d_model": 96,
+    "attention_heads": 8,
+    "spatial_layers": 7,
+    "temporal_layers": 3,
+    "option_layers": 7,
+    "feed_forward_width": 2496,
+    "history_context": 320,
+    "fusion_width": 16,
+    "minimum_learned_head_count": 19,
+    "exact_learned_head_count": null,
+    "minimum_distinct_bounded_action_routes": 19,
+    "exact_distinct_bounded_action_routes": null,
+    "head_route_count_equality_required": true,
+    "exact_counts_late_bound_by": "final_format_learned_role_route_inventory_v1",
+    "setup_board_outcome_required": true,
+    "combo_state_head_required": true,
+    "slowking_passing_checkpoint_required": false,
+    "slowking_failed_experiment_receipt_required": true,
+    "one_distinct_option_conditioned_route_per_learned_head": true,
+    "every_learned_head_influences_action_scores": true,
+    "guide_runtime_route_count": 0
+  },
+  "guide": {
+    "classification": "training_only_curriculum_metadata",
+    "runtime_input": false,
+    "action_logit_route": false,
+    "imitation_target": false
+  },
+  "parent_selection": {
+    "preferred_parent_checkpoint_sha256": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+    "direct_migration_must_pass_completely": true,
+    "partial_tensor_overlay_allowed": false,
+    "fallback": "ordinary_same_archetype_alakazam_refresh_from_then_latest_checksum_accepted_core_before_final_format_expansion"
+  },
+  "training": {
+    "supervised_bootstrap_epochs": 25,
+    "baseline_games_per_iteration": 8192,
+    "seat_assignment": {
+      "first_fraction": 0.5,
+      "second_fraction": 0.5,
+      "exact_even_split_required_for": [
+        "assigned",
+        "actual",
+        "consumed"
+      ]
+    },
+    "second_focus_1_to_7_allowed": false,
+    "blocks": [
+      {
+        "id": "A",
+        "cumulative_rl_epochs": 5,
+        "cumulative_rehearsal_epochs": 5,
+        "fresh_games": 40960
+      },
+      {
+        "id": "B",
+        "cumulative_rl_epochs": 10,
+        "cumulative_rehearsal_epochs": 10,
+        "fresh_games": 81920
+      },
+      {
+        "id": "C",
+        "cumulative_rl_epochs": 15,
+        "cumulative_rehearsal_epochs": 15,
+        "fresh_games": 122880
+      },
+      {
+        "id": "D",
+        "cumulative_rl_epochs": 20,
+        "cumulative_rehearsal_epochs": 20,
+        "fresh_games": 163840
+      }
+    ],
+    "checkpoint_selection": "best_immutable_validated_checkpoint_not_last_epoch"
+  },
+  "hardware_entry_invariant": {
+    "blackwell_local_simulator_workers": 96,
+    "blackwell_local_games_in_flight": 96,
+    "automatic_lower_profile_allowed": false,
+    "resource_lease_required_before_model_computation": true
+  },
+  "package": {
+    "turn_order_preference": "first_if_allowed",
+    "always_second_allowed": false,
+    "second_preferring_copy_allowed": false,
+    "offline_until_explicit_release": true
+  },
+  "release_receipts_required_before_model_computation": [
+    "required_specialist_fleet_complete_for_final_alakazam_v1",
+    "capacity_research_resource_lease_v1"
+  ]
+}

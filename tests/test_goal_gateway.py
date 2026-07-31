@@ -123,17 +123,22 @@ def test_active_core_fallback_matches_latest_accepted_v9_receipt() -> None:
     assert collection_failure["public_mix_games"] == 7122
     assert collection_failure["required_public_mix_games"] == 7168
     assert collection_failure["immutable_commit_created"] is False
-    memory_guard = state["current"]["active_run"]["memory_guard"]
-    assert memory_guard["staged_next_start_sim_workers"] == 128
-    assert memory_guard["staged_next_start_games_in_flight"] == 128
-    assert memory_guard["staged_next_start_rebalance_workers"] == [128, 128]
-    assert memory_guard["staged_next_start_free_ram_floor_gib"] == 12
-    assert memory_guard["next_start_safety_contract_activated"] is False
-    assert memory_guard["active_sim_workers"] == 48
-    assert memory_guard["active_games_in_flight"] == 48
-    assert memory_guard["active_rebalance_workers"] == [32, 48]
-    assert memory_guard["active_free_ram_floor_gib"] == 12
-    assert memory_guard["runtime_memory_high_gib"] == 100
+    current_profile = protocol["training_hardware_throughput"][
+        "next_boundary_blackwell_profile"
+    ]
+    assert current_profile["simulator_workers"] == 96
+    assert current_profile["games_in_flight"] == 96
+    assert [
+        current_profile["worker_floor"],
+        current_profile["worker_target"],
+        current_profile["worker_ceiling"],
+    ] == [96, 96, 96]
+    assert current_profile["adaptive_worker_rebalance_allowed"] is False
+    assert current_profile["automatic_worker_fallback_allowed"] is False
+    assert current_profile["lower_profile_substitution_allowed"] is False
+    assert current_profile["minimum_host_available_ram_gib"] == 12
+    assert current_profile["memory_high_gib"] == 100
+    assert state["current"]["active_run"]["active_specialist"] == "slowking"
     assert "attemptedCoreStatuses" in dashboard
     assert "Training Core Revision" in dashboard
     assert "CURRENT CORE V6" not in dashboard
@@ -388,16 +393,16 @@ def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
         )
     )
 
-    assert "Revision: `67`" in goal
+    assert "Revision: `78`" in goal
     assert "mandatory and sole successor after Thwackey" in goal
-    assert state["current"]["active_specialist"] == ""
+    assert state["current"]["active_specialist"] == "slowking"
     assert state["current"]["transition_source_specialist"] == (
-        "teal-mask-ogerpon-ex"
+        "archaludon-ex"
     )
-    assert state["current"]["staged_successor_specialist"] == "archaludon-ex"
+    assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
         "ordered_unfinished_ids_after_active"
-    ][0] == "archaludon-ex"
+    ] == []
     assert cycle["selection"]["strict_priority_prefix"][-4:] == [
         "team-rockets-spidops",
         "hammer-pult",
@@ -459,16 +464,16 @@ def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
 
     assert "Remove `dragapult-blaziken` and `dragapult-dudunsparce`" in goal
     assert state["current"]["program_progress"]["required_specialists_total"] == 15
-    assert state["current"]["active_specialist"] == ""
-    assert state["current"]["transition_source_specialist"] == order[1]
-    assert state["current"]["staged_successor_specialist"] == order[2]
-    assert priority["ordered_unfinished_ids_after_active"][0] == order[2]
+    assert state["current"]["active_specialist"] == "slowking"
+    assert state["current"]["transition_source_specialist"] == order[2]
+    assert state["current"]["staged_successor_specialist"] is None
+    assert priority["ordered_unfinished_ids_after_active"] == []
     assert priority["strict_post_spidops_prefix"]["ids"] == order
     assert priority["strict_post_spidops_prefix"]["status"] == (
-        "teal_frozen_archaludon_selected_readiness_blocked"
+        "archaludon_completed_slowking_active_revision78"
     )
     assert priority["owner_removal"]["status"] == (
-        "revision61_crustle_removal_staged_for_selector_and_dashboard_projection"
+        "active_selector_and_dashboard_projection"
     )
     assert all(
         specialist_id not in required_specialist_ids
@@ -499,9 +504,9 @@ def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
     assert selection["owner_removed_specialists_are_selection_eligible"] is False
     assert selection["owner_removed_specialists_count_toward_completion"] is False
     assert projected["strict_post_spidops_prefix"] == order
-    assert projected["active_specialist"] is None
-    assert projected["transition_source_specialist"] == order[1]
-    assert projected["staged_successor_specialist"] == order[2]
+    assert projected["active_specialist"] == "slowking"
+    assert projected["transition_source_specialist"] == order[2]
+    assert projected["staged_successor_specialist"] is None
     assert projected["removed_specialist_ids"] == removed
     assert projected["required_specialists_total"] == 15
 
@@ -544,7 +549,7 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
     ]
     mutable = state["post_fleet_refresh"]
 
-    assert "Revision: `67`" in goal
+    assert "Revision: `78`" in goal
     assert "new separately versioned refreshes in strict order" in goal
     assert protocol["allowed_phases"][-3] == (
         "post_fleet_specialist_refresh"
@@ -648,15 +653,13 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
         "required_specialists_total"
     ] == 15
     assert len(state["specialists"]) == 16
-    assert state["current"]["active_specialist"] == ""
-    assert state["current"]["staged_successor_specialist"] == (
-        "archaludon-ex"
-    )
+    assert state["current"]["active_specialist"] == "slowking"
+    assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
         "ordered_unfinished_ids_after_active"
-    ][0] == "archaludon-ex"
-    assert "PRESTAGE_SPECIALIST_ID=archaludon-ex" in prestage
-    assert "POKEBOT_ACTIVE_SPECIALIST=archaludon-ex" in selector
+    ] == []
+    assert "PRESTAGE_SPECIALIST_ID=alakazam" not in prestage
+    assert "POKEBOT_ACTIVE_SPECIALIST=slowking" in selector
     assert projected["required_specialist_count_modified"] is False
     assert projected["current_selector_modified"] is False
     assert projected["current_prestage_modified"] is False
@@ -755,7 +758,7 @@ def test_teal_mask_ogerpon_uses_exact_slop_box_source_identity() -> None:
     assert row["transition"]["strict_successor"] == "archaludon-ex"
 
 
-def test_archaludon_schema7_guide_corpus_is_fail_closed_before_training() -> None:
+def test_archaludon_revision69_existing_corpus_override_is_explicit() -> None:
     state = yaml.safe_load(
         (ROOT / "state/specialists.yaml").read_text(encoding="utf-8")
     )
@@ -770,18 +773,20 @@ def test_archaludon_schema7_guide_corpus_is_fail_closed_before_training() -> Non
         )
     )["current_owner_overrides"]["archaludon_ex"]
 
-    assert row["status"] == "unstarted"
+    assert row["status"] == "passed_frozen"
     assert row["active"] is False
     assert row["prestage_status"] == (
-        "blocked_pending_full_public_schema7_and_revision56_receipts"
+        "historical_completed_owner_revision69_existing_corpus_override"
     )
     assert row["heads"]["current_deck_guide"]["guide_corpus_status"] == (
-        "blocked_pending_full_public_schema7_rebuild"
+        "historical_training_input_from_existing_protected_import"
     )
-    assert row["datasets"]["records"] is None
-    assert row["datasets"]["decisions"] is None
-    assert row["datasets"]["guide_rows"] is None
-    assert row["datasets"]["current_deck_guide_corpus_ready"] is False
+    assert row["datasets"]["records"] == 1_458
+    assert row["datasets"]["decisions"] == 83_980
+    assert row["datasets"]["guide_rows"] == 1_454
+    assert row["datasets"]["current_deck_guide_corpus_ready"] is True
+    assert row["datasets"]["satisfies_revision68_minimum_game_floor"] is False
+    assert row["datasets"]["launch_authority"] == "owner_revision69"
     assert row["datasets"]["dataset_schema_required"] == 7
     assert row["datasets"]["audited_source_matching_acting_seats"] == 21_278
     assert row["superseded_schema6_datasets"]["records"] == 1_458
@@ -789,25 +794,30 @@ def test_archaludon_schema7_guide_corpus_is_fail_closed_before_training() -> Non
         "current_deck_guide_corpus_ready"
     ] is True
     assert row["superseded_schema6_datasets"]["status"] == (
-        "historical_ineligible_for_revision56_training"
+        "historical_completed_run_exception_by_owner_revision69"
     )
-    assert projected["training_status"] == "unstarted"
+    assert projected["training_status"] == "completed_frozen"
     assert projected["guide_corpus_status"] == (
-        "blocked_pending_full_public_schema7_rebuild"
+        "historical_training_input_from_existing_protected_import"
     )
-    assert projected["materialized_records"] is None
-    assert projected["materialized_decisions"] is None
-    assert projected["materialized_guide_rows"] is None
+    assert projected["materialized_records"] == 1_458
+    assert projected["materialized_decisions"] == 83_980
+    assert projected["materialized_guide_rows"] == 1_454
     assert projected["dataset_schema_required"] == 7
     assert projected["audited_source_matching_acting_seats"] == 21_278
     assert projected["active_teal_mask_ogerpon_ex_modified"] is False
     assert projected["prestage_status"] == (
-        "blocked_pending_full_public_schema7_and_revision56_receipts"
+        "historical_completed_owner_revision69_existing_corpus_override"
     )
     assert projected["full_public_identity_ready"] is False
     assert projected["full_public_guide_ready"] is False
     assert projected["schema7_import_ready"] is False
-    assert projected["activation_status"] == "blocked_not_ready"
+    assert projected["activation_status"] == (
+        "completed_frozen_handoff_to_slowking"
+    )
+    assert projected["superseded_schema6"][
+        "satisfies_revision68_minimum_game_floor"
+    ] is False
 
 
 def test_clean_specialist_transition_contract_cannot_regress() -> None:
@@ -1171,7 +1181,7 @@ def test_research_controls_stay_official_four_while_frozen_stay_holdouts() -> No
     assert projection["all_current_holdout_games"] == expected_all_games
 
 
-def test_production_selector_can_recover_from_memory_pressure() -> None:
+def test_production_selector_uses_owner_pinned_96_worker_scheduler() -> None:
     selector = (ROOT / "config/specialist_runtime.env").read_text(
         encoding="utf-8"
     )
@@ -1179,12 +1189,14 @@ def test_production_selector_can_recover_from_memory_pressure() -> None:
         ROOT / "ops/systemd/pokebot-pure-rl-specialist.service"
     ).read_text(encoding="utf-8")
 
-    assert "PURE_RL_SIM_WORKERS=128\n" in selector
-    assert "PURE_RL_GAMES_IN_FLIGHT=128\n" in selector
-    assert "POKEBOT_LIVE_POOL_MAX_WORKERS=128\n" in selector
-    assert "PURE_RL_REBALANCE_MAX_WORKERS=128\n" in selector
-    assert "PURE_RL_REBALANCE_MIN_WORKERS=128\n" in selector
-    assert "PURE_RL_MID_ITER_SCHEDULER=0\n" in selector
+    assert "PURE_RL_SIM_WORKERS=96\n" in selector
+    assert "PURE_RL_GAMES_IN_FLIGHT=96\n" in selector
+    assert "POKEBOT_LIVE_POOL_MAX_WORKERS=96\n" in selector
+    assert "PURE_RL_REBALANCE_MAX_WORKERS=96\n" in selector
+    assert "PURE_RL_REBALANCE_MIN_WORKERS=96\n" in selector
+    assert "PURE_RL_MID_ITER_SCHEDULER=1\n" in selector
+    assert "POKEBOT_REMOTE_SOCKET_PREFETCH=1\n" in selector
+    assert "POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=2\n" in selector
     assert "PURE_RL_REBALANCE_RAM_FLOOR_GB=12\n" in selector
     assert "MemoryHigh=100G\n" in unit
     assert "MemoryMax=116G\n" in unit

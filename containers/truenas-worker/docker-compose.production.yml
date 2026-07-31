@@ -15,7 +15,7 @@ name: poke-bot-truenas-worker
 
 services:
   worker:
-    image: poke-bot-truenas-worker:matchup-v40-v6-router-runtime
+    image: ${POKEBOT_ELMO_IMAGE:-poke-bot-truenas-worker:archaludon-fusion-v2-r74-memory-v1}
     command: ["production"]
     restart: "on-failure:3"
     init: true
@@ -35,19 +35,25 @@ services:
 
       # Per-child recycling every 16 games kept multiple replacements
       # initializing continuously and tripped the exact-capacity watchdog.
-      # The measured production tree now reaches its independent 30 GiB RSS
-      # guard after roughly 1,000 whole-game jobs. Drain the complete service
-      # at 768 jobs, before that failure point, while retaining 256-game child
-      # lifetimes to avoid synchronized replacement gaps.
+      # Retain per-child recycling, but do not rotate the complete endpoint by
+      # job count. Whole-service rotation tears down every live trainer socket
+      # and creates a long CLOSE-WAIT/reconnect trough. The independent 45 GiB
+      # cgroup-charged-memory guard, host-free-RAM guard, and worker-capacity
+      # watchdog remain the fail-closed memory protections.
       POKEBOT_WORKER_RECYCLE_GAMES: "256"
       WORKER_RECYCLE_GAMES: "256"
-      POKEBOT_REMOTE_MAX_SERVICE_JOBS: "768"
+      POKEBOT_REMOTE_MAX_SERVICE_JOBS: "0"
       POKEBOT_REMOTE_PLANNED_ROTATION_EXIT_CODE: "75"
 
-      # This immutable safety image validates a 30 GiB in-process guard. The
-      # outer cgroup is 64 GiB/no-swap, and the host-free guard remains an
-      # independent stop. Raise this only with a newly audited image.
-      POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: "30"
+      # The legacy variable name is wire-compatible, but the audited worker
+      # applies this 45 GiB threshold to cgroup-v2 memory.current (PSS fallback)
+      # rather than summed descendant RSS, which double-counts shared spawn
+      # pages. The outer cgroup is 64 GiB/no-swap, and the host-free guard
+      # remains an independent stop.
+      # The 36-worker H10 runtime reached 30.01 GiB while the host still had
+      # about 55 GiB available. Allow the measured working set to settle while
+      # retaining both the 24 GiB host-free floor and 64 GiB no-swap cgroup.
+      POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: "45"
       POKEBOT_REMOTE_MIN_FREE_RAM_GB: "24"
       POKEBOT_REMOTE_WATCHDOG_INTERVAL_S: "5"
       # Under 48-way load a recycled libcg child has taken slightly over one
@@ -83,6 +89,10 @@ services:
     # headroom beyond the former 768-thread ceiling.
     pids_limit: 1536
     volumes:
+      # Keep the audited production guard contract host-managed so an
+      # allowance-only safety update does not require rebuilding the complete
+      # immutable H10 runtime image.
+      - /mnt/Main/main/poke-bot-agent/deployments/persistent-workers-20260720-v1/containers/truenas-worker/entrypoint.sh:/entrypoint.sh:ro
       - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/checkpoint:/workspace/checkpoint:ro
       - /mnt/Main/Elmo/poke-bot-agent/containers/truenas-worker/runtime-logs:/workspace/runtime-logs
       # Frozen-specialist packages are runtime data, not image-local state.

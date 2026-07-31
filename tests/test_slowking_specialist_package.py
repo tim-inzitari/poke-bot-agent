@@ -20,7 +20,7 @@ REPRESENTATIVE_PATH = (
 CONTRACT_PATH = (
     ROOT / "config" / "deck_guides" / "slowking.yaml"
 )
-COMBO_COVERAGE_PATH = ROOT / "state" / "slowking_combo_head_coverage_v1.json"
+COMBO_COVERAGE_PATH = ROOT / "state" / "slowking_combo_head_coverage_v2.json"
 REPRESENTATIVE = json.loads(REPRESENTATIVE_PATH.read_text(encoding="utf-8"))
 CANONICAL_DECK = REPRESENTATIVE["deck"]["card_ids"]
 
@@ -332,7 +332,6 @@ def test_slowking_is_required_but_fail_closed_behind_archaludon() -> None:
     false_authority_keys = {
         "selector_eligible",
         "runtime_registry_registered",
-        "matchup_route_registered",
         "bootstrap_authorized",
         "training_authorized",
         "gate_authorized",
@@ -344,6 +343,7 @@ def test_slowking_is_required_but_fail_closed_behind_archaludon() -> None:
     assert contract["authority"]["required_specialist"] is True
     assert contract["authority"]["completion_eligible"] is True
     assert contract["authority"]["current_deck_guide_registry_registered"] is True
+    assert contract["authority"]["matchup_route_registered"] is True
     assert contract["authority"]["prestage_registered"] is True
     assert contract["authority"]["corpus_build_authorized"] is True
     assert contract["authority"]["dashboard_training_queue_registered"] is True
@@ -362,7 +362,8 @@ def test_slowking_is_required_but_fail_closed_behind_archaludon() -> None:
         "final_submission_preparation"
     )
     assert contract["training_staging"]["status"] == (
-        "blocked_behind_archaludon_and_combo_head_receipt"
+        "staged_inputs_and_combo_data_ready_behind_archaludon_"
+        "pending_final_candidate_validation"
     )
 
     state_ids = {row["id"] for row in state["specialists"]}
@@ -371,13 +372,16 @@ def test_slowking_is_required_but_fail_closed_behind_archaludon() -> None:
     assert "slowking" in state_ids
     assert "dragapult" not in state_ids
     assert state["training_priority"]["ordered_unfinished_ids_after_active"] == [
-        "archaludon-ex",
         "slowking",
     ]
-    assert "slowking" not in roster["active_expert_ids"]
-    assert "slowking" not in roster["expert_ids"]
-    assert "slowking" not in roster["specialist_priority"]
-    assert all(slot["archetype_id"] != "slowking" for slot in roster["slots"])
+    assert "slowking" in roster["active_expert_ids"]
+    assert "slowking" in roster["expert_ids"]
+    assert "slowking" in roster["specialist_priority"]
+    slowking_slot = next(
+        slot for slot in roster["slots"] if slot["archetype_id"] == "slowking"
+    )
+    assert slowking_slot["slot"] == 19
+    assert slowking_slot["status"] == "dormant"
     assert "slowking" not in runtime["specialists"]
     assert all(
         row["specialist_id"] != "slowking" for row in frozen["specialists"]
@@ -433,7 +437,7 @@ def test_slowking_is_required_but_fail_closed_behind_archaludon() -> None:
     }
 
 
-def test_combo_head_coverage_map_is_checksum_bound_and_honestly_blocked() -> None:
+def test_combo_head_coverage_map_has_real_data_and_remains_honestly_blocked() -> None:
     coverage = json.loads(COMBO_COVERAGE_PATH.read_text(encoding="utf-8"))
     required = {
         "top_deck_construction_and_consumption",
@@ -445,17 +449,24 @@ def test_combo_head_coverage_map_is_checksum_bound_and_honestly_blocked() -> Non
         "prize_mapping_and_remaining_turn_outcome_timing",
     }
 
-    assert coverage["artifact_sha256"] == canonical_payload_digest(coverage)
-    assert {
-        row["id"] for row in coverage["coverage_requirements"]
-    } == required
-    assert coverage["missing_typed_head"]["id"] == "combo_state"
-    assert coverage["missing_typed_head"]["implementation_status"] == (
-        "not_implemented"
+    assert set(coverage["required_decision_classes"]) == required
+    assert all(
+        status.endswith("validated")
+        for status in coverage["required_decision_classes"].values()
     )
-    assert coverage["missing_typed_head"]["outputs"] == 32
-    assert coverage["fusion_contract"]["guide_is_only_no_route_exception"] is True
-    assert coverage["required_validation"]["receipt"] is None
+    assert coverage["typed_head"]["id"] == "combo_state"
+    assert coverage["typed_head"]["outputs"] == 32
+    assert coverage["implementation_validation"]["receipt"] == (
+        "state/slowking_combo_head_implementation_validation_v2.json"
+    )
+    assert coverage["implementation_validation"]["receipt_sha256"] == (
+        "sha256:"
+        "219fae80bb298008a26c727d4237723a"
+        "a08b3f6015d50f244cac94feb5c54fb2"
+    )
+    assert coverage["causal_corpus_validation"]["combo_state_rows"] == 19_251
+    assert coverage["resident_pack_validation"]["combo_state_targets"] is True
+    assert coverage["remaining_final_candidate_evidence"]
     assert coverage["training_ready"] is False
     assert coverage["launch_ready"] is False
 
@@ -472,7 +483,13 @@ def test_slowking_parameter_exception_is_scoped_and_bounded() -> None:
     assert budget["proposed_added_parameter_total_at_d_model_96"] == (
         24_800 + 2_081
     )
-    assert budget["complete_candidate_parameter_count"] is None
+    assert budget["complete_candidate_parameter_count"] == 1_910_963
+    assert budget["complete_candidate_measurement_status"] == (
+        "validated_prestage_instantiation"
+    )
+    assert budget["complete_candidate_inventory_receipt"] == (
+        "state/slowking_candidate_parameter_inventory_v1.json"
+    )
     assert budget["exception_receipt_required_if_above_soft_target"] is True
     assert budget["above_hard_ceiling_requires_new_owner_decision"] is True
 

@@ -1,0 +1,344 @@
+{
+  "action_influence_ablations": {
+    "action_q": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.02633829228579998,
+      "mean_absolute_action_logit_delta": 0.005916390102356672,
+      "selection_change_rate": 0.0234375
+    },
+    "action_resource": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.023702222853899002,
+      "mean_absolute_action_logit_delta": 0.004793214611709118,
+      "selection_change_rate": 0.015625
+    },
+    "action_target": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.016477374359965324,
+      "mean_absolute_action_logit_delta": 0.005067830439656973,
+      "selection_change_rate": 0.015625
+    },
+    "action_type": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.024858346208930016,
+      "mean_absolute_action_logit_delta": 0.005266960710287094,
+      "selection_change_rate": 0.0
+    },
+    "action_utility": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.026000535115599632,
+      "mean_absolute_action_logit_delta": 0.007020214106887579,
+      "selection_change_rate": 0.015625
+    },
+    "archetype": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.01747112348675728,
+      "mean_absolute_action_logit_delta": 0.004440180491656065,
+      "selection_change_rate": 0.0078125
+    },
+    "combo_state": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.035051219165325165,
+      "mean_absolute_action_logit_delta": 0.01124484185129404,
+      "selection_change_rate": 0.03125
+    },
+    "game_phase": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.02374448999762535,
+      "mean_absolute_action_logit_delta": 0.005833115894347429,
+      "selection_change_rate": 0.0234375
+    },
+    "lethal_threat": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.019346242770552635,
+      "mean_absolute_action_logit_delta": 0.004748381208628416,
+      "selection_change_rate": 0.0234375
+    },
+    "opponent_hand": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.032653823494911194,
+      "mean_absolute_action_logit_delta": 0.011031108908355236,
+      "selection_change_rate": 0.0078125
+    },
+    "opponent_remainder": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.028923360630869865,
+      "mean_absolute_action_logit_delta": 0.009031922556459904,
+      "selection_change_rate": 0.0078125
+    },
+    "opponent_response": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.022783689200878143,
+      "mean_absolute_action_logit_delta": 0.006917318794876337,
+      "selection_change_rate": 0.015625
+    },
+    "outcome_distribution": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.026502903550863266,
+      "mean_absolute_action_logit_delta": 0.005507828202098608,
+      "selection_change_rate": 0.0234375
+    },
+    "prize_race": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.024524228647351265,
+      "mean_absolute_action_logit_delta": 0.005950847640633583,
+      "selection_change_rate": 0.015625
+    },
+    "remaining_turns": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.026455426588654518,
+      "mean_absolute_action_logit_delta": 0.005771569907665253,
+      "selection_change_rate": 0.0234375
+    },
+    "resource_forecast": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.02406049333512783,
+      "mean_absolute_action_logit_delta": 0.006814058870077133,
+      "selection_change_rate": 0.0234375
+    },
+    "setup_board_outcome": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.027223270386457443,
+      "mean_absolute_action_logit_delta": 0.006875974591821432,
+      "selection_change_rate": 0.015625
+    },
+    "tactical_outcomes": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.028643840923905373,
+      "mean_absolute_action_logit_delta": 0.007990769110620022,
+      "selection_change_rate": 0.0
+    },
+    "value": {
+      "decisions_evaluated": 128,
+      "maximum_absolute_logit_contribution_observed": 0.0205996036529541,
+      "mean_absolute_action_logit_delta": 0.00514640286564827,
+      "selection_change_rate": 0.0078125
+    }
+  },
+  "action_influence_revision": 56,
+  "checks": {
+    "active_and_historical_specialists_unchanged": true,
+    "all_curriculum_heads_have_valid_fusion_roles": true,
+    "all_training_paths_use_the_declared_mode": true,
+    "bounded_aggregate_residual": true,
+    "causal_suffix_invariance": true,
+    "direct_policy_cross_entropy_absent": true,
+    "every_curriculum_head_has_bounded_action_scoring_route": true,
+    "exact_parent_parity_at_initialization": true,
+    "fused_policy_remains_outcome_and_win_trained": true,
+    "guide_supervision_terminates_at_strategic_heads": true,
+    "legal_option_dependence": true,
+    "observed_outcome_targets_not_replaced": true,
+    "one_option_conditioned_route_per_learned_head": true,
+    "per_head_action_influence_ablation_passed": true
+  },
+  "curriculum_spec_sha256": "sha256:3499efc6d3f4699156237b444052f9e9636c3075e085656d27e462695b4c2e5f",
+  "decision_fusion_schema": "poke_bot.causal_decision_fusion/v2",
+  "guide_contract_sha256": "sha256:27cce96b2e5ddcb95f875191f18430f45bd68f546b40c976ce97efd4d0200368",
+  "guide_curriculum_revision": 51,
+  "guide_ready_receipt": "/Users/tsinzitari/Documents/poke-agent-codex/state/final_format_alakazam_guide_ready_r79.json",
+  "guide_ready_receipt_sha256": "sha256:00afe04c69573e5325a835f62ab9dba11bdbed3547246c7b899ee9dd75aab197",
+  "head_role_map_sha256": "sha256:639aab7fb462ac00061758b3555143d1fbd3e1c4ce2a6c85e9322d39a8f78cfb",
+  "implementation_artifacts": [
+    {
+      "path": "/Users/tsinzitari/Documents/poke-agent-codex/poke_bot/train.py",
+      "role": "training_implementation",
+      "sha256": "sha256:9186e283c6c5d36a80fef8f13a6ab40a5790bcbc08ae16711e0dc1b670f7399b"
+    },
+    {
+      "path": "/Users/tsinzitari/Documents/poke-agent-codex/scripts/validate_future_specialist_strategic_curriculum.py",
+      "role": "validation_test",
+      "sha256": "sha256:7433ac766f02a074a14535dc35719b4e3a3113d27109ab8e7054df2140303526"
+    }
+  ],
+  "measurements": {
+    "guide_labeled_rows": 3162936,
+    "guide_to_strategic_head_gradient_norm": 0.18594132363796234,
+    "maximum_absolute_aggregate_residual_observed": 0.3393089771270752
+  },
+  "required_training_paths": [
+    "supervised_bootstrap",
+    "pure_rl",
+    "resident_expert_rehearsal"
+  ],
+  "route_validation": {
+    "action_q": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.1631288230419159,
+      "post_training_route_gradient_norm": 0.07967109233140945,
+      "route_id": "action_q-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "action_resource": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.1291312575340271,
+      "post_training_route_gradient_norm": 0.06995110213756561,
+      "route_id": "action_resource-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "action_target": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.1341632604598999,
+      "post_training_route_gradient_norm": 0.06714589148759842,
+      "route_id": "action_target-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "action_type": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.14981308579444885,
+      "post_training_route_gradient_norm": 0.06521491706371307,
+      "route_id": "action_type-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "action_utility": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.17627586424350739,
+      "post_training_route_gradient_norm": 0.10044051706790924,
+      "route_id": "action_utility-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "archetype": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.12347360700368881,
+      "post_training_route_gradient_norm": 0.07659279555082321,
+      "route_id": "archetype-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "combo_state": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.297213077545166,
+      "post_training_route_gradient_norm": 0.1772441565990448,
+      "route_id": "combo_state-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "game_phase": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.16468405723571777,
+      "post_training_route_gradient_norm": 0.08450193703174591,
+      "route_id": "game_phase-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "lethal_threat": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.13823658227920532,
+      "post_training_route_gradient_norm": 0.06178545206785202,
+      "route_id": "lethal_threat-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "opponent_hand": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.28728583455085754,
+      "post_training_route_gradient_norm": 0.13839633762836456,
+      "route_id": "opponent_hand-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "opponent_remainder": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.24030578136444092,
+      "post_training_route_gradient_norm": 0.12170455604791641,
+      "route_id": "opponent_remainder-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "opponent_response": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.18852081894874573,
+      "post_training_route_gradient_norm": 0.08950820565223694,
+      "route_id": "opponent_response-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "outcome_distribution": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.15681229531764984,
+      "post_training_route_gradient_norm": 0.07388558983802795,
+      "route_id": "outcome_distribution-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "prize_race": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.17704196274280548,
+      "post_training_route_gradient_norm": 0.08601634204387665,
+      "route_id": "prize_race-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "remaining_turns": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.18359801173210144,
+      "post_training_route_gradient_norm": 0.0771820917725563,
+      "route_id": "remaining_turns-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "resource_forecast": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.20911982655525208,
+      "post_training_route_gradient_norm": 0.08283884078264236,
+      "route_id": "resource_forecast-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "setup_board_outcome": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.1660047471523285,
+      "post_training_route_gradient_norm": 0.11617627739906311,
+      "route_id": "setup_board_outcome-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "tactical_outcomes": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.20055539906024933,
+      "post_training_route_gradient_norm": 0.10330619663000107,
+      "route_id": "tactical_outcomes-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    },
+    "value": {
+      "causal_suffix_max_logit_delta": 0.0,
+      "legal_option_dependence_delta": 0.15011370182037354,
+      "post_training_route_gradient_norm": 0.06058288738131523,
+      "route_id": "value-route",
+      "route_input": "option_hidden_plus_typed_output",
+      "zero_safe_initial_max_logit_delta": 0.0
+    }
+  },
+  "schema": "poke_bot.future_specialist_strategic_curriculum_validation/v1",
+  "specialist_id": "alakazam",
+  "status": "validated",
+  "strategic_branch_scope_revision": 56,
+  "training_mode": "strategic_curriculum_v1",
+  "validated_route_ids": [
+    "action_q-route",
+    "action_resource-route",
+    "action_target-route",
+    "action_type-route",
+    "action_utility-route",
+    "archetype-route",
+    "combo_state-route",
+    "game_phase-route",
+    "lethal_threat-route",
+    "opponent_hand-route",
+    "opponent_remainder-route",
+    "opponent_response-route",
+    "outcome_distribution-route",
+    "prize_race-route",
+    "remaining_turns-route",
+    "resource_forecast-route",
+    "setup_board_outcome-route",
+    "tactical_outcomes-route",
+    "value-route"
+  ]
+}

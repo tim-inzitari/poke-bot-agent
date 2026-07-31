@@ -1861,6 +1861,35 @@ def training_route_for_decision(
     """Return the offline oracle route after package/full-deck validation."""
 
     ticket = adapter_training_ticket(sequence)
+    _validate_training_ticket_sequence(sequence, ticket)
+    return _training_route_for_ticket(decision, ticket)
+
+
+def training_routes_for_sequence(sequence: "GameSequence") -> tuple[int, ...]:
+    """Validate one audited ticket and return every exact decision route.
+
+    Router Format 6 resolves and validates the immutable slot registry while
+    parsing the ticket.  Adapter training consumes complete sequences, so
+    repeating that file-backed identity check for every decision is redundant
+    and can dominate CPU time on million-row corpora.  This helper preserves
+    the same fail-closed decision checks while pinning the validated ticket for
+    exactly one sequence traversal.
+    """
+
+    ticket = adapter_training_ticket(sequence)
+    _validate_training_ticket_sequence(sequence, ticket)
+    return tuple(
+        _training_route_for_ticket(decision, ticket)
+        for decision in sequence.decisions
+    )
+
+
+def _validate_training_ticket_sequence(
+    sequence: "GameSequence",
+    ticket: AdapterTrainingTicket,
+) -> None:
+    """Fail closed if a parsed ticket no longer identifies its sequence."""
+
     raw_sequence_seat = getattr(sequence, "seat", None)
     if (
         normalize_matchup_identity(sequence.archetype)
@@ -1873,6 +1902,14 @@ def training_route_for_decision(
         or training_route_for_archetype(ticket.archetype_id) != int(ticket.route)
     ):
         raise RuntimeError("matchup-adapter training ticket no longer matches sequence")
+
+
+def _training_route_for_ticket(
+    decision: "DecisionSample",
+    ticket: AdapterTrainingTicket,
+) -> int:
+    """Validate one decision against an already validated sequence ticket."""
+
     raw_route = getattr(decision, "matchup_adapter_oracle_route", UNKNOWN_ROUTE)
     if type(raw_route) is not int:
         raise RuntimeError("oracle training route is not an exact integer identity")
@@ -2176,6 +2213,7 @@ __all__ = [
     "prepare_adapter_corpus_records",
     "runtime_model_route",
     "training_route_for_decision",
+    "training_routes_for_sequence",
     "validate_activation_receipt",
     "validate_adapter_training_authorization",
 ]

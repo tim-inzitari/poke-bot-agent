@@ -512,6 +512,81 @@ def test_current_deck_guide_migration_refuses_started_bootstrap(
         )
 
 
+def test_started_bootstrap_allows_validation_receipt_only_rebind(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    checkpoints = run_dir / "checkpoints"
+    checkpoints.mkdir(parents=True)
+    (checkpoints / "epoch_01.pt").write_bytes(b"checkpoint")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    for name in (
+        "slowking_combo_head_implementation_validation_v2.json",
+        "slowking_combo_corpus_validation_v1.json",
+        "slowking_expert_cpu_pack_validation_v1.json",
+        "slowking_candidate_parameter_inventory_v1.json",
+    ):
+        (state_dir / name).write_text("{}\n", encoding="utf-8")
+    base_guide = {
+        "schema": "poke_bot.current_deck_guide_handoff/v1",
+        "specialist_id": "slowking",
+        "guide_version": "slowking-north-star-v1",
+        "training_mode": "strategic_curriculum_v1",
+        "strategic_curriculum": {
+            "schema": "poke_bot.specialist_guide_training_contract/v1",
+            "curriculum_spec": "/immutable/spec.json",
+            "curriculum_spec_sha256": "spec-digest",
+            "head_role_map": "/immutable/roles.json",
+            "head_role_map_sha256": "roles-digest",
+            "validation_receipt": "/derived/validation.json",
+            "validation_receipt_sha256": "old-receipt",
+        },
+    }
+    payload = {
+        "schema": "poke_bot.sequential_specialist_handoff_contract/v1",
+        "source_specialist": {"id": "archaludon-ex"},
+        "next_specialist": {
+            "id": "slowking",
+            "run_dir": str(run_dir),
+        },
+        "paths": {"state": str(tmp_path / "outputs/state/handoff.json")},
+        "training": {
+            "minimum_decisions": 19_000,
+            "supervised_epochs": 25,
+            "expanded_heads": expanded_handoff_training_contract(),
+            "decision_fusion": decision_fusion_handoff_contract(
+                strategic_curriculum=True,
+                combo_state_head=True,
+            ),
+            "current_deck_guide": base_guide,
+        },
+        "gate_materialization": {"archetype_label": "Archaludon ex"},
+    }
+    refreshed_guide = json.loads(json.dumps(base_guide))
+    refreshed_guide["strategic_curriculum"][
+        "validation_receipt_sha256"
+    ] = "new-receipt"
+
+    upgraded, changes = _upgrade_selected_handoff_contract(
+        payload,
+        {
+            "specialist_id": "slowking",
+            "decisions": 19_251,
+            "minimum_decisions": 19_000,
+        },
+        current_deck_guide=refreshed_guide,
+    )
+
+    assert (
+        upgraded["training"]["current_deck_guide"]["strategic_curriculum"][
+            "validation_receipt_sha256"
+        ]
+        == "new-receipt"
+    )
+    assert "current_deck_guide" in changes
+
+
 def test_prebootstrap_upgrade_recovers_checksum_bound_transition(
     tmp_path: Path,
 ) -> None:

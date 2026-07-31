@@ -683,6 +683,7 @@ def _atomic_selector(
     path: Path,
     specialist_id: str,
     runtime_root: Path,
+    required_fusion_heads: tuple[str, ...],
 ) -> None:
     rows = path.read_text(encoding="utf-8").splitlines()
     replacements = {
@@ -690,6 +691,14 @@ def _atomic_selector(
         "POKEBOT_SPECIALIST_RUNTIME_ROOT=": str(runtime_root),
         "PYTHONPATH=": str(runtime_root),
         "POKEBOT_EXPANDED_HEADS_ENABLED=": "1",
+        "POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=": (
+            "1"
+            if "setup_board_outcome" in required_fusion_heads
+            else "0"
+        ),
+        "POKEBOT_COMBO_STATE_HEAD_ENABLED=": (
+            "1" if "combo_state" in required_fusion_heads else "0"
+        ),
         "POKEBOT_DECISION_FUSION_ENABLED=": "1",
         "POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=": "1",
         "POKEBOT_FUTURE_GUIDE_WEIGHT_POLICY_REVISION=": "44",
@@ -750,6 +759,8 @@ def register(
     authorization_name: str = "",
     replace_unpassed: bool = False,
     matchup_target_ids: tuple[str, ...] | None = None,
+    decision_fusion_required_heads: tuple[str, ...] | None = None,
+    receipt_suffix: str = "",
 ) -> dict[str, Any]:
     specialist_id = specialist_id.strip().lower()
     if not specialist_id or not all(
@@ -953,6 +964,29 @@ def register(
     strategic_decision_fusion = (
         resolved_training_mode == GUIDE_TRAINING_MODE_STRATEGIC
     )
+    resolved_fusion_heads = tuple(
+        decision_fusion_required_heads
+        or (
+            CANONICAL_LEARNED_DECISION_SOURCES
+            if strategic_decision_fusion
+            else DECISION_FUSION_REQUIRED_HEADS
+        )
+    )
+    canonical_fusion_prefix = tuple(
+        CANONICAL_LEARNED_DECISION_SOURCES
+        if strategic_decision_fusion
+        else DECISION_FUSION_REQUIRED_HEADS
+    )
+    if (
+        resolved_fusion_heads[: len(canonical_fusion_prefix)]
+        != canonical_fusion_prefix
+        or resolved_fusion_heads[len(canonical_fusion_prefix) :]
+        not in {(), ("combo_state",)}
+        or len(resolved_fusion_heads) != len(set(resolved_fusion_heads))
+    ):
+        raise RuntimeError("decision-fusion runtime head contract changed")
+    if receipt_suffix not in {"", "-combo-v2"}:
+        raise RuntimeError("runtime registration receipt suffix changed")
     row = {
         "status": "ready",
         "reason": None,
@@ -980,11 +1014,7 @@ def register(
             ),
             "required": True,
             "runtime_enabled": True,
-            "required_heads": list(
-                CANONICAL_LEARNED_DECISION_SOURCES
-                if strategic_decision_fusion
-                else DECISION_FUSION_REQUIRED_HEADS
-            ),
+            "required_heads": list(resolved_fusion_heads),
         },
         "guide_id": guide_id,
         "guide_loss_weight": guide_loss_weight,
@@ -1081,7 +1111,12 @@ def register(
     specialists[specialist_id] = row
     registry["specialists"] = specialists
     _atomic_json(runtime_registry, registry)
-    _atomic_selector(selector_env, specialist_id, runtime_root.resolve())
+    _atomic_selector(
+        selector_env,
+        specialist_id,
+        runtime_root.resolve(),
+        resolved_fusion_heads,
+    )
     receipt = {
         "schema": "poke_bot.specialist_runtime_registration/v1",
         "created_at_utc": timestamp,
@@ -1098,7 +1133,9 @@ def register(
         separators=(",", ":"),
     ).encode("utf-8")
     receipt["identity_sha256"] = "sha256:" + hashlib.sha256(encoded).hexdigest()
-    receipt_path = state_root / f"{specialist_id}-runtime-registration-v1.json"
+    receipt_path = state_root / (
+        f"{specialist_id}-runtime-registration-v1{receipt_suffix}.json"
+    )
     _atomic_json(receipt_path, receipt)
     return receipt
 

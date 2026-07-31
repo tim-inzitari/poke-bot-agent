@@ -1,0 +1,101 @@
+{
+  "schema": "poke_bot.elmo_memory_guard_repair/v1",
+  "status": "activated_pending_post_activation_collection_continuity",
+  "created_at_utc": "2026-07-30T23:14:00Z",
+  "owner_goal_revision": 74,
+  "diagnosis": {
+    "classification": "summed_rss_shared_page_double_count_not_unique_30_gib_leak",
+    "guard_failures_utc": [
+      "2026-07-30T22:11:51.874916413Z",
+      "2026-07-30T22:48:21.032168355Z"
+    ],
+    "summed_process_tree_rss_at_failure_gib": 30.01,
+    "container_cgroup_v2_peak_bytes": 26523955200,
+    "container_cgroup_v2_peak_gib": 24.70,
+    "summed_process_tree_rss_role_after_repair": "diagnostic_only"
+  },
+  "implementation": {
+    "source": "scripts/run_remote_worker.py",
+    "source_sha256": "sha256:8c03f5d4855802a9bc3de5a20a1af0f24cce04c033ae299b203eaeb9948871d9",
+    "guard_source_priority": [
+      "cgroup_v2_memory_current",
+      "process_tree_pss",
+      "process_tree_rss_fallback"
+    ],
+    "guard_limit_gib": 30,
+    "host_available_ram_floor_gib": 24,
+    "container_memory_limit_gib": 64,
+    "container_swap_limit_gib": 0,
+    "child_recycle_games": 256,
+    "routine_whole_service_rotation_jobs": 0,
+    "simulator_workers": 36,
+    "leaf_servers": 4
+  },
+  "image_lineage": {
+    "base_tag": "poke-bot-truenas-worker:archaludon-fusion-v2-r72",
+    "base_image_id": "sha256:a42451105dcf58f9e5cb09a96297254ca8dd1fd678f688c657ae5c6e25369d43",
+    "candidate_tag": "poke-bot-truenas-worker:archaludon-fusion-v2-r74-memory-v1",
+    "candidate_image_id": "sha256:fe3604f77aead38bcb349a4fbefb4cdfe02513df4135abc8ce58c3fca0ac234f",
+    "candidate_build_file": "containers/truenas-worker/Dockerfile.r74-memory-guard",
+    "candidate_build_file_sha256": "sha256:04ce6444fd60cb7ded90c48037c245cf5bf5b5e0a9d4af1cfa26645784c15dc4",
+    "base_layers_are_exact_candidate_prefix": true,
+    "only_runtime_source_overlay": "scripts/run_remote_worker.py",
+    "poke_bot_tree_digest_unchanged": "sha256:182e2224b6c065f2a305976278a7799fe0b5831bbd535f53c9084d8b4a4ef366",
+    "entrypoint_sha256_unchanged": "sha256:55776edc6d78074d9075e0d52e89d5b8391c02e5f2248daf3c2114eeaa683c26",
+    "supervisor_sha256_unchanged": "sha256:fe694aa8215f3ace60a1f60462d34449b5d401fdf6622dcb5d9f4f2d0776f25d"
+  },
+  "rejected_attempt": {
+    "tag": "poke-bot-truenas-worker:archaludon-fusion-v2-r74",
+    "image_id": "sha256:329ee8264a71480fa51eba029a755a5a4801e1dfee1b5a41bee1e429dcb0510b",
+    "status": "rejected_before_serving",
+    "reason": "full-current-workspace rebuild changed unrelated router-contract bytes",
+    "observed_error": "public tree does not match the canonical V5 or V6 route contract",
+    "active_jobs_at_attempt": 0,
+    "trainer_restarted": false,
+    "training_data_lost": false,
+    "recovery": "exact r72 image restored healthy before corrected overlay activation"
+  },
+  "activation": {
+    "boundary": "verified_zero_active_remote_jobs_during_archaludon_iteration_3_training",
+    "activated_at_utc": "2026-07-30T23:13:13.243727398Z",
+    "container_id": "ccd8d3e26635c01719bc2f82c4f522e1227078d79c018e87f048f710d59c37eb",
+    "container_restart_count": 0,
+    "container_health": "healthy",
+    "checkpoint_digest": "sha256:a5c1230362e6df179628157044171efdf86eb850995f1be97ab57b987633998a",
+    "active_checkpoint_pointer_sha256": "sha256:026682df755f45dc8d16781d1a766d5d66af15176a5a9f157fe1843256eeb188",
+    "active_checkpoint_path": "/workspace/checkpoint/iter_00002.a5c1230362e6df17.pt",
+    "simulator_workers": 36,
+    "default_workers": 36,
+    "leaf_servers": 4,
+    "leaf_alive": true,
+    "leaf_identity_ok": true,
+    "worker_capacity_healthy": true,
+    "guard_memory_source": "cgroup_v2_memory_current",
+    "guard_memory_gib": 9.23,
+    "summed_process_tree_rss_gib": 14.41,
+    "host_available_ram_gib": 43.62,
+    "active_jobs": 0,
+    "jobs_failed": 0
+  },
+  "trainer_non_interference": {
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid_before": 1159049,
+    "main_pid_after": 1159049,
+    "restart_count_before": 1,
+    "restart_count_after": 1,
+    "active_specialist": "archaludon-ex",
+    "completed_collection_iteration": 3,
+    "completed_collection_receipt_sha256": "sha256:43d3a2df50b009dde08853eb8d6c2508c8563c0ca3b5f826a05192ddd81b1949",
+    "active_training_modified": false
+  },
+  "validation": {
+    "focused_tests_passed": 252,
+    "focused_tests_skipped_host_only": 2,
+    "python_compile_passed": true,
+    "compose_render_passed": true,
+    "post_activation_health_passed": true,
+    "post_activation_collection_continuity": "pending_next_archaludon_collection"
+  }
+}

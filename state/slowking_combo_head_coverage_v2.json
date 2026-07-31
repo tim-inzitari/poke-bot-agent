@@ -1,0 +1,88 @@
+{
+  "schema": "poke_bot.slowking_combo_head_coverage/v2",
+  "status": "candidate_training_authorized_final_candidate_promotion_gate_pending",
+  "specialist_id": "slowking",
+  "exact_deck_sha256": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7",
+  "typed_head": {
+    "id": "combo_state",
+    "architecture": [
+      "d_model",
+      192,
+      32
+    ],
+    "outputs": 32,
+    "input": "board_state_cross_attended_option_hidden",
+    "computation_role": "independent_head",
+    "fusion_role": "fused_input",
+    "action_influence": "bounded_option_conditioned_route",
+    "fusion_route_id": "decision_fusion.dedicated_routes.combo_state",
+    "guide_preference_index_allowed_as_target": false,
+    "hidden_or_future_information_allowed": false
+  },
+  "implementation_validation": {
+    "receipt": "state/slowking_combo_head_implementation_validation_v2.json",
+    "receipt_sha256": "sha256:3499535560366c205e9a772184df03b8263918b4dc828a425d672ebf846e5d78",
+    "checks_passed": 14,
+    "step_zero_parent_parity": true,
+    "finite_nonzero_head_and_route_gradients": true,
+    "finite_nonzero_head_and_route_updates": true,
+    "legal_option_dependence": true,
+    "bounded_aggregate_residual": true,
+    "leave_one_head_out_logit_attribution": true
+  },
+  "causal_corpus_validation": {
+    "receipt": "state/slowking_combo_corpus_validation_v1.json",
+    "receipt_sha256": "sha256:08f818ac554b33f7caa5a8c83dd5968ad1a2e3bccd69d8e825ba5d18a96d13ac",
+    "corpus_receipt": "state/slowking_corpus_ready_v2.json",
+    "corpus_receipt_sha256": "sha256:3be92bea467470f50e495b4b95a911adb62225921f2952db8ea55a76efb6f63b",
+    "games": 311,
+    "decisions": 19251,
+    "combo_state_rows": 19251,
+    "top_deck_labels": 887,
+    "seek_source_labels": 4948,
+    "copied_attack_legality_cells": 22611,
+    "visible_combo_piece_cells": 96255,
+    "energy_route_cells": 96255,
+    "bench_continuity_cells": 77004,
+    "causal_suffix_invariance": true,
+    "current_non_imitation_consumer_contract": true
+  },
+  "resident_pack_validation": {
+    "receipt": "state/slowking_expert_cpu_pack_validation_v1.json",
+    "pack_key": "d2f2f1de172c31c05ea55f4414ee1aa49591e4c2284b6ed793b7a90380a693dc",
+    "combo_state_targets": true,
+    "temporal_layout": true,
+    "exact_targets": true,
+    "train_games": 280,
+    "validation_games": 31
+  },
+  "required_decision_classes": {
+    "top_deck_construction_and_consumption": "data_validated",
+    "copied_non_rule_box_attack_legality_and_choice": "data_validated",
+    "visible_combo_piece_search_and_recovery": "data_validated",
+    "psychic_telepath_boomerang_and_acceleration": "data_validated",
+    "slowpoke_slowking_and_next_attacker_bench_continuity": "data_validated",
+    "opponent_disruption_and_response": "expanded_head_labels_validated",
+    "prize_mapping_and_remaining_turn_outcome_timing": "expanded_head_labels_validated"
+  },
+  "remaining_final_candidate_evidence": [
+    "loss_and_calibration_by_typed_output_after_training",
+    "leave_one_head_out_action_attribution_on_trained_slowking_states",
+    "peak_runtime_memory_and_latency",
+    "package_size_and_final_submission_compatibility",
+    "unused_capacity_rejected_by_ablation",
+    "terminal_preflight_after_archaludon_completion"
+  ],
+  "pretraining_authorization": {
+    "schema": "poke_bot.slowking_combo_pretraining_authorization/v1",
+    "candidate_training_only": true,
+    "freeze_registration_or_launch": false,
+    "generated_by_bootstrap_preflight": true
+  },
+  "candidate_training_ready": true,
+  "training_ready": false,
+  "launch_ready": false,
+  "selector_authority": false,
+  "gradient_authority": false,
+  "active_archaludon_training_modified": false
+}

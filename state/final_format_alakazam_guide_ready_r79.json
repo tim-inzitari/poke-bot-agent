@@ -1,0 +1,56 @@
+{
+  "schema": "poke_bot.current_deck_guide_corpus_ready/v1",
+  "status": "validated",
+  "created_at_utc": "2026-07-31T14:47:37Z",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "guide_version": "powerful-hand-v1",
+  "training_mode": "strategic_curriculum_v1",
+  "guide_contract": "config/deck_guides/alakazam-final-refresh.yaml",
+  "guide_contract_sha256": "sha256:27cce96b2e5ddcb95f875191f18430f45bd68f546b40c976ce97efd4d0200368",
+  "teacher_module": "poke_bot/alakazam_heuristics.py",
+  "teacher_module_sha256": "sha256:a5dfd944ad0358a0850d280bd5d7560e7c2a79713c28e4763cb3d7b102c195c9",
+  "expert_writeup": "docs/deck_guides/alakazam-final-refresh-expert-brief.txt",
+  "expert_writeup_sha256": "sha256:ba648e37a545adc7e6383bd962022463e58aef0b50f4318518fdf7ac6b171411",
+  "expert_writeup_word_count": 1575,
+  "representative": {
+    "runtime_path": "/home/inzi/poke-bot-agent/data/training_mixes/top_ladder_representatives.v1.json",
+    "runtime_file_sha256": "sha256:ee42f146fd746ed3dd953515a974b22eeb264ea8eb9513c6e69a41a524454002",
+    "json_pointer": "/decks/alakazam",
+    "card_count": 60,
+    "canonical_multiset_sha256": "sha256:25878108d158704a6574356bd5d10ef287878a8f156bb048311f85bfe261db30"
+  },
+  "corpus": {
+    "protected_pointer": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/alakazam/PROTECTED_EXPERT_CORPUS.json",
+    "protected_pointer_sha256": "sha256:e9d9182eea543e7bfe12ad5c2e7a1784fefa4866059ed153965dfffd12c7da1a",
+    "manifest": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/alakazam/manifest.json",
+    "manifest_sha256": "sha256:3836852129511fdffd2767f6701dcc562d1723bb0c345c3cf5068ad9774b9acb",
+    "date_start": "2026-07-04",
+    "date_end": "2026-07-23",
+    "records": 64411,
+    "decisions": 5152754,
+    "natural_seat_counts": {
+      "0": 32108,
+      "1": 32303
+    },
+    "natural_seat_split_is_exact_50_50": false,
+    "quality_gates_passed": true
+  },
+  "guide_rows": 3162936,
+  "guide_rows_match_selected_manifest": true,
+  "guide_runtime_input_allowed": false,
+  "direct_policy_cross_entropy_allowed": false,
+  "observed_causal_strategic_targets_only": true,
+  "initial_guide_loss_weight": 0.05,
+  "setup_board_outcome_base_loss_weight": 0.025,
+  "natural_expert_seats_may_satisfy_rl_seat_contract": false,
+  "rl_exact_50_50_receipt_required": true,
+  "authority": {
+    "preparation": true,
+    "training_launch": false,
+    "production_selector": false,
+    "freeze": false,
+    "registration": false,
+    "kaggle_submission": false
+  }
+}

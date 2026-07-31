@@ -309,6 +309,7 @@ class CoreKernel(nn.Module):
                 # core kernel instantiate a wider architecture on load.
                 for field in (
                     "setup_board_outcome_head_enabled",
+                    "combo_state_head_enabled",
                     "decision_fusion_dedicated_routes_enabled",
                     "decision_fusion_dedicated_routes_runtime_enabled",
                 ):

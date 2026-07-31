@@ -25,6 +25,11 @@ from tqdm.auto import tqdm
 from . import archetypes
 from .aux_label_contract import validated_unique_card_ids
 from .blackwell_heads import lethal_target_from_aux, prize_race_values_from_aux
+from .combo_state_contract import (
+    COMBO_STATE_KEY,
+    VECTOR_WIDTH as COMBO_STATE_VECTOR_WIDTH,
+    validate_combo_state_labels,
+)
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .features import SparseVector
 from .matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
@@ -53,7 +58,8 @@ DEFAULT_MIN_FREE_GIB = 12.0
 # retaining decision/sample boundaries explicitly. v5 preserves each policy
 # stage's exact select context and whether the demonstrated choice was STOP so
 # setup-active/setup-bench curricula never infer either fact from option text.
-DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 5
+# v6 adds sample-aligned masked Slowking combo-state targets.
+DEVICE_CORPUS_PACKING_SCHEMA_VERSION = 6
 DEVICE_CORPUS_SELECT_CONTEXT_UNKNOWN = -1
 DEVICE_CORPUS_SELECT_CONTEXT_MAX = 48
 
@@ -84,6 +90,12 @@ DEVICE_CORPUS_OPTIONAL_TENSOR_FIELDS = (
     "guide_confidence",
     "select_context",
     "selected_is_stop",
+    "combo_top_deck_target",
+    "combo_top_deck_mask",
+    "combo_seek_source_target",
+    "combo_seek_source_mask",
+    "combo_vector_target",
+    "combo_vector_mask",
     "action_index",
     "action_value",
     "action_offset",
@@ -671,6 +683,12 @@ class DeviceResidentBootstrapCorpus:
     guide_confidence: torch.Tensor | None = None
     select_context: torch.Tensor | None = None
     selected_is_stop: torch.Tensor | None = None
+    combo_top_deck_target: torch.Tensor | None = None
+    combo_top_deck_mask: torch.Tensor | None = None
+    combo_seek_source_target: torch.Tensor | None = None
+    combo_seek_source_mask: torch.Tensor | None = None
+    combo_vector_target: torch.Tensor | None = None
+    combo_vector_mask: torch.Tensor | None = None
     action_index: torch.Tensor | None = None
     action_value: torch.Tensor | None = None
     action_offset: torch.Tensor | None = None
@@ -751,6 +769,20 @@ class DeviceResidentBootstrapCorpus:
             getattr(self, name) is not None
             for name in DEVICE_CORPUS_OPTIONAL_TENSOR_FIELDS
             if name.startswith("strategic_")
+        )
+
+    @property
+    def has_combo_state_targets(self) -> bool:
+        return all(
+            getattr(self, name) is not None
+            for name in (
+                "combo_top_deck_target",
+                "combo_top_deck_mask",
+                "combo_seek_source_target",
+                "combo_seek_source_mask",
+                "combo_vector_target",
+                "combo_vector_mask",
+            )
         )
 
     def tensor_state(self) -> dict[str, torch.Tensor]:
@@ -911,6 +943,12 @@ class DeviceResidentBootstrapCorpus:
         guide_confidence = array("f")
         select_context = array("h")
         selected_is_stop = array("B")
+        combo_top_deck_target = array("b")
+        combo_top_deck_mask = array("B")
+        combo_seek_source_target = array("b")
+        combo_seek_source_mask = array("B")
+        combo_vector_target = array("f")
+        combo_vector_mask = array("B")
         sample_aux_class = array("h")
         hand_index = array("h")
         hand_offset = array("I", [0])
@@ -943,6 +981,12 @@ class DeviceResidentBootstrapCorpus:
                         )
                     ]
                     aux = dict(decision.aux_labels or {})
+                    raw_combo_target = aux.get(COMBO_STATE_KEY)
+                    combo_target = (
+                        None
+                        if raw_combo_target is None
+                        else validate_combo_state_labels(raw_combo_target)
+                    )
                     strategic_target = strategic.validate_decision(
                         aux,
                         raw_stage_count=len(canonical_stages),
@@ -1046,6 +1090,28 @@ class DeviceResidentBootstrapCorpus:
                         selected_is_stop.append(
                             1 if bool(getattr(stage, "selected_is_stop", False)) else 0
                         )
+                        combo_top_deck_target.append(
+                            0 if combo_target is None else combo_target["top_deck_target"]
+                        )
+                        combo_top_deck_mask.append(
+                            0 if combo_target is None else int(combo_target["top_deck_mask"])
+                        )
+                        combo_seek_source_target.append(
+                            0 if combo_target is None else combo_target["seek_source_target"]
+                        )
+                        combo_seek_source_mask.append(
+                            0 if combo_target is None else int(combo_target["seek_source_mask"])
+                        )
+                        combo_vector_target.extend(
+                            [0.0] * COMBO_STATE_VECTOR_WIDTH
+                            if combo_target is None
+                            else combo_target["vector_target"]
+                        )
+                        combo_vector_mask.extend(
+                            [0] * COMBO_STATE_VECTOR_WIDTH
+                            if combo_target is None
+                            else [int(value) for value in combo_target["vector_mask"]]
+                        )
                         if exact_card_vocab is not None:
                             sample_aux_class.append(-1)
                         options.add(stage.options)
@@ -1096,6 +1162,17 @@ class DeviceResidentBootstrapCorpus:
             == len(sample_board)
         ):
             raise AssertionError("resident guide/setup target shape mismatch")
+        if not (
+            len(combo_top_deck_target)
+            == len(combo_top_deck_mask)
+            == len(combo_seek_source_target)
+            == len(combo_seek_source_mask)
+            == len(sample_board)
+            and len(combo_vector_target)
+            == len(combo_vector_mask)
+            == len(sample_board) * COMBO_STATE_VECTOR_WIDTH
+        ):
+            raise AssertionError("resident combo-state target shape mismatch")
         strategic.validate_counts(
             decisions=decisions,
             samples=len(sample_board),
@@ -1138,6 +1215,12 @@ class DeviceResidentBootstrapCorpus:
             + len(guide_confidence) * guide_confidence.itemsize
             + len(select_context) * select_context.itemsize
             + len(selected_is_stop) * selected_is_stop.itemsize
+            + len(combo_top_deck_target) * combo_top_deck_target.itemsize
+            + len(combo_top_deck_mask) * combo_top_deck_mask.itemsize
+            + len(combo_seek_source_target) * combo_seek_source_target.itemsize
+            + len(combo_seek_source_mask) * combo_seek_source_mask.itemsize
+            + len(combo_vector_target) * combo_vector_target.itemsize
+            + len(combo_vector_mask) * combo_vector_mask.itemsize
             + (
                 sum(len(values) * values.itemsize for values in exact_arrays)
                 if exact_card_vocab is not None
@@ -1259,6 +1342,24 @@ class DeviceResidentBootstrapCorpus:
             selected_is_stop=_to_tensor(
                 selected_is_stop, torch.uint8, device
             ),
+            combo_top_deck_target=_to_tensor(
+                combo_top_deck_target, torch.int8, device
+            ),
+            combo_top_deck_mask=_to_tensor(
+                combo_top_deck_mask, torch.uint8, device
+            ),
+            combo_seek_source_target=_to_tensor(
+                combo_seek_source_target, torch.int8, device
+            ),
+            combo_seek_source_mask=_to_tensor(
+                combo_seek_source_mask, torch.uint8, device
+            ),
+            combo_vector_target=_to_tensor(
+                combo_vector_target, torch.float32, device
+            ).reshape(-1, COMBO_STATE_VECTOR_WIDTH),
+            combo_vector_mask=_to_tensor(
+                combo_vector_mask, torch.uint8, device
+            ).reshape(-1, COMBO_STATE_VECTOR_WIDTH),
             **strategic.tensor_kwargs(device),
             expanded_strategic_schema=(
                 EXPANDED_STRATEGIC_SCHEMA if strategic.has_targets else ""
@@ -1338,6 +1439,12 @@ class DeviceResidentBootstrapCorpus:
         guide_confidence = array("f")
         select_context = array("h")
         selected_is_stop = array("B")
+        combo_top_deck_target = array("b")
+        combo_top_deck_mask = array("B")
+        combo_seek_source_target = array("b")
+        combo_seek_source_mask = array("B")
+        combo_vector_target = array("f")
+        combo_vector_mask = array("B")
         sample_aux_class = array("h")
         hand_index = array("h")
         hand_offset = array("I", [0])
@@ -1365,6 +1472,12 @@ class DeviceResidentBootstrapCorpus:
                     )
                 ]
                 aux = dict(decision.aux_labels or {})
+                raw_combo_target = aux.get(COMBO_STATE_KEY)
+                combo_target = (
+                    None
+                    if raw_combo_target is None
+                    else validate_combo_state_labels(raw_combo_target)
+                )
                 strategic_target = strategic.validate_decision(
                     aux,
                     raw_stage_count=len(raw_stages),
@@ -1443,6 +1556,28 @@ class DeviceResidentBootstrapCorpus:
                     selected_is_stop.append(
                         1 if bool(getattr(stage, "selected_is_stop", False)) else 0
                     )
+                    combo_top_deck_target.append(
+                        0 if combo_target is None else combo_target["top_deck_target"]
+                    )
+                    combo_top_deck_mask.append(
+                        0 if combo_target is None else int(combo_target["top_deck_mask"])
+                    )
+                    combo_seek_source_target.append(
+                        0 if combo_target is None else combo_target["seek_source_target"]
+                    )
+                    combo_seek_source_mask.append(
+                        0 if combo_target is None else int(combo_target["seek_source_mask"])
+                    )
+                    combo_vector_target.extend(
+                        [0.0] * COMBO_STATE_VECTOR_WIDTH
+                        if combo_target is None
+                        else combo_target["vector_target"]
+                    )
+                    combo_vector_mask.extend(
+                        [0] * COMBO_STATE_VECTOR_WIDTH
+                        if combo_target is None
+                        else [int(value) for value in combo_target["vector_mask"]]
+                    )
                     sample_aux_class.append(-1)
                     options.add(stage.options)
                     strategic.add_sample(
@@ -1509,6 +1644,17 @@ class DeviceResidentBootstrapCorpus:
             == len(sample_board)
         ):
             raise AssertionError("exact guide/setup target shape mismatch")
+        if not (
+            len(combo_top_deck_target)
+            == len(combo_top_deck_mask)
+            == len(combo_seek_source_target)
+            == len(combo_seek_source_mask)
+            == len(sample_board)
+            and len(combo_vector_target)
+            == len(combo_vector_mask)
+            == len(sample_board) * COMBO_STATE_VECTOR_WIDTH
+        ):
+            raise AssertionError("exact combo-state target shape mismatch")
         strategic.validate_counts(
             decisions=decisions,
             samples=len(sample_board),
@@ -1538,6 +1684,12 @@ class DeviceResidentBootstrapCorpus:
             + len(guide_confidence) * guide_confidence.itemsize
             + len(select_context) * select_context.itemsize
             + len(selected_is_stop) * selected_is_stop.itemsize
+            + len(combo_top_deck_target) * combo_top_deck_target.itemsize
+            + len(combo_top_deck_mask) * combo_top_deck_mask.itemsize
+            + len(combo_seek_source_target) * combo_seek_source_target.itemsize
+            + len(combo_seek_source_mask) * combo_seek_source_mask.itemsize
+            + len(combo_vector_target) * combo_vector_target.itemsize
+            + len(combo_vector_mask) * combo_vector_mask.itemsize
             + sum(len(values) * values.itemsize for values in exact_arrays)
             + (
                 sum(len(values) * values.itemsize for values in strategic_arrays)
@@ -1605,6 +1757,24 @@ class DeviceResidentBootstrapCorpus:
             selected_is_stop=_to_tensor(
                 selected_is_stop, torch.uint8, device
             ),
+            combo_top_deck_target=_to_tensor(
+                combo_top_deck_target, torch.int8, device
+            ),
+            combo_top_deck_mask=_to_tensor(
+                combo_top_deck_mask, torch.uint8, device
+            ),
+            combo_seek_source_target=_to_tensor(
+                combo_seek_source_target, torch.int8, device
+            ),
+            combo_seek_source_mask=_to_tensor(
+                combo_seek_source_mask, torch.uint8, device
+            ),
+            combo_vector_target=_to_tensor(
+                combo_vector_target, torch.float32, device
+            ).reshape(-1, COMBO_STATE_VECTOR_WIDTH),
+            combo_vector_mask=_to_tensor(
+                combo_vector_mask, torch.uint8, device
+            ).reshape(-1, COMBO_STATE_VECTOR_WIDTH),
             **strategic.tensor_kwargs(device),
             expanded_strategic_schema=(
                 EXPANDED_STRATEGIC_SCHEMA if strategic.has_targets else ""

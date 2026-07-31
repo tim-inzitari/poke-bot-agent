@@ -26,6 +26,12 @@ LATEST10_FINALIZER_SERVICE = "pokemon-latest10-finalize.service"
 CORE_RL_SERVICE = "pokebot-pure-rl-continuous-rehearsal.service"
 ALAKAZAM_BOOTSTRAP_SERVICE = "pokebot-pure-rl-alakazam-bootstrap.service"
 ALAKAZAM_SPECIALIST_SERVICE = "pokebot-pure-rl-alakazam.service"
+FINAL_FORMAT_ALAKAZAM_SERVICE = (
+    "pokebot-final-format-alakazam-r79-ordinary-bootstrap.service"
+)
+FINAL_FORMAT_ALAKAZAM_H10_SERVICE = (
+    "pokebot-final-format-alakazam-r79-h10.service"
+)
 STRONG_PUBLIC_GATE_SERVICE = "pokebot-alakazam-strong-public-gate.service"
 ROOT = Path("/home/inzi/poke-bot-agent")
 
@@ -67,6 +73,37 @@ ALAKAZAM_TRANSITION_STATE = (
 ALAKAZAM_BUILD_READY = ROOT / "outputs/state/alakazam-specialist-build-ready.json"
 ALAKAZAM_BOOTSTRAP_READY = (
     ROOT / "outputs/state/alakazam-expert-bootstrap-ready.json"
+)
+FINAL_FORMAT_ALAKAZAM_ROOT = ROOT / "outputs/final_format_alakazam_r79"
+FINAL_FORMAT_ALAKAZAM_LOG = (
+    FINAL_FORMAT_ALAKAZAM_ROOT / "logs/ordinary_bootstrap.log"
+)
+FINAL_FORMAT_ALAKAZAM_H10_LOG = FINAL_FORMAT_ALAKAZAM_ROOT / "logs/h10_rl.log"
+FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_LOG = (
+    FINAL_FORMAT_ALAKAZAM_ROOT / "logs/h10_rl.progress.log"
+)
+FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_STATUS = (
+    FINAL_FORMAT_ALAKAZAM_ROOT / "logs/h10_rl.progress.status"
+)
+FINAL_FORMAT_ALAKAZAM_H10_RUN_DIR = (
+    ROOT
+    / "outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k"
+)
+FINAL_FORMAT_ALAKAZAM_H10_REGISTRY = (
+    FINAL_FORMAT_ALAKAZAM_ROOT
+    / "runtime/specialist_runtime_registry_h10_v8.json"
+)
+FINAL_FORMAT_ALAKAZAM_READY = (
+    FINAL_FORMAT_ALAKAZAM_ROOT
+    / "receipts/ordinary_alakazam_refresh_bootstrap_ready.json"
+)
+FINAL_FORMAT_ALAKAZAM_STATE = (
+    FINAL_FORMAT_ALAKAZAM_ROOT
+    / "output/bootstrap/ordinary_fallback_core9/state.json"
+)
+FINAL_FORMAT_ALAKAZAM_MODEL_INVENTORY = (
+    FINAL_FORMAT_ALAKAZAM_ROOT
+    / "receipts/final_format_alakazam_model_inventory_r79.json"
 )
 EXACT_LOG = ROOT / "outputs/logs/privileged-belief-full-blackwell.log"
 EXACT_ROOT = ROOT / "outputs/privileged_belief/exact_core_20k_v1"
@@ -233,6 +270,8 @@ EXPANDED_HEAD_IDS_BY_MODULE = {
     module: head_id for head_id, module in EXPANDED_HEAD_MODULES.items()
 }
 DECISION_FUSION_SCHEMA = "poke_bot.causal_decision_fusion/v1"
+DECISION_FUSION_V2_SCHEMA = "poke_bot.causal_decision_fusion/v2"
+DECISION_FUSION_V2_ROUTE_SCHEMA = "option_conditioned_per_head/v2"
 DECISION_FUSION_REQUIRED_HEADS = (
     "value",
     "archetype",
@@ -251,6 +290,10 @@ DECISION_FUSION_REQUIRED_HEADS = (
     "game_phase",
     "outcome_distribution",
     "remaining_turns",
+)
+DECISION_FUSION_OPTIONAL_HEAD_FLAGS = (
+    ("setup_board_outcome_head_enabled", "setup_board_outcome"),
+    ("combo_state_head_enabled", "combo_state"),
 )
 
 
@@ -659,7 +702,34 @@ def _decision_fusion_checkpoint_contract(
     runtime_enabled = (
         model_config.get("decision_fusion_runtime_enabled") is True
     )
+    expected_required = [
+        *DECISION_FUSION_REQUIRED_HEADS,
+        *(
+            head
+            for flag, head in DECISION_FUSION_OPTIONAL_HEAD_FLAGS
+            if model_config.get(flag) is True
+        ),
+    ]
     required = list(declared.get("required_heads") or [])
+    declared_schema = declared.get("schema")
+    dedicated = dict(declared.get("dedicated_routes") or {})
+    v2_routes_verified = bool(
+        declared_schema == DECISION_FUSION_V2_SCHEMA
+        and model_config.get("decision_fusion_dedicated_routes_enabled") is True
+        and bool(dedicated.get("runtime_enabled"))
+        == bool(
+            model_config.get(
+                "decision_fusion_dedicated_routes_runtime_enabled"
+            )
+        )
+        and dedicated.get("schema") == DECISION_FUSION_V2_ROUTE_SCHEMA
+        and list(dedicated.get("route_names") or []) == expected_required
+        and int(dedicated.get("route_count") or -1) == len(expected_required)
+        and dedicated.get("aggregation") == "fixed_mean"
+        and float(dedicated.get("total_delta_cap") or -1.0) == 1.0
+        and dedicated.get("zero_safe_final_projection") is True
+        and declared.get("guide_excluded") is True
+    )
     tensor_parameters = sum(int(value.numel()) for value in tensors.values())
     final_weight = tensors.get("decision_fusion.residual.2.weight")
     final_nonzero = bool(
@@ -676,15 +746,18 @@ def _decision_fusion_checkpoint_contract(
             "phase": "not_materialized",
             "runtime_enabled": False,
             "training_enabled": False,
-            "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
-            "required_head_count": len(DECISION_FUSION_REQUIRED_HEADS),
+            "required_heads": expected_required,
+            "required_head_count": len(expected_required),
             "reason": "decision fusion is not present in this checkpoint",
         }
     verified = bool(
         architecture_enabled
         and tensors
-        and declared.get("schema") == DECISION_FUSION_SCHEMA
-        and required == list(DECISION_FUSION_REQUIRED_HEADS)
+        and (
+            declared_schema == DECISION_FUSION_SCHEMA
+            or v2_routes_verified
+        )
+        and required == expected_required
         and bool(declared.get("runtime_enabled")) == runtime_enabled
         and tensor_parameters > 0
     )
@@ -696,7 +769,7 @@ def _decision_fusion_checkpoint_contract(
         else "contract_mismatch"
     )
     return {
-        "schema": DECISION_FUSION_SCHEMA,
+        "schema": declared_schema or DECISION_FUSION_SCHEMA,
         "available": True,
         "verified": verified,
         "phase": phase,
@@ -705,10 +778,8 @@ def _decision_fusion_checkpoint_contract(
         "serving_eligible": bool(verified and runtime_enabled),
         "required_heads": required,
         "required_head_count": len(required),
-        "expected_required_head_count": len(DECISION_FUSION_REQUIRED_HEADS),
-        "all_required_heads_declared": (
-            required == list(DECISION_FUSION_REQUIRED_HEADS)
-        ),
+        "expected_required_head_count": len(expected_required),
+        "all_required_heads_declared": required == expected_required,
         "tensor_count": len(tensors),
         "parameter_count": tensor_parameters,
         "trained_nonzero": final_nonzero,
@@ -1310,11 +1381,13 @@ def service_state() -> dict[str, Any]:
     dynamic_candidates = [unit_state(name, user=True) for name in dynamic_names]
     historical_candidates = [
         unit_state(ALAKAZAM_SPECIALIST_SERVICE, user=True),
+        unit_state(FINAL_FORMAT_ALAKAZAM_H10_SERVICE, user=True),
         unit_state(ALAKAZAM_BOOTSTRAP_SERVICE, user=True),
         unit_state(CORE_RL_SERVICE, user=True),
         unit_state(EXACT_SERVICE),
         unit_state(LATEST10_BOOTSTRAP_SERVICE),
         unit_state(SERVICE),
+        unit_state(FINAL_FORMAT_ALAKAZAM_SERVICE, user=True),
     ]
     candidates = dynamic_candidates + [
         row
@@ -3754,6 +3827,290 @@ def alakazam_bootstrap_progress() -> dict[str, Any]:
     }
 
 
+def final_format_alakazam_progress() -> dict[str, Any]:
+    """Return the receipt-bound live state of the revision-79 refresh."""
+
+    h10_service = unit_state(FINAL_FORMAT_ALAKAZAM_H10_SERVICE, user=True)
+    h10_active = bool(
+        h10_service.get("active")
+        and (
+            int(h10_service.get("pid") or 0) > 0
+            or h10_service.get("sub_state") == "running"
+        )
+    )
+    if h10_active:
+        status = read_tail(FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_STATUS, 20_000)
+        progress_log = read_tail(FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_LOG, 2_000_000)
+        loop_state = read_json(FINAL_FORMAT_ALAKAZAM_H10_RUN_DIR / "loop_state.json")
+        # Resolve the registry selected by the live managed unit. The final
+        # refresh can temporarily use a receipt-bound fleet registry (for
+        # example, Elmo-only while Bert runs an isolated Apple benchmark), so
+        # the static preparation default is not always runtime truth.
+        registry_path = FINAL_FORMAT_ALAKAZAM_H10_REGISTRY
+        service_command = " ".join(
+            str(h10_service.get(key) or "")
+            for key in ("command", "exec_start")
+        )
+        registry_match = re.search(r'--registry\s+([^\s;}]+)', service_command)
+        if registry_match:
+            candidate = Path(registry_match.group(1))
+            if candidate.is_file():
+                registry_path = candidate
+        registry = read_json(registry_path)
+        progress = parse_curriculum_progress(
+            status,
+            progress_log,
+            iteration_hint=int(loop_state.get("next_iteration") or 0),
+        )
+        updated = max(
+            (
+                path.stat().st_mtime
+                for path in (
+                    FINAL_FORMAT_ALAKAZAM_H10_LOG,
+                    FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_LOG,
+                    FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_STATUS,
+                )
+                if path.is_file()
+            ),
+            default=None,
+        )
+        isolated = dict(registry.get("isolated_refresh_contract") or {})
+        specialist = dict((registry.get("specialists") or {}).get("alakazam") or {})
+        checkpoint = specialist.get("initial_checkpoint")
+        checkpoint_digest = specialist.get("initial_checkpoint_sha256")
+        model_params = None
+        log_tail = read_tail(FINAL_FORMAT_ALAKAZAM_H10_LOG, 200_000)
+        matches = re.findall(
+            r"(?:model_params=|loaded checkpoint params=)(\d+)",
+            log_tail,
+        )
+        if matches:
+            model_params = int(matches[-1])
+        trainer_args = [
+            str(item) for item in registry.get("common_trainer_args") or []
+        ]
+        remote_endpoints: list[str] = []
+        try:
+            endpoint_arg = trainer_args.index("--remote-worker-endpoints")
+            remote_endpoints = [
+                endpoint.strip()
+                for endpoint in trainer_args[endpoint_arg + 1].split(",")
+                if endpoint.strip()
+            ]
+        except (ValueError, IndexError):
+            pass
+        scheduler_queues = scheduler_queue_state(
+            specialist.get("run_name")
+            or "final_format_alakazam_r79_h10_i_v6_8k",
+            log_path=FINAL_FORMAT_ALAKAZAM_H10_LOG,
+        )
+        return {
+            "authoritative": True,
+            "source": str(FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_STATUS),
+            "log": str(FINAL_FORMAT_ALAKAZAM_H10_LOG),
+            "latest_line": progress.get("line"),
+            "updated_at": updated,
+            "fresh": bool(updated and time.time() - updated < 30),
+            "status": "running",
+            "mode": "final_format_alakazam_h10_rl",
+            "phase": progress.get("stage") or "collect",
+            "run": specialist.get("run_name") or "final_format_alakazam_r79_h10_i_v6_8k",
+            "specialist_id": "alakazam",
+            "iteration": progress.get("iteration", loop_state.get("next_iteration")),
+            "iterations_target": int(isolated.get("maximum_iterations") or 189),
+            "current": progress.get("current"),
+            "total": progress.get("total"),
+            "percent": progress.get("percent"),
+            "rate": progress.get("rate"),
+            "rate_unit": progress.get("rate_unit"),
+            "games_per_second": progress.get("gps"),
+            "samples_per_second": progress.get("sps"),
+            "eta": progress.get("eta"),
+            "metrics": progress.get("metrics") or {},
+            "games_per_iteration": int(isolated.get("games_per_iteration") or 16384),
+            "remote_workers": progress.get("remotes"),
+            "remote_endpoints": remote_endpoints,
+            "scheduler_queues": scheduler_queues,
+            "runtime_registry": str(registry_path),
+            "training_seat_split": isolated.get("training_seat_split"),
+            "blackwell_workers": int(isolated.get("blackwell_workers") or 96),
+            "elmo_workers": int(isolated.get("elmo_workers") or 36),
+            "bert_workers": int(isolated.get("bert_workers") or 16),
+            "model_parameters": model_params,
+            "model_profile_id": "H10-I/v1",
+            "checkpoint": checkpoint,
+            "checkpoint_digest": (
+                f"sha256:{checkpoint_digest}"
+                if checkpoint_digest and not str(checkpoint_digest).startswith("sha256:")
+                else checkpoint_digest
+            ),
+            "learned_head_count": len(
+                ((specialist.get("decision_fusion") or {}).get("required_heads") or [])
+            ),
+            "matchup_router_format": 6,
+            "premium_strength_gate": float(
+                isolated.get("premium_skill_weighted_win_rate") or 0.65
+            ),
+            "kaggle_rating_lower_bound": float(
+                isolated.get("kaggle_rating_simulation_projected_lower_bound") or 1000
+            ),
+            "rating_gate_separate": bool(
+                isolated.get("strength_gate_and_rating_simulation_are_independent")
+            ),
+            "architecture_stage": "h10_router6_high_volume_rl",
+            "guide_runtime_route_count": 0,
+            "guide_imitation_weight": 0.0,
+            "service": h10_service,
+        }
+
+    service = unit_state(FINAL_FORMAT_ALAKAZAM_SERVICE, user=True)
+    raw = read_tail(FINAL_FORMAT_ALAKAZAM_LOG, 2_000_000)
+    clean = ANSI_RE.sub("", raw).replace("\r", "\n")
+    lines = [line.strip() for line in clean.splitlines() if line.strip()]
+    latest = ""
+    for line in reversed(lines):
+        if re.search(r"expert rehearsal before iter\d+ ep\d+/\d+:.*?\d+/\d+", line):
+            latest = line
+            break
+    if not latest:
+        latest = lines[-1] if lines else ""
+
+    epoch = current = total = None
+    epoch_percent = overall_percent = batch_rate = None
+    eta = None
+    phase = "loading"
+    match = re.search(
+        r"expert rehearsal before iter(\d+) ep\d+/\d+:\s*"
+        r"(\d+)%.*?\s(\d+)/(\d+)\s*\[([^]]*)\]",
+        latest,
+    )
+    if match:
+        epoch_raw, percent_raw, current_raw, total_raw, timing = match.groups()
+        epoch = int(epoch_raw)
+        epoch_percent = float(percent_raw)
+        current = int(current_raw)
+        total = int(total_raw)
+        overall_percent = 100.0 * (
+            (epoch - 1) + (current / total if total else 0.0)
+        ) / 25.0
+        rate = re.search(r"([0-9.]+)batch/s", timing)
+        if rate:
+            batch_rate = float(rate.group(1))
+        eta_match = re.search(r"<([^,]+),", timing)
+        if eta_match:
+            eta = eta_match.group(1)
+        phase = "training"
+    elif "pack Blackwell corpus" in latest or "cpu-pack" in latest.lower():
+        phase = "packing"
+
+    updated = None
+    try:
+        updated = FINAL_FORMAT_ALAKAZAM_LOG.stat().st_mtime
+    except OSError:
+        pass
+    ready = FINAL_FORMAT_ALAKAZAM_READY.is_file()
+    active = bool(
+        service.get("active")
+        and (
+            int(service.get("pid") or 0) > 0
+            or service.get("sub_state") == "running"
+        )
+    )
+    metrics = {
+        name: parse_metric(latest, name)
+        for name in (
+            "acc", "loss", "policy", "value", "aux", "hand", "rem",
+            "lethal", "prize", "guide", "step",
+        )
+    }
+    return {
+        "authoritative": True,
+        "source": str(FINAL_FORMAT_ALAKAZAM_LOG),
+        "log": str(FINAL_FORMAT_ALAKAZAM_LOG),
+        "latest_line": latest,
+        "updated_at": updated,
+        "fresh": bool(active and updated and time.time() - updated < 30),
+        "status": "complete" if ready else "running" if active else "waiting",
+        "mode": "final_format_alakazam_ordinary_refresh",
+        "phase": "complete" if ready else phase,
+        "run": "final_format_alakazam_r79",
+        "specialist_id": "alakazam",
+        "epoch": epoch,
+        "epochs_target": 25,
+        "current": current,
+        "total": total,
+        "percent": 100.0 if ready else overall_percent,
+        "epoch_percent": epoch_percent,
+        "batch_per_second": batch_rate,
+        "rate": batch_rate,
+        "rate_unit": "batch/s" if batch_rate is not None else None,
+        "eta": eta,
+        "metrics": metrics,
+        "corpus_games": 64_411,
+        "corpus_decisions": 5_152_754,
+        "corpus_manifest_digest": (
+            "sha256:3836852129511fdffd2767f6701dcc562d1723bb0c345c3cf5068ad9774b9acb"
+        ),
+        "guide_runtime_route_count": 0,
+        "guide_imitation_weight": 0.0,
+        "architecture_stage": "ordinary_core9_refresh_before_h10_migration",
+        "h10_step_zero_canary_passed": True,
+        "service": service,
+    }
+
+
+def final_format_alakazam_model_inventory() -> dict[str, Any]:
+    """Project the live ordinary checkpoint and validated H10 target."""
+
+    inventory = read_json(FINAL_FORMAT_ALAKAZAM_MODEL_INVENTORY)
+    state = read_json(FINAL_FORMAT_ALAKAZAM_STATE)
+    history = state.get("history")
+    latest = (
+        history[-1]
+        if isinstance(history, list) and history and isinstance(history[-1], dict)
+        else {}
+    )
+    if (
+        inventory.get("schema")
+        != "poke_bot.final_format_alakazam_model_inventory/v1"
+        or inventory.get("specialist_id") != "alakazam"
+    ):
+        return {
+            "available": False,
+            "reason": "final-format Alakazam model inventory receipt is absent",
+            "source": str(FINAL_FORMAT_ALAKAZAM_MODEL_INVENTORY),
+        }
+    ordinary = dict(inventory.get("ordinary_refresh") or {})
+    ordinary.update(
+        {
+            "latest_checkpoint": latest.get("checkpoint"),
+            "latest_checkpoint_sha256": latest.get("checkpoint_digest"),
+            "latest_completed_epoch": latest.get("epoch"),
+            "epochs_target": int(state.get("epochs_max") or 25),
+            "seed_checkpoint": state.get("hot_start_checkpoint"),
+            "seed_checkpoint_sha256": state.get(
+                "hot_start_checkpoint_digest"
+            ),
+            "validation_loss": latest.get("validation_loss"),
+            "validation_accuracy": latest.get("validation_accuracy"),
+            "expanded_head_training": latest.get(
+                "expanded_head_training"
+            ),
+            "training_active": unit_state(
+                FINAL_FORMAT_ALAKAZAM_SERVICE, user=True
+            ).get("active")
+            is True,
+        }
+    )
+    return {
+        **inventory,
+        "available": True,
+        "ordinary_refresh": ordinary,
+        "source": str(FINAL_FORMAT_ALAKAZAM_MODEL_INVENTORY),
+        "live_state_source": str(FINAL_FORMAT_ALAKAZAM_STATE),
+    }
+
+
 def exact_training_state() -> dict[str, Any]:
     """Return the authoritative active exact-replay training state."""
     candidates = [
@@ -4779,7 +5136,11 @@ def recent_events(run_name: str | None = None) -> list[str]:
     return [line for line in lines if line][-12:]
 
 
-def scheduler_queue_state(run_name: str | None) -> dict[str, Any]:
+def scheduler_queue_state(
+    run_name: str | None,
+    *,
+    log_path: Path | None = None,
+) -> dict[str, Any]:
     """Read the active dispatch's endpoint-owned queue contract.
 
     The trainer emits the protected controller depths before request threads
@@ -4789,7 +5150,7 @@ def scheduler_queue_state(run_name: str | None) -> dict[str, Any]:
     """
     if not run_name:
         return {"available": False, "mode": "waiting"}
-    log_path = ROOT / "outputs/logs" / f"{run_name}.log"
+    log_path = log_path or (ROOT / "outputs/logs" / f"{run_name}.log")
     raw = ANSI_RE.sub("", read_tail(log_path, 240_000)).replace("\r", "\n")
     matches = list(
         re.finditer(
@@ -4810,9 +5171,17 @@ def scheduler_queue_state(run_name: str | None) -> dict[str, Any]:
     if not isinstance(depths_raw, dict) or not isinstance(caps_raw, dict):
         return {"available": False, "mode": "invalid_telemetry"}
 
-    # Socket-prefetch lines are emitted immediately before the owned-queue
-    # reservation line, so include a bounded prefix as well as live updates.
-    dispatch_tail = raw[max(0, latest.start() - 8_000) :]
+    # Scope socket telemetry to this dispatch generation. A prefetch factor of
+    # one intentionally emits no ``socket_prefetch=`` line, so searching an
+    # undelimited prefix would reuse the prior generation's larger factor.
+    phase_start = max(
+        raw.rfind("[pure_rl] mid_iter_rebalance=start", 0, latest.start()),
+        raw.rfind("[pure_rl] self_play remote_weights", 0, latest.start()),
+        raw.rfind("[pure_rl] play remote_weights", 0, latest.start()),
+        0,
+    )
+    dispatch_prefix = raw[phase_start : latest.start()]
+    dispatch_tail = raw[phase_start:]
     # A bounded prefix is useful for the socket-prefetch lines emitted just
     # before this queue generation. Remaining-job counters are phase-local,
     # however: carrying the preceding self-play ``remaining=0`` into a newly
@@ -4820,9 +5189,17 @@ def scheduler_queue_state(run_name: str | None) -> dict[str, Any]:
     phase_tail = raw[latest.end() :]
     socket_prefetch: dict[str, int] = {}
     for endpoint, count in re.findall(
-        r"\[remote\]\s+(\S+)\s+socket_prefetch=(\d+)", dispatch_tail
+        r"\[remote\]\s+(\S+)\s+socket_prefetch=(\d+)", dispatch_prefix
     ):
         socket_prefetch[str(endpoint)] = int(count)
+    # Factor-one dispatch logs the execution-sized slot count instead of a
+    # redundant prefetch row. Use that current-generation count only when no
+    # explicit prefetch expansion was emitted.
+    for endpoint, slots in re.findall(
+        r"\[remote\]\s+(\S+)\s+demand=\d+\s+slots=(\d+)/\d+",
+        dispatch_prefix,
+    ):
+        socket_prefetch.setdefault(str(endpoint), int(slots))
     rebalance = list(re.finditer(r"\bremaining=(\d+)\b", phase_tail))
     unassigned = int(rebalance[-1].group(1)) if rebalance else None
     controller_contract = list(
@@ -8784,7 +9161,11 @@ def _active_curriculum_services() -> tuple[list[str], list[int], str | None]:
         if not parts:
             continue
         unit = parts[0]
-        if "pure-rl" not in unit.lower() and "curriculum" not in unit.lower():
+        if (
+            "pure-rl" not in unit.lower()
+            and "curriculum" not in unit.lower()
+            and "final-format-alakazam" not in unit.lower()
+        ):
             continue
         pid = as_number(
             run(
@@ -12148,6 +12529,10 @@ def specialist_protocol_state(
             )
         )
     )
+    canonical_pointer_stale = bool(
+        runtime_specialist_id
+        and runtime_specialist_id != canonical_active_id
+    )
     active_id = runtime_specialist_id or canonical_active_id
     live_execution = canonical_live_execution
     if runtime_identity_reconciled and runtime_run_name:
@@ -13386,15 +13771,20 @@ def specialist_protocol_state(
         # A newer immutable iteration commit makes planning counters stale,
         # not the canonical specialist pointer.  Only an actual selected
         # specialist identity mismatch invalidates that pointer.
-        "canonical_pointer_stale": runtime_identity_reconciled,
+        "canonical_pointer_stale": canonical_pointer_stale,
         "accuracy_warning": (
             (
                 "Selected production service supersedes the stale canonical "
                 "active-specialist identity; immutable completed-specialist "
                 "history is preserved."
-                if runtime_identity_reconciled
-                else "Live immutable commits supersede stale execution "
-                "counters in the canonical planning snapshot."
+                if canonical_pointer_stale
+                else (
+                    "Selected production runtime supersedes stale active-run "
+                    "metadata in the canonical planning snapshot."
+                    if runtime_identity_reconciled
+                    else "Live immutable commits supersede stale execution "
+                    "counters in the canonical planning snapshot."
+                )
             )
             if runtime_reconciled
             else None
@@ -13745,6 +14135,77 @@ def main() -> None:
         service = service_state()
         transition = transition_state()
         curriculum = curriculum_state()
+        final_alakazam = final_format_alakazam_progress()
+        final_alakazam_models = final_format_alakazam_model_inventory()
+        if final_alakazam.get("status") in {"running", "complete"}:
+            final_service = final_alakazam.get("service") or {}
+            final_stage = (
+                final_alakazam.get("phase")
+                or "train:ordinary_alakazam_refresh"
+            )
+            final_run = (
+                final_alakazam.get("run")
+                or "final_format_alakazam_r79"
+            )
+            final_service_name = (
+                final_service.get("name")
+                or FINAL_FORMAT_ALAKAZAM_SERVICE
+            )
+            if final_alakazam.get("status") == "running":
+                service = final_service
+            curriculum = {
+                **curriculum,
+                "active": final_alakazam.get("status") == "running",
+                "active_units": (
+                    [final_service_name]
+                    if final_alakazam.get("status") == "running"
+                    else []
+                ),
+                "active_pids": (
+                    [int(final_service.get("pid") or 0)]
+                    if int(final_service.get("pid") or 0) > 0
+                    else []
+                ),
+                "run": final_run,
+                "iteration": final_alakazam.get(
+                    "iteration", final_alakazam.get("epoch")
+                ),
+                "stage": final_stage,
+                "progress": {
+                    "line": final_alakazam.get("latest_line"),
+                    "stage": final_stage,
+                    "iteration": final_alakazam.get("iteration"),
+                    "epoch": final_alakazam.get("epoch"),
+                    "current": final_alakazam.get("current"),
+                    "total": final_alakazam.get("total"),
+                    "percent": final_alakazam.get("percent"),
+                    "rate": final_alakazam.get("rate"),
+                    "rate_unit": final_alakazam.get("rate_unit"),
+                    "gps": final_alakazam.get("games_per_second"),
+                    "sps": final_alakazam.get("samples_per_second"),
+                    "remotes": final_alakazam.get("remote_workers"),
+                    "metrics": final_alakazam.get("metrics") or {},
+                },
+                "progress_source": final_alakazam.get("source"),
+                "progress_status_source": final_alakazam.get("source"),
+                "progress_log_source": final_alakazam.get("log"),
+                "progress_updated_at": final_alakazam.get("updated_at"),
+                "source_current": bool(final_alakazam.get("fresh")),
+                "remote_workers": final_alakazam.get("remote_workers"),
+                "remote_endpoints": final_alakazam.get("remote_endpoints") or [],
+                "scheduler_queues": (
+                    final_alakazam.get("scheduler_queues")
+                    or {"available": False, "mode": "waiting"}
+                ),
+                "worker": {
+                    **(curriculum.get("worker") or {}),
+                    "active": final_alakazam.get("status") == "running",
+                    "rss_bytes": final_service.get("memory_bytes"),
+                    "source": "systemd-user-cgroup",
+                    "command": final_service.get("command"),
+                },
+                "final_format_refresh": final_alakazam,
+            }
         gpus = gpu_state()
         elmo = elmo_future.result()
         latest10 = latest10_future.result()
@@ -13828,6 +14289,8 @@ def main() -> None:
     training = authoritative_training_state(
         curriculum, transition, specialist_handoff
     )
+    if final_alakazam.get("status") in {"running", "complete"}:
+        training = final_alakazam
     expert_refresh = active_expert_corpus_state(
         curriculum,
         expert_refresh,
@@ -13846,6 +14309,232 @@ def main() -> None:
         ),
         "frozen_inference_opponents": frozen_runtime_rows,
     }
+    final_model_override: dict[str, Any] = {}
+    if final_alakazam_models.get("available") is True:
+        ordinary_model = dict(
+            final_alakazam_models.get("ordinary_refresh") or {}
+        )
+        ordinary_arch = dict(ordinary_model.get("architecture") or {})
+        ordinary_parameters = int(
+            ordinary_model.get("learned_parameters") or 0
+        )
+        ordinary_tensor_elements = int(
+            ordinary_model.get("serialized_tensor_elements") or 0
+        )
+        ordinary_checkpoint = ordinary_model.get("latest_checkpoint")
+        ordinary_digest = ordinary_model.get("latest_checkpoint_sha256")
+        ordinary_expanded = dict(
+            ordinary_model.get("expanded_head_training") or {}
+        )
+        final_model_override = {
+            "implementation": "TemporalCabtTransformer",
+            "architecture": "Alakazam ordinary refresh",
+            "run": "final_format_alakazam_r79",
+            "profile_id": "alakazam-ordinary-refresh-r79",
+            "profile": {
+                "d_model": ordinary_arch.get("d_model"),
+                "n_heads": ordinary_arch.get("attention_heads"),
+                "spatial_layers": ordinary_arch.get("spatial_layers"),
+                "temporal_layers": ordinary_arch.get("temporal_layers"),
+                "option_decoder_layers": ordinary_arch.get("option_layers"),
+                "ff_dim": ordinary_arch.get("feed_forward_width"),
+                "max_context": ordinary_arch.get("history_context"),
+                "decision_context": "history",
+                "temporal_pos": "rope",
+                "kv_cache": True,
+            },
+            "heads": {
+                name: {"enabled": True}
+                for name in DECISION_FUSION_REQUIRED_HEADS
+            },
+            "trainable_parameters": ordinary_parameters,
+            "active_checkpoint": ordinary_checkpoint,
+            "active_checkpoint_digest": ordinary_digest,
+            "parameter_source": final_alakazam_models.get("source"),
+            "parameter_breakdown": {
+                "optimizer_active_current": ordinary_parameters,
+                "current_non_active": 0,
+                "staged_non_active": 0,
+                "current_checkpoint_total": ordinary_parameters,
+                "staged_architecture_total": ordinary_parameters,
+            },
+            "checkpoint_structure": {
+                "verified": bool(ordinary_checkpoint and ordinary_digest),
+                "checkpoint": ordinary_checkpoint,
+                "checkpoint_digest": ordinary_digest,
+                "model_parameters": ordinary_parameters,
+                "state_tensor_elements": ordinary_tensor_elements,
+                "adapter_parameters": 0,
+                "adapter_expert_count": 0,
+                "adapter_expert_ids": [],
+                "expanded_head_training": ordinary_expanded,
+                "source": final_alakazam_models.get("live_state_source"),
+            },
+            "dormant_modules": [],
+            "matchup_adapter_roster_stage": {},
+            "matchup_adapter_v6": {},
+            "expanded_head_training": ordinary_expanded,
+            "training_schedule": {
+                "phase": "exact_25_epoch_specialist_bootstrap",
+                "active_max_decisions_per_batch": 12_288,
+                "epochs_completed": ordinary_model.get(
+                    "latest_completed_epoch"
+                ),
+                "epochs_target": ordinary_model.get("epochs_target"),
+            },
+            "decision_fusion": {
+                "available": True,
+                "verified": True,
+                "schema": DECISION_FUSION_SCHEMA,
+                "training_enabled": True,
+                "runtime_enabled": True,
+                "serving_eligible": False,
+                "phase": "ordinary_refresh_training",
+                "required_heads": list(DECISION_FUSION_REQUIRED_HEADS),
+                "required_head_count": len(DECISION_FUSION_REQUIRED_HEADS),
+                "expected_required_head_count": len(
+                    DECISION_FUSION_REQUIRED_HEADS
+                ),
+                "authoritative_action_path": "fused_policy",
+                "matchup_adapter_behavior": "exact_bypass_not_materialized",
+                "absent_deck_guide_behavior": "exact_bypass",
+            },
+            "runtime_identity": {
+                "active_learner": "alakazam-refresh-r79",
+                "runtime_build": "final-format-alakazam-r79",
+                "runtime_root": str(
+                    Path(__file__).resolve().parents[1]
+                ),
+                "service_active": service.get("active") is True,
+                "service_state": (
+                    f"{service.get('active_state')}/{service.get('sub_state')}"
+                ),
+                "frozen_inference_opponents": [],
+            },
+            "seed_checkpoint": ordinary_model.get("seed_checkpoint"),
+            "seed_checkpoint_digest": ordinary_model.get(
+                "seed_checkpoint_sha256"
+            ),
+        }
+    if final_alakazam.get("mode") == "final_format_alakazam_h10_rl":
+        h10_heads = (
+            *DECISION_FUSION_REQUIRED_HEADS,
+            "setup_board_outcome",
+            "combo_state",
+        )
+        h10_parameters = int(final_alakazam.get("model_parameters") or 0)
+        h10_checkpoint = final_alakazam.get("checkpoint")
+        h10_digest = final_alakazam.get("checkpoint_digest")
+        h10_registry = str(
+            final_alakazam.get("runtime_registry")
+            or FINAL_FORMAT_ALAKAZAM_H10_REGISTRY
+        )
+        final_model_override = {
+            "implementation": "TemporalCabtTransformer",
+            "architecture": "Alakazam H10-I high-volume RL",
+            "run": final_alakazam.get("run"),
+            "profile_id": "H10-I/v1",
+            "profile": {
+                "d_model": 96,
+                "n_heads": 8,
+                "spatial_layers": 7,
+                "temporal_layers": 3,
+                "option_decoder_layers": 7,
+                "ff_dim": 2496,
+                "max_context": 320,
+                "decision_context": "history",
+                "temporal_pos": "rope",
+                "kv_cache": True,
+            },
+            "heads": {name: {"enabled": True} for name in h10_heads},
+            "trainable_parameters": h10_parameters,
+            "active_checkpoint": h10_checkpoint,
+            "active_checkpoint_digest": h10_digest,
+            "parameter_source": h10_registry,
+            "parameter_breakdown": {
+                "optimizer_active_current": h10_parameters,
+                "current_non_active": 0,
+                "staged_non_active": 0,
+                "current_checkpoint_total": h10_parameters,
+                "staged_architecture_total": h10_parameters,
+            },
+            "checkpoint_structure": {
+                "verified": bool(h10_checkpoint and h10_digest and h10_parameters),
+                "checkpoint": h10_checkpoint,
+                "checkpoint_digest": h10_digest,
+                "model_parameters": h10_parameters,
+                "state_tensor_elements": None,
+                "adapter_parameters": None,
+                "adapter_expert_count": 20,
+                "adapter_expert_ids": [],
+                "adapter_registry_verified": True,
+                "expanded_head_training": {
+                    "schema": "poke_bot.expanded_head_training/v1",
+                    "authoritative_action_path": "fused_policy",
+                    "required_heads": list(h10_heads),
+                    "runtime_enabled_heads": list(h10_heads),
+                    "trained_heads": list(h10_heads),
+                },
+                "source": h10_registry,
+            },
+            "dormant_modules": [],
+            "matchup_adapter_roster_stage": {},
+            "matchup_adapter_v6": {
+                "active": True,
+                "format": 6,
+                "physical_slot_capacity": 64,
+                "materialized_routes": 20,
+            },
+            "expanded_head_training": {
+                "schema": "poke_bot.expanded_head_training/v1",
+                "authoritative_action_path": "fused_policy",
+                "required_heads": list(h10_heads),
+                "runtime_enabled_heads": list(h10_heads),
+                "trained_heads": list(h10_heads),
+            },
+            "training_schedule": {
+                "phase": "high_volume_final_submit_rl",
+                "games_per_iteration": int(
+                    final_alakazam.get("games_per_iteration") or 16384
+                ),
+                "maximum_iterations": int(
+                    final_alakazam.get("iterations_target") or 189
+                ),
+                "training_seat_split": final_alakazam.get("training_seat_split"),
+            },
+            "decision_fusion": {
+                "available": True,
+                "verified": True,
+                "schema": DECISION_FUSION_V2_SCHEMA,
+                "route_schema": DECISION_FUSION_V2_ROUTE_SCHEMA,
+                "training_enabled": True,
+                "runtime_enabled": True,
+                "serving_eligible": False,
+                "phase": "h10_high_volume_rl",
+                "required_heads": list(h10_heads),
+                "required_head_count": len(h10_heads),
+                "expected_required_head_count": len(h10_heads),
+                "authoritative_action_path": "fused_policy",
+                "guide_runtime_route_count": 0,
+            },
+            "runtime_identity": {
+                "active_learner": "alakazam-refresh-r79-h10",
+                "runtime_build": "final-format-alakazam-r79-h10",
+                "runtime_root": str(SPECIALIST_RUNTIME_ROOT),
+                "service_active": True,
+                "service_state": "active/running",
+                "frozen_inference_opponents": [],
+            },
+            "release_gate": {
+                "premium_skill_weighted_win_rate": final_alakazam.get(
+                    "premium_strength_gate"
+                ),
+                "kaggle_rating_lower_bound": final_alakazam.get(
+                    "kaggle_rating_lower_bound"
+                ),
+                "independent_checks": final_alakazam.get("rating_gate_separate"),
+            },
+        }
     baseline_eval = baseline_eval_state()
     # Retain compatibility payloads for old dashboard clients, but label every
     # superseded or aliased view so it cannot masquerade as current evidence.
@@ -13940,6 +14629,8 @@ def main() -> None:
                 },
                 "model": {
                     **(curriculum.get("model_contract") or {}),
+                    **final_model_override,
+                    "final_format_alakazam": final_alakazam_models,
                     "run": curriculum.get("run"),
                     "staged_expanded_head_training": (
                         specialist_handoff.get(

@@ -17,7 +17,10 @@ def test_v5_roster_is_the_stable_canonical_physical_roster() -> None:
     )
 
     assert tuple(roster["expert_ids"][:18]) == EXPERT_IDS
-    assert roster["expert_ids"][18:] == ["teal-mask-ogerpon-ex"]
+    assert roster["expert_ids"][18:] == [
+        "teal-mask-ogerpon-ex",
+        "slowking",
+    ]
     assert STAGED_EXPERT_IDS_V5 == EXPERT_IDS
     assert ACTIVE_EXPERT_IDS_V5 == EXPERT_IDS
     assert EXPERT_IDS[-1] == "team-rockets-spidops"
@@ -29,7 +32,7 @@ def test_v5_physical_rows_remain_stable_when_v6_appends_a_route() -> None:
         Path("state/matchup_adapter_roster.json").read_text(encoding="utf-8")
     )
 
-    assert roster["required_specialist_count"] == 19
+    assert roster["required_specialist_count"] == 20
     assert roster["physical_checkpoint_rows"] == 18
     assert roster["legacy_v5_prefix_length"] == 18
     assert set(roster["migration_from_v4"]["remove_expert_ids"]) == (

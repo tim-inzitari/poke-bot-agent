@@ -1,0 +1,82 @@
+{
+  "schema": "poke_bot.blackwell_cuda_cache_boundary_continuity/v1",
+  "status": "active_nonzero_cache_release_and_formal_evaluation_dispatch_continuity_verified",
+  "created_at_utc": "2026-07-31T00:30:26Z",
+  "owner_goal_revision": 75,
+  "parent": {
+    "receipt": "state/blackwell_cuda_cache_boundary_repair_r75.json",
+    "receipt_sha256": "sha256:880bde6079dbe7471d21d77ec164f5c5c0cc1757cc36fd23dd41634fbf3aadcb"
+  },
+  "runtime": {
+    "host": "blackwell",
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "run_name": "pure_rl_archaludon-ex_temporal1_8k_v2_20260730",
+    "specialist_id": "archaludon-ex",
+    "main_pid": 1387831,
+    "restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "source": "scripts/train_pure_rl.py",
+    "source_sha256": "sha256:95b516045e733d610a78c9c26f093db46cf6bb0a30c2ce3135a61b3f6865b3ff"
+  },
+  "ordinary_training_step": {
+    "iteration": 4,
+    "collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/collection_receipts/iter_00004.json",
+    "collection_receipt_sha256": "sha256:61584fbefcbd990d672a1b0828f295d375c31c691663c88696eac60ab3959491",
+    "source_games": 8192,
+    "decisions": 418689,
+    "recovery_derived": false
+  },
+  "cuda_cache_release": {
+    "log": "/home/inzi/poke-bot-agent/outputs/logs/pure_rl_archaludon-ex_temporal1_8k_v2_20260730.log",
+    "log_line": 2807,
+    "log_line_sha256": "sha256:595daca5da47955d08e708ea0426d7ee7cbf770173542e1aaef14948ee01ab09",
+    "sequences_released": 16384,
+    "python_gc_objects_collected": 8,
+    "malloc_trim_succeeded": true,
+    "cuda_reserved_before_bytes": 45116030976,
+    "cuda_reserved_after_bytes": 104857600,
+    "cuda_reserved_released_bytes": 45011173376,
+    "cuda_reserved_released_fraction": 0.9976758239,
+    "cuda_reserved_before_gib": 42.017578125,
+    "cuda_reserved_after_mib": 100,
+    "training_device_synchronized_before_empty_cache": true
+  },
+  "post_release_continuity": {
+    "leaf_farm_rebuilt_after_release": true,
+    "leaf_replicas": {
+      "gpu0": 4,
+      "gpu1": 12,
+      "total": 16
+    },
+    "simulator_worker_contract": 96,
+    "promotion_completed_without_cuda_oom": true,
+    "candidate_rejected_and_retained_normally": true,
+    "formal_evaluation_dispatch_started": true,
+    "formal_requested_games": 4000,
+    "formal_local_slots": 64,
+    "formal_remote_slots": {
+      "elmo": 36,
+      "bert": 16,
+      "total": 52
+    },
+    "post_release_cuda_oom_events_at_receipt_time": 0,
+    "post_release_failed_leaf_events_at_receipt_time": 0,
+    "post_release_tracebacks_at_receipt_time": 0,
+    "active_training_modified_by_receipt": false,
+    "selector_modified_by_receipt": false
+  },
+  "scope": {
+    "proves": [
+      "the first ordinary post-repair training step emitted a nonzero CUDA-reserved before sample",
+      "the synchronized allocator release reduced reserved CUDA memory from 45116030976 bytes to 104857600 bytes",
+      "the unchanged 4/12 inference-leaf farm rebuilt after cache release",
+      "promotion completed and the 4000-game formal evaluation dispatch began with 64 local and 52 remote slots",
+      "the managed Archaludon trainer remained active with zero service restarts"
+    ],
+    "does_not_claim": [
+      "iteration-4 formal evaluation was complete at receipt creation",
+      "the rejected iteration-4 candidate replaced the incumbent"
+    ]
+  }
+}

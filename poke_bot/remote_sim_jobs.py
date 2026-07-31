@@ -444,6 +444,22 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             )
             if opp_record is not None:
                 records.append(opp_record)
+        remote_diagnostics = [
+            dict(target.get("diagnostics") or {})
+            for agent in (us_agent, them_agent)
+            for target in agent.targets
+        ]
+        remote_requests = sum(
+            int(row.get("remote_requests") or 0) for row in remote_diagnostics
+        )
+
+        def _weighted_total(field: str) -> float:
+            return sum(
+                float(row.get(field) or 0.0)
+                * int(row.get("remote_requests") or 0)
+                for row in remote_diagnostics
+            )
+
         return {
             "job_index": int(job.get("job_index", 0)),
             "opponent_id": opp_id,
@@ -461,6 +477,32 @@ def remote_self_play_job(job: dict[str, Any]) -> dict[str, Any]:
             "self_play": True,
             "leaf_remote": bool(plan.use_leaf_for_us or plan.use_leaf_for_them),
             "leaf_self_play_mode": plan.mode,
+            "remote_leaf_requests": remote_requests,
+            "remote_queue_wait_ms_total": _weighted_total(
+                "queue_wait_ms_mean"
+            ),
+            "remote_inference_batch_total": _weighted_total(
+                "inference_batch_size_mean"
+            ),
+            "remote_batch_occupancy_total": _weighted_total(
+                "batch_occupancy_mean"
+            ),
+            "remote_coalesced_requests_total": _weighted_total(
+                "coalesced_requests_mean"
+            ),
+            "remote_server_inference_ms_total": _weighted_total(
+                "server_inference_ms_mean"
+            ),
+            "remote_client_roundtrip_ms_total": _weighted_total(
+                "client_roundtrip_ms_mean"
+            ),
+            "remote_request_queue_depth_max": max(
+                (
+                    int(row.get("request_queue_depth_max") or 0)
+                    for row in remote_diagnostics
+                ),
+                default=0,
+            ),
             "matchup_runtime_audit": matchup_runtime_audit,
             "opponent_matchup_runtime_audit": opponent_matchup_runtime_audit,
             "policy_terminal_failure": terminal_policy_failure,

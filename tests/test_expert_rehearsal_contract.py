@@ -8,6 +8,7 @@ import pytest
 
 from poke_bot.pure_rl.expert_rehearsal import (
     EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
+    OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
     REHEARSAL_RECEIPT_SCHEMA_VERSION,
     ExpertManifestIdentity,
     _validate_receipt,
@@ -384,3 +385,46 @@ def test_expanded_checkpoint_loss_contract_accepts_bound_nested_weights() -> Non
     missing = dict(_loss_weights())
     with pytest.raises(ValueError, match="missing strategic weights"):
         canonical_checkpoint_rehearsal_loss_weights(missing, expanded)
+
+
+def test_option_conditioned_checkpoint_and_receipt_bind_combo_weight(
+    tmp_path: Path,
+) -> None:
+    checkpoint_losses = {**_loss_weights(), "combo_state": 0.025}
+    assert canonical_checkpoint_rehearsal_loss_weights(
+        checkpoint_losses,
+        option_conditioned_loss_weights={"combo_state": 0.025},
+    ) == _loss_weights()
+    with pytest.raises(ValueError, match="option-conditioned"):
+        canonical_checkpoint_rehearsal_loss_weights(
+            checkpoint_losses,
+            option_conditioned_loss_weights={"combo_state": 0.05},
+        )
+
+    _pointer, identity = _protected_manifest(tmp_path)
+    output = tmp_path / "combo-expert.pt"
+    output.write_bytes(b"immutable-combo-checkpoint")
+    receipt = {
+        "schema": OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
+        "before_iteration": 5,
+        "parent_digest": "sha256:" + "a" * 64,
+        "checkpoint": str(output),
+        "checkpoint_digest": _sha256(output),
+        "manifest": identity.as_dict(),
+        "epochs": 5,
+        "learning_rate": 2e-5,
+        "loss_weights": _loss_weights(),
+        "option_conditioned_loss_weights": {"combo_state": 0.025},
+        "corpus_split_seed": 5_000_123,
+    }
+    assert _validate_receipt(
+        receipt,
+        before_iteration=5,
+        parent_digest=receipt["parent_digest"],
+        epochs=5,
+        learning_rate=2e-5,
+        manifest_identity=identity,
+        loss_weights=_loss_weights(),
+        option_conditioned_loss_weights={"combo_state": 0.025},
+        corpus_split_seed=5_000_123,
+    )["reused"] is True

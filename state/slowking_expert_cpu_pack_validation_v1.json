@@ -1,0 +1,26 @@
+{
+  "schema": "poke_bot.slowking_expert_cpu_pack_validation/v1",
+  "status": "validated_inactive",
+  "specialist_id": "slowking",
+  "created_at_utc": "2026-07-30T22:48:17.236039+00:00",
+  "remote_receipt": "/home/inzi/poke-bot-agent/outputs/state/slowking-expert-cpu-pack-v1.json",
+  "remote_receipt_sha256": "sha256:834df8ee86fe81d43d150c9dd8a162ad8ee5f5bae6b5f54bb84a0d5ddd11f0a4",
+  "manifest_sha256": "sha256:1556f0bfa0d6550a2d1d7c5a49c80f6c4891ec32eb734946d49a88937ec2d265",
+  "pack_key": "d2f2f1de172c31c05ea55f4414ee1aa49591e4c2284b6ed793b7a90380a693dc",
+  "pack_schema": 2,
+  "records": 311,
+  "decisions": 19251,
+  "samples": 22085,
+  "train_games": 280,
+  "validation_games": 31,
+  "belief_card_vocab": 1268,
+  "tensor_bytes": 34170193,
+  "peak_rss_kib": 570696,
+  "checks": {
+    "temporal_layout": true,
+    "exact_targets": true,
+    "combo_state_targets": true,
+    "train_validation_split_nonempty": true,
+    "active_archaludon_training_modified": false
+  }
+}

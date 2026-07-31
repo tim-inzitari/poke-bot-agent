@@ -1,0 +1,16 @@
+FROM poke-bot-truenas-worker:matchup-v41-v6-slowking-runtime
+
+LABEL org.opencontainers.image.title="poke-bot Elmo H10 remote worker" \
+      org.opencontainers.image.version="final-format-alakazam-h10-r79" \
+      org.opencontainers.image.description="Slowking runtime base with exact final-format Alakazam H10 model loader"
+
+COPY containers/truenas-worker/h10-r79-overlay/config.py /workspace/poke_bot/config.py
+COPY containers/truenas-worker/h10-r79-overlay/model.py /workspace/poke_bot/model.py
+COPY containers/truenas-worker/h10-r79-overlay/train.py /workspace/poke_bot/train.py
+COPY containers/truenas-worker/h10-r79-overlay/core_kernel.py /workspace/poke_bot/core_kernel.py
+
+RUN python -m py_compile \
+      /workspace/poke_bot/config.py \
+      /workspace/poke_bot/model.py \
+      /workspace/poke_bot/train.py \
+      /workspace/poke_bot/core_kernel.py

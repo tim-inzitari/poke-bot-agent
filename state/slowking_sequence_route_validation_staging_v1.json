@@ -1,0 +1,56 @@
+{
+  "schema": "poke_bot.slowking_sequence_route_validation_staging/v1",
+  "created_at_utc": "2026-07-31T12:48:37Z",
+  "status": "validated_staged_for_next_clean_between_iteration_boundary",
+  "specialist_id": "slowking",
+  "purpose": "Bound Router Format 6 file-backed ticket and route validation work to one sequence traversal while preserving exact per-decision fail-closed checks.",
+  "live_iteration": {
+    "iteration": 6,
+    "collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/collection_receipts/iter_00006.json",
+    "collection_receipt_sha256": "sha256:8e07a56b1645787400d53a431f9af7f938c22a01434c892f3debe1b7aac6ae9f",
+    "games": 8192,
+    "decisions": 617296,
+    "recollection_after_managed_restart": false
+  },
+  "staged_runtime": {
+    "root": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v31-route-sequence",
+    "matchup_adapter_activation_sha256": "sha256:fa734d9484d2b299b332112a121bec3d057acba764aab6221e1e1ab6ee9d9de7",
+    "train_sha256": "sha256:f8a441357ed2a13ae5e819034a6555f1b892f7eb461d36a1462cfb282bb0f4c4",
+    "runtime_registry_sha256": "sha256:f591bc9c7657e258abcaf3f88ddba7bd8980a9837bfd97c9ef65a0297c2fba46",
+    "selector_preflight_passed": true,
+    "terminal_handler_preflight_passed": true
+  },
+  "validation": {
+    "worktree_focused_tests": 67,
+    "exact_live_source_focused_tests": 65,
+    "all_focused_tests_passed": true,
+    "router_format_6_registry_reads_bounded_per_sequence": true,
+    "decision_route_rejection_parity_preserved": true,
+    "microbenchmark": {
+      "decisions": 256,
+      "per_decision_validation_seconds": 0.08373800572007895,
+      "sequence_validation_seconds": 0.000380953773856163,
+      "measured_speedup": 219.81146130264077
+    }
+  },
+  "activation_attempt": {
+    "managed_service_only": true,
+    "direct_signals_used": false,
+    "accepted": false,
+    "reason": "The prior v30 process had already created post-collection training artifacts before the managed restart, so the existing design-migration guard correctly rejected the source fingerprint as no longer being at a clean boundary.",
+    "failed_attempts_preserved": 4,
+    "training_or_evaluation_evidence_created_by_failed_attempts": false
+  },
+  "rollback": {
+    "selector_runtime_root": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30",
+    "selector_sha256": "sha256:5231dbaea8f52e2fec7bef6ff476f3adacb3b174768a90b883a6103d2fe30493",
+    "service_main_pid": 3745250,
+    "service_active_state": "active",
+    "service_sub_state": "running",
+    "service_restart_count": 0,
+    "service_result": "success",
+    "manual_stop_protection_restored": true,
+    "completed_collection_reused": true
+  },
+  "activation_rule": "Do not retry during iteration 6. If iteration 6 fails its terminal gate and commits, activate only during the next genuine between-iteration boundary before iteration 7 collection; if iteration 6 passes, leave this optimization staged and transition to final-format Alakazam without changing the completed Slowking lineage."
+}

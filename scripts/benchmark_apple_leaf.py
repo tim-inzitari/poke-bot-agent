@@ -45,7 +45,15 @@ def _sync(device: torch.device) -> None:
         torch.mps.synchronize()
 
 
-def _forward(model: Any, board: Any, options: Any, n_options: int, batch: int):
+def _forward(
+    model: Any,
+    board: Any,
+    options: Any,
+    n_options: int,
+    batch: int,
+    *,
+    autocast_dtype: torch.dtype | None = None,
+):
     return forward_featurized(
         model,
         [board] * batch,
@@ -53,6 +61,7 @@ def _forward(model: Any, board: Any, options: Any, n_options: int, batch: int):
         [n_options] * batch,
         [0] * batch,
         [0] * batch,
+        autocast_dtype=autocast_dtype,
     )
 
 
@@ -66,6 +75,58 @@ def _error(reference: list[tuple[float, list[float]]], actual: list[tuple[float,
             return float("inf")
         worst = max(worst, *(abs(x - y) for x, y in zip(rp, ap)))
     return worst
+
+
+def _training_data_quality(
+    reference: list[tuple[float, list[float]]],
+    actual: list[tuple[float, list[float]]],
+) -> dict[str, float | bool]:
+    if len(reference) != len(actual) or not reference:
+        return {
+            "action_agreement": 0.0,
+            "mean_policy_total_variation": float("inf"),
+            "max_value_error": float("inf"),
+            "all_finite": False,
+            "passed": False,
+        }
+    agreements = 0
+    policy_tv: list[float] = []
+    value_errors: list[float] = []
+    all_finite = True
+    for (ref_value, ref_policy), (value, policy) in zip(reference, actual):
+        if len(ref_policy) != len(policy) or not policy:
+            all_finite = False
+            continue
+        finite = all(
+            math.isfinite(item)
+            for item in (ref_value, value, *ref_policy, *policy)
+        )
+        all_finite = all_finite and finite
+        if not finite:
+            continue
+        agreements += int(
+            max(range(len(ref_policy)), key=ref_policy.__getitem__)
+            == max(range(len(policy)), key=policy.__getitem__)
+        )
+        policy_tv.append(
+            0.5 * sum(abs(left - right) for left, right in zip(ref_policy, policy))
+        )
+        value_errors.append(abs(ref_value - value))
+    action_agreement = agreements / len(reference)
+    mean_tv = sum(policy_tv) / max(len(policy_tv), 1)
+    max_value_error = max(value_errors, default=float("inf"))
+    return {
+        "action_agreement": action_agreement,
+        "mean_policy_total_variation": mean_tv,
+        "max_value_error": max_value_error,
+        "all_finite": all_finite,
+        "passed": bool(
+            all_finite
+            and action_agreement >= 0.999
+            and mean_tv <= 0.02
+            and max_value_error <= 0.05
+        ),
+    }
 
 
 def _publish(path: Path, report: dict[str, Any]) -> None:
@@ -114,14 +175,23 @@ def main() -> int:
     }
     _publish(args.json_out, report)
 
-    variants: list[tuple[str, torch.device, int | None]] = [
-        (f"cpu-{threads}t", torch.device("cpu"), threads) for threads in cpu_threads
+    variants: list[
+        tuple[str, torch.device, int | None, torch.dtype | None]
+    ] = [
+        (f"cpu-{threads}t", torch.device("cpu"), threads, None)
+        for threads in cpu_threads
     ]
     if torch.backends.mps.is_available():
-        variants.append(("mps", torch.device("mps"), None))
+        variants.extend(
+            (
+                ("mps-fp32", torch.device("mps"), None, None),
+                ("mps-bf16", torch.device("mps"), None, torch.bfloat16),
+                ("mps-fp16", torch.device("mps"), None, torch.float16),
+            )
+        )
 
     try:
-        for variant, device, threads in variants:
+        for variant, device, threads, autocast_dtype in variants:
             if threads is not None:
                 torch.set_num_threads(threads)
             model = cpu_model if device.type == "cpu" else load_model_from_checkpoint(checkpoint, device=device)
@@ -129,7 +199,14 @@ def main() -> int:
             with torch.inference_mode():
                 for batch in batches:
                     for _ in range(max(1, args.warmup)):
-                        _forward(model, board, options, args.options, batch)
+                        _forward(
+                            model,
+                            board,
+                            options,
+                            args.options,
+                            batch,
+                            autocast_dtype=autocast_dtype,
+                        )
                     _sync(device)
                     iterations = max(
                         8,
@@ -138,14 +215,27 @@ def main() -> int:
                     started = time.perf_counter()
                     result = []
                     for _ in range(iterations):
-                        result = _forward(model, board, options, args.options, batch)
+                        result = _forward(
+                            model,
+                            board,
+                            options,
+                            args.options,
+                            batch,
+                            autocast_dtype=autocast_dtype,
+                        )
                     _sync(device)
                     elapsed = time.perf_counter() - started
                     error = _error(reference[:batch], result)
+                    quality = _training_data_quality(reference[:batch], result)
                     row = {
                         "variant": variant,
                         "device": device.type,
                         "threads": threads,
+                        "autocast_dtype": (
+                            str(autocast_dtype).removeprefix("torch.")
+                            if autocast_dtype is not None
+                            else "float32"
+                        ),
                         "batch": batch,
                         "iterations": iterations,
                         "decisions": batch * iterations,
@@ -154,9 +244,15 @@ def main() -> int:
                         "batch_latency_ms": elapsed * 1000.0 / iterations,
                         "max_abs_error_vs_cpu": error,
                         "parity_passed": error <= args.parity_atol,
+                        "training_data_quality": quality,
+                        "training_data_quality_passed": quality["passed"],
                     }
                     report["rows"].append(row)
-                    eligible = [item for item in report["rows"] if item["parity_passed"]]
+                    eligible = [
+                        item
+                        for item in report["rows"]
+                        if item["training_data_quality_passed"]
+                    ]
                     report["best_eligible"] = (
                         max(eligible, key=lambda item: item["decisions_per_s"])
                         if eligible

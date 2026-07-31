@@ -334,6 +334,7 @@ def _worker_init_impl(cg_lib_path: Optional[str], remote_channel=None) -> None:
             req_qs=(list(req_qs) if isinstance(req_qs, (list, tuple)) else None),
             leaf_devices=(list(leaf_devices) if leaf_devices is not None else None),
             alive_evts=(list(alive_evts) if alive_evts is not None else None),
+            home_server_idx=server_idx,
         )
         if slot_condition is not None:
             _mark_remote_slot_ready(remote_channel, slot)

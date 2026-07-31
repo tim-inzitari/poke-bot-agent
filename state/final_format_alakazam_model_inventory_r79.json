@@ -1,0 +1,53 @@
+{
+  "schema": "poke_bot.final_format_alakazam_model_inventory/v1",
+  "status": "ordinary_training_active_h10_target_validated",
+  "created_at_utc": "2026-07-31T14:07:00Z",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "ordinary_refresh": {
+    "reference_checkpoint": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/output/bootstrap/ordinary_fallback_core9/checkpoints/epoch_05.pt",
+    "reference_checkpoint_sha256": "sha256:21cd3227f324a9683630ab4a26201c877c9d7eb1c8d029fcc621fde4be052206",
+    "learned_parameters": 1684103,
+    "serialized_tensor_elements": 2006184,
+    "architecture": {
+      "d_model": 96,
+      "attention_heads": 8,
+      "spatial_layers": 4,
+      "temporal_layers": 1,
+      "option_layers": 4,
+      "feed_forward_width": 384,
+      "history_context": 320,
+      "learned_head_count": 17,
+      "decision_fusion_schema": "poke_bot.causal_decision_fusion/v1"
+    },
+    "parameter_shape_constant_through_exact_25_epoch_bootstrap": true
+  },
+  "h10_target": {
+    "capacity_profile": "H10-I/v1",
+    "validated_canary_checkpoint": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/output/h10_canary/core9_hotstart_h10_nonpromotable_v2.pt",
+    "validated_canary_checkpoint_sha256": "sha256:1d2b6f04f75fd9e0f735bd2cc515c019f5d993a3adf654e3f2e3c0cae7010459",
+    "learned_parameters": 10352606,
+    "architecture": {
+      "d_model": 96,
+      "attention_heads": 8,
+      "spatial_layers": 7,
+      "temporal_layers": 3,
+      "option_layers": 7,
+      "feed_forward_width": 2496,
+      "history_context": 320,
+      "learned_head_count": 19,
+      "distinct_bounded_action_route_count": 19,
+      "setup_board_outcome": true,
+      "combo_state": true,
+      "guide_runtime_route_count": 0
+    },
+    "step_zero_parity_passed": true,
+    "all_measured_max_abs_differences": 0.0,
+    "canary_promotable": false,
+    "actual_epoch_25_parent_migration_pending": true
+  },
+  "parameter_delta_ordinary_to_h10": 8668503,
+  "runtime_authority": "ordinary_refresh_only_until_h10_training_and_gate_receipts",
+  "selector_eligible": false,
+  "kaggle_eligible": false
+}

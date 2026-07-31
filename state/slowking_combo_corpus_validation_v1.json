@@ -1,0 +1,70 @@
+{
+  "checks": {
+    "all_decisions_labeled": true,
+    "bench_continuity_coverage": true,
+    "copied_attack_legality_coverage": true,
+    "current_non_imitation_consumer_contract": true,
+    "energy_route_coverage": true,
+    "exact_deck_binding": true,
+    "metadata_combo_coverage_matches_decisions": true,
+    "seek_source_coverage": true,
+    "slowking_copy_context_coverage": true,
+    "slowking_target_context_coverage": true,
+    "top_deck_construction_coverage": true,
+    "visible_combo_piece_coverage": true
+  },
+  "corpus_root": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v3",
+  "coverage": {
+    "metadata_combo_rows": 19251,
+    "seek_source_labels": 4948,
+    "select_context_rows": {
+      "0": 10043,
+      "1": 311,
+      "15": 1216,
+      "2": 279,
+      "21": 495,
+      "22": 697,
+      "3": 874,
+      "34": 4,
+      "35": 672,
+      "38": 86,
+      "4": 613,
+      "41": 165,
+      "43": 81,
+      "5": 822,
+      "7": 3077,
+      "8": 1323,
+      "9": 1327
+    },
+    "top_deck_labels": 887,
+    "vector_cells": {
+      "bench_continuity": 77004,
+      "copied_attack_legality": 22611,
+      "energy_route_readiness": 96255,
+      "visible_combo_piece_availability": 96255
+    }
+  },
+  "created_at_utc": "2026-07-30T22:45:34.275947+00:00",
+  "dataset_schema": 8,
+  "decisions": 19251,
+  "games": 311,
+  "ready_receipt": "/mnt/Main/main/poke-bot-agent/archive/slowking-guide-corpus-full44-v3/CURRENT_DECK_GUIDE_CORPUS_READY.json",
+  "ready_receipt_sha256": "sha256:0c8535335b39279ffe994ee4a79e714fce0ecca101eecf56b4189ae6ef28b5e9",
+  "schema": "poke_bot.slowking_combo_corpus_validation/v1",
+  "source_files": [
+    {
+      "path": "poke_bot/combo_state_contract.py",
+      "sha256": "sha256:b8d3f64638a3c1cf3f276a74e2d31bccdaa705c004e24e713501ac5bac477126"
+    },
+    {
+      "path": "poke_bot/slowking_combo_targets.py",
+      "sha256": "sha256:f46fc0d4f522ee6cb6290735ebe22406cd77473a4d693a2064bf71d220afc05b"
+    },
+    {
+      "path": "poke_bot/authoritative_visual_trace.py",
+      "sha256": "sha256:ce1d21758710b50705ea04b09563d26a742ad8b4d3c61fbfff3f32228204418a"
+    }
+  ],
+  "specialist_id": "slowking",
+  "status": "validated"
+}

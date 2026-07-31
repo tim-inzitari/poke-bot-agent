@@ -8,7 +8,14 @@ import torch
 from poke_bot import checkpoint, config, features
 from poke_bot.dataset import BootstrapDataset, DecisionSample, GameSequence, PolicyStage
 from poke_bot.model import build_model
-from poke_bot.train import TrainConfig, batch_losses, rl_train_step
+from poke_bot.train import (
+    TrainConfig,
+    _precompute_awr_baseline_cache,
+    _precompute_awr_baseline_cache_reference,
+    _precompute_awr_baseline_cache_value_only,
+    batch_losses,
+    rl_train_step,
+)
 
 
 def _sparse(words: int, offset: int = 0) -> features.SparseVector:
@@ -189,6 +196,217 @@ def test_frozen_awr_baseline_survives_value_head_update() -> None:
         before.raw_advantage_mean_abs
     )
     assert online.raw_advantage_mean != pytest.approx(before.raw_advantage_mean)
+
+
+def test_value_only_packed_baseline_matches_reference_values_and_awr() -> None:
+    torch.manual_seed(19)
+    model = _small_model()
+    sequences = [
+        GameSequence(
+            episode_id=f"packed-{length}",
+            seat=length % 2,
+            archetype="dragapult",
+            opp_archetype="iono",
+            deck=[1] * 60,
+            value=(-1.0 if length == 2 else 1.0),
+            decisions=[_decision(index + length * 5) for index in range(length)],
+        )
+        for length in (2, 3, 4, 5)
+    ]
+    cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        games_per_batch=3,
+        max_decisions_per_batch=32,
+        awr_baseline_prefetch_batches=1,
+    )
+
+    reference = _precompute_awr_baseline_cache_reference(
+        model, sequences, cfg=cfg
+    )
+    optimized = _precompute_awr_baseline_cache_value_only(
+        model, sequences, cfg=cfg
+    )
+
+    assert optimized.keys() == reference.keys()
+    assert optimized == reference
+
+    reference_loss, reference_metrics = batch_losses(
+        model,
+        sequences,
+        pure_rl=True,
+        awr_baseline_cache=reference,
+        awr_beta=cfg.awr_beta,
+        awr_weight_max=cfg.awr_weight_max,
+        awr_normalize_advantages=cfg.awr_normalize_advantages,
+    )
+    optimized_loss, optimized_metrics = batch_losses(
+        model,
+        sequences,
+        pure_rl=True,
+        awr_baseline_cache=optimized,
+        awr_beta=cfg.awr_beta,
+        awr_weight_max=cfg.awr_weight_max,
+        awr_normalize_advantages=cfg.awr_normalize_advantages,
+    )
+    assert torch.equal(optimized_loss, reference_loss)
+    for field in (
+        "awr_weight_mean",
+        "awr_weight_sum",
+        "awr_weight_sq_sum",
+        "awr_weight_p50",
+        "awr_weight_p95",
+        "awr_weight_max_observed",
+        "awr_weight_clip_frac",
+        "awr_effective_sample_size",
+        "awr_effective_sample_fraction",
+    ):
+        assert getattr(optimized_metrics, field) == getattr(
+            reference_metrics, field
+        )
+
+
+def test_value_only_baseline_bypasses_policy_decoder(monkeypatch) -> None:
+    torch.manual_seed(23)
+    model = _small_model()
+    sequence = GameSequence(
+        episode_id="value-only",
+        seat=0,
+        archetype="dragapult",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0), _decision(1)],
+    )
+    cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        games_per_batch=2,
+        max_decisions_per_batch=8,
+    )
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("policy decoder ran during value-only baseline")
+
+    monkeypatch.setattr(model, "decode_options", _forbidden)
+    cache = _precompute_awr_baseline_cache_value_only(
+        model, [sequence], cfg=cfg
+    )
+    assert len(cache) == 2
+
+
+def test_packed_value_only_candidate_is_numerically_close_to_reference() -> None:
+    torch.manual_seed(29)
+    model = _small_model()
+    sequences = [
+        GameSequence(
+            episode_id=f"packed-shadow-{index}",
+            seat=index % 2,
+            archetype="dragapult",
+            opp_archetype="iono",
+            deck=[1] * 60,
+            value=(-1.0 if index == 0 else 1.0),
+            decisions=[_decision(index * 9 + step) for step in range(length)],
+        )
+        for index, length in enumerate((3, 4))
+    ]
+    reference_cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        games_per_batch=2,
+        max_decisions_per_batch=16,
+    )
+    packed_cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        games_per_batch=2,
+        max_decisions_per_batch=16,
+        awr_pack_temporal_baseline=True,
+    )
+    reference = _precompute_awr_baseline_cache_reference(
+        model, sequences, cfg=reference_cfg
+    )
+    packed = _precompute_awr_baseline_cache_value_only(
+        model, sequences, cfg=packed_cfg
+    )
+    assert packed.keys() == reference.keys()
+    for key in reference:
+        assert packed[key] == pytest.approx(reference[key], abs=1e-6, rel=1e-6)
+
+    _, reference_metrics = batch_losses(
+        model, sequences, pure_rl=True, awr_baseline_cache=reference
+    )
+    _, packed_metrics = batch_losses(
+        model, sequences, pure_rl=True, awr_baseline_cache=packed
+    )
+    for field in (
+        "awr_weight_mean",
+        "awr_weight_sum",
+        "awr_weight_sq_sum",
+        "awr_weight_p50",
+        "awr_weight_p95",
+        "awr_weight_max_observed",
+        "awr_effective_sample_size",
+    ):
+        assert getattr(packed_metrics, field) == pytest.approx(
+            getattr(reference_metrics, field), abs=1e-5, rel=1e-5
+        )
+
+
+def test_value_only_baseline_prefetch_is_bounded() -> None:
+    model = _small_model()
+    sequence = GameSequence(
+        episode_id="prefetch-bound",
+        seat=0,
+        archetype="dragapult",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0)],
+    )
+    cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        awr_baseline_prefetch_batches=2,
+    )
+    with pytest.raises(ValueError, match="bounded to zero or one"):
+        _precompute_awr_baseline_cache_value_only(
+            model, [sequence], cfg=cfg
+        )
+
+
+def test_value_only_activation_gate_requires_exact_cache_parity() -> None:
+    torch.manual_seed(31)
+    model = _small_model()
+    sequences = [
+        GameSequence(
+            episode_id=f"exact-gate-{length}",
+            seat=length % 2,
+            archetype="dragapult",
+            opp_archetype="iono",
+            deck=[1] * 60,
+            value=1.0,
+            decisions=[_decision(length * 11 + step) for step in range(length)],
+        )
+        for length in (2, 3, 4)
+    ]
+    exact_cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        games_per_batch=3,
+        max_decisions_per_batch=16,
+        awr_baseline_exact_parity_check=True,
+    )
+    cache = _precompute_awr_baseline_cache(
+        model, sequences, cfg=exact_cfg
+    )
+    assert len(cache) == sum(len(sequence.decisions) for sequence in sequences)
+
+    packed_cfg = TrainConfig.pure_rl_defaults(
+        amp=False,
+        games_per_batch=3,
+        max_decisions_per_batch=16,
+        awr_pack_temporal_baseline=True,
+        awr_baseline_exact_parity_check=True,
+    )
+    with pytest.raises(RuntimeError, match="exact parity failed"):
+        _precompute_awr_baseline_cache(
+            model, sequences, cfg=packed_cfg
+        )
 
 
 def test_rl_train_step_restores_adam_and_global_counters(tmp_path) -> None:

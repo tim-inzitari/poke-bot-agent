@@ -100,12 +100,17 @@ from poke_bot.pure_rl.guide_weight_review import (  # noqa: E402
     emit_review_request,
 )
 from poke_bot.process_memory import close_mp_queue, release_process_heap  # noqa: E402
+from poke_bot.slowking_combo_targets import (  # noqa: E402
+    attach_slowking_combo_state_labels,
+    is_exact_slowking_deck,
+)
 from poke_bot.pure_rl.shards import (  # noqa: E402
     CompactDecision,
     CompactGame,
     CompactShardWriter,
 )
 from poke_bot.train import (  # noqa: E402
+    COMBO_STATE_BASE_LOSS_WEIGHT,
     GUIDE_TRAINING_MODE_LEGACY,
     GUIDE_TRAINING_MODE_STRATEGIC,
     GUIDE_TRAINING_MODES,
@@ -130,6 +135,10 @@ EXPERT_REHEARSAL_TARGETS = (
     "opponent_private_prize_rows",
     "lethal_threat_rows",
     "prize_race_rows",
+)
+EXPERT_REHEARSAL_TARGET_CHOICES = (
+    *EXPERT_REHEARSAL_TARGETS,
+    "combo_state_rows",
 )
 LADDER_DECK_MIX_PATH = ROOT / "data" / "training_mixes" / "top_ladder.v1.json"
 LADDER_DECK_REPRESENTATIVES_PATH = (
@@ -434,6 +443,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--iterations", type=int, default=100)
     p.add_argument("--games-per-iter", type=int, default=256)
     p.add_argument(
+        "--require-exact-training-seat-split",
+        action=argparse.BooleanOptionalAction,
+        default=str(
+            os.environ.get("PURE_RL_REQUIRE_EXACT_TRAINING_SEAT_SPLIT", "0")
+        ).strip().lower()
+        in {"1", "true", "yes", "on"},
+        help=(
+            "Fail closed unless assigned source games, retained source games, "
+            "and replay sequences consumed by training are each exactly 50/50 "
+            "between seats 0 and 1. This is the final-format Alakazam contract; "
+            "it does not create a second-seat-priority curriculum."
+        ),
+    )
+    p.add_argument(
         "--train-epochs",
         type=int,
         default=int(os.environ.get("PURE_RL_TRAIN_EPOCHS", "2")),
@@ -577,6 +600,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--combo-state-loss-weight",
+        type=float,
+        default=float(
+            os.environ.get("PURE_RL_COMBO_STATE_LOSS_WEIGHT", "0")
+        ),
+        help=(
+            "Ordinary observed-target weight for the Slowking-only causal "
+            "combo-state head. This must remain zero for every other specialist."
+        ),
+    )
+    p.add_argument(
         "--current-deck-guide-curriculum-spec",
         type=Path,
         default=(
@@ -640,6 +674,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=float(
             os.environ.get("PURE_RL_DORMANT_MATCHUP_ADAPTER_LR", "1e-4")
+        ),
+    )
+    p.add_argument(
+        "--dormant-matchup-adapter-max-decisions-per-batch",
+        type=int,
+        default=int(
+            os.environ.get(
+                "PURE_RL_DORMANT_MATCHUP_ADAPTER_MAX_DECISIONS_PER_BATCH",
+                "2048",
+            )
+        ),
+        help=(
+            "Independent decision cap for adapter-only training. Adapter batches "
+            "also split recursively on CUDA OOM without changing the corpus."
         ),
     )
     p.add_argument(
@@ -1048,7 +1096,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--expert-required-target",
         action="append",
-        choices=EXPERT_REHEARSAL_TARGETS,
+        choices=EXPERT_REHEARSAL_TARGET_CHOICES,
         default=None,
         help=(
             "Require this exact expert-corpus target during rehearsal. "
@@ -1163,6 +1211,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         p.error("--mode specialist requires --specialist-archetype")
     if args.mode == "core" and specialist:
         p.error("--specialist-archetype is valid only with --mode specialist")
+    if bool(args.require_exact_training_seat_split) and args.mode != "specialist":
+        p.error("--require-exact-training-seat-split requires --mode specialist")
+    if bool(args.require_exact_training_seat_split) and int(args.games_per_iter) % 2:
+        p.error("--require-exact-training-seat-split requires an even game count")
     if bool(args.population_own_models_only) and args.mode != "specialist":
         p.error("--population-own-models-only requires --mode specialist")
     if bool(args.population_own_models_only) and float(
@@ -1287,6 +1339,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     setup_weight = float(args.setup_board_outcome_loss_weight)
     if not math.isfinite(setup_weight) or setup_weight < 0.0:
         p.error("--setup-board-outcome-loss-weight must be finite and nonnegative")
+    combo_weight = float(args.combo_state_loss_weight)
+    if not math.isfinite(combo_weight) or combo_weight < 0.0:
+        p.error("--combo-state-loss-weight must be finite and nonnegative")
+    if specialist == "slowking":
+        if not math.isclose(
+            combo_weight,
+            COMBO_STATE_BASE_LOSS_WEIGHT,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            p.error(
+                "Slowking requires --combo-state-loss-weight 0.025 during "
+                "ordinary RL and scheduled expert rehearsal"
+            )
+    elif combo_weight != 0.0:
+        p.error("--combo-state-loss-weight is authorized only for Slowking")
     guide_training_mode = str(args.current_deck_guide_training_mode)
     if guide_training_mode not in GUIDE_TRAINING_MODES:
         p.error(
@@ -1341,6 +1409,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         p.error("--dormant-matchup-adapter-epochs cannot be negative")
     if float(args.dormant_matchup_adapter_lr) <= 0.0:
         p.error("--dormant-matchup-adapter-lr must be positive")
+    if int(args.dormant_matchup_adapter_max_decisions_per_batch) <= 0:
+        p.error(
+            "--dormant-matchup-adapter-max-decisions-per-batch must be positive"
+        )
     registered_matchup_ids = tuple(EXPERT_IDS)
     if adapter_epochs > 0:
         try:
@@ -2405,6 +2477,9 @@ def _design_contract(
             "dormant_matchup_adapter": {
                 "epochs": int(args.dormant_matchup_adapter_epochs),
                 "learning_rate": float(args.dormant_matchup_adapter_lr),
+                "max_decisions_per_batch": int(
+                    args.dormant_matchup_adapter_max_decisions_per_batch
+                ),
                 "activation_receipt": (
                     _path_content_identity(
                         Path(
@@ -2458,6 +2533,16 @@ def _design_contract(
                 "lethal_threat": float(args.lethal_threat_loss_weight),
                 "prize_race": float(args.prize_race_loss_weight),
                 "alakazam_guide": float(args.alakazam_guide_loss_weight),
+            },
+            "training_seat_split": {
+                "required": bool(args.require_exact_training_seat_split),
+                "policy": (
+                    "exact_50_50_per_train_and_validation_partition"
+                    if bool(args.require_exact_training_seat_split)
+                    else "source_manifest_distribution"
+                ),
+                "stages": ["assigned", "actual", "consumed"],
+                "second_seat_priority": False,
             },
             # The pointer is mutable by design; every actual manifest digest is
             # frozen in a per-rehearsal receipt instead of this lineage contract.
@@ -2513,6 +2598,15 @@ def _design_contract(
             "promotion_bootstrap_resamples": int(args.promotion_bootstrap_resamples),
         },
         "collection": {
+            "training_seat_split": {
+                "required": bool(args.require_exact_training_seat_split),
+                "policy": (
+                    "exact_50_50_first_second_training"
+                    if bool(args.require_exact_training_seat_split)
+                    else "ordinary_balanced_scheduler"
+                ),
+                "second_seat_priority": False,
+            },
             "training_opponent_scope": (
                 "own_frozen_population_only"
                 if bool(args.population_own_models_only)
@@ -2732,6 +2826,10 @@ _BOUNDARY_MIGRATABLE_DESIGN_PATHS = frozenset(
         # Receipt-backed fitting is an append-only learner capability. It may
         # enter only through the explicit completed-iteration migration path.
         "learner.dormant_matchup_adapter",
+        # A source repair changes the checksum-bound training implementation.
+        # The replacement curriculum receipt is fully revalidated by launch
+        # preflight and may replace only its identity tuple at a clean boundary.
+        "learner.current_deck_guide_strategic_curriculum.validation_receipt",
         "learner.exact_gate_regression_margin",
         "learner.exact_gate_regression_patience",
         "games.per_iteration",
@@ -2761,8 +2859,15 @@ _BOUNDARY_MIGRATABLE_DESIGN_PATHS = frozenset(
         "collection.official_exploit",
         "collection.official_targeting",
         "collection.group_games_per_iteration",
+        "collection.self_play_fraction",
         "collection.research_control_phase",
         "collection.strong_public_practice",
+        # Owner revision 83 permits a checksum-identical remote endpoint to be
+        # removed or restored at an uncommitted clean boundary while that host
+        # runs an isolated device benchmark. The exact endpoint set remains
+        # fingerprinted and every connected endpoint still passes the hard
+        # checkpoint/runtime gate before collection.
+        "remotes.endpoints",
         "opponents.research_controls",
         "opponents.official_target_training",
         "measurement_deck_distribution",
@@ -3437,6 +3542,413 @@ def _iteration_artifact_paths(run_dir: Path, iteration: int) -> list[Path]:
 
 
 _COMPLETED_COLLECTION_SCHEMA = "poke_bot.completed_collection/v1"
+_TRAINING_SEAT_SPLIT_SCHEMA = "poke_bot.alakazam_refresh_seat_split/v1"
+_TRAINING_SEAT_SPLIT_SUMMARY_SCHEMA = (
+    "poke_bot.alakazam_refresh_seat_split_summary/v1"
+)
+
+
+def _training_seat_stage(
+    stage: str,
+    seats: Sequence[Any],
+    *,
+    expected_total: Optional[int] = None,
+) -> dict[str, Any]:
+    """Return a fail-closed two-seat accounting stage.
+
+    Seats are counted at the policy/source-game boundary supplied by the
+    caller. Values other than the two engine seats are evidence failures, not
+    values that can be rounded away to preserve a nominal 50/50 claim.
+    """
+
+    counts = {"seat0": 0, "seat1": 0}
+    invalid: list[str] = []
+    for raw in seats:
+        try:
+            seat = int(raw)
+        except (TypeError, ValueError):
+            invalid.append(repr(raw))
+            continue
+        if seat == 0:
+            counts["seat0"] += 1
+        elif seat == 1:
+            counts["seat1"] += 1
+        else:
+            invalid.append(str(seat))
+    total = int(counts["seat0"] + counts["seat1"])
+    expected_matches = expected_total is None or total == int(expected_total)
+    passed = bool(
+        not invalid
+        and total > 0
+        and total % 2 == 0
+        and counts["seat0"] == counts["seat1"]
+        and expected_matches
+    )
+    return {
+        "stage": str(stage),
+        "seat0": int(counts["seat0"]),
+        "seat1": int(counts["seat1"]),
+        "total": total,
+        "expected_total": (
+            int(expected_total) if expected_total is not None else None
+        ),
+        "invalid_seats": invalid,
+        "exact_50_50": passed,
+    }
+
+
+def _assert_exact_training_seat_stage(stage: dict[str, Any]) -> None:
+    if stage.get("exact_50_50") is not True:
+        raise RuntimeError(
+            "exact 50/50 training-seat contract failed: "
+            f"stage={stage.get('stage')} seat0={stage.get('seat0')} "
+            f"seat1={stage.get('seat1')} total={stage.get('total')} "
+            f"expected={stage.get('expected_total')} "
+            f"invalid={stage.get('invalid_seats')}"
+        )
+
+
+def _commit_training_seat_split_receipt(
+    *,
+    run_dir: Path,
+    iteration: int,
+    design_fingerprint: str,
+    collection_receipt: dict[str, Any],
+    sequences: Sequence[Any],
+) -> dict[str, Any]:
+    """Bind assigned, retained, and actually consumed seat populations."""
+
+    collection_receipt_path = Path(
+        collection_receipt.get("receipt_path")
+        or _collection_receipt_path(run_dir, iteration)
+    )
+    if not collection_receipt_path.is_file():
+        raise RuntimeError(
+            "training-seat receipt cannot bind missing collection receipt: "
+            f"{collection_receipt_path}"
+        )
+    # Seat receipts describe the already-collected population, so bind them to
+    # the design that produced that collection.  A recovery-only source patch
+    # may legitimately change the current design fingerprint without changing
+    # the immutable collection or its seat assignment.
+    receipt_design_fingerprint = str(
+        collection_receipt.get("design_fingerprint_at_collection")
+        or design_fingerprint
+    )
+    if not receipt_design_fingerprint.startswith("sha256:"):
+        raise RuntimeError(
+            "training-seat receipt lacks a valid collection design fingerprint"
+        )
+    split = dict((collection_receipt.get("stats") or {}).get("training_seat_split") or {})
+    assigned = dict(split.get("assigned_source_games") or {})
+    actual = dict(split.get("retained_source_games") or {})
+    _assert_exact_training_seat_stage(assigned)
+    _assert_exact_training_seat_stage(actual)
+    consumed = _training_seat_stage(
+        "replay_sequences_consumed",
+        [getattr(sequence, "seat", None) for sequence in sequences],
+        expected_total=len(sequences),
+    )
+    _assert_exact_training_seat_stage(consumed)
+    sequence_identity_digest = _canonical_digest(
+        [
+            {
+                "episode_id": str(getattr(sequence, "episode_id", "")),
+                "seat": int(getattr(sequence, "seat", -1)),
+                "archetype": str(getattr(sequence, "archetype", "")),
+                "source": str(getattr(sequence, "source", "")),
+            }
+            for sequence in sequences
+        ]
+    )
+    receipt_root = Path(run_dir) / "seat_split_receipts"
+    stage_manifest_digests = dict(split.get("stage_manifest_sha256") or {})
+    stage_manifest_digests["consumed"] = sequence_identity_digest
+    stages = {
+        "assigned": assigned,
+        "actual": actual,
+        "consumed": consumed,
+    }
+    stage_receipts: dict[str, dict[str, Any]] = {}
+    for stage_name, stage_row in stages.items():
+        stage_path = (
+            receipt_root
+            / f"iter_{int(iteration):05d}.{stage_name}.json"
+        )
+        immutable_stage = {
+            "schema": _TRAINING_SEAT_SPLIT_SCHEMA,
+            "template_only": False,
+            "status": "issued_passed",
+            "runtime_authority": "none",
+            "specialist_id": "alakazam",
+            "research_derivative": "final_format_alakazam_h10_i",
+            "iteration": int(iteration),
+            "design_fingerprint": receipt_design_fingerprint,
+            "stage": stage_name,
+            "allowed_stages": ["assigned", "actual", "consumed"],
+            "first_games": int(stage_row["seat0"]),
+            "second_games": int(stage_row["seat1"]),
+            "total_games": int(stage_row["total"]),
+            "exact_even_split": True,
+            "deterministic_assignment_manifest_sha256": str(
+                stage_manifest_digests.get(stage_name) or ""
+            ),
+            "second_focus_1_to_7_used": False,
+            "package_preference": "first_if_allowed",
+        }
+        if not immutable_stage["deterministic_assignment_manifest_sha256"].startswith(
+            "sha256:"
+        ):
+            raise RuntimeError(
+                f"training-seat stage {stage_name} lacks its manifest digest"
+            )
+        if stage_path.is_file():
+            existing_stage = json.loads(stage_path.read_text(encoding="utf-8"))
+            comparable_stage = {
+                key: value
+                for key, value in existing_stage.items()
+                if key != "issued_at_utc"
+            }
+            if comparable_stage != immutable_stage:
+                raise RuntimeError(
+                    f"immutable {stage_name} training-seat receipt changed"
+                )
+        else:
+            existing_stage = {
+                **immutable_stage,
+                "issued_at_utc": datetime.now(timezone.utc).isoformat(),
+            }
+            _write_json_exclusive(stage_path, existing_stage)
+        stage_receipts[stage_name] = {
+            "path": str(stage_path),
+            "sha256": _sha256_file(stage_path),
+        }
+
+    receipt_path = receipt_root / f"iter_{int(iteration):05d}.index.json"
+    immutable = {
+        "schema": "poke_bot.alakazam_refresh_seat_split_index/v1",
+        "iteration": int(iteration),
+        "design_fingerprint": receipt_design_fingerprint,
+        "policy": "exact_50_50_first_second_training",
+        "second_seat_priority": False,
+        "assigned_source_games": assigned,
+        "retained_source_games": actual,
+        "replay_sequences_consumed": consumed,
+        "sequence_identity_digest": sequence_identity_digest,
+        "stage_receipts": stage_receipts,
+        "collection_receipt": {
+            "path": str(collection_receipt_path),
+            "sha256": _sha256_file(collection_receipt_path),
+        },
+        "passed": True,
+    }
+    if receipt_path.is_file():
+        existing = json.loads(receipt_path.read_text(encoding="utf-8"))
+        comparable = {key: value for key, value in existing.items() if key != "created_at_utc"}
+        if comparable != immutable:
+            raise RuntimeError("immutable training-seat receipt changed on recovery")
+        return {**existing, "receipt_path": str(receipt_path)}
+    payload = {
+        **immutable,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    _write_json_exclusive(receipt_path, payload)
+    print(
+        "[pure_rl] exact training-seat split committed "
+        f"iter={iteration} assigned={assigned['seat0']}/{assigned['seat1']} "
+        f"retained={actual['seat0']}/{actual['seat1']} "
+        f"consumed={consumed['seat0']}/{consumed['seat1']} "
+        f"receipt={receipt_path}",
+        flush=True,
+    )
+    return {**payload, "receipt_path": str(receipt_path)}
+
+
+def _commit_expert_rehearsal_seat_split_receipts(
+    *,
+    run_dir: Path,
+    before_iteration: int,
+    design_fingerprint: str,
+    evidence: dict[str, Any],
+    pack_info: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind the exact even expert view actually packed for rehearsal.
+
+    The immutable public manifest remains untouched.  This receipt identifies
+    the deterministic subset assigned from it, the checksummed CPU pack that
+    materialized that subset, and the same pack consumed by the rehearsal
+    optimizer.  Both train and validation partitions must independently be
+    even so no gradient-bearing partition can hide a seat skew.
+    """
+
+    if not (
+        evidence.get("schema")
+        == "poke_bot.expert_rehearsal_seat_selection/v1"
+        and evidence.get("passed") is True
+        and evidence.get("second_focus_1_to_7_used") is False
+        and evidence.get("package_preference") == "first_if_allowed"
+    ):
+        raise RuntimeError("expert rehearsal lacks exact-seat selection evidence")
+    partitions = dict(evidence.get("partitions") or {})
+    first_games = 0
+    second_games = 0
+    for name in ("train", "validation"):
+        row = dict(partitions.get(name) or {})
+        first = int(row.get("first_games", -1))
+        second = int(row.get("second_games", -1))
+        total = int(row.get("total_games", -1))
+        if not (
+            row.get("exact_even_split") is True
+            and first > 0
+            and first == second
+            and total == first + second
+        ):
+            raise RuntimeError(
+                f"expert rehearsal {name} partition is not exact 50/50"
+            )
+        first_games += first
+        second_games += second
+    if first_games != second_games:
+        raise RuntimeError("expert rehearsal aggregate seat split is not exact")
+
+    pack_manifest = Path(str(pack_info.get("manifest") or "")).resolve()
+    if not pack_manifest.is_file():
+        raise RuntimeError("expert rehearsal CPU-pack manifest is missing")
+    pack_manifest_sha256 = _sha256_file(pack_manifest)
+    assignment_sha256 = str(
+        evidence.get("deterministic_assignment_manifest_sha256") or ""
+    )
+    if not assignment_sha256.startswith("sha256:"):
+        raise RuntimeError("expert rehearsal assignment digest is invalid")
+
+    receipt_root = Path(run_dir) / "seat_split_receipts"
+    stage_digests = {
+        "assigned": assignment_sha256,
+        "actual": _canonical_digest(
+            {
+                "assignment": assignment_sha256,
+                "cpu_pack_key": str(pack_info.get("key") or ""),
+                "cpu_pack_manifest_sha256": pack_manifest_sha256,
+                "partitions": partitions,
+            }
+        ),
+        "consumed": _canonical_digest(
+            {
+                "cpu_pack_manifest_sha256": pack_manifest_sha256,
+                "selected_games": int(evidence.get("selected_games", -1)),
+                "selected_packed_decisions": int(
+                    evidence.get("selected_packed_decisions", -1)
+                ),
+                "partitions": partitions,
+            }
+        ),
+    }
+    stage_receipts: dict[str, dict[str, str]] = {}
+    for stage in ("assigned", "actual", "consumed"):
+        stage_path = receipt_root / (
+            f"rehearsal_before_iter_{int(before_iteration):05d}.{stage}.json"
+        )
+        immutable_stage = {
+            "schema": _TRAINING_SEAT_SPLIT_SCHEMA,
+            "template_only": False,
+            "status": "issued_passed",
+            "runtime_authority": "none",
+            "specialist_id": "alakazam",
+            "research_derivative": "final_format_alakazam_h10_i",
+            "iteration": int(before_iteration),
+            "training_phase": "expert_rehearsal",
+            "stage": stage,
+            "allowed_stages": ["assigned", "actual", "consumed"],
+            "first_games": int(first_games),
+            "second_games": int(second_games),
+            "total_games": int(first_games + second_games),
+            "exact_even_split": True,
+            "deterministic_assignment_manifest_sha256": stage_digests[stage],
+            "second_focus_1_to_7_used": False,
+            "package_preference": "first_if_allowed",
+        }
+        if stage_path.is_file():
+            existing = json.loads(stage_path.read_text(encoding="utf-8"))
+            if {
+                key: value
+                for key, value in existing.items()
+                if key != "issued_at_utc"
+            } != immutable_stage:
+                raise RuntimeError(
+                    f"immutable rehearsal {stage} seat receipt changed"
+                )
+        else:
+            _write_json_exclusive(
+                stage_path,
+                {
+                    **immutable_stage,
+                    "issued_at_utc": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        stage_receipts[stage] = {
+            "path": str(stage_path),
+            "sha256": _sha256_file(stage_path),
+        }
+
+    index_path = receipt_root / (
+        f"rehearsal_before_iter_{int(before_iteration):05d}.index.json"
+    )
+    immutable_index = {
+        "schema": (
+            "poke_bot.alakazam_refresh_rehearsal_seat_split_index/v1"
+        ),
+        "before_iteration": int(before_iteration),
+        "design_fingerprint": str(design_fingerprint),
+        "policy": "exact_50_50_first_second_training",
+        "second_seat_priority": False,
+        "source_manifest_seats": dict(evidence.get("source") or {}),
+        "partitions": partitions,
+        "selected_games": int(evidence.get("selected_games", -1)),
+        "selected_raw_decisions": int(
+            evidence.get("selected_raw_decisions", -1)
+        ),
+        "selected_packed_decisions": int(
+            evidence.get("selected_packed_decisions", -1)
+        ),
+        "cpu_pack": {
+            "key": str(pack_info.get("key") or ""),
+            "manifest": str(pack_manifest),
+            "manifest_sha256": pack_manifest_sha256,
+        },
+        "stage_receipts": stage_receipts,
+        "package_preference": "first_if_allowed",
+        "second_focus_1_to_7_used": False,
+        "passed": True,
+    }
+    if index_path.is_file():
+        existing_index = json.loads(index_path.read_text(encoding="utf-8"))
+        if {
+            key: value
+            for key, value in existing_index.items()
+            if key != "issued_at_utc"
+        } != immutable_index:
+            raise RuntimeError("immutable rehearsal seat index changed")
+    else:
+        _write_json_exclusive(
+            index_path,
+            {
+                **immutable_index,
+                "issued_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+    print(
+        "[pure_rl] exact rehearsal-seat split committed "
+        f"before_iter={before_iteration} "
+        f"first={first_games} second={second_games} receipt={index_path}",
+        flush=True,
+    )
+    return {
+        "schema": immutable_index["schema"],
+        "path": str(index_path),
+        "sha256": _sha256_file(index_path),
+    }
+
+
 def _collection_receipt_path(run_dir: Path, iteration: int) -> Path:
     return (
         Path(run_dir)
@@ -3600,6 +4112,24 @@ def _verified_completed_collection_receipt(
         runtime_enforcement = dict(
             stats.get("matchup_runtime_enforcement") or {}
         )
+        seat_split_required = bool(
+            ((contract.get("collection") or {}).get("training_seat_split") or {}).get(
+                "required"
+            )
+        )
+        seat_split = dict(stats.get("training_seat_split") or {})
+        assigned_seats = dict(seat_split.get("assigned_source_games") or {})
+        retained_seats = dict(seat_split.get("retained_source_games") or {})
+        exact_seat_split_valid = bool(
+            seat_split.get("schema") == _TRAINING_SEAT_SPLIT_SUMMARY_SCHEMA
+            and seat_split.get("required") is True
+            and seat_split.get("second_seat_priority") is False
+            and seat_split.get("passed") is True
+            and assigned_seats.get("exact_50_50") is True
+            and retained_seats.get("exact_50_50") is True
+            and int(assigned_seats.get("total", -1)) == expected
+            and int(retained_seats.get("total", -1)) == expected
+        )
         manifest = validated_replay_cache_manifest(
             shard,
             verify_info_set=False,
@@ -3650,6 +4180,7 @@ def _verified_completed_collection_receipt(
                     and runtime_enforcement.get("passed") is True
                 )
             )
+            or (seat_split_required and not exact_seat_split_valid)
         ):
             return None
         return {**receipt, "receipt_path": str(receipt_path)}
@@ -5312,6 +5843,13 @@ def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
     steps = list(record.get("steps") or [])
     if not steps:
         return None
+    deck = [int(x) for x in (record.get("deck") or [])]
+    combo_coverage: Optional[dict[str, int]] = None
+    if is_exact_slowking_deck(deck):
+        combo_coverage = attach_slowking_combo_state_labels(
+            steps,
+            deck=deck,
+        )
     soft = list(record.get("factorized_policy_targets") or [])
     decisions: list[CompactDecision] = []
     for i, step in enumerate(steps):
@@ -5340,7 +5878,7 @@ def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
         seat=int(record.get("seat") or 0),
         archetype=str(record.get("archetype") or "core"),
         opp_archetype=str(record.get("opp_archetype") or ""),
-        deck=[int(x) for x in (record.get("deck") or [])],
+        deck=deck,
         value=float(record.get("value") or 0.0),
         decisions=decisions,
         source="pure_rl",
@@ -5348,6 +5886,11 @@ def _record_to_compact_game(record: dict[str, Any]) -> Optional[CompactGame]:
             **dict(record.get("target_provenance") or {}),
             "pure_rl": True,
             "soft_policy_targets": False,
+            **(
+                {"slowking_combo_state_targets": combo_coverage}
+                if combo_coverage is not None
+                else {}
+            ),
         },
     )
 
@@ -5891,6 +6434,7 @@ def run_smoke_loop(args: argparse.Namespace) -> int:
                 setup_board_outcome_loss_weight=float(
                     args.setup_board_outcome_loss_weight
                 ),
+                combo_state_loss_weight=float(args.combo_state_loss_weight),
                 current_deck_guide_curriculum_spec=str(
                     args.current_deck_guide_curriculum_spec or ""
                 ),
@@ -5927,6 +6471,7 @@ def run_smoke_loop(args: argparse.Namespace) -> int:
                 setup_board_outcome_loss_weight=(
                     train_cfg.setup_board_outcome_loss_weight
                 ),
+                combo_state_loss_weight=train_cfg.combo_state_loss_weight,
                 expanded_head_weights=train_cfg.expanded_head_loss_weights,
                 pure_rl=True,
                 awr_beta=train_cfg.awr_beta,
@@ -6635,6 +7180,7 @@ def _build_collect_jobs(
     official_exploit_opponents: Optional[tuple[str, ...]] = None,
     official_exploit_frac: float = 0.0,
     official_exploit_temperature: float = 0.35,
+    exact_training_seat_split: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return ``(self_play_jobs, baseline_jobs)`` — self-play is the primary signal."""
     self_jobs: list[dict[str, Any]] = []
@@ -7010,6 +7556,58 @@ def _build_collect_jobs(
                     },
                 }
             )
+    if exact_training_seat_split:
+        rows = sorted(
+            [*self_jobs, *base_jobs], key=lambda row: int(row["job_index"])
+        )
+        if len(rows) % 2:
+            raise ValueError("exact training-seat scheduling requires an even game count")
+        seat0 = sum(int(row.get("our_seat", -1)) == 0 for row in rows)
+        seat1 = sum(int(row.get("our_seat", -1)) == 1 for row in rows)
+        majority = 0 if seat0 > seat1 else 1 if seat1 > seat0 else None
+        flips_needed = abs(seat0 - seat1) // 2
+        grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+        for row in rows:
+            provenance = dict(row.get("target_provenance") or {})
+            key = (
+                str(provenance.get("opponent_training_group") or "self_play"),
+                str(row.get("archetype") or ""),
+                str(row.get("opponent_id") or ""),
+            )
+            grouped.setdefault(key, []).append(row)
+        candidates: list[tuple[tuple[str, str, str], int, dict[str, Any]]] = []
+        if majority is not None:
+            for key, group_rows in grouped.items():
+                group_majority = sum(
+                    int(row.get("our_seat", -1)) == majority for row in group_rows
+                )
+                group_minority = len(group_rows) - group_majority
+                if group_majority == group_minority + 1:
+                    row = max(
+                        (
+                            row
+                            for row in group_rows
+                            if int(row.get("our_seat", -1)) == majority
+                        ),
+                        key=lambda item: int(item["job_index"]),
+                    )
+                    candidates.append((key, int(row["job_index"]), row))
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        if len(candidates) < flips_needed:
+            raise RuntimeError(
+                "cannot make the training-seat schedule globally exact without "
+                "breaking per-opponent balance"
+            )
+        for _key, _job_index, row in candidates[:flips_needed]:
+            row["our_seat"] = 1 - int(row["our_seat"])
+        if sum(int(row.get("our_seat", -1)) == 0 for row in rows) != len(rows) // 2:
+            raise RuntimeError("exact training-seat scheduler failed to reach parity")
+        for row in rows:
+            provenance = row.get("target_provenance")
+            if isinstance(provenance, dict):
+                provenance["seat_schedule"] = (
+                    "per_opponent_balanced_global_exact_v1"
+                )
     return self_jobs, base_jobs
 
 
@@ -11680,6 +12278,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 official_exploit_temperature=float(
                     args.official_exploit_temperature
                 ),
+                exact_training_seat_split=bool(
+                    args.require_exact_training_seat_split
+                ),
             )
             _assert_training_jobs_exclude_research_controls(
                 [*self_jobs, *base_jobs], research_control_registry
@@ -11704,6 +12305,30 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     "collection schedule disagrees with its fixed group budget: "
                     f"observed={observed_group_plan} expected={collection_group_plan}"
                 )
+            assigned_seat_stage = _training_seat_stage(
+                "assigned_source_games",
+                [job.get("our_seat") for job in [*self_jobs, *base_jobs]],
+                expected_total=int(args.games_per_iter),
+            )
+            if bool(args.require_exact_training_seat_split):
+                _assert_exact_training_seat_stage(assigned_seat_stage)
+            assigned_manifest_sha256 = _canonical_digest(
+                [
+                    {
+                        "job_index": int(job.get("job_index", -1)),
+                        "our_seat": int(job.get("our_seat", -1)),
+                        "archetype": str(job.get("archetype") or ""),
+                        "opponent_id": str(job.get("opponent_id") or ""),
+                        "opponent_training_group": str(
+                            (job.get("target_provenance") or {}).get(
+                                "opponent_training_group"
+                            )
+                            or "self_play"
+                        ),
+                    }
+                    for job in [*self_jobs, *base_jobs]
+                ]
+            )
             practice_plan: Optional[dict[str, Any]] = None
             practice_plan_path: Optional[Path] = None
             if active_gate is not None and float(args.official_collect_frac) > 0.0:
@@ -11849,6 +12474,46 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     ),
                 }
             )
+            retained_seat_stage = _training_seat_stage(
+                "retained_source_games",
+                [row.get("our_seat") for row in rows],
+                expected_total=requested,
+            )
+            actual_manifest_sha256 = _canonical_digest(
+                [
+                    {
+                        "job_index": int(row.get("job_index", -1)),
+                        "our_seat": int(row.get("our_seat", -1)),
+                        "archetype": str(row.get("archetype") or ""),
+                        "opponent_id": str(row.get("opponent_id") or ""),
+                    }
+                    for row in sorted(
+                        rows, key=lambda value: int(value.get("job_index", -1))
+                    )
+                ]
+            )
+            stats["training_seat_split"] = {
+                "schema": _TRAINING_SEAT_SPLIT_SUMMARY_SCHEMA,
+                "required": bool(args.require_exact_training_seat_split),
+                "policy": (
+                    "exact_50_50_first_second_training"
+                    if bool(args.require_exact_training_seat_split)
+                    else "ordinary_balanced_scheduler"
+                ),
+                "second_seat_priority": False,
+                "assigned_source_games": assigned_seat_stage,
+                "retained_source_games": retained_seat_stage,
+                "stage_manifest_sha256": {
+                    "assigned": assigned_manifest_sha256,
+                    "actual": actual_manifest_sha256,
+                },
+                "passed": bool(
+                    assigned_seat_stage["exact_50_50"]
+                    and retained_seat_stage["exact_50_50"]
+                ),
+            }
+            if bool(args.require_exact_training_seat_split):
+                _assert_exact_training_seat_stage(retained_seat_stage)
             print(
                 f"[pure_rl] collect done iter={it} ok={stats.get('ok')} "
                 f"leaf_remote={stats.get('leaf_remote')} "
@@ -12083,17 +12748,31 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     if float(weight) > 0.0
                 ),
             )
-            record = recover_rehearsal(
-                run_dir,
-                before_iteration=it,
-                parent_digest=parent.digest,
-                epochs=int(args.expert_rehearsal_epochs),
-                learning_rate=float(args.expert_rehearsal_lr),
-                manifest_identity=manifest_identity,
-                loss_weights=loss_weights,
-                corpus_split_seed=corpus_split_seed,
-                expanded_head_contract=expanded_head_contract,
+            option_conditioned_loss_weights = {
+                "combo_state": float(args.combo_state_loss_weight)
+            }
+            if option_conditioned_loss_weights["combo_state"] <= 0.0:
+                option_conditioned_loss_weights = {}
+            exact_rehearsal_seats = bool(
+                args.require_exact_training_seat_split
             )
+            training_seat_split_receipt: Optional[dict[str, Any]] = None
+            record = None
+            if not exact_rehearsal_seats:
+                record = recover_rehearsal(
+                    run_dir,
+                    before_iteration=it,
+                    parent_digest=parent.digest,
+                    epochs=int(args.expert_rehearsal_epochs),
+                    learning_rate=float(args.expert_rehearsal_lr),
+                    manifest_identity=manifest_identity,
+                    loss_weights=loss_weights,
+                    corpus_split_seed=corpus_split_seed,
+                    expanded_head_contract=expanded_head_contract,
+                    option_conditioned_loss_weights=(
+                        option_conditioned_loss_weights
+                    ),
+                )
             if record is None:
                 print(
                     f"pure_rl train:expert iter={it}:   0%|"
@@ -12108,7 +12787,36 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     seed=corpus_split_seed,
                     max_context=rehearsal_context,
                     belief_card_vocab=rehearsal_belief_card_vocab,
+                    require_exact_seat_split=exact_rehearsal_seats,
                 )
+                if exact_rehearsal_seats:
+                    training_seat_split_receipt = (
+                        _commit_expert_rehearsal_seat_split_receipts(
+                            run_dir=run_dir,
+                            before_iteration=it,
+                            design_fingerprint=design_fingerprint,
+                            evidence=dict(expert_cache.seat_split_evidence),
+                            pack_info=dict(expert_cache.pack_info or {}),
+                        )
+                    )
+                    record = recover_rehearsal(
+                        run_dir,
+                        before_iteration=it,
+                        parent_digest=parent.digest,
+                        epochs=int(args.expert_rehearsal_epochs),
+                        learning_rate=float(args.expert_rehearsal_lr),
+                        manifest_identity=manifest_identity,
+                        loss_weights=loss_weights,
+                        corpus_split_seed=corpus_split_seed,
+                        expanded_head_contract=expanded_head_contract,
+                        option_conditioned_loss_weights=(
+                            option_conditioned_loss_weights
+                        ),
+                        training_seat_split_receipt=(
+                            training_seat_split_receipt
+                        ),
+                    )
+            if record is None:
                 rehearsal_checkpoint, _receipt_path = rehearsal_paths(run_dir, it)
                 print(
                     f"[pure_rl] expert rehearsal begin before_iter={it} "
@@ -12148,6 +12856,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     setup_board_outcome_loss_weight=float(
                         args.setup_board_outcome_loss_weight
                     ),
+                    combo_state_loss_weight=float(args.combo_state_loss_weight),
                     current_deck_guide_curriculum_spec=str(
                         args.current_deck_guide_curriculum_spec or ""
                     ),
@@ -12170,6 +12879,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     output_model_id=(
                         f"{args.run_name}.expert-before-iter{it:05d}"
                     ),
+                    training_seat_split_receipt=(
+                        training_seat_split_receipt
+                    ),
                 )
                 record = commit_rehearsal_receipt(
                     run_dir,
@@ -12182,6 +12894,12 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     corpus_split_seed=corpus_split_seed,
                     result=rehearsal_result,
                     expanded_head_contract=expanded_head_contract,
+                    option_conditioned_loss_weights=(
+                        option_conditioned_loss_weights
+                    ),
+                    training_seat_split_receipt=(
+                        training_seat_split_receipt
+                    ),
                 )
             prepared = _verified_checkpoint_identity(record["checkpoint_identity"])
             print(
@@ -12317,6 +13035,15 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 it,
                 initial_replay_shards=initial_replay_shards,
             )
+            training_seat_split_receipt: Optional[dict[str, Any]] = None
+            if bool(args.require_exact_training_seat_split):
+                training_seat_split_receipt = _commit_training_seat_split_receipt(
+                    run_dir=run_dir,
+                    iteration=it,
+                    design_fingerprint=design_fingerprint,
+                    collection_receipt=collect_bundle,
+                    sequences=dataset.sequences,
+                )
             adapter_ticketing: dict[str, Any] = {}
             if int(args.dormant_matchup_adapter_epochs) > 0:
                 if active_gate is None:
@@ -12408,6 +13135,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 setup_board_outcome_loss_weight=float(
                     args.setup_board_outcome_loss_weight
                 ),
+                combo_state_loss_weight=float(args.combo_state_loss_weight),
                 current_deck_guide_curriculum_spec=str(
                     args.current_deck_guide_curriculum_spec or ""
                 ),
@@ -12422,6 +13150,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 ),
                 dormant_matchup_adapter_lr=float(
                     args.dormant_matchup_adapter_lr
+                ),
+                dormant_matchup_adapter_max_decisions_per_batch=int(
+                    args.dormant_matchup_adapter_max_decisions_per_batch
                 ),
                 dormant_matchup_adapter_activation_receipt=str(
                     args.dormant_matchup_adapter_activation_receipt or ""
@@ -12510,12 +13241,31 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 # A replay window can retain several GiB of trajectories.  It
                 # must not overlap promotion, held-out evaluation, or the next
                 # worker pool merely because this trainer is long-lived.
+                # Device-resident training can likewise leave tens of GiB in
+                # PyTorch's CUDA caching allocator after rl_train_step returns.
+                # Those blocks are no longer live training tensors, but they
+                # still prevent the rebuilt inference leaves from allocating
+                # their small per-process working sets unless the long-lived
+                # trainer explicitly returns the cache to CUDA.
                 del dataset
                 collected_objects, heap_trimmed = release_process_heap()
+                cuda_reserved_before = 0
+                cuda_reserved_after = 0
+                if train_dev.type == "cuda":
+                    torch.cuda.synchronize(train_dev)
+                    cuda_reserved_before = int(
+                        torch.cuda.memory_reserved(train_dev)
+                    )
+                    torch.cuda.empty_cache()
+                    cuda_reserved_after = int(
+                        torch.cuda.memory_reserved(train_dev)
+                    )
                 print(
                     f"[pure_rl] replay memory released iter={it} "
                     f"seqs={n_train_sequences} gc={collected_objects} "
-                    f"malloc_trim={int(heap_trimmed)}",
+                    f"malloc_trim={int(heap_trimmed)} "
+                    f"cuda_reserved_before={cuda_reserved_before} "
+                    f"cuda_reserved_after={cuda_reserved_after}",
                     flush=True,
                 )
             if leaves_suspended_for_train:
@@ -12836,6 +13586,40 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         + it * ITERATION_SEED_STRIDE
                     ),
                 )
+                official_floor = dict(evaluation_active_gate or {}).get(
+                    "pass_criteria", {}
+                ).get("accepted_official_holdout_non_regression")
+                if official_floor is not None:
+                    research = dict(research_control_result or {})
+                    research_audit = dict(research.get("audit") or {})
+                    same_checkpoint = (
+                        str(research.get("checkpoint_digest") or "")
+                        == str(candidate.digest)
+                    )
+                    official_ok = bool(
+                        same_checkpoint
+                        and research_audit.get("passed") is True
+                        and int(research.get("games") or 0) == 1000
+                        and float(research.get("win_rate") or 0.0)
+                        >= float(official_floor)
+                    )
+                    active_gate_result["checks"][
+                        "accepted_official_holdout_non_regression"
+                    ] = official_ok
+                    active_gate_result["official_control_gate"] = {
+                        "passed": official_ok,
+                        "training_eligible": False,
+                        "replay_eligible": False,
+                        "checkpoint_digest_matches": same_checkpoint,
+                        "games": int(research.get("games") or 0),
+                        "win_rate": float(research.get("win_rate") or 0.0),
+                        "minimum_win_rate": float(official_floor),
+                        "audit_passed": research_audit.get("passed") is True,
+                    }
+                    active_gate_result["passed"] = all(
+                        bool(value)
+                        for value in active_gate_result["checks"].values()
+                    )
                 gate.win_rate = float(active_gate_result["skill_weighted_wr"])
                 gate.confidence_lower = float(
                     active_gate_result["confidence_lower"]

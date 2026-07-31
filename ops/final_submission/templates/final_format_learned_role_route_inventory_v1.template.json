@@ -1,0 +1,41 @@
+{
+  "schema": "poke_bot.final_format_learned_role_route_inventory/v1",
+  "template_only": true,
+  "status": "unissued",
+  "runtime_authority": "none",
+  "capacity_profile": "H10-I/v1",
+  "model_config_sha256": null,
+  "learned_head_count": null,
+  "learned_route_count": null,
+  "roles": [],
+  "required_role_fields": [
+    "ordinal",
+    "head_id",
+    "typed_objective",
+    "head_schema_sha256",
+    "route_id",
+    "route_schema_sha256",
+    "option_conditioned",
+    "causal_board_state_cross_attention",
+    "finite_bound",
+    "zero_safe",
+    "action_influence"
+  ],
+  "one_distinct_route_per_learned_head": null,
+  "all_routes_option_conditioned": null,
+  "all_routes_use_causal_board_state_cross_attention": null,
+  "all_routes_finite_bounded": null,
+  "all_routes_zero_safe": null,
+  "all_learned_heads_influence_actions": null,
+  "setup_board_outcome_included": null,
+  "validated_slowking_combo_head_included": null,
+  "guide": {
+    "classification": "training_only_curriculum_metadata",
+    "learned_decision_head": false,
+    "runtime_input": false,
+    "runtime_route_count": 0,
+    "action_logit_influence": false
+  },
+  "inventory_sha256": null,
+  "issued_at_utc": null
+}

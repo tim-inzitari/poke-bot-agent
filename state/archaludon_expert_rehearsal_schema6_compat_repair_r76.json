@@ -1,0 +1,95 @@
+{
+  "schema": "poke_bot.archaludon_expert_rehearsal_schema6_compat_repair/v1",
+  "status": "repair_activated_training_resumed",
+  "created_at_utc": "2026-07-31T01:12:36Z",
+  "goal_revision": 76,
+  "specialist_id": "archaludon-ex",
+  "run_name": "pure_rl_archaludon-ex_temporal1_8k_v2_20260730",
+  "failure": {
+    "stage": "expert_rehearsal_before_iteration_5",
+    "cause": "protected expert feature shards use dataset schema 6 while the active Archaludon runtime requires schema 7",
+    "first_incompatible_shard": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/archaludon-ex/archaludon-ex-2026-07-08.features",
+    "missing_schema_7_fields": [
+      "PolicyStage.select_context",
+      "PolicyStage.selected_is_stop"
+    ],
+    "completed_iteration_5_collection_was_valid": true,
+    "completed_iteration_5_collection_was_recollected": false
+  },
+  "compatibility_contract": {
+    "accepted_legacy_dataset_schema": 6,
+    "active_dataset_schema": 7,
+    "schema_6_preserved_targets": "all pre-existing causal policy, value, guide, belief, lethal, prize-race, and expanded-strategic targets",
+    "setup_metadata_migration": {
+      "select_context": -1,
+      "selected_is_stop": false,
+      "semantics": "fail_closed_unknown_context_masks_setup_objective",
+      "fabricated_setup_labels": false
+    },
+    "guide_or_policy_imitation_added": false,
+    "active_runtime_source": "/home/inzi/poke-bot-agent-deployments/archaludon-decision-fusion-v2/poke_bot/feature_shards.py",
+    "active_runtime_source_sha256_before": "sha256:8391b1a12b18a1ff8cd2b52cf09c4dc8e6bf40182123e9c8ab8f25afb9730d4d",
+    "active_runtime_source_sha256_after": "sha256:ec9046f06718235fdba22ea386bcd086a46f50289311eea5c352fb885bb809c3",
+    "canonical_future_source": "poke_bot/feature_shards.py",
+    "canonical_future_source_sha256": "sha256:08e76aa792fdc216260ad1f4c22a42e6c7d59b623d581b307b72cff6207d5978"
+  },
+  "expert_cpu_pack": {
+    "key": "7c5091c9d2d4fe6d1ae6ddd39373082014b8e9c3be6da01b68037218f5ba253d",
+    "packing_schema": 5,
+    "split_seed": 5000000,
+    "manifest_digest": "sha256:5d05ffff2372e77062671327aa225c36d639c2afea2303da96a9f6cefb3ef960",
+    "decisions": 83980,
+    "samples": 92789,
+    "train_games": 1313,
+    "validation_games": 145,
+    "manifest": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/data/cache/expert_cpu_pack/expert-pack-7c5091c9d2d4fe6d1ae6ddd39373082014b8e9c3be6da01b68037218f5ba253d.json",
+    "manifest_sha256": "sha256:b6502dffd79bc226879fe823edb2334b6180c045af002e539377c2be94a6e6d3",
+    "payload": "/home/inzi/poke-bot-agent-deployments/dudunsparce-decision-fusion-v1/data/cache/expert_cpu_pack/expert-pack-7c5091c9d2d4fe6d1ae6ddd39373082014b8e9c3be6da01b68037218f5ba253d.pt",
+    "payload_sha256": "sha256:6e51655e901f0d09b11d0c8db857283040a186adb5da11a58d1e1194d93a5d0d",
+    "prebuild_receipt": "/home/inzi/poke-bot-agent/outputs/state/archaludon-expert-cpu-pack-schema6-compat-r76.json",
+    "prebuild_receipt_sha256": "sha256:a55aadd1aa2ccb0116c25397c4d720f66695c88c03dbaacd099202c5ad4f7d0a",
+    "live_cache_hit": true,
+    "live_cache_load_elapsed_seconds": 0.1
+  },
+  "iteration_5_continuity": {
+    "collection_receipt": "/home/inzi/poke-bot-agent-deployments/archaludon-decision-fusion-v2/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/collection_receipts/iter_00005.json",
+    "collection_receipt_sha256": "sha256:942895dd774d0f97ed0fc55fddd11c4854c85b3f902c2ffdb80da55339ddbf0d",
+    "source_games": 8192,
+    "decisions": 417582,
+    "resume_log_proof": "resume completed collection iter=5 games=8192 decisions=417582 (skip recollection)",
+    "expert_rehearsal_receipt": "/home/inzi/poke-bot-agent-deployments/archaludon-decision-fusion-v2/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/rehearsals/before_iter_00005.json",
+    "expert_rehearsal_receipt_sha256": "sha256:d125390924c0682b1f055296bbd01f4c5bf663a78c830d00a70b5af079549d32",
+    "expert_rehearsal_epochs": 5,
+    "expert_rehearsal_checkpoint": "/home/inzi/poke-bot-agent-deployments/archaludon-decision-fusion-v2/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/checkpoints/expert_before_iter_00005.pt",
+    "expert_rehearsal_checkpoint_sha256": "sha256:41ea7c7de8f7fabaf48b25b6dce11f9d47d6d128f68d21f95f22905902a9dafd",
+    "replay_cache_iteration_4_sequences": 8192,
+    "replay_cache_iteration_5_sequences": 8192,
+    "training_resumed_at_iteration": 5,
+    "training_sequences": 16384,
+    "current_deck_guide_rows": 17188,
+    "current_deck_guide_weight": 0.05
+  },
+  "managed_service_observation": {
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid": 1695495,
+    "restarts_after_managed_recovery": 0,
+    "active_enter_timestamp": "2026-07-30T21:08:55-04:00",
+    "blackwell_simulator_workers": 96,
+    "blackwell_leaf_replicas": {
+      "gpu0": 4,
+      "gpu1": 12
+    }
+  },
+  "slowking_boundary": {
+    "prestage_status": "ready",
+    "automatic_handoff_ready": true,
+    "activation_remains_after_archaludon_checksum_bound_completion": true
+  },
+  "tests": {
+    "schema_6_fail_closed_compatibility": "passed",
+    "schema_7_regression": "passed",
+    "focused_test_result": "2 passed"
+  }
+}

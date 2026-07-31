@@ -17,6 +17,7 @@ from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 
@@ -141,6 +142,7 @@ class PublicMatchupDecisionTree:
         if payload.get("schema") != PUBLIC_TREE_SCHEMA:
             raise ValueError("invalid public matchup decision-tree schema")
         prediction = dict(payload.get("prediction_contract") or {})
+        runtime = dict(payload.get("runtime_contract") or {})
         targets = tuple(str(value) for value in payload.get("targets") or ())
         v5_targets = tuple(EXPERT_IDS)
         if (
@@ -178,12 +180,28 @@ class PublicMatchupDecisionTree:
 
             v6_registry = load_slot_registry()
             v6_targets = tuple(v6_registry["active_expert_ids"])
-            if targets != v6_targets:
+            if targets != v6_targets[: len(targets)]:
                 raise ValueError(
                     "public tree does not match the canonical V5 or V6 route "
                     "contract"
                 )
             v6_slot_map = slot_map(v6_registry)
+            slot_registry_digest = registry_digest(v6_registry)
+            if targets != v6_targets:
+                # A stopped specialist boundary may deploy an append-only V6
+                # registry before it dispatches the successor checkpoint/tree.
+                # Preserve the older tree's checksum-bound registry identity
+                # only when all of its route identities remain the exact
+                # canonical prefix with unchanged physical slots.
+                slot_registry_digest = str(
+                    runtime.get("slot_registry_digest") or ""
+                )
+                if re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", slot_registry_digest
+                ) is None:
+                    raise ValueError(
+                        "append-only V6 public tree lacks its registry digest"
+                    )
             route_contract = MatchupAdapterRouteContract(
                 adapter_format=V6_ADAPTER_CHECKPOINT_FORMAT,
                 target_ids=targets,
@@ -191,7 +209,7 @@ class PublicMatchupDecisionTree:
                     int(v6_slot_map[target]) for target in targets
                 ),
                 slot_capacity=SLOT_CAPACITY,
-                slot_registry_digest=registry_digest(v6_registry),
+                slot_registry_digest=slot_registry_digest,
             )
         arrays = {
             key: tuple(tree.get(key) or ())
@@ -214,7 +232,6 @@ class PublicMatchupDecisionTree:
         self.unknown_route = UNKNOWN_ROUTE
         self.digest = str(digest)
         self.runtime_enabled = payload.get("runtime_enabled") is True
-        runtime = dict(payload.get("runtime_contract") or {})
         if self.runtime_enabled:
             require_runtime_route_binding(
                 runtime,

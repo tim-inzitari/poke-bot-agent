@@ -108,6 +108,26 @@ def test_teal_mask_ogerpon_representative_is_exact_and_self_checksumming() -> No
     )
 
 
+def test_final_format_alakazam_representative_is_exact_and_self_checksumming() -> None:
+    path = Path("data/training_mixes/specialist_representatives.v1.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    row = payload["decks"]["alakazam"]
+
+    assert payload["artifact_sha256"] == canonical_payload_digest(payload)
+    assert len(row["card_ids"]) == 60
+    assert tuple(row["card_ids"]) == (
+        archetypes.ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE
+    )
+    assert row["canonical_multiset_sha256"] == (
+        "sha256:25878108d158704a6574356bd5d10ef287878a8f156bb048311f85bfe261db30"
+    )
+    assert archetypes.classify_deck(row["card_ids"]) == "alakazam"
+
+    one_card_mutation = list(row["card_ids"])
+    one_card_mutation[-1] = 1
+    assert archetypes.classify_deck(one_card_mutation) != "alakazam"
+
+
 def test_archaludon_representative_has_collision_safe_exact_identity() -> None:
     path = Path("data/training_mixes/specialist_representatives.v1.json")
     payload = json.loads(path.read_text(encoding="utf-8"))

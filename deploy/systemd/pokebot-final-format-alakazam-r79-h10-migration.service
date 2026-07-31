@@ -1,0 +1,25 @@
+[Unit]
+Description=Final-format Alakazam r79 exact ordinary-parent H10-I migration
+After=pokebot-final-format-alakazam-r79-ordinary-bootstrap.service
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
+Environment=OMP_NUM_THREADS=2
+Environment=MKL_NUM_THREADS=2
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/complete_final_format_alakazam_h10_handoff.py --ready /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/ordinary_alakazam_refresh_bootstrap_ready.json --state /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/output/bootstrap/ordinary_fallback_core9/state.json --expected-run-name final_format_alakazam_r79_ordinary_fallback_core9 --expected-family final-format-alakazam-r79-ordinary-fallback-from-core9 --expected-core-sha256 sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056 --expected-manifest-sha256 sha256:3836852129511fdffd2767f6701dcc562d1723bb0c345c3cf5068ad9774b9acb --direct-migration-failure /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/final_format_alakazam_direct_migration_failure_r79.json --expected-direct-migration-failure-sha256 sha256:e559b1ff0f24a0dc06d9211d672381969a51c0119a3354f668d45a91153f956f --migration-script scripts/migrate_final_format_alakazam_h10.py --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --child /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/output/h10/step_zero/alakazam_r79_h10_i_step_zero.pt --migration-receipt /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/final_format_alakazam_h10_migration_r79.json --role-route-receipt /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/final_format_alakazam_h10_role_route_r79.json --parent-lock-receipt /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/final_format_alakazam_parent_lock_r79.json --handoff-receipt /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/receipts/final_format_alakazam_h10_handoff_r79.json --lock /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/h10-handoff.lock --scratch-root /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/output/h10/attempts
+Restart=on-failure
+RestartSec=30
+Nice=10
+CPUQuota=200%
+MemoryHigh=10G
+MemoryMax=12G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/logs/h10_migration.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/logs/h10_migration.log
+
+[Install]
+WantedBy=default.target

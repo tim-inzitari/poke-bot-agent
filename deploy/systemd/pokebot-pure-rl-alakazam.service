@@ -46,12 +46,11 @@ Environment=PURE_RL_REBALANCE_MIN_REMOTE_FRAC=0.55
 Environment="POKEBOT_REMOTE_MAX_WORKERS=192.168.1.143:8765=48,bert.local:8766=16"
 Environment=PURE_RL_REMOTE_DISPATCH_CHUNK=256
 Environment=POKEBOT_REMOTE_DEMAND_QUEUE=1
-Environment=POKEBOT_REMOTE_SOCKET_PREFETCH=5
-Environment=POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=8
+Environment=POKEBOT_REMOTE_SOCKET_PREFETCH=1
+Environment=POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=2
 Environment=POKEBOT_REMOTE_REFILL_GAMES=1
-# Keep one protected controller-side reserve beyond Bert's 8x socket window.
-# Elmo can no longer consume this quota because scheduled dispatch uses
-# endpoint-owned queues. 16 executing + 112 admitted + 64 controller-ready.
+# Keep endpoint-owned controller reserves independent of the bounded 1x/2x
+# socket window so neither remote can consume its peer's queued allocation.
 Environment="POKEBOT_REMOTE_ENDPOINT_CHUNKS=192.168.1.143:8765=336,bert.local:8766=176"
 Environment=POKEBOT_REMOTE_QUEUE_LOW_WATER_FRAC=0.50
 Environment=POKEBOT_REMOTE_QUEUE_PROBE_S=1.0

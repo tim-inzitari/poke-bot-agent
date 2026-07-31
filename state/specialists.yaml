@@ -11,7 +11,7 @@
 # not change or block that status.
 schema_version: poke_bot.specialist_state/v1
 protocol_schema_version: poke_bot.rl_protocol/v2
-last_verified_at_utc: 2026-07-30T12:15:00Z
+last_verified_at_utc: 2026-07-31T07:37:45Z
 verification_scope:
   repository: /Users/tsinzitari/Documents/poke-agent-codex
   runtime_repository: /home/inzi/poke-bot-agent
@@ -38,57 +38,40 @@ allowed_status_values:
     - accepted_with_waiver
 
 current:
-  phase: next_specialist_selected_readiness_blocked
-  active_specialist: ""
-  transition_source_specialist: teal-mask-ogerpon-ex
-  staged_successor_specialist: archaludon-ex
+  phase: specialist_baseline_rl
+  active_specialist: slowking
+  transition_source_specialist: archaludon-ex
+  staged_successor_specialist: null
   program_progress:
     required_specialists_total: 15
-    completed_frozen: 13
-    completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo, thwackey, team-rockets-spidops, hammer-pult, teal-mask-ogerpon-ex]
+    completed_frozen: 14
+    completed_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo, thwackey, team-rockets-spidops, hammer-pult, teal-mask-ogerpon-ex, archaludon-ex]
     boundary_frozen_pending_public_mix_registration: []
-    active_specialists: 0
-    active_specialist_ids: []
-    remaining_unfinished: 2
-    remaining_after_active: 2
+    active_specialists: 1
+    active_specialist_ids: [slowking]
+    remaining_unfinished: 1
+    remaining_after_active: 0
     starmie_pass_completes_program: false
     population_transition_ready: false
   next_action: >-
-    Slop Box (Teal Mask Ogerpon ex / Mega Kangaskhan ex) is frozen from
-    iteration 14 under explicit owner ceiling acceptance at checkpoint
-    sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821.
-    Its measured promotion gate remains failed and is not rewritten. Both
-    requested Kaggle copies were submitted from that same checkpoint:
-    submission 55114866 first-if-allowed and submission 55114885
-    second-if-allowed. Archaludon ex is strictly next and selected, but remains
-    fail-closed while its full 44-day schema-7 identity and guide corpora finish.
-    Its current
-    roster-revision-9/19-route source audit proves 21,278 matching acting seats
-    across June 16 through July 29 and clears the 16,639 source floor; the full
-    schema-7 identity/guide materializations with setup fields, checksum import,
-    per-head route validation, and rerun launch/terminal receipts are still
-    missing. The old 1,458-record schema-6 corpus and pre-stage receipt are
-    superseded and training-ineligible. Accepted Policy Generation 9 remains
-    the latest accepted checkpoint; Policy Generations 10, 11, and 12 are
-    rejected attempts. Walrein, both removed Dragapult variants,
-    unfinished plain Dragapult, and Crustle remain outside the required
-    specialist program. Crustle's existing public opponent and matchup router
-    remain preserved and active as opponent evidence only.
-    Slowking replaces plain Dragapult after Archaludon ex, but remains
-    preparation-only and fail-closed until its exact combo-head coverage,
-    corpus, route, parameter, and terminal receipts pass. Slowking's successful
-    freeze and registration immediately starts the first final-format model:
-    a separately versioned Alakazam refresh with exact 50/50 training seats
-    and a first-if-allowed package preference. Prefer a checksum-compatible,
-    zero-safe migration from immutable Alakazam checksum
+    Archaludon ex passed its exact iteration-5 gate, froze at checkpoint
+    sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9,
+    registered as frozen specialist 14/15, and handed off to Slowking.
+    Slowking is the sole active learner under goal revision 78. Its validated
+    1,910,963-parameter Model Format 6 checkpoint exposes 19 independently
+    fused learned heads, including setup_board_outcome and combo_state; the
+    guide remains training-only at weight 0.05. Iteration 0 committed exactly
+    8,192 collection games and 609,053 decisions, released collection memory,
+    and entered the learner with exactly 96 Blackwell simulator workers plus
+    the 36/16 Elmo/Bert fleet. Preserve this run through the unchanged
+    iteration-5/15 gate canon. After Slowking passes, freezes, and registers,
+    issue the required fleet-completion and resource-lease receipts and start
+    the separately versioned final-format Alakazam refresh immediately with
+    exact 50/50 training seats, first-if-allowed packaging, and a fully
+    validated hot-start attempt from immutable Alakazam checksum
     270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea.
-    On migration failure preserve the failure receipt, build an ordinary new
-    same-archetype Alakazam refresh from the then-latest accepted core, and
-    expand only that completed derivative to final format; never use the core
-    directly as the final-format tensor parent, a partial overlay, or a silent
-    legacy format.
-    Population remains blocked until that Alakazam refresh and then Marnie's
-    Grimmsnarl ex pass.
+    Population remains blocked until that Alakazam refresh and the following
+    Marnie's Grimmsnarl ex refresh independently pass, freeze, and register.
   future_specialist_guide_chain_runtime_sync:
     status: local_revision61_order_staged_runtime_sync_pending
     scope: future_specialist_handoff_runtime_only
@@ -167,6 +150,137 @@ current:
     activation_receipt_checksum: sha256:15b5c686928373a97a849c6ec94a8c930e1dbf4e25b450d4de6a68540288ae09
     blockers: []
   active_specialist_activation:
+    specialist_id: slowking
+    status: active_iteration_3_collection
+    activated_at_utc: 2026-07-31T03:46:10Z
+    source_specialist_id: archaludon-ex
+    core_generation: 9
+    router_format: 6
+    training_core_revision: 10
+    model_format: 6
+    checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/checkpoints/iter_00002.pt
+    checkpoint_checksum: sha256:6b2d027ae5f8517fdb1cb4658eeecadaf97ecbb467d0567c0e42f1d9fd66e97d
+    parameter_count: 1910963
+    decision_fusion_schema: poke_bot.causal_decision_fusion/v2
+    learned_decision_sources: 19
+    required_extra_head: combo_state
+    setup_board_outcome_head_enabled: true
+    combo_state_head_enabled: true
+    guide_weight: 0.05
+    guide_training_mode: strategic_curriculum_v1
+    collection_iteration: 2
+    collection_games: 8192
+    collection_decisions: 588260
+    collection_receipt: /home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/collection_receipts/iter_00002.json
+    collection_receipt_checksum: sha256:e551a50c099e6a0cc9a3e3bbf2d13c696dd22b688be2155da372cbbe11e55b74
+    combo_supervision_repair_receipt: state/slowking_combo_rl_supervision_repair_v1.json
+    combo_supervision_repair_receipt_checksum: sha256:647a6b286a008b3285cc49cff6a1839f41ff6b5c43db1b08c453b3787ae73dbb
+    combo_supervision_continuity_receipt: state/slowking_combo_rl_supervision_continuity_v3.json
+    combo_supervision_continuity_receipt_checksum: sha256:cb0f3fc7ca93073d2b6c741c81608b6dba08f3e54ae8a49f0215dc465efff109
+    last_formal_gate:
+      iteration: 2
+      result: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/eval/iter_00002.json
+      result_checksum: sha256:197f50e67df3a6c7e8ce6893cfd161ffc75751514d4a6e18d704a99adbb7241d
+      games: 4250
+      win_rate: 0.04718750000000001
+      passed: false
+    learner_lineage_preserved: true
+    runtime_activation_receipt: state/slowking_runtime_activation_repair_r78.json
+    runtime_activation_receipt_checksum: sha256:846e4a314ffa17ce3149c1a88086f46cc8ad77db8e90b7746c9855c2be62db89
+    run_name: pure_rl_slowking_temporal1_8k_v1_20260723
+    blackwell_simulator_workers: 96
+    blackwell_leaf_replicas: {gpu0: 4, gpu1: 12, total: 16}
+    elmo_simulator_workers: 36
+    bert_simulator_workers: 16
+    trainer_service: pokebot-pure-rl-trevenant-staged.service
+    trainer_main_pid: 2328779
+    trainer_restart_count: 0
+  historical_archaludon_ex_activation:
+    specialist_id: archaludon-ex
+    status: active_runtime_verified
+    activated_at_utc: 2026-07-30T17:59:24.653090+00:00
+    source_specialist_id: teal-mask-ogerpon-ex
+    core_generation: 9
+    core_checkpoint_checksum: sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056
+    router_format: 6
+    decision_fusion_schema: poke_bot.causal_decision_fusion/v2
+    learned_decision_sources: 18
+    runtime_registration_receipt: /home/inzi/poke-bot-agent/outputs/state/archaludon-ex-runtime-registration-v1.json
+    runtime_registration_receipt_checksum: sha256:af5e8489a5e2920eb3516d36d97b8043187e556f9cf1244ce15207a10e64fb95
+    elmo_lifecycle_repair_receipt: /home/inzi/poke-bot-agent/outputs/state/elmo-remote-lifecycle-repair-r72.json
+    elmo_lifecycle_repair_receipt_checksum: sha256:5f492f245a4f4b0b3b5686980080bddcdfcb84ac3fa189a1cd5dea9a23896480
+    memory_topology_repair_receipt: /home/inzi/poke-bot-agent/outputs/state/archaludon-memory-topology-repair-r73.json
+    memory_topology_repair_receipt_checksum: sha256:16ba9c92d6c4fd5f2c05b1e8f2ee696a7334fc3d46d122b69bb77fada2208ad6
+    elmo_memory_guard_repair:
+      goal_revision: 74
+      status: active_continuity_verified
+      summed_process_tree_rss_role: diagnostic_only
+      observed_false_positive_rss_gib: 30.01
+      observed_container_cgroup_peak_gib: 24.70
+      guard_limit_gib: 30
+      guard_source_priority: [cgroup_v2_memory_current, process_tree_pss, process_tree_rss_fallback]
+      active_image: poke-bot-truenas-worker:archaludon-fusion-v2-r74-memory-v1
+      active_image_id: sha256:fe3604f77aead38bcb349a4fbefb4cdfe02513df4135abc8ce58c3fca0ac234f
+      base_image: poke-bot-truenas-worker:archaludon-fusion-v2-r72
+      receipt: state/elmo_memory_guard_repair_r74.json
+      receipt_checksum: sha256:50ab7e11f9c6f8cf81650e90a197c5027dde4fc3b54e906c96286a4acef46e84
+      continuity_receipt: state/elmo_memory_guard_collection_continuity_r74.json
+      continuity_receipt_checksum: sha256:5f05e84150a014be3558e302421dd6cfb5715bd9b78d301abf1aa3e2265c621a
+      active_trainer_modified: false
+    blackwell_cuda_cache_boundary_repair:
+      goal_revision: 75
+      status: active_nonzero_cache_release_full_evaluation_continuity_verified
+      source: scripts/train_pure_rl.py
+      source_checksum: sha256:95b516045e733d610a78c9c26f093db46cf6bb0a30c2ce3135a61b3f6865b3ff
+      receipt: state/blackwell_cuda_cache_boundary_repair_r75.json
+      receipt_checksum: sha256:880bde6079dbe7471d21d77ec164f5c5c0cc1757cc36fd23dd41634fbf3aadcb
+      continuity_receipt: state/blackwell_cuda_cache_boundary_continuity_r75.json
+      continuity_receipt_checksum: sha256:b517a04bf544866445fa16220380a2b383c1e83f2245e1791318280699ed49d6
+      evaluation_continuity_receipt: state/blackwell_cuda_cache_evaluation_continuity_r75.json
+      evaluation_continuity_receipt_checksum: sha256:fa2da0f04d15a820b8d137c0edc0bd91e9851b983c41364c542386ae4b247a8a
+      preserved_iteration: 3
+      formal_valid_games: 4000
+      research_control_valid_games: 1000
+      first_nonzero_cache_sample:
+        iteration: 4
+        cuda_reserved_before_bytes: 45116030976
+        cuda_reserved_after_bytes: 104857600
+        leaf_farm_restored: true
+        formal_evaluation_dispatch_started: true
+        formal_valid_games: 4000
+        formal_gate_passed: true
+        formal_skill_weighted_win_rate: 0.6850666666666668
+        research_control_valid_games: 1000
+        research_control_win_rate: 0.599
+        iteration_commit_checksum: sha256:4b536d8686645e7da29f71a4155bccd426038791e45f743a821b955a7e7ed36f
+    expert_rehearsal_schema_compatibility:
+      goal_revision: 76
+      status: active_iteration_5_training_resumed
+      protected_corpus_dataset_schema: 6
+      active_runtime_dataset_schema: 7
+      setup_metadata_policy: fail_closed_unknown_context_mask
+      preserved_collection_iteration: 5
+      preserved_collection_games: 8192
+      preserved_collection_decisions: 417582
+      collection_receipt_checksum: sha256:942895dd774d0f97ed0fc55fddd11c4854c85b3f902c2ffdb80da55339ddbf0d
+      expert_cpu_pack_key: 7c5091c9d2d4fe6d1ae6ddd39373082014b8e9c3be6da01b68037218f5ba253d
+      expert_cpu_pack_cache_hit: true
+      expert_rehearsal_checkpoint_checksum: sha256:41ea7c7de8f7fabaf48b25b6dce11f9d47d6d128f68d21f95f22905902a9dafd
+      training_resumed: true
+      managed_trainer_pid: 1695495
+      managed_restarts_after_recovery: 0
+      receipt: state/archaludon_expert_rehearsal_schema6_compat_repair_r76.json
+      receipt_checksum: sha256:4d9b6c22d93551f716048f914cac45ffafca7a14dec889626756b46fc187e837
+    run_name: pure_rl_archaludon-ex_temporal1_8k_v2_20260730
+    blackwell_simulator_workers: 96
+    blackwell_leaf_replicas: {gpu0: 4, gpu1: 12, total: 16}
+    elmo_simulator_workers: 36
+    bert_simulator_workers: 16
+    guide_weight: 0.05
+    trainer_service: pokebot-pure-rl-trevenant-staged.service
+    trainer_main_pid: 1387831
+    trainer_restart_count: 0
+  historical_teal_mask_ogerpon_ex_activation:
     specialist_id: teal-mask-ogerpon-ex
     status: active_receipt_verified
     activated_at_utc: 2026-07-29T19:58:32.002765+00:00
@@ -933,7 +1047,7 @@ current:
       activation_receipt_exists: true
       activated_at_utc: 2026-07-25T10:50:15.148936Z
       activation_receipt_checksum: sha256:4b6fe5d061e10ffa64b4ad8ec450fcbfe3cb9238cf12c30c9f478b289fe93771
-  active_run:
+  historical_teal_active_run:
     service: pokebot-pure-rl-trevenant-staged.service
     run_name: pure_rl_teal-mask-ogerpon-ex_temporal1_8k_v1_20260723
     path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_teal-mask-ogerpon-ex_temporal1_8k_v1_20260723
@@ -1066,6 +1180,43 @@ current:
       activation_receipt: /home/inzi/poke-bot-agent/outputs/state/post-teal-mask-ogerpon-ex-core-v13-handoff.json
       activation_receipt_checksum: sha256:07a84005398f7ce65fd394751d61485eee48cb14de10630e9a8b86a2c6b6811b
       kaggle_submission_ids: [55114866, 55114885]
+  active_run:
+    service: pokebot-pure-rl-trevenant-staged.service
+    run_name: pure_rl_slowking_temporal1_8k_v1_20260723
+    path: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723
+    status: active_iteration_3_collection
+    active_specialist: slowking
+    last_completed_iteration: 2
+    next_iteration: 3
+    current_phase: collection
+    service_active: true
+    main_pid: 2328779
+    service_restarts: 0
+    core_generation: 9
+    router_format: 6
+    model_format: 6
+    checkpoint_format: poke-bot-matchup-adapter-bank-v6
+    decision_fusion_runtime_enabled: true
+    required_fused_head_count: 19
+    learner_checksum: sha256:6b2d027ae5f8517fdb1cb4658eeecadaf97ecbb467d0567c0e42f1d9fd66e97d
+    champion_checksum: sha256:6b2d027ae5f8517fdb1cb4658eeecadaf97ecbb467d0567c0e42f1d9fd66e97d
+    activation_receipt: state/slowking_runtime_activation_repair_r78.json
+    activation_receipt_checksum: sha256:846e4a314ffa17ce3149c1a88086f46cc8ad77db8e90b7746c9855c2be62db89
+    iteration_runtime: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/iteration_runtime.json
+    iteration_runtime_checksum: sha256:432c5679d5f2117d2de1b5ef1bf25541886ece82151044c69a42fabd10dd88d5
+    collection_receipt: /home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/collection_receipts/iter_00002.json
+    collection_receipt_checksum: sha256:e551a50c099e6a0cc9a3e3bbf2d13c696dd22b688be2155da372cbbe11e55b74
+    collection_receipt_status: iteration_2_committed_iteration_3_collection_active
+    current_guide_loss_weight: 0.05
+    combo_state_loss_weight: 0.025
+    terminal_active_gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r14
+    terminal_gate_marker: SPECIALIST_GATE_PASSED.slowking-splus-v1
+    minimum_terminal_iteration: 5
+    iteration_ceiling: 15
+    premium_gate_games: 4250
+    official_research_games: 1000
+    total_evaluation_games: 5250
+    gate_handler_service: pokebot-specialist-passed-gate-handler.service
   completed_dudunsparce_run:
     service: pokebot-pure-rl-trevenant-staged.service
     run_name: pure_rl_dudunsparce_temporal1_8k_corrected_v2_20260725
@@ -1530,7 +1681,7 @@ training_priority:
     counts_toward_completion: false
     preserve_historical_corpus_router_and_audit_artifacts: true
     delete_or_reuse_stable_matchup_slots: false
-    status: revision61_crustle_removal_staged_for_selector_and_dashboard_projection
+    status: active_selector_and_dashboard_projection
     active_specialist_modified: false
     prepared_successor_modified: false
   strict_post_spidops_prefix:
@@ -1541,7 +1692,7 @@ training_priority:
       - archaludon-ex
     missing_input_behavior: block_fallback_and_recover_public_inputs
     activation: receipt_backed_handoff_only
-    status: teal_frozen_archaludon_selected_readiness_blocked
+    status: archaludon_completed_slowking_active_revision78
   source:
     status: verified_current
     authoritative_page: https://ptcgreplay.netlify.app/
@@ -1623,9 +1774,7 @@ training_priority:
   # Retained internal Dragapult targets map to the source's aggregate
   # "Dragapult ex" row; the shared percentage is group-level, not an assertion
   # that each variant independently owns that fraction of the field.
-  ordered_unfinished_ids_after_active:
-    - archaludon-ex
-    - slowking
+  ordered_unfinished_ids_after_active: []
   canonical_v5_runtime:
     status: historical_immutable_not_live
     roster: state/matchup_adapter_roster.json
@@ -2547,16 +2696,16 @@ gates:
       waiver: Iono per-opponent floor
       source: ops/alakazam_gate_program_v1.json#/accepted_gate
   premium_competition:
-    gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r12
+    gate_id: alakazam-strong-public-roster-lc55-v2+frozen-specialists-r14
     catalog_games_before_supersession: 2000
     active_external_games: 750
-    games: 3750
+    games: 4250
     catalog_opponents_before_supersession: 8
     superseded_external_opponents: 5
     active_external_opponents: 3
-    frozen_specialist_opponents: 12
-    frozen_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo, thwackey, team-rockets-spidops, hammer-pult]
-    opponents: 15
+    frozen_specialist_opponents: 14
+    frozen_specialist_ids: [alakazam, hops-trevenant, starmie, lucario, dragapult-dusknoir, dudunsparce, marnie-s-grimmsnarl-ex, garchomp, rockets-mewtwo, thwackey, team-rockets-spidops, hammer-pult, teal-mask-ogerpon-ex, archaludon-ex]
+    opponents: 17
     games_per_opponent: 250
     first_per_opponent: 125
     second_per_opponent: 125
@@ -2575,6 +2724,8 @@ gates:
       - {specialist_id: thwackey, opponent_id: specialist-thwackey-gate-iter5-0435f335fde6, checkpoint_checksum: "sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce"}
       - {specialist_id: team-rockets-spidops, opponent_id: specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a, checkpoint_checksum: "sha256:4ab63dc94d5a6b673703bcaf984be15a42c68a94e6e84ba7232b3964ac79899b"}
       - {specialist_id: hammer-pult, opponent_id: specialist-hammer-pult-gate-iter15-c256a0ababee, checkpoint_checksum: "sha256:c256a0ababee147a09d87773c74e2aa11cf46f04c492a1c20b3fb6ead8da0dce"}
+      - {specialist_id: teal-mask-ogerpon-ex, opponent_id: specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626, checkpoint_checksum: "sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821"}
+      - {specialist_id: archaludon-ex, opponent_id: specialist-archaludon-ex-gate-iter5-251298117902, checkpoint_checksum: "sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9"}
     frozen_specialist_holdout_contract:
       tier: S+
       games_each: 250
@@ -4631,17 +4782,38 @@ specialists:
 
   - id: slowking
     name: Slowking Combo / Toolbox
-    status: blocked
+    status: failed_experiment
+    runtime_phase: terminal_owner_failed_experiment_boundary_iteration_6
+    preparation_status: preserved_audit_evidence_not_promotable
     active: false
     required_specialist: true
-    completion_eligible: true
+    completion_eligible: false
     selector_eligible: false
+    terminal_disposition:
+      owner_decision_revision: 79
+      status: failed_experiment
+      receipt: state/slowking_failed_experiment_transition_r79.json
+      passing_status_granted: false
+      completion_credit_granted: false
+      freeze_allowed: false
+      registration_allowed: false
+      submission_allowed: false
+      serving_allowed: false
+      preserved_failed_gate_iteration: 5
+      preserved_sealed_collection_iteration: 6
+      sealed_collection_games: 8192
+      sealed_collection_decisions: 617296
+      sealed_collection_receipt_sha256: sha256:8e07a56b1645787400d53a431f9af7f938c22a01434c892f3debe1b7aac6ae9f
+      iteration_6_checkpoint_published: false
+      iteration_6_commit_published: false
+      releases_final_format_alakazam_only: true
+    prestage_readiness_receipt: state/slowking_handoff_readiness_v3.json
     training_order:
       owner_decision_revision: 64
       predecessor: archaludon-ex
       successor: null
       strict_order: [archaludon-ex, slowking]
-      after_completion: immediate_final_format_alakazam_refresh_then_marnie_refresh_and_final_submission_preparation
+      after_terminal_disposition: immediate_final_format_alakazam_refresh_then_marnie_refresh_and_final_submission_preparation
       archaludon_completion_required: true
     identity:
       representative: config/deck_guides/slowking-representative.v1.json
@@ -4652,13 +4824,24 @@ specialists:
       trainer_count: 28
       energy_count: 10
       generic_slowking_or_metagross_substitution_allowed: false
+    matchup_router:
+      format: 6
+      slot: 19
+      status: active_runtime_verified
+      receipt: state/slowking_matchup_route_v1.json
+      activation_boundary: after_archaludon_ex_checksum_bound_completion
+      minimum_precision: 0.93
+      measured_precision: 0.9300849526413436
+      minimum_weighted_support: 10000
+      measured_weighted_support: 24940
+      runtime_enabled: true
     heads:
-      status: blocked_missing_combo_state_implementation_and_validation_receipt
+      status: validated_19_head_fused_runtime_active_combo_rl_supervision_verified
       current_deck_guide:
-        status: exact_guide_registered_future_curriculum_only
+        status: exact_guide_and_corpus_active_training_only
         guide_version: slowking-north-star-v1
         contract: config/deck_guides/slowking.yaml
-        contract_checksum: sha256:ace47ca2f2669290d2101fd2b1113b92bae5ad9d0fcc125ea984c56f78942c38
+        contract_checksum: sha256:5f473fa4f22142372734d25b566008ae3941c75a51f5dd7579a1985b0ab95154
         teacher_module: poke_bot/slowking_heuristics.py
         teacher_module_checksum: sha256:0af6e82108cbe196b36dd6a3f146a06536266d69d84b763a5c21044b3d7fc828
         expert_writeup: docs/deck_guides/slowking-expert-brief.txt
@@ -4672,16 +4855,53 @@ specialists:
         guide_action_logit_route_allowed: false
         missing_label_behavior: mask_not_zero
         runtime_authority: none
+        corpus:
+          receipt: state/slowking_corpus_ready_v2.json
+          protected_pointer: /home/inzi/poke-bot-agent/data/bootstrap/slowking-full44-v3/PROTECTED_EXPERT_CORPUS.json
+          protected_pointer_checksum: sha256:340eec8fbc43d6f96ebb877c6941c9c0128c6c3672eed8489f9190e0be6a2556
+          manifest_checksum: sha256:1556f0bfa0d6550a2d1d7c5a49c80f6c4891ec32eb734946d49a88937ec2d265
+          source_window: {start: 2026-06-16, end: 2026-07-29, days: 44}
+          records: 311
+          decisions: 19251
+          selection_floor_decisions: 19000
+          selection_floor_receipt: state/slowking_sealed_corpus_floor_v1.json
+          guide_rows: 527
+          combo_state_rows: 19251
+          combo_validation_receipt: state/slowking_combo_corpus_validation_v1.json
+          import_receipt: state/slowking_prestage_corpus_import_v2.json
+          expert_cpu_pack_validation: state/slowking_expert_cpu_pack_validation_v1.json
+          runtime_enabled: true
       combo_head_coverage:
         owner_decision_revision: 58
-        path: state/slowking_combo_head_coverage_v1.json
-        checksum: sha256:e268b9bcdfba7be2da2a3a701f66f2ecfd5e694b9e3ab44f90485a843bf5ef89
-        status: blocked_missing_combo_state_implementation_and_validation_receipt
-        missing_typed_head: combo_state
+        path: state/slowking_combo_head_coverage_v2.json
+        checksum: sha256:d824eec2d95b062a070f28f2a95e65e2b3a4f68ed7fe2c87986f385c9986da9a
+        status: candidate_bound_validation_passed_runtime_active_rl_supervision_verified
+        typed_head: combo_state
+        implementation_status: implementation_and_causal_corpus_pack_validated
+        implementation_validation_receipt: state/slowking_combo_head_implementation_validation_v2.json
+        implementation_validation_receipt_checksum: sha256:3499535560366c205e9a772184df03b8263918b4dc828a425d672ebf846e5d78
+        corpus_validation_receipt: state/slowking_combo_corpus_validation_v1.json
+        expert_cpu_pack_validation_receipt: state/slowking_expert_cpu_pack_validation_v1.json
         fusion_schema: option_conditioned_per_head/v2
         one_distinct_bounded_route_per_learned_head: true
         guide_is_only_no_route_exception: true
-        validation_receipt: null
+        validation_receipt: /home/inzi/poke-bot-agent/outputs/bootstrap/slowking-expert-bootstrap-from-core-v9/slowking_combo_head_validation.json
+        ordinary_rl_supervision:
+          repair_receipt: state/slowking_combo_rl_supervision_repair_v1.json
+          repair_receipt_checksum: sha256:647a6b286a008b3285cc49cff6a1839f41ff6b5c43db1b08c453b3787ae73dbb
+          continuity_receipt: state/slowking_combo_rl_supervision_continuity_v3.json
+          continuity_receipt_checksum: sha256:cb0f3fc7ca93073d2b6c741c81608b6dba08f3e54ae8a49f0215dc465efff109
+          base_loss_weight: 0.025
+          latest_iteration: 2
+          latest_training_loss: 0.008085192875935865
+          latest_training_eligible_rows: 1208378
+          latest_validation_loss: 0.007456179773919508
+          latest_validation_eligible_rows: 136514
+          learner_lineage_preserved_into_iteration_3: true
+        pretraining_authorization:
+          schema: poke_bot.slowking_combo_pretraining_authorization/v1
+          candidate_training_only: true
+          freeze_registration_or_launch: false
       parameter_budget:
         owner_decision_revision: 59
         scope: slowking_only
@@ -4691,7 +4911,11 @@ specialists:
         global_override_allowed: false
         proposed_added_module_count: 2
         proposed_added_parameters_at_d_model_96: 26881
-        complete_candidate_parameters: null
+        complete_candidate_parameters: 1910963
+        trainable_parameters_before_specialist_optimizer_scope: 1806003
+        candidate_inventory_receipt: state/slowking_candidate_parameter_inventory_v1.json
+        soft_target_exceeded: false
+        hard_ceiling_exceeded: false
         exception_receipt: null
     historical_plain_dragapult_evidence:
       planning_status: removed_preserved_nonplanning_evidence
@@ -4898,9 +5122,30 @@ specialists:
       records: 0
       decisions: 0
       guide_rows: 0
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 3, rl_epochs_completed: 3, rehearsal_epochs_completed: 0, last_completed_iteration: 2, next_iteration: 3}
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/slowking_expert_bootstrap_from_core_v9_matchup_v6_roster20/model.pt
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/slowking_expert_bootstrap_from_core_v9_matchup_v6_roster20/model.pt
+      bootstrap_best_checksum: sha256:33268fa03d568588390336ab4790f10eb105f9c38e0e4eb77da5c8822dc9ee84
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/checkpoints/iter_00002.pt
+      latest_checksum: sha256:6b2d027ae5f8517fdb1cb4658eeecadaf97ecbb467d0567c0e42f1d9fd66e97d
+      passing: null
+      passing_checksum: null
+    holdouts:
+      official:
+        iteration: 2
+        receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/eval/iter_00002.json
+        receipt_checksum: sha256:197f50e67df3a6c7e8ce6893cfd161ffc75751514d4a6e18d704a99adbb7241d
+        games: 4250
+        win_rate: 0.04718750000000001
+        passed: false
+      premium:
+        iteration: 2
+        receipt: /home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723/research_controls/iter_00002.json
+        receipt_checksum: sha256:db9ebac033b3c382b5d0af5bf47da3513d6443b72659d6e0f06eae84baa3b7d8
+        games: 1000
+        win_rate: 0.045
+        diagnostic_only: true
     frozen: false
     public_mix_eligible: false
     kaggle_submissions: []
@@ -5530,11 +5775,11 @@ specialists:
 
   - id: archaludon-ex
     name: Archaludon ex
-    status: unstarted
-    prestage_status: blocked_pending_full_public_schema7_and_revision56_receipts
+    status: passed_frozen
+    prestage_status: historical_completed_owner_revision69_existing_corpus_override
     active: false
     heads:
-      status: revision56_option_conditioned_routes_staged_not_validated
+      status: revision56_option_conditioned_routes_frozen_passing
       archetype_policy: null
       game_plan_policies: null
       current_deck_guide:
@@ -5544,9 +5789,9 @@ specialists:
         teacher_module: poke_bot.archaludon_ex_heuristics
         teacher_module_checksum: sha256:4ec28e4f26c281f7488b20c31bbe17a6e4320cb54cb7dc5e1e4722e839aceca3
         runtime_authority: none
-        guide_corpus_status: blocked_pending_full_public_schema7_rebuild
+        guide_corpus_status: historical_training_input_from_existing_protected_import
         schema7_guide_corpus_build:
-          status: blocked_pending_source_lock_identity_and_guide_materialization
+          status: deferred_not_active_training_input
           script: ops/elmo/build_archaludon_ex_full_public_schema7_guide_corpus.sh
           service: pokebot-archaludon-ex-guide-full-public-schema7-r56-v1.service
           source_root: /home/admin/pokebot-archaludon-r56-src-v1
@@ -5565,7 +5810,7 @@ specialists:
           import_receipt: null
           active_training_modified: false
         superseded_schema6_guide_corpus_build:
-          status: historical_ineligible_for_revision56_training
+          status: historical_completed_run_exception_by_owner_revision69
           script: ops/elmo/build_archaludon_ex_latest20_guide_corpus.sh
           service: pokebot-archaludon-ex-guide-latest20-v2.service
           source_root: /home/admin/pokebot-teal-clean-src-v2
@@ -5609,24 +5854,26 @@ specialists:
           memory_max_gib: 48
           resource_contention_allowed: false
     datasets:
-      status: blocked_pending_full_public_schema7_materialization_and_import
-      expert_manifest: null
-      expert_manifest_checksum: null
-      manifest_checksum: null
-      guide_ready_receipt_checksum: null
-      final_validation_receipt_checksum: null
-      import_receipt_checksum: null
-      records: null
-      decisions: null
-      guide_rows: null
+      status: historical_completed_owner_revision69_existing_protected_import
+      expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/archaludon-ex/PROTECTED_EXPERT_CORPUS.json
+      expert_manifest_checksum: sha256:972a09b0be08c9de854724c4dc425921a1fb1ec00bb28a9b22cbefbe975ca0c2
+      manifest_checksum: sha256:5d05ffff2372e77062671327aa225c36d639c2afea2303da96a9f6cefb3ef960
+      guide_ready_receipt_checksum: sha256:546ff815afdfaad5b1cb53c5596907ef81be7bcfcbbf156e6434bc98c2563d43
+      final_validation_receipt_checksum: sha256:2ea025d2d9b1781c013ff2660ee1b0c6e1cb5dc9c73306f008884f96c4524739
+      import_receipt_checksum: sha256:c32c1310f249a9d7c4d5df0dc494a80e974377e397175d4b6952e57169a2684e
+      records: 1458
+      decisions: 83980
+      guide_rows: 1454
       minimum_matching_games: 16639
       audited_source_matching_acting_seats: 21278
       dataset_schema_required: 7
       feature_schema_required: 5
       source_window: {start: 2026-06-16, end: 2026-07-29, days: 44}
-      current_deck_guide_corpus_ready: false
+      current_deck_guide_corpus_ready: true
+      satisfies_revision68_minimum_game_floor: false
+      launch_authority: owner_revision69
     superseded_schema6_datasets:
-      status: historical_ineligible_for_revision56_training
+      status: historical_completed_run_exception_by_owner_revision69
       expert_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/archaludon-ex/PROTECTED_EXPERT_CORPUS.json
       expert_manifest_checksum: sha256:972a09b0be08c9de854724c4dc425921a1fb1ec00bb28a9b22cbefbe975ca0c2
       manifest_checksum: sha256:5d05ffff2372e77062671327aa225c36d639c2afea2303da96a9f6cefb3ef960
@@ -5639,19 +5886,23 @@ specialists:
       source_window: {start: 2026-07-08, end: 2026-07-27, days: 20}
       current_deck_guide_corpus_ready: true
     future_boundary_readiness:
-      status: blocked
+      status: completed_frozen_and_handed_off
       training_started: false
-      blocked_by:
-        - revision56_source_lock_not_yet_issued
-        - full_public_schema7_identity_corpus_not_yet_materialized
-        - full_public_schema7_guide_corpus_not_yet_materialized
-        - full_public_schema7_corpus_not_yet_checksum_imported
-        - revision56_option_conditioned_head_route_validation_not_yet_receipted
+      blocked_by: []
       source_audit: state/archaludon_public_full44_source_audit_v1.json
       source_audit_sha256: sha256:9603e23bf68d70c70a063eacc5aa8bcf135750ac12b76f476471d59c57feb737
       source_audit_matching_acting_seats: 21278
       minimum_matching_games: 16639
-      schema6_prestage_receipt_eligible: false
+      schema6_prestage_receipt_eligible: true
+      schema6_prestage_receipt_eligibility_authority: owner_revision69
+      runtime_registration_receipt: /home/inzi/poke-bot-agent/outputs/state/archaludon-ex-runtime-registration-v1.json
+      runtime_registration_receipt_sha256: sha256:af5e8489a5e2920eb3516d36d97b8043187e556f9cf1244ce15207a10e64fb95
+      initial_checkpoint: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/archaludon-ex-expert-bootstrap-core-v9-matchup-v6-fusion-v2-r56/model.pt
+      initial_checkpoint_sha256: sha256:57a3172d46e429cb9ba39187cf126f763fdbb10c15012ccdb31ef993010227be
+      run_name: pure_rl_archaludon-ex_temporal1_8k_v2_20260730
+      decision_fusion_schema: poke_bot.causal_decision_fusion/v2
+      learned_decision_sources: 18
+      blackwell_simulator_workers: 96
       active_teal_mask_ogerpon_ex_modified: false
     superseded_revision55_boundary_readiness:
       status: historical_ineligible_for_revision56_training
@@ -5705,11 +5956,20 @@ specialists:
       selection_identity_checksum: sha256:2421eee938c574ef1aa3b876c7818387dab9e41a28b88338a9bc018c00d39c39
       training_started: false
       active_teal_mask_ogerpon_ex_modified: false
-    counters: {bootstrap_epochs_completed: 0, rl_iterations_completed: 0, rl_epochs_completed: 0, rehearsal_epochs_completed: 0, next_iteration: null}
-    checkpoints: {bootstrap_best: null, bootstrap_latest: null, latest: null, passing: null, passing_checksum: null}
-    holdouts: {official: null, premium: null}
-    frozen: false
-    public_mix_eligible: false
+    counters: {bootstrap_epochs_completed: 25, rl_iterations_completed: 6, rl_epochs_completed: 6, rehearsal_epochs_completed: 5, last_completed_iteration: 5, next_iteration: null}
+    checkpoints:
+      bootstrap_best: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/archaludon-ex-expert-bootstrap-core-v9-matchup-v6-fusion-v2-r56/model.pt
+      bootstrap_latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/archaludon-ex-expert-bootstrap-core-v9-matchup-v6-fusion-v2-r56/model.pt
+      bootstrap_best_checksum: sha256:57a3172d46e429cb9ba39187cf126f763fdbb10c15012ccdb31ef993010227be
+      latest: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/archaludon-ex-protocol-gate-pass-v1/model.pt
+      latest_checksum: sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9
+      passing: /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/archaludon-ex-protocol-gate-pass-v1/model.pt
+      passing_checksum: sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9
+    holdouts:
+      official: {games: 1000, passed: true}
+      premium: {games: 4000, skill_weighted_win_rate: 0.6844, confidence_lower: 0.6736, passed: true}
+    frozen: true
+    public_mix_eligible: true
     kaggle_submissions: []
 
   - id: lucario
@@ -6240,15 +6500,15 @@ kaggle_submission_state:
   quota:
     daily_submission_limit: 5
     minimum_hours_between_submissions: 4
-    known_submissions_used_today: 0
-    quota_date: 2026-07-30
+    known_submissions_used_today: 1
+    quota_date: 2026-07-31
     next_reset_time: null
-    last_submission_at: "2026-07-29T18:46:07.847000Z"
-    next_submission_eligible_at: "2026-07-29T21:27:30.383000Z"
+    last_submission_at: "2026-07-31T01:52:50.690000+00:00"
+    next_submission_eligible_at: "2026-07-30T20:49:53.580000+00:00"
     currently_exhausted: false
     last_quota_error: null
     spacing_anchor_policy: second_most_recent_logical_submission
-    spacing_anchor_submission_at: "2026-07-29T17:27:30.383000Z"
+    spacing_anchor_submission_at: "2026-07-30T16:49:53.580000+00:00"
   queue_order: oldest_first
   spacing_wait_behavior: leave_pending_and_continue_training
   retry_while_quota_exhausted: false
@@ -6270,12 +6530,15 @@ kaggle_submission_state:
     - {specialist_id: thwackey, copy_number: 1, label: "thwackey exact gate iter 5 copy 1/1 0435f335fde6", checkpoint_checksum: "sha256:0435f335fde6d0f3e3dac8a13194381f63579d334e7157c61b1498c74f8b16ce", queued_at: "2026-07-28T19:15:47.659601+00:00", queue_status: accepted}
     - {specialist_id: team-rockets-spidops, copy_number: 1, label: "team-rockets-spidops exact gate iter 5 copy 1/1 4ab63dc94d5a", checkpoint_checksum: "sha256:4ab63dc94d5a6b673703bcaf984be15a42c68a94e6e84ba7232b3964ac79899b", queued_at: "2026-07-29T01:00:24.441275+00:00", queue_status: accepted}
     - {specialist_id: hammer-pult, copy_number: 1, label: "hammer-pult ceiling accepted iter 15 copy 1/1 first c256a0ababee", checkpoint_checksum: "sha256:c256a0ababee147a09d87773c74e2aa11cf46f04c492a1c20b3fb6ead8da0dce", queued_at: "2026-07-29T18:40:15.167191+00:00", queue_status: accepted}
+    - {specialist_id: teal-mask-ogerpon-ex, copy_number: 1, label: "teal-mask-ogerpon-ex ceiling accepted iter 14 copy 1/2 first 5c74cfb63626", checkpoint_checksum: "sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821", queued_at: "2026-07-30T16:48:19.810052+00:00", queue_status: accepted}
+    - {specialist_id: teal-mask-ogerpon-ex, copy_number: 2, label: "teal-mask-ogerpon-ex ceiling accepted iter 14 copy 2/2 second 5c74cfb63626", checkpoint_checksum: "sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821", queued_at: "2026-07-30T16:48:19.810052+00:00", queue_status: accepted}
+    - {specialist_id: archaludon-ex, copy_number: 1, label: "archaludon-ex exact gate iter 5 copy 1/1 first 251298117902", checkpoint_checksum: "sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9", queued_at: "2026-07-31T01:51:50.506542+00:00", queue_status: accepted}
   specialist_copies:
     hammer-pult:
       - {copy_number: 1, turn_order_preference: first_if_allowed, label: "hammer-pult ceiling accepted iter 15 copy 1/1 first c256a0ababee", checkpoint_checksum: "sha256:c256a0ababee147a09d87773c74e2aa11cf46f04c492a1c20b3fb6ead8da0dce", status: accepted, queued_at: "2026-07-29T18:40:15.167191+00:00", submitted_at: "2026-07-29T18:46:07.847000Z", submission_id: 55090161, returned_score: 594.5, failure_reason: null, retry_count: 0}
     teal-mask-ogerpon-ex:
-      - {copy_number: 1, turn_order_preference: first_if_allowed, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
-      - {copy_number: 2, turn_order_preference: second_if_allowed, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+      - {copy_number: 1, turn_order_preference: first_if_allowed, label: "teal-mask-ogerpon-ex ceiling accepted iter 14 copy 1/2 first 5c74cfb63626", checkpoint_checksum: "sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821", status: accepted, queued_at: "2026-07-30T16:48:19.810052+00:00", submitted_at: "2026-07-30 16:48:45.250000", submission_id: 55114866, returned_score: 447.2, failure_reason: null, retry_count: 0}
+      - {copy_number: 2, turn_order_preference: second_if_allowed, label: "teal-mask-ogerpon-ex ceiling accepted iter 14 copy 2/2 second 5c74cfb63626", checkpoint_checksum: "sha256:5c74cfb63626337c0146e740e4c8e4f90fa8a4a1c8dc0b422f0904f3e911b821", status: accepted, queued_at: "2026-07-30T16:48:19.810052+00:00", submitted_at: "2026-07-30 16:49:53.580000", submission_id: 55114885, returned_score: 429.7, failure_reason: null, retry_count: 0}
     dragapult-dusknoir:
       - {copy_number: 1, label: "dragapult-dusknoir ceiling accepted iter 15 copy 1/1 b6996ed641b1", checkpoint_checksum: "sha256:b6996ed641b1b4f2664f48ad8adcfc826c3a916321bdad10943b67250bfe4fef", status: accepted, queued_at: "2026-07-25T06:31:57.040517Z", submitted_at: "2026-07-25T13:40:37.593000Z", submission_id: 54976694, returned_score: 600.0, failure_reason: null, retry_count: 1}
     slowking:
@@ -6291,7 +6554,7 @@ kaggle_submission_state:
     starmie:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
     archaludon-ex:
-      - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
+      - {copy_number: 1, turn_order_preference: first_if_allowed, label: "archaludon-ex exact gate iter 5 copy 1/1 first 251298117902", checkpoint_checksum: "sha256:251298117902d62da35e5c1f1c2e74e275bf7596c090dde43857f57cd45d40a9", status: accepted, queued_at: "2026-07-31T01:51:50.506542+00:00", submitted_at: "2026-07-31 01:52:50.690000", submission_id: 55124091, returned_score: 851.7, failure_reason: null, retry_count: 0}
     lucario:
       - {copy_number: 1, label: "lucario exact gate iter 10 copy 1/1 ffa401242b2c", checkpoint_checksum: "sha256:ffa401242b2c041a00a67e5168a0afdd11f8ca2537cf809e265b862adea140bd", status: accepted, queued_at: "2026-07-24T13:28:00.355124Z", submitted_at: "2026-07-24T13:33:57.223000Z", submission_id: 54952269, returned_score: 600.0, failure_reason: null, retry_count: 1}
     thwackey:
@@ -6304,16 +6567,30 @@ kaggle_submission_state:
       - {copy_number: 1, label: null, checkpoint_checksum: null, status: not_ready, queued_at: null, submitted_at: null, submission_id: null, returned_score: null, failure_reason: null, retry_count: 0}
 post_fleet_refresh:
   schema: poke_bot.post_fleet_specialist_refresh/v1
-  owner_decision_revision: 64
-  owner_decision_revisions: [36, 64]
+  owner_decision_revision: 82
+  owner_decision_revisions: [36, 64, 79, 80, 81, 82]
   phase_id: post-fleet-alakazam-grimms-refresh-v1
-  status: staged_waiting_for_required_fleet
+  status: alakazam_h10_high_volume_rl_active
+  static_preparation:
+    status: static_preparation_complete_slowking_failed_experiment_boundary_reached
+    contract: ops/final_submission/final_format_alakazam_static_preparation_v1.json
+    contract_checksum: sha256:078704f45a8f0958c977cec8bbe4827db1326989ef0ae0be80181d4705a90a9c
+    validation_receipt: state/final_format_alakazam_static_preparation_validation_v11.json
+    validation_receipt_checksum: sha256:2e2eb9f11705e1ee9a7935ed78dc088842cadb07932e6170f1a85fe76c61a593
+    receipt_template_count: 8
+    model_computation_started: true
+    active_runtime_modified: false
   required_fleet_count: 15
   trigger:
-    all_required_specialists_training_complete: false
-    all_required_specialists_frozen_and_registered: false
+    frozen_required_specialist_count: 14
+    all_non_excepted_required_specialists_frozen_and_registered: true
+    terminal_exception_count: 1
+    terminal_exception_specialist_id: slowking
+    terminal_exception_disposition: failed_experiment
+    terminal_exception_receipt: state/slowking_failed_experiment_transition_r79.json
+    terminal_exception_grants_passing_or_completion_credit: false
     terminal_required_specialist_id: slowking
-    slowking_freeze_and_registration_immediately_triggers_first_refresh: true
+    slowking_terminal_disposition_immediately_triggers_first_refresh: true
     pending_kaggle_submissions_block_trigger: false
   ordered_specialist_ids:
     - alakazam
@@ -6323,6 +6600,24 @@ post_fleet_refresh:
     - marnie-s-grimmsnarl-ex
   completed_refresh_specialist_ids: []
   completed_refresh_receipts: []
+  final_alakazam_gate:
+    status: active_iteration_0
+    games_per_iteration: 16384
+    self_play_fraction: 0.125
+    self_play_games_per_iteration: 2048
+    public_opponent_games_per_iteration: 14336
+    learner_epochs_per_iteration: 1
+    maximum_iterations: 189
+    maximum_training_games: 3096576
+    premium_skill_weighted_win_rate: 0.65
+    premium_skill_weighted_confidence_lower: 0.60
+    official_control_win_rate: 0.60
+    rating_simulation_minimum_anchor_count: 8
+    rating_simulation_confidence_level: 0.90
+    rating_simulation_projected_lower_bound: 1000
+    rating_simulation_is_separate_from_65_percent_gate: true
+    ceiling_acceptance_allowed: false
+    lc50_fallback_allowed: false
   release_gates:
     final_alakazam_model_computation:
       required_receipts:
@@ -6337,11 +6632,11 @@ post_fleet_refresh:
       no_receipt_no_model_work: true
   first_refresh:
     specialist_id: alakazam
-    start_timing: immediately_after_slowking_frozen_and_registered
+    start_timing: immediately_after_slowking_failed_experiment_receipt_and_g0_g1
     model_format: final_submission_format
     format_contract: docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md
     first_final_format_model: true
-    final_format_computation_before_slowking_completion_allowed: false
+    final_format_computation_before_slowking_terminal_disposition_allowed: false
     validation_and_compatibility_receipts_required: true
     silent_legacy_format_fallback_allowed: false
     turn_order:
@@ -6381,7 +6676,7 @@ post_fleet_refresh:
     refresh_checkpoint_checksum_must_differ: true
     resolved_core_status: checksum_accepted
     training_contract_source: config/rl_protocol.yaml#/specialist_training
-  active_refresh_specialist_id: null
+  active_refresh_specialist_id: alakazam
   next_refresh_specialist_id: alakazam
   refresh_model_versions:
     alakazam: null

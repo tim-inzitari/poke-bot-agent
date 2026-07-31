@@ -1,0 +1,90 @@
+{
+  "schema": "poke_bot.elmo_memory_guard_collection_continuity/v1",
+  "status": "verified",
+  "created_at_utc": "2026-07-30T23:30:08Z",
+  "owner_goal_revision": 74,
+  "parent_activation_receipt": "state/elmo_memory_guard_repair_r74.json",
+  "parent_activation_receipt_sha256": "sha256:50ab7e11f9c6f8cf81650e90a197c5027dde4fc3b54e906c96286a4acef46e84",
+  "runtime": {
+    "specialist": "archaludon-ex",
+    "run_name": "pure_rl_archaludon-ex_temporal1_8k_v2_20260730",
+    "iteration": 3,
+    "stage": "heldout:strong_public_gate",
+    "candidate_checkpoint_sha256": "sha256:91b4cf7dd133c473a9e8102427933142ab5981199c2b2320249d7348a16a7d82",
+    "requested_games": 4000,
+    "claimed_local_games": 2368,
+    "claimed_remote_games": 1632,
+    "completed_games": 4000,
+    "wave_games_per_second": 10.31,
+    "local_games_per_second": 6.10,
+    "remote_games_per_second": 4.20,
+    "blackwell_simulator_workers": 96,
+    "remote_demand": {
+      "elmo": 36,
+      "bert": 16
+    },
+    "iteration_collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_archaludon-ex_temporal1_8k_v2_20260730/collection_receipts/iter_00003.json",
+    "iteration_collection_receipt_sha256": "sha256:43d3a2df50b009dde08853eb8d6c2508c8563c0ca3b5f826a05192ddd81b1949",
+    "completion_log": "/home/inzi/poke-bot-agent/outputs/logs/pure_rl_archaludon-ex_temporal1_8k_v2_20260730.log",
+    "completion_log_line": 2535,
+    "completion_log_line_sha256": "sha256:1cbaacae330673bed4505096a237f8697a495cbe1c61f0a072f82e64551ed616"
+  },
+  "elmo": {
+    "image": "poke-bot-truenas-worker:archaludon-fusion-v2-r74-memory-v1",
+    "image_id": "sha256:fe3604f77aead38bcb349a4fbefb4cdfe02513df4135abc8ce58c3fca0ac234f",
+    "container_id": "ccd8d3e26635c01719bc2f82c4f522e1227078d79c018e87f048f710d59c37eb",
+    "container_started_at_utc": "2026-07-30T23:13:13.243727398Z",
+    "container_restart_count": 0,
+    "container_status": "running",
+    "container_health": "healthy",
+    "controller_healthy": true,
+    "leaf_alive": true,
+    "leaf_identity_ok": true,
+    "accepting_jobs": true,
+    "active_jobs_at_post_boundary_snapshot": 0,
+    "jobs_completed_at_post_boundary_snapshot": 1687,
+    "jobs_failed": 0,
+    "workers": 36,
+    "default_workers": 36,
+    "leaf_servers": 4,
+    "worker_capacity_healthy": true,
+    "guard_memory_source": "cgroup_v2_memory_current",
+    "guard_memory_gib": 21.48,
+    "summed_process_tree_rss_gib": 26.91,
+    "container_cgroup_memory_current_bytes": 23068770304,
+    "container_cgroup_memory_peak_bytes": 23077003264,
+    "container_memory_limit_gib": 64,
+    "memory_events": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0
+    },
+    "host_available_ram_gib": 31.45
+  },
+  "trainer_continuity_at_completed_boundary": {
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "main_pid": 1159049,
+    "restart_count": 1,
+    "active_state": "active",
+    "sub_state": "running",
+    "training_data_lost": false,
+    "collection_replayed": false,
+    "candidate_retrained": false
+  },
+  "scope": {
+    "proves": [
+      "the repaired Elmo endpoint completed post-activation Archaludon work",
+      "the full 4000-game formal heldout dispatch drained",
+      "the repaired endpoint did not restart or fail a job",
+      "the cgroup-v2 guard remained below 30 GiB while summed RSS remained diagnostic-only",
+      "the Archaludon trainer crossed the boundary without intervention"
+    ],
+    "does_not_claim": [
+      "the Archaludon iteration-3 candidate passed its gameplay gate",
+      "a later Blackwell-local evaluation cannot encounter an unrelated accelerator-memory fault"
+    ]
+  }
+}

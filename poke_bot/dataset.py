@@ -29,8 +29,9 @@ from .replay_import import assert_info_set, InfoSetViolation
 # same feature rows as their IntEnum values. v6 attaches expanded strategic
 # targets from the complete trajectory before context truncation. v7 preserves
 # the exact select context and demonstrated STOP status on every policy stage
-# for future setup-active/setup-bench objectives.
-DATASET_CACHE_SCHEMA_VERSION = 7
+# for future setup-active/setup-bench objectives. v8 preserves strict causal
+# Slowking combo-state labels in immutable temporal feature shards.
+DATASET_CACHE_SCHEMA_VERSION = 8
 
 
 @dataclass

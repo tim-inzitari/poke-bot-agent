@@ -28,10 +28,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from poke_bot import archetypes, checkpoint, device as device_mod
+from poke_bot.guide_evidence_rebind import (
+    validation_or_evidence_only_rebind,
+)
 from poke_bot.model import (
+    COMBO_STATE_HEAD_NAME,
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_SCHEMA,
     DECISION_FUSION_V2_SCHEMA,
+    SETUP_BOARD_OUTCOME_HEAD_NAME,
 )
 from poke_bot.strategic_heads import (
     EXPANDED_STRATEGIC_SCHEMA,
@@ -49,6 +54,11 @@ from poke_bot.pure_rl.expert_rehearsal import (
     resolve_expert_manifest,
 )
 from poke_bot.pure_rl.model_registry import freeze_model, verify_frozen_model
+from poke_bot.slowking_candidate_validation import (
+    validate_candidate as validate_slowking_candidate,
+    validate_final_receipt as validate_slowking_final_receipt,
+    validate_pretraining_authorization as validate_slowking_pretraining,
+)
 from poke_bot.train import (
     GUIDE_TRAINING_MODE_LEGACY,
     GUIDE_TRAINING_MODE_STRATEGIC,
@@ -89,6 +99,25 @@ def _tensor_bytes_equal(first: torch.Tensor, second: torch.Tensor) -> bool:
     left = first.detach().cpu().contiguous().reshape(-1).view(torch.uint8)
     right = second.detach().cpu().contiguous().reshape(-1).view(torch.uint8)
     return torch.equal(left, right)
+
+
+def _named_tensor_digest(
+    state: dict[str, Any],
+    names: list[str],
+) -> str:
+    """Digest exact named tensor identities and bytes in stable order."""
+
+    digest = hashlib.sha256()
+    for name in names:
+        value = state.get(name)
+        if not isinstance(value, torch.Tensor):
+            raise RuntimeError(f"missing tensor required for digest: {name}")
+        tensor = value.detach().cpu().contiguous()
+        digest.update(name.encode("utf-8"))
+        digest.update(str(tensor.dtype).encode("ascii"))
+        digest.update(str(tuple(tensor.shape)).encode("ascii"))
+        digest.update(tensor.reshape(-1).view(torch.uint8).numpy().tobytes())
+    return f"sha256:{digest.hexdigest()}"
 
 
 def load_expanded_head_contract(
@@ -160,6 +189,7 @@ def decision_fusion_handoff_contract(
     protocol_path: Path = DEFAULT_RL_PROTOCOL,
     *,
     strategic_curriculum: bool = False,
+    combo_state_head: bool = False,
 ) -> dict[str, Any]:
     """Project the canonical all-head action contract into each handoff."""
 
@@ -180,6 +210,8 @@ def decision_fusion_handoff_contract(
         or raw.get("applies_to_every_successor_specialist") is not True
     ):
         raise RuntimeError("canonical causal decision-fusion contract changed")
+    if combo_state_head and not strategic_curriculum:
+        raise ValueError("combo-state head requires strategic curriculum")
     if strategic_curriculum:
         guide = (
             (payload.get("specialist_training") or {}).get(
@@ -195,6 +227,8 @@ def decision_fusion_handoff_contract(
             or {}
         )
         required = (*required, "setup_board_outcome")
+        if combo_state_head:
+            required = (*required, "combo_state")
         if (
             branch.get("owner_decision_revision") != 56
             or branch.get("decision_fusion_schema")
@@ -308,9 +342,16 @@ def current_deck_guide_handoff_contract(
         or int(ready.get("guide_rows") or 0) <= 0
     ):
         raise RuntimeError("current-deck guide handoff contract changed")
+    policy_target = dict((guide or {}).get("policy_target") or {})
+    if not policy_target:
+        policy_target = dict(
+            ((guide or {}).get("heuristic_research") or {}).get(
+                "policy_target"
+            )
+            or {}
+        )
     guide_mode = str(
-        ((guide or {}).get("policy_target") or {}).get("training_mode")
-        or GUIDE_TRAINING_MODE_LEGACY
+        policy_target.get("training_mode") or GUIDE_TRAINING_MODE_LEGACY
     )
     if guide_mode not in {
         GUIDE_TRAINING_MODE_LEGACY,
@@ -636,6 +677,7 @@ def _specialist_hot_start_from_core(
     expanded_identity: dict[str, Any] | None = None,
     enable_decision_fusion: bool = False,
     enable_strategic_curriculum: bool = False,
+    enable_combo_state_head: bool = False,
 ) -> tuple[Path, str, dict[str, Any]]:
     """Build an append-only specialist hot start without rewriting the core.
 
@@ -651,6 +693,10 @@ def _specialist_hot_start_from_core(
     if enable_strategic_curriculum and not enable_decision_fusion:
         raise ValueError(
             "strategic curriculum requires causal decision fusion"
+        )
+    if enable_combo_state_head and not enable_strategic_curriculum:
+        raise ValueError(
+            "combo-state head requires strategic curriculum and decision fusion"
         )
     payload = checkpoint.load_checkpoint(core_path, map_location="cpu")
     source_state = dict(payload.get("model_state_dict") or {})
@@ -946,11 +992,32 @@ def _specialist_hot_start_from_core(
             raise RuntimeError(
                 "shared core has a partial/inconsistent decision-fusion architecture"
             )
+        source_fusion_base_keys = sorted(
+            name
+            for name in source_fusion_tensor_keys
+            if not name.startswith("decision_fusion.dedicated_routes.")
+        )
+        source_fusion_route_keys = sorted(
+            name
+            for name in source_fusion_tensor_keys
+            if name.startswith("decision_fusion.dedicated_routes.")
+        )
+        if source_fusion_tensor_keys and (
+            source_fusion_route_keys
+            or len(source_fusion_base_keys) != 30
+        ):
+            raise RuntimeError(
+                "shared core is not a complete causal decision-fusion-v1 "
+                "parent for additive fusion-v2 migration"
+            )
         model_config["decision_fusion_enabled"] = True
         model_config["decision_fusion_runtime_enabled"] = True
         model_config.setdefault("decision_fusion_width", 16)
         if enable_strategic_curriculum:
             model_config["setup_board_outcome_head_enabled"] = True
+            model_config["combo_state_head_enabled"] = bool(
+                enable_combo_state_head
+            )
             model_config[
                 "decision_fusion_dedicated_routes_enabled"
             ] = True
@@ -976,6 +1043,59 @@ def _specialist_hot_start_from_core(
                 "one_option_conditioned_route_per_learned_head": (
                     enable_strategic_curriculum
                 ),
+                "new_auxiliary_head_names": (
+                    [
+                        SETUP_BOARD_OUTCOME_HEAD_NAME,
+                        *(
+                            [COMBO_STATE_HEAD_NAME]
+                            if enable_combo_state_head
+                            else []
+                        ),
+                    ]
+                    if enable_strategic_curriculum
+                    else []
+                ),
+            }
+        elif enable_strategic_curriculum:
+            fusion_migration = {
+                "schema": "poke_bot.causal_decision_fusion_v2_migration/v1",
+                "source_schema": DECISION_FUSION_SCHEMA,
+                "target_schema": DECISION_FUSION_V2_SCHEMA,
+                "source_checkpoint": str(core_path),
+                "source_checkpoint_digest": parent_digest,
+                "inherited_fusion_tensor_keys": source_fusion_base_keys,
+                "inherited_fusion_tensor_count": len(
+                    source_fusion_base_keys
+                ),
+                "inherited_fusion_tensor_digest": _named_tensor_digest(
+                    source_state,
+                    source_fusion_base_keys,
+                ),
+                "new_dedicated_route_names": sorted(
+                    [
+                        *DECISION_FUSION_REQUIRED_HEADS,
+                        "setup_board_outcome",
+                        *(
+                            ["combo_state"]
+                            if enable_combo_state_head
+                            else []
+                        ),
+                    ]
+                ),
+                "new_auxiliary_head_names": [
+                    SETUP_BOARD_OUTCOME_HEAD_NAME,
+                    *(
+                        [COMBO_STATE_HEAD_NAME]
+                        if enable_combo_state_head
+                        else []
+                    ),
+                ],
+                "zero_safe_initialization": True,
+                "runtime_enabled": True,
+                "activation_scope": "isolated_specialist_bootstrap",
+                "serving_eligible": False,
+                "all_inherited_tensors_preserved": True,
+                "one_option_conditioned_route_per_learned_head": True,
             }
 
     payload["model_state_dict"] = state
@@ -1006,13 +1126,24 @@ def _specialist_hot_start_from_core(
             else {}
         ),
     }
+    effective_fusion_migration = payload["extra"].get(
+        "decision_fusion_migration"
+    )
 
     run_dir.mkdir(parents=True, exist_ok=True)
     hot_start = run_dir / (
         (
-            "shared_core_hot_start.expanded-v6-fused-archetype-v2.pt"
-            if fusion_archetype_expanded
-            else "shared_core_hot_start.expanded-v6-fused-v1.pt"
+            (
+                "shared_core_hot_start.expanded-v6-fusion-v2-combo-v1.pt"
+                if enable_combo_state_head
+                else "shared_core_hot_start.expanded-v6-fusion-v2-v1.pt"
+            )
+            if enable_strategic_curriculum and source_fusion_tensor_keys
+            else (
+                "shared_core_hot_start.expanded-v6-fused-archetype-v2.pt"
+                if fusion_archetype_expanded
+                else "shared_core_hot_start.expanded-v6-fused-v1.pt"
+            )
         )
         if enable_decision_fusion
         else (
@@ -1032,27 +1163,51 @@ def _specialist_hot_start_from_core(
         existing_migration = (existing.get("extra") or {}).get(
             "expanded_head_migration"
         )
-        if (
-            existing_expansion != expansion
-            or existing_migration != migration
-            or dict(existing.get("model_config") or {}).get(
+        existing_fusion_migration = (existing.get("extra") or {}).get(
+            "decision_fusion_migration"
+        )
+        identity_differences = {
+            "archetype_expansion": existing_expansion != expansion,
+            "expanded_head_migration": existing_migration != migration,
+            "decision_fusion_migration": (
+                existing_fusion_migration != effective_fusion_migration
+            ),
+            "expanded_heads_enabled": dict(existing.get("model_config") or {}).get(
                 "expanded_heads_enabled", False
             )
-            is not bool(enable_expanded_heads)
-            or dict(existing.get("model_config") or {}).get(
+            is not bool(enable_expanded_heads),
+            "decision_fusion_enabled": dict(existing.get("model_config") or {}).get(
                 "decision_fusion_enabled", False
             )
-            is not bool(enable_decision_fusion)
-            or dict(existing.get("model_config") or {}).get(
+            is not bool(enable_decision_fusion),
+            "setup_board_outcome_head_enabled": dict(existing.get("model_config") or {}).get(
                 "setup_board_outcome_head_enabled", False
             )
-            is not bool(enable_strategic_curriculum)
-            or dict(existing.get("model_config") or {}).get(
+            is not bool(enable_strategic_curriculum),
+            "combo_state_head_enabled": dict(existing.get("model_config") or {}).get(
+                "combo_state_head_enabled", False
+            )
+            is not bool(enable_combo_state_head),
+            "decision_fusion_dedicated_routes_enabled": dict(existing.get("model_config") or {}).get(
                 "decision_fusion_dedicated_routes_enabled", False
             )
-            is not bool(enable_strategic_curriculum)
-        ):
-            raise RuntimeError("existing specialist hot-start identity changed")
+            is not bool(enable_strategic_curriculum),
+        }
+        changed = sorted(
+            name for name, differs in identity_differences.items() if differs
+        )
+        if changed:
+            detail = ""
+            if "decision_fusion_migration" in changed:
+                detail = (
+                    f" existing_fusion={existing_fusion_migration!r}"
+                    f" requested_fusion={effective_fusion_migration!r}"
+                )
+            raise RuntimeError(
+                "existing specialist hot-start identity changed: "
+                + ", ".join(changed)
+                + detail
+            )
     else:
         checkpoint.atomic_torch_save(payload, hot_start)
     hot_digest = checkpoint.checkpoint_digest(hot_start)
@@ -1060,7 +1215,7 @@ def _specialist_hot_start_from_core(
         **expansion,
         "checkpoint_digest": hot_digest,
         "expanded_head_migration": migration,
-        "decision_fusion_migration": fusion_migration,
+        "decision_fusion_migration": effective_fusion_migration,
     }
 
 
@@ -1104,6 +1259,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strategic-head-role-map-sha256", default="")
     parser.add_argument("--strategic-validation-receipt", type=Path)
     parser.add_argument("--strategic-validation-receipt-sha256", default="")
+    parser.add_argument("--combo-state-head", action="store_true")
+    parser.add_argument("--combo-state-implementation-receipt", type=Path)
+    parser.add_argument("--combo-state-implementation-receipt-sha256", default="")
+    parser.add_argument("--combo-state-corpus-validation-receipt", type=Path)
+    parser.add_argument(
+        "--combo-state-corpus-validation-receipt-sha256", default=""
+    )
+    parser.add_argument("--combo-state-cpu-pack-validation-receipt", type=Path)
+    parser.add_argument(
+        "--combo-state-cpu-pack-validation-receipt-sha256", default=""
+    )
+    parser.add_argument("--combo-state-parameter-inventory-receipt", type=Path)
+    parser.add_argument(
+        "--combo-state-parameter-inventory-receipt-sha256", default=""
+    )
+    parser.add_argument("--combo-state-validation-output", type=Path)
+    # Retained only to reject stale callers that try to authorize training
+    # with a pre-existing post-training receipt.
+    parser.add_argument("--combo-state-validation-receipt", type=Path)
+    parser.add_argument("--combo-state-validation-receipt-sha256", default="")
     args = parser.parse_args(argv)
     required_targets = tuple(args.required_target or TARGETS)
     if (
@@ -1205,10 +1380,86 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError(
             "strategic artifacts must match the guide training mode"
         )
+    stale_combo_receipt_arguments = (
+        args.combo_state_validation_receipt,
+        str(args.combo_state_validation_receipt_sha256 or ""),
+    )
+    if any(
+        value not in {None, ""} for value in stale_combo_receipt_arguments
+    ):
+        raise ValueError(
+            "a pre-existing final combo receipt cannot authorize candidate training"
+        )
+    combo_pretraining_arguments = {
+        "implementation": (
+            args.combo_state_implementation_receipt,
+            str(args.combo_state_implementation_receipt_sha256 or ""),
+        ),
+        "corpus": (
+            args.combo_state_corpus_validation_receipt,
+            str(args.combo_state_corpus_validation_receipt_sha256 or ""),
+        ),
+        "cpu_pack": (
+            args.combo_state_cpu_pack_validation_receipt,
+            str(args.combo_state_cpu_pack_validation_receipt_sha256 or ""),
+        ),
+        "parameter_inventory": (
+            args.combo_state_parameter_inventory_receipt,
+            str(args.combo_state_parameter_inventory_receipt_sha256 or ""),
+        ),
+    }
+    flattened_combo_pretraining = [
+        value
+        for pair in combo_pretraining_arguments.values()
+        for value in pair
+    ]
+    if any(
+        value not in {None, ""} for value in flattened_combo_pretraining
+    ) and not all(
+        value not in {None, ""} for value in flattened_combo_pretraining
+    ):
+        raise ValueError("combo-state pretraining receipt arguments must be complete")
+    combo_receipt: dict[str, Any] | None = None
+    combo_receipt_path: Path | None = None
+    combo_receipt_digest: str | None = None
+    combo_pretraining: dict[str, Any] | None = None
+    if args.combo_state_head:
+        if archetype != "slowking":
+            raise ValueError("combo-state head is scoped only to slowking")
+        if not strategic_curriculum:
+            raise ValueError(
+                "slowking combo-state head requires strategic curriculum"
+            )
+        if not all(
+            value not in {None, ""} for value in flattened_combo_pretraining
+        ):
+            raise ValueError(
+                "slowking combo-state head requires pretraining authorization"
+            )
+        combo_pretraining = validate_slowking_pretraining(
+            {
+                name: (path, digest)
+                for name, (path, digest) in combo_pretraining_arguments.items()
+                if path is not None
+            }
+        )
+        combo_receipt_path = (
+            args.combo_state_validation_output.expanduser().resolve()
+            if args.combo_state_validation_output is not None
+            else args.run_dir.expanduser().resolve()
+            / "slowking_combo_head_validation.json"
+        )
+    elif archetype == "slowking":
+        raise ValueError("slowking bootstrap requires --combo-state-head")
+    elif any(
+        value not in {None, ""} for value in flattened_combo_pretraining
+    ) or args.combo_state_validation_output is not None:
+        raise ValueError("combo-state artifacts are valid only for slowking")
     fusion_identity = (
         decision_fusion_handoff_contract(
             args.rl_protocol,
             strategic_curriculum=bool(strategic_curriculum),
+            combo_state_head=bool(args.combo_state_head),
         )
         if args.decision_fusion
         else None
@@ -1314,6 +1565,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.ready.is_file() and family_dir.is_dir():
         ready = json.loads(args.ready.read_text(encoding="utf-8"))
         frozen = verify_frozen_model(family_dir)
+        existing_combo_valid = not bool(args.combo_state_head)
+        if args.combo_state_head:
+            existing_combo = dict(
+                ready.get("slowking_combo_state_validation") or {}
+            )
+            existing_combo_path = Path(
+                str(existing_combo.get("receipt") or "")
+            ).expanduser().resolve()
+            if existing_combo_path.is_file():
+                existing_combo_payload = json.loads(
+                    existing_combo_path.read_text(encoding="utf-8")
+                )
+                validate_slowking_final_receipt(
+                    existing_combo_payload,
+                    checkpoint_path=Path(str(frozen["model_path"])).resolve(),
+                )
+                existing_combo_valid = (
+                    checkpoint.checkpoint_digest(existing_combo_path)
+                    == existing_combo.get("receipt_sha256")
+                    and existing_combo.get("payload")
+                    == existing_combo_payload
+                )
         if (
             ready.get("status") == "ready"
             and ready.get("checkpoint_digest") == frozen.get("checkpoint_digest")
@@ -1321,6 +1594,7 @@ def main(argv: list[str] | None = None) -> int:
             and ready.get("expert_manifest_sha256") == identity.digest
             and ready.get("acting_seat_archetype") == archetype
             and ready.get("current_deck_guide") == guide_identity
+            and existing_combo_valid
             and (
                 expanded_identity is None
                 or (
@@ -1347,26 +1621,61 @@ def main(argv: list[str] | None = None) -> int:
             expanded_identity=expanded_identity,
             enable_decision_fusion=bool(args.decision_fusion),
             enable_strategic_curriculum=bool(strategic_curriculum),
+            enable_combo_state_head=bool(args.combo_state_head),
         )
     )
     state_path = run_dir / "state.json"
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
-    if state and (
-        state.get("core_checkpoint_digest") != core.get("checkpoint_digest")
-        or state.get("manifest_digest") != identity.digest
-        or state.get("hot_start_checkpoint_digest") != hot_start_digest
-        or (
-            expanded_identity is not None
-            and (
-                state.get("expanded_target_schema_digest")
-                != expanded_identity["target_schema_digest"]
-                or state.get("expanded_schedule_digest")
-                != expanded_identity["schedule_digest"]
+    if state:
+        fixed_identity_changed = bool(
+            state.get("core_checkpoint_digest")
+            != core.get("checkpoint_digest")
+            or state.get("manifest_digest") != identity.digest
+            or state.get("hot_start_checkpoint_digest") != hot_start_digest
+            or (
+                expanded_identity is not None
+                and (
+                    state.get("expanded_target_schema_digest")
+                    != expanded_identity["target_schema_digest"]
+                    or state.get("expanded_schedule_digest")
+                    != expanded_identity["schedule_digest"]
+                )
             )
         )
-        or state.get("current_deck_guide") != guide_identity
-    ):
-        raise RuntimeError("specialist bootstrap state identity changed")
+        saved_guide = dict(state.get("current_deck_guide") or {})
+        guide_changed = saved_guide != guide_identity
+        receipt_only_rebind = bool(
+            guide_changed
+            and validation_or_evidence_only_rebind(
+                saved_guide,
+                guide_identity,
+                old_contract_snapshot=(
+                    run_dir
+                    / "guide-contract-before-evidence-rebind.yaml"
+                ),
+            )
+        )
+        if fixed_identity_changed or (
+            guide_changed and not receipt_only_rebind
+        ):
+            raise RuntimeError("specialist bootstrap state identity changed")
+        if receipt_only_rebind:
+            state = {
+                **state,
+                "current_deck_guide": guide_identity,
+                "validation_receipt_rebind": {
+                    "schema":
+                        "poke_bot.bootstrap_validation_receipt_rebind/v1",
+                    "old_receipt_sha256": (
+                        saved_guide.get("strategic_curriculum") or {}
+                    ).get("validation_receipt_sha256"),
+                    "new_receipt_sha256": (
+                        guide_identity.get("strategic_curriculum") or {}
+                    ).get("validation_receipt_sha256"),
+                    "training_identity_unchanged": True,
+                },
+            }
+            atomic_json(state_path, state)
 
     device = device_mod.training_device(prefer_name="RTX PRO 5000", allow_cpu=False)
     core_payload = checkpoint.load_checkpoint(core_path, map_location="cpu")
@@ -1541,6 +1850,9 @@ def main(argv: list[str] | None = None) -> int:
                     "lethal_threat_loss_weight": 0.025,
                     "prize_race_loss_weight": 0.025,
                     "alakazam_guide_loss_weight": guide_weight,
+                    "combo_state_loss_weight": (
+                        0.025 if bool(args.combo_state_head) else 0.0
+                    ),
                     "current_deck_guide_training_mode": (
                         str(guide_identity["training_mode"])
                         if guide_identity is not None
@@ -1623,6 +1935,26 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError(
                     "current-deck guide received no labeled bootstrap rows"
                 )
+            if bool(args.combo_state_head):
+                train_combo = dict(
+                    (result.get("train_metrics") or {}).get(
+                        "combo_state_metrics"
+                    )
+                    or {}
+                )
+                validation_combo = dict(
+                    (result.get("validation_metrics") or {}).get(
+                        "combo_state_metrics"
+                    )
+                    or {}
+                )
+                if (
+                    int(train_combo.get("eligible_rows") or 0) <= 0
+                    or int(validation_combo.get("eligible_rows") or 0) <= 0
+                ):
+                    raise RuntimeError(
+                        "Slowking combo-state head received no causal labeled rows"
+                    )
             row = {
                 "epoch": epoch,
                 "checkpoint": str(output),
@@ -1772,7 +2104,7 @@ def main(argv: list[str] | None = None) -> int:
             or fusion_inventory.get("schema") != expected_fusion_schema
             or fusion_inventory.get("runtime_enabled") is not True
             or fusion_inventory.get("required_heads")
-            != list(DECISION_FUSION_REQUIRED_HEADS)
+            != list(fusion_identity["required_heads"])
             or not isinstance(output_weight, torch.Tensor)
             or not bool(torch.count_nonzero(output_weight).item())
             or (
@@ -1782,6 +2114,8 @@ def main(argv: list[str] | None = None) -> int:
                         "setup_board_outcome_head_enabled"
                     )
                     is not True
+                    or best_config.get("combo_state_head_enabled", False)
+                    is not bool(args.combo_state_head)
                     or best_config.get(
                         "decision_fusion_dedicated_routes_enabled"
                     )
@@ -1807,6 +2141,32 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(
                 "selected specialist checkpoint lacks trained causal decision fusion"
             )
+    if args.combo_state_head:
+        if (
+            combo_pretraining is None
+            or combo_receipt_path is None
+            or expanded_raw is None
+            or guide_identity is None
+        ):
+            raise RuntimeError(
+                "Slowking candidate validation inputs were not retained"
+            )
+        final_plan = expanded_head_epoch_plan(expanded_raw, int(args.epochs))
+        combo_receipt = validate_slowking_candidate(
+            checkpoint_path=best,
+            parent_checkpoint=hot_start,
+            corpus=corpus,
+            device=device,
+            pretraining=combo_pretraining,
+            output=combo_receipt_path,
+            expanded_head_weights=dict(final_plan.loss_weights),
+            guide_loss_weight=current_deck_guide_epoch_weight(
+                guide_identity, int(args.epochs)
+            ),
+        )
+        combo_receipt_digest = checkpoint.checkpoint_digest(
+            combo_receipt_path
+        )
     frozen = freeze_model(
         registry_root=args.registry_root,
         family=family_name,
@@ -1839,6 +2199,15 @@ def main(argv: list[str] | None = None) -> int:
             "early_stop_patience": int(args.patience),
             "history": history,
             "current_deck_guide": guide_identity,
+            "slowking_combo_state_validation": (
+                {
+                    "receipt": str(combo_receipt_path),
+                    "receipt_sha256": combo_receipt_digest,
+                    "payload": combo_receipt,
+                }
+                if combo_receipt is not None
+                else None
+            ),
             **(
                 {
                     "decision_fusion": {
@@ -1910,6 +2279,15 @@ def main(argv: list[str] | None = None) -> int:
         "best_metric": best_metric,
         "trained_target_coverage": list(required_targets),
         "current_deck_guide": guide_identity,
+        "slowking_combo_state_validation": (
+            {
+                "receipt": str(combo_receipt_path),
+                "receipt_sha256": combo_receipt_digest,
+                "payload": combo_receipt,
+            }
+            if combo_receipt is not None
+            else None
+        ),
         "inherited_target_coverage": [
             target for target in TARGETS if target not in required_targets
         ],

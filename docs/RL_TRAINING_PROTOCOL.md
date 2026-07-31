@@ -492,26 +492,30 @@ Slowking/Metagross list is not a valid representative, guide, corpus identity,
 or terminal package.
 
 Before Slowking can bootstrap, the checksum-bound
-`state/slowking_combo_head_coverage_v1.json` map must prove learned decision
+`state/slowking_combo_head_coverage_v2.json` map must prove learned decision
 coverage for top-deck construction and consumption, copied non-Rule-Box attack
 legality and choice, visible combo pieces and search/recovery, every relevant
 Energy attachment/return/acceleration route, replacement-attacker Bench
 continuity, disruption response, prize mapping, and remaining-turn/outcome
 timing. Existing action, resource, tactical, opponent-response, prize-race,
 outcome, remaining-turn, and setup heads cover parts of that contract. They do
-not provide an explicit causal target for known-top provenance or copied-attack
-legality, so the current map declares a missing generic `combo_state` typed
-head. It proposes a `d_model → 192 → 32` option branch plus its own revision-56
-bounded option-conditioned fusion route. This is an identified design gap, not
-a completed implementation or validation claim.
+not by themselves provide the explicit causal targets for known-top provenance
+or copied-attack legality. The implemented generic `combo_state` head provides
+those targets through a `d_model → 192 → 32` option branch and its own
+revision-56 bounded option-conditioned fusion route.
 
-Slowking therefore remains fail-closed until the combo head is implemented and
-an immutable receipt proves exact-deck row coverage, typed losses and
-calibration, finite nonzero gradient/update norms, step-zero parent parity,
+The schema-8 full-history corpus now proves 311 exact-deck games, 19,251
+combo-labeled decisions, 887 top-deck labels, 4,948 seek-source labels, and
+nonzero copied-attack, visible-piece, Energy-route, and Bench-continuity
+coverage. Its imported resident CPU pack contains the combo tensors in a
+280-game train / 31-game validation split. Implementation receipts prove
+finite nonzero head/route gradients and updates, step-zero parent parity,
 causal suffix invariance, legal-option dependence, bounded aggregate residuals,
-and leave-one-head-out logit and action attribution on Slowking states. The
-guide remains the sole no-route exception and may only weight observed-target
-learning; it is never an imitation policy or serving input.
+and leave-one-head-out logit attribution. Slowking remains fail-closed behind
+Archaludon and the trained-candidate calibration, action attribution, ablation,
+runtime-resource, package, and terminal-preflight receipts. The guide remains
+the sole no-route exception and may only weight observed-target learning; it
+is never an imitation policy or serving input.
 
 The ordinary two-million-parameter goal is a soft target for Slowking. Its
 specialist-scoped exception may accept a measured candidate above two million
@@ -520,8 +524,9 @@ causal gradients and ablation gain. The initial hard ceiling remains the
 existing 3.5 million parameters; no global environment default changes. The
 currently proposed `combo_state` MLP contributes 24,800 parameters at d96 and
 its dedicated route contributes 2,081, for 26,881 explicitly named added
-parameters. The complete candidate total is deliberately unset until an actual
-checkpoint is instantiated and measured. Exceeding 3.5 million requires a
+parameters. The complete pre-stage candidate has been instantiated and
+measured at 1,910,963 parameters, below the ordinary soft target. Exceeding
+3.5 million requires a
 separate owner decision plus memory, latency, package-size, gradient-use,
 ablation, and final-submission compatibility receipts.
 
@@ -647,9 +652,56 @@ atomic latest-20 receipt. Bert must delete its temporary replay ZIP only after
 the committed Elmo receipt records the identical checksum. Inzi receives only
 the small receipt; replay archives do not traverse Inzi's constrained link.
 Existing checksum-valid Elmo archives are reused instead of downloaded again.
+
+Elmo's production memory watchdog uses uniquely charged cgroup-v2
+`memory.current` against the 30 GiB inner limit. On a host without cgroup-v2 it
+falls back to process-tree PSS, and only then to summed process-tree RSS.
+Summed RSS is retained as diagnostic telemetry because spawned workers share
+model and library pages and summing their RSS double-counts those pages. This
+measurement correction does not change the 30 GiB inner limit, 24 GiB
+host-available floor, 64 GiB/no-swap outer cgroup, worker count, child
+recycling, or checkpoint/capacity guards.
+The activated guard is continuity-verified by
+`state/elmo_memory_guard_collection_continuity_r74.json`: the complete
+Archaludon iteration-3 4,000-game heldout dispatch drained with 1,632 remote
+games, zero Elmo restarts, zero failed jobs, and zero cgroup memory events.
 The rolling archive refresh never changes an already-running training update;
 derived specialist features activate only at the safe boundary described
 above.
+
+Blackwell's long-lived trainer must return freed device-resident training
+blocks to CUDA before rebuilding its inference leaves. After deleting the
+replay dataset and collecting the host heap, it synchronizes the training
+device, records reserved bytes, empties the CUDA caching allocator, records the
+post-release value, and only then restores the 4/12 leaf farm. A leaf OOM is a
+failed game, never evaluation evidence; an incomplete exact-row audit remains
+uncommitted and is recovered from the immutable collection and candidate.
+`state/blackwell_cuda_cache_boundary_repair_r75.json` binds the active repair
+and its clean 4,000-game formal plus 1,000-game diagnostic replay. The first
+ordinary post-repair training boundary is independently sealed by
+`state/blackwell_cuda_cache_boundary_continuity_r75.json`: iteration 4 released
+CUDA-reserved memory from 45,116,030,976 bytes to 104,857,600 bytes before
+rebuilding the unchanged 4/12 leaf farm, completing promotion, and dispatching
+the next 4,000-game formal evaluation with 64 local and 52 remote slots.
+`state/blackwell_cuda_cache_evaluation_continuity_r75.json` seals the completed
+continuity result: 4,000/4,000 formal rows passed the exact audit at 68.51%
+skill-weighted win rate, the disjoint 1,000/1,000 research-control rows passed
+at 59.9%, iteration 4 committed, and the required iteration-5 curriculum began
+without a CUDA OOM, failed leaf, traceback, or service restart.
+
+The current Archaludon run intentionally uses the already imported protected
+dataset-schema-6 corpus authorized by goal revision 69. Dataset schema 7 added
+only exact setup `SelectContext` and demonstrated STOP metadata. The
+revision-76 compatibility reader therefore preserves every earlier causal
+target and maps only those unavailable setup fields to UNKNOWN/false; UNKNOWN
+context masks the setup objective rather than creating a zero target. The
+runtime pack must still be rebuilt and verified under its exact packing-schema,
+split-seed, manifest, vocabulary, and checksum key; an older pack may not be
+renamed or relabeled. Receipt
+`state/archaludon_expert_rehearsal_schema6_compat_repair_r76.json` proves the
+exact key `7c5091c9d2d4fe6d1ae6ddd39373082014b8e9c3be6da01b68037218f5ba253d`
+loaded as a cache hit, the five-epoch rehearsal committed, and iteration 5
+resumed from its unchanged 8,192-game collection without recollection.
 
 Every specialist has a completed-iteration floor of 5 and a
 completed-iteration ceiling of 15. A measured gate pass may transition at
@@ -740,11 +792,11 @@ representative, and blocked pre-stage package are discoverable under
 `config/deck_guides/slowking.yaml`,
 `config/deck_guides/slowking-representative.v1.json`,
 `docs/deck_guides/slowking-expert-brief.txt`,
-`state/slowking_combo_head_coverage_v1.json`, and
+`state/slowking_combo_head_coverage_v2.json`, and
 `poke_bot/slowking_heuristics.py`. This preparation does not make Slowking
-selectable or trainable: Archaludon ex must complete first, and Slowking still
-requires exact corpus, route, combo-head, parameter, terminal-preflight, and
-validation receipts.
+selectable or trainable: Archaludon ex must complete first, and the trained
+Slowking candidate still requires calibration, ablation, action-attribution,
+runtime-resource, package, terminal-preflight, and final validation receipts.
 Crustle is not a required specialist and may not be selected, bootstrapped,
 trained, gated, frozen, submitted, or counted toward completion. Its existing
 Matchup Router Format 6 identity remains active at stable slot 0 and may not be
@@ -1131,6 +1183,17 @@ packages one `first_if_allowed` preference. It may not use the
 `second_focus_1_to_7` curriculum, an always-second arm, or a second-preferring
 Alakazam refresh copy. Marnie's Grimmsnarl ex remains the second refresh unless
 a later owner decision supersedes it.
+
+The active final-format refresh uses 16,384 games per iteration and one learner
+epoch. After iteration 0 completed its ordinary 6,144-decision epoch but OOMed
+on the first adapter-only batch, recovery reuses the exact completed corpus and
+replay cache without recollection. Warmup and ordinary learner batches are
+capped at 4,096 decisions. Dormant matchup-adapter fitting has its own 2,048
+decision cap, releases unused CUDA cache before fitting, and recursively splits
+an OOMing multi-game batch without dropping a sequence. A single-sequence OOM
+still fails closed. The adapter bank alone receives gradients in that phase;
+all base tensors remain frozen and every learned head remains present in the
+ordinary fused-policy epoch.
 
 Resolve inputs independently at the start of each refresh. Hot-start from the
 newest checksum-accepted cumulative core available at that boundary, not from

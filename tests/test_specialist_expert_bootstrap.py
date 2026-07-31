@@ -51,6 +51,25 @@ def test_diagnostic_patience_cannot_end_bootstrap_early() -> None:
     assert "for epoch in range(start_epoch, int(args.epochs) + 1)" in source
 
 
+def test_bootstrap_guide_receipt_rebind_is_digest_only() -> None:
+    old = {
+        "schema": "poke_bot.current_deck_guide_handoff/v1",
+        "specialist_id": "slowking",
+        "strategic_curriculum": {
+            "curriculum_spec_sha256": "spec",
+            "head_role_map_sha256": "roles",
+            "validation_receipt_sha256": "old",
+        },
+    }
+    new = json.loads(json.dumps(old))
+    new["strategic_curriculum"]["validation_receipt_sha256"] = "new"
+    assert bootstrap.validation_or_evidence_only_rebind(old, new)
+
+    changed = json.loads(json.dumps(new))
+    changed["guide_version"] = "changed"
+    assert not bootstrap.validation_or_evidence_only_rebind(old, changed)
+
+
 def test_specialist_bootstrap_materializes_all_head_targets() -> None:
     source = (ROOT / "scripts/run_starmie_expert_bootstrap.py").read_text(
         encoding="utf-8"
@@ -364,6 +383,77 @@ def test_revision56_hot_start_enables_setup_and_distinct_routes_zero_safely(
     assert migration["target_schema"] == "poke_bot.causal_decision_fusion/v2"
     assert migration["zero_safe_initialization"] is True
     assert migration["one_option_conditioned_route_per_learned_head"] is True
+
+
+def test_slowking_hot_start_migrates_complete_fusion_v1_additively(
+    tmp_path: Path,
+) -> None:
+    target_classes = len(archetypes.archetype_ids()) + 1
+    cfg = config.ModelConfig(
+        d_model=16,
+        spatial_layers=1,
+        temporal_layers=1,
+        option_decoder_layers=1,
+        n_heads=4,
+        ff_dim=32,
+        max_context=8,
+        expanded_heads_enabled=True,
+        decision_fusion_enabled=True,
+        decision_fusion_runtime_enabled=True,
+        decision_fusion_width=8,
+        dropout=0.0,
+    )
+    source = build_model(
+        cfg,
+        aux_archetype_classes=target_classes,
+        encoder_vocab=64,
+        decoder_vocab=64,
+        belief_card_vocab=32,
+    )
+    core = checkpoint.atomic_torch_save(
+        checkpoint.build_checkpoint(
+            model=source,
+            model_config=cfg,
+        ),
+        tmp_path / "fusion-v1-core.pt",
+    )
+    _raw, identity = bootstrap.load_expanded_head_contract()
+
+    hot_start, _, expansion = bootstrap._specialist_hot_start_from_core(
+        core,
+        run_dir=tmp_path / "run",
+        archetype="slowking",
+        enable_expanded_heads=True,
+        expanded_identity=identity,
+        enable_decision_fusion=True,
+        enable_strategic_curriculum=True,
+        enable_combo_state_head=True,
+    )
+
+    assert hot_start.name.endswith("fusion-v2-combo-v1.pt")
+    migration = expansion["decision_fusion_migration"]
+    assert (
+        migration["schema"]
+        == "poke_bot.causal_decision_fusion_v2_migration/v1"
+    )
+    assert migration["source_schema"] == "poke_bot.causal_decision_fusion/v1"
+    assert migration["target_schema"] == "poke_bot.causal_decision_fusion/v2"
+    assert migration["inherited_fusion_tensor_count"] == 30
+    assert migration["new_auxiliary_head_names"] == [
+        "setup_board_outcome_head",
+        "combo_state_head",
+    ]
+    migrated = load_model_from_checkpoint(
+        hot_start,
+        device=torch.device("cpu"),
+    )
+    for key, value in source.state_dict().items():
+        torch.testing.assert_close(
+            value,
+            migrated.state_dict()[key],
+            rtol=0,
+            atol=0,
+        )
 
 
 def test_expanded_manifest_coverage_allows_masks_but_not_zero_labels(

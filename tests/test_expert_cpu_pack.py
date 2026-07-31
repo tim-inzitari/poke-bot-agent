@@ -37,6 +37,8 @@ def _tiny_corpus() -> DeviceResidentBootstrapCorpus:
         "value_target": torch.tensor([1.0, 1.0], dtype=torch.float32),
         "guide_target_index": torch.tensor([-1, -1], dtype=torch.int16),
         "guide_confidence": torch.zeros(2, dtype=torch.float32),
+        "select_context": torch.full((2,), -1, dtype=torch.int16),
+        "selected_is_stop": torch.zeros(2, dtype=torch.uint8),
         "action_index": torch.empty(0, dtype=torch.int32),
         "action_value": torch.empty(0, dtype=torch.float32),
         "action_offset": torch.zeros(3, dtype=torch.int32),
@@ -110,6 +112,7 @@ def test_cpu_pack_round_trip_is_durable_and_skips_builder(tmp_path: Path) -> Non
         {"split_seed": 18},
         {"val_frac": 0.2},
         {"max_context": 160},
+        {"seat_split_policy": "exact_50_50_per_partition_v1"},
     ],
 )
 def test_cpu_pack_key_covers_every_packing_input(overrides: dict) -> None:

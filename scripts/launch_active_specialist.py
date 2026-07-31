@@ -93,13 +93,51 @@ def _load_registry(path: Path) -> dict[str, Any]:
     payload = json.loads(source.read_text(encoding="utf-8"))
     if (
         payload.get("schema") != "poke_bot.specialist_runtime_registry/v1"
-        or int(payload.get("version") or 0) != 1
+        or int(payload.get("version") or 0) < 1
         or payload.get("selector_environment_variable") != SELECTOR_ENV
         or not isinstance(payload.get("specialists"), dict)
     ):
         raise RuntimeError("invalid specialist runtime registry")
     payload["_path"] = str(source)
     return payload
+
+
+def _required_runtime_fusion_heads(row: dict[str, Any]) -> list[str]:
+    """Resolve the exact registered head inventory without weakening its base."""
+
+    strategic = (
+        row.get("guide_training_mode") == GUIDE_TRAINING_MODE_STRATEGIC
+    )
+    mandatory = list(
+        CANONICAL_LEARNED_DECISION_SOURCES
+        if strategic
+        else DECISION_FUSION_REQUIRED_HEADS
+    )
+    fusion_contract = row.get("decision_fusion")
+    if not isinstance(fusion_contract, dict) or not fusion_contract:
+        return mandatory
+    declared = fusion_contract.get("required_heads")
+    if (
+        not isinstance(declared, list)
+        or declared[: len(mandatory)] != mandatory
+        or len(declared) != len(set(declared))
+        or any(
+            not isinstance(head, str)
+            or not head
+            or not all(
+                char.islower()
+                or char.isdigit()
+                or char in {"_", "-"}
+                for char in head
+            )
+            for head in declared
+        )
+    ):
+        raise RuntimeError(
+            "registered decision-fusion heads weaken or reorder the "
+            "mandatory learned-head inventory"
+        )
+    return list(declared)
 
 
 def _required_file(row: dict[str, Any], field: str, digest_field: str) -> Path:
@@ -140,8 +178,22 @@ def _validate_strategic_head_roles(
     *,
     specialist_id: str,
     guide_contract_sha256: str,
+    registered_learned_sources: tuple[str, ...],
+    require_all_registered_sources: bool,
 ) -> tuple[str, ...]:
     heads = payload.get("heads")
+    declared_sources = payload.get("canonical_learned_decision_sources")
+    canonical_prefix = list(CANONICAL_LEARNED_DECISION_SOURCES)
+    sources_are_valid = (
+        isinstance(declared_sources, list)
+        and declared_sources[: len(canonical_prefix)] == canonical_prefix
+        and len(declared_sources) == len(set(declared_sources))
+        and all(source in registered_learned_sources for source in declared_sources)
+        and (
+            not require_all_registered_sources
+            or declared_sources == list(registered_learned_sources)
+        )
+    )
     try:
         aggregate_cap = float(payload.get("aggregate_absolute_logit_cap"))
     except (TypeError, ValueError):
@@ -158,8 +210,7 @@ def _validate_strategic_head_roles(
         or payload.get("decision_fusion_schema")
         != DECISION_FUSION_V2_SCHEMA
         or payload.get("preserve_v1_additive_residual") is not True
-        or payload.get("canonical_learned_decision_sources")
-        != list(CANONICAL_LEARNED_DECISION_SOURCES)
+        or not sources_are_valid
         or payload.get("one_route_per_learned_source") is not True
         or payload.get("route_input")
         != "option_hidden_plus_typed_output"
@@ -168,7 +219,7 @@ def _validate_strategic_head_roles(
         or payload.get("zero_safe_final_projection") is not True
         or payload.get("guide_is_only_action_route_exception") is not True
         or not isinstance(heads, dict)
-        or set(heads) != set(CANONICAL_LEARNED_DECISION_SOURCES)
+        or set(heads) != set(declared_sources or ())
     ):
         raise RuntimeError("strategic curriculum head-role map is invalid")
 
@@ -218,7 +269,7 @@ def _validate_strategic_head_roles(
                 f"strategic curriculum head role is invalid: {head_id}"
             )
         if (
-            head_id not in CANONICAL_LEARNED_DECISION_SOURCES
+            head_id not in declared_sources
             or raw.get("enters_decision_fusion") is not True
         ):
             raise RuntimeError(
@@ -279,6 +330,9 @@ def _validate_implementation_artifacts(receipt: dict[str, Any]) -> None:
 def _validate_guide_training_contract(
     row: dict[str, Any],
     specialist_id: str,
+    registered_learned_sources: tuple[str, ...] = (
+        CANONICAL_LEARNED_DECISION_SOURCES
+    ),
 ) -> str:
     """Return the validated mode, preserving immutable pre-policy rows."""
 
@@ -330,6 +384,13 @@ def _validate_guide_training_contract(
         role_payload,
         specialist_id=specialist_id,
         guide_contract_sha256=guide_contract_sha256,
+        registered_learned_sources=registered_learned_sources,
+        require_all_registered_sources=(
+            bundle.get("require_all_registered_learned_sources") is True
+        ),
+    )
+    curriculum_sources = list(
+        role_payload["canonical_learned_decision_sources"]
     )
     spec_path = _required_file(
         bundle, "curriculum_spec", "curriculum_spec_sha256"
@@ -359,9 +420,7 @@ def _validate_guide_training_contract(
         "runtime_activation_requirement": "receipt_backed_validation",
         "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
         "preserve_v1_additive_residual": True,
-        "canonical_learned_decision_sources": list(
-            CANONICAL_LEARNED_DECISION_SOURCES
-        ),
+        "canonical_learned_decision_sources": curriculum_sources,
         "one_route_per_learned_source": True,
         "route_input": "option_hidden_plus_typed_output",
         "route_reduction": "fixed_mean",
@@ -523,7 +582,12 @@ def _validate_guide_training_contract(
     return raw_mode
 
 
-def _validate_guide_weight_policy(row: dict[str, Any]) -> None:
+def _validate_guide_weight_policy(
+    row: dict[str, Any],
+    learned_decision_sources: tuple[str, ...] = (
+        CANONICAL_LEARNED_DECISION_SOURCES
+    ),
+) -> None:
     """Validate the prospective policy when a future successor declares it."""
 
     policy = row.get("guide_weight_policy")
@@ -613,9 +677,7 @@ def _validate_guide_weight_policy(row: dict[str, Any]) -> None:
         "runtime_activation_requirement": "receipt_backed_validation",
         "per_head_action_logit_ablation_required": True,
         "preserve_v1_additive_residual": True,
-        "canonical_learned_decision_sources": list(
-            CANONICAL_LEARNED_DECISION_SOURCES
-        ),
+        "canonical_learned_decision_sources": list(learned_decision_sources),
         "one_route_per_learned_source": True,
         "route_input": "option_hidden_plus_typed_output",
         "route_reduction": "fixed_mean",
@@ -739,9 +801,14 @@ def _resolve(
         raise RuntimeError(
             f"specialist {selected!r} lacks adapter-only training authorization"
         )
+    required_fusion_heads = tuple(_required_runtime_fusion_heads(row))
     guide_weight = float(row.get("guide_loss_weight") or 0.0)
     guide_id = str(row.get("guide_id") or "").strip().casefold()
-    guide_training_mode = _validate_guide_training_contract(row, selected)
+    guide_training_mode = _validate_guide_training_contract(
+        row,
+        selected,
+        required_fusion_heads,
+    )
     if guide_weight > 0.0:
         guide_contract = _required_file(
             row, "guide_contract", "guide_contract_sha256"
@@ -755,7 +822,18 @@ def _resolve(
                 f"specialist {selected!r} lacks its checksum-bound deck guide"
             )
         if guide_training_mode == GUIDE_TRAINING_MODE_STRATEGIC:
-            _validate_guide_weight_policy(row)
+            role_map = _read_json_object(
+                _required_file(
+                    dict(row["strategic_curriculum"]),
+                    "head_role_map",
+                    "head_role_map_sha256",
+                ),
+                label="strategic curriculum head-role map",
+            )
+            _validate_guide_weight_policy(
+                row,
+                tuple(role_map["canonical_learned_decision_sources"]),
+            )
     tactical_override = row.get("tactical_outcome_loss_weight_override")
     if tactical_override is not None and (
         selected != "teal-mask-ogerpon-ex"
@@ -771,6 +849,12 @@ def _resolve(
     )
     fusion_contract = dict(row.get("decision_fusion") or {})
     model_config = dict(checkpoint_payload.get("model_config") or {})
+    required_fusion_heads = list(required_fusion_heads)
+    required_fusion_schema = (
+        DECISION_FUSION_V2_SCHEMA
+        if row.get("guide_training_mode") == GUIDE_TRAINING_MODE_STRATEGIC
+        else DECISION_FUSION_SCHEMA
+    )
     if (
         fusion_contract.get("required") is True
         or model_config.get("expanded_heads_enabled") is True
@@ -788,24 +872,24 @@ def _resolve(
             (
                 fusion_contract
                 and (
-                    fusion_contract.get("schema") != DECISION_FUSION_SCHEMA
+                    fusion_contract.get("schema") != required_fusion_schema
                     or fusion_contract.get("runtime_enabled") is not True
                     or fusion_contract.get("required_heads")
-                    != list(DECISION_FUSION_REQUIRED_HEADS)
+                    != required_fusion_heads
                 )
             )
             or model_config.get("expanded_heads_enabled") is not True
             or model_config.get("decision_fusion_enabled") is not True
             or model_config.get("decision_fusion_runtime_enabled") is not True
-            or fusion_inventory.get("schema") != DECISION_FUSION_SCHEMA
+            or fusion_inventory.get("schema") != required_fusion_schema
             or fusion_inventory.get("enabled") is not True
             or fusion_inventory.get("runtime_enabled") is not True
             or fusion_inventory.get("required_heads")
-            != list(DECISION_FUSION_REQUIRED_HEADS)
+            != required_fusion_heads
             or not fusion_tensors
         ):
             raise RuntimeError(
-                f"specialist {selected!r} lacks its mandatory 17-head "
+                f"specialist {selected!r} lacks its mandatory all-head "
                 "runtime decision-fusion checkpoint"
             )
     checkpoint_extra = dict(checkpoint_payload.get("extra") or {})
@@ -996,6 +1080,14 @@ def _build_command(
     )
     if minimum_terminal_iteration < 0 or iteration_ceiling < minimum_terminal_iteration:
         raise RuntimeError("invalid specialist iteration window")
+    expert_required_targets = [
+        str(target)
+        for target in row.get("expert_required_target_coverage") or ()
+    ]
+    if specialist_id == "slowking" and "combo_state_rows" not in (
+        expert_required_targets
+    ):
+        expert_required_targets.append("combo_state_rows")
     run_root = (
         runtime_root
         / "outputs"
@@ -1066,6 +1158,8 @@ def _build_command(
         str(adapter_authorization),
         "--current-deck-guide-loss-weight",
         str(float(row.get("guide_loss_weight") or 0.0)),
+        "--combo-state-loss-weight",
+        "0.025" if specialist_id == "slowking" else "0.0",
         *(
             [
                 "--current-deck-guide-training-mode",
@@ -1107,7 +1201,7 @@ def _build_command(
         str(int(row.get("expert_minimum_decisions") or 20_000)),
         *[
             value
-            for target in row.get("expert_required_target_coverage") or ()
+            for target in expert_required_targets
             for value in ("--expert-required-target", str(target))
         ],
         *common_trainer_args,

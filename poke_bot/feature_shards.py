@@ -42,6 +42,8 @@ COMPACT_MODE = "stateless-core-v1"
 COMPACT_MODE_TEMPORAL_EXPERT = "temporal-expert-v1"
 SUPPORTED_COMPACT_MODES = frozenset({COMPACT_MODE, COMPACT_MODE_TEMPORAL_EXPERT})
 MATCHUP_ADAPTER_LEGACY_DATASET_SCHEMA = 4
+SETUP_METADATA_LEGACY_DATASET_SCHEMA = 6
+PREVIOUS_DATASET_SCHEMA = 7
 
 
 def _sha256(path: Path) -> str:
@@ -127,6 +129,7 @@ def _target_coverage(sequence: GameSequence) -> dict[str, int]:
         "lethal_threat_rows": 0,
         "prize_race_rows": 0,
         "guide_rows": 0,
+        "combo_state_rows": 0,
     }
     for decision in sequence.decisions:
         # Legacy compact shards (and callers inspecting them before full
@@ -153,6 +156,8 @@ def _target_coverage(sequence: GameSequence) -> dict[str, int]:
             int(getattr(stage, "guide_target_index", -1) >= 0)
             for stage in (getattr(decision, "policy_stages", None) or ())
         )
+        if aux.get("combo_state") is not None:
+            coverage["combo_state_rows"] += 1
     return coverage
 
 
@@ -406,6 +411,8 @@ def iter_feature_shard(path: Path) -> Iterator[GameSequence]:
         dataset_schema = int(header.get("dataset_schema", -1))
         if dataset_schema not in {
             DATASET_CACHE_SCHEMA_VERSION,
+            PREVIOUS_DATASET_SCHEMA,
+            SETUP_METADATA_LEGACY_DATASET_SCHEMA,
             MATCHUP_ADAPTER_LEGACY_DATASET_SCHEMA,
         }:
             raise ValueError(f"dataset schema mismatch: {path}")
@@ -440,6 +447,18 @@ def iter_feature_shard(path: Path) -> Iterator[GameSequence]:
                         decision.matchup_adapter_oracle_route = -1
                     if not hasattr(decision, "matchup_adapter_public_route"):
                         decision.matchup_adapter_public_route = -1
+            if dataset_schema == SETUP_METADATA_LEGACY_DATASET_SCHEMA:
+                # Schema 7 added exact setup SelectContext/STOP metadata only.
+                # Schema-6 protected expert shards remain valid for every
+                # pre-existing causal target. Migrate the new setup objective
+                # fail-closed: UNKNOWN context masks those rows, while the
+                # unrelated expert objectives retain their original labels.
+                for decision in item.decisions:
+                    for stage in decision.policy_stages:
+                        if not hasattr(stage, "select_context"):
+                            stage.select_context = -1
+                        if not hasattr(stage, "selected_is_stop"):
+                            stage.selected_is_stop = False
             count += 1
             yield item
 

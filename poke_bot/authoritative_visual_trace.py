@@ -60,6 +60,10 @@ from .strategic_heads import (
     masked_expanded_strategic_coverage,
     merge_expanded_strategic_coverages,
 )
+from .slowking_combo_targets import (
+    attach_slowking_combo_state_labels,
+    is_exact_slowking_deck,
+)
 
 
 VISUAL_TRACE_SCHEMA = "pokebot-authoritative-visual-trace/v1"
@@ -75,7 +79,11 @@ TARGET_CONSUMER_CONTRACT = {
         "opp_hidden_remainder": "opp_remainder_head masked BCE",
         "lethal_threat": "lethal_threat_head masked BCE",
         "prize_race": "prize_race_head masked smooth-L1",
-        "current_deck_guide": "policy-logit sparse teacher cross-entropy",
+        "current_deck_guide": (
+            "observed causal learned-head strategic curriculum; "
+            "direct policy cross-entropy forbidden"
+        ),
+        "combo_state": "combo_state_head masked typed selected-option loss",
     },
     # These exact private fields are retained for provenance/future audited
     # tasks. They are not inputs and the current trainer has no matching loss.
@@ -558,6 +566,12 @@ def convert_visual_episode(
                 f"{requested} seat {seat} has no validated acting decisions"
             )
         _attach_strategy_labels(seat_steps[seat])
+        combo_coverage = None
+        if is_exact_slowking_deck(list(setup_decks[seat] or [])):
+            combo_coverage = attach_slowking_combo_state_labels(
+                seat_steps[seat],
+                deck=list(setup_decks[seat] or []),
+            )
         try:
             strategic_contract = attach_expanded_strategic_labels(
                 seat_steps[seat],
@@ -592,6 +606,11 @@ def convert_visual_episode(
                     "hidden_targets": HIDDEN_TARGET_SOURCE,
                     "alignment": "pre_full=v[i-1].current;masked_input=v[i].obs",
                     "expanded_strategic_targets": strategic_contract,
+                    **(
+                        {"slowking_combo_state_targets": combo_coverage}
+                        if combo_coverage is not None
+                        else {}
+                    ),
                 },
             }
         )

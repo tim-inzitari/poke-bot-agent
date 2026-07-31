@@ -21,12 +21,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 PYTHON = Path(
-    "/Users/tsinzitari/workspace/poke-bot-agent-deployments/"
-    "safety-20260717-8a71861e9984/.venv/bin/python"
+    os.environ.get(
+        "POKEBOT_APPLE_BENCHMARK_PYTHON",
+        "/Users/tsinzitari/workspace/poke-bot-agent-deployments/"
+        "safety-20260717-8a71861e9984/.venv/bin/python",
+    )
 )
 CHECKPOINT = Path(
-    "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/"
-    "pure_rl_core_exact20k_resident_v1_20260719/checkpoints/iter_00001.pt"
+    os.environ.get(
+        "POKEBOT_APPLE_BENCHMARK_CHECKPOINT",
+        "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/"
+        "pure_rl_core_exact20k_resident_v1_20260719/checkpoints/iter_00001.pt",
+    )
 )
 CG_LIB = Path(
     "/Users/tsinzitari/workspace/poke-bot-agent/kaggle/input/"
@@ -36,12 +42,36 @@ DECKS = (
     Path("/Users/tsinzitari/workspace/poke-bot-agent/baselines/decks/ryota-alakazam-best5/deck.csv"),
     Path("/Users/tsinzitari/workspace/poke-bot-agent/baselines/decks/kokinn-lucario-search-915/deck.csv"),
 )
-STATUS = ROOT / "outputs" / "benchmarks" / "m4_optimization_status.json"
+STATUS = Path(
+    os.environ.get(
+        "POKEBOT_APPLE_BENCHMARK_STATUS",
+        str(ROOT / "outputs" / "benchmarks" / "m4_optimization_status.json"),
+    )
+)
 STATUS_MIRROR = Path(
-    "/Users/tsinzitari/pokebot-dashboard/v1/m4_optimization_status.json"
+    os.environ.get(
+        "POKEBOT_APPLE_BENCHMARK_STATUS_MIRROR",
+        "/Users/tsinzitari/pokebot-dashboard/v1/m4_optimization_status.json",
+    )
 )
 LEAF_REPORT = ROOT / "outputs" / "benchmarks" / "m4_leaf_sweep.json"
-PORT = 8776
+PORT = int(os.environ.get("POKEBOT_APPLE_BENCHMARK_PORT", "8776"))
+GAMES = int(os.environ.get("POKEBOT_APPLE_BENCHMARK_GAMES", "16"))
+WORKERS = int(os.environ.get("POKEBOT_APPLE_BENCHMARK_WORKERS", "4"))
+LEAF_SERVERS = int(os.environ.get("POKEBOT_APPLE_BENCHMARK_LEAF_SERVERS", "1"))
+CONCURRENCY = int(os.environ.get("POKEBOT_APPLE_BENCHMARK_CONCURRENCY", str(WORKERS)))
+TREE_RSS_LIMIT_GB = float(
+    os.environ.get("POKEBOT_APPLE_BENCHMARK_TREE_RSS_LIMIT_GB", "18")
+)
+MIN_FREE_RAM_GB = float(
+    os.environ.get("POKEBOT_APPLE_BENCHMARK_MIN_FREE_RAM_GB", "8")
+)
+LEAF_MAX_BATCH = int(
+    os.environ.get("POKEBOT_APPLE_BENCHMARK_LEAF_MAX_BATCH", "32")
+)
+LEAF_COALESCE_MS = float(
+    os.environ.get("POKEBOT_APPLE_BENCHMARK_LEAF_COALESCE_MS", "2")
+)
 
 
 def _publish(report: dict[str, Any]) -> None:
@@ -101,6 +131,20 @@ def main() -> int:
         "production_active": False,
         "role": "inactive from production · Apple optimization testing",
         "worker_endpoint": f"127.0.0.1:{PORT}",
+        "games_per_variant": GAMES,
+        "workers": WORKERS,
+        "leaf_servers": LEAF_SERVERS,
+        "concurrency": CONCURRENCY,
+        "tree_rss_limit_gb": TREE_RSS_LIMIT_GB,
+        "min_free_ram_gb": MIN_FREE_RAM_GB,
+        "mps_empty_cache_every_batches": os.environ.get(
+            "POKEBOT_MPS_EMPTY_CACHE_EVERY_BATCHES", "1"
+        ),
+        "mps_autocast_dtype": os.environ.get(
+            "POKEBOT_MPS_AUTOCAST_DTYPE", "float32"
+        ),
+        "leaf_max_batch": LEAF_MAX_BATCH,
+        "leaf_coalesce_ms": LEAF_COALESCE_MS,
         "results": {},
     }
     if LEAF_REPORT.is_file():
@@ -123,10 +167,20 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    variants = (
+    available_variants = (
         ("cpu-2t", "cpu", {"OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2"}),
         ("mps", "mps", {}),
     )
+    requested_variants = {
+        item.strip()
+        for item in os.environ.get(
+            "POKEBOT_APPLE_BENCHMARK_VARIANTS", "cpu-2t,mps"
+        ).split(",")
+        if item.strip()
+    }
+    variants = tuple(row for row in available_variants if row[0] in requested_variants)
+    if not variants:
+        raise ValueError("POKEBOT_APPLE_BENCHMARK_VARIANTS selected no variants")
     try:
         for name, device, tuning in variants:
             report["stage"] = f"starting-{name}-worker"
@@ -149,16 +203,16 @@ def main() -> int:
                 str(ROOT / "scripts" / "run_remote_worker.py"),
                 "--host", "127.0.0.1",
                 "--port", str(PORT),
-                "--workers", "4",
-                "--default-workers", "4",
-                "--leaf-servers", "1",
+                "--workers", str(WORKERS),
+                "--default-workers", str(WORKERS),
+                "--leaf-servers", str(LEAF_SERVERS),
                 "--leaf-gpu", device,
-                "--leaf-max-batch", "32",
+                "--leaf-max-batch", str(LEAF_MAX_BATCH),
                 "--leaf-queue-depth", "32",
-                "--leaf-coalesce-ms", "2",
-                "--max-connections", "8",
-                "--tree-rss-limit-gb", "18",
-                "--min-free-ram-gb", "8",
+                "--leaf-coalesce-ms", str(LEAF_COALESCE_MS),
+                "--max-connections", str(max(8, CONCURRENCY * 2)),
+                "--tree-rss-limit-gb", str(TREE_RSS_LIMIT_GB),
+                "--min-free-ram-gb", str(MIN_FREE_RAM_GB),
                 "--checkpoint", str(CHECKPOINT),
                 "--cg-lib-path", str(CG_LIB),
             ]
@@ -175,14 +229,14 @@ def main() -> int:
             }
             _publish(report)
 
-            output_path = STATUS.parent / f"m4_whole_game_{name}.json"
+            output_path = STATUS.parent / f"h10_whole_game_{GAMES}_{name}.json"
             benchmark_command = [
                 str(PYTHON),
                 str(ROOT / "scripts" / "benchmark_remote_model_gps.py"),
                 "--endpoint", f"127.0.0.1:{PORT}",
                 "--checkpoint", str(CHECKPOINT),
-                "--games", "16",
-                "--concurrency", "4",
+                "--games", str(GAMES),
+                "--concurrency", str(CONCURRENCY),
                 "--timeout", "600",
                 "--seed", "946000",
                 "--no-reload",
@@ -199,23 +253,28 @@ def main() -> int:
             _stop_worker(child)
             child = None
 
-        cpu = report["results"]["cpu-2t"]
-        mps = report["results"]["mps"]
-        cpu_hashes = cpu.get("game_fingerprints") or {}
-        mps_hashes = mps.get("game_fingerprints") or {}
-        common = sorted(set(cpu_hashes) & set(mps_hashes), key=int)
-        matches = sum(cpu_hashes[key] == mps_hashes[key] for key in common)
-        report["whole_game_parity"] = {
-            "compared_games": len(common),
-            "matching_gameplay_fingerprints": matches,
-            "passed": bool(common) and matches == len(common),
-        }
-        report["recommendation"] = (
-            "cpu-2t"
-            if float(cpu.get("games_per_s") or 0.0)
-            >= float(mps.get("games_per_s") or 0.0)
-            else "mps"
-        )
+        cpu = report["results"].get("cpu-2t")
+        mps = report["results"].get("mps")
+        matches = 0
+        common: list[str] = []
+        if cpu is not None and mps is not None:
+            cpu_hashes = cpu.get("game_fingerprints") or {}
+            mps_hashes = mps.get("game_fingerprints") or {}
+            common = sorted(set(cpu_hashes) & set(mps_hashes), key=int)
+            matches = sum(cpu_hashes[key] == mps_hashes[key] for key in common)
+            report["whole_game_parity"] = {
+                "compared_games": len(common),
+                "matching_gameplay_fingerprints": matches,
+                "passed": bool(common) and matches == len(common),
+            }
+            report["recommendation"] = (
+                "cpu-2t"
+                if float(cpu.get("games_per_s") or 0.0)
+                >= float(mps.get("games_per_s") or 0.0)
+                else "mps"
+            )
+        else:
+            report["recommendation"] = "compare_with_existing_cpu_baseline"
         report["status"] = "complete"
         report["stage"] = "complete"
         report["active_variant"] = None
@@ -224,7 +283,8 @@ def main() -> int:
         _publish(report)
         print(
             "[apple-opt] complete "
-            f"cpu_gps={cpu.get('games_per_s')} mps_gps={mps.get('games_per_s')} "
+            f"cpu_gps={cpu.get('games_per_s') if cpu else None} "
+            f"mps_gps={mps.get('games_per_s') if mps else None} "
             f"parity={matches}/{len(common)} recommend={report['recommendation']}",
             flush=True,
         )

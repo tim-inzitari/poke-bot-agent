@@ -1,0 +1,42 @@
+{
+  "schema": "poke_bot.capacity_research_resource_lease/v1",
+  "template_only": true,
+  "status": "unissued",
+  "authorization_scope": "final_format_alakazam_refresh_only",
+  "runtime_authority": "none",
+  "production_selector_write_authority": false,
+  "production_registry_write_authority": false,
+  "submission_queue_write_authority": false,
+  "lease_mode": null,
+  "allowed_lease_modes": [
+    "dedicated_physical_resources",
+    "exclusive_post_fleet_window"
+  ],
+  "production_compute_quiescent": null,
+  "dedicated_resources": {
+    "accelerators": [],
+    "cpu_set": null,
+    "memory_limit_bytes": null,
+    "storage_root": null,
+    "storage_io_isolated": null,
+    "process_namespace": null
+  },
+  "research_namespace": {
+    "root": null,
+    "output_root": null,
+    "cache_root": null,
+    "log_root": null,
+    "service_prefix": null
+  },
+  "writable_path_audit": {
+    "paths": [],
+    "production_symlink_targets": [],
+    "production_hardlink_targets": [],
+    "passed": null
+  },
+  "automatic_promotion_hook_present": false,
+  "global_parameter_limit_override": false,
+  "lease_started_at_utc": null,
+  "lease_expires_at_utc": null,
+  "issued_at_utc": null
+}

@@ -41,14 +41,20 @@ def test_registry_is_fixed_capacity_and_preserves_v5_prefix() -> None:
         row["archetype_id"]
         for row in registry["slots"][:LEGACY_V5_PREFIX_LENGTH]
     ) == EXPERT_IDS
-    assert len(registry["active_expert_ids"]) == 19
+    assert len(registry["active_expert_ids"]) == 20
     assert registry["slots"][18] == {
         "slot": 18,
         "archetype_id": "teal-mask-ogerpon-ex",
         "status": "dormant",
         "lineage": "goal-r27:public-archetype-151",
     }
-    assert sum(row["status"] == "unused" for row in registry["slots"]) == 45
+    assert registry["slots"][19] == {
+        "slot": 19,
+        "archetype_id": "slowking",
+        "status": "dormant",
+        "lineage": "goal-r57:public-archetype-86",
+    }
+    assert sum(row["status"] == "unused" for row in registry["slots"]) == 44
     assert registry_digest(registry).startswith("sha256:")
 
 
@@ -118,9 +124,9 @@ def test_registry_add_and_retire_never_change_physical_bank_shape() -> None:
     }
 
     added = allocate_archetype(registry, "future-archetype")
-    assert added["slots"][19]["archetype_id"] == "future-archetype"
-    assert added["slots"][19]["status"] == "dormant"
-    assert route_for_archetype("future-archetype", registry=added) == 19
+    assert added["slots"][20]["archetype_id"] == "future-archetype"
+    assert added["slots"][20]["status"] == "dormant"
+    assert route_for_archetype("future-archetype", registry=added) == 20
     expanded = MatchupAdapterBankV6(registry=added)
     assert tuple(expanded.state_dict()) == original_keys
     assert {
@@ -129,22 +135,22 @@ def test_registry_add_and_retire_never_change_physical_bank_shape() -> None:
     } == original_shapes
 
     retired = retire_archetype(added, "future-archetype")
-    assert retired["slots"][19]["status"] == "retired"
-    assert retired["slots"][19]["archetype_id"] == "future-archetype"
+    assert retired["slots"][20]["status"] == "retired"
+    assert retired["slots"][20]["archetype_id"] == "future-archetype"
     assert route_for_archetype("future-archetype", registry=retired) == -1
     second = allocate_archetype(retired, "later-archetype")
-    assert second["slots"][19]["status"] == "retired"
-    assert second["slots"][20]["archetype_id"] == "later-archetype"
+    assert second["slots"][20]["status"] == "retired"
+    assert second["slots"][21]["archetype_id"] == "later-archetype"
 
 
 def test_only_authorized_slots_receive_gradients() -> None:
     registry = allocate_archetype(load_slot_registry(), "future-archetype")
     bank = MatchupAdapterBankV6(enabled=True, registry=registry)
-    assert bank.authorize_slots_for_training(["future-archetype"]) == (19,)
-    assert all(parameter.requires_grad for parameter in bank.experts[19].parameters())
+    assert bank.authorize_slots_for_training(["future-archetype"]) == (20,)
+    assert all(parameter.requires_grad for parameter in bank.experts[20].parameters())
     assert not any(parameter.requires_grad for parameter in bank.experts[0].parameters())
-    assert torch.count_nonzero(bank.experts[19].down.weight).item() > 0
-    assert torch.count_nonzero(bank.experts[19].up.weight).item() == 0
+    assert torch.count_nonzero(bank.experts[20].down.weight).item() > 0
+    assert torch.count_nonzero(bank.experts[20].up.weight).item() == 0
 
 
 def test_v5_projection_is_guarded_against_v6_only_identity_or_weights() -> None:
@@ -154,6 +160,7 @@ def test_v5_projection_is_guarded_against_v6_only_identity_or_weights() -> None:
         project_v6_adapter_state_to_v5(v6.state_dict(), registry=registry)
 
     legacy_only = retire_archetype(registry, "teal-mask-ogerpon-ex")
+    legacy_only = retire_archetype(legacy_only, "slowking")
     projected = project_v6_adapter_state_to_v5(
         v6.state_dict(),
         registry=legacy_only,
@@ -168,8 +175,9 @@ def test_v5_projection_is_guarded_against_v6_only_identity_or_weights() -> None:
         retire_archetype(added, "future-archetype"),
         "teal-mask-ogerpon-ex",
     )
+    retired = retire_archetype(retired, "slowking")
     trained = copy.deepcopy(v6.state_dict())
-    trained["experts.19.up.bias"].fill_(1)
+    trained["experts.20.up.bias"].fill_(1)
     with pytest.raises(ValueError, match="trained V6-only"):
         project_v6_adapter_state_to_v5(trained, registry=retired)
 

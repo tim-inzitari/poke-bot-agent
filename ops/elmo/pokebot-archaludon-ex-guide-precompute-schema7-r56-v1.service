@@ -1,0 +1,22 @@
+[Unit]
+Description=Archaludon ex schema-7 guide corpus precompute
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/admin/pokebot-archaludon-r56-src-v1/state/archaludon_ex_schema7_source_lock_v1.json
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/pokebot-archaludon-r56-src-v1
+Environment=CG_LIB_PATH=/mnt/Main/main/poke-bot-agent/engine-runtimes/znver3-v1
+ExecStart=/usr/bin/python3 scripts/materialize_authoritative_guide_window_parallel.py --start 2026-06-16 --end 2026-07-29 --archive-dir /mnt/Main/main/poke-bot-agent/archive/episode-days --out-dir /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1 --status /mnt/Main/main/poke-bot-agent/archive/archaludon-ex-guide-full-public-schema7-r56-v1/status/window.json --required-archetype archaludon-ex --current-deck-guide archaludon-ex --day-parallelism 8 --workers-per-day 3 --max-in-flight-per-day 6 --max-context 320 --memory-floor-gib 16 --min-records 0
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=4
+CPUWeight=80
+CPUQuota=2400%
+MemoryHigh=40G
+MemoryMax=48G
+TimeoutStartSec=infinity
+

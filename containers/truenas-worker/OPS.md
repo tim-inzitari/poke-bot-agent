@@ -5,9 +5,9 @@ Elmo has two explicit lifecycles built from the same immutable image:
 - `docker-compose.yml` (or `docker-compose.host.yml`) is the observed canary:
   four sim processes, a 100-job stop, and `restart: "no"`.
 - `docker-compose.production.yml` is an override applied only after the canary.
-  It drains every 768 completed jobs and the durable supervisor resumes the
-  next worker. This threshold was selected below the observed 30 GiB
-  process-tree RSS failure point while avoiding per-child recycle churn.
+  Routine whole-service job-count rotation is disabled because it drops every
+  trainer socket. Per-child recycling and the independent RSS, free-RAM,
+  capacity, and identity guards remain active.
 
 Never use the production override by itself. Pick exactly one base file for the
 host's GPU attachment and apply the production file second.
@@ -24,8 +24,11 @@ host's GPU attachment and apply the production file second.
 - A running pool gets 60 seconds to restore full ready capacity while a
   recycled child completes initialization. A stopped pool or any recorded
   initializer failure still exits immediately with watchdog code `70`.
-- The worker drains immediately at 30 GiB process-tree RSS or 24 GiB host
-  available RAM. Those watchdog exits are failures, not planned rotations.
+- The worker drains immediately at 30 GiB uniquely charged cgroup-v2 memory
+  (process-tree PSS fallback) or 24 GiB host available RAM. Summed descendant
+  RSS remains diagnostic-only because spawned workers share pages and summing
+  their RSS double-counts those pages. Watchdog exits are failures, not planned
+  rotations.
 - Production reloads atomically publish an exact path+SHA-256 record under
   `runtime-logs`; a later lifetime refuses to start if that record cannot be
   reproduced from the read-only `/workspace/checkpoint` mount.
@@ -39,7 +42,8 @@ host's GPU attachment and apply the production file second.
 
 ## Production restart circuit
 
-The remote worker reserves exit code `75` only for a completed 768-job drain.
+The remote worker retains reserved exit code `75` for compatibility with an
+explicitly requested planned drain; routine job-count rotation is disabled.
 The supervisor accepts that code only after at least 60 seconds, waits 10
 seconds, and starts the next bounded lifetime. Each worker and all of its
 manager/pool/leaf descendants run in one isolated process group. The supervisor

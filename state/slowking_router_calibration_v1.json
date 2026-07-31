@@ -1,0 +1,51 @@
+{
+  "schema": "poke_bot.router_calibration_receipt/v1",
+  "status": "validated_inactive_calibration_input",
+  "specialist_id": "slowking",
+  "created_at_utc": "2026-07-30T20:36:28Z",
+  "goal_revision": 73,
+  "archive": {
+    "path": "/mnt/Main/main/poke-bot-agent/archive/router-calibration-slowking-v45/router-calibration-slowking-v45.zip",
+    "sha256": "sha256:33d58c9c5645dad630661af449e595f31b41d7bc8a6dae5a2b9dc0bbaac70633",
+    "episodes": 1000,
+    "read_only_mode": "0444"
+  },
+  "generation": {
+    "script": "scripts/generate_router_calibration_episodes.py",
+    "seed": 864500,
+    "games_per_target": 1000,
+    "workers": 4,
+    "target_seat_split": "exact_even",
+    "target_archetype": "slowking",
+    "opponent_archetype": "starmie"
+  },
+  "representatives": {
+    "registry": "data/training_mixes/specialist_representatives.v1.json",
+    "registry_sha256": "sha256:47f624f35ab5f497055b3059cdf6dfd7d7e06312ccf3e87b01910d6b142c3a35",
+    "slowking_deck_sha256": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7",
+    "starmie_deck_sha256": "sha256:fc3ee873479651b023a29e3a37b505c7a09b8acd6677f47af52e44e57a670217"
+  },
+  "causality": {
+    "input": "cumulative_opponent_public_card_ids_only",
+    "causal_public_zones_only": true,
+    "hidden_fields_written": false,
+    "recorded_archetype_used_as_runtime_input": false,
+    "future_observations_used": false,
+    "runtime_enabled": false
+  },
+  "validation": {
+    "unique_episode_ids": 1000,
+    "target_seat_0": 500,
+    "target_seat_1": 500,
+    "invalid_proof_or_deck_rows": 0,
+    "forbidden_private_field_rows": 0,
+    "exact_target_deck_reverified_from_setup": true
+  },
+  "activation": {
+    "authorized": false,
+    "requires_inactive_router_candidate": true,
+    "minimum_route_precision": 0.93,
+    "minimum_weighted_support": 10000,
+    "boundary_only": true
+  }
+}

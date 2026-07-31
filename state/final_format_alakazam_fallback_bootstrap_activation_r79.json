@@ -1,0 +1,55 @@
+{
+  "schema": "poke_bot.final_format_alakazam_fallback_bootstrap_activation/v1",
+  "status": "active",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "activated_at_utc": "2026-07-31T13:27:09Z",
+  "reason": "Preferred historical Alakazam direct migration failed closed; begin the required ordinary same-archetype refresh from the newest checksum-accepted core before H10-I expansion.",
+  "release_receipts": {
+    "g0": {
+      "path": "state/required_specialist_fleet_complete_for_final_alakazam_r79.json",
+      "sha256": "sha256:d657514a740934a710a8f681691e14a5cbe97499d25555383aeca683fa2f0ebb"
+    },
+    "g1": {
+      "path": "state/capacity_research_resource_lease_alakazam_r79.json",
+      "sha256": "sha256:08a64fca10540fbb93cee781dca1278e0ad4136ca6babe9c232671136064b2cc"
+    },
+    "direct_migration_failure": {
+      "path": "state/final_format_alakazam_direct_migration_failure_r79.json",
+      "sha256": "sha256:e559b1ff0f24a0dc06d9211d672381969a51c0119a3354f668d45a91153f956f"
+    }
+  },
+  "managed_service": {
+    "name": "pokebot-final-format-alakazam-r79-ordinary-bootstrap.service",
+    "main_pid": 3869383,
+    "active_state": "active",
+    "sub_state": "running",
+    "restart_count": 0,
+    "working_directory": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-r79"
+  },
+  "fallback_parent": {
+    "generation": 9,
+    "checkpoint_sha256": "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056",
+    "accepted_core_only": true,
+    "historical_alakazam_core_overlay_used": false
+  },
+  "bootstrap": {
+    "phase": "protected_expert_cpu_pack_build",
+    "expert_records": 64411,
+    "expert_decisions": 5152754,
+    "supervised_epochs": 25,
+    "expanded_strategic_heads": true,
+    "decision_fusion": true,
+    "hot_start_checkpoint": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/output/bootstrap/ordinary_fallback_core9/shared_core_hot_start.expanded-v6-fused-archetype-v2.pt",
+    "hot_start_checkpoint_sha256": "sha256:13be5f2579c5de307d5dfbf92d8bf7a81b8107b025af2679c8ad94a0a024ffdd",
+    "current_deck_guide_weight": 0.0,
+    "direct_guide_imitation_used": false
+  },
+  "next_boundary": {
+    "requires_ordinary_alakazam_refresh_pass_freeze_and_receipt": true,
+    "then_expand_only_that_derivative_to_h10_i": true,
+    "h10_i_training_seat_split": {"first": 0.5, "second": 0.5},
+    "package_preference": "first_if_allowed",
+    "second_focused_arm_allowed": false
+  }
+}

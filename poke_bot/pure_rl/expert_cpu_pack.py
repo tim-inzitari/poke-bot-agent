@@ -58,6 +58,7 @@ class ExpertCpuPackKey:
     val_frac: float
     max_context: Optional[int]
     belief_card_vocab: Optional[int] = None
+    seat_split_policy: str = ""
     packing_schema: int = DEVICE_CORPUS_PACKING_SCHEMA_VERSION
 
     def contract(self) -> dict[str, Any]:
@@ -85,7 +86,7 @@ class ExpertCpuPackKey:
             raise ValueError(
                 f"unsupported expert belief card vocab: {card_vocab}"
             )
-        return {
+        contract = {
             "manifest_digest": digest,
             "split_seed": int(self.split_seed),
             # Hex is a stable, lossless representation across Python versions.
@@ -102,6 +103,14 @@ class ExpertCpuPackKey:
                 EXPANDED_STRATEGIC_SCHEMA_DIGEST
             ),
         }
+        seat_split_policy = str(self.seat_split_policy).strip()
+        if seat_split_policy:
+            if seat_split_policy != "exact_50_50_per_partition_v1":
+                raise ValueError(
+                    f"unsupported expert seat-split policy: {seat_split_policy}"
+                )
+            contract["seat_split_policy"] = seat_split_policy
+        return contract
 
     @property
     def digest(self) -> str:
@@ -136,6 +145,12 @@ _EXPECTED_DTYPES: dict[str, torch.dtype] = {
     "guide_confidence": torch.float32,
     "select_context": torch.int16,
     "selected_is_stop": torch.uint8,
+    "combo_top_deck_target": torch.int8,
+    "combo_top_deck_mask": torch.uint8,
+    "combo_seek_source_target": torch.int8,
+    "combo_seek_source_mask": torch.uint8,
+    "combo_vector_target": torch.float32,
+    "combo_vector_mask": torch.uint8,
     "action_index": torch.int32,
     "action_value": torch.float32,
     "action_offset": torch.int32,
@@ -685,6 +700,37 @@ def validate_cpu_corpus(
             "expert pack has expanded-strategic schema metadata without targets"
         )
 
+    combo_shapes = {
+        "combo_top_deck_target": (samples,),
+        "combo_top_deck_mask": (samples,),
+        "combo_seek_source_target": (samples,),
+        "combo_seek_source_mask": (samples,),
+        "combo_vector_target": (samples, 20),
+        "combo_vector_mask": (samples, 20),
+    }
+    combo_tensors = [tensors.get(name) for name in combo_shapes]
+    if any(value is not None for value in combo_tensors) and not all(
+        value is not None for value in combo_tensors
+    ):
+        raise ExpertCpuPackError("expert pack has a partial combo-state layout")
+    for name, shape in combo_shapes.items():
+        value = tensors.get(name)
+        if value is not None and tuple(value.shape) != shape:
+            raise ExpertCpuPackError(
+                f"expert pack combo-state shape mismatch {name}: "
+                f"got={list(value.shape)} expected={list(shape)}"
+            )
+    for name in (
+        "combo_top_deck_mask",
+        "combo_seek_source_mask",
+        "combo_vector_mask",
+    ):
+        value = tensors.get(name)
+        if value is not None and bool(torch.any((value != 0) & (value != 1))):
+            raise ExpertCpuPackError(
+                f"expert pack combo-state mask is not binary: {name}"
+            )
+
 
 class ExpertCpuPackCache:
     """One-active-pack cache with atomic replacement and strict validation."""
@@ -779,6 +825,12 @@ class ExpertCpuPackCache:
             raise ExpertCpuPackError(f"expert CPU pack cannot be loaded: {exc}") from exc
         if not isinstance(payload, dict) or payload.get("contract") != key.contract():
             raise ExpertCpuPackError("expert CPU pack payload contract mismatch")
+        if payload.get("derived_metadata", {}) != manifest.get(
+            "derived_metadata", {}
+        ):
+            raise ExpertCpuPackError(
+                "expert CPU pack derived metadata mismatch"
+            )
         tensors = payload.get("tensors")
         scalars = payload.get("scalars")
         if not isinstance(tensors, dict) or not isinstance(scalars, dict):
@@ -807,6 +859,8 @@ class ExpertCpuPackCache:
         self,
         key: ExpertCpuPackKey,
         corpus: DeviceResidentBootstrapCorpus,
+        *,
+        derived_metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         validate_cpu_corpus(corpus)
         expected_vocab = int(key.belief_card_vocab or 0)
@@ -825,6 +879,7 @@ class ExpertCpuPackCache:
         payload = {
             "schema_version": EXPERT_CPU_PACK_SCHEMA_VERSION,
             "contract": key.contract(),
+            "derived_metadata": dict(derived_metadata or {}),
             "scalars": scalars,
             "tensors": tensors,
         }
@@ -839,6 +894,7 @@ class ExpertCpuPackCache:
                 "created_at": time.time(),
                 "key": key.digest,
                 "contract": key.contract(),
+                "derived_metadata": dict(derived_metadata or {}),
                 "payload": payload_path.name,
                 "payload_bytes": int(partial.stat().st_size),
                 "payload_sha256": _sha256_file(partial),
@@ -876,6 +932,8 @@ class ExpertCpuPackCache:
         self,
         key: ExpertCpuPackKey,
         builder: Callable[[], DeviceResidentBootstrapCorpus],
+        *,
+        derived_metadata_provider: Optional[Callable[[], dict[str, Any]]] = None,
     ) -> tuple[DeviceResidentBootstrapCorpus, dict[str, Any]]:
         """Return a validated CPU pack, rebuilding only derived corruption."""
         self.root.mkdir(parents=True, exist_ok=True)
@@ -903,7 +961,15 @@ class ExpertCpuPackCache:
                     built = builder()
                     try:
                         validate_cpu_corpus(built)
-                        self._write(key, built)
+                        self._write(
+                            key,
+                            built,
+                            derived_metadata=(
+                                derived_metadata_provider()
+                                if derived_metadata_provider is not None
+                                else {}
+                            ),
+                        )
                     finally:
                         del built
                     # Trust only the same strict loader used on a future
@@ -921,6 +987,12 @@ class ExpertCpuPackCache:
                     "manifest": str(manifest_path),
                     "bytes": int(payload_path.stat().st_size),
                     "elapsed_sec": time.monotonic() - started,
+                    "derived_metadata": dict(
+                        json.loads(
+                            manifest_path.read_text(encoding="utf-8")
+                        ).get("derived_metadata")
+                        or {}
+                    ),
                 }
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)

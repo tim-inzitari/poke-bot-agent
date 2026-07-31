@@ -1,0 +1,30 @@
+{
+  "schema": "poke_bot.final_format_alakazam_direct_migration_failure/v1",
+  "template_only": true,
+  "status": "unissued",
+  "runtime_authority": "none",
+  "specialist_id": "alakazam",
+  "research_derivative": null,
+  "preferred_parent_checkpoint_sha256": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+  "preferred_parent_model_config_sha256": null,
+  "attempted_child_capacity_profile": "H10-I/v1",
+  "failure_stage": null,
+  "allowed_failure_stages": [
+    "serialized_key_coverage",
+    "shape_coverage",
+    "causal_feature_option_compatibility",
+    "zero_safe_new_structures",
+    "step_zero_parity",
+    "role_route_binding"
+  ],
+  "failure_reason": null,
+  "missing_serialized_keys": [],
+  "unexpected_serialized_keys": [],
+  "shape_mismatches": [],
+  "incompatible_feature_or_option_contracts": [],
+  "parity_evidence_sha256": null,
+  "preferred_parent_mutated": false,
+  "partial_tensor_overlay_used": false,
+  "fallback_authorized": false,
+  "issued_at_utc": null
+}

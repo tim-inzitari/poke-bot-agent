@@ -1,0 +1,59 @@
+{
+  "schema": "poke_bot.specialist_failed_experiment_transition/v1",
+  "status": "activated",
+  "goal_revision": 79,
+  "specialist_id": "slowking",
+  "owner_decision": "consider_slowking_a_failed_experiment_and_move_to_alakazam",
+  "activated_at_utc": "2026-07-31T13:11:00Z",
+  "managed_services": {
+    "trainer": {
+      "service": "pokebot-pure-rl-trevenant-staged.service",
+      "active_state": "failed",
+      "sub_state": "failed",
+      "main_pid": 0,
+      "exec_main_status": 143,
+      "restart_policy_restored": "on-failure",
+      "refuse_manual_stop_restored": true
+    },
+    "pass_gate_handler": {
+      "service": "pokebot-specialist-passed-gate-handler.service",
+      "active_state": "inactive",
+      "sub_state": "dead",
+      "main_pid": 0
+    }
+  },
+  "preserved_evidence": {
+    "run_root": "/home/inzi/poke-bot-agent/outputs/pure_rl/pure_rl_slowking_temporal1_8k_v1_20260723",
+    "failed_gate_iteration": 5,
+    "failed_gate_skill_weighted_win_rate": 0.0520625,
+    "failed_gate_passed": false,
+    "failed_gate_checkpoint_sha256": "sha256:36baefed2ecea0c1f379a747aa1a640e0eacd8381d77e97d760fdb480975d6ea",
+    "failed_gate_commit_sha256": "sha256:366a30bcb1c80ed5dd1bab673571ba1e44ec4722482f2a81c0d611221e3d5fc6",
+    "sealed_collection_iteration": 6,
+    "sealed_collection_games": 8192,
+    "sealed_collection_decisions": 617296,
+    "sealed_collection_receipt_sha256": "sha256:8e07a56b1645787400d53a431f9af7f938c22a01434c892f3debe1b7aac6ae9f",
+    "iteration_6_work_classification": "uncommitted_non_evidence",
+    "iteration_6_checkpoint_exists": false,
+    "iteration_6_commit_exists": false
+  },
+  "terminal_disposition": {
+    "classification": "failed_experiment",
+    "passing_status_granted": false,
+    "completion_credit_granted": false,
+    "freeze_allowed": false,
+    "registration_allowed": false,
+    "submission_allowed": false,
+    "serving_allowed": false,
+    "frozen_registry_contains_slowking": false
+  },
+  "fleet_release": {
+    "historical_required_slots": 15,
+    "frozen_required_specialists": 14,
+    "terminal_failed_experiment_exceptions": 1,
+    "exception_specialist_id": "slowking",
+    "authorization_scope": "final_format_alakazam_refresh_only",
+    "slowking_is_not_relabelled_as_passed": true,
+    "next_phase": "final_format_alakazam"
+  }
+}

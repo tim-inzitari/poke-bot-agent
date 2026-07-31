@@ -1,0 +1,46 @@
+{
+  "schema": "poke_bot.dashboard_source_integrity_repair/v1",
+  "goal_revision": 72,
+  "repaired_at": "2026-07-30T19:31:41Z",
+  "scope": "dashboard-only checkpoint and fleet telemetry validation",
+  "trainer_mutated": false,
+  "trainer_restart_required": false,
+  "trainer_main_pid": 604944,
+  "trainer_restart_count": 0,
+  "correction": {
+    "network_latency_sample_age_role": "passive 10-minute ping-cache label only",
+    "network_latency_sample_age_is_staleness_signal": false,
+    "source_integrity_role": "independent run-bound source and checkpoint validation",
+    "remote_allocation_role": "live admission, completion-rate, queue, and collection-phase evidence"
+  },
+  "root_cause": {
+    "degraded_row": "model",
+    "checkpoint_valid": true,
+    "dashboard_validator_stale": true,
+    "detail": "The dashboard expected only the 17-head v1 fusion inventory. The active Archaludon checkpoint correctly declares fusion v2 with the option-conditioned setup_board_outcome route as its 18th fused head."
+  },
+  "repair": {
+    "source": "scripts/dashboard_snapshot.py",
+    "source_sha256": "sha256:d114a392c8c240fa85c5b1ea1ab34d84b20f56a4f345c76dc18da8c923557c80",
+    "deployed_source": "/home/inzi/poke-bot-agent-deployments/archaludon-decision-fusion-v2/scripts/dashboard_snapshot.py",
+    "deployed_sha256": "sha256:d114a392c8c240fa85c5b1ea1ab34d84b20f56a4f345c76dc18da8c923557c80",
+    "behavior": [
+      "derive the exact expected fusion inventory from enabled optional heads",
+      "validate fusion v2 dedicated route names, count, schema, runtime flag, fixed-mean aggregation, bounded delta, zero-safe projection, and guide exclusion",
+      "retain strict v1 validation for historical checkpoints"
+    ]
+  },
+  "validation": {
+    "focused_tests": "4 passed",
+    "dashboard_sampled_at": 1785439881.340718,
+    "source_integrity_current": true,
+    "source_integrity_failed": [],
+    "fusion_schema": "poke_bot.causal_decision_fusion/v2",
+    "fusion_verified": true,
+    "fusion_phase": "runtime_active",
+    "fusion_required_head_count": 18,
+    "elmo_completion_gps": 1.790021713810089,
+    "bert_completion_gps": 1.0254465476788028,
+    "remote_zero_admission_interpretation": "bursty between dashboard polls while monotonic completion rates remain positive"
+  }
+}

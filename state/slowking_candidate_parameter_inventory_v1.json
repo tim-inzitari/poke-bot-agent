@@ -1,0 +1,82 @@
+{
+  "schema": "poke_bot.slowking_candidate_parameter_inventory/v1",
+  "status": "validated_prestage_instantiation",
+  "created_at_utc": "2026-07-30T21:25:00Z",
+  "specialist_id": "slowking",
+  "candidate_shape": {
+    "training_core_revision": 10,
+    "model_format": 6,
+    "matchup_router_format": 6,
+    "decision_fusion_schema": "poke_bot.causal_decision_fusion/v2",
+    "d_model": 96,
+    "spatial_layers": 4,
+    "temporal_layers": 1,
+    "option_decoder_layers": 4,
+    "n_heads": 8,
+    "ff_dim": 384,
+    "max_context": 320,
+    "expanded_heads_enabled": true,
+    "setup_board_outcome_head_enabled": true,
+    "combo_state_head_enabled": true,
+    "decision_fusion_enabled": true,
+    "decision_fusion_runtime_enabled": true,
+    "decision_fusion_dedicated_routes_enabled": true,
+    "decision_fusion_dedicated_routes_runtime_enabled": true,
+    "matchup_adapters_enabled": true,
+    "matchup_adapter_format": "poke-bot-matchup-adapter-bank-v6"
+  },
+  "parameter_inventory": {
+    "total_parameters": 1910963,
+    "trainable_parameters_before_specialist_optimizer_scope": 1806003,
+    "matchup_adapter_bank_frozen_parameters": 104960,
+    "combo_state_head": 24800,
+    "decision_fusion_combo_state_route": 2081,
+    "setup_board_outcome_head": 54281,
+    "decision_fusion_setup_board_outcome_route": 1713,
+    "decision_fusion_all_routes_and_residual": 120048
+  },
+  "budget": {
+    "ordinary_soft_target": 2000000,
+    "soft_target_exceeded": false,
+    "slowking_hard_ceiling": 3500000,
+    "hard_ceiling_exceeded": false,
+    "exception_receipt_required": false,
+    "unused_capacity_added": false
+  },
+  "causal_action_contract": {
+    "required_learned_heads": 19,
+    "all_heads_have_distinct_bounded_option_conditioned_routes": true,
+    "combo_state_is_fused_input": true,
+    "setup_board_outcome_is_fused_input": true,
+    "guide_is_training_only": true,
+    "guide_runtime_route_present": false,
+    "aggregate_absolute_logit_cap": 1.0,
+    "zero_safe_parent_parity": true
+  },
+  "source_bindings": {
+    "model": {
+      "path": "poke_bot/model.py",
+      "sha256": "sha256:66d914b1bbaa74cbaf41523a43d6d12ade4b5abd480916d16090c073102ed83e"
+    },
+    "config": {
+      "path": "poke_bot/config.py",
+      "sha256": "sha256:1a2c64a34eca6e045b4a74654203118a9e3279d65252f8736adc862ff2b9ab37"
+    },
+    "combo_loss": {
+      "path": "poke_bot/combo_state.py",
+      "sha256": "sha256:5bc4b382180b382e6565de4047fd1537fd97e725ba52f26a39730e3d3c2bfc8d"
+    },
+    "router_registry": {
+      "path": "state/matchup_adapter_roster.json",
+      "revision": 10,
+      "sha256": "sha256:08322efe30c0f8b75d922aae8b882b4e78a20df03a63ed997ec8288165bfd1bc"
+    }
+  },
+  "activation": {
+    "authorized": false,
+    "requires_archaludon_completion": true,
+    "requires_checksum_accepted_hot_start_resolution": true,
+    "requires_exact_bootstrap_checkpoint_receipt": true,
+    "requires_runtime_memory_latency_and_package_receipts": true
+  }
+}

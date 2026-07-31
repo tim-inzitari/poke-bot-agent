@@ -189,8 +189,12 @@ def _forward_chunk(
     matchup_routes: Optional[list[int]] = None,
 ) -> list[tuple[float, list[float]]]:
     dev = next(model.parameters()).device
-    use_ac = autocast_dtype is not None and dev.type == "cuda"
-    ctx = torch.autocast("cuda", dtype=autocast_dtype) if use_ac else _nullcontext()
+    use_ac = autocast_dtype is not None and dev.type in {"cuda", "mps"}
+    ctx = (
+        torch.autocast(dev.type, dtype=autocast_dtype)
+        if use_ac
+        else _nullcontext()
+    )
     with ctx:
         if model.decision_context == "history":
             out = model.forward_history_batch(
@@ -485,6 +489,7 @@ def set_remote_leaf_channel(
     req_qs=None,
     leaf_devices=None,
     alive_evts=None,
+    home_server_idx: Optional[int] = None,
 ) -> None:
     """Register this worker's slot + queues (called once in the pool init)."""
     _REMOTE.clear()
@@ -506,6 +511,9 @@ def set_remote_leaf_channel(
     _REMOTE["req_qs"] = list(req_qs) if req_qs is not None else None
     _REMOTE["leaf_devices"] = list(leaf_devices) if leaf_devices is not None else None
     _REMOTE["alive_evts"] = list(alive_evts) if alive_evts is not None else None
+    _REMOTE["home_server_idx"] = (
+        int(home_server_idx) if home_server_idx is not None else None
+    )
 
 
 def has_remote_leaf_channel() -> bool:
@@ -536,6 +544,7 @@ class RemoteLeafClient:
         req_qs=None,
         leaf_devices=None,
         alive_evts=None,
+        home_server_idx: Optional[int] = None,
     ) -> None:
         self.slot = int(slot)
         self.req_q = req_q
@@ -548,6 +557,9 @@ class RemoteLeafClient:
         self.req_qs = list(req_qs) if req_qs is not None else None
         self.leaf_devices = list(leaf_devices) if leaf_devices is not None else None
         self.alive_evts = list(alive_evts) if alive_evts is not None else None
+        self.home_server_idx = (
+            int(home_server_idx) if home_server_idx is not None else None
+        )
         self._deadline_monotonic: Optional[float] = None
         self.timeout_s = float(
             timeout_s
@@ -582,6 +594,7 @@ class RemoteLeafClient:
             req_qs=self.req_qs,
             devices=devices,
             alive_evts=self.alive_evts,
+            preferred_index=self.home_server_idx,
         )
         alive = None
         if self.alive_evts is not None and idx < len(self.alive_evts):
@@ -822,6 +835,7 @@ def remote_leaf_backend_from_worker():
         req_qs=_REMOTE.get("req_qs"),
         leaf_devices=_REMOTE.get("leaf_devices"),
         alive_evts=_REMOTE.get("alive_evts"),
+        home_server_idx=_REMOTE.get("home_server_idx"),
     )
 
 
@@ -907,6 +921,18 @@ def run_leaf_server(
         return
 
     ac_dtype = torch.bfloat16 if (bf16 and device.type == "cuda") else None
+    if device.type == "mps":
+        mps_autocast = os.environ.get(
+            "POKEBOT_MPS_AUTOCAST_DTYPE", "float32"
+        ).strip().lower()
+        if mps_autocast in {"bf16", "bfloat16"}:
+            ac_dtype = torch.bfloat16
+        elif mps_autocast in {"fp16", "float16"}:
+            ac_dtype = torch.float16
+        elif mps_autocast not in {"", "none", "off", "fp32", "float32"}:
+            raise ValueError(
+                "POKEBOT_MPS_AUTOCAST_DTYPE must be float32, float16, or bfloat16"
+            )
     if max_batch is None:
         try:
             max_batch = int(config.leaf_batch_for_device(device))

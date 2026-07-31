@@ -1,0 +1,117 @@
+{
+  "architecture": [
+    96,
+    192,
+    32
+  ],
+  "checks": {
+    "bounded_route_output": true,
+    "exact_module_parameter_inventory": true,
+    "exact_output_width": true,
+    "finite_nonzero_head_gradient": true,
+    "finite_nonzero_route_gradient": true,
+    "finite_nonzero_routed_head_gradient": true,
+    "finite_nonzero_routed_route_gradient": true,
+    "guide_preferred_action_not_consumed": true,
+    "head_parameters_updated": true,
+    "implementation_importable": true,
+    "legal_option_dependence": true,
+    "nonzero_combo_leave_one_out_logit_attribution": true,
+    "route_parameters_updated": true,
+    "step_zero_parent_parity": true
+  },
+  "created_at_utc": "2026-07-31T02:53:28.046832+00:00",
+  "fusion_route": "decision_fusion.dedicated_routes.combo_state",
+  "launch_ready": false,
+  "metrics": {
+    "aggregate_route_max_abs_delta": 0.019707247614860535,
+    "combo_route_max_abs_delta": 0.037729229778051376,
+    "head_gradient_norm": 0.03688438085373491,
+    "route_gradient_norm": 0.010830595158040524,
+    "routed_head_gradient_norm": 0.0016236623414442874,
+    "routed_route_gradient_norm": 0.01631870656274259,
+    "typed_loss": 0.05420146510004997,
+    "typed_loss_coverage": {
+      "base_observed_loss": 1.0733954906463623,
+      "eligible_rows": 8,
+      "guide_observed_loss": 0.5473315119743347,
+      "guide_rows": 7,
+      "seek_source_accuracy": 0.125,
+      "seek_source_labels": 8,
+      "top_deck_accuracy": 0.0,
+      "top_deck_labels": 8,
+      "total_rows": 8,
+      "vector_brier": {
+        "bench_continuity": 0.25507915019989014,
+        "copied_attack_legality": 0.26285263895988464,
+        "energy_route_readiness": 0.2608569264411926,
+        "visible_combo_piece_availability": 0.2467241734266281
+      },
+      "vector_labels": {
+        "bench_continuity": 32,
+        "copied_attack_legality": 48,
+        "energy_route_readiness": 40,
+        "visible_combo_piece_availability": 40
+      },
+      "weighted_loss": 0.05420146510004997
+    }
+  },
+  "not_yet_proved": [
+    "exact_deck_binding",
+    "labeled_row_coverage_by_requirement",
+    "loss_and_calibration_by_typed_output_on_slowking_rows",
+    "causal_suffix_invariance_on_replay_rows",
+    "leave_one_head_out_action_attribution_on_slowking_states",
+    "complete_candidate_parameter_count",
+    "peak_memory_and_latency",
+    "package_size_and_final_submission_compatibility",
+    "unused_capacity_rejected_by_ablation"
+  ],
+  "parameter_inventory": {
+    "combo_state_head.network": 24800,
+    "decision_fusion.dedicated_routes.combo_state": 2081
+  },
+  "required_heads": [
+    "value",
+    "archetype",
+    "opponent_hand",
+    "opponent_remainder",
+    "lethal_threat",
+    "prize_race",
+    "action_q",
+    "action_type",
+    "action_target",
+    "action_resource",
+    "action_utility",
+    "tactical_outcomes",
+    "opponent_response",
+    "resource_forecast",
+    "game_phase",
+    "outcome_distribution",
+    "remaining_turns",
+    "setup_board_outcome",
+    "combo_state"
+  ],
+  "schema": "poke_bot.slowking_combo_head_implementation_validation/v1",
+  "source_files": [
+    {
+      "path": "poke_bot/model.py",
+      "sha256": "sha256:66d914b1bbaa74cbaf41523a43d6d12ade4b5abd480916d16090c073102ed83e"
+    },
+    {
+      "path": "poke_bot/combo_state.py",
+      "sha256": "sha256:bc999e1c34ad8b07464252b894b7396e3b56931b6222ef1e3c8d9c734e3514f2"
+    },
+    {
+      "path": "poke_bot/config.py",
+      "sha256": "sha256:1a2c64a34eca6e045b4a74654203118a9e3279d65252f8736adc862ff2b9ab37"
+    },
+    {
+      "path": "scripts/run_starmie_expert_bootstrap.py",
+      "sha256": "sha256:0e716cdc4a06b47dc6ca7288d51b614df53fb7d3c6b894a892784aa696d1b70b"
+    }
+  ],
+  "specialist_id": "slowking",
+  "status": "implementation_validated_data_pending",
+  "training_ready": false
+}

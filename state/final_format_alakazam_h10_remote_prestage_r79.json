@@ -1,0 +1,75 @@
+{
+  "schema": "poke_bot.final_format_alakazam_h10_remote_prestage/v1",
+  "status": "candidate_runtimes_built_and_load_validated_not_activated",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "created_at_utc": "2026-07-31T14:37:13Z",
+  "canonical_python_tree_sha256": "sha256:ebbdf6cb29843fb3941165c707302cb7aa2612c3aa2770285358496687d952ea",
+  "nonpromotable_canary": {
+    "checkpoint_sha256": "sha256:1d2b6f04f75fd9e0f735bd2cc515c019f5d993a3adf654e3f2e3c0cae7010459",
+    "promotable": false,
+    "use": "runtime_loader_compatibility_only",
+    "expected_learned_parameters": 10352606,
+    "expected_learned_heads": 19,
+    "expected_architecture": {
+      "spatial_layers": 7,
+      "temporal_layers": 3,
+      "option_layers": 7,
+      "feed_forward_width": 2496
+    }
+  },
+  "rejected_elmo_partial_overlay": {
+    "image": "poke-bot-truenas-worker:final-format-alakazam-h10-r79",
+    "image_id": "sha256:b50161ca8741d73b1b17b3f96d8a53c5ec28156657ebed36cecb0f7e9c1fe9d3",
+    "status": "rejected_before_serving",
+    "reason": "four-file overlay omitted transitive current-package dependencies",
+    "observed_failure": "train.py could not import training_routes_for_sequence from the older matchup_adapter_activation module",
+    "active_container_modified": false
+  },
+  "elmo": {
+    "candidate_image": "poke-bot-truenas-worker:final-format-alakazam-h10-r79-full",
+    "candidate_image_id": "sha256:d1f6cf646e056b367aa4e767c333412dfe569781aa4eccfb3236a3273b0ca150",
+    "dockerfile": "containers/truenas-worker/Dockerfile.final-format-alakazam-h10-r79-full",
+    "dockerfile_sha256": "sha256:ef06227569708a724d2f8fa8e74d46394ecff8f541d816a94bd551bdf78b62b3",
+    "staged_python_tree_sha256": "sha256:ebbdf6cb29843fb3941165c707302cb7aa2612c3aa2770285358496687d952ea",
+    "canary_load_result": {
+      "learned_parameters": 10352606,
+      "learned_heads": 19,
+      "spatial_layers": 7,
+      "temporal_layers": 3,
+      "option_layers": 7,
+      "feed_forward_width": 2496,
+      "passed": true
+    },
+    "active_container_unchanged": true,
+    "active_image": "poke-bot-truenas-worker:matchup-v41-v6-slowking-runtime",
+    "active_image_id": "sha256:cdd05e906561a402955f0d55f03143100cebb941e4bb62254cd4516e9c365fb9",
+    "active_restart_count": 0,
+    "active_health": "healthy"
+  },
+  "bert": {
+    "staging_root": "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage",
+    "staged_python_tree_sha256": "sha256:ebbdf6cb29843fb3941165c707302cb7aa2612c3aa2770285358496687d952ea",
+    "canary_load_result": {
+      "learned_parameters": 10352606,
+      "learned_heads": 19,
+      "spatial_layers": 7,
+      "temporal_layers": 3,
+      "option_layers": 7,
+      "feed_forward_width": 2496,
+      "passed": true
+    },
+    "active_launch_agent_modified": false,
+    "active_remote_worker_restarted": false
+  },
+  "activation_gate": {
+    "requires_real_epoch_25_parent_h10_handoff_receipt": true,
+    "requires_real_child_checkpoint_load_canary": true,
+    "requires_zero_active_remote_jobs": true,
+    "requires_managed_drain_and_rotation": true,
+    "candidate_runtime_may_not_serve_canary_checkpoint": true,
+    "production_selector_write_authority": false,
+    "frozen_registry_write_authority": false,
+    "kaggle_queue_write_authority": false
+  }
+}

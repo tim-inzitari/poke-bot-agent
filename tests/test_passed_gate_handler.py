@@ -14,7 +14,10 @@ from scripts.handle_passed_gate import (
     validate_exact_pass,
     validate_runtime_exact_gate,
 )
-from poke_bot.model import DECISION_FUSION_REQUIRED_HEADS
+from poke_bot.model import (
+    DECISION_FUSION_REQUIRED_HEADS,
+    DECISION_FUSION_V2_OPTIONAL_HEADS,
+)
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -25,6 +28,10 @@ def _write(path: Path, payload: dict) -> None:
 def _successor_fusion_fixture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    terminal_schema: str = "poke_bot.causal_decision_fusion/v1",
+    terminal_optional_heads: tuple[str, ...] = (),
+    migrated_bootstrap: bool = False,
 ) -> tuple[Path, Path]:
     outputs = tmp_path / "outputs"
     run_dir = outputs / "pure_rl" / "successor-run"
@@ -59,16 +66,50 @@ def _successor_fusion_fixture(
     }
     _write(run_dir / "loop_state.json", commit)
     _write(run_dir / "commits" / "iter_00005.json", commit)
+    initial_digest = bootstrap_digest
+    initial_path = run_dir / "checkpoints" / "bootstrap.pt"
+    if migrated_bootstrap:
+        initial_digest = "sha256:" + "7" * 64
+        initial_path = (
+            outputs
+            / "pure_rl"
+            / "_protected"
+            / "models"
+            / "test-specialist-fusion-v2"
+            / "model.pt"
+        )
+        initial_path.parent.mkdir(parents=True, exist_ok=True)
+        initial_path.write_bytes(b"migrated-bootstrap")
+        frozen_manifest = {
+            "schema": "poke_bot.frozen_model/v1",
+            "immutable": True,
+            "automatic_pruning_allowed": False,
+            "checkpoint_digest": initial_digest,
+            "model_path": str(initial_path.resolve()),
+            "provenance": {
+                "kind": "decision_fusion_v2_hot_start",
+                "all_legacy_tensors_bit_identical": True,
+                "source_checkpoint_digest": bootstrap_digest,
+            },
+        }
+        monkeypatch.setattr(
+            "scripts.handle_passed_gate.verify_frozen_model",
+            lambda _family_dir: frozen_manifest,
+        )
     _write(
         run_dir / "manifest.json",
         {
             "specialist_archetype": "test-specialist",
             "design_fingerprint": fingerprint,
             "design_contract": design_contract,
-            "initial_learner_checkpoint": {"digest": bootstrap_digest},
+            "initial_learner_checkpoint": {
+                "digest": initial_digest,
+                "path": str(initial_path.resolve()),
+            },
         },
     )
     required = list(DECISION_FUSION_REQUIRED_HEADS)
+    terminal_required = [*required, *terminal_optional_heads]
     _write(
         outputs
         / "state"
@@ -109,9 +150,9 @@ def _successor_fusion_fixture(
         },
         "provenance": {
             "decision_fusion": {
-                "schema": "poke_bot.causal_decision_fusion/v1",
+                "schema": terminal_schema,
                 "runtime_enabled": True,
-                "required_heads": required,
+                "required_heads": terminal_required,
             }
         },
     }
@@ -131,6 +172,37 @@ def test_generated_successor_fusion_descendant_is_terminal_ready(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run_dir, _commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    ready, reason = _decision_fusion_runtime_ready(run_dir)
+    assert ready is True
+    assert "verified successor fused descendant" in reason
+
+
+def test_generated_successor_v2_fusion_descendant_accepts_optional_heads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, _commit_path = _successor_fusion_fixture(
+        tmp_path,
+        monkeypatch,
+        terminal_schema="poke_bot.causal_decision_fusion/v2",
+        terminal_optional_heads=(DECISION_FUSION_V2_OPTIONAL_HEADS[0],),
+    )
+    ready, reason = _decision_fusion_runtime_ready(run_dir)
+    assert ready is True
+    assert "verified successor fused descendant" in reason
+
+
+def test_generated_successor_v2_accepts_receipted_hot_start_bootstrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, _commit_path = _successor_fusion_fixture(
+        tmp_path,
+        monkeypatch,
+        terminal_schema="poke_bot.causal_decision_fusion/v2",
+        terminal_optional_heads=(DECISION_FUSION_V2_OPTIONAL_HEADS[0],),
+        migrated_bootstrap=True,
+    )
     ready, reason = _decision_fusion_runtime_ready(run_dir)
     assert ready is True
     assert "verified successor fused descendant" in reason

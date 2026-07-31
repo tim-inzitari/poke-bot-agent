@@ -1,0 +1,61 @@
+{
+  "schema": "poke_bot.final_format_alakazam_source_compatibility/v1",
+  "status": "static_source_compatible_model_computation_not_performed",
+  "runnable": false,
+  "model_instantiated": false,
+  "checkpoint_loaded": false,
+  "parameter_count_computed": false,
+  "source_files": {
+    "poke_bot/config.py": "sha256:2a053ca4fa8f92953bd9eb32de5901e762fc440eacd103c651289ba0af5a8a50",
+    "poke_bot/h10_migration.py": "sha256:1b164115bdd67d0bd545c2f3039af8b2db3593d7335aa77d8b87e080b555b871",
+    "poke_bot/model.py": "sha256:ce637a28a6d9cd968e97c39fa00ce485dd2d234c6afdbacf708e81041c580af2",
+    "poke_bot/train.py": "sha256:6dca747c395402c1b7e764ac3fb178717ec8d2cc83d37f440ca9bd30ae0e8ad0",
+    "poke_bot/pure_rl/expert_cpu_pack.py": "sha256:4be9465761722d88a760d7e2c180e0d7890b2709262ad352a1799e42bb9c8ee7",
+    "poke_bot/pure_rl/expert_feature_stream.py": "sha256:dc4609b78dcc778990b56e529cf5eef8ac431cd7d0b275bc55a0e1608bfc1f85",
+    "poke_bot/pure_rl/expert_rehearsal.py": "sha256:5fa0ae4046f253183d975d567f44ca09b046551a57f1629c2044937d3ecddf82",
+    "scripts/migrate_final_format_alakazam_h10.py": "sha256:9ce2aff2dd71bef9e5ad518768f79aff53adb19e00dfd8e204da3cee41a0300f",
+    "scripts/train_pure_rl.py": "sha256:37b4433aab3ba0b02118af0275338d7104d9ab86cf52f19161256a2d87ab750a",
+    "scripts/run_starmie_expert_bootstrap.py": "sha256:e5da56dcb05d87a47c811478286c57a430ca79e2ec0559f271d39ebb3d2c1de4"
+  },
+  "static_checks": {
+    "d_model_96_divisible_by_attention_heads_8": true,
+    "spatial_depth_7_configurable": true,
+    "temporal_depth_3_configurable": true,
+    "option_depth_7_configurable": true,
+    "feed_forward_width_2496_configurable": true,
+    "history_context_320_configurable": true,
+    "fusion_width_16_configurable": true,
+    "base_learned_head_count": 17,
+    "setup_board_outcome_route_supported": true,
+    "combo_state_route_supported": true,
+    "minimum_final_route_count_supported": 19,
+    "route_uses_typed_output_and_cross_attended_option_hidden": true,
+    "one_module_per_head_route": true,
+    "route_final_projection_zero_safe": true,
+    "route_output_unit_bounded": true,
+    "aggregate_route_delta_cap": 1.0,
+    "guide_excluded_from_runtime_fusion": true,
+    "feed_forward_widening_preserves_first_384_neurons": true,
+    "appended_blocks_have_zero_safe_output_projections": true,
+    "per_strategic_head_h10_residuals_zero_safe": true,
+    "policy_first_search_schema_supported": true,
+    "exact_alakazam_assigned_actual_consumed_seat_receipts_supported": true,
+    "exact_alakazam_rehearsal_seat_receipts_supported": true,
+    "exact_rehearsal_train_and_validation_partitions_balanced": true
+  },
+  "not_proven_before_release": [
+    "exact_instantiated_learned_parameter_count",
+    "preferred_alakazam_parent_serialized_key_and_shape_coverage",
+    "direct_migration_compatibility",
+    "step_zero_behavior_and_logit_parity",
+    "complete_final_role_route_binding",
+    "training_memory_and_throughput",
+    "cpu_latency_and_memory",
+    "package_size_and_cpu_parity",
+    "gameplay_strength"
+  ],
+  "release_receipts_required_before_any_dynamic_check": [
+    "required_specialist_fleet_complete_for_final_alakazam_v1",
+    "capacity_research_resource_lease_v1"
+  ]
+}

@@ -5,14 +5,19 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from poke_bot import archetypes, checkpoint
+from poke_bot.guide_evidence_rebind import (
+    validation_or_evidence_only_rebind,
+)
 from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.run_sequential_specialist_handoff import (
     load_contract as load_sequential_contract,
@@ -171,13 +176,76 @@ def _upgrade_selected_handoff_contract(
     expected_expanded = expanded_handoff_training_contract()
     existing_guide = dict(training.get("current_deck_guide") or {})
     effective_guide = current_deck_guide or existing_guide
+    combo_state_training = None
+    if specialist_id == "slowking":
+        state_path = Path(
+            str((upgraded.get("paths") or {}).get("state") or "")
+        ).expanduser().resolve()
+        if len(state_path.parents) < 3:
+            raise RuntimeError("Slowking handoff state path is invalid")
+        runtime_project_root = state_path.parents[2]
+        combo_sources = {
+            "implementation_receipt": (
+                runtime_project_root
+                / "state/slowking_combo_head_implementation_validation_v2.json"
+            ),
+            "corpus_validation_receipt": (
+                runtime_project_root
+                / "state/slowking_combo_corpus_validation_v1.json"
+            ),
+            "cpu_pack_validation_receipt": (
+                runtime_project_root
+                / "state/slowking_expert_cpu_pack_validation_v1.json"
+            ),
+            "parameter_inventory_receipt": (
+                runtime_project_root
+                / "state/slowking_candidate_parameter_inventory_v1.json"
+            ),
+        }
+        if any(not path.is_file() for path in combo_sources.values()):
+            raise RuntimeError("Slowking combo pretraining sources are absent")
+        combo_state_training = {
+            **{
+                name: str(path)
+                for name, path in combo_sources.items()
+            },
+            **{
+                f"{name}_sha256": sha256(path)
+                for name, path in combo_sources.items()
+            },
+            "final_validation_output": str(
+                Path(str((upgraded["next_specialist"])["run_dir"]))
+                / "slowking_combo_head_validation.json"
+            ),
+            "pretraining_authorizes_freeze_or_registration": False,
+            "final_candidate_validation_required_before_freeze": True,
+        }
     expected_fusion = decision_fusion_handoff_contract(
         strategic_curriculum=(
             isinstance(effective_guide, dict)
             and effective_guide.get("training_mode")
             == "strategic_curriculum_v1"
-        )
+        ),
+        combo_state_head=specialist_id == "slowking",
     )
+
+    def expanded_protocol_digest_only_rebind(
+        old: dict[str, Any],
+        new: dict[str, Any],
+    ) -> bool:
+        if not old or not new:
+            return False
+        old_copy = json.loads(json.dumps(old))
+        new_copy = json.loads(json.dumps(new))
+        old_digest = str(old_copy.pop("canonical_config_sha256", ""))
+        new_digest = str(new_copy.pop("canonical_config_sha256", ""))
+        return bool(
+            old_digest
+            and new_digest
+            and old_digest != new_digest
+            and old_copy == new_copy
+        )
+
     if current_deck_guide is not None and existing_guide:
         saved_guide = dict(existing_guide)
         refreshed_guide = dict(current_deck_guide)
@@ -229,7 +297,10 @@ def _upgrade_selected_handoff_contract(
                 )
             )
         )
-        if bootstrap_started:
+        if bootstrap_started and not expanded_protocol_digest_only_rebind(
+            dict(training.get("expanded_heads") or {}),
+            expected_expanded,
+        ):
             raise RuntimeError(
                 "cannot add expanded-head schedule after specialist bootstrap "
                 "has started"
@@ -255,7 +326,16 @@ def _upgrade_selected_handoff_contract(
                 )
             )
         )
-        if bootstrap_started:
+        evidence_snapshot = (
+            run_dir / "guide-contract-before-evidence-rebind.yaml"
+            if run_dir is not None
+            else None
+        )
+        if bootstrap_started and not validation_or_evidence_only_rebind(
+            dict(training.get("current_deck_guide") or {}),
+            current_deck_guide,
+            old_contract_snapshot=evidence_snapshot,
+        ):
             raise RuntimeError(
                 "cannot bind current-deck guide after specialist bootstrap "
                 "has started"
@@ -309,16 +389,37 @@ def _upgrade_selected_handoff_contract(
             "before": training.get("current_deck_guide"),
             "after": current_deck_guide,
         }
+    if combo_state_training is not None:
+        changes["combo_state"] = {
+            "before": training.get("combo_state"),
+            "after": combo_state_training,
+        }
     if required_targets is not None:
         changes["required_target_coverage"] = {
             "before": training.get("required_target_coverage"),
             "after": required_targets,
         }
     if matchup_v6 is not None:
+        family_suffix = str(matchup_v6.get("family_suffix") or "")
+        receipt_suffix = str(matchup_v6.get("receipt_suffix") or "")
+        legacy_runtime_derivative = (
+            family_suffix == "_matchup_v6" and receipt_suffix == ""
+        )
+        versioned_runtime_derivative = (
+            re.fullmatch(
+                r"_matchup_v6_roster[0-9]+", family_suffix
+            )
+            is not None
+            and re.fullmatch(r"-roster[0-9]+", receipt_suffix) is not None
+            and family_suffix.removeprefix("_matchup_v6")
+            == receipt_suffix.replace("-", "_", 1)
+        )
         if (
             matchup_v6.get("enabled") is not True
-            or str(matchup_v6.get("family_suffix") or "")
-            != "_matchup_v6"
+            or not (
+                legacy_runtime_derivative
+                or versioned_runtime_derivative
+            )
             or not all(
                 Path(str(matchup_v6.get(key) or "")).expanduser().is_absolute()
                 for key in ("registry", "staging_root", "receipt_root")
@@ -362,6 +463,8 @@ def _upgrade_selected_handoff_contract(
     training["decision_fusion"] = changes["decision_fusion"]["after"]
     if current_deck_guide is not None:
         training["current_deck_guide"] = current_deck_guide
+    if combo_state_training is not None:
+        training["combo_state"] = combo_state_training
     if required_targets is not None:
         training["required_target_coverage"] = required_targets
     if matchup_v6 is not None:
@@ -727,15 +830,95 @@ def _resume_selected_handoff(
     selection = dict(state.get("selection") or {})
     selected = dict(selection.get("selected") or {})
     generated = Path(generated_raw).expanduser().resolve()
+    actual_digest = sha256(generated) if generated.is_file() else ""
     if (
         not generated_raw
         or not generated.is_file()
         or not expected_digest
-        or sha256(generated) != expected_digest
         or not str(selected.get("specialist_id") or "")
     ):
         raise RuntimeError("selected specialist resume identity changed")
     payload = _read(generated)
+    if actual_digest != expected_digest:
+        sequential_state_path = sequential_path_value(
+            payload, "paths", "state"
+        )
+        sequential_state = (
+            _read(sequential_state_path)
+            if sequential_state_path.is_file()
+            else {}
+        )
+        previous_matchup = dict(
+            (
+                (
+                    sequential_state.get("contract_migration") or {}
+                ).get("changes")
+                or {}
+            ).get("matchup_v6", {})
+        ).get("after")
+        reconstructed = json.loads(json.dumps(payload))
+        if isinstance(previous_matchup, dict):
+            reconstructed["runtime_registration"]["matchup_v6"] = (
+                previous_matchup
+            )
+        reconstructed_digest = "sha256:" + hashlib.sha256(
+            (
+                json.dumps(reconstructed, indent=2, sort_keys=True)
+                + "\n"
+            ).encode("utf-8")
+        ).hexdigest()
+        matchup_change = {
+            "matchup_v6": {
+                "before": previous_matchup,
+                "after": dict(
+                    (payload.get("runtime_registration") or {}).get(
+                        "matchup_v6"
+                    )
+                    or {}
+                ),
+            }
+        }
+        if (
+            sequential_state.get("contract_sha256") != expected_digest
+            or reconstructed_digest != expected_digest
+            or not _late_matchup_v6_migration_is_safe(
+                matchup_change, sequential_state
+            )
+        ):
+            raise RuntimeError("selected specialist resume identity changed")
+        _, validated_digest = load_sequential_contract(generated)
+        if validated_digest != actual_digest:
+            raise RuntimeError("selected handoff recovery digest changed")
+        _atomic(
+            sequential_state_path,
+            {
+                **sequential_state,
+                "contract_sha256": actual_digest,
+                "contract_migration": {
+                    "schema":
+                        "poke_bot.selected_handoff_crash_recovery/v1",
+                    "old_contract_sha256": expected_digest,
+                    "new_contract_sha256": actual_digest,
+                    "changes": matchup_change,
+                    "bootstrap_started_before_migration": True,
+                },
+                "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        _save_state(
+            state_path,
+            "next_specialist_selected",
+            generated_handoff_contract=str(generated),
+            generated_handoff_contract_sha256=actual_digest,
+            generated_handoff_contract_migration={
+                "schema": "poke_bot.selected_handoff_crash_recovery/v1",
+                "old_digest": expected_digest,
+                "new_digest": actual_digest,
+                "changes": matchup_change,
+                "bootstrap_started_before_migration": True,
+            },
+        )
+        expected_digest = actual_digest
     expected_assets = str(
         (contract.get("runtime") or {}).get("future_assets_receipt") or ""
     ).strip()
@@ -840,7 +1023,12 @@ def _resume_selected_handoff(
     # contract was upgraded but before its source-only preflight state could be
     # rebound.  No bootstrap/model mutation has happened at this phase, and all
     # three immutable inputs must still validate exactly under the new contract.
-    sequential_contract, sequential_digest = load_sequential_contract(generated)
+    # A selected pre-bootstrap contract is checksum-bound to the saved cycle
+    # state but may intentionally predate a prospective successor-only schema
+    # addition. Read that exact saved payload for crash recovery, upgrade it,
+    # then run the full current-schema validator before any bootstrap work.
+    sequential_contract = payload
+    sequential_digest = sha256(generated)
     sequential_state_path = sequential_path_value(
         sequential_contract, "paths", "state"
     )
@@ -917,9 +1105,8 @@ def _resume_selected_handoff(
     )
     if changes:
         old_digest = expected_digest
-        old_sequential_contract, old_sequential_digest = (
-            load_sequential_contract(generated)
-        )
+        old_sequential_contract = payload
+        old_sequential_digest = sha256(generated)
         sequential_state_path = sequential_path_value(
             old_sequential_contract, "paths", "state"
         )
@@ -1262,6 +1449,52 @@ def _generated_contract(
     )
     rl_run = f"pure_rl_{specialist_id}_temporal1_8k_v1_20260723"
     state_root = _path(runtime, "state_root")
+    combo_state_training = None
+    if specialist_id == "slowking":
+        runtime_project_root = state_root.parents[1]
+        combo_sources = {
+            "implementation_receipt": (
+                runtime_project_root
+                / "state/slowking_combo_head_implementation_validation_v2.json"
+            ),
+            "corpus_validation_receipt": (
+                runtime_project_root
+                / "state/slowking_combo_corpus_validation_v1.json"
+            ),
+            "cpu_pack_validation_receipt": (
+                runtime_project_root
+                / "state/slowking_expert_cpu_pack_validation_v1.json"
+            ),
+            "parameter_inventory_receipt": (
+                runtime_project_root
+                / "state/slowking_candidate_parameter_inventory_v1.json"
+            ),
+        }
+        missing_combo_sources = [
+            str(path) for path in combo_sources.values() if not path.is_file()
+        ]
+        if missing_combo_sources:
+            raise RuntimeError(
+                "Slowking combo pretraining sources are absent: "
+                + ", ".join(missing_combo_sources)
+            )
+        combo_state_training = {
+            **{
+                name: str(path)
+                for name, path in combo_sources.items()
+            },
+            **{
+                f"{name}_sha256": sha256(path)
+                for name, path in combo_sources.items()
+            },
+            "final_validation_output": (
+                "/home/inzi/poke-bot-agent/outputs/bootstrap/"
+                f"{specialist_id}-expert-bootstrap-from-core-v{core_version}/"
+                "slowking_combo_head_validation.json"
+            ),
+            "pretraining_authorizes_freeze_or_registration": False,
+            "final_candidate_validation_required_before_freeze": True,
+        }
     staged_pack_root = str(
         ((prestage or {}).get("cpu_pack") or {}).get("root") or ""
     ).strip()
@@ -1387,6 +1620,7 @@ def _generated_contract(
         },
         "next_specialist": {
             "id": specialist_id,
+            "combo_state_head": specialist_id == "slowking",
             "expert_corpus": selected["pointer"],
             "family_name": (
                 f"{specialist_id}_expert_bootstrap_from_core_v{core_version}"
@@ -1440,7 +1674,13 @@ def _generated_contract(
                     guide_handoff is not None
                     and guide_handoff.get("training_mode")
                     == "strategic_curriculum_v1"
-                )
+                ),
+                combo_state_head=specialist_id == "slowking",
+            ),
+            **(
+                {"combo_state": combo_state_training}
+                if combo_state_training is not None
+                else {}
             ),
             **(
                 {"current_deck_guide": guide_handoff}
@@ -1551,7 +1791,8 @@ def _validated_prestage(
         or receipt.get("selected_specialist") != selected["specialist_id"]
         or receipt.get("active_specialist")
         != str(contract["trigger"]["specialist_id"])
-        or corpus.get("pointer") != str(pointer)
+        or Path(str(corpus.get("pointer") or "")).expanduser().resolve()
+        != pointer
         or corpus.get("pointer_sha256") != sha256(pointer)
         or not runtime_assets_match
         or representative.get("ready") is not True

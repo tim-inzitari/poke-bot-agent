@@ -1,0 +1,75 @@
+{
+  "schema": "poke_bot.archaludon_dispatch_recovery/v1",
+  "goal_revision": 72,
+  "recorded_at_utc": "2026-07-30T19:15:22Z",
+  "specialist_id": "archaludon-ex",
+  "run_name": "pure_rl_archaludon-ex_temporal1_8k_v2_20260730",
+  "reason": "clear_uncommitted_pre_elmo_repair_remote_straggler_dispatch",
+  "signal_interpretation": {
+    "dashboard_ping_cache_age_is_staleness_signal": false,
+    "authoritative_health_signals": [
+      "managed_service_state",
+      "current_dispatch_completion_flow",
+      "remote_execution_utilization",
+      "live_socket_state",
+      "cgroup_memory_pressure",
+      "immutable_iteration_receipts"
+    ]
+  },
+  "pre_restart": {
+    "managed_pid": 502665,
+    "committed_iterations": 0,
+    "public_mix_completed_games": 6571,
+    "public_mix_target_games": 7168,
+    "all_jobs_claimed": true,
+    "completion_ema_games_per_second": 0.13,
+    "memory_current_bytes": 110804631552,
+    "host_mem_available_kib": 3352904,
+    "cgroup_memory_pressure_full_avg10": 50.62,
+    "elmo_cpu_percent": 0.36,
+    "healthy": false
+  },
+  "managed_action": {
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "operation": "systemctl_user_restart",
+    "direct_signal_used": false,
+    "interactive_session_touched": false,
+    "discarded_iteration_index": 0,
+    "discarded_completed_games": 6571,
+    "immutable_commit_discarded": false,
+    "checkpoint_rewritten": false
+  },
+  "preserved_identity": {
+    "active_specialist": "archaludon-ex",
+    "blackwell_simulator_workers": 96,
+    "blackwell_games_in_flight": 96,
+    "elmo_execution_workers": 36,
+    "bert_execution_workers": 16,
+    "remote_socket_prefetch": 1,
+    "remote_socket_prefetch_max": 2,
+    "guide_loss_weight": 0.05,
+    "initial_checkpoint_sha256": "sha256:57a3172d46e429cb9ba39187cf126f763fdbb10c15012ccdb31ef993010227be",
+    "expert_manifest_sha256": "sha256:972a09b0be08c9de854724c4dc425921a1fb1ec00bb28a9b22cbefbe975ca0c2"
+  },
+  "post_restart": {
+    "managed_pid": 604944,
+    "nrestarts": 0,
+    "active_state": "active",
+    "manual_stop_protection_restored": true,
+    "initial_memory_current_bytes": 14004322304,
+    "initial_host_mem_available_kib": 101760948,
+    "initial_cgroup_memory_pressure_full_avg10": 0.0,
+    "fresh_dispatch_progress_observed": true,
+    "fresh_elmo_work_observed": true,
+    "fresh_elmo_peak_observed_cpu_percent": 574.26,
+    "fresh_elmo_memory_gib": 14.5,
+    "fresh_elmo_controller_sockets_observed": 105,
+    "fresh_bert_controller_sockets_observed": 65
+  },
+  "selector": {
+    "path": "/home/inzi/.config/pokebot/specialist_runtime.env",
+    "sha256": "sha256:0f2af637ff1db5eab4b90989d05bee53c5600069b139f336b6e576aaaa169fee",
+    "future_elmo_worker_ceiling": 36
+  },
+  "result": "recovered"
+}

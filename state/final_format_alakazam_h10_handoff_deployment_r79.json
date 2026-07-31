@@ -1,0 +1,57 @@
+{
+  "schema": "poke_bot.final_format_alakazam_h10_handoff_deployment/v1",
+  "status": "armed_waiting_for_exact_ordinary_epoch_25_ready_receipt",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "deployed_at_utc": "2026-07-31T14:37:13Z",
+  "ordinary_training_observation": {
+    "managed_service": "pokebot-final-format-alakazam-r79-ordinary-bootstrap.service",
+    "active": true,
+    "main_pid": 3928690,
+    "restart_count": 0,
+    "completed_epoch_at_receipt": 16,
+    "epochs_required": 25,
+    "interrupted_or_restarted": false
+  },
+  "managed_transition": {
+    "trigger": "ordinary_service_success_only",
+    "successor_service": "pokebot-final-format-alakazam-r79-h10-migration.service",
+    "ordinary_service_requires_reactivation": false,
+    "ordinary_service_on_success_verified": true,
+    "handoff_script": "scripts/complete_final_format_alakazam_h10_handoff.py",
+    "handoff_script_sha256": "sha256:b9cc268b021134d5ae3f977be3e3f92018d8ffee1dee271b943008eecaf04753",
+    "successor_unit": "deploy/systemd/pokebot-final-format-alakazam-r79-h10-migration.service",
+    "successor_unit_sha256": "sha256:770be6a7acd81f4dc0158f165e92b5de8c02e9f26e7e3e099b19f68ea551af73",
+    "ordinary_drop_in": "deploy/systemd/pokebot-final-format-alakazam-r79-ordinary-bootstrap.service.d/90-h10-handoff.conf",
+    "ordinary_drop_in_sha256": "sha256:3de0a89db624b7cd2c40be474b0229eb312412b0c11d4521309f1429cf65494b"
+  },
+  "fail_closed_parent_requirements": {
+    "ready_schema": "poke_bot.specialist_expert_bootstrap_ready/v1",
+    "exact_epoch_history": "1..25",
+    "best_checkpoint_must_be_from_fully_enabled_head_stage": true,
+    "ordinary_learned_head_count": 17,
+    "ordinary_parent_archetype": "alakazam",
+    "ordinary_parent_family": "final-format-alakazam-r79-ordinary-fallback-from-core9",
+    "accepted_core_parent_sha256": "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056",
+    "expert_manifest_sha256": "sha256:3836852129511fdffd2767f6701dcc562d1723bb0c345c3cf5068ad9774b9acb",
+    "historical_direct_migration_failure_sha256": "sha256:e559b1ff0f24a0dc06d9211d672381969a51c0119a3354f668d45a91153f956f",
+    "partial_old_alakazam_core_overlay_allowed": false
+  },
+  "h10_output_requirements": {
+    "capacity_profile": "H10-I/v1",
+    "learned_parameters": 10352606,
+    "learned_head_count": 19,
+    "learned_route_count": 19,
+    "step_zero_parity_required": true,
+    "guide_runtime_route_count": 0,
+    "runtime_authority_before_training_preflight": "none",
+    "selector_eligible": false,
+    "kaggle_eligible": false
+  },
+  "validation": {
+    "blackwell_python_tests_passed": 10,
+    "systemd_unit_verify_passed": true,
+    "ordinary_service_remained_active": true,
+    "ordinary_service_restart_count_unchanged": true
+  }
+}

@@ -31,7 +31,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from poke_bot import checkpoint
-from poke_bot.model import DECISION_FUSION_REQUIRED_HEADS
+from poke_bot.model import (
+    DECISION_FUSION_REQUIRED_HEADS,
+    DECISION_FUSION_SCHEMA,
+    DECISION_FUSION_V2_OPTIONAL_HEADS,
+    DECISION_FUSION_V2_SCHEMA,
+)
 from poke_bot.pure_rl.model_registry import (
     freeze_model,
     sha256,
@@ -208,20 +213,69 @@ def _successor_decision_fusion_runtime_ready(
     payload = checkpoint.load_checkpoint(learner_path, map_location="cpu")
     model_config = dict(payload.get("model_config") or {})
     fusion = dict((payload.get("provenance") or {}).get("decision_fusion") or {})
-    required_heads = list(DECISION_FUSION_REQUIRED_HEADS)
+    core_required_heads = list(DECISION_FUSION_REQUIRED_HEADS)
+    supported_schemas = {DECISION_FUSION_SCHEMA, DECISION_FUSION_V2_SCHEMA}
+
+    def valid_fusion_contract(row: dict[str, Any]) -> bool:
+        schema = str(row.get("schema") or "")
+        heads = list(row.get("required_heads") or [])
+        if schema == DECISION_FUSION_SCHEMA:
+            return heads == core_required_heads
+        if schema != DECISION_FUSION_V2_SCHEMA:
+            return False
+        optional = heads[len(core_required_heads) :]
+        return (
+            heads[: len(core_required_heads)] == core_required_heads
+            and len(optional) == len(set(optional))
+            and all(name in DECISION_FUSION_V2_OPTIONAL_HEADS for name in optional)
+            and optional
+            == [
+                name
+                for name in DECISION_FUSION_V2_OPTIONAL_HEADS
+                if name in optional
+            ]
+        )
+
     specialist_id = str(payload.get("archetype_id") or "").strip().casefold()
     if not (
         specialist_id
         and model_config.get("decision_fusion_enabled") is True
         and model_config.get("decision_fusion_runtime_enabled") is True
-        and fusion.get("schema") == "poke_bot.causal_decision_fusion/v1"
+        and fusion.get("schema") in supported_schemas
         and fusion.get("runtime_enabled") is True
-        and fusion.get("required_heads") == required_heads
+        and valid_fusion_contract(fusion)
     ):
         return False, "successor checkpoint is not the complete fused runtime"
 
     manifest = _read_json(run_dir / "manifest.json")
     initial = dict(manifest.get("initial_learner_checkpoint") or {})
+    initial_path = Path(str(initial.get("path") or "")).expanduser().resolve()
+    initial_digest = str(initial.get("digest") or "")
+
+    def bootstrap_lineage_matches(bootstrap_digest: str) -> bool:
+        if bootstrap_digest == initial_digest:
+            return True
+        if not (
+            bootstrap_digest.startswith("sha256:")
+            and initial_digest.startswith("sha256:")
+            and initial_path.is_file()
+        ):
+            return False
+        try:
+            frozen = verify_frozen_model(initial_path.parent)
+        except RuntimeError:
+            return False
+        provenance = dict(frozen.get("provenance") or {})
+        return bool(
+            str(frozen.get("checkpoint_digest") or "") == initial_digest
+            and Path(str(frozen.get("model_path") or "")).expanduser().resolve()
+            == initial_path
+            and provenance.get("kind") == "decision_fusion_v2_hot_start"
+            and provenance.get("all_legacy_tensors_bit_identical") is True
+            and str(provenance.get("source_checkpoint_digest") or "")
+            == bootstrap_digest
+        )
+
     design_fingerprint, design_reason = _verified_effective_design_fingerprint(
         run_dir,
         manifest=manifest,
@@ -262,17 +316,15 @@ def _successor_decision_fusion_runtime_ready(
             == specialist_id
             and str(registration.get("specialist_id") or "").casefold()
             == specialist_id
-            and bootstrap_digest == str(initial.get("digest") or "")
+            and bootstrap_lineage_matches(bootstrap_digest)
             and runtime_initial_digest == bootstrap_digest
-            and bootstrap_fusion.get("schema")
-            == "poke_bot.causal_decision_fusion/v1"
+            and bootstrap_fusion.get("schema") in supported_schemas
             and bootstrap_fusion.get("runtime_enabled") is True
-            and bootstrap_fusion.get("required_heads") == required_heads
-            and runtime_fusion.get("schema")
-            == "poke_bot.causal_decision_fusion/v1"
+            and valid_fusion_contract(bootstrap_fusion)
+            and runtime_fusion.get("schema") in supported_schemas
             and runtime_fusion.get("required") is True
             and runtime_fusion.get("runtime_enabled") is True
-            and runtime_fusion.get("required_heads") == required_heads
+            and valid_fusion_contract(runtime_fusion)
         ):
             activation_path = candidate_path
             break

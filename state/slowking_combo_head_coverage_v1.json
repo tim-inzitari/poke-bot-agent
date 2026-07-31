@@ -1,7 +1,7 @@
 {
   "schema": "poke_bot.slowking_combo_head_coverage/v1",
-  "artifact_sha256": "sha256:e268b9bcdfba7be2da2a3a701f66f2ecfd5e694b9e3ab44f90485a843bf5ef89",
-  "status": "blocked_missing_combo_state_implementation_and_validation_receipt",
+  "artifact_sha256": "sha256:45872dd7388078754a837a7ab88afe52df411363c042d44cb75cc4bd2e0a61ff",
+  "status": "exact_corpus_and_implementation_validated_pending_final_combo_validation",
   "specialist_id": "slowking",
   "owner_decision_revisions": [
     57,
@@ -26,6 +26,15 @@
     "training_authority": false,
     "active_teal_modified": false,
     "staged_archaludon_modified": false
+  },
+  "exact_slowking_corpus": {
+    "receipt": "state/slowking_corpus_ready_v1.json",
+    "protected_pointer_sha256": "sha256:cee478084d88f039ab60d6c2cd607a251bd85c9c9871aee82518660cf5019ac3",
+    "manifest_sha256": "sha256:d468ba05637dd63a2d1dce304f785f3a2b8012355341d4a0e3ca8d5151e61ac4",
+    "records": 311,
+    "decisions": 19251,
+    "guide_rows": 527,
+    "runtime_enabled": false
   },
   "deck_identity": {
     "representative": "config/deck_guides/slowking-representative.v1.json",
@@ -232,10 +241,12 @@
       "coverage_status": "validation_not_run"
     }
   ],
-  "missing_typed_head": {
+  "typed_head": {
     "id": "combo_state",
-    "implementation_status": "not_implemented",
-    "architecture_status": "proposed_not_validated",
+    "implementation_status": "implemented",
+    "architecture_status": "implementation_validated_exact_corpus_available_final_validation_pending",
+    "implementation_validation_receipt": "state/slowking_combo_head_implementation_validation_v1.json",
+    "implementation_validation_receipt_sha256": "sha256:db6301951004930b3e867570d539e3c4787bce9a4889a65b99fbad8ed490b6bb",
     "input": "board_state_cross_attended_option_hidden",
     "architecture": [
       "d_model",
@@ -278,8 +289,9 @@
       }
     ],
     "added_parameter_total_at_d_model_96": 26881,
-    "complete_candidate_parameter_count": null,
-    "complete_candidate_count_is_measured": false,
+    "complete_candidate_parameter_count": 1910963,
+    "complete_candidate_count_is_measured": true,
+    "candidate_inventory_receipt": "state/slowking_candidate_parameter_inventory_v1.json",
     "exception_receipt": null,
     "above_hard_ceiling_requires_separate_owner_decision": true
   },
@@ -287,18 +299,18 @@
     "receipt_schema": "poke_bot.slowking_combo_head_validation/v1",
     "receipt": null,
     "receipt_sha256": null,
-    "exact_deck_binding": false,
+    "exact_deck_binding": true,
     "labeled_row_coverage_by_requirement": false,
     "loss_and_calibration_by_typed_output": false,
-    "finite_nonzero_gradient_norms": false,
-    "finite_nonzero_update_norms": false,
-    "step_zero_parent_parity": false,
+    "finite_nonzero_gradient_norms": true,
+    "finite_nonzero_update_norms": true,
+    "step_zero_parent_parity": true,
     "causal_suffix_invariance": false,
-    "legal_option_dependence": false,
-    "bounded_aggregate_residual": false,
-    "leave_one_head_out_logit_attribution": false,
+    "legal_option_dependence": true,
+    "bounded_aggregate_residual": true,
+    "leave_one_head_out_logit_attribution": true,
     "leave_one_head_out_action_attribution": false,
-    "complete_parameter_count_and_module_inventory": false,
+    "complete_parameter_count_and_module_inventory": true,
     "peak_memory_and_latency": false,
     "package_size_and_final_submission_compatibility": false,
     "unused_capacity_rejected_by_ablation": false

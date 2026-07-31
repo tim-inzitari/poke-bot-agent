@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import pickle
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,7 +18,13 @@ from poke_bot.authoritative_visual_trace import (
     convert_visual_episode,
     materialize_day,
 )
-from poke_bot.feature_shards import iter_feature_shard
+from poke_bot.feature_shards import (
+    SHARD_FORMAT,
+    SHARD_FORMAT_VERSION,
+    iter_feature_shard,
+)
+from poke_bot import features
+from poke_bot.dataset import DecisionSample, GameSequence, PolicyStage
 from poke_bot.strategic_heads import (
     EXPANDED_STRATEGIC_KEY,
     EXPANDED_STRATEGIC_SCHEMA,
@@ -57,6 +64,89 @@ class _Classifier:
         actions = payload["steps"][1]
         decks = [list(actions[seat]["action"]) for seat in (0, 1)]
         return decks, [_Label(deck_id) for deck_id in self.deck_ids]
+
+
+def test_schema_7_protected_feature_shards_remain_readable(tmp_path: Path) -> None:
+    shard = tmp_path / "protected-schema7.features"
+    with shard.open("wb") as handle:
+        pickle.dump(
+            {
+                "format": SHARD_FORMAT,
+                "format_version": SHARD_FORMAT_VERSION,
+                "dataset_schema": 7,
+                "feature_schema": features.FEATURE_SCHEMA_VERSION,
+            },
+            handle,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
+        pickle.dump(
+            {
+                "format": SHARD_FORMAT + "-footer",
+                "stats": {"records_kept": 0},
+            },
+            handle,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
+    assert list(iter_feature_shard(shard)) == []
+
+
+def test_schema_6_expert_shard_masks_absent_setup_metadata(
+    tmp_path: Path,
+) -> None:
+    sparse = features.SparseVector()
+    sparse.word_start()
+    sparse.add(0, 1.0)
+    stage = PolicyStage(
+        options=sparse,
+        action_combos=[[0]],
+        target_index=0,
+    )
+    del stage.select_context
+    del stage.selected_is_stop
+    decision = DecisionSample(
+        board=sparse,
+        options=sparse,
+        action=[0],
+        action_combo_index=0,
+        action_combos=[[0]],
+        env_step=0,
+        policy_stages=[stage],
+    )
+    sequence = GameSequence(
+        episode_id="schema6",
+        seat=0,
+        archetype="archaludon-ex",
+        opp_archetype="baseline",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[decision],
+    )
+    shard = tmp_path / "protected-schema6.features"
+    with shard.open("wb") as handle:
+        pickle.dump(
+            {
+                "format": SHARD_FORMAT,
+                "format_version": SHARD_FORMAT_VERSION,
+                "dataset_schema": 6,
+                "feature_schema": features.FEATURE_SCHEMA_VERSION,
+            },
+            handle,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
+        pickle.dump(sequence, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump(
+            {
+                "format": SHARD_FORMAT + "-footer",
+                "stats": {"records_kept": 1},
+            },
+            handle,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
+
+    loaded = list(iter_feature_shard(shard))
+    loaded_stage = loaded[0].decisions[0].policy_stages[0]
+    assert loaded_stage.select_context == -1
+    assert loaded_stage.selected_is_stop is False
 
 
 def _card(card_id: int, seat: int) -> dict[str, int]:
@@ -413,6 +503,7 @@ def test_exact_transition_targets_are_masked_and_alakazam_acting_seat_only() -> 
             "lethal_threat",
             "prize_race",
             "current_deck_guide",
+            "combo_state",
         }
 
     # Exact private zones are target-only.  The policy/value observation stays

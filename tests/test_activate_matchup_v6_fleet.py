@@ -15,6 +15,14 @@ def _config(tmp_path: Path) -> dict[str, object]:
     registry = source / "state" / "matchup_adapter_roster.json"
     registry.parent.mkdir()
     registry.write_text("{}\n", encoding="utf-8")
+    for relative in (
+        "containers/worker/Dockerfile",
+        "host.yml",
+        "production.yml",
+    ):
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# test\n", encoding="utf-8")
     return {
         "source_root": str(source),
         "registry": str(registry),
@@ -33,7 +41,10 @@ def _config(tmp_path: Path) -> dict[str, object]:
             "image": "poke-bot:v6",
             "build_context": "/srv/poke-bot-agent",
             "dockerfile": "/srv/poke-bot-agent/containers/worker/Dockerfile",
-            "compose_files": ["/srv/host.yml", "/srv/production.yml"],
+            "compose_files": [
+                "/srv/poke-bot-agent/host.yml",
+                "/srv/poke-bot-agent/production.yml",
+            ],
             "endpoint": "192.168.1.143:8765",
             "expected_workers": 36,
             "expected_leaves": 4,
@@ -130,6 +141,12 @@ def test_activation_uses_relative_rsync_and_managed_services(
     assert elmo_rsync[-1] == "elmo:/srv/poke-bot-agent/"
     assert elmo_rsync_cwd == source.resolve()
     assert "state/matchup_adapter_roster.json" in elmo_rsync
+    elmo_deployment_rsync, deployment_cwd = commands[2]
+    assert "--rsync-path=sudo -n rsync" in elmo_deployment_rsync
+    assert "containers/worker/Dockerfile" in elmo_deployment_rsync
+    assert "host.yml" in elmo_deployment_rsync
+    assert "production.yml" in elmo_deployment_rsync
+    assert deployment_cwd == source.resolve()
     assert any(
         "launchctl" in " ".join(command) for command, _cwd in commands
     )
@@ -139,7 +156,16 @@ def test_activation_uses_relative_rsync_and_managed_services(
         for command, _cwd in commands
     )
     assert any(
-        command[:5] == ["ssh", "-o", "BatchMode=yes", "elmo", "sudo"]
+        command[:8] == [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "elmo",
+            "sudo",
+            "-n",
+            "env",
+            "POKEBOT_ELMO_IMAGE=poke-bot:v6",
+        ]
         and "--force-recreate" in command
         for command, _cwd in commands
     )

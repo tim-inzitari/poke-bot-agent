@@ -161,6 +161,14 @@ def main(argv: list[str] | None = None) -> int:
         for row in valid
     )
     decisions = sum(int(row.get("n_decisions") or 0) for row in valid)
+    remote_requests = sum(
+        int(row.get("remote_leaf_requests") or 0) for row in valid
+    )
+
+    def _remote_mean(total_field: str) -> float:
+        return sum(float(row.get(total_field) or 0.0) for row in valid) / max(
+            remote_requests, 1
+        )
     game_fingerprints: dict[str, str] = {}
     game_summaries: dict[str, dict] = {}
     for row in valid:
@@ -208,6 +216,32 @@ def main(argv: list[str] | None = None) -> int:
         "decisions_per_s": decisions / max(elapsed, 1e-9),
         "trajectories_per_s": trajectories / max(elapsed, 1e-9),
         "mean_decisions_per_game": decisions / max(len(valid), 1),
+        "remote_leaf_requests": remote_requests,
+        "remote_inference_batch_mean": _remote_mean(
+            "remote_inference_batch_total"
+        ),
+        "remote_batch_occupancy_mean": _remote_mean(
+            "remote_batch_occupancy_total"
+        ),
+        "remote_coalesced_requests_mean": _remote_mean(
+            "remote_coalesced_requests_total"
+        ),
+        "remote_queue_wait_ms_mean": _remote_mean(
+            "remote_queue_wait_ms_total"
+        ),
+        "remote_server_inference_ms_mean": _remote_mean(
+            "remote_server_inference_ms_total"
+        ),
+        "remote_client_roundtrip_ms_mean": _remote_mean(
+            "remote_client_roundtrip_ms_total"
+        ),
+        "remote_request_queue_depth_max": max(
+            (
+                int(row.get("remote_request_queue_depth_max") or 0)
+                for row in valid
+            ),
+            default=0,
+        ),
         "usable_game_fraction": len(valid) / games,
         "errors": errors,
         "health_jobs_delta": int(after.get("jobs_completed") or 0)

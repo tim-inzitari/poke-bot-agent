@@ -14,6 +14,7 @@ import math
 import os
 import random
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
@@ -34,6 +35,12 @@ from .blackwell_heads import (
 )
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .device_corpus import DEFAULT_MIN_FREE_GIB, DeviceResidentBootstrapCorpus
+from .combo_state import (
+    COMBO_STATE_KEY,
+    VECTOR_WIDTH as COMBO_STATE_VECTOR_WIDTH,
+    combo_state_loss,
+    validate_combo_state_labels,
+)
 from .matchup_adapters import (
     ADAPTER_CHECKPOINT_FORMAT as MATCHUP_ADAPTER_V5_FORMAT,
 )
@@ -42,15 +49,18 @@ from .matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
 from .matchup_adapter_activation import (
     ActivationReceipt,
     adapter_training_ticket,
-    training_route_for_decision,
+    training_routes_for_sequence,
     validate_adapter_training_authorization,
 )
 from .model import (
+    COMBO_STATE_HEAD_NAME,
     DECISION_FUSION_KEY_PREFIX,
     DECISION_FUSION_SCHEMA,
+    DECISION_FUSION_V2_SCHEMA,
     EXPANDED_HEAD_KEY_PREFIXES,
     EXPANDED_HEAD_NAMES,
     EXPANDED_HEAD_SCHEMA,
+    SETUP_BOARD_OUTCOME_HEAD_NAME,
     TemporalCabtTransformer,
     build_model,
 )
@@ -83,6 +93,7 @@ GUIDE_TRAINING_MODES = frozenset(
     {GUIDE_TRAINING_MODE_LEGACY, GUIDE_TRAINING_MODE_STRATEGIC}
 )
 SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT = 0.025
+COMBO_STATE_BASE_LOSS_WEIGHT = 0.025
 
 
 @dataclass
@@ -112,6 +123,9 @@ class TrainConfig:
     setup_board_outcome_loss_weight: float = (
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     )
+    #: Slowking-only observed causal combo targets. Non-Slowking runs leave
+    #: this zero, preserving their forward path and optimizer exactly.
+    combo_state_loss_weight: float = 0.0
     #: Checksum-gated future curriculum artifacts, recorded in checkpoints.
     current_deck_guide_curriculum_spec: str = ""
     current_deck_guide_head_role_map: str = ""
@@ -139,6 +153,21 @@ class TrainConfig:
     #: AWR update. This makes the documented "stale critic" baseline real
     #: instead of allowing it to drift with batch order.
     awr_freeze_baseline: bool = False
+    #: Compute the frozen AWR baseline from V(s) only.  The optimized path
+    #: deliberately bypasses policy option decoding, decision fusion, guide
+    #: scoring, belief/strategic heads, log-softmax, and AWR diagnostics.
+    awr_value_only_baseline: bool = True
+    #: Multi-game padded temporal packing remains separately gated because
+    #: different attention batch geometry may change the last FP32 bits.  The
+    #: value-only path is active independently; packing activates only after an
+    #: exact device-specific cache and AWR parity receipt.
+    awr_pack_temporal_baseline: bool = False
+    #: One-time activation gate: run the reference path on the same immutable
+    #: rows and reject the candidate unless every cache key and float matches.
+    awr_baseline_exact_parity_check: bool = False
+    #: Prepare at most one subsequent baseline batch on a CPU thread while the
+    #: current packed temporal batch is evaluated on the learner device.
+    awr_baseline_prefetch_batches: int = 1
     #: Subtract from policy loss: ``entropy_bonus * H(π)`` (pure_rl only).
     entropy_bonus: float = 0.01
     #: Shadow-study diagnostic: retain one epoch of scalar AWR weights so the
@@ -160,6 +189,9 @@ class TrainConfig:
     dormant_matchup_adapter_epochs: int = 0
     dormant_matchup_adapter_lr: float = 1e-4
     dormant_matchup_adapter_activation_receipt: str = ""
+    #: Adapter-only option decoding has a different peak-memory curve from the
+    #: ordinary learner.  Never inherit a large H10 learner cap blindly.
+    dormant_matchup_adapter_max_decisions_per_batch: int = 2048
 
     @classmethod
     def pure_rl_defaults(cls, **overrides: Any) -> "TrainConfig":
@@ -208,6 +240,7 @@ class BatchMetrics:
     alakazam_guide_loss: float = 0.0
     guide_strategic_curriculum_loss: float = 0.0
     setup_board_outcome_loss: float = 0.0
+    combo_state_loss: float = 0.0
     lethal_threat_loss: float = 0.0
     prize_race_loss: float = 0.0
     history_identity_loss: float = 0.0
@@ -229,6 +262,7 @@ class BatchMetrics:
     expanded_head_metrics: dict[str, Any] = field(default_factory=dict)
     guide_curriculum_head_metrics: dict[str, Any] = field(default_factory=dict)
     setup_board_outcome_metrics: dict[str, Any] = field(default_factory=dict)
+    combo_state_metrics: dict[str, Any] = field(default_factory=dict)
     # Backward-compatible pipeline signal consumed by pure_rl.aborts. It is
     # deliberately the raw mean absolute advantage, not a signed/whitened mean.
     mean_advantage: float = 0.0
@@ -626,8 +660,7 @@ def prepare_matchup_adapter_isolation_guard(
 
     active_routes: set[int] = set()
     for sequence in sequences:
-        for decision in sequence.decisions:
-            active_routes.add(training_route_for_decision(sequence, decision))
+        active_routes.update(training_routes_for_sequence(sequence))
     if not active_routes or any(
         route < 0 or route >= len(model.matchup_adapter_bank.experts)
         for route in active_routes
@@ -975,9 +1008,17 @@ def _strategic_curriculum_contract_record(
         "setup_board_outcome_base_loss_weight": float(
             cfg.setup_board_outcome_loss_weight
         ),
+        "combo_state_base_loss_weight": float(
+            cfg.combo_state_loss_weight
+        ),
         "observed_target_heads": [
             *GUIDE_OUTCOME_BACKED_HEAD_IDS,
             "setup_board_outcome",
+            *(
+                ["combo_state"]
+                if float(cfg.combo_state_loss_weight) > 0.0
+                else []
+            ),
         ],
         "direct_policy_cross_entropy": False,
         "guide_preferred_action_consumed": False,
@@ -1012,12 +1053,16 @@ def _strategic_curriculum_training_record(
             "setup_board_outcome_weighted_loss": float(
                 value.setup_board_outcome_loss
             ),
+            "combo_state_weighted_loss": float(value.combo_state_loss),
             "guide_rows": int(value.n_alakazam_guide_rows),
             "head_metrics": copy.deepcopy(
                 value.guide_curriculum_head_metrics
             ),
             "setup_metrics": copy.deepcopy(
                 value.setup_board_outcome_metrics
+            ),
+            "combo_state_metrics": copy.deepcopy(
+                value.combo_state_metrics
             ),
         }
 
@@ -1082,6 +1127,47 @@ def _setup_board_targets_from_aux(
         torch.tensor(resource_masks, device=device, dtype=torch.bool),
         torch.tensor(outcome_targets, device=device, dtype=torch.long),
         torch.tensor(outcome_masks, device=device, dtype=torch.bool),
+    )
+
+
+def _combo_state_targets_from_aux(
+    decision_aux: Sequence[dict[str, Any]],
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, ...]:
+    """Materialize strict Slowking targets; absent decisions remain masked."""
+
+    top_targets: list[int] = []
+    top_masks: list[bool] = []
+    seek_targets: list[int] = []
+    seek_masks: list[bool] = []
+    vector_targets: list[list[float]] = []
+    vector_masks: list[list[bool]] = []
+    for aux in decision_aux:
+        raw = dict(aux or {}).get(COMBO_STATE_KEY)
+        if raw is None:
+            top_targets.append(0)
+            top_masks.append(False)
+            seek_targets.append(0)
+            seek_masks.append(False)
+            vector_targets.append([0.0] * COMBO_STATE_VECTOR_WIDTH)
+            vector_masks.append([False] * COMBO_STATE_VECTOR_WIDTH)
+            continue
+        clean = validate_combo_state_labels(raw)
+        top_targets.append(int(clean["top_deck_target"]))
+        top_masks.append(bool(clean["top_deck_mask"]))
+        seek_targets.append(int(clean["seek_source_target"]))
+        seek_masks.append(bool(clean["seek_source_mask"]))
+        vector_targets.append(list(clean["vector_target"]))
+        vector_masks.append(list(clean["vector_mask"]))
+    return (
+        torch.tensor(top_targets, device=device, dtype=torch.long),
+        torch.tensor(top_masks, device=device, dtype=torch.bool),
+        torch.tensor(seek_targets, device=device, dtype=torch.long),
+        torch.tensor(seek_masks, device=device, dtype=torch.bool),
+        torch.tensor(vector_targets, device=device, dtype=dtype),
+        torch.tensor(vector_masks, device=device, dtype=torch.bool),
     )
 
 
@@ -1165,6 +1251,7 @@ def sequence_losses(
     setup_board_outcome_loss_weight: float = (
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     ),
+    combo_state_loss_weight: float = 0.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
@@ -1183,6 +1270,7 @@ def sequence_losses(
         alakazam_guide_weight=alakazam_guide_weight,
         current_deck_guide_training_mode=current_deck_guide_training_mode,
         setup_board_outcome_loss_weight=setup_board_outcome_loss_weight,
+        combo_state_loss_weight=combo_state_loss_weight,
         lethal_threat_weight=lethal_threat_weight,
         prize_race_weight=prize_race_weight,
         expanded_head_weights=expanded_head_weights,
@@ -1205,6 +1293,7 @@ def batch_losses(
     setup_board_outcome_loss_weight: float = (
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     ),
+    combo_state_loss_weight: float = 0.0,
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
@@ -1271,9 +1360,21 @@ def batch_losses(
                 "strategic guide curriculum cannot run in adapter-only fitting"
             )
     expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
+    if not math.isfinite(float(combo_state_loss_weight)) or float(
+        combo_state_loss_weight
+    ) < 0.0:
+        raise ValueError("combo-state loss weight must be finite and nonnegative")
+    use_combo_state = float(combo_state_loss_weight) > 0.0
+    if use_combo_state and not bool(
+        getattr(model, "combo_state_head_enabled", False)
+    ):
+        raise ValueError(
+            "nonzero combo-state loss requires a combo-state-head checkpoint"
+        )
     use_expanded_heads = strategic_curriculum or any(
         weight > 0.0 for weight in expanded_weights.values()
     )
+    use_option_aux_heads = use_expanded_heads or use_combo_state
     if use_expanded_heads and not bool(
         getattr(model, "expanded_heads_enabled", False)
     ):
@@ -1359,6 +1460,11 @@ def batch_losses(
     use_guide_confidence = bool(strategic_curriculum or use_legacy_guide)
     spatial_offset = 0
     for game_index, g in enumerate(games):
+        game_matchup_routes = (
+            training_routes_for_sequence(g)
+            if matchup_adapter_training
+            else ()
+        )
         val = float(g.value)
         pt = g.policy_targets
         factorized_pt = g.factorized_policy_targets
@@ -1393,7 +1499,7 @@ def batch_losses(
         last_valid_row: Optional[int] = None
         for t, d in enumerate(g.decisions):
             matchup_route = (
-                training_route_for_decision(g, d)
+                game_matchup_routes[t]
                 if matchup_adapter_training
                 else UNKNOWN_ROUTE
             )
@@ -1510,15 +1616,19 @@ def batch_losses(
         current_spatial,
         policy_value_state,
         n_options=valid_n,
-        return_hidden=use_expanded_heads,
+        return_hidden=use_option_aux_heads,
         decision_fusion_state_vec=state_all,
     )
-    if use_expanded_heads:
+    if use_option_aux_heads:
         if not isinstance(decoded, tuple):
-            raise AssertionError("expanded option decoder did not return hidden states")
+            raise AssertionError("option auxiliary decoder did not return hidden states")
         logits_all, option_hidden = decoded
-        expanded_option_outputs = model.expanded_option_logits(option_hidden)
-        expanded_state_outputs = model.expanded_state_logits(state_all)
+        if use_expanded_heads:
+            expanded_option_outputs = model.expanded_option_logits(option_hidden)
+            expanded_state_outputs = model.expanded_state_logits(state_all)
+        else:
+            expanded_option_outputs = {}
+            expanded_state_outputs = {}
     else:
         if isinstance(decoded, tuple):
             raise AssertionError("legacy option decoder unexpectedly returned a tuple")
@@ -1830,6 +1940,8 @@ def batch_losses(
     guide_curriculum_metrics: dict[str, Any] = {}
     setup_loss = total.sum() * 0.0
     setup_metrics: dict[str, Any] = {}
+    combo_loss = total.sum() * 0.0
+    combo_metrics: dict[str, Any] = {}
     if use_expanded_heads:
         expanded_loss, expanded_metric_record = expanded_strategic_losses(
             option_outputs=expanded_option_outputs,
@@ -1924,6 +2036,44 @@ def batch_losses(
             guide_curriculum_metric_record.as_dict()
         )
         setup_metrics = setup_metric_record.as_dict()
+    if use_combo_state:
+        (
+            combo_top_target,
+            combo_top_mask,
+            combo_seek_target,
+            combo_seek_mask,
+            combo_vector_target,
+            combo_vector_mask,
+        ) = _combo_state_targets_from_aux(
+            decision_aux,
+            device=device,
+            dtype=option_hidden.dtype,
+        )
+        combo_guide_confidence = torch.tensor(
+            guide_confidence_rows
+            if len(guide_confidence_rows) == k
+            else [0.0] * k,
+            device=device,
+            dtype=option_hidden.dtype,
+        )
+        combo_loss, combo_metric_record = combo_state_loss(
+            predictions=model.combo_state_logits(option_hidden),
+            selected_indices=target_idx,
+            option_counts=torch.as_tensor(valid_n, device=device, dtype=torch.long),
+            top_deck_targets=combo_top_target,
+            top_deck_masks=combo_top_mask,
+            seek_source_targets=combo_seek_target,
+            seek_source_masks=combo_seek_mask,
+            vector_targets=combo_vector_target,
+            vector_masks=combo_vector_mask,
+            guide_confidences=combo_guide_confidence,
+            base_loss_weight=float(combo_state_loss_weight),
+            guide_loss_weight=(
+                float(alakazam_guide_weight) if strategic_curriculum else 0.0
+            ),
+        )
+        total = total + combo_loss
+        combo_metrics = combo_metric_record.as_dict()
     preds = logits_all.argmax(dim=1)
     if prediction_sink is not None:
         prediction_sink.extend(int(x) for x in preds.detach().cpu().tolist())
@@ -1937,6 +2087,7 @@ def batch_losses(
             guide_strategic_curriculum_loss.detach().item()
         ),
         setup_board_outcome_loss=float(setup_loss.detach().item()),
+        combo_state_loss=float(combo_loss.detach().item()),
         opp_hand_loss=float(opp_hand_loss.detach().item()),
         opp_remainder_loss=float(opp_remainder_loss.detach().item()),
         lethal_threat_loss=float(lethal_threat_loss.detach().item()),
@@ -1963,6 +2114,7 @@ def batch_losses(
         expanded_head_metrics=expanded_metrics,
         guide_curriculum_head_metrics=guide_curriculum_metrics,
         setup_board_outcome_metrics=setup_metrics,
+        combo_state_metrics=combo_metrics,
         mean_advantage=awr_mean_adv,
         raw_advantage_mean=raw_adv_mean,
         raw_advantage_std=raw_adv_std,
@@ -2094,6 +2246,7 @@ def device_temporal_batch_losses(
     setup_board_outcome_loss_weight: float = (
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     ),
+    combo_state_loss_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
     matchup_adapter_route: int | None = None,
     teacher_policy_targets: Optional[torch.Tensor] = None,
@@ -2120,9 +2273,24 @@ def device_temporal_batch_losses(
             setup_board_outcome_loss_weight=setup_board_outcome_loss_weight,
         )
     expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
+    if not math.isfinite(float(combo_state_loss_weight)) or float(
+        combo_state_loss_weight
+    ) < 0.0:
+        raise ValueError("resident combo-state weight must be finite and nonnegative")
+    use_combo_state = float(combo_state_loss_weight) > 0.0
+    if use_combo_state:
+        if not bool(getattr(model, "combo_state_head_enabled", False)):
+            raise ValueError(
+                "nonzero resident combo-state loss requires a combo-state head"
+            )
+        if not corpus.has_combo_state_targets:
+            raise ValueError(
+                "nonzero resident combo-state loss requires packed combo targets"
+            )
     use_expanded_heads = strategic_curriculum or any(
         weight > 0.0 for weight in expanded_weights.values()
     )
+    use_option_aux_heads = use_expanded_heads or use_combo_state
     if use_expanded_heads:
         if not bool(getattr(model, "expanded_heads_enabled", False)):
             raise ValueError(
@@ -2259,21 +2427,22 @@ def device_temporal_batch_losses(
         policy_value_state,
         n_options=counts,
         batch_size=samples,
-        return_hidden=use_expanded_heads,
+        return_hidden=use_option_aux_heads,
         decision_fusion_state_vec=state,
     )
     expanded_option_outputs: dict[str, torch.Tensor] = {}
     expanded_state_outputs: dict[str, torch.Tensor] = {}
-    if use_expanded_heads:
+    if use_option_aux_heads:
         if not isinstance(decoded, tuple):
             raise AssertionError(
-                "resident expanded option decoder did not return hidden states"
+                "resident option auxiliary decoder did not return hidden states"
             )
         logits, option_hidden = decoded
-        expanded_option_outputs = model.expanded_option_logits(option_hidden)
-        # State targets are decision-aligned, so they are evaluated exactly
-        # once per real decision rather than once per factorized policy stage.
-        expanded_state_outputs = model.expanded_state_logits(state_by_decision)
+        if use_expanded_heads:
+            expanded_option_outputs = model.expanded_option_logits(option_hidden)
+            # State targets are decision-aligned, so they are evaluated exactly
+            # once per real decision rather than once per factorized policy stage.
+            expanded_state_outputs = model.expanded_state_logits(state_by_decision)
     else:
         if isinstance(decoded, tuple):
             raise AssertionError(
@@ -2356,7 +2525,7 @@ def device_temporal_batch_losses(
             alakazam_guide_weight,
         )
     )
-    if not auxiliary_targets_enabled and not use_expanded_heads:
+    if not auxiliary_targets_enabled and not use_expanded_heads and not use_combo_state:
         # Retain the historical policy/value-only path exactly, including RNG
         # consumption (``aux_head`` contains dropout on nonzero-dropout models).
         return total, metrics
@@ -2524,6 +2693,63 @@ def device_temporal_batch_losses(
             guide_curriculum_metric_record.as_dict()
         )
         metrics.setup_board_outcome_metrics = setup_metric_record.as_dict()
+        metrics.total_loss = float(total.detach().item())
+    if use_combo_state:
+        combo_fields = (
+            corpus.combo_top_deck_target,
+            corpus.combo_top_deck_mask,
+            corpus.combo_seek_source_target,
+            corpus.combo_seek_source_mask,
+            corpus.combo_vector_target,
+            corpus.combo_vector_mask,
+        )
+        if any(value is None for value in combo_fields):
+            raise ValueError("resident combo-state target tensors are incomplete")
+        assert corpus.combo_top_deck_target is not None
+        assert corpus.combo_top_deck_mask is not None
+        assert corpus.combo_seek_source_target is not None
+        assert corpus.combo_seek_source_mask is not None
+        assert corpus.combo_vector_target is not None
+        assert corpus.combo_vector_mask is not None
+        if corpus.guide_confidence is None:
+            combo_guide_confidence = torch.zeros(
+                samples, device=corpus.device, dtype=option_hidden.dtype
+            )
+        else:
+            combo_guide_confidence = corpus.guide_confidence.index_select(
+                0, sample_ids
+            ).to(dtype=option_hidden.dtype)
+        combo_loss, combo_metric_record = combo_state_loss(
+            predictions=model.combo_state_logits(option_hidden),
+            selected_indices=target_idx,
+            option_counts=counts,
+            top_deck_targets=corpus.combo_top_deck_target.index_select(
+                0, sample_ids
+            ),
+            top_deck_masks=corpus.combo_top_deck_mask.index_select(
+                0, sample_ids
+            ),
+            seek_source_targets=corpus.combo_seek_source_target.index_select(
+                0, sample_ids
+            ),
+            seek_source_masks=corpus.combo_seek_source_mask.index_select(
+                0, sample_ids
+            ),
+            vector_targets=corpus.combo_vector_target.index_select(
+                0, sample_ids
+            ).to(dtype=option_hidden.dtype),
+            vector_masks=corpus.combo_vector_mask.index_select(
+                0, sample_ids
+            ),
+            guide_confidences=combo_guide_confidence,
+            base_loss_weight=float(combo_state_loss_weight),
+            guide_loss_weight=(
+                float(alakazam_guide_weight) if strategic_curriculum else 0.0
+            ),
+        )
+        total = total + combo_loss
+        metrics.combo_state_loss = float(combo_loss.detach().item())
+        metrics.combo_state_metrics = combo_metric_record.as_dict()
         metrics.total_loss = float(total.detach().item())
     if not auxiliary_targets_enabled:
         return total, metrics
@@ -3319,6 +3545,32 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
                 for name in ("setup_active", "setup_bench")
             },
         }
+    combo_parts = [
+        dict(part.combo_state_metrics)
+        for part in parts
+        if part.combo_state_metrics
+    ]
+    combo_metrics: dict[str, Any] = {}
+    if combo_parts:
+        combo_metrics = {
+            "total_rows": sum(int(row.get("total_rows", 0)) for row in combo_parts),
+            "eligible_rows": sum(int(row.get("eligible_rows", 0)) for row in combo_parts),
+            "top_deck_labels": sum(int(row.get("top_deck_labels", 0)) for row in combo_parts),
+            "seek_source_labels": sum(int(row.get("seek_source_labels", 0)) for row in combo_parts),
+            "guide_rows": sum(int(row.get("guide_rows", 0)) for row in combo_parts),
+            "vector_labels": {
+                name: sum(
+                    int(dict(row.get("vector_labels") or {}).get(name, 0))
+                    for row in combo_parts
+                )
+                for name in (
+                    "copied_attack_legality",
+                    "visible_combo_piece_availability",
+                    "energy_route_readiness",
+                    "bench_continuity",
+                )
+            },
+        }
 
     return BatchMetrics(
         policy_loss=wavg("policy_loss"),
@@ -3330,6 +3582,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
             "guide_strategic_curriculum_loss"
         ),
         setup_board_outcome_loss=wavg("setup_board_outcome_loss"),
+        combo_state_loss=wavg("combo_state_loss"),
         opp_hand_loss=wavg("opp_hand_loss"),
         opp_remainder_loss=wavg("opp_remainder_loss"),
         lethal_threat_loss=wavg("lethal_threat_loss"),
@@ -3353,6 +3606,7 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
         expanded_head_metrics=expanded_metrics,
         guide_curriculum_head_metrics=guide_curriculum_metrics,
         setup_board_outcome_metrics=setup_metrics,
+        combo_state_metrics=combo_metrics,
         mean_advantage=wavg("mean_advantage"),
         raw_advantage_mean=raw_mean,
         raw_advantage_std=math.sqrt(max(raw_mean_sq - raw_mean * raw_mean, 0.0)),
@@ -3525,13 +3779,11 @@ def split_matchup_adapter_sequences(
     for sequence in sequences:
         if not sequence.decisions:
             continue
-        route = training_route_for_decision(sequence, sequence.decisions[0])
+        sequence_routes = training_routes_for_sequence(sequence)
+        route = sequence_routes[0]
         if route == UNKNOWN_ROUTE:
             raise RuntimeError("adapter split received an unknown oracle route")
-        if any(
-            training_route_for_decision(sequence, decision) != route
-            for decision in sequence.decisions
-        ):
+        if any(candidate != route for candidate in sequence_routes):
             raise RuntimeError("one adapter sequence contains multiple oracle routes")
         episode_id = str(sequence.episode_id)
         prior = episode_route.setdefault(episode_id, route)
@@ -3727,6 +3979,7 @@ def evaluate(
                 setup_board_outcome_loss_weight=(
                     cfg.setup_board_outcome_loss_weight
                 ),
+                combo_state_loss_weight=cfg.combo_state_loss_weight,
                 expanded_head_weights=cfg.expanded_head_loss_weights,
                 pure_rl=bool(cfg.pure_rl),
                 awr_beta=float(cfg.awr_beta),
@@ -3804,6 +4057,7 @@ def evaluate_device_corpus(
                     setup_board_outcome_loss_weight=(
                         cfg.setup_board_outcome_loss_weight
                     ),
+                    combo_state_loss_weight=cfg.combo_state_loss_weight,
                     expanded_head_weights=cfg.expanded_head_loss_weights,
                     teacher_policy_targets=teacher_policy_targets,
                     teacher_policy_weight=teacher_policy_weight,
@@ -4036,6 +4290,7 @@ def _fit_device_batch_size(
                             setup_board_outcome_loss_weight=(
                                 cfg.setup_board_outcome_loss_weight
                             ),
+                            combo_state_loss_weight=cfg.combo_state_loss_weight,
                             expanded_head_weights=(
                                 cfg.expanded_head_loss_weights
                             ),
@@ -4659,6 +4914,7 @@ def train_bootstrap(
                             setup_board_outcome_loss_weight=(
                                 cfg.setup_board_outcome_loss_weight
                             ),
+                            combo_state_loss_weight=cfg.combo_state_loss_weight,
                             expanded_head_weights=(
                                 cfg.expanded_head_loss_weights
                             ),
@@ -4910,6 +5166,7 @@ def supervised_rehearsal_step(
     setup_board_outcome_loss_weight: float = (
         SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT
     ),
+    combo_state_loss_weight: float = 0.0,
     current_deck_guide_curriculum_spec: str = "",
     current_deck_guide_head_role_map: str = "",
     current_deck_guide_curriculum_validation_receipt: str = "",
@@ -4922,6 +5179,7 @@ def supervised_rehearsal_step(
     teacher_policy_weight: float = 0.0,
     teacher_policy_target_digest: str = "",
     teacher_policy_checkpoint_digests: Sequence[str] = (),
+    training_seat_split_receipt: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
 
@@ -4948,6 +5206,7 @@ def supervised_rehearsal_step(
         ("lethal_threat", lethal_threat_loss_weight),
         ("prize_race", prize_race_loss_weight),
         ("alakazam_guide", alakazam_guide_loss_weight),
+        ("combo_state", combo_state_loss_weight),
     ):
         if float(weight) < 0.0:
             raise ValueError(f"rehearsal {name} loss weight cannot be negative")
@@ -5040,6 +5299,7 @@ def supervised_rehearsal_step(
         setup_board_outcome_loss_weight=float(
             setup_board_outcome_loss_weight
         ),
+        combo_state_loss_weight=float(combo_state_loss_weight),
         current_deck_guide_curriculum_spec=str(
             current_deck_guide_curriculum_spec
         ),
@@ -5234,6 +5494,7 @@ def supervised_rehearsal_step(
                         setup_board_outcome_loss_weight=(
                             cfg.setup_board_outcome_loss_weight
                         ),
+                        combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         teacher_policy_targets=teacher_policy_targets,
                         teacher_policy_weight=float(teacher_policy_weight),
@@ -5512,6 +5773,11 @@ def supervised_rehearsal_step(
         "decision_context": str(model.decision_context),
         "resident_temporal_layout": bool(corpus.has_temporal_layout),
         "corpus_split_seed": int(corpus_split_seed),
+        **(
+            {"training_seat_split_receipt": dict(training_seat_split_receipt)}
+            if training_seat_split_receipt
+            else {}
+        ),
         "loss_weights": {
             "value": float(cfg.value_loss_weight),
             "archetype": float(cfg.aux_loss_weight),
@@ -5520,6 +5786,7 @@ def supervised_rehearsal_step(
             "lethal_threat": float(cfg.lethal_threat_loss_weight),
             "prize_race": float(cfg.prize_race_loss_weight),
             "alakazam_guide": float(cfg.alakazam_guide_loss_weight),
+            "combo_state": float(cfg.combo_state_loss_weight),
             "expanded_strategic": dict(canonical_expanded_weights),
         },
         **(
@@ -5639,8 +5906,293 @@ def process_with_oom_splitting(
     return completed
 
 
+@dataclass(frozen=True)
+class _AwrValueGamePlan:
+    """CPU-prepared row identity for one value-only temporal sequence."""
+
+    sequence: GameSequence
+    row_keys_by_decision: tuple[tuple[tuple[int, int, int], ...], ...]
+
+
+def _plan_awr_value_batch(
+    sequences: Sequence[GameSequence],
+) -> list[_AwrValueGamePlan]:
+    """Validate pure-RL stages and prepare exact baseline cache keys on CPU."""
+
+    plans: list[_AwrValueGamePlan] = []
+    for game in sequences:
+        if not game.decisions:
+            continue
+        policy_targets = game.policy_targets
+        factorized_targets = game.factorized_policy_targets
+        rows_by_decision: list[tuple[tuple[int, int, int], ...]] = []
+        for decision_index, decision in enumerate(game.decisions):
+            stages = decision.policy_stages or [
+                PolicyStage(
+                    options=decision.options,
+                    action_combos=decision.action_combos,
+                    target_index=decision.action_combo_index,
+                )
+            ]
+            stage_targets = (
+                factorized_targets[decision_index]
+                if factorized_targets is not None
+                and decision_index < len(factorized_targets)
+                and factorized_targets[decision_index] is not None
+                else None
+            )
+            keys: list[tuple[int, int, int]] = []
+            for stage_index, stage in enumerate(stages):
+                option_count = stage.options.num_words
+                if option_count <= 0:
+                    continue
+                soft_target = False
+                if stage_targets is not None and stage_index < len(stage_targets):
+                    target = dict(stage_targets[stage_index] or {})
+                    recorded_combos = [
+                        list(combo) for combo in (target.get("action_combos") or [])
+                    ]
+                    if recorded_combos and recorded_combos != stage.action_combos:
+                        raise ValueError(
+                            "factorized target/action candidate ordering mismatch"
+                        )
+                    policy = list(target.get("policy") or [])
+                    if len(policy) != option_count or sum(policy) <= 0:
+                        raise ValueError("invalid factorized soft policy target")
+                    selected_index = int(
+                        target.get("selected_index", stage.target_index)
+                    )
+                    soft_target = True
+                elif (
+                    not decision.policy_stages
+                    and policy_targets is not None
+                    and decision_index < len(policy_targets)
+                    and policy_targets[decision_index] is not None
+                ):
+                    policy = list(policy_targets[decision_index][:option_count])
+                    if len(policy) != option_count or sum(policy) <= 0:
+                        continue
+                    selected_index = int(
+                        max(range(option_count), key=lambda index: policy[index])
+                    )
+                    soft_target = True
+                else:
+                    selected_index = int(stage.target_index)
+                if selected_index < 0 or selected_index >= option_count:
+                    continue
+                if soft_target:
+                    raise ValueError(
+                        "PURE_RL=1 forbids soft factorized_policy_targets as CE/"
+                        "behavior-clone training targets; store selected_index only"
+                    )
+                keys.append((id(game), decision_index, stage_index))
+            rows_by_decision.append(tuple(keys))
+        plans.append(
+            _AwrValueGamePlan(
+                sequence=game,
+                row_keys_by_decision=tuple(rows_by_decision),
+            )
+        )
+    return plans
+
+
+def _length_bucket(length: int) -> int:
+    """Return a power-of-two temporal bucket without changing sequence order."""
+
+    return 1 << max(0, int(length - 1).bit_length())
+
+
 @torch.no_grad()
-def _precompute_awr_baseline_cache(
+def _capture_value_only_awr_plans(
+    model: TemporalCabtTransformer,
+    plans: Sequence[_AwrValueGamePlan],
+    *,
+    pack_temporal_games: bool,
+) -> dict[tuple[int, int, int], float]:
+    """Evaluate only V(s) for length-bucketed, padded temporal game batches."""
+
+    device = next(model.parameters()).device
+    all_boards = [
+        decision.board
+        for plan in plans
+        for decision in plan.sequence.decisions
+    ]
+    spatial_all = model.encode_board(all_boards)
+    all_lengths = [len(plan.sequence.decisions) for plan in plans]
+    spatial_by_plan = {
+        id(plan): spatial
+        for plan, spatial in zip(plans, spatial_all.split(all_lengths))
+    }
+    buckets: dict[int, list[_AwrValueGamePlan]] = {}
+    if pack_temporal_games:
+        for plan in plans:
+            buckets.setdefault(
+                _length_bucket(len(plan.sequence.decisions)), []
+            ).append(plan)
+    else:
+        # One stable bucket per game preserves the reference temporal kernel
+        # and therefore the exact frozen values while still bypassing every
+        # policy/guide/auxiliary computation.
+        buckets = {index: [plan] for index, plan in enumerate(plans)}
+
+    states_by_plan: dict[int, torch.Tensor] = {}
+    for bucket_plans in buckets.values():
+        games = [plan.sequence for plan in bucket_plans]
+        lengths = [len(game.decisions) for game in games]
+        bucket_spatial = [spatial_by_plan[id(plan)] for plan in bucket_plans]
+        spatial_all = torch.cat(bucket_spatial, dim=0)
+
+        if model.decision_context == "history":
+            previous_actions = [
+                action
+                for game in games
+                for action in (
+                    [None]
+                    + [
+                        decision.action_token
+                        for decision in game.decisions[:-1]
+                    ]
+                )
+            ]
+            cls_all = model.history_tokens(spatial_all, previous_actions)
+            cls_by_game = list(cls_all.split(lengths))
+            padded_cls = pad_sequence(cls_by_game, batch_first=True)
+            length_tensor = torch.tensor(lengths, device=device, dtype=torch.long)
+            padding_mask = (
+                torch.arange(padded_cls.size(1), device=device).unsqueeze(0)
+                >= length_tensor.unsqueeze(1)
+            )
+            packed_states, _ = model.temporal_encode(
+                padded_cls,
+                append=False,
+                return_all=True,
+                key_padding_mask=padding_mask,
+            )
+            for row, (plan, length) in enumerate(zip(bucket_plans, lengths)):
+                states_by_plan[id(plan)] = packed_states[row, :length]
+        else:
+            cls = model.pool_cls(spatial_all).unsqueeze(1)
+            states, _ = model.temporal_encode(
+                cls, append=False, return_all=True
+            )
+            for plan, game_states in zip(
+                bucket_plans, states.squeeze(1).split(lengths)
+            ):
+                states_by_plan[id(plan)] = game_states
+
+    ordered_keys: list[tuple[int, int, int]] = []
+    ordered_states: list[torch.Tensor] = []
+    for plan in plans:
+        game_states = states_by_plan[id(plan)]
+        if game_states.size(0) != len(plan.row_keys_by_decision):
+            raise AssertionError("value-only temporal row count drift")
+        for state, decision_keys in zip(game_states, plan.row_keys_by_decision):
+            for key in decision_keys:
+                ordered_keys.append(key)
+                ordered_states.append(state)
+    if not ordered_states:
+        return {}
+    state_all = torch.stack(ordered_states, dim=0)
+    value_pred = (
+        torch.tanh(model.value_head(state_all))
+        .squeeze(-1)
+        .detach()
+        .float()
+        .cpu()
+        .tolist()
+    )
+    return {
+        key: float(value) for key, value in zip(ordered_keys, value_pred)
+    }
+
+
+@torch.no_grad()
+def _precompute_awr_baseline_cache_value_only(
+    model: TemporalCabtTransformer,
+    sequences: Sequence[GameSequence],
+    *,
+    cfg: TrainConfig,
+    desc: Optional[str] = None,
+) -> dict[tuple[int, int, int], float]:
+    """Snapshot frozen V(s) with packed temporal inference and bounded prefetch."""
+
+    cache: dict[tuple[int, int, int], float] = {}
+    if not sequences:
+        return cache
+    if int(cfg.awr_baseline_prefetch_batches) not in {0, 1}:
+        raise ValueError("AWR baseline prefetch must be bounded to zero or one batch")
+
+    was_training = model.training
+    model.eval()
+    device = next(model.parameters()).device
+    use_amp = bool(cfg.amp and device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    batches = _iter_game_batches(
+        list(sequences),
+        cfg.games_per_batch,
+        cfg.max_decisions_per_batch,
+        shuffle=False,
+        seed=cfg.seed,
+        epoch=0,
+    )
+
+    def _evaluate(work: list[_AwrValueGamePlan]) -> dict[tuple[int, int, int], float]:
+        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+            return _capture_value_only_awr_plans(
+                model,
+                work,
+                pack_temporal_games=bool(cfg.awr_pack_temporal_baseline),
+            )
+
+    try:
+        visible = tqdm(total=len(batches), desc=desc, leave=False, unit="batch") if desc else None
+        if int(cfg.awr_baseline_prefetch_batches) == 1 and batches:
+            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="awr-prefetch") as pool:
+                future: Future[list[_AwrValueGamePlan]] = pool.submit(
+                    _plan_awr_value_batch, batches[0]
+                )
+                for index in range(len(batches)):
+                    plans = future.result()
+                    if index + 1 < len(batches):
+                        future = pool.submit(_plan_awr_value_batch, batches[index + 1])
+                    parts = process_with_oom_splitting(
+                        plans,
+                        _evaluate,
+                        on_split=(
+                            torch.cuda.empty_cache if device.type == "cuda" else None
+                        ),
+                    )
+                    for part in parts:
+                        cache.update(part)
+                    if visible is not None:
+                        visible.update(1)
+        else:
+            for batch in batches:
+                plans = _plan_awr_value_batch(batch)
+                parts = process_with_oom_splitting(
+                    plans,
+                    _evaluate,
+                    on_split=(
+                        torch.cuda.empty_cache if device.type == "cuda" else None
+                    ),
+                )
+                for part in parts:
+                    cache.update(part)
+                if visible is not None:
+                    visible.update(1)
+        if visible is not None:
+            visible.close()
+    finally:
+        model.train(was_training)
+    return cache
+
+
+@torch.no_grad()
+def _precompute_awr_baseline_cache_reference(
     model: TemporalCabtTransformer,
     sequences: Sequence[GameSequence],
     *,
@@ -5701,6 +6253,7 @@ def _precompute_awr_baseline_cache(
                         setup_board_outcome_loss_weight=(
                             cfg.setup_board_outcome_loss_weight
                         ),
+                        combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         pure_rl=True,
                         awr_beta=float(cfg.awr_beta),
@@ -5723,6 +6276,55 @@ def _precompute_awr_baseline_cache(
     finally:
         model.train(was_training)
     return cache
+
+
+def _precompute_awr_baseline_cache(
+    model: TemporalCabtTransformer,
+    sequences: Sequence[GameSequence],
+    *,
+    cfg: TrainConfig,
+    desc: Optional[str] = None,
+) -> dict[tuple[int, int, int], float]:
+    """Dispatch to the optimized value-only cache or the parity reference."""
+
+    if bool(cfg.awr_value_only_baseline):
+        optimized_started = time.perf_counter()
+        optimized = _precompute_awr_baseline_cache_value_only(
+            model, sequences, cfg=cfg, desc=desc
+        )
+        optimized_seconds = time.perf_counter() - optimized_started
+        if bool(cfg.awr_baseline_exact_parity_check):
+            reference_started = time.perf_counter()
+            reference = _precompute_awr_baseline_cache_reference(
+                model, sequences, cfg=cfg, desc=f"{desc or 'rl-prep baseline'} parity"
+            )
+            reference_seconds = time.perf_counter() - reference_started
+            if optimized.keys() != reference.keys():
+                raise RuntimeError(
+                    "value-only AWR baseline parity key set differs from reference"
+                )
+            mismatches = [
+                key for key in reference if optimized[key] != reference[key]
+            ]
+            if mismatches:
+                max_abs = max(
+                    abs(optimized[key] - reference[key]) for key in mismatches
+                )
+                raise RuntimeError(
+                    "value-only AWR baseline exact parity failed: "
+                    f"mismatches={len(mismatches)} max_abs={max_abs:.9g}"
+                )
+            print(
+                "[rl-prep] value-only exact parity passed "
+                f"rows={len(optimized)} optimized_s={optimized_seconds:.3f} "
+                f"reference_s={reference_seconds:.3f} "
+                f"speedup={reference_seconds / max(optimized_seconds, 1e-9):.3f}x",
+                flush=True,
+            )
+        return optimized
+    return _precompute_awr_baseline_cache_reference(
+        model, sequences, cfg=cfg, desc=desc
+    )
 
 
 @torch.no_grad()
@@ -5783,6 +6385,7 @@ def _policy_argmax_predictions(
                         setup_board_outcome_loss_weight=(
                             cfg.setup_board_outcome_loss_weight
                         ),
+                        combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
@@ -5872,8 +6475,7 @@ def _train_dormant_matchup_adapter_phase(
         ticket = adapter_training_ticket(sequence)
         # Validate every decision now, before optimizer construction, so a
         # malformed row cannot partially update an otherwise valid route.
-        for decision in sequence.decisions:
-            route = training_route_for_decision(sequence, decision)
+        for route in training_routes_for_sequence(sequence):
             if route != int(ticket.route):
                 raise RuntimeError("adapter ticket route changed within one sequence")
         routed.append(sequence)
@@ -5913,11 +6515,37 @@ def _train_dormant_matchup_adapter_phase(
     last_metrics = BatchMetrics()
     try:
         model.train()
+        if next(model.parameters()).device.type == "cuda":
+            torch.cuda.synchronize(next(model.parameters()).device)
+            reserved_before = torch.cuda.memory_reserved(
+                next(model.parameters()).device
+            )
+            gc.collect()
+            torch.cuda.empty_cache()
+            reserved_after = torch.cuda.memory_reserved(
+                next(model.parameters()).device
+            )
+            print(
+                "[rl-adapters] released CUDA cache before isolated fit "
+                f"reserved_before={reserved_before} "
+                f"reserved_after={reserved_after} "
+                "decisions_cap="
+                f"{int(cfg.dormant_matchup_adapter_max_decisions_per_batch)}",
+                flush=True,
+            )
         for epoch in range(epochs):
             batches = _iter_game_batches(
                 routed,
                 max(1, int(cfg.games_per_batch)),
-                max(1, int(cfg.max_decisions_per_batch)),
+                min(
+                    max(1, int(cfg.max_decisions_per_batch)),
+                    max(
+                        1,
+                        int(
+                            cfg.dormant_matchup_adapter_max_decisions_per_batch
+                        ),
+                    ),
+                ),
                 shuffle=True,
                 seed=int(seed) + 104729,
                 epoch=epoch,
@@ -5929,57 +6557,79 @@ def _train_dormant_matchup_adapter_phase(
                 unit="batch",
             )
             for batch in bar:
-                adapter_optimizer.zero_grad(set_to_none=True)
-                guard = prepare_matchup_adapter_isolation_guard(
-                    model, adapter_optimizer, batch
-                )
-                total, metrics = batch_losses(
-                    model,
+                def _fit_chunk(work: list[GameSequence]) -> BatchMetrics:
+                    adapter_optimizer.zero_grad(set_to_none=True)
+                    guard = prepare_matchup_adapter_isolation_guard(
+                        model, adapter_optimizer, work
+                    )
+                    total, metrics = batch_losses(
+                        model,
+                        work,
+                        value_weight=float(cfg.value_loss_weight),
+                        aux_weight=0.0,
+                        opp_hand_weight=0.0,
+                        opp_remainder_weight=0.0,
+                        alakazam_guide_weight=0.0,
+                        # Dormant adapters are an isolated residual fit. They
+                        # intentionally consume neither legacy guide imitation nor
+                        # the future strategic-head curriculum.
+                        current_deck_guide_training_mode=(
+                            GUIDE_TRAINING_MODE_LEGACY
+                        ),
+                        lethal_threat_weight=0.0,
+                        prize_race_weight=0.0,
+                        pure_rl=True,
+                        awr_beta=float(cfg.awr_beta),
+                        awr_weight_max=float(cfg.awr_weight_max),
+                        awr_normalize_advantages=bool(
+                            cfg.awr_normalize_advantages
+                        ),
+                        entropy_bonus=float(cfg.entropy_bonus),
+                        awr_baseline_cache=awr_baseline_cache,
+                        matchup_adapter_training=True,
+                    )
+                    if metrics.n_matchup_adapter_rows <= 0:
+                        raise RuntimeError(
+                            "ticketed adapter batch produced zero routed rows"
+                        )
+                    if not torch.isfinite(total):
+                        raise FloatingPointError(
+                            "non-finite dormant adapter loss"
+                        )
+                    total.backward()
+                    assert_matchup_adapter_isolation_guard(
+                        model, adapter_optimizer, guard, after_step=False
+                    )
+                    torch.nn.utils.clip_grad_norm_(
+                        model.matchup_adapter_bank.parameters(),
+                        float(cfg.grad_clip),
+                    )
+                    adapter_optimizer.step()
+                    assert_matchup_adapter_isolation_guard(
+                        model, adapter_optimizer, guard, after_step=True
+                    )
+                    assert_matchup_adapter_training_contract(
+                        model, optimizer=adapter_optimizer, base_state=base_state
+                    )
+                    return metrics
+
+                def _clear_adapter_oom() -> None:
+                    adapter_optimizer.zero_grad(set_to_none=True)
+                    if next(model.parameters()).device.type == "cuda":
+                        gc.collect()
+                        torch.cuda.empty_cache()
+
+                completed = process_with_oom_splitting(
                     batch,
-                    value_weight=float(cfg.value_loss_weight),
-                    aux_weight=0.0,
-                    opp_hand_weight=0.0,
-                    opp_remainder_weight=0.0,
-                    alakazam_guide_weight=0.0,
-                    # Dormant adapters are an isolated residual fit. They
-                    # intentionally consume neither legacy guide imitation nor
-                    # the future strategic-head curriculum.
-                    current_deck_guide_training_mode=(
-                        GUIDE_TRAINING_MODE_LEGACY
-                    ),
-                    lethal_threat_weight=0.0,
-                    prize_race_weight=0.0,
-                    pure_rl=True,
-                    awr_beta=float(cfg.awr_beta),
-                    awr_weight_max=float(cfg.awr_weight_max),
-                    awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
-                    entropy_bonus=float(cfg.entropy_bonus),
-                    awr_baseline_cache=awr_baseline_cache,
-                    matchup_adapter_training=True,
+                    _fit_chunk,
+                    on_split=_clear_adapter_oom,
                 )
-                if metrics.n_matchup_adapter_rows <= 0:
-                    raise RuntimeError("ticketed adapter batch produced zero routed rows")
-                if not torch.isfinite(total):
-                    raise FloatingPointError("non-finite dormant adapter loss")
-                total.backward()
-                assert_matchup_adapter_isolation_guard(
-                    model, adapter_optimizer, guard, after_step=False
-                )
-                torch.nn.utils.clip_grad_norm_(
-                    model.matchup_adapter_bank.parameters(), float(cfg.grad_clip)
-                )
-                adapter_optimizer.step()
-                assert_matchup_adapter_isolation_guard(
-                    model, adapter_optimizer, guard, after_step=True
-                )
-                assert_matchup_adapter_training_contract(
-                    model, optimizer=adapter_optimizer, base_state=base_state
-                )
-                step_count += 1
-                row_count += int(metrics.n_matchup_adapter_rows)
-                last_metrics = metrics
+                for metrics in completed:
+                    step_count += 1
+                    row_count += int(metrics.n_matchup_adapter_rows)
+                    last_metrics = metrics
                 bar.set_postfix(
-                    loss=f"{metrics.total_loss:.3f}",
+                    loss=f"{last_metrics.total_loss:.3f}",
                     rows=row_count,
                 )
     finally:
@@ -6106,6 +6756,10 @@ def rl_train_step(
         raise ValueError("dormant matchup adapter epochs cannot be negative")
     if float(cfg.dormant_matchup_adapter_lr) <= 0.0:
         raise ValueError("dormant matchup adapter learning rate must be positive")
+    if int(cfg.dormant_matchup_adapter_max_decisions_per_batch) <= 0:
+        raise ValueError(
+            "dormant matchup adapter decision cap must be positive"
+        )
     if device_resident and int(cfg.dormant_matchup_adapter_epochs) > 0:
         raise ValueError(
             "dormant matchup adapter training requires retained ticketed game "
@@ -6483,6 +7137,7 @@ def rl_train_step(
                         setup_board_outcome_loss_weight=(
                             cfg.setup_board_outcome_loss_weight
                         ),
+                        combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
@@ -7000,6 +7655,20 @@ def rl_train_step(
                 if resident_baseline is not None
                 else len(awr_baseline_cache or {})
             ),
+            "awr_baseline_implementation": (
+                "device_resident"
+                if resident_baseline is not None
+                else (
+                    "value_only_length_bucketed_padded_prefetch_v1"
+                    if bool(cfg.awr_pack_temporal_baseline)
+                    else "value_only_exact_temporal_prefetch_v1"
+                )
+                if awr_baseline_cache is not None
+                and bool(cfg.awr_value_only_baseline)
+                else "full_policy_reference"
+                if awr_baseline_cache is not None
+                else "detached_online"
+            ),
             "device_resident_rl": resident_corpus is not None,
             "device_resident_bytes": (
                 int(resident_corpus.input_bytes)
@@ -7085,6 +7754,20 @@ def rl_train_step(
             if awr_baseline_cache is not None
             else "detached_online"
         ),
+        "awr_baseline_implementation": (
+            "device_resident"
+            if resident_baseline is not None
+            else (
+                "value_only_length_bucketed_padded_prefetch_v1"
+                if bool(cfg.awr_pack_temporal_baseline)
+                else "value_only_exact_temporal_prefetch_v1"
+            )
+            if awr_baseline_cache is not None
+            and bool(cfg.awr_value_only_baseline)
+            else "full_policy_reference"
+            if awr_baseline_cache is not None
+            else "detached_online"
+        ),
         "device_resident_rl": resident_corpus is not None,
         "device_resident_bytes": (
             int(resident_corpus.input_bytes)
@@ -7163,11 +7846,14 @@ def load_model_from_checkpoint(
         # checkpoint mean explicit ``False`` even when this process was
         # launched with future-specialist environment defaults.
         snap.setdefault("setup_board_outcome_head_enabled", False)
+        snap.setdefault("combo_state_head_enabled", False)
         snap.setdefault("decision_fusion_dedicated_routes_enabled", False)
         snap.setdefault(
             "decision_fusion_dedicated_routes_runtime_enabled",
             False,
         )
+        snap.setdefault("h10_capacity_enabled", False)
+        snap.setdefault("h10_head_residual_width", 512)
         known = set(config.ModelConfig.__dataclass_fields__)  # type: ignore[attr-defined]
         unknown = sorted(set(snap) - known)
         if unknown:
@@ -7286,7 +7972,8 @@ def load_model_from_checkpoint(
         getattr(cfg, "decision_fusion_enabled", False)
         and fusion_migration.get("schema")
         == "poke_bot.causal_decision_fusion_migration/v1"
-        and fusion_migration.get("target_schema") == DECISION_FUSION_SCHEMA
+        and fusion_migration.get("target_schema")
+        in {DECISION_FUSION_SCHEMA, DECISION_FUSION_V2_SCHEMA}
         and fusion_migration.get("zero_safe_initialization") is True
         and (
             fusion_migration.get("runtime_enabled") is False
@@ -7298,26 +7985,104 @@ def load_model_from_checkpoint(
             )
         )
     )
+    explicit_fusion_v2_additive_migration = bool(
+        getattr(cfg, "decision_fusion_enabled", False)
+        and getattr(cfg, "decision_fusion_dedicated_routes_enabled", False)
+        and fusion_migration.get("schema")
+        == "poke_bot.causal_decision_fusion_v2_migration/v1"
+        and fusion_migration.get("source_schema") == DECISION_FUSION_SCHEMA
+        and fusion_migration.get("target_schema") == DECISION_FUSION_V2_SCHEMA
+        and fusion_migration.get("zero_safe_initialization") is True
+        and fusion_migration.get("runtime_enabled") is True
+        and fusion_migration.get("activation_scope")
+        == "isolated_specialist_bootstrap"
+        and fusion_migration.get("serving_eligible") is False
+        and fusion_migration.get("all_inherited_tensors_preserved") is True
+    )
     fusion_missing = [
         key for key in missing if is_allowed_missing_decision_fusion_key(key)
     ]
-    if fusion_missing and not explicit_fusion_migration:
+    if fusion_missing and not (
+        explicit_fusion_migration
+        or explicit_fusion_v2_additive_migration
+    ):
         raise RuntimeError(
             f"checkpoint architecture/state incompatibility for {path}: "
             "decision-fusion tensors are missing without an explicit "
             "zero-safe migration contract"
         )
     if fusion_missing:
-        expected_fusion = {
+        all_fusion = {
             key
             for key in model.state_dict()
             if is_allowed_missing_decision_fusion_key(key)
         }
+        dedicated_fusion = {
+            key
+            for key in all_fusion
+            if key.startswith("decision_fusion.dedicated_routes.")
+        }
+        expected_fusion = (
+            dedicated_fusion
+            if explicit_fusion_v2_additive_migration
+            else all_fusion
+        )
         if set(fusion_missing) != expected_fusion:
             raise RuntimeError(
                 f"checkpoint {path} has partially missing decision-fusion "
                 f"tensors: {sorted(set(fusion_missing) ^ expected_fusion)}"
             )
+        if explicit_fusion_v2_additive_migration:
+            expected_routes = sorted(
+                {
+                    key.split(".", 3)[2]
+                    for key in dedicated_fusion
+                }
+            )
+            if (
+                fusion_migration.get("new_dedicated_route_names")
+                != expected_routes
+            ):
+                raise RuntimeError(
+                    f"checkpoint {path} has an invalid fusion-v2 route "
+                    "migration inventory"
+                )
+            inherited_fusion = sorted(all_fusion - dedicated_fusion)
+            if (
+                fusion_migration.get("inherited_fusion_tensor_keys")
+                != inherited_fusion
+            ):
+                raise RuntimeError(
+                    f"checkpoint {path} has an invalid inherited fusion-v1 "
+                    "tensor inventory"
+                )
+    migrated_auxiliary_prefixes: tuple[str, ...] = ()
+    if explicit_fusion_migration or explicit_fusion_v2_additive_migration:
+        expected_auxiliary_names = []
+        if getattr(cfg, "setup_board_outcome_head_enabled", False):
+            expected_auxiliary_names.append(SETUP_BOARD_OUTCOME_HEAD_NAME)
+        if getattr(cfg, "combo_state_head_enabled", False):
+            expected_auxiliary_names.append(COMBO_STATE_HEAD_NAME)
+        if fusion_migration.get("new_auxiliary_head_names", []) != (
+            expected_auxiliary_names
+        ):
+            raise RuntimeError(
+                f"checkpoint {path} has an invalid fusion-v2 auxiliary-head "
+                "migration inventory"
+            )
+        migrated_auxiliary_prefixes = tuple(
+            f"{name}." for name in expected_auxiliary_names
+        )
+        for prefix in migrated_auxiliary_prefixes:
+            expected_keys = {
+                key for key in model.state_dict() if key.startswith(prefix)
+            }
+            missing_keys = {key for key in missing if key.startswith(prefix)}
+            if missing_keys not in (set(), expected_keys):
+                raise RuntimeError(
+                    f"checkpoint {path} has partially missing migrated "
+                    f"auxiliary-head tensors for {prefix[:-1]}"
+                )
     disallowed_missing = [
         key
         for key in missing
@@ -7327,8 +8092,14 @@ def load_model_from_checkpoint(
             and is_allowed_missing_expanded_head_key(key)
         )
         and not (
-            explicit_fusion_migration
+            (
+                explicit_fusion_migration
+                or explicit_fusion_v2_additive_migration
+            )
             and is_allowed_missing_decision_fusion_key(key)
+        )
+        and not any(
+            key.startswith(prefix) for prefix in migrated_auxiliary_prefixes
         )
     ]
     if disallowed_missing:

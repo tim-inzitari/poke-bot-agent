@@ -1,0 +1,52 @@
+{
+  "schema": "poke_bot.final_format_alakazam_direct_migration_failure/v1",
+  "template_only": false,
+  "status": "failed_closed_fallback_required",
+  "goal_revision": 79,
+  "specialist_id": "alakazam",
+  "preferred_parent_checkpoint_sha256": "sha256:270b5156781b0a95f703abe3e8fe13866d2fbb4c85a8f32534f99af74aece2ea",
+  "preferred_parent_model_config_sha256": "sha256:cdad51d0bebf836979aeef2f12963abd95b5c4dcbd5df7ba0f59989bb5c2c5a7",
+  "observed_parent": {
+    "d_model": 96,
+    "spatial_layers": 4,
+    "temporal_layers": 1,
+    "option_layers": 4,
+    "feed_forward_width": 384,
+    "expanded_heads_enabled": false,
+    "decision_fusion_enabled": false,
+    "setup_board_outcome_head_enabled": false,
+    "combo_state_head_enabled": false,
+    "serialized_tensor_count": 244,
+    "learned_parameter_count": 1637425
+  },
+  "required_final_format": {
+    "capacity_profile": "H10-I/v1",
+    "d_model": 96,
+    "spatial_layers": 7,
+    "temporal_layers": 3,
+    "option_layers": 7,
+    "feed_forward_width": 2496,
+    "minimum_learned_heads": 19,
+    "minimum_distinct_bounded_routes": 19
+  },
+  "failed_checks": {
+    "complete_serialized_key_coverage": false,
+    "complete_shape_coverage": false,
+    "direct_parent_has_current_19_head_role_route_inventory": false,
+    "new_post_norm_depth_can_be_exact_identity_without_new_gating": false,
+    "step_zero_behavior_and_logit_parity_provable": false
+  },
+  "failure_reason": "The immutable historical parent predates expanded heads and decision fusion, and H10-I changes FF shapes and appends post-norm spatial/temporal/option blocks. The current architecture has no checksum-bound depth gate that makes all appended post-norm blocks exact identities, so a complete direct migration cannot prove step-zero parity.",
+  "preferred_parent_mutated": false,
+  "partial_tensor_overlay_used": false,
+  "promotable_partial_child_created": false,
+  "fallback_authorized": true,
+  "fallback": {
+    "ordinary_same_archetype_alakazam_refresh_initialized_from": "latest_checksum_accepted_cumulative_core_generation_9",
+    "accepted_core_checkpoint_sha256": "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056",
+    "expand_only_completed_alakazam_derivative_to_final_format": true,
+    "latest_core_direct_final_format_tensor_parent_allowed": false,
+    "partial_old_alakazam_core_overlay_allowed": false
+  },
+  "issued_at_utc": "2026-07-31T13:22:00Z"
+}

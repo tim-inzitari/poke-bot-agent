@@ -102,7 +102,7 @@ def _exact_temporal_game(*, include_hand: bool = True) -> GameSequence:
 
 
 def test_resident_aux_packer_uses_strict_shared_label_contract() -> None:
-    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 5
+    assert DEVICE_CORPUS_PACKING_SCHEMA_VERSION == 6
     hand, has_hand, remainder, has_remainder, lethal, race = (
         _validated_exact_aux_targets(
             {

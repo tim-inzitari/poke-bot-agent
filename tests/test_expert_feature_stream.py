@@ -201,6 +201,54 @@ def test_streamed_group_split_exactly_matches_materialized_reference(
     assert _identity(list(train)) == _identity(list(train))
 
 
+def test_exact_seat_view_balances_train_and_validation_without_source_rewrite(
+    tmp_path: Path,
+) -> None:
+    source = []
+    for episode in ("a", "b", "c", "d"):
+        source.extend(
+            [
+                _game(episode, 0, decisions=2),
+                _game(episode, 1, decisions=3),
+                _game(episode, 1, decisions=4),
+            ]
+        )
+    manifest, digest = _write_manifest(tmp_path, [source[:6], source[6:]])
+    before = manifest.read_bytes()
+
+    plan = EpisodeGroupedFeatureManifest.open(
+        manifest,
+        expected_manifest_digest=digest,
+        val_frac=0.25,
+        seed=79,
+        max_context=3,
+        expected_compact_mode=COMPACT_MODE_TEMPORAL_EXPERT,
+        require_exact_seat_split=True,
+    )
+    train, validation = plan.splits()
+    train_rows = list(train)
+    validation_rows = list(validation)
+    evidence = plan.exact_seat_split_evidence()
+
+    assert manifest.read_bytes() == before
+    assert plan.source_sequences == 12
+    assert plan.sequences == 8
+    assert [row.seat for row in train_rows].count(0) == 3
+    assert [row.seat for row in train_rows].count(1) == 3
+    assert [row.seat for row in validation_rows].count(0) == 1
+    assert [row.seat for row in validation_rows].count(1) == 1
+    assert {row.episode_id for row in train_rows}.isdisjoint(
+        {row.episode_id for row in validation_rows}
+    )
+    assert evidence["source"] == {"games": 12, "seat0": 4, "seat1": 8}
+    assert evidence["selected_games"] == 8
+    assert evidence["partitions"]["train"]["exact_even_split"] is True
+    assert evidence["partitions"]["validation"]["exact_even_split"] is True
+    assert evidence["deterministic_assignment_manifest_sha256"].startswith(
+        "sha256:"
+    )
+
+
 def test_stream_plan_exposes_archetypes_in_exact_packed_split_order(
     tmp_path: Path,
 ) -> None:

@@ -1,0 +1,10 @@
+FROM poke-bot-truenas-worker:archaludon-fusion-v2-r72
+
+LABEL org.opencontainers.image.title="poke-bot Elmo remote worker" \
+      org.opencontainers.image.version="archaludon-fusion-v2-r74-memory-v1" \
+      org.opencontainers.image.description="r72 runtime with cgroup-charged memory watchdog correction"
+
+COPY scripts/run_remote_worker.py /workspace/scripts/run_remote_worker.py
+
+RUN chmod +x /workspace/scripts/run_remote_worker.py \
+    && python -m py_compile /workspace/scripts/run_remote_worker.py

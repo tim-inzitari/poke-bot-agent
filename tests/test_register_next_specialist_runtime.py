@@ -283,6 +283,12 @@ def test_registration_is_single_source_and_idempotent(
     assert "POKEBOT_EXPANDED_HEADS_ENABLED=1" in selector.read_text(
         encoding="utf-8"
     )
+    assert "POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=0" in selector.read_text(
+        encoding="utf-8"
+    )
+    assert "POKEBOT_COMBO_STATE_HEAD_ENABLED=0" in selector.read_text(
+        encoding="utf-8"
+    )
     assert "POKEBOT_DECISION_FUSION_ENABLED=1" in selector.read_text(
         encoding="utf-8"
     )
@@ -363,6 +369,30 @@ def test_registration_is_single_source_and_idempotent(
         }
     )
     assert expanded["specialist_id"] == "teal-mask-ogerpon-ex"
+
+
+def test_selector_enables_registered_specialist_head_architecture(
+    tmp_path: Path,
+) -> None:
+    selector = tmp_path / "specialist.env"
+    selector.write_text(
+        "POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=0\n"
+        "POKEBOT_COMBO_STATE_HEAD_ENABLED=0\n",
+        encoding="utf-8",
+    )
+    register._atomic_selector(
+        selector,
+        "slowking",
+        tmp_path,
+        (
+            *register.CANONICAL_LEARNED_DECISION_SOURCES,
+            "combo_state",
+        ),
+    )
+
+    selector_text = selector.read_text(encoding="utf-8")
+    assert "POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=1\n" in selector_text
+    assert "POKEBOT_COMBO_STATE_HEAD_ENABLED=1\n" in selector_text
 
 
 def test_registration_honors_specialist_specific_corpus_floor(

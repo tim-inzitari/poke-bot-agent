@@ -1,0 +1,50 @@
+{
+  "schema": "poke_bot.elmo_remote_lifecycle_repair/v1",
+  "status": "activated",
+  "goal_revision": 72,
+  "activated_at_utc": "2026-07-30T19:02:24Z",
+  "cause": {
+    "routine_whole_service_rotation_completed_jobs": 768,
+    "observed_failure": "Every planned Elmo rotation closed all active trainer sockets, leaving the Archaludon trainer with Elmo connections in CLOSE-WAIT and repeated reconnect failures.",
+    "dashboard_ping_was_not_the_stale_or_starvation_signal": true
+  },
+  "repair": {
+    "routine_whole_service_rotation_completed_jobs": 0,
+    "simulator_workers": 36,
+    "worker_recycle_games": 256,
+    "process_tree_rss_limit_gib": 30,
+    "host_available_ram_floor_gib": 24,
+    "durable_image_tag": "poke-bot-truenas-worker:archaludon-fusion-v2-r72",
+    "durable_image_id": "sha256:a42451105dcf58f9e5cb09a96297254ca8dd1fd678f688c657ae5c6e25369d43",
+    "running_container_id": "23159b58b81bf02a42ef11236df51c836f991d0d04edb3325322f1530819179e",
+    "running_container_started_at_utc": "2026-07-30T18:57:43.934580524Z",
+    "running_container_health": "healthy"
+  },
+  "schema_compatibility": {
+    "checkpoint_sha256": "sha256:57a3172d46e429cb9ba39187cf126f763fdbb10c15012ccdb31ef993010227be",
+    "restored_fields": [
+      "decision_fusion_dedicated_routes_enabled",
+      "decision_fusion_dedicated_routes_runtime_enabled",
+      "setup_board_outcome_head_enabled"
+    ],
+    "model_py_sha256": "sha256:f21306c3b3821f847bda68e3650a210e4cd2d48b364854199bf5769af5046be3",
+    "all_four_elmo_leaf_servers_loaded_checkpoint": true
+  },
+  "active_training_preservation": {
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "main_pid": 502665,
+    "restart_count": 0,
+    "active_specialist": "archaludon-ex",
+    "active_iteration": 0,
+    "committed_iteration_replayed": false,
+    "trainer_restarted": false
+  },
+  "canonical_files": {
+    "compose": "containers/truenas-worker/docker-compose.production.yml",
+    "compose_sha256": "sha256:074a68d26335af5a9efb33b7413a29adca0354ba49ca36ec4f216bef3810494c",
+    "protocol": "config/rl_protocol.yaml",
+    "protocol_sha256": "sha256:082b838c88cfa8281490080d86dbd1b407c8b1e3d7530c1274921ee834bcb1d8",
+    "compatibility_projection": "ops/current_goal_requirements.json",
+    "compatibility_projection_sha256": "sha256:a80874537eb0af74c9420d74594ebe12ed7a466e8d9b16af1d92ba0fb6fde983"
+  }
+}

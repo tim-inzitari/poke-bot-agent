@@ -56,7 +56,12 @@ def _env_truthy(name: str) -> bool:
 # TrueNAS docker worker only mounts ``./checkpoint`` → ``/workspace/checkpoint``.
 # Bert native checkout mirrors under ``/Users/tsinzitari/workspace/poke-bot-agent``.
 _TRAIN_ROOT = Path("/home/inzi/poke-bot-agent")
-_BERT_ROOT = Path("/Users/tsinzitari/workspace/poke-bot-agent")
+_BERT_ROOT = Path(
+    os.environ.get(
+        "POKEBOT_BERT_REMOTE_ROOT",
+        "/Users/tsinzitari/workspace/poke-bot-agent",
+    )
+).expanduser()
 _ELMO_HOSTS = frozenset({"192.168.1.143", "truenas.local", "truenas"})
 _BERT_HOSTS = frozenset(
     {"192.168.1.157", "192.168.1.158", "bert.local", "bert"}
@@ -1103,7 +1108,10 @@ def _stage_bert_checkpoint(src: Path) -> str:
     with _BERT_STAGE_LOCK:
         cached = _BERT_STAGE_CACHE.get(cache_key)
         if cached is not None:
-            _stage_bert_runtime_companions(remote_native.parent)
+            # The cache key binds immutable checkpoint bytes for this trainer
+            # process. Runtime companions are staged in the same critical
+            # section before the cache entry is published, so repeating their
+            # SSH digest checks here would serialize every game submission.
             return cached
         if _bert_remote_digest(remote_native) == digest:
             _stage_bert_runtime_companions(remote_native.parent)
@@ -1166,7 +1174,9 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
         with _ELMO_STAGE_LOCK:
             cached = _ELMO_STAGE_CACHE.get(cache_key)
             if cached is not None:
-                _stage_elmo_runtime_companions(smb)
+                # Companion staging completed before this immutable cache
+                # entry was published. Re-hashing the SMB files on every game
+                # serializes all remote request sockets and starves Elmo.
                 return cached
             destination_valid = False
             if dest.is_file() and dest.stat().st_size == src.stat().st_size:

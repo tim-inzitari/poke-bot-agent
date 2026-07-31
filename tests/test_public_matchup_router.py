@@ -9,6 +9,7 @@ from poke_bot.public_matchup_router import (
 from poke_bot.matchup_adapters import EXPERT_IDS, UNKNOWN_ROUTE
 from poke_bot.matchup_adapters_v6 import load_slot_registry
 import json
+import pytest
 
 
 def _obs(*, your_index: int = 0) -> dict:
@@ -156,11 +157,57 @@ def test_exported_tree_accepts_the_checksum_validated_v6_route_order() -> None:
         digest="sha256:" + "0" * 64,
     )
 
-    assert len(tree.targets) == 19
+    assert len(tree.targets) == len(targets)
     assert tree.targets[:18] == EXPERT_IDS
     prediction = tree.predict_card_ids([96])
     assert prediction.archetype_id == "teal-mask-ogerpon-ex"
     assert prediction.route == 18
+
+
+def test_exported_tree_accepts_only_an_append_only_v6_registry_prefix() -> None:
+    registry = load_slot_registry()
+    targets = list(registry["active_expert_ids"][:-1])
+    width = len(targets) + 1
+    unknown = [0.0] * width
+    unknown[-1] = 1.0
+    payload = {
+        "schema": "poke_bot.public_matchup_decision_tree/v1",
+        "runtime_enabled": False,
+        "targets": targets,
+        "prediction_contract": {
+            "route_output_width": len(targets),
+            "route_class_names": targets,
+            "unknown_is_separate_abstention": True,
+            "unknown_class_index": len(targets),
+            "adapter_count": len(targets),
+        },
+        "runtime_contract": {
+            "slot_registry_digest": "sha256:" + "1" * 64,
+        },
+        "tree": {
+            "class_names": [*targets, "unknown"],
+            "children_left": [-1],
+            "children_right": [-1],
+            "feature_card_id": [-2],
+            "threshold": [-2.0],
+            "weighted_class_counts": [unknown],
+            "node_count": 1,
+        },
+    }
+    tree = PublicMatchupDecisionTree(
+        payload,
+        digest="sha256:" + "0" * 64,
+    )
+    assert tree.targets == tuple(targets)
+
+    payload["targets"] = [*targets[:-1], registry["active_expert_ids"][-1]]
+    payload["prediction_contract"]["route_class_names"] = payload["targets"]
+    payload["tree"]["class_names"] = [*payload["targets"], "unknown"]
+    with pytest.raises(ValueError, match="canonical V5 or V6"):
+        PublicMatchupDecisionTree(
+            payload,
+            digest="sha256:" + "0" * 64,
+        )
 
 
 def test_runtime_router_starts_dormant_and_continuously_corrects_route() -> None:

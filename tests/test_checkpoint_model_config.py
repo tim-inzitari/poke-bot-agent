@@ -39,6 +39,9 @@ def _spawn_load_checkpoint(path: str) -> dict[str, object]:
         "setup_board_outcome_head_enabled": bool(
             loaded.cfg.setup_board_outcome_head_enabled
         ),
+        "combo_state_head_enabled": bool(
+            loaded.cfg.combo_state_head_enabled
+        ),
         "decision_fusion_dedicated_routes_enabled": bool(
             loaded.cfg.decision_fusion_dedicated_routes_enabled
         ),
@@ -177,6 +180,7 @@ def test_historical_checkpoint_ignores_ambient_future_head_flags(
     payload = checkpoint.build_checkpoint(model=model, model_config=cfg)
     for field in (
         "setup_board_outcome_head_enabled",
+        "combo_state_head_enabled",
         "decision_fusion_dedicated_routes_enabled",
         "decision_fusion_dedicated_routes_runtime_enabled",
     ):
@@ -186,6 +190,7 @@ def test_historical_checkpoint_ignores_ambient_future_head_flags(
     )
 
     monkeypatch.setenv("POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED", "1")
+    monkeypatch.setenv("POKEBOT_COMBO_STATE_HEAD_ENABLED", "1")
     monkeypatch.setenv(
         "POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED", "1"
     )
@@ -196,6 +201,7 @@ def test_historical_checkpoint_ignores_ambient_future_head_flags(
         result = next(pool.imap_unordered(_spawn_load_checkpoint, [str(path)]))
 
     assert result["setup_board_outcome_head_enabled"] is False
+    assert result["combo_state_head_enabled"] is False
     assert result["decision_fusion_dedicated_routes_enabled"] is False
     assert (
         result["decision_fusion_dedicated_routes_runtime_enabled"] is False

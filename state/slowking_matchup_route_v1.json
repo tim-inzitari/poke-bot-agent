@@ -1,0 +1,83 @@
+{
+  "schema": "poke_bot.slowking_matchup_route_receipt/v1",
+  "status": "validated_inactive",
+  "created_at_utc": "2026-07-30T21:19:20Z",
+  "specialist_id": "slowking",
+  "slot": 19,
+  "router_format": 6,
+  "runtime_enabled": false,
+  "selector_authority": false,
+  "activation_boundary": "after_archaludon_ex_checksum_bound_completion",
+  "catalog": {
+    "path": "data/training_mixes/slowking-public-full44.v1.json",
+    "sha256": "sha256:86485030fe237d3cb04dd9a0bc58527160315f1820a0b1a62abd405209b23952",
+    "source_window_days": 44,
+    "exact_public_games": 311,
+    "deck_sha256": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7"
+  },
+  "calibration": {
+    "receipt": "state/slowking_router_calibration_v1.json",
+    "archive_sha256": "sha256:33d58c9c5645dad630661af449e595f31b41d7bc8a6dae5a2b9dc0bbaac70633",
+    "episodes": 1000,
+    "seat_0": 500,
+    "seat_1": 500
+  },
+  "candidate": {
+    "remote_root": "/mnt/Main/main/poke-adapter-oracle-v29/output/public-matchup-tree-calibration-slowking-v45-d24-l30",
+    "artifact": "public-matchup-tree.json",
+    "artifact_sha256": "sha256:be99297caa43546dd021032b99abb38cbf0241444784de00ca425a5f1c38b482",
+    "ready_receipt": "PUBLIC_MATCHUP_TREE_READY.json",
+    "ready_receipt_sha256": "sha256:db850bed83e94009ee5d74f9a2af872dd0782463cd03f798a4f7dde116144f11",
+    "audit": "public-matchup-tree.audit.json",
+    "audit_sha256": "sha256:217e17ca87641da71d345dfef274ba888b83ead2376f388f0b5346e05f43167d",
+    "tree_parameters": {
+      "criterion": "entropy",
+      "max_depth": 24,
+      "min_samples_leaf": 30,
+      "class_weight": "balanced",
+      "random_seed": 42
+    }
+  },
+  "unchanged_audit_gates": {
+    "minimum_precision": 0.93,
+    "minimum_weighted_support": 10000,
+    "accepted_count": 20,
+    "rejected_specialists": [],
+    "slowking": {
+      "accepted": true,
+      "precision": 0.9300849526413436,
+      "recall": 0.38191659983961507,
+      "weighted_support": 24940,
+      "accepted_weighted_observations": 10241,
+      "min_leaf_confidence": 0.9969040320116855
+    }
+  },
+  "failed_attempts_preserved": [
+    {
+      "max_depth": 24,
+      "min_samples_leaf": 20,
+      "artifact_sha256": "sha256:f38ac70ecec78779cba17390d4778cad014b7f7eeb72087568d42b4474155d21",
+      "slowking_precision": 0.9263509749303621,
+      "reason": "precision_below_floor"
+    },
+    {
+      "max_depth": 28,
+      "min_samples_leaf": 10,
+      "artifact_sha256": "sha256:8a3b1e514103dc254796dec9c099806a8580aa11a422dab05afa46a3233b6f89",
+      "slowking_precision": 0.9060374506675624,
+      "reason": "precision_below_floor"
+    }
+  ],
+  "registry": {
+    "path": "state/matchup_adapter_roster.json",
+    "revision": 10,
+    "sha256": "sha256:08322efe30c0f8b75d922aae8b882b4e78a20df03a63ed997ec8288165bfd1bc",
+    "slot_status": "dormant"
+  },
+  "non_activation_assertions": {
+    "live_router_unchanged": true,
+    "active_archaludon_training_unchanged": true,
+    "slowking_gradients_enabled": false,
+    "safe_boundary_required": true
+  }
+}

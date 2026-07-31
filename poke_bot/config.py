@@ -315,6 +315,12 @@ class ModelConfig:
     setup_board_outcome_head_enabled: bool = _env_bool(
         "SETUP_BOARD_OUTCOME_HEAD_ENABLED", False
     )
+    #: Slowking-scoped option-conditioned combo-state branch. The branch is
+    #: absent from historical and non-Slowking checkpoints and enters action
+    #: selection only through the separately gated dedicated fusion route.
+    combo_state_head_enabled: bool = _env_bool(
+        "COMBO_STATE_HEAD_ENABLED", False
+    )
     #: Learned residual that consumes every causal auxiliary/strategic head.
     #: It trains jointly when present, but serving remains separately gated so
     #: an architecture migration can begin as an exact flat-policy no-op.
@@ -335,6 +341,10 @@ class ModelConfig:
         "DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED", False
     )
     decision_fusion_width: int = _env_int("DECISION_FUSION_WIDTH", 16)
+    #: Final-submission H10-I capacity branches. Historical checkpoints omit
+    #: this field and therefore retain their exact tensor inventory.
+    h10_capacity_enabled: bool = _env_bool("H10_CAPACITY_ENABLED", False)
+    h10_head_residual_width: int = _env_int("H10_HEAD_RESIDUAL_WIDTH", 512)
     dropout: float = _env_float("DROPOUT", 0.1)
 
     @property

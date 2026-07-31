@@ -1,0 +1,59 @@
+{
+  "schema": "poke_bot.final_format_alakazam_static_preparation_validation/v1",
+  "status": "validated_static_only_waiting_for_slowking_boundary",
+  "created_at_utc": "2026-07-31T00:52:26Z",
+  "owner_goal_revision": 64,
+  "canonical_plan": "docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md",
+  "canonical_plan_sha256": "sha256:354d5340a78125313853909b71730b03604f346294be3c6f125a0f3378e6b866",
+  "static_contract": "ops/final_submission/final_format_alakazam_static_preparation_v1.json",
+  "static_contract_sha256": "sha256:6d983cf3a99b83d9ed380c67096dc50fe676a3b26aa21ac4a93a95adb65b9010",
+  "receipt_template_count": 6,
+  "checks": {
+    "all_templates_parse": true,
+    "all_template_checksums_match_contract": true,
+    "every_template_is_unissued": true,
+    "every_template_has_runtime_authority_none": true,
+    "model_computation_authority_false": true,
+    "checkpoint_loading_authority_false": true,
+    "replay_scanning_authority_false": true,
+    "training_authority_false": true,
+    "evaluation_authority_false": true,
+    "package_construction_authority_false": true,
+    "submission_construction_authority_false": true,
+    "preferred_historical_alakazam_parent_bound": true,
+    "same_archetype_fallback_bound": true,
+    "partial_old_alakazam_core_overlay_forbidden": true,
+    "exact_even_training_seat_contract_bound": true,
+    "first_if_allowed_package_preference_bound": true,
+    "second_focus_1_to_7_forbidden_for_bridge": true,
+    "non_runnable_package_is_not_queue_eligible": true,
+    "canonical_projections_bind_exact_contract": true
+  },
+  "validation": {
+    "command": "python -m pytest -q tests/test_final_submission_static_preparation.py tests/test_goal_gateway.py tests/test_specialist_cycle_handoff.py",
+    "passed": 47,
+    "failed": 0
+  },
+  "active_runtime_observation": {
+    "service": "pokebot-pure-rl-trevenant-staged.service",
+    "specialist_id": "archaludon-ex",
+    "main_pid": 1387831,
+    "restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "active_training_modified": false,
+    "active_selector_modified": false,
+    "active_registry_modified": false
+  },
+  "activation": {
+    "model_computation_started": false,
+    "blocked_until_receipts": [
+      "required_specialist_fleet_complete_for_final_alakazam_v1",
+      "capacity_research_resource_lease_v1"
+    ],
+    "terminal_required_specialist_id": "slowking",
+    "runtime_authority": "none",
+    "selector_eligible": false,
+    "kaggle_eligible": false
+  }
+}

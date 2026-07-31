@@ -80,6 +80,55 @@ def test_package_digest_validation_fails_closed() -> None:
         verify_roster_content(gate, installed)
 
 
+def test_rating_simulation_is_a_separate_actual_game_gate() -> None:
+    contract = load_active_gate_contract(CONTRACT_PATH)
+    contract = copy.deepcopy(contract)
+    gate = contract["next_gate"]
+    anchors = gate["roster"][:2]
+    for row, rating in zip(anchors, (850.0, 700.0)):
+        row["kaggle_rating_anchor"] = rating
+    gate["kaggle_rating_simulation"] = {
+        "separate_from_premium_strength_gate": True,
+        "training_eligible": False,
+        "replay_eligible": False,
+        "minimum_anchor_count": 2,
+        "confidence_level": 0.90,
+        "bootstrap_resamples": 200,
+        "projected_rating_lower_bound": 1000.0,
+    }
+    ids = [row["opponent_id"] for row in gate["roster"]]
+    digest = "sha256:candidate"
+    strong = build_active_gate_result(
+        contract=contract,
+        checkpoint="/checkpoint.pt",
+        checkpoint_digest=digest,
+        iteration=5,
+        gate_rows=_rows(ids, {key: 0.90 for key in ids}, digest=digest),
+        gate_audit=_audit(ids, digest=digest),
+        gate_seed=9_050_000,
+        bootstrap_resamples=100,
+    )
+    simulation = strong["kaggle_rating_simulation"]
+    assert simulation["actual_simulated_games"] == 500
+    assert simulation["separate_from_skill_weighted_win_rate"] is True
+    assert simulation["confidence_lower"] >= 1000.0
+    assert strong["checks"]["kaggle_rating_simulation"] is True
+
+    weak = build_active_gate_result(
+        contract=contract,
+        checkpoint="/checkpoint.pt",
+        checkpoint_digest=digest,
+        iteration=5,
+        gate_rows=_rows(ids, {key: 0.65 for key in ids}, digest=digest),
+        gate_audit=_audit(ids, digest=digest),
+        gate_seed=9_050_001,
+        bootstrap_resamples=100,
+    )
+    assert weak["checks"]["skill_weighted_win_rate"] is True
+    assert weak["checks"]["kaggle_rating_simulation"] is False
+    assert weak["passed"] is False
+
+
 def test_strong_gate_uses_active_roster_plus_specialists_and_zero_weight_research() -> None:
     contract = load_active_gate_contract(CONTRACT_PATH)
     gate = contract["next_gate"]

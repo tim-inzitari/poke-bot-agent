@@ -15,15 +15,15 @@ def test_alakazam_specialist_unit_pins_volume_fleet_and_rehearsal_contract() -> 
     assert "Environment=PURE_RL_SELF_PLAY_FRAC=0.125" in unit
     assert "Environment=PURE_RL_PUBLIC_MIX_LOCAL_ONLY=0" in unit
     assert "Environment=PURE_RL_REMOTE_DISPATCH_CHUNK=256" in unit
-    assert "Environment=POKEBOT_REMOTE_SOCKET_PREFETCH=8" in unit
-    assert "Environment=POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=8" in unit
+    assert "Environment=POKEBOT_REMOTE_SOCKET_PREFETCH=1" in unit
+    assert "Environment=POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=2" in unit
     assert (
         'Environment="POKEBOT_REMOTE_ENDPOINT_CHUNKS='
-        '192.168.1.143:8765=336,bert.local:8766=112"'
+        '192.168.1.143:8765=336,bert.local:8766=176"'
     ) in unit
-    assert "Environment=POKEBOT_REMOTE_QUEUE_LOW_WATER_FRAC=0.75" in unit
-    assert "Environment=POKEBOT_REMOTE_QUEUE_PROBE_S=0.2" in unit
-    assert "Environment=PURE_RL_REPLAY_WINDOW_SHARDS=1" in unit
+    assert "Environment=POKEBOT_REMOTE_QUEUE_LOW_WATER_FRAC=0.50" in unit
+    assert "Environment=POKEBOT_REMOTE_QUEUE_PROBE_S=1.0" in unit
+    assert "Environment=PURE_RL_REPLAY_WINDOW_SHARDS=2" in unit
     assert "--mode specialist" in unit
     assert "--specialist-archetype alakazam" in unit
     assert "--official-collect-frac 0.50" in unit
@@ -35,18 +35,14 @@ def test_alakazam_specialist_unit_pins_volume_fleet_and_rehearsal_contract() -> 
     assert "--lethal-threat-loss-weight 0.025" in unit
     assert "--prize-race-loss-weight 0.025" in unit
     assert "libcg_hidden_inzi_v1.so" in unit
-    assert "--games-per-iter 73728" in unit
+    assert "--games-per-iter 8192" in unit
     assert "--measurement-decks alakazam" in unit
     assert "--expert-rehearsal-every 5" in unit
     assert "--expert-rehearsal-epochs 5" in unit
     assert "alakazam-latest10-20260709-20260718/PROTECTED_EXPERT_CORPUS.json" in unit
     assert (
-        "--base-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/"
-        "_handoff/alakazam_expert_bootstrap.pt"
-    ) in unit
-    assert (
         "--initial-learner-checkpoint /home/inzi/poke-bot-agent/outputs/"
-        "pure_rl/_handoff/alakazam_expert_bootstrap.pt"
+        "pure_rl/_handoff/alakazam_temporal1_expert_v15_seed.pt"
     ) in unit
     assert "MemoryMax=112G" in unit
 

@@ -177,9 +177,12 @@ def build_command(
         ).encode("utf-8")
     ).hexdigest()
     canonical_multiset_digest = "sha256:" + hashlib.sha256(
-        ",".join(str(card_id) for card_id in sorted(representative_cards)).encode(
-            "ascii"
-        )
+        json.dumps(
+            sorted(representative_cards),
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("ascii")
     ).hexdigest()
     if (
         representative_catalog.get("schema")

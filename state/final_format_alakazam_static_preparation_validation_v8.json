@@ -1,0 +1,46 @@
+{
+  "schema": "poke_bot.final_format_alakazam_static_preparation_validation/v8",
+  "status": "validated_static_only_slowking_failed_experiment_boundary_reached_waiting_for_g0_g1",
+  "created_at_utc": "2026-07-31T13:11:00Z",
+  "owner_goal_revision": 79,
+  "supersedes": "state/final_format_alakazam_static_preparation_validation_v7.json",
+  "superseded_receipt_preserved": true,
+  "revalidation_reason": "Owner revision 79 terminally classifies Slowking as a failed experiment and releases the final-format Alakazam bridge through an explicit 14-frozen-plus-one-failed G0 disposition.",
+  "canonical_plan": "docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md",
+  "canonical_plan_sha256": "sha256:34338711cb4b15f35dff54eef5711f75f475132afddb94eb2f611527c92e67b9",
+  "static_contract": "ops/final_submission/final_format_alakazam_static_preparation_v1.json",
+  "static_contract_sha256": "sha256:ba33bcb8b46deeeb2b5a6a89d6c22057aab20a9278cb3d5c8962af61ae01bc77",
+  "model_spec": "ops/final_submission/final_format_alakazam_model_spec_v1.json",
+  "model_spec_sha256": "sha256:09758ebeadb692e29cdb873d935ac43ab048d8856f1e9e8d5214a9afaf45fd6f",
+  "source_compatibility": "ops/final_submission/final_format_alakazam_source_compatibility_v1.json",
+  "source_compatibility_sha256": "sha256:0fc8587e46247695d506cbfe7fc021f739e6598893f91d51ff344efb90311cf2",
+  "slowking_failed_experiment_receipt": "state/slowking_failed_experiment_transition_r79.json",
+  "slowking_failed_experiment_receipt_sha256": "sha256:25ecc49d386fa9c3d38350765d5ad189796fcdf7df1369585e7c2c52d3cf2f77",
+  "receipt_template_count": 8,
+  "specification_count": 2,
+  "checks": {
+    "terminal_required_slot_count": 15,
+    "frozen_required_specialist_count": 14,
+    "failed_experiment_exception_count": 1,
+    "slowking_not_relabelled_as_passed": true,
+    "all_templates_checksum_bound": true,
+    "all_specifications_checksum_bound": true,
+    "model_computation_authority_false": true,
+    "minimum_19_learned_heads_and_routes_bound": true,
+    "every_learned_head_action_influence_declared": true,
+    "guide_runtime_route_count_zero": true,
+    "preferred_historical_alakazam_parent_bound": true,
+    "exact_even_training_seat_contract_bound": true,
+    "first_if_allowed_package_preference_bound": true
+  },
+  "activation": {
+    "model_computation_started": false,
+    "blocked_until_receipts": [
+      "required_specialist_fleet_complete_for_final_alakazam_v1",
+      "capacity_research_resource_lease_v1"
+    ],
+    "runtime_authority": "none",
+    "selector_eligible": false,
+    "kaggle_eligible": false
+  }
+}

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
 import yaml
 
+from poke_bot.dormant_adapter_compat import LOADER_RUNTIME_FILES
 from scripts.run_specialist_cycle_handoff import (
+    _append_only_v6_registry_upgrade,
     _compatible_prior_cumulative_contract,
+    _start_post_fleet_refresh_handoff,
     _cumulative_core_contract,
     _generated,
     _is_expected_additive_gate_successor,
@@ -131,7 +135,7 @@ def test_cycle_contract_keeps_exact_protocol_for_later_specialists() -> None:
     assert fleet["elmo"]["expected_workers"] == 36
     assert fleet["elmo"]["expected_leaves"] == 4
     assert fleet["elmo"]["image"] == (
-        "poke-bot-truenas-worker:matchup-v40-v6-router-runtime"
+        "poke-bot-truenas-worker:matchup-v41-v6-slowking-runtime-r74-memory-v1"
     )
     assert result["paths"]["state"].endswith(
         "post-lucario-dragapult-handoff-v1.json"
@@ -146,6 +150,9 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
     )
     assert contract["runtime"]["population_handoff_service"] == (
         "pokebot-population-round-robin-handoff.service"
+    )
+    assert contract["runtime"]["post_fleet_refresh_handoff_service"] == (
+        "pokebot-final-format-alakazam-handoff.service"
     )
     assert contract["runtime"]["population_training_service"] == (
         "pokebot-population-round-robin.service"
@@ -167,18 +174,19 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "sha256:"
     )
     assert contract["runtime"]["inactive_tree_candidate"].endswith(
-        "public-matchup-tree-calibration-roster19-v44.inactive.json"
+        "public-matchup-tree-calibration-roster20-v45.inactive.json"
     )
     assert contract["runtime"]["candidate_audit"].endswith(
-        "public-matchup-tree-calibration-roster19-v44.audit.json"
+        "public-matchup-tree-calibration-roster20-v45.audit.json"
     )
     assert contract["runtime"]["future_assets_receipt"].endswith(
-        "rare-route-assets-roster19-v44-ready.json"
+        "slowking_router_promotion_v1.json"
     )
     assert contract["runtime"]["future_assets_scope"] == "router_only"
     assert contract["selection"]["minimum_decisions_by_specialist"] == {
         "dragapult-dusknoir": 10000,
         "dudunsparce": 2000,
+        "slowking": 19000,
         "team-rockets-spidops": 20000,
     }
     assert contract["selection"]["minimum_records_by_specialist"] == {
@@ -196,6 +204,44 @@ def test_cycle_contract_has_explicit_population_terminal_handoff() -> None:
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
     ]
+
+
+def test_post_fleet_refresh_handoff_starts_only_canonical_alakazam_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(
+        argv: list[str], *, check: bool
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        assert check is False
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(
+        "scripts.run_specialist_cycle_handoff.subprocess.run",
+        fake_run,
+    )
+    runtime = {
+        "post_fleet_refresh_handoff_service": (
+            "pokebot-final-format-alakazam-handoff.service"
+        )
+    }
+    _start_post_fleet_refresh_handoff(runtime, specialist_id="alakazam")
+    assert calls == [
+        [
+            "/usr/bin/systemctl",
+            "--user",
+            "start",
+            "pokebot-final-format-alakazam-handoff.service",
+        ]
+    ]
+
+    with pytest.raises(RuntimeError, match="must begin with alakazam"):
+        _start_post_fleet_refresh_handoff(
+            runtime,
+            specialist_id="marnie-s-grimmsnarl-ex",
+        )
 
 
 def test_exact_additive_gate_successor_is_resume_safe() -> None:
@@ -814,6 +860,85 @@ def test_prior_cumulative_contract_accepts_versioned_v6_fleet_receipt(
     prior["runtime"]["matchup_v6"]["fleet"]["elmo"].pop("dockerfile")
     assert not new_receipt.exists()
     assert _compatible_prior_cumulative_contract(prior, current)
+
+    old_root = tmp_path / "loader-v1"
+    new_root = tmp_path / "loader-v2"
+    old_registry = old_root / "state/matchup_adapter_roster.json"
+    new_registry = new_root / "state/matchup_adapter_roster.json"
+    old_registry.parent.mkdir(parents=True)
+    new_registry.parent.mkdir(parents=True)
+    old_registry.write_text('{"slots":[1,2,3]}\n', encoding="utf-8")
+    new_registry.write_text(old_registry.read_text(encoding="utf-8"), encoding="utf-8")
+    for relative in LOADER_RUNTIME_FILES:
+        loader_file = new_root / relative
+        loader_file.parent.mkdir(parents=True, exist_ok=True)
+        loader_file.write_text(f"# {relative}\n", encoding="utf-8")
+
+    current["runtime"]["matchup_v6"]["fleet"]["source_root"] = str(new_root)
+    current["runtime"]["matchup_v6"]["fleet"]["registry"] = str(new_registry)
+    current["runtime"]["matchup_v6"]["registry"] = str(new_registry)
+    prior = json.loads(json.dumps(current))
+    prior["runtime"]["matchup_v6"]["fleet"]["source_root"] = str(old_root)
+    prior["runtime"]["matchup_v6"]["fleet"]["registry"] = str(old_registry)
+    prior["runtime"]["matchup_v6"]["registry"] = str(old_registry)
+    prior["runtime"]["matchup_v6"]["fleet"]["receipt"] = str(old_receipt)
+    prior["runtime"]["matchup_v6"]["fleet"]["elmo"]["image"] = (
+        "poke-bot-truenas-worker:v38"
+    )
+    old_receipt.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.matchup_adapter_v6_fleet_activation/v1",
+                "status": "active",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _compatible_prior_cumulative_contract(prior, current)
+
+    new_registry.write_text('{"slots":[1,2,4]}\n', encoding="utf-8")
+    assert not _compatible_prior_cumulative_contract(prior, current)
+    new_registry.write_text(old_registry.read_text(encoding="utf-8"), encoding="utf-8")
+    (new_root / LOADER_RUNTIME_FILES[-1]).unlink()
+    assert not _compatible_prior_cumulative_contract(prior, current)
+
+
+def test_append_only_v6_registry_upgrade_rejects_existing_slot_changes(
+    tmp_path: Path,
+) -> None:
+    source = json.loads(
+        (ROOT / "state/matchup_adapter_roster.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    source["revision"] -= 1
+    source["required_specialist_count"] -= 1
+    source["active_expert_ids"].remove("slowking")
+    source["expert_ids"].remove("slowking")
+    source["specialist_priority"].remove("slowking")
+    source["canonical_display_names"].pop("slowking")
+    source["meta_analysis_source"]["crosswalk"].pop("slowking")
+    source["slots"][19] = {
+        "slot": 19,
+        "archetype_id": None,
+        "status": "unused",
+        "lineage": None,
+    }
+    old_registry = tmp_path / "old.json"
+    new_registry = tmp_path / "new.json"
+    old_registry.write_text(json.dumps(source), encoding="utf-8")
+    new_registry.write_text(
+        (ROOT / "state/matchup_adapter_roster.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
+    assert _append_only_v6_registry_upgrade(old_registry, new_registry)
+
+    changed = json.loads(new_registry.read_text(encoding="utf-8"))
+    changed["slots"][0]["lineage"] = "rewritten"
+    new_registry.write_text(json.dumps(changed), encoding="utf-8")
+    assert not _append_only_v6_registry_upgrade(old_registry, new_registry)
 
 
 def test_accepted_core_regression_survives_controller_only_change(

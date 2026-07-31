@@ -7,6 +7,8 @@ import torch
 
 from poke_bot import checkpoint, config, features
 from poke_bot.model import (
+    COMBO_STATE_HEAD_NAME,
+    COMBO_STATE_HEAD_OUTPUTS,
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_SCHEMA,
     DECISION_FUSION_V2_ROUTE_SCHEMA,
@@ -30,6 +32,7 @@ def _cfg(
     fusion: bool = False,
     fusion_runtime: bool = False,
     setup_board_outcome: bool = False,
+    combo_state: bool = False,
     dedicated_routes: bool = False,
     dedicated_routes_runtime: bool = False,
 ) -> config.ModelConfig:
@@ -46,6 +49,7 @@ def _cfg(
         kv_cache=True,
         expanded_heads_enabled=enabled,
         setup_board_outcome_head_enabled=setup_board_outcome,
+        combo_state_head_enabled=combo_state,
         decision_fusion_enabled=fusion,
         decision_fusion_runtime_enabled=fusion_runtime,
         decision_fusion_dedicated_routes_enabled=dedicated_routes,
@@ -64,6 +68,7 @@ def _model(
     fusion: bool = False,
     fusion_runtime: bool = False,
     setup_board_outcome: bool = False,
+    combo_state: bool = False,
     dedicated_routes: bool = False,
     dedicated_routes_runtime: bool = False,
 ):
@@ -73,6 +78,7 @@ def _model(
             fusion=fusion,
             fusion_runtime=fusion_runtime,
             setup_board_outcome=setup_board_outcome,
+            combo_state=combo_state,
             dedicated_routes=dedicated_routes,
             dedicated_routes_runtime=dedicated_routes_runtime,
         ),
@@ -108,7 +114,39 @@ def _fusion_sources(model, *, batch: int, options: int):
             options,
             SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
         )
+    if "combo_state" in fusion.required_heads:
+        option_sources["combo_state"] = torch.randn(
+            batch,
+            options,
+            COMBO_STATE_HEAD_OUTPUTS,
+        )
     return state_sources, option_sources
+
+
+def test_slowking_combo_state_head_has_exact_scoped_capacity_and_route() -> None:
+    model = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        combo_state=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+    )
+    inventory = model.expanded_head_inventory()
+    combo = inventory["modules"][COMBO_STATE_HEAD_NAME]
+    assert combo["schema"] == "poke_bot.combo_state_head/v1"
+    assert combo["outputs"] == 32
+    assert combo["hidden_width"] == 192
+    assert combo["parameters"] == 16 * 192 + 192 + 192 * 32 + 32
+    fusion = model.decision_fusion_inventory()
+    assert "combo_state" in fusion["required_heads"]
+    route = model.decision_fusion.dedicated_routes["combo_state"]
+    assert sum(parameter.numel() for parameter in route.parameters()) == (
+        (16 + 32) * 16 + 16 + 16 + 1
+    )
+    option_hidden = torch.randn(2, 3, 16)
+    assert model.combo_state_logits(option_hidden).shape == (2, 3, 32)
 
 
 def test_expanded_heads_are_strictly_opt_in() -> None:
@@ -684,3 +722,103 @@ def test_decision_fusion_migration_is_explicit_and_zero_safe(
         torch.testing.assert_close(
             value, migrated.state_dict()[key], rtol=0, atol=0
         )
+
+
+def test_decision_fusion_v1_to_v2_additive_migration_is_exact(
+    tmp_path,
+) -> None:
+    source = _model(enabled=True, fusion=True, fusion_runtime=True)
+    target_cfg = _cfg(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        combo_state=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+    )
+    inherited_fusion = sorted(
+        key
+        for key in source.state_dict()
+        if key.startswith("decision_fusion.")
+    )
+    route_names = sorted(
+        [
+            *DECISION_FUSION_REQUIRED_HEADS,
+            "setup_board_outcome",
+            "combo_state",
+        ]
+    )
+    payload = checkpoint.build_checkpoint(
+        model=source,
+        model_config=source.cfg,
+        extra={
+            "decision_fusion_migration": {
+                "schema": "poke_bot.causal_decision_fusion_v2_migration/v1",
+                "source_schema": DECISION_FUSION_SCHEMA,
+                "target_schema": DECISION_FUSION_V2_SCHEMA,
+                "zero_safe_initialization": True,
+                "runtime_enabled": True,
+                "activation_scope": "isolated_specialist_bootstrap",
+                "serving_eligible": False,
+                "all_inherited_tensors_preserved": True,
+                "inherited_fusion_tensor_keys": inherited_fusion,
+                "new_dedicated_route_names": route_names,
+                "new_auxiliary_head_names": [
+                    SETUP_BOARD_OUTCOME_HEAD_NAME,
+                    COMBO_STATE_HEAD_NAME,
+                ],
+            }
+        },
+    )
+    payload["model_config"] = target_cfg.__dict__.copy()
+    path = checkpoint.atomic_torch_save(
+        payload,
+        tmp_path / "fusion-v1-to-v2.pt",
+    )
+
+    migrated = load_model_from_checkpoint(path, device=torch.device("cpu"))
+
+    assert migrated.warm_started_decision_fusion is True
+    assert set(migrated.decision_fusion.dedicated_routes) == set(route_names)
+    for key, value in source.state_dict().items():
+        torch.testing.assert_close(
+            value, migrated.state_dict()[key], rtol=0, atol=0
+        )
+    materialized = checkpoint.build_checkpoint(
+        model=migrated,
+        model_config=migrated.cfg,
+        extra=payload["extra"],
+    )
+    materialized_path = checkpoint.atomic_torch_save(
+        materialized,
+        tmp_path / "fusion-v2-materialized.pt",
+    )
+    reloaded = load_model_from_checkpoint(
+        materialized_path,
+        device=torch.device("cpu"),
+    )
+    assert set(reloaded.decision_fusion.dedicated_routes) == set(route_names)
+
+    partial = checkpoint.load_checkpoint(path, map_location="cpu")
+    target = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        combo_state=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+    )
+    route_key = next(
+        key
+        for key in target.state_dict()
+        if key.startswith("decision_fusion.dedicated_routes.")
+    )
+    partial["model_state_dict"][route_key] = target.state_dict()[route_key]
+    partial_path = checkpoint.atomic_torch_save(
+        partial,
+        tmp_path / "fusion-v1-to-v2-partial.pt",
+    )
+    with pytest.raises(RuntimeError, match="partially missing"):
+        load_model_from_checkpoint(partial_path, device=torch.device("cpu"))

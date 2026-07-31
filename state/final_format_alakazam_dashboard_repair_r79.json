@@ -1,0 +1,55 @@
+{
+  "schema": "poke_bot.final_format_alakazam_dashboard_repair/v1",
+  "status": "activated_healthy",
+  "created_at_utc": "2026-07-31T14:02:54Z",
+  "goal_revision": 79,
+  "cause": "dashboard_snapshot_selected_terminal_slowking_runtime_instead_of_active_final_format_alakazam_service",
+  "managed_training_service": {
+    "name": "pokebot-final-format-alakazam-r79-ordinary-bootstrap.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid": 3928690,
+    "restart_count": 0,
+    "modified_or_restarted": false
+  },
+  "repair": {
+    "authoritative_training_run": "final_format_alakazam_r79",
+    "authoritative_log": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/logs/ordinary_bootstrap.log",
+    "slowking_terminal_disposition_projected": "failed_experiment",
+    "refresh_is_separately_versioned_derivative_not_reopened_specialist_slot": true,
+    "dashboard_service_restarted_through_service_manager": true
+  },
+  "validation": {
+    "health_http_status": 200,
+    "dashboard_ok": true,
+    "source_integrity_current": true,
+    "required_current": 17,
+    "required_total": 17,
+    "failed_sources": [],
+    "observed_training_epoch": 5,
+    "training_epochs_target": 25,
+    "observed_training_percent": 17.91343963553531
+  },
+  "model_parameter_card_validation": {
+    "validated_at_utc": "2026-07-31T14:12:00Z",
+    "rendered_in_app_browser": true,
+    "live_model_lineage": "Alakazam ordinary refresh -> H10-I final format",
+    "ordinary_refresh": {
+      "learned_parameters": 1684103,
+      "observed_committed_epoch": 8,
+      "epochs_target": 25,
+      "matchup_adapter_parameters": 0,
+      "fused_head_count": 17
+    },
+    "h10_target": {
+      "learned_parameters": 10352606,
+      "spatial_temporal_option_layers": [7, 3, 7],
+      "feed_forward_width": 2496,
+      "learned_head_count": 19,
+      "distinct_bounded_action_route_count": 19,
+      "actual_epoch_25_parent_migration_pending": true
+    },
+    "parameter_delta": 8668503,
+    "stale_slowking_parameter_projection_removed": true
+  }
+}

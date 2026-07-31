@@ -50,6 +50,26 @@ MEOWTH_EX = 1071
 ENERGY_SWITCH = 1116
 AREA_ZERO_UNDERDEPTHS = 1250
 SLOP_BOX_KANGASKHAN_COUNT = 3
+ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE: tuple[int, ...] = (
+    5, 5, 13, 19, 19, 19, 19, 66, 66, 140, 305, 305, 305, 343,
+    741, 741, 741, 741, 742, 742, 742, 742, 743, 743, 743, 743,
+    1079, 1079, 1079, 1081, 1081, 1081, 1086, 1086, 1086, 1086,
+    1097, 1129, 1152, 1152, 1152, 1152, 1182, 1182, 1182, 1184,
+    1197, 1197, 1197, 1225, 1225, 1225, 1225, 1231, 1231, 1231,
+    1231, 1266, 1266, 1266,
+)
+_ALAKAZAM_FINAL_REFRESH_MULTISET = tuple(
+    sorted(ALAKAZAM_FINAL_REFRESH_REPRESENTATIVE)
+)
+SLOWKING_EXACT_REPRESENTATIVE: tuple[int, ...] = (
+    5, 5, 5, 5, 9, 9, 19, 19, 19, 19, 115, 115, 140, 144, 144,
+    162, 162, 162, 162, 163, 163, 163, 163, 183, 183, 184, 184,
+    224, 224, 756, 756, 1071, 1092, 1097, 1097, 1097, 1121, 1121,
+    1121, 1121, 1146, 1146, 1146, 1152, 1152, 1152, 1152, 1168,
+    1188, 1188, 1188, 1188, 1227, 1227, 1227, 1227, 1248, 1248,
+    1248, 1248,
+)
+_SLOWKING_EXACT_MULTISET = tuple(sorted(SLOWKING_EXACT_REPRESENTATIVE))
 
 # Exact top-ladder modal representative.  Full multiset equality is deliberate:
 # Archaludon shares generic Metal engines with other decks, so a loose marker
@@ -288,6 +308,16 @@ register(Archetype(
     ),
     signature_only=True,
 ))
+register(Archetype(
+    id="slowking",
+    name="Slowking",
+    description=(
+        "Exact owner-selected Slowking combo/toolbox specialist. Public replay "
+        "classification is checksum-bound to its 60-card catalog; generic "
+        "name or marker matching is deliberately disabled."
+    ),
+    signature_only=True,
+))
 
 CORE_LADDER_ARCHETYPE_IDS: tuple[str, ...] = (
     "alakazam",
@@ -354,10 +384,24 @@ def is_archaludon_ex_modal_representative(
     return tuple(sorted(card_ids)) == _ARCHALUDON_EX_MODAL_MULTISET
 
 
+def is_alakazam_final_refresh_representative(
+    card_ids: Iterable[int],
+) -> bool:
+    """Match only the checksum-bound current Alakazam refresh list."""
+
+    return tuple(sorted(card_ids)) == _ALAKAZAM_FINAL_REFRESH_MULTISET
+
+
 def is_crustle_naic_2026_representative(card_ids: Iterable[int]) -> bool:
     """Match only the checksum-bound current Crustle representative."""
 
     return tuple(sorted(card_ids)) == _CRUSTLE_NAIC_2026_MULTISET
+
+
+def is_slowking_exact_representative(card_ids: Iterable[int]) -> bool:
+    """Match only the owner's checksum-bound Slowking combo/toolbox list."""
+
+    return tuple(sorted(card_ids)) == _SLOWKING_EXACT_MULTISET
 
 
 def classify_deck(card_ids: Iterable[int]) -> str:
@@ -368,10 +412,14 @@ def classify_deck(card_ids: Iterable[int]) -> str:
     Dragapult, else ``"unknown"``.
     """
     card_ids = list(card_ids)
+    if is_alakazam_final_refresh_representative(card_ids):
+        return "alakazam"
     if is_archaludon_ex_modal_representative(card_ids):
         return "archaludon-ex"
     if is_crustle_naic_2026_representative(card_ids):
         return "crustle"
+    if is_slowking_exact_representative(card_ids):
+        return "slowking"
     if is_hammer_signature(card_ids):
         return "hammer-pult"
     if is_teal_mask_ogerpon_box_signature(card_ids):

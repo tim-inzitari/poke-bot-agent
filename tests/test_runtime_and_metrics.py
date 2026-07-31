@@ -45,6 +45,27 @@ def test_remote_request_times_out_instead_of_hanging(monkeypatch) -> None:
         client([LeafPacket(obs=object(), your_deck=[1] * 60, root_seat=0)])
 
 
+def test_remote_leaf_client_keeps_home_queue_when_depths_tie() -> None:
+    queues = [queue.Queue() for _ in range(4)]
+    alive = [threading.Event() for _ in queues]
+    for event in alive:
+        event.set()
+    client = RemoteLeafClient(
+        9,
+        queues[2],
+        queue.Queue(),
+        req_qs=queues,
+        leaf_devices=[1, 1, 1, 1],
+        alive_evts=alive,
+        home_server_idx=2,
+    )
+
+    selected, selected_alive = client._select_req_target()
+
+    assert selected is queues[2]
+    assert selected_alive is alive[2]
+
+
 def test_move_deadline_bounds_remote_rpc_and_game_clock_reserves_watchdog(
     monkeypatch,
 ) -> None:
