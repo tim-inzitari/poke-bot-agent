@@ -275,3 +275,4 @@ __marimo__/
 # Kaggle credentials
 .kaggle/
 **/kaggle.json
+wave-dispatch-standalone/
