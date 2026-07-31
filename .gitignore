@@ -1,0 +1,14 @@
+build/
+build-py/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+.cmake/
+compile_commands.json
+python/rl_io/*.so
+python/rl_runtime/*.so
+python/proc_pool/*.so
+*.rlpk

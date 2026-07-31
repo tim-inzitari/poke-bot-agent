@@ -1,0 +1,6 @@
+#pragma once
+
+#define RL_IO_VERSION_MAJOR 0
+#define RL_IO_VERSION_MINOR 1
+#define RL_IO_VERSION_PATCH 1
+#define RL_IO_VERSION_STRING "0.1.1"
