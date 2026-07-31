@@ -3,12 +3,14 @@
 int test_frame();
 int test_scheduler();
 int test_roundtrip();
+int test_binary();
 
 int main() {
   int failed = 0;
   failed += test_frame();
   failed += test_scheduler();
   failed += test_roundtrip();
+  failed += test_binary();
   if (failed == 0) {
     std::cout << "ALL_TESTS_PASSED\n";
   } else {

@@ -1,7 +1,7 @@
 # wave_dispatch
 
 Standalone **C++** LAN job-dispatch library (with **Python bindings**) for
-multi-machine RL collect waves.
+multi-machine RL collect waves — tuned for max dispatch speed.
 
 Use it from any Kaggle / training project: fan opaque episode jobs across local
 workers + remote TCP workers, rebalance on wall-clock completions, gather
@@ -9,6 +9,18 @@ results. Domain code (env, model, job schema) stays in your repo.
 
 **This tree is independent of poke-bot-agent production.** It does not import,
 link, or modify that trainer.
+
+## Speed stack (v0.2)
+
+| Layer | Tech |
+|---|---|
+| Socket reactor | Standalone **Asio** multi-threaded `io_context`, `TCP_NODELAY`, 4 MiB buffers, `SO_REUSEPORT` |
+| JSON meta | **simdjson** parse |
+| Large payloads | **`WDB1` binary frames** — opaque blob, no JSON re-encode |
+| Job queues | **moodycamel ConcurrentQueue** + atomic claim credits |
+| Build | `-O3`, PIC for Python wheels |
+
+Local bench (loopback, 2000 jobs × 8 KiB blob): ~1.2 GB/s payload, >100k jobs/s dispatch.
 
 ## Python (callable from other projects)
 
@@ -72,7 +84,8 @@ ctest --test-dir build --output-on-failure
 | `_native*.so` | Python extension (`import wave_dispatch`) |
 | `wave_echo_worker` | Synthetic remote worker |
 | `wave_echo_client` | Local+remote scheduled wave demo |
-| `wave_dispatch_tests` | C++ unit / round-trip tests |
+| `wave_bench` | Throughput microbench (binary path) |
+| `wave_dispatch_tests` | C++ unit / round-trip / binary tests |
 
 ### Quick C++ demo
 
@@ -114,4 +127,4 @@ docs/PROTOCOL.md         wire format
 
 ## Status
 
-v0.1.0 — C++ core + **Python bindings** + echo apps + tests.
+v0.2.0 — Asio + simdjson + binary frames + lock-free queues + Python bindings.

@@ -16,38 +16,65 @@ using namespace wave_dispatch;
 namespace {
 
 Json py_to_json(const py::object& obj) {
-  if (obj.is_none()) {
-    return nullptr;
-  }
+  if (obj.is_none()) return nullptr;
   py::object dumps = py::module_::import("json").attr("dumps");
   return Json::parse(dumps(obj).cast<std::string>());
 }
 
 py::object json_to_py(const Json& j) {
-  if (j.is_null()) {
-    return py::none();
-  }
-  py::object loads = py::module_::import("json").attr("loads");
-  return loads(j.dump());
+  if (j.is_null()) return py::none();
+  return py::module_::import("json").attr("loads")(j.dump());
 }
 
-void register_exceptions(py::module_& m) {
-  py::register_exception<Error>(m, "WaveDispatchError");
-  py::register_exception<ProtocolError>(m, "ProtocolError");
-  py::register_exception<TransportError>(m, "TransportError");
-  py::register_exception<TimeoutError>(m, "TimeoutError");
+std::vector<std::uint8_t> py_to_blob(const py::object& obj) {
+  if (obj.is_none()) return {};
+  if (py::isinstance<py::bytes>(obj) || py::isinstance<py::bytearray>(obj)) {
+    std::string s = py::bytes(obj);
+    return std::vector<std::uint8_t>(s.begin(), s.end());
+  }
+  throw ProtocolError("blob must be bytes");
+}
+
+py::bytes blob_to_py(const std::vector<std::uint8_t>& b) {
+  return py::bytes(reinterpret_cast<const char*>(b.data()), b.size());
+}
+
+Message py_to_message(const py::object& obj) {
+  Message m;
+  if (py::isinstance<py::dict>(obj)) {
+    py::dict d = obj.cast<py::dict>();
+    if (d.contains("meta") || d.contains("blob")) {
+      m.meta = d.contains("meta") ? py_to_json(d["meta"]) : Json::object();
+      if (d.contains("blob")) m.blob = py_to_blob(d["blob"]);
+    } else {
+      m.meta = py_to_json(obj);
+    }
+  } else {
+    m.meta = py_to_json(obj);
+  }
+  return m;
+}
+
+py::dict message_to_py(const Message& m) {
+  py::dict d;
+  d["meta"] = json_to_py(m.meta);
+  d["blob"] = blob_to_py(m.blob);
+  return d;
 }
 
 }  // namespace
 
 PYBIND11_MODULE(_native, m) {
-  m.doc() = "wave_dispatch C++ bindings for multi-machine RL collect";
+  m.doc() = "wave_dispatch C++ bindings (Asio + binary frames + lock-free queues)";
   m.attr("__version__") = WAVE_DISPATCH_VERSION_STRING;
   m.attr("PROTO_VERSION") = kProtoVersion;
   m.attr("DEFAULT_PORT") = kDefaultPort;
   m.attr("MAX_FRAME_BYTES") = kMaxFrameBytes;
 
-  register_exceptions(m);
+  py::register_exception<Error>(m, "WaveDispatchError");
+  py::register_exception<ProtocolError>(m, "ProtocolError");
+  py::register_exception<TransportError>(m, "TransportError");
+  py::register_exception<TimeoutError>(m, "TimeoutError");
 
   m.def(
       "encode_frame",
@@ -58,10 +85,30 @@ PYBIND11_MODULE(_native, m) {
       py::arg("payload"));
 
   m.def(
+      "encode_message",
+      [](const py::object& meta, const py::object& blob) {
+        Message msg;
+        msg.meta = py_to_json(meta);
+        msg.blob = py_to_blob(blob);
+        auto bytes = encode_message(msg);
+        return py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+      },
+      py::arg("meta"), py::arg("blob") = py::bytes());
+
+  m.def(
       "decode_frame",
       [](const py::bytes& data) {
         const std::string raw = data;
         return json_to_py(decode_frame(
+            reinterpret_cast<const std::uint8_t*>(raw.data()), raw.size()));
+      },
+      py::arg("data"));
+
+  m.def(
+      "decode_message",
+      [](const py::bytes& data) {
+        const std::string raw = data;
+        return message_to_py(decode_message(
             reinterpret_cast<const std::uint8_t*>(raw.data()), raw.size()));
       },
       py::arg("data"));
@@ -91,9 +138,7 @@ PYBIND11_MODULE(_native, m) {
       .def_property_readonly(
           "info",
           [](const JobClient& c) -> py::object {
-            if (!c.info()) {
-              return py::none();
-            }
+            if (!c.info()) return py::none();
             return py::cast(*c.info());
           })
       .def("connect", &JobClient::connect, py::call_guard<py::gil_scoped_release>())
@@ -101,9 +146,11 @@ PYBIND11_MODULE(_native, m) {
       .def("reconnect", &JobClient::reconnect, py::call_guard<py::gil_scoped_release>())
       .def("ping",
            [](JobClient& c) {
-             py::gil_scoped_release release;
-             Json reply = c.ping();
-             py::gil_scoped_acquire acquire;
+             Json reply;
+             {
+               py::gil_scoped_release release;
+               reply = c.ping();
+             }
              return json_to_py(reply);
            })
       .def(
@@ -118,6 +165,26 @@ PYBIND11_MODULE(_native, m) {
             return json_to_py(result);
           },
           py::arg("job"), py::arg("kind") = "play")
+      .def(
+          "submit_message",
+          [](JobClient& c, const py::object& meta, const py::object& blob,
+             const std::string& kind) {
+            Message req;
+            req.meta = py_to_json(meta);
+            req.blob = py_to_blob(blob);
+            if (!req.meta.contains("type")) {
+              req.meta = {{"type", "job"},
+                          {"kind", kind},
+                          {"job", req.meta}};
+            }
+            Message reply;
+            {
+              py::gil_scoped_release release;
+              reply = c.submit_message(req, kind);
+            }
+            return message_to_py(reply);
+          },
+          py::arg("meta"), py::arg("blob") = py::bytes(), py::arg("kind") = "play")
       .def(
           "control",
           [](JobClient& c, const py::object& msg) {
@@ -165,17 +232,39 @@ PYBIND11_MODULE(_native, m) {
       .def_readwrite("port", &ServerConfig::port)
       .def_readwrite("backlog", &ServerConfig::backlog)
       .def_readwrite("max_connections", &ServerConfig::max_connections)
-      .def_readwrite("idle_timeout_s", &ServerConfig::idle_timeout_s);
+      .def_readwrite("idle_timeout_s", &ServerConfig::idle_timeout_s)
+      .def_readwrite("io_threads", &ServerConfig::io_threads)
+      .def_readwrite("tcp_nodelay", &ServerConfig::tcp_nodelay)
+      .def_readwrite("reuse_port", &ServerConfig::reuse_port);
 
   m.def(
       "serve_forever",
       [](py::function handler, ServerConfig config, py::object hello,
          py::object stop_event) {
         auto stop = std::make_shared<std::atomic<bool>>(false);
-        JobHandler cpp_handler = [handler](const Json& msg) -> Json {
+        MessageHandler cpp_handler = [handler](const Message& msg) -> Message {
           py::gil_scoped_acquire acquire;
-          py::object reply = handler(json_to_py(msg));
-          return py_to_json(reply);
+          // Pass wire JSON meta (v1-compatible). Opaque blob as optional _blob.
+          py::object py_msg = json_to_py(msg.meta);
+          if (!msg.blob.empty() && py::isinstance<py::dict>(py_msg)) {
+            py_msg.cast<py::dict>()["_blob"] = blob_to_py(msg.blob);
+          }
+          py::object reply = handler(py_msg);
+          Message out;
+          if (py::isinstance<py::dict>(reply)) {
+            py::dict d = reply.cast<py::dict>();
+            if (d.contains("meta") || (d.contains("blob") && !d.contains("type"))) {
+              return py_to_message(reply);
+            }
+            if (d.contains("_blob")) {
+              out.blob = py_to_blob(d["_blob"]);
+              d.attr("pop")("_blob", py::none());
+            }
+            out.meta = py_to_json(d);
+            return out;
+          }
+          out.meta = py_to_json(reply);
+          return out;
         };
         HelloFn cpp_hello;
         if (!hello.is_none()) {
@@ -185,7 +274,6 @@ PYBIND11_MODULE(_native, m) {
             return py_to_json(hello_fn());
           };
         }
-        // Optional threading.Event compatibility
         std::thread watcher;
         if (!stop_event.is_none()) {
           watcher = std::thread([stop, stop_event]() {
@@ -208,9 +296,7 @@ PYBIND11_MODULE(_native, m) {
           serve_forever(cpp_handler, config, cpp_hello, stop.get());
         }
         stop->store(true);
-        if (watcher.joinable()) {
-          watcher.join();
-        }
+        if (watcher.joinable()) watcher.join();
       },
       py::arg("handler"), py::arg("config") = ServerConfig{},
       py::arg("hello") = py::none(), py::arg("stop_event") = py::none());
@@ -278,9 +364,7 @@ PYBIND11_MODULE(_native, m) {
           "maybe_tick",
           [](MidWaveScheduler& s, int remaining, bool force) -> py::object {
             auto d = s.maybe_tick(remaining, force);
-            if (!d) {
-              return py::none();
-            }
+            if (!d) return py::none();
             return py::cast(*d);
           },
           py::arg("remaining"), py::arg("force") = false)
@@ -291,7 +375,8 @@ PYBIND11_MODULE(_native, m) {
       .def(py::init<>())
       .def_readwrite("local_workers", &CollectConfig::local_workers)
       .def_readwrite("remote_chunk", &CollectConfig::remote_chunk)
-      .def_readwrite("kind", &CollectConfig::kind);
+      .def_readwrite("kind", &CollectConfig::kind)
+      .def_readwrite("prefer_binary", &CollectConfig::prefer_binary);
 
   m.def(
       "run_scheduled_wave",
@@ -299,18 +384,13 @@ PYBIND11_MODULE(_native, m) {
          MidWaveScheduler& scheduler, CollectConfig config, py::object on_result) {
         std::vector<Json> cpp_jobs;
         cpp_jobs.reserve(py::len(jobs));
-        for (auto item : jobs) {
-          cpp_jobs.push_back(py_to_json(item.cast<py::object>()));
-        }
+        for (auto item : jobs) cpp_jobs.push_back(py_to_json(item.cast<py::object>()));
         LocalSubmitFn cpp_local = [local_submit](const Json& job) -> Json {
           py::gil_scoped_acquire acquire;
           return py_to_json(local_submit(json_to_py(job)));
         };
         std::vector<JobClient*> clients;
-        clients.reserve(py::len(remote_clients));
-        for (auto item : remote_clients) {
-          clients.push_back(item.cast<JobClient*>());
-        }
+        for (auto item : remote_clients) clients.push_back(item.cast<JobClient*>());
         ResultCallback cpp_on;
         if (!on_result.is_none()) {
           py::function cb = on_result.cast<py::function>();

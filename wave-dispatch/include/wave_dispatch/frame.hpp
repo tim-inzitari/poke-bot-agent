@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -13,19 +15,38 @@ namespace wave_dispatch {
 
 using Json = nlohmann::json;
 
-/** Encode a JSON object as !I big-endian length + UTF-8 body. */
+/** Wire message: JSON meta + optional opaque binary blob (zero-copy friendly). */
+struct Message {
+  Json meta;
+  std::vector<std::uint8_t> blob;
+
+  bool has_blob() const { return !blob.empty(); }
+};
+
+/** Encode pure JSON frame (!I + UTF-8). v1-compatible. */
 std::vector<std::uint8_t> encode_frame(const Json& payload);
 
-/** Decode one frame from a complete buffer (header + body). */
+/**
+ * Encode binary frame:
+ *   !I total_len | 'WDB1' | !I meta_len | meta_json | blob
+ * Meta is small; blob is the fast path for trajectories.
+ */
+std::vector<std::uint8_t> encode_message(const Message& msg);
+
+/** Decode one complete frame buffer into Message (JSON or WDB1). */
+Message decode_message(const std::uint8_t* data, std::size_t n);
+
+/** Convenience: decode JSON-only frame (blob empty). */
 Json decode_frame(const std::uint8_t* data, std::size_t n);
 
-/** Read exactly n bytes from a POSIX socket; throws on hangup/timeout. */
+/** Fast JSON parse (simdjson → nlohmann). */
+Json parse_json_fast(std::string_view utf8);
+
+/** Blocking POSIX helpers (used by tests / fallback). */
 void recv_exact(int fd, void* buf, std::size_t n);
-
-/** Read one length-prefixed JSON frame from a socket. */
+Message read_message(int fd);
 Json read_frame(int fd);
-
-/** Write one length-prefixed JSON frame to a socket. */
 void send_frame(int fd, const Json& payload);
+void send_message(int fd, const Message& msg);
 
 }  // namespace wave_dispatch

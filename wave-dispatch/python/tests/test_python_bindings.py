@@ -25,6 +25,13 @@ def test_encode_decode_frame():
     assert back["proto"] == 1
 
 
+def test_binary_message_roundtrip():
+    raw = wd.encode_message({"type": "job", "job": {"id": 3}}, b"\x01\x02\x03\x04")
+    msg = wd.decode_message(raw)
+    assert msg["meta"]["job"]["id"] == 3
+    assert msg["blob"] == b"\x01\x02\x03\x04"
+
+
 def test_scheduler_basic():
     cfg = wd.SchedulerConfig()
     cfg.tick_s = 0.0

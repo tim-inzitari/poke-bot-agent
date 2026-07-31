@@ -4,7 +4,7 @@ Status: **C++ library scaffolded under `wave-dispatch/` — poke-bot production 
 Branch: `cursor/remote-job-scheduler-extract-045a`  
 Product: a **separate library** for multi-machine RL collect across Kaggle projects  
 Primary use: train models for **other Kaggle competitions** on the same LAN farm pattern  
-Implementation home: [`wave-dispatch/`](../wave-dispatch/) (standalone C++ tree + **Python bindings** via `pip install -e wave-dispatch`; zero `poke_bot` imports)  
+Implementation home: [`wave-dispatch/`](../wave-dispatch/) v0.2 (Asio + simdjson + `WDB1` binary frames + moodycamel queues + **Python bindings** via `pip install -e wave-dispatch`; zero `poke_bot` imports)  
 Reference source (read-only): poke-bot-agent public-play LAN dispatch
 
 Related context in this repo: [THROUGHPUT_NEXT_ITER.md](THROUGHPUT_NEXT_ITER.md), [engine_rebuild_multi_game.md](engine_rebuild_multi_game.md)

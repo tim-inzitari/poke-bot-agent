@@ -2,7 +2,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <string>
 
 #include "wave_dispatch/wave_dispatch.hpp"
 
@@ -10,14 +9,14 @@ int main(int argc, char** argv) {
   using namespace wave_dispatch;
   int port = kDefaultPort;
   int workers = 4;
+  int io_threads = 0;
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
       port = std::atoi(argv[++i]);
     } else if (std::strcmp(argv[i], "--workers") == 0 && i + 1 < argc) {
       workers = std::atoi(argv[++i]);
-    } else if (std::strcmp(argv[i], "--help") == 0) {
-      std::cout << "Usage: wave_echo_worker [--port N] [--workers N]\n";
-      return 0;
+    } else if (std::strcmp(argv[i], "--io-threads") == 0 && i + 1 < argc) {
+      io_threads = std::atoi(argv[++i]);
     }
   }
 
@@ -25,6 +24,9 @@ int main(int argc, char** argv) {
   ServerConfig cfg;
   cfg.port = port;
   cfg.idle_timeout_s = 120.0;
+  cfg.io_threads = io_threads;
+  cfg.max_connections = 4096;
+  cfg.backlog = 512;
 
   auto hello = [workers]() {
     return Json{{"workers", workers},
@@ -33,26 +35,32 @@ int main(int argc, char** argv) {
                 {"hostname", "echo-worker"},
                 {"device", "cpu"},
                 {"job_kinds", Json::array({"play", "echo"})},
-                {"capabilities", Json::array({"echo_v1"})}};
+                {"capabilities", Json::array({"echo_v1", "binary_v1"})}};
   };
 
-  auto handler = [](const Json& msg) -> Json {
-    const std::string type = msg.value("type", "");
+  MessageHandler handler = [](const Message& msg) -> Message {
+    const std::string type = msg.meta.value("type", "");
     if (type == "job") {
-      Json job = msg.value("job", Json::object());
-      Json result = {{"ok", true},
-                     {"echo", job},
-                     {"kind", msg.value("kind", "play")}};
-      return Json{{"type", "result"}, {"ok", true}, {"result", result}};
+      Message out;
+      out.meta = {{"type", "result"},
+                  {"ok", true},
+                  {"result",
+                   {{"ok", true},
+                    {"echo", msg.meta.value("job", Json::object())},
+                    {"kind", msg.meta.value("kind", "play")},
+                    {"blob_bytes", static_cast<int>(msg.blob.size())}}}};
+      // Echo blob back — binary fast path
+      out.blob = msg.blob;
+      return out;
     }
     if (type == "health") {
-      return Json{{"type", "health_ok"}, {"ok", true}};
+      return Message{Json{{"type", "health_ok"}, {"ok", true}}, {}};
     }
-    return Json{{"type", "error"}, {"error", "unsupported message"}};
+    return Message{Json{{"type", "error"}, {"error", "unsupported message"}}, {}};
   };
 
-  std::cout << "wave_echo_worker listening on 0.0.0.0:" << port
-            << " workers=" << workers << "\n";
+  std::cout << "wave_echo_worker asio port=" << port << " workers=" << workers
+            << "\n";
   serve_forever(handler, cfg, hello, &stop);
   return 0;
 }
