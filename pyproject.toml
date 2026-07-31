@@ -1,0 +1,39 @@
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "wave-dispatch"
+version = "0.3.0"
+description = "Standalone C++ LAN job dispatcher for multi-machine RL collect (Python bindings)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "wave_dispatch contributors" }]
+keywords = ["rl", "kaggle", "dispatch", "scheduler", "lan"]
+classifiers = [
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.scikit-build]
+wheel.packages = ["python/wave_dispatch"]
+cmake.build-type = "Release"
+cmake.args = [
+  "-DWAVE_DISPATCH_BUILD_PYTHON=ON",
+  "-DWAVE_DISPATCH_BUILD_TESTS=OFF",
+  "-DWAVE_DISPATCH_BUILD_APPS=OFF",
+]
+sdist.exclude = [".venv", "build", "**/__pycache__"]
+wheel.exclude = [".venv", "build"]
+
+[tool.scikit-build.cmake.define]
+WAVE_DISPATCH_BUILD_PYTHON = "ON"
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]

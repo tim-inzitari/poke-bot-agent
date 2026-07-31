@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  cpp:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y liblz4-dev liburing-dev
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: brew install lz4 cmake
+      - name: Configure & build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWAVE_DISPATCH_BUILD_PYTHON=OFF
+          cmake --build build -j
+          ctest --test-dir build --output-on-failure
+      - name: Bench
+        run: ./build/wave_bench --jobs 1000 --blob 4096 --batch 16
+
+  wheels:
+    needs: cpp
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y liblz4-dev liburing-dev
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: brew install lz4
+      - name: Build wheel
+        run: |
+          python -m pip install -U pip build
+          python -m build --wheel
+      - name: Smoke import
+        run: |
+          python -m pip install dist/*.whl
+          python -c "import wave_dispatch as w; print(w.__version__)"
