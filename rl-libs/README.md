@@ -4,6 +4,9 @@ Standalone generalized RL infrastructure extracted for reuse across Kaggle / LAN
 training stacks. **Opaque payloads only** — no Pokémon-specific schema, no
 production wiring into poke-bot selectors or trainers.
 
+Version **0.1.1** (post code-review correctness fixes). See `docs/CODE_REVIEW.md`
+and `PUBLISH.md` for the `lib/rl-libs` standalone branch.
+
 ## Packages
 
 | Package | Lang | Role |

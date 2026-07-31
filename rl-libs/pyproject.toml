@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "rl-libs"
-version = "0.1.0"
+version = "0.1.1"
 description = "Generalized C++/Python RL infrastructure: IO, leaf IPC, process pools, eval, checkpoints, artifacts"
 readme = "README.md"
 requires-python = ">=3.10"

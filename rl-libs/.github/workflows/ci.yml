@@ -2,37 +2,55 @@ name: rl-libs-ci
 
 on:
   push:
-    paths: ["rl-libs/**"]
   pull_request:
-    paths: ["rl-libs/**"]
 
 jobs:
   cpp:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rl-libs
     steps:
       - uses: actions/checkout@v4
+      - name: Locate tree
+        id: root
+        run: |
+          if [ -f CMakeLists.txt ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f rl-libs/CMakeLists.txt ]; then
+            echo "dir=rl-libs" >> "$GITHUB_OUTPUT"
+          else
+            echo "rl-libs CMakeLists.txt not found" >&2
+            exit 1
+          fi
       - name: Configure
+        working-directory: ${{ steps.root.outputs.dir }}
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
+        working-directory: ${{ steps.root.outputs.dir }}
         run: cmake --build build -j
       - name: Test
+        working-directory: ${{ steps.root.outputs.dir }}
         run: ctest --test-dir build --output-on-failure
   python:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rl-libs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Locate tree
+        id: root
+        run: |
+          if [ -f pyproject.toml ] && grep -q 'name = "rl-libs"' pyproject.toml; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f rl-libs/pyproject.toml ]; then
+            echo "dir=rl-libs" >> "$GITHUB_OUTPUT"
+          else
+            exit 1
+          fi
       - name: Install
+        working-directory: ${{ steps.root.outputs.dir }}
         run: |
           python -m pip install -U pip
           pip install -e ".[dev]"
       - name: Pytest
+        working-directory: ${{ steps.root.outputs.dir }}
         run: pytest -q

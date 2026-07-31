@@ -213,26 +213,43 @@ void OrderedWriter::drain_ready_(bool force) {
     std::vector<Item> batch;
     {
       std::lock_guard<std::mutex> lock(mu_);
-      while (pending_.count(next_index_)) {
-        batch.push_back(std::move(pending_[next_index_]));
-        pending_.erase(next_index_);
-        ++next_index_;
+      // Do not advance durable next_index_ until commit_ succeeds.
+      std::uint64_t idx = next_index_;
+      while (pending_.count(idx)) {
+        batch.push_back(std::move(pending_[idx]));
+        pending_.erase(idx);
+        ++idx;
         if (batch.size() >= cfg_.fsync_batch) break;
       }
       if (!batch.empty() && batch.size() < cfg_.fsync_batch && !force &&
           !queue_.empty()) {
-        next_index_ -= batch.size();
-        for (auto& item : batch) pending_[item.index] = item;
+        for (auto& item : batch) pending_[item.index] = std::move(item);
         batch.clear();
       }
     }
     if (batch.empty()) break;
-    commit_(batch);
+    try {
+      commit_(batch);
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(mu_);
+      for (auto& item : batch) pending_[item.index] = std::move(item);
+      throw;
+    }
     if (!force && batch.size() < cfg_.fsync_batch) break;
   }
 }
 
 void OrderedWriter::commit_(const std::vector<Item>& batch) {
+  if (batch.empty()) return;
+  // Contiguous batch starting at next_index_.
+  if (batch.front().index != next_index_) {
+    throw ProtocolError("commit batch does not start at next_index");
+  }
+  for (std::size_t i = 1; i < batch.size(); ++i) {
+    if (batch[i].index != batch[0].index + i) {
+      throw ProtocolError("commit batch is not contiguous");
+    }
+  }
   replay_.clear();
   journal_.clear();
   replay_.seekp(0, std::ios::end);
@@ -261,6 +278,7 @@ void OrderedWriter::commit_(const std::vector<Item>& batch) {
   fsync_path(journal_path_);
   std::lock_guard<std::mutex> lock(mu_);
   written_records_ += added;
+  next_index_ = batch.back().index + 1;
   state_ = {
       {"schema", 1},
       {"expected_jobs", cfg_.expected_jobs},

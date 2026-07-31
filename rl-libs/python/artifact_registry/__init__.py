@@ -3,7 +3,7 @@
 from .registry import ArtifactRecord, ArtifactRegistry
 from .retention import retire_with_receipt, sha256_file
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "ArtifactRecord",

@@ -3,7 +3,6 @@
 #include "proc_pool/error.hpp"
 
 #include <fcntl.h>
-#include <poll.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -13,9 +12,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <thread>
 
 namespace proc_pool {
 namespace {
+
+constexpr std::uint32_t kMaxFrameBytes = 64u << 20;
 
 bool write_all(int fd, const void* data, std::size_t n) {
   const auto* p = static_cast<const std::uint8_t*>(data);
@@ -47,6 +49,7 @@ bool read_all(int fd, void* data, std::size_t n) {
 }
 
 bool write_frame(int fd, const std::uint8_t* data, std::size_t n) {
+  if (n > kMaxFrameBytes) return false;
   const std::uint32_t len = static_cast<std::uint32_t>(n);
   const std::uint8_t hdr[4] = {
       static_cast<std::uint8_t>((len >> 24) & 0xff),
@@ -62,6 +65,7 @@ bool read_frame(int fd, std::vector<std::uint8_t>& out) {
   if (!read_all(fd, hdr, 4)) return false;
   const std::uint32_t len = (std::uint32_t(hdr[0]) << 24) | (std::uint32_t(hdr[1]) << 16) |
                             (std::uint32_t(hdr[2]) << 8) | std::uint32_t(hdr[3]);
+  if (len > kMaxFrameBytes) return false;
   out.resize(len);
   if (len == 0) return true;
   return read_all(fd, out.data(), len);
@@ -72,13 +76,24 @@ double now_s() {
   return std::chrono::duration<double>(clock::now().time_since_epoch()).count();
 }
 
+int pipe2_cloexec(int fds[2]) {
+  if (::pipe(fds) != 0) return -1;
+  if (::fcntl(fds[0], F_SETFD, FD_CLOEXEC) != 0 ||
+      ::fcntl(fds[1], F_SETFD, FD_CLOEXEC) != 0) {
+    ::close(fds[0]);
+    ::close(fds[1]);
+    return -1;
+  }
+  return 0;
+}
+
 }  // namespace
 
 struct Supervisor::Worker {
   int slot = 0;
   pid_t pid = -1;
-  int to_child = -1;    // parent write
-  int from_child = -1;  // parent read
+  int to_child = -1;
+  int from_child = -1;
   std::uint32_t tasks_done = 0;
   bool busy = false;
   std::uint64_t inflight_id = 0;
@@ -88,6 +103,7 @@ struct Supervisor::Worker {
 Supervisor::Supervisor(WorkerSpec spec) : spec_(std::move(spec)) {
   if (spec_.argv.empty()) throw Error("worker argv required");
   if (spec_.num_workers == 0) throw Error("num_workers must be > 0");
+  if (spec_.num_workers > 4096) throw Error("num_workers too large");
   ensure_workers_();
   monitor_thread_ = std::thread([this] { monitor_(); });
 }
@@ -103,19 +119,31 @@ void Supervisor::ensure_workers_() {
   for (std::uint32_t i = 0; i < spec_.num_workers; ++i) {
     if (!workers_[i]) workers_[i] = std::make_unique<Worker>();
     if (workers_[i]->pid > 0) continue;
+    if (workers_[i]->io_thread.joinable()) {
+      workers_[i]->io_thread.join();
+    }
     int in_pipe[2];
     int out_pipe[2];
-    if (::pipe(in_pipe) != 0 || ::pipe(out_pipe) != 0) throw Error("pipe failed");
+    if (pipe2_cloexec(in_pipe) != 0 || pipe2_cloexec(out_pipe) != 0) {
+      throw Error("pipe failed");
+    }
     const pid_t pid = ::fork();
     if (pid < 0) throw Error("fork failed");
     if (pid == 0) {
-      ::dup2(in_pipe[0], STDIN_FILENO);
-      ::dup2(out_pipe[1], STDOUT_FILENO);
+      // Drop inherited sibling worker FDs (CLOEXEC covers most; clear anyway).
+      for (auto& wp : workers_) {
+        if (!wp) continue;
+        if (wp->to_child >= 0) ::close(wp->to_child);
+        if (wp->from_child >= 0) ::close(wp->from_child);
+      }
+      if (::dup2(in_pipe[0], STDIN_FILENO) < 0) std::_Exit(127);
+      if (::dup2(out_pipe[1], STDOUT_FILENO) < 0) std::_Exit(127);
       ::close(in_pipe[0]);
       ::close(in_pipe[1]);
       ::close(out_pipe[0]);
       ::close(out_pipe[1]);
       std::vector<char*> args;
+      args.reserve(spec_.argv.size() + 1);
       for (auto& s : spec_.argv) args.push_back(const_cast<char*>(s.c_str()));
       args.push_back(nullptr);
       ::execvp(args[0], args.data());
@@ -129,12 +157,11 @@ void Supervisor::ensure_workers_() {
     workers_[i]->from_child = out_pipe[0];
     workers_[i]->tasks_done = 0;
     workers_[i]->busy = false;
+    workers_[i]->inflight_id = 0;
   }
 }
 
-void Supervisor::recycle_(Worker& w) {
-  kill_worker_(w);
-}
+void Supervisor::recycle_(Worker& w) { kill_worker_(w); }
 
 void Supervisor::kill_worker_(Worker& w) {
   if (w.to_child >= 0) {
@@ -145,6 +172,14 @@ void Supervisor::kill_worker_(Worker& w) {
   if (w.from_child >= 0) {
     ::close(w.from_child);
     w.from_child = -1;
+  }
+  if (w.io_thread.joinable()) {
+    // Must not join self.
+    if (w.io_thread.get_id() != std::this_thread::get_id()) {
+      w.io_thread.join();
+    } else {
+      w.io_thread.detach();
+    }
   }
   if (w.pid > 0) {
     int status = 0;
@@ -159,15 +194,16 @@ void Supervisor::kill_worker_(Worker& w) {
 }
 
 std::uint64_t Supervisor::submit(const std::uint8_t* data, std::size_t n) {
+  if (n > kMaxFrameBytes) throw Error("task payload exceeds 64MiB cap");
   if (stop_.load()) throw Error("supervisor stopped: " + stop_reason_);
   const std::uint64_t id = next_task_.fetch_add(1);
   const double deadline = now_s() + 30.0;
   while (true) {
     {
-      std::lock_guard<std::mutex> lock(mu_);
+      std::unique_lock<std::mutex> lock(mu_);
       for (auto& wp : workers_) {
         auto& w = *wp;
-        if (w.pid > 0 && !w.busy && w.to_child >= 0) {
+        if (w.pid > 0 && !w.busy && w.to_child >= 0 && !w.io_thread.joinable()) {
           if (!write_frame(w.to_child, data, n)) {
             kill_worker_(w);
             continue;
@@ -176,7 +212,7 @@ std::uint64_t Supervisor::submit(const std::uint8_t* data, std::size_t n) {
           w.inflight_id = id;
           const int from = w.from_child;
           const int slot = w.slot;
-          std::thread([this, from, slot, id] {
+          w.io_thread = std::thread([this, from, slot, id] {
             std::vector<std::uint8_t> payload;
             TaskResult tr;
             tr.task_id = id;
@@ -193,13 +229,18 @@ std::uint64_t Supervisor::submit(const std::uint8_t* data, std::size_t n) {
                 workers_[slot] && workers_[slot]->inflight_id == id) {
               workers_[slot]->busy = false;
               workers_[slot]->tasks_done += 1;
+              // Detach completed io_thread handle before recycle may join.
+              if (workers_[slot]->io_thread.joinable() &&
+                  workers_[slot]->io_thread.get_id() == std::this_thread::get_id()) {
+                workers_[slot]->io_thread.detach();
+              }
               if (spec_.recycle_tasks > 0 &&
                   workers_[slot]->tasks_done >= spec_.recycle_tasks) {
                 recycle_(*workers_[slot]);
               }
             }
             results_.push_back(std::move(tr));
-          }).detach();
+          });
           return id;
         }
       }
