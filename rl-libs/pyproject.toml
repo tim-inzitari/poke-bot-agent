@@ -4,8 +4,8 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "rl-libs"
-version = "0.1.1"
-description = "Generalized C++/Python RL infrastructure: IO, leaf IPC, process pools, eval, checkpoints, artifacts"
+version = "0.2.0"
+description = "Generalized C++/Python RL infrastructure: IO, leaf IPC, pools, eval, checkpoints, resources, schedules, submit guard"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -30,6 +30,11 @@ wheel.packages = [
   "python/rl_eval",
   "python/torch_ckpt",
   "python/artifact_registry",
+  "python/rl_resource",
+  "python/schedule_engine",
+  "python/test_profiles",
+  "python/submit_guard",
+  "python/log_trim",
 ]
 cmake.build-type = "Release"
 cmake.args = [

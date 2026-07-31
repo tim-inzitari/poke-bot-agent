@@ -1,6 +1,20 @@
-# Senior engineer code review — rl-libs 0.1.0 → 0.1.1
+# Senior engineer code review — rl-libs
 
 Review date: 2026-07-31. Production poke-bot was not touched.
+
+## 0.2.0 remaining extracts
+
+Added Python-first packages with opaque contracts only. Senior pass:
+
+| Package | Notes |
+|---|---|
+| `rl_resource` | No poke-bot env names hardcoded in core API; knobs caller-owned |
+| `schedule_engine` | No fixed 25-epoch / Pokemon head inventory |
+| `test_profiles` | Manifest commands; no repo-rooted canary scripts |
+| `submit_guard` | Generic schema; Pokemon turn-order attestation left to `extra_checks` |
+| `log_trim` | Uses receipt helper; dry-run supported |
+
+## 0.1.1 C++ core review
 
 ## Verdict
 

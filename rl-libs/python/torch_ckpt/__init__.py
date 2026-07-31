@@ -6,7 +6,7 @@ from .atomic import (
     immutable_torch_save,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "atomic_torch_save",

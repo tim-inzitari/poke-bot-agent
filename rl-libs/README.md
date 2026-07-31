@@ -4,7 +4,7 @@ Standalone generalized RL infrastructure extracted for reuse across Kaggle / LAN
 training stacks. **Opaque payloads only** — no Pokémon-specific schema, no
 production wiring into poke-bot selectors or trainers.
 
-Version **0.1.1** (post code-review correctness fixes). See `docs/CODE_REVIEW.md`
+Version **0.2.0** — all planned generalized extracts. See `docs/CODE_REVIEW.md`
 and `PUBLISH.md` for the `lib/rl-libs` standalone branch.
 
 ## Packages
@@ -17,6 +17,11 @@ and `PUBLISH.md` for the `lib/rl-libs` standalone branch.
 | `rl_eval` | Python | Wilson / bootstrap metrics, promotion gates, aborts |
 | `torch_ckpt` | Python | Atomic / immutable `torch.save` helpers + digests |
 | `artifact_registry` | Python | Digest-bound registry + receipt-backed retention |
+| `rl_resource` | Python | Host/GPU sample, `OomGuard`, advisory knob ratchet |
+| `schedule_engine` | Python | Opaque staged curriculum schedules + digests |
+| `test_profiles` | Python | Manifest-driven timed test profiles |
+| `submit_guard` | Python | One-shot fail-closed competition submit grants |
+| `log_trim` | Python | Age/size directory trim + optional receipts |
 
 ## Build
 

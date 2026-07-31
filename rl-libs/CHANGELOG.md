@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- Complete remaining generalized extracts (Python-first):
+  - `rl_resource` — RAM/CPU/GPU sample, `OomGuard`, advisory knob ratchet
+  - `schedule_engine` — opaque staged curriculum + digests
+  - `test_profiles` — manifest-driven timed pytest/command profiles
+  - `submit_guard` — one-shot fail-closed competition submit grants
+  - `log_trim` — age/size directory trim with optional receipts
+- Docs/mapping updated; production poke-bot still unwired
+
 ## 0.1.1
 
 - Code review fixes (see `docs/CODE_REVIEW.md`):

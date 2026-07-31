@@ -11,6 +11,11 @@
 | `rl_eval.*` | `eval_metrics.py`, `promotion.py`, `aborts.py` | Stats/gates without Pokémon fields |
 | `torch_ckpt.*` | `checkpoint.py` atomic helpers | No matchup adapter contracts |
 | `artifact_registry.*` | `artifact_retention.py` / registry patterns | Receipt retire + JSON registry |
+| `rl_resource.*` | `config.OomGuard`, `scripts/resource_watcher.py` | Sampling + OOM scale + opaque knob ratchet |
+| `schedule_engine.*` | `strategic_schedule.py` | Staged curriculum; caller-owned ids/weights/schema |
+| `test_profiles.*` | `scripts/run_test_profile.py` | Manifest budgets/commands; no poke-bot paths |
+| `submit_guard.*` | `scripts/kaggle_cli_guard.py` | One-shot grant consume-before-upload; generic schema |
+| `log_trim.*` | retention / log cleanup patterns | Age/size trim + optional receipts |
 
 ## Production safety
 

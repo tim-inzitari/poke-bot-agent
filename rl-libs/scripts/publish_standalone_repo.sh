@@ -28,7 +28,7 @@ gh repo create "$TARGET" "$VISIBILITY" --description \
   "Generalized C++/Python RL infrastructure: IO, leaf IPC, process pools, eval, checkpoints" \
   --source=. --remote=origin --push
 
-git push origin v0.1.1 2>/dev/null || git push origin --tags
+git push origin v0.2.0 2>/dev/null || git push origin --tags
 
 echo
 echo "Done: https://github.com/${TARGET}"
