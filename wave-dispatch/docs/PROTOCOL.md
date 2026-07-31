@@ -47,8 +47,11 @@ LZ4 payloads are prefixed with LE u32 original size.
 
 ## Handshake
 
-`hello` → `hello_ok` with `workers`, `capabilities` including
+`hello` / `hello_ok` require **`proto: 2`** (library 0.3.1+). Capabilities include
 `binary_v1`, `batch_v2`, `lz4_v1`.
+
+Collectors are **fail-closed**: batch cardinality must match, `ok:false` fails the
+wave, and clients do not blind-retry after a request write may have committed.
 
 ## Localhost
 

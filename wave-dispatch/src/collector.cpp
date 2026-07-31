@@ -22,29 +22,37 @@ void ClaimLedger::set_endpoint_targets(
   slots_.clear();
   for (const auto& [ep, n] : targets) {
     auto slot = std::make_unique<Slot>();
-    slot->target.store(n, std::memory_order_relaxed);
-    slot->claimed.store(0, std::memory_order_relaxed);
+    slot->target.store(std::max(1, n), std::memory_order_relaxed);
+    slot->in_flight.store(0, std::memory_order_relaxed);
     slots_.emplace(ep, std::move(slot));
   }
 }
 
 bool ClaimLedger::try_claim_remote(const std::string& endpoint, int n) {
+  if (n <= 0) return false;
   auto it = slots_.find(endpoint);
   if (it == slots_.end()) return true;
   Slot& s = *it->second;
   const int tgt = s.target.load(std::memory_order_relaxed);
   while (true) {
-    int have = s.claimed.load(std::memory_order_relaxed);
+    int have = s.in_flight.load(std::memory_order_relaxed);
     if (tgt > 0 && have + n > tgt) return false;
-    if (s.claimed.compare_exchange_weak(have, have + n, std::memory_order_acq_rel)) {
+    if (s.in_flight.compare_exchange_weak(have, have + n, std::memory_order_acq_rel)) {
       return true;
     }
   }
 }
 
+void ClaimLedger::release_remote(const std::string& endpoint, int n) {
+  if (n <= 0) return;
+  auto it = slots_.find(endpoint);
+  if (it == slots_.end()) return;
+  it->second->in_flight.fetch_sub(n, std::memory_order_acq_rel);
+}
+
 int ClaimLedger::claimed(const std::string& endpoint) const {
   auto it = slots_.find(endpoint);
-  return it == slots_.end() ? 0 : it->second->claimed.load(std::memory_order_relaxed);
+  return it == slots_.end() ? 0 : it->second->in_flight.load(std::memory_order_relaxed);
 }
 
 int ClaimLedger::target(const std::string& endpoint) const {
@@ -58,45 +66,51 @@ struct JobItem {
   Message msg;
 };
 
+bool result_ok(const Message& result) {
+  if (result.meta.contains("ok") && !result.meta.value("ok", true)) return false;
+  if (result.meta.value("type", "") == "error") return false;
+  return true;
+}
+
 int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
                   std::vector<JobClient*>& remote_clients,
                   MidWaveScheduler& scheduler, CollectConfig config,
                   MessageResultCallback on_result, ConnectionPool* pool) {
   if (jobs.empty()) return 0;
+  const int expected = static_cast<int>(jobs.size());
 
   moodycamel::ConcurrentQueue<JobItem> global_q;
   for (auto& j : jobs) global_q.enqueue(JobItem{std::move(j)});
-  std::atomic<int> remaining{static_cast<int>(jobs.size())};
+  std::atomic<int> remaining{expected};
   std::atomic<int> completed{0};
+  std::atomic<bool> fail_closed{false};
   std::vector<std::string> errors;
   std::mutex err_mu;
 
   scheduler.maybe_tick(remaining.load(), true);
   auto dec = scheduler.decision();
 
-  ClaimLedger ledger(remaining.load());
+  ClaimLedger ledger(expected);
   std::unordered_map<std::string, int> targets;
   auto demand = dec.remote_demand;
 
-  // Build endpoint list from clients
   std::vector<std::string> endpoints;
   for (auto* c : remote_clients) {
     if (!c) continue;
     endpoints.push_back(c->endpoint());
   }
 
+  // In-flight caps (not lifetime quotas).
   for (const auto& [ep, n] : demand) {
-    targets[ep] = std::max(n, 1) * std::max(1, config.remote_chunk);
+    targets[ep] = std::max(1, n) * std::max(1, config.batch_size);
   }
   if (targets.empty()) {
     for (const auto& ep : endpoints) {
-      targets[ep] =
-          std::max(1, remaining.load() / std::max(1, static_cast<int>(endpoints.size())));
+      targets[ep] = std::max(1, config.batch_size);
     }
   }
   ledger.set_endpoint_targets(targets);
 
-  // Optional owned pool if caller didn't pass one
   std::unique_ptr<ConnectionPool> owned_pool;
   ConnectionPool* active_pool = pool;
   if (config.use_connection_pool && active_pool == nullptr && !endpoints.empty()) {
@@ -108,11 +122,14 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
   if (active_pool) {
     for (const auto& ep : endpoints) {
       int n = demand.count(ep) ? std::max(1, demand[ep]) : 1;
-      // Map TCP endpoint key to pool key (localhost → uds)
-      std::string key = ep;
-      active_pool->ensure(key, n);
+      active_pool->ensure(ep, n);
     }
   }
+
+  auto push_global = [&](Message msg) {
+    global_q.enqueue(JobItem{std::move(msg)});
+    remaining.fetch_add(1, std::memory_order_relaxed);
+  };
 
   auto pop_global = [&](JobItem& out) -> bool {
     if (global_q.try_dequeue(out)) {
@@ -130,28 +147,37 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
     }
   };
 
-  // Local workers (still threads — CPU job work)
+  auto note_error = [&](const std::string& msg) {
+    std::lock_guard<std::mutex> lock(err_mu);
+    errors.push_back(msg);
+    fail_closed.store(true, std::memory_order_relaxed);
+  };
+
   std::vector<std::thread> local_threads;
   const int local_n = std::max(0, config.local_workers);
   for (int i = 0; i < local_n; ++i) {
     local_threads.emplace_back([&]() {
       JobItem item;
-      while (pop_global(item)) {
+      while (!fail_closed.load(std::memory_order_relaxed) && pop_global(item)) {
         try {
           Message result = local_submit(item.msg);
-          scheduler.note_completed("local", 1, 1);
-          completed.fetch_add(1, std::memory_order_relaxed);
-          if (on_result) on_result(result);
+          if (!result_ok(result)) {
+            note_error("local job returned ok=false");
+            push_global(std::move(item.msg));
+          } else {
+            scheduler.note_completed("local", 1, 1);
+            completed.fetch_add(1, std::memory_order_relaxed);
+            if (on_result) on_result(result);
+          }
         } catch (const std::exception& e) {
-          std::lock_guard<std::mutex> lock(err_mu);
-          errors.push_back(e.what());
+          note_error(std::string("local: ") + e.what());
+          push_global(std::move(item.msg));
         }
         scheduler.maybe_tick(remaining.load(std::memory_order_relaxed), false);
       }
     });
   }
 
-  // Async remote path via asio thread pool + connection pool + batching
   int async_n = config.async_threads;
   if (async_n <= 0) {
     async_n = static_cast<int>(std::max(2u, std::thread::hardware_concurrency()));
@@ -164,35 +190,37 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
   }
 
   std::atomic<int> remote_inflight{0};
-  std::atomic<bool> remote_done{false};
 
   auto spawn_endpoint_workers = [&](const std::string& ep, int slots) {
     for (int s = 0; s < slots; ++s) {
       remote_inflight.fetch_add(1, std::memory_order_relaxed);
       asio::post(ioc, [&, ep]() {
-        // Drain until empty
-        while (true) {
+        while (!fail_closed.load(std::memory_order_relaxed)) {
           const int batch_n = std::max(1, config.batch_size);
+          int claimed = 0;
           std::vector<Message> batch;
-          // Claim credit then pull
-          if (!ledger.try_claim_remote(ep, batch_n)) {
-            // try single
-            if (!ledger.try_claim_remote(ep, 1)) {
-              if (remaining.load(std::memory_order_relaxed) <= 0) break;
-              std::this_thread::sleep_for(std::chrono::microseconds(100));
-              continue;
-            }
+          if (ledger.try_claim_remote(ep, batch_n)) {
+            claimed = batch_n;
+            pop_many(batch_n, batch);
+          } else if (ledger.try_claim_remote(ep, 1)) {
+            claimed = 1;
             pop_many(1, batch);
           } else {
-            pop_many(batch_n, batch);
+            if (remaining.load(std::memory_order_relaxed) <= 0) break;
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            continue;
+          }
+          if (static_cast<int>(batch.size()) < claimed) {
+            ledger.release_remote(ep, claimed - static_cast<int>(batch.size()));
+            claimed = static_cast<int>(batch.size());
           }
           if (batch.empty()) {
+            if (claimed) ledger.release_remote(ep, claimed);
             if (remaining.load(std::memory_order_relaxed) <= 0) break;
             std::this_thread::sleep_for(std::chrono::microseconds(50));
             continue;
           }
 
-          // Normalize metas
           for (auto& m : batch) {
             if (!m.meta.contains("type")) {
               Json job = m.meta;
@@ -208,7 +236,6 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
             from_pool = client != nullptr;
           }
           if (!client) {
-            // Fall back: find template client with matching endpoint
             for (auto* c : remote_clients) {
               if (c && c->endpoint() == ep) {
                 ephemeral = std::make_unique<JobClient>(c->host(), c->port(), 30.0);
@@ -216,20 +243,28 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
                   ephemeral->connect();
                   client = ephemeral.get();
                 } catch (const std::exception& e) {
-                  std::lock_guard<std::mutex> lock(err_mu);
-                  errors.push_back(ep + " connect: " + e.what());
+                  note_error(ep + " connect: " + e.what());
                   client = nullptr;
                 }
                 break;
               }
             }
           }
-          if (!client) continue;
+          if (!client) {
+            for (auto& m : batch) push_global(std::move(m));
+            ledger.release_remote(ep, claimed);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+          }
 
           bool healthy = true;
+          bool batch_ok = false;
           try {
             auto results =
                 client->submit_batch(batch, config.kind, config.compress_blobs);
+            if (static_cast<int>(results.size()) != static_cast<int>(batch.size())) {
+              throw ProtocolError("batch result cardinality mismatch");
+            }
             for (auto& result : results) {
               if (result.meta.contains("result") && result.blob.empty()) {
                 Message unwrapped;
@@ -237,31 +272,38 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
                 unwrapped.blob = std::move(result.blob);
                 result = std::move(unwrapped);
               }
+              if (!result_ok(result)) {
+                throw ProtocolError(result.meta.value("error", "remote ok=false"));
+              }
+            }
+            for (auto& result : results) {
               scheduler.note_completed("remote", 1, 1);
               completed.fetch_add(1, std::memory_order_relaxed);
               if (on_result) on_result(result);
             }
+            batch_ok = true;
           } catch (const std::exception& e) {
             healthy = false;
-            std::lock_guard<std::mutex> lock(err_mu);
-            errors.push_back(ep + ": " + e.what());
+            note_error(ep + ": " + e.what());
+            for (auto& m : batch) push_global(std::move(m));
           }
 
+          ledger.release_remote(ep, claimed);
           if (from_pool && active_pool) {
             active_pool->release(ep, client, healthy);
           } else if (ephemeral) {
             ephemeral->close();
           }
+          (void)batch_ok;
           scheduler.maybe_tick(remaining.load(std::memory_order_relaxed), false);
+          if (fail_closed.load(std::memory_order_relaxed)) break;
         }
         remote_inflight.fetch_sub(1, std::memory_order_relaxed);
       });
     }
   };
 
-  if (endpoints.empty()) {
-    remote_done.store(true);
-  } else {
+  if (!endpoints.empty()) {
     for (const auto& ep : endpoints) {
       int slots = demand.count(ep) ? std::max(1, demand[ep]) : 1;
       spawn_endpoint_workers(ep, slots);
@@ -270,7 +312,6 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
 
   for (auto& t : local_threads) t.join();
 
-  // Wait for remote async work
   while (remote_inflight.load(std::memory_order_relaxed) > 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
@@ -278,10 +319,13 @@ int run_wave_impl(std::vector<Message> jobs, LocalMessageFn local_submit,
   ioc.stop();
   for (auto& t : async_threads) t.join();
 
-  if (!errors.empty() && completed.load() == 0) {
-    throw TransportError("scheduled wave failed: " + errors.front());
+  const int done = completed.load();
+  if (!errors.empty() || done != expected) {
+    std::string detail = errors.empty() ? "incomplete wave" : errors.front();
+    throw TransportError("scheduled wave failed (" + std::to_string(done) + "/" +
+                         std::to_string(expected) + "): " + detail);
   }
-  return completed.load();
+  return done;
 }
 
 }  // namespace

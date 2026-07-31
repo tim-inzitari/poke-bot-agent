@@ -7,6 +7,10 @@ Fan opaque episode jobs across local workers + remote TCP/UDS workers, rebalance
 on wall-clock completions, gather results. Domain code (env, model, job schema)
 stays in your competition repo.
 
+> This directory is a **standalone git repository** (`main` tracks
+> `poke-bot-agent` branch `lib/wave-dispatch` until promoted to
+> `github.com/tim-inzitari/wave-dispatch`).
+
 ## Speed stack (v0.3)
 
 | Layer | Tech |
@@ -36,7 +40,6 @@ from wave_dispatch import (
     CollectConfig, run_scheduled_wave,
 )
 
-# Add children by endpoint; add a new parent by calling run_scheduled_wave
 farm = WorkerFarm(["gpu-a:8765", "gpu-b:8766", "127.0.0.1:8767"])
 farm.connect()
 pool = ConnectionPool()
@@ -73,15 +76,11 @@ ctest --test-dir build --output-on-failure
 ./build/wave_bench --jobs 4000 --blob 8192 --batch 16
 ```
 
-## Layout
+## Promote to github.com/tim-inzitari/wave-dispatch
 
-```text
-include/wave_dispatch/   public headers
-src/                     implementation
-python/wave_dispatch/    Python package
-apps/                    echo_worker, echo_client, wave_bench
-tests/                   C++ tests
-.github/workflows/ci.yml Linux/macOS build + wheels
+```bash
+gh repo create tim-inzitari/wave-dispatch --private --source=. --remote=origin --push
+git push origin v0.3.0
 ```
 
 ## License

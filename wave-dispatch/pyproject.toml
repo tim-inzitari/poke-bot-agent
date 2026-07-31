@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "wave-dispatch"
-version = "0.3.0"
+version = "0.3.1"
 description = "Standalone C++ LAN job dispatcher for multi-machine RL collect (Python bindings)"
 readme = "README.md"
 requires-python = ">=3.10"

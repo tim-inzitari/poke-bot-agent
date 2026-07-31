@@ -28,7 +28,7 @@ gh repo create "$TARGET" "$VISIBILITY" --description \
   "Standalone C++ LAN job-dispatch library for multi-machine RL collect (Python bindings)" \
   --source=. --remote=origin --push
 
-git push origin v0.3.0 2>/dev/null || git push origin --tags
+git push origin v0.3.1 2>/dev/null || git push origin --tags
 
 echo
 echo "Done: https://github.com/${TARGET}"

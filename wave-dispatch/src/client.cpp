@@ -270,15 +270,18 @@ Message JobClient::submit_message(const Message& req_in, const std::string& kind
 
   std::exception_ptr last;
   for (int attempt = 0; attempt < 2; ++attempt) {
+    bool wrote = false;
     try {
       if (!connected()) throw TransportError("not connected");
       apply_timeout_fd(impl_->native(), timeout_s_);
       Message reply;
       if (impl_->tcp_sock) {
         write_message_sock(*impl_->tcp_sock, req);
+        wrote = true;
         reply = read_message_sock(*impl_->tcp_sock);
       } else {
         write_message_sock(*impl_->uds_sock, req);
+        wrote = true;
         reply = read_message_sock(*impl_->uds_sock);
       }
       if (reply.meta.value("type", "") != "result" &&
@@ -294,9 +297,15 @@ Message JobClient::submit_message(const Message& req_in, const std::string& kind
       throw;
     } catch (const std::exception& e) {
       last = std::current_exception();
-      if (attempt == 0 && is_hangup_msg(e.what())) {
+      // Retry only when the request may not have reached the server.
+      if (attempt == 0 && !wrote && is_hangup_msg(e.what())) {
         reconnect();
         continue;
+      }
+      if (wrote) {
+        throw TransportError(
+            std::string("ambiguous submit after write (no automatic retry): ") +
+            e.what());
       }
       throw;
     }

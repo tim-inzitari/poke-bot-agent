@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(wave_dispatch VERSION 0.3.0 LANGUAGES CXX)
+project(wave_dispatch VERSION 0.3.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -145,6 +145,7 @@ if(WAVE_DISPATCH_BUILD_TESTS)
     tests/test_roundtrip.cpp
     tests/test_binary.cpp
     tests/test_batch_pool.cpp
+    tests/test_fail_closed.cpp
     tests/main.cpp
   )
   target_link_libraries(wave_dispatch_tests PRIVATE wave_dispatch)

@@ -18,8 +18,10 @@ namespace wave_dispatch {
 class ClaimLedger {
  public:
   explicit ClaimLedger(int total_jobs);
+  /** ``targets`` are max **in-flight** jobs per endpoint, not lifetime quotas. */
   void set_endpoint_targets(const std::unordered_map<std::string, int>& targets);
   bool try_claim_remote(const std::string& endpoint, int n);
+  void release_remote(const std::string& endpoint, int n);
   int claimed(const std::string& endpoint) const;
   int target(const std::string& endpoint) const;
   int total_jobs() const { return total_jobs_; }
@@ -27,7 +29,7 @@ class ClaimLedger {
  private:
   struct Slot {
     std::atomic<int> target{0};
-    std::atomic<int> claimed{0};
+    std::atomic<int> in_flight{0};
   };
   int total_jobs_ = 0;
   std::unordered_map<std::string, std::unique_ptr<Slot>> slots_;

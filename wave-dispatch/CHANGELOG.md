@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Code review (see `docs/CODE_REVIEW.md`): fail-closed collector, in-flight claims,
+  no silent `ok:false` completions, no blind retry after write, idle socket close,
+  strict batch unpack, protocol version 2.
+
 ## 0.3.0
 
 - Persistent `ConnectionPool` (warm sockets across waves)

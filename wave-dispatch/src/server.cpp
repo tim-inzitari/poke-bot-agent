@@ -62,11 +62,14 @@ class Session : public std::enable_shared_from_this<Session<Socket>> {
   using self_t = Session<Socket>;
 
   void arm_idle_timer() {
+    if (cfg_.idle_timeout_s <= 0) return;
     timer_.expires_after(
         std::chrono::milliseconds(static_cast<int>(cfg_.idle_timeout_s * 1000)));
     auto self = this->shared_from_this();
     timer_.async_wait([self](const asio::error_code& ec) {
-      if (!ec) self->arm_idle_timer();
+      if (ec) return;  // cancelled by activity
+      asio::error_code ignored;
+      self->sock_.close(ignored);
     });
   }
 

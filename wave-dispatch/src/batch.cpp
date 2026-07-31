@@ -50,32 +50,58 @@ std::vector<Message> unpack_batch(const Message& batch) {
   if (!meta.contains("items") || !meta["items"].is_array()) {
     throw ProtocolError("batch missing items");
   }
+  if (!meta.contains("n") || !meta["n"].is_number_integer()) {
+    throw ProtocolError("batch missing n");
+  }
+  if (!meta.contains("blob_lens") || !meta["blob_lens"].is_array()) {
+    throw ProtocolError("batch missing blob_lens");
+  }
   const auto& items_meta = meta["items"];
-  const auto& lens = meta.value("blob_lens", Json::array());
+  const auto& lens = meta["blob_lens"];
+  const int n = meta["n"].get<int>();
+  if (n < 0 || static_cast<std::size_t>(n) != items_meta.size()) {
+    throw ProtocolError("batch n/items mismatch");
+  }
+  if (lens.size() != items_meta.size()) {
+    throw ProtocolError("batch blob_lens size mismatch");
+  }
   std::vector<Message> out;
   out.reserve(items_meta.size());
   std::size_t off = 0;
   for (std::size_t i = 0; i < items_meta.size(); ++i) {
     Message m;
     m.meta = items_meta[i];
-    int len = 0;
-    if (i < lens.size()) len = lens[i].get<int>();
-    if (len > 0) {
-      if (off + static_cast<std::size_t>(len) > batch.blob.size()) {
-        throw ProtocolError("batch blob truncated");
-      }
-      const std::uint8_t codec_b = batch.blob[off];
-      const auto* p = batch.blob.data() + off + 1;
-      const std::size_t n = static_cast<std::size_t>(len) - 1;
-      std::vector<std::uint8_t> piece(p, p + n);
-      if (codec_b == static_cast<std::uint8_t>(BlobCodec::kLz4)) {
-        decompress_blob(piece, m.blob, BlobCodec::kLz4);
-      } else {
-        m.blob = std::move(piece);
-      }
-      off += static_cast<std::size_t>(len);
+    if (!lens[i].is_number_integer()) {
+      throw ProtocolError("batch blob_lens entry not int");
     }
+    const int len = lens[i].get<int>();
+    if (len < 0) throw ProtocolError("batch blob_lens negative");
+    if (len == 0) {
+      out.push_back(std::move(m));
+      continue;
+    }
+    if (off + static_cast<std::size_t>(len) > batch.blob.size()) {
+      throw ProtocolError("batch blob truncated");
+    }
+    const std::uint8_t codec_b = batch.blob[off];
+    if (codec_b != static_cast<std::uint8_t>(BlobCodec::kNone) &&
+        codec_b != static_cast<std::uint8_t>(BlobCodec::kLz4)) {
+      throw ProtocolError("batch unknown blob codec");
+    }
+    if (len < 1) throw ProtocolError("batch blob item too small");
+    const auto* p = batch.blob.data() + off + 1;
+    const std::size_t nbytes = static_cast<std::size_t>(len) - 1;
+    std::vector<std::uint8_t> piece(p, p + nbytes);
+    if (codec_b == static_cast<std::uint8_t>(BlobCodec::kLz4)) {
+      decompress_blob(piece, m.blob, BlobCodec::kLz4);
+    } else {
+      m.blob = std::move(piece);
+    }
+    off += static_cast<std::size_t>(len);
     out.push_back(std::move(m));
+  }
+  if (off != batch.blob.size()) {
+    throw ProtocolError("batch blob has trailing bytes");
   }
   return out;
 }

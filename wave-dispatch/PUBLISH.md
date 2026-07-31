@@ -7,8 +7,8 @@
 | Item | Location |
 |---|---|
 | Branch (library at repo root) | [`lib/wave-dispatch`](https://github.com/tim-inzitari/poke-bot-agent/tree/lib/wave-dispatch) |
-| Tag | `v0.3.0` |
-| Bundle artifact | `wave-dispatch-v0.3.0.bundle` (from this agent run) |
+| Tag | `v0.3.1` |
+| Bundle artifact | `wave-dispatch-v0.3.1.bundle` |
 
 Clone the library-only tree:
 
@@ -35,7 +35,7 @@ git clone --branch lib/wave-dispatch --single-branch \
   https://github.com/tim-inzitari/poke-bot-agent.git wave-dispatch
 cd wave-dispatch && git checkout -B main
 gh repo create tim-inzitari/wave-dispatch --private --source=. --remote=origin --push
-git push origin v0.3.0
+git push origin v0.3.1
 ```
 
 Then optionally replace the in-tree copy in poke-bot-agent with a submodule:
