@@ -546,12 +546,28 @@ class WorkerPool:
         return self
 
     def __exit__(self, *exc) -> None:
-        assert self._pool is not None
-        if exc and exc[0] is not None:
+        if exc and exc[0] is not None and self._pool is not None:
             self.request_stop(f"{exc[0].__name__}: context exit")
+        self.release()
+
+    def release(self) -> None:
+        """Join an exhausted pool before its surrounding context exits.
+
+        Collection producers can finish long before the parent has compacted
+        every already-buffered result.  Keeping all simulator children alive
+        during that deterministic drain needlessly retains their anonymous
+        model memory and can push the trainer above ``MemoryHigh``.  This
+        idempotent early-release path is safe only after the caller proves no
+        producer can submit another pool task; the ordinary context-manager
+        exit remains a no-op after a successful early release.
+        """
+
+        pool = self._pool
+        if pool is None:
+            return
         if not self._terminated:
-            self._pool.close()
-        self._pool.join()
+            pool.close()
+        pool.join()
         self._pool = None
         self._finish_worker_monitor()
         self._clear_remote_runtime()

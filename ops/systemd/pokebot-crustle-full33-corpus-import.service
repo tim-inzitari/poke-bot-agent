@@ -1,14 +1,14 @@
 [Unit]
-Description=Import checksum-bound Crustle full33 guide corpus without touching runtime
+Description=Import checksum-bound Crustle full33 v2 guide corpus without touching runtime
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=!/home/inzi/poke-bot-agent/outputs/state/crustle-prestage-corpus-import-v1.json
+ConditionPathExists=!/home/inzi/poke-bot-agent/outputs/state/crustle-prestage-corpus-import-v2.json
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/inzi/poke-bot-agent
-ExecCondition=/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 admin@192.168.1.143 /usr/bin/test -s /mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v1/CRUSTLE_GUIDE_CORPUS_VALIDATED.json
-ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/poke-bot-agent/scripts/import_prestaged_specialist_corpus.py --host admin@192.168.1.143 --remote-root /mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v1 --destination /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/crustle --specialist-id crustle --guide-version crustle-north-star-v1 --receipt /home/inzi/poke-bot-agent/outputs/state/crustle-prestage-corpus-import-v1.json --bwlimit-kib 8000 --minimum-records 16639 --finalization-receipt-name CRUSTLE_GUIDE_CORPUS_VALIDATED.json --finalization-receipt-schema poke_bot.crustle_guide_corpus_validation/v1 --superseded-pointer-sha256=sha256:50ed79c6183b8cdc593492fc88b30c963a86dd4a81f2e580ebc2ddef04ff9bcc
+ExecCondition=/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 admin@192.168.1.143 /usr/bin/test -s /mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v2/CRUSTLE_GUIDE_CORPUS_VALIDATED.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/poke-bot-agent/scripts/import_prestaged_specialist_corpus.py --host admin@192.168.1.143 --remote-root /mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v2 --destination /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/crustle-v2 --specialist-id crustle --guide-version crustle-north-star-v2 --receipt /home/inzi/poke-bot-agent/outputs/state/crustle-prestage-corpus-import-v2.json --bwlimit-kib 8000 --minimum-records 16639 --finalization-receipt-name CRUSTLE_GUIDE_CORPUS_VALIDATED.json --finalization-receipt-schema poke_bot.crustle_guide_corpus_validation/v1
 TimeoutStartSec=2h
 Nice=15
 IOSchedulingClass=idle

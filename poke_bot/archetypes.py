@@ -271,6 +271,16 @@ CUMULATIVE_V4_AUX_ARCHETYPE_IDS: tuple[str, ...] = (
     "festival-lead",
 )
 
+# Exact auxiliary-head row order used by the cumulative core after Thwackey
+# and Team Rocket's Spidops were appended, but before Teal Mask Ogerpon ex and
+# Slowking were registered. Several H10 materializations legitimately inherit
+# this 24-archetype/25-class head, so preserve the semantic order explicitly.
+PRE_TEAL_AUX_ARCHETYPE_IDS: tuple[str, ...] = (
+    *CUMULATIVE_V4_AUX_ARCHETYPE_IDS,
+    "thwackey",
+    "team-rockets-spidops",
+)
+
 # Additive post-snapshot families discovered by later ladder windows.  These
 # append after every pre-existing auxiliary class so checkpoint row indices
 # stay stable.  They are not inserted into CORE_LADDER_ARCHETYPE_IDS until a

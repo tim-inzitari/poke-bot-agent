@@ -13,12 +13,14 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import yaml
 
 from poke_bot.model import (
     COMBO_STATE_HEAD_OUTPUTS,
     CausalDecisionFusion,
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_V2_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
     SETUP_BOARD_OUTCOME_HEAD_OUTPUTS,
 )
 from poke_bot.strategic_heads import (
@@ -34,11 +36,14 @@ from poke_bot.strategic_heads import (
 )
 from poke_bot.strategic_losses import (
     expanded_strategic_losses,
+    guide_pairwise_route_ranking_loss,
     guide_outcome_backed_loss_weights,
+    GUIDE_DIRECTIONAL_ROUTE_HEAD_IDS,
 )
 
 
 TRAINING_MODE = "strategic_curriculum_v1"
+DIRECTIONAL_TRAINING_MODE = "strategic_directional_v2"
 GUIDE_CURRICULUM_REVISION = 51
 ACTION_REVISION = 56
 ROLE_SCHEMA = "poke_bot.future_specialist_strategic_head_roles/v1"
@@ -209,7 +214,9 @@ def _sources(
     return state, option
 
 
-def _route_measurements(*, include_combo_state: bool = False) -> tuple[
+def _route_measurements(
+    *, include_combo_state: bool = False, directional_v2: bool = False
+) -> tuple[
     dict[str, dict[str, float | int]],
     dict[str, dict[str, float | str]],
     float,
@@ -226,6 +233,8 @@ def _route_measurements(*, include_combo_state: bool = False) -> tuple[
         combo_state_outputs=(
             COMBO_STATE_HEAD_OUTPUTS if include_combo_state else 0
         ),
+        typed_output_centered_routes=directional_v2,
+        action_type_reliability_cap=0.25 if directional_v2 else 1.0,
     )
     hidden = torch.randn(batch, options, d_model)
     state, option = _sources(fusion, batch=batch, options=options)
@@ -240,7 +249,13 @@ def _route_measurements(*, include_combo_state: bool = False) -> tuple[
         raise RuntimeError("revision-56 route initialization is not zero-safe")
 
     target = torch.linspace(-0.35, 0.35, options).repeat(batch, 1)
-    optimizer = torch.optim.Adam(fusion.dedicated_routes.parameters(), lr=0.03)
+    optimizer = torch.optim.Adam(
+        (
+            list(fusion.dedicated_routes.parameters())
+            + list(fusion.dedicated_route_log_reliability.parameters())
+        ),
+        lr=0.03,
+    )
     for _ in range(12):
         optimizer.zero_grad(set_to_none=True)
         deltas = fusion.dedicated_route_deltas(
@@ -298,7 +313,11 @@ def _route_measurements(*, include_combo_state: bool = False) -> tuple[
         }
         validation[name] = {
             "route_id": f"{name}-route",
-            "route_input": "option_hidden_plus_typed_output",
+            "route_input": (
+                "typed_output_centered_option_interaction"
+                if directional_v2
+                else "option_hidden_plus_typed_output"
+            ),
             "post_training_route_gradient_norm": gradient_norm,
             "legal_option_dependence_delta": legal_delta,
             "causal_suffix_max_logit_delta": float(
@@ -317,6 +336,7 @@ def materialize(
     output_root: Path,
     training_implementation: Path,
     include_combo_state: bool = False,
+    training_mode: str = TRAINING_MODE,
 ) -> dict[str, Path]:
     specialist_id = specialist_id.strip().casefold()
     if not specialist_id or any(
@@ -328,6 +348,10 @@ def materialize(
     guide_ready_receipt = guide_ready_receipt.expanduser().resolve()
     training_implementation = training_implementation.expanduser().resolve()
     ready = _read_json(guide_ready_receipt)
+    guide = yaml.safe_load(guide_contract.read_text(encoding="utf-8"))
+    directional_v2 = training_mode == DIRECTIONAL_TRAINING_MODE
+    if training_mode not in {TRAINING_MODE, DIRECTIONAL_TRAINING_MODE}:
+        raise ValueError("unsupported strategic curriculum training mode")
     guide_rows = int(ready.get("guide_rows") or 0)
     if (
         not guide_contract.is_file()
@@ -335,6 +359,9 @@ def materialize(
         or ready.get("status") not in {"ready", "validated"}
         or ready.get("specialist_id") != specialist_id
         or guide_rows <= 0
+        or not isinstance(guide, dict)
+        or dict(guide.get("policy_target") or {}).get("training_mode")
+        != training_mode
     ):
         raise RuntimeError("strategic curriculum source artifacts are not ready")
 
@@ -351,13 +378,20 @@ def materialize(
             "trainable": True,
             "causal_training_targets_only": True,
             "guide_action_target_allowed": False,
+            "guide_pairwise_route_direction_allowed": bool(
+                directional_v2 and name in GUIDE_DIRECTIONAL_ROUTE_HEAD_IDS
+            ),
             "enters_decision_fusion": True,
             "action_influence": "bounded_option_conditioned_route",
             "causal_input": "board_state_and_legal_option",
             "direct_action_selection_authority": False,
             "runtime_activation_requirement": "receipt_backed_validation",
             "route_id": f"{name}-route",
-            "route_input": "option_hidden_plus_typed_output",
+            "route_input": (
+                "typed_output_centered_option_interaction"
+                if directional_v2
+                else "option_hidden_plus_typed_output"
+            ),
             "route_reduction": "fixed_mean",
             "zero_safe_final_projection": True,
             "maximum_absolute_logit_contribution": 0.25,
@@ -365,24 +399,34 @@ def materialize(
         for name in learned_sources
     }
     output_root = output_root.expanduser().resolve()
-    role_path = output_root / f"{specialist_id}-strategic-head-roles-r56.json"
-    spec_path = output_root / f"{specialist_id}-strategic-curriculum-r56.json"
+    revision = 104 if directional_v2 else 56
+    role_path = output_root / f"{specialist_id}-strategic-head-roles-r{revision}.json"
+    spec_path = output_root / f"{specialist_id}-strategic-curriculum-r{revision}.json"
     receipt_path = (
-        output_root / f"{specialist_id}-strategic-curriculum-validation-r56.json"
+        output_root / f"{specialist_id}-strategic-curriculum-validation-r{revision}.json"
     )
     role_map = {
         "schema": ROLE_SCHEMA,
         "specialist_id": specialist_id,
-        "training_mode": TRAINING_MODE,
+        "training_mode": training_mode,
         "guide_curriculum_revision": GUIDE_CURRICULUM_REVISION,
         "strategic_branch_scope_revision": ACTION_REVISION,
         "action_influence_revision": ACTION_REVISION,
         "guide_contract_sha256": guide_digest,
-        "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
+        "decision_fusion_schema": (
+            DECISION_FUSION_V3_SCHEMA if directional_v2 else DECISION_FUSION_V2_SCHEMA
+        ),
         "preserve_v1_additive_residual": True,
         "canonical_learned_decision_sources": list(learned_sources),
         "one_route_per_learned_source": True,
-        "route_input": "option_hidden_plus_typed_output",
+        "route_input": (
+            "typed_output_centered_option_interaction"
+            if directional_v2
+            else "option_hidden_plus_typed_output"
+        ),
+        "positive_bounded_route_reliability": directional_v2,
+        "route_reliability_bounds": [0.25, 4.0] if directional_v2 else None,
+        "action_type_reliability_cap": 0.25 if directional_v2 else 1.0,
         "route_reduction": "fixed_mean",
         "aggregate_absolute_logit_cap": 1.0,
         "zero_safe_final_projection": True,
@@ -393,14 +437,18 @@ def materialize(
     spec = {
         "schema": SPEC_SCHEMA,
         "specialist_id": specialist_id,
-        "training_mode": TRAINING_MODE,
+        "training_mode": training_mode,
         "guide_curriculum_revision": GUIDE_CURRICULUM_REVISION,
         "strategic_branch_scope_revision": ACTION_REVISION,
         "action_influence_revision": ACTION_REVISION,
         "guide_contract_sha256": guide_digest,
         "head_role_map_sha256": _sha256(role_path),
         "curriculum_heads": sorted(learned_sources),
-        "guide_targets": "observed_causal_strategic_heads_only",
+        "guide_targets": (
+            "observed_causal_targets_plus_selected_pairwise_route_direction"
+            if directional_v2
+            else "observed_causal_strategic_heads_only"
+        ),
         "direct_policy_cross_entropy_allowed": False,
         "guide_runtime_input_allowed": False,
         "guide_action_selection_allowed": False,
@@ -412,11 +460,23 @@ def materialize(
         "causal_input": "board_state_and_legal_option",
         "direct_action_selection_authority": False,
         "runtime_activation_requirement": "receipt_backed_validation",
-        "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
+        "decision_fusion_schema": (
+            DECISION_FUSION_V3_SCHEMA if directional_v2 else DECISION_FUSION_V2_SCHEMA
+        ),
         "preserve_v1_additive_residual": True,
         "canonical_learned_decision_sources": list(learned_sources),
         "one_route_per_learned_source": True,
-        "route_input": "option_hidden_plus_typed_output",
+        "route_input": (
+            "typed_output_centered_option_interaction"
+            if directional_v2
+            else "option_hidden_plus_typed_output"
+        ),
+        "guide_pairwise_route_heads": (
+            [name for name in learned_sources if name in GUIDE_DIRECTIONAL_ROUTE_HEAD_IDS]
+            if directional_v2
+            else []
+        ),
+        "final_policy_logits_are_guide_targets": False,
         "route_reduction": "fixed_mean",
         "aggregate_absolute_logit_cap": 1.0,
         "zero_safe_final_projection": True,
@@ -426,7 +486,8 @@ def materialize(
     _atomic_json(spec_path, spec)
     gradient_norm = _guide_gradient_measurement()
     ablations, route_validation, maximum_aggregate = _route_measurements(
-        include_combo_state=include_combo_state
+        include_combo_state=include_combo_state,
+        directional_v2=directional_v2,
     )
     checks = {
         "guide_supervision_terminates_at_strategic_heads": True,
@@ -443,12 +504,14 @@ def materialize(
         "bounded_aggregate_residual": True,
         "all_training_paths_use_the_declared_mode": True,
         "active_and_historical_specialists_unchanged": True,
+        "guide_preference_routes_only_selected_causal_heads": directional_v2,
+        "final_policy_logits_not_supervised": directional_v2,
     }
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "status": "validated",
         "specialist_id": specialist_id,
-        "training_mode": TRAINING_MODE,
+        "training_mode": training_mode,
         "guide_curriculum_revision": GUIDE_CURRICULUM_REVISION,
         "strategic_branch_scope_revision": ACTION_REVISION,
         "action_influence_revision": ACTION_REVISION,
@@ -456,7 +519,9 @@ def materialize(
         "curriculum_spec_sha256": _sha256(spec_path),
         "head_role_map_sha256": _sha256(role_path),
         "required_training_paths": REQUIRED_TRAINING_PATHS,
-        "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
+        "decision_fusion_schema": (
+            DECISION_FUSION_V3_SCHEMA if directional_v2 else DECISION_FUSION_V2_SCHEMA
+        ),
         "validated_route_ids": [
             heads[name]["route_id"] for name in sorted(learned_sources)
         ],
@@ -503,6 +568,11 @@ def main() -> int:
         default=Path(__file__).resolve().parents[1] / "poke_bot/train.py",
     )
     parser.add_argument(
+        "--training-mode",
+        choices=(TRAINING_MODE, DIRECTIONAL_TRAINING_MODE),
+        default=TRAINING_MODE,
+    )
+    parser.add_argument(
         "--include-combo-state",
         action="store_true",
         help=(
@@ -518,6 +588,7 @@ def main() -> int:
         output_root=args.output_root,
         training_implementation=args.training_implementation,
         include_combo_state=args.include_combo_state,
+        training_mode=args.training_mode,
     )
     print(
         json.dumps(

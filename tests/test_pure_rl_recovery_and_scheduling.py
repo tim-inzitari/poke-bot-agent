@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -191,7 +193,8 @@ def test_training_seat_receipt_binds_consumed_replay_population(
         stage_receipt = json.loads(stage_path.read_text(encoding="utf-8"))
         assert stage_receipt["schema"] == "poke_bot.alakazam_refresh_seat_split/v1"
         assert stage_receipt["stage"] == stage
-        assert stage_receipt["exact_even_split"] is True
+        assert stage_receipt["exact_even_split"] is (stage != "consumed")
+        assert stage_receipt["seat_balance_applicable"] is (stage != "consumed")
         assert stage_receipt["second_focus_1_to_7_used"] is False
         assert stage_receipt["package_preference"] == "first_if_allowed"
 
@@ -204,6 +207,198 @@ def test_training_seat_receipt_binds_consumed_replay_population(
     )
     assert recovered == receipt
     assert receipt["design_fingerprint"] == "sha256:" + "a" * 64
+
+
+def test_training_seat_receipt_audits_unbalanced_self_play_projection(
+    tmp_path: Path,
+) -> None:
+    collection_path = tmp_path / "collection.json"
+    collection_path.write_text("{}", encoding="utf-8")
+    collection = {
+        "design_fingerprint_at_collection": "sha256:" + "a" * 64,
+        "receipt_path": str(collection_path),
+        "stats": {
+            "training_seat_split": {
+                "assigned_source_games": train_pure_rl._training_seat_stage(
+                    "assigned_source_games", [0, 1, 0, 1], expected_total=4
+                ),
+                "retained_source_games": train_pure_rl._training_seat_stage(
+                    "retained_source_games", [0, 1, 0, 1], expected_total=4
+                ),
+                "stage_manifest_sha256": {
+                    "assigned": "sha256:" + "c" * 64,
+                    "actual": "sha256:" + "d" * 64,
+                },
+            }
+        },
+    }
+    # Both perspectives of one self-play source game legitimately make the
+    # replay projection unequal while collection remains exactly 50/50.
+    sequences = [
+        SimpleNamespace(
+            episode_id=f"game-{index}",
+            seat=0 if index < 5 else 1,
+            archetype="alakazam",
+            source="pure_rl",
+        )
+        for index in range(8)
+    ]
+    receipt = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=tmp_path,
+        iteration=0,
+        design_fingerprint="sha256:" + "b" * 64,
+        collection_receipt=collection,
+        sequences=sequences,
+    )
+    assert receipt["passed"] is True
+    assert receipt["replay_sequences_consumed"]["seat0"] == 5
+    assert receipt["replay_sequences_consumed"]["seat1"] == 3
+    projection = json.loads(
+        Path(receipt["stage_receipts"]["consumed"]["path"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert projection["exact_even_split"] is False
+    assert projection["seat_balance_applicable"] is False
+
+
+def test_training_seat_receipt_reuses_sealed_index_after_root_relocation(
+    tmp_path: Path,
+) -> None:
+    old_root = tmp_path / "fusion-v3-r104" / "run"
+    new_root = tmp_path / "fusion-v3-r105" / "run"
+    old_root.mkdir(parents=True)
+    old_collection_path = old_root / "collection.json"
+    old_collection_path.write_text("{}", encoding="utf-8")
+    collection = {
+        "design_fingerprint_at_collection": "sha256:" + "a" * 64,
+        "receipt_path": str(old_collection_path),
+        "shard": {"sha256": "sha256:" + "f" * 64, "games": 2},
+        "replay_cache": {"sequences": 2},
+        "stats": {
+            "training_seat_split": {
+                "assigned_source_games": train_pure_rl._training_seat_stage(
+                    "assigned_source_games", [0, 1], expected_total=2
+                ),
+                "retained_source_games": train_pure_rl._training_seat_stage(
+                    "retained_source_games", [0, 1], expected_total=2
+                ),
+                "stage_manifest_sha256": {
+                    "assigned": "sha256:" + "c" * 64,
+                    "actual": "sha256:" + "d" * 64,
+                },
+            }
+        },
+    }
+    sequences = [
+        SimpleNamespace(
+            episode_id=f"game-{index}",
+            seat=index,
+            archetype="alakazam",
+            source="pure_rl",
+        )
+        for index in range(2)
+    ]
+    original = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=old_root,
+        iteration=15,
+        design_fingerprint="sha256:" + "b" * 64,
+        collection_receipt=collection,
+        sequences=sequences,
+    )
+    shutil.copytree(old_root, new_root)
+    relocated_collection_path = new_root / "collection.json"
+    relocated_collection = {
+        **collection,
+        "receipt_path": str(relocated_collection_path),
+    }
+
+    recovered = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=new_root,
+        iteration=15,
+        design_fingerprint="sha256:" + "e" * 64,
+        collection_receipt=relocated_collection,
+        # Parallel cache reconstruction is allowed to change order, but not
+        # the checksum-bound source shard or any population identity/count.
+        sequences=list(reversed(sequences)),
+    )
+
+    assert recovered["sequence_identity_digest"] == original[
+        "sequence_identity_digest"
+    ]
+    assert recovered["design_fingerprint"] == original["design_fingerprint"]
+    assert Path(recovered["receipt_path"]).parent == (
+        new_root / "seat_split_receipts"
+    )
+    assert recovered["stage_receipts"] == original["stage_receipts"]
+
+
+def test_training_seat_receipt_reuses_recovered_collection_bundle(
+    tmp_path: Path,
+) -> None:
+    collection_path = train_pure_rl._collection_receipt_path(tmp_path, 0)
+    collection_path.parent.mkdir(parents=True)
+    collection = {
+        "schema": train_pure_rl._COMPLETED_COLLECTION_SCHEMA,
+        "iteration": 0,
+        "design_fingerprint_at_collection": "sha256:" + "a" * 64,
+        "shard": {
+            "path": str(tmp_path / "shards" / "iter_00000.jsonl"),
+            "sha256": "sha256:" + "f" * 64,
+            "games": 2,
+        },
+        "replay_cache": {"sequences": 2},
+        "stats": {
+            "training_seat_split": {
+                "assigned_source_games": train_pure_rl._training_seat_stage(
+                    "assigned_source_games", [0, 1], expected_total=2
+                ),
+                "retained_source_games": train_pure_rl._training_seat_stage(
+                    "retained_source_games", [0, 1], expected_total=2
+                ),
+                "stage_manifest_sha256": {
+                    "assigned": "sha256:" + "c" * 64,
+                    "actual": "sha256:" + "d" * 64,
+                },
+            }
+        },
+    }
+    collection_path.write_text(json.dumps(collection), encoding="utf-8")
+    collection["receipt_path"] = str(collection_path)
+    sequences = [
+        SimpleNamespace(
+            episode_id=f"game-{index}",
+            seat=index,
+            archetype="marnie-s-grimmsnarl-ex",
+            source="pure_rl",
+        )
+        for index in range(2)
+    ]
+    original = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=tmp_path,
+        iteration=0,
+        design_fingerprint="sha256:" + "b" * 64,
+        collection_receipt=collection,
+        sequences=sequences,
+    )
+
+    recovered_bundle = {
+        "receipt": str(collection_path),
+        "shard": Path(collection["shard"]["path"]),
+        "stats": collection["stats"],
+        "design_fingerprint_at_collection": collection[
+            "design_fingerprint_at_collection"
+        ],
+    }
+    recovered = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=tmp_path,
+        iteration=0,
+        design_fingerprint="sha256:" + "e" * 64,
+        collection_receipt=recovered_bundle,
+        sequences=sequences,
+    )
+
+    assert recovered == original
 
 
 def test_training_seat_receipt_recovers_canonical_collection_path(
@@ -1546,6 +1741,74 @@ def test_same_lineage_publishes_owner_authorized_lc55_gate_revision(
     published = json.loads(pointer.read_text(encoding="utf-8"))
     assert published["gate_id"] == "alakazam-strong-public-roster-lc55-v2"
     assert published["iteration"] == 21
+
+
+def test_same_lineage_publishes_receipt_backed_gate_upgrade_chain(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "commits").mkdir(parents=True)
+    migrations = run_dir / "design_migrations"
+    migrations.mkdir()
+    gate_a = tmp_path / "gate-a.json"
+    gate_b = tmp_path / "gate-b.json"
+    gate_c = tmp_path / "gate-c.json"
+    for path, gate_id in ((gate_a, "gate-a"), (gate_b, "gate-b"), (gate_c, "gate-c")):
+        path.write_text(json.dumps({"next_gate": {"id": gate_id}}), encoding="utf-8")
+
+    def contract(path: Path) -> dict[str, object]:
+        return {"gates": {"active_contract": {"path": str(path)}}}
+
+    for index, previous, current in ((1, gate_a, gate_b), (2, gate_b, gate_c)):
+        train_pure_rl._atomic_json(
+            migrations / f"migration_{index:04d}.json",
+            {
+                "schema": 1,
+                "boundary_next_iteration": 1,
+                "changed_paths": [
+                    "gates.active_contract.path",
+                    "gates.active_contract.digest",
+                ],
+                "previous_contract": contract(previous),
+                "current_contract": contract(current),
+            },
+        )
+    result = {
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "gate_id": "gate-c",
+        "iteration": 1,
+        "checkpoint_digest": "sha256:" + "a" * 64,
+        "passed": False,
+    }
+    committed = {
+        "version": train_pure_rl.LOOP_STATE_VERSION,
+        "run_name": "run",
+        "mode": "specialist",
+        "next_iteration": 2,
+        "last_completed_iteration": 1,
+        "history": [{"iteration": 1, "completed": True, "active_gate_result": result}],
+    }
+    train_pure_rl._atomic_json(run_dir / "loop_state.json", committed)
+    commit_path = run_dir / "commits" / "iter_00001.json"
+    commit_path.write_text(json.dumps(committed), encoding="utf-8")
+    pointer = tmp_path / "gate-result.json"
+    train_pure_rl._atomic_json(
+        pointer,
+        {
+            **result,
+            "gate_id": "gate-a",
+            "iteration": 0,
+            "commit": str(run_dir / "commits" / "iter_00000.json"),
+            "committed": True,
+        },
+    )
+
+    assert train_pure_rl._publish_committed_active_gate_result(
+        run_dir=run_dir,
+        active_gate={"id": "gate-c"},
+        result_pointer=pointer,
+    ) == (pointer.resolve(), commit_path.resolve())
+    assert json.loads(pointer.read_text())["gate_id"] == "gate-c"
 
 
 def test_same_lineage_publishes_owner_authorized_lc50_after_iter30(
@@ -3065,6 +3328,46 @@ def test_clean_boundary_migration_allows_only_safe_ceiling_reduction(
     ]
 
 
+def test_clean_boundary_migration_allows_exact_marnie_r113_extension(
+    tmp_path: Path,
+) -> None:
+    stored = {
+        "run": {"iterations": 16},
+        "learner": {
+            "games_per_batch": 240,
+            "max_decisions_per_batch": 2048,
+        },
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 6,
+        "last_completed_iteration": 5,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00005.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    current = json.loads(json.dumps(stored))
+    current["run"]["iterations"] = 21
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="receipt_backed_opponent_tiers_r111",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    receipt = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert receipt["changed_paths"] == ["run.iterations"]
+
+
 @pytest.mark.parametrize("iterations", [6, 101])
 def test_clean_boundary_migration_rejects_unsafe_ceiling_change(
     tmp_path: Path,
@@ -3167,6 +3470,157 @@ def test_source_only_migration_preserves_verified_completed_collection(
     assert len(migrations) == 2
     carried = json.loads(migrations[-1].read_text())
     assert carried["preserved_completed_collection"]["iteration"] == 1
+
+
+def test_iteration15_optimizer_cap_recovery_preserves_completed_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = {
+        "learner": {
+            "games_per_batch": 240,
+            "max_decisions_per_batch": 2048,
+            "warmup_max_decisions_per_batch": 2048,
+            "warmup_iterations": 30,
+        },
+        "source": {"source_tree_sha256": "sha256:old", "git_head": None},
+        "gates": {
+            "active_contract": {
+                "path": "/deploy/final-format-alakazam-fusion-v3-r104/gate.json",
+                "digest": "sha256:gate",
+            }
+        },
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 15,
+        "last_completed_iteration": 14,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00014.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    (tmp_path / "shards").mkdir()
+    (tmp_path / "shards/iter_00015.jsonl").write_text("{}\n", encoding="utf-8")
+    receipt = {
+        "iteration": 15,
+        "checkpoint_digest": "sha256:behavior",
+        "design_fingerprint_at_collection": stored_digest,
+        "receipt_path": str(tmp_path / "collection_receipts/iter_00015.json"),
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (receipt, stored),
+    )
+    current = json.loads(json.dumps(stored))
+    current["learner"]["max_decisions_per_batch"] = 1536
+    current["learner"]["warmup_max_decisions_per_batch"] = 1536
+    current["source"]["source_tree_sha256"] = "sha256:r105"
+    current["gates"]["active_contract"]["path"] = (
+        "/deploy/final-format-alakazam-fusion-v3-r105/gate.json"
+    )
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="receipt_backed_iteration15_optimizer_cap_recovery_v1",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    migration = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert migration["preserved_completed_collection"]["iteration"] == 15
+    assert set(migration["changed_paths"]) == {
+        "learner.max_decisions_per_batch",
+        "learner.warmup_max_decisions_per_batch",
+        "gates.active_contract.path",
+        "source.source_tree_sha256",
+    }
+
+
+def test_iteration15_optimizer_cap_recovery_rejects_other_caps() -> None:
+    stored = {
+        "learner": {
+            "games_per_batch": 240,
+            "max_decisions_per_batch": 2048,
+            "warmup_max_decisions_per_batch": 2048,
+            "warmup_iterations": 30,
+        }
+    }
+    current = json.loads(json.dumps(stored))
+    current["learner"]["max_decisions_per_batch"] = 1024
+    current["learner"]["warmup_max_decisions_per_batch"] = 1024
+
+    assert not train_pure_rl._safe_iteration15_optimizer_cap_recovery(
+        stored=stored,
+        current=current,
+        changed=sorted(train_pure_rl._changed_design_paths(stored, current)),
+        reason="receipt_backed_iteration15_optimizer_cap_recovery_v1",
+    )
+
+
+def test_source_and_safe_ceiling_migration_preserve_completed_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored = {
+        "run": {"iterations": 189},
+        "learner": {"games_per_batch": 240, "max_decisions_per_batch": 2048},
+        "collection": {
+            "strong_public_practice": {"seed_contract": {"iterations": 189}}
+        },
+        "source": {"source_tree_sha256": "sha256:old", "git_head": None},
+    }
+    stored_digest = train_pure_rl._design_fingerprint(stored)
+    state = {
+        "design_fingerprint": stored_digest,
+        "next_iteration": 14,
+        "last_completed_iteration": 13,
+    }
+    manifest = {"design_fingerprint": stored_digest, "design_contract": stored}
+    (tmp_path / "commits").mkdir()
+    (tmp_path / "commits/iter_00013.json").write_text(
+        json.dumps({**state, "next_iteration": 14}), encoding="utf-8"
+    )
+    (tmp_path / "shards").mkdir()
+    (tmp_path / "shards/iter_00014.jsonl").write_text("{}\n", encoding="utf-8")
+    receipt = {
+        "iteration": 14,
+        "checkpoint_digest": "sha256:behavior",
+        "design_fingerprint_at_collection": stored_digest,
+        "receipt_path": str(tmp_path / "collection_receipts/iter_00014.json"),
+    }
+    monkeypatch.setattr(
+        train_pure_rl,
+        "_verified_completed_collection_across_design_chain",
+        lambda *_args, **_kwargs: (receipt, stored),
+    )
+    current = json.loads(json.dumps(stored))
+    current["run"]["iterations"] = 21
+    current["collection"]["strong_public_practice"]["seed_contract"][
+        "iterations"
+    ] = 21
+    current["source"]["source_tree_sha256"] = "sha256:new"
+
+    digest = train_pure_rl._validate_or_migrate_design_fingerprint(
+        run_dir=tmp_path,
+        state=state,
+        manifest=manifest,
+        current=current,
+        allow_clean_boundary_migration=True,
+        migration_reason="iter20 ceiling plus source-only repair",
+    )
+
+    assert digest == train_pure_rl._design_fingerprint(current)
+    migration = json.loads(
+        next((tmp_path / "design_migrations").glob("migration_*.json")).read_text()
+    )
+    assert migration["preserved_completed_collection"]["iteration"] == 14
 
 
 def test_source_only_fix_preserves_collection_after_quarantined_fusion_warmup(
@@ -4089,6 +4543,51 @@ def test_checkpoint_contract_uses_state_dict_when_saved_param_count_is_stale(
     contract = train_pure_rl._checkpoint_contract(path, smoke=False)
 
     assert contract["trainable_parameters"] == 12
+
+
+def test_fusion_v3_contract_repair_is_exact_and_fail_closed() -> None:
+    stored = {
+        "learner": {
+            "trainable_parameters": 10_645_166,
+            "profile": {
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": True,
+            },
+        }
+    }
+    current = {
+        "learner": {
+            "trainable_parameters": 10_645_185,
+            "profile": {
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": True,
+                "decision_fusion_typed_output_centered_routes_enabled": True,
+                "decision_fusion_action_type_reliability_cap": 0.25,
+            },
+        }
+    }
+    changed = sorted(train_pure_rl._FUSION_V3_CONTRACT_REPAIR_PATHS)
+
+    assert train_pure_rl._safe_fusion_v3_contract_repair(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason="receipt_backed_fusion_v3_contract_repair_v1",
+    )
+    widened = copy.deepcopy(current)
+    widened["learner"]["trainable_parameters"] += 1
+    assert not train_pure_rl._safe_fusion_v3_contract_repair(
+        stored=stored,
+        current=widened,
+        changed=changed,
+        reason="receipt_backed_fusion_v3_contract_repair_v1",
+    )
+    assert not train_pure_rl._safe_fusion_v3_contract_repair(
+        stored=stored,
+        current=current,
+        changed=changed + ["learner.profile.spatial_layers"],
+        reason="receipt_backed_fusion_v3_contract_repair_v1",
+    )
 
 
 def test_rl_train_step_rejects_false_parent_digest_before_loading(tmp_path: Path) -> None:

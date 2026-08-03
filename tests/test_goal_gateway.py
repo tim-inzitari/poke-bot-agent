@@ -138,7 +138,12 @@ def test_active_core_fallback_matches_latest_accepted_v9_receipt() -> None:
     assert current_profile["lower_profile_substitution_allowed"] is False
     assert current_profile["minimum_host_available_ram_gib"] == 12
     assert current_profile["memory_high_gib"] == 100
-    assert state["current"]["active_run"]["active_specialist"] == "slowking"
+    active_run = state["current"]["active_run"]
+    assert active_run["active_specialist"] == "marnie-s-grimmsnarl-ex"
+    assert active_run["decision_fusion_schema"] == (
+        "poke_bot.causal_decision_fusion/v3"
+    )
+    assert active_run["required_fused_head_count"] == 19
     assert "attemptedCoreStatuses" in dashboard
     assert "Training Core Revision" in dashboard
     assert "CURRENT CORE V6" not in dashboard
@@ -157,7 +162,7 @@ def test_active_core_fallback_matches_latest_accepted_v9_receipt() -> None:
     )
     assert "NEXT BOUNDARY V6 STRATEGIC CORPUS" not in snapshot
     assert "NEXT BOUNDARY EXPANDED STRATEGIC CORPUS" in snapshot
-    assert '"Accepted Policy Generation 9 · "' in snapshot
+    assert '"Accepted Policy Generation 15 · "' in snapshot
 
 
 def test_teal_mask_has_two_turn_order_submission_profiles() -> None:
@@ -393,12 +398,13 @@ def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
         )
     )
 
-    assert "Revision: `78`" in goal
+    assert "Revision: `117`" in goal
     assert "mandatory and sole successor after Thwackey" in goal
-    assert state["current"]["active_specialist"] == "slowking"
-    assert state["current"]["transition_source_specialist"] == (
-        "archaludon-ex"
+    assert state["current"]["active_specialist"] is None
+    assert state["current"]["active_run"]["active_specialist"] == (
+        "marnie-s-grimmsnarl-ex"
     )
+    assert state["current"]["transition_source_specialist"] == "slowking"
     assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
         "ordered_unfinished_ids_after_active"
@@ -443,7 +449,6 @@ def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
         "dragapult",
         "dragapult-blaziken",
         "dragapult-dudunsparce",
-        "crustle",
         "walrein",
     ]
     order = [
@@ -464,13 +469,16 @@ def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
 
     assert "Remove `dragapult-blaziken` and `dragapult-dudunsparce`" in goal
     assert state["current"]["program_progress"]["required_specialists_total"] == 15
-    assert state["current"]["active_specialist"] == "slowking"
-    assert state["current"]["transition_source_specialist"] == order[2]
+    assert state["current"]["active_specialist"] is None
+    assert state["current"]["active_run"]["active_specialist"] == (
+        "marnie-s-grimmsnarl-ex"
+    )
+    assert state["current"]["transition_source_specialist"] == "slowking"
     assert state["current"]["staged_successor_specialist"] is None
     assert priority["ordered_unfinished_ids_after_active"] == []
     assert priority["strict_post_spidops_prefix"]["ids"] == order
     assert priority["strict_post_spidops_prefix"]["status"] == (
-        "archaludon_completed_slowking_active_revision78"
+        "strict_prefix_completed_postfleet_marnie_active_revision109"
     )
     assert priority["owner_removal"]["status"] == (
         "active_selector_and_dashboard_projection"
@@ -489,6 +497,7 @@ def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
         specialist_id in matchup_roster["expert_ids"]
         for specialist_id in removed
     )
+    assert "crustle" in matchup_roster["expert_ids"]
     crustle_slot = next(
         row
         for row in matchup_roster["slots"]
@@ -504,7 +513,7 @@ def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
     assert selection["owner_removed_specialists_are_selection_eligible"] is False
     assert selection["owner_removed_specialists_count_toward_completion"] is False
     assert projected["strict_post_spidops_prefix"] == order
-    assert projected["active_specialist"] == "slowking"
+    assert projected["active_specialist"] is None
     assert projected["transition_source_specialist"] == order[2]
     assert projected["staged_successor_specialist"] is None
     assert projected["removed_specialist_ids"] == removed
@@ -538,18 +547,14 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
     prestage = (ROOT / "ops/next_specialist_prestage.env").read_text(
         encoding="utf-8"
     )
-    selector = (ROOT / "config/specialist_runtime.env").read_text(
-        encoding="utf-8"
-    )
-
-    order = ["alakazam", "marnie-s-grimmsnarl-ex"]
+    order = ["alakazam", "marnie-s-grimmsnarl-ex", "crustle"]
     canonical = protocol["specialist_training"]["post_fleet_refresh"]
     projected = compatibility["current_owner_overrides"][
         "post_fleet_alakazam_grimms_refresh"
     ]
     mutable = state["post_fleet_refresh"]
 
-    assert "Revision: `78`" in goal
+    assert "Revision: `117`" in goal
     assert "new separately versioned refreshes in strict order" in goal
     assert protocol["allowed_phases"][-3] == (
         "post_fleet_specialist_refresh"
@@ -558,15 +563,13 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
     assert mutable["ordered_specialist_ids"] == order
     assert projected["ordered_specialist_ids"] == order
     assert cycle["post_fleet_refresh"]["ordered_specialist_ids"] == order
-    assert canonical["trigger"][
-        "slowking_freeze_and_registration_immediately_triggers_first_refresh"
-    ] is True
-    assert mutable["trigger"][
-        "slowking_freeze_and_registration_immediately_triggers_first_refresh"
-    ] is True
-    assert projected["trigger"][
-        "slowking_freeze_and_registration_immediately_triggers_first_refresh"
-    ] is True
+    trigger_key = (
+        "slowking_terminal_disposition_immediately_triggers_first_refresh"
+    )
+    assert canonical["trigger"][trigger_key] is True
+    assert mutable["trigger"][trigger_key] is True
+    assert projected["trigger"][trigger_key] is True
+    assert cycle["post_fleet_refresh"][trigger_key] is True
     cycle_refresh = cycle["post_fleet_refresh"]
     for contract in (canonical, mutable, projected, cycle_refresh):
         first = contract["first_refresh"]
@@ -575,12 +578,12 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
         gates = contract["release_gates"]
         assert first["specialist_id"] == "alakazam"
         assert first["start_timing"] == (
-            "immediately_after_slowking_frozen_and_registered"
+            "immediately_after_slowking_failed_experiment_receipt_and_g0_g1"
         )
         assert first["model_format"] == "final_submission_format"
         assert first["first_final_format_model"] is True
         assert first[
-            "final_format_computation_before_slowking_completion_allowed"
+            "final_format_computation_before_slowking_terminal_disposition_allowed"
         ] is False
         assert first["silent_legacy_format_fallback_allowed"] is False
         assert migration["parent_checkpoint"] == (
@@ -646,20 +649,32 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
         "resolve_at_each_refresh_start"
     ] == "current_canonical_training_contracts"
     assert projected["pinned_training_schema_digests"] == []
-    assert mutable["completed_refresh_specialist_ids"] == []
-    assert mutable["active_refresh_specialist_id"] is None
-    assert mutable["next_refresh_specialist_id"] == "alakazam"
+    assert mutable["completed_refresh_specialist_ids"] == ["alakazam"]
+    assert mutable["active_refresh_specialist_id"] == "marnie-s-grimmsnarl-ex"
+    assert mutable["next_refresh_specialist_id"] == "marnie-s-grimmsnarl-ex"
+    assert mutable["refresh_model_versions"]["alakazam"] == (
+        "final-format-alakazam-r79-h10-v1"
+    )
+    assert projected["completed_refresh_specialist_ids"] == ["alakazam"]
+    assert projected["active_refresh_specialist_id"] == (
+        "marnie-s-grimmsnarl-ex"
+    )
     assert state["current"]["program_progress"][
         "required_specialists_total"
     ] == 15
     assert len(state["specialists"]) == 16
-    assert state["current"]["active_specialist"] == "slowking"
+    assert state["current"]["active_specialist"] is None
+    assert state["current"]["active_run"]["active_specialist"] == (
+        "marnie-s-grimmsnarl-ex"
+    )
     assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
         "ordered_unfinished_ids_after_active"
     ] == []
     assert "PRESTAGE_SPECIALIST_ID=alakazam" not in prestage
-    assert "POKEBOT_ACTIVE_SPECIALIST=slowking" in selector
+    assert compatibility["authoritative_sources"]["live_selector"].startswith(
+        "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/"
+    )
     assert projected["required_specialist_count_modified"] is False
     assert projected["current_selector_modified"] is False
     assert projected["current_prestage_modified"] is False
@@ -682,7 +697,7 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
         "32020a1a25f233ac"
     )
     assert all(row["immutable"] for row in originals.values())
-    phase_id = "post-fleet-alakazam-grimms-refresh-v1"
+    phase_id = "post-fleet-alakazam-grimms-crustle-v2"
     assert phase_id not in runtime_registry
     assert phase_id not in frozen_registry
     assert phase_id not in prestage
@@ -1197,6 +1212,46 @@ def test_production_selector_uses_owner_pinned_96_worker_scheduler() -> None:
     assert "PURE_RL_MID_ITER_SCHEDULER=1\n" in selector
     assert "POKEBOT_REMOTE_SOCKET_PREFETCH=1\n" in selector
     assert "POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=2\n" in selector
+    assert "POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN=1\n" in selector
     assert "PURE_RL_REBALANCE_RAM_FLOOR_GB=12\n" in selector
     assert "MemoryHigh=100G\n" in unit
     assert "MemoryMax=116G\n" in unit
+
+
+def test_future_result_drains_release_phase_owned_simulators() -> None:
+    protocol = yaml.safe_load(
+        (ROOT / "config/rl_protocol.yaml").read_text(encoding="utf-8")
+    )
+    compatibility = json.loads(
+        (ROOT / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract = protocol["training_hardware_throughput"][
+        "producer_complete_result_drain"
+    ]
+    projected = compatibility["current_owner_overrides"][
+        "producer_complete_result_drain"
+    ]
+
+    assert contract["goal_revision"] == 110
+    assert contract["required_environment"] == (
+        "POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN=1"
+    )
+    assert set(contract["applies_to"]) == {
+        "self_play",
+        "public_mix",
+        "promotion",
+        "research_control",
+        "formal_holdout",
+    }
+    assert contract[
+        "release_phase_owned_local_pool_before_buffer_compaction"
+    ] is True
+    assert contract["scheduled_and_legacy_additive_dispatch_required"] is True
+    assert contract["next_iteration_activation_required"] == 5
+    assert projected["goal_revision"] == 110
+    assert projected[
+        "release_phase_owned_local_pool_before_buffer_compaction"
+    ] is True
+    assert projected["next_iteration_activation_required"] == 5

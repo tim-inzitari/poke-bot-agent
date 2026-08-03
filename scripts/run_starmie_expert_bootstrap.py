@@ -678,6 +678,7 @@ def _specialist_hot_start_from_core(
     enable_decision_fusion: bool = False,
     enable_strategic_curriculum: bool = False,
     enable_combo_state_head: bool = False,
+    allow_h10_specialist_parent: bool = False,
 ) -> tuple[Path, str, dict[str, Any]]:
     """Build an append-only specialist hot start without rewriting the core.
 
@@ -701,6 +702,83 @@ def _specialist_hot_start_from_core(
     payload = checkpoint.load_checkpoint(core_path, map_location="cpu")
     source_state = dict(payload.get("model_state_dict") or {})
     state = dict(source_state)
+    parent_digest = checkpoint.checkpoint_digest(core_path)
+    model_config = dict(payload.get("model_config") or {})
+    h10_specialist_parent = bool(
+        allow_h10_specialist_parent
+        and int(model_config.get("spatial_layers", -1)) == 7
+        and int(model_config.get("temporal_layers", -1)) == 3
+        and int(model_config.get("option_decoder_layers", -1)) == 7
+        and int(model_config.get("ff_dim", -1)) == 2496
+        and int(model_config.get("h10_head_residual_width", -1)) == 512
+        and model_config.get("h10_capacity_enabled") is True
+        and model_config.get(
+            "decision_fusion_typed_output_centered_routes_enabled"
+        )
+        is True
+        and str(payload.get("archetype_id") or "") not in {"", "unknown"}
+    )
+    if allow_h10_specialist_parent and not h10_specialist_parent:
+        raise RuntimeError(
+            "requested H10 specialist parent is not the exact H10/Fusion-v3 shape"
+        )
+    if h10_specialist_parent:
+        route_keys = sorted(
+            name
+            for name in source_state
+            if name.startswith("decision_fusion.dedicated_routes.")
+        )
+        route_names = sorted(
+            {
+                name.split(".")[2]
+                for name in route_keys
+                if len(name.split(".")) > 3
+            }
+        )
+        if (
+            not enable_expanded_heads
+            or not enable_decision_fusion
+            or not enable_strategic_curriculum
+            or model_config.get("expanded_heads_enabled") is not True
+            or model_config.get("decision_fusion_enabled") is not True
+            or model_config.get("decision_fusion_runtime_enabled") is not True
+            or model_config.get("decision_fusion_dedicated_routes_enabled")
+            is not True
+            or len(route_names) != 19
+        ):
+            raise RuntimeError(
+                "H10 specialist parent lacks the complete 19-route strategic runtime"
+            )
+        expansion = {
+            "schema": SPECIALIST_AUX_EXPANSION_SCHEMA,
+            "status": "h10_parent_reused_zero_safe",
+            "parent_checkpoint": str(core_path),
+            "parent_checkpoint_digest": parent_digest,
+            "source_archetype_ids": list(archetypes.archetype_ids()),
+            "target_archetype_ids": list(archetypes.archetype_ids()),
+            "source_classes": len(archetypes.archetype_ids()) + 1,
+            "target_classes": len(archetypes.archetype_ids()) + 1,
+            "copied_named_rows": list(archetypes.archetype_ids()),
+            "newly_initialized_rows": [],
+            "unknown_row_moved_to_final": False,
+            "optimizer_state_imported": False,
+            "all_parent_tensors_reused_byte_exact": True,
+            "dedicated_fusion_route_names": route_names,
+        }
+        return core_path, parent_digest, {
+            **expansion,
+            "checkpoint_digest": parent_digest,
+            "expanded_head_migration": {
+                "status": "already_h10",
+                "zero_safe_parent_reuse": True,
+            },
+            "decision_fusion_migration": {
+                "status": "already_fusion_v3",
+                "zero_safe_parent_reuse": True,
+                "one_option_conditioned_route_per_learned_head": True,
+                "route_names": route_names,
+            },
+        }
     weight_key = "aux_head.3.weight"
     bias_key = "aux_head.3.bias"
     old_weight = state.get(weight_key)
@@ -717,7 +795,6 @@ def _specialist_hot_start_from_core(
     target_ids = list(archetypes.archetype_ids())
     target_classes = len(target_ids) + 1
     old_classes = int(old_weight.shape[0])
-    parent_digest = checkpoint.checkpoint_digest(core_path)
     extra = dict(payload.get("extra") or {})
     recorded_expansion = dict(
         extra.get("specialist_aux_archetype_head_expansion") or {}
@@ -1242,6 +1319,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--required-target", action="append", default=[])
     parser.add_argument("--expanded-heads", action="store_true")
     parser.add_argument("--decision-fusion", action="store_true")
+    parser.add_argument(
+        "--allow-h10-specialist-parent",
+        action="store_true",
+        help=(
+            "Allow an immutable H10/Fusion-v3 specialist checkpoint as the "
+            "zero-safe parent of a separately versioned successor."
+        ),
+    )
     parser.add_argument("--rl-protocol", type=Path, default=DEFAULT_RL_PROTOCOL)
     parser.add_argument("--expected-expanded-schedule-digest", default="")
     parser.add_argument("--expected-expanded-target-digest", default="")
@@ -1260,6 +1345,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strategic-validation-receipt", type=Path)
     parser.add_argument("--strategic-validation-receipt-sha256", default="")
     parser.add_argument("--combo-state-head", action="store_true")
+    parser.add_argument(
+        "--retain-inherited-h10-combo-state-head",
+        action="store_true",
+        help=(
+            "Retain an already-trained H10 combo-state head and its bounded "
+            "fusion route without asserting Slowking-specific pretraining."
+        ),
+    )
     parser.add_argument("--combo-state-implementation-receipt", type=Path)
     parser.add_argument("--combo-state-implementation-receipt-sha256", default="")
     parser.add_argument("--combo-state-corpus-validation-receipt", type=Path)
@@ -1293,6 +1386,17 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("specialist archetype must be a non-empty lowercase slug")
     if int(args.epochs) != 25:
         raise ValueError("specialist bootstrap is locked to exactly 25 epochs")
+    retained_h10_combo = bool(args.retain_inherited_h10_combo_state_head)
+    combo_state_architecture = bool(args.combo_state_head or retained_h10_combo)
+    if retained_h10_combo and (
+        not args.allow_h10_specialist_parent
+        or args.combo_state_head
+        or not args.decision_fusion
+    ):
+        raise ValueError(
+            "inherited H10 combo-state retention requires an H10 parent and "
+            "decision fusion, and is distinct from Slowking pretraining"
+        )
     expanded_raw: dict[str, Any] | None = None
     expanded_identity: dict[str, Any] | None = None
     if args.expanded_heads:
@@ -1459,7 +1563,7 @@ def main(argv: list[str] | None = None) -> int:
         decision_fusion_handoff_contract(
             args.rl_protocol,
             strategic_curriculum=bool(strategic_curriculum),
-            combo_state_head=bool(args.combo_state_head),
+            combo_state_head=combo_state_architecture,
         )
         if args.decision_fusion
         else None
@@ -1492,13 +1596,28 @@ def main(argv: list[str] | None = None) -> int:
     core_path = Path(str(core["model_path"])).resolve()
     core_payload = checkpoint.load_checkpoint(core_path, map_location="cpu")
     core_cfg = dict(core_payload.get("model_config") or {})
-    if (
-        int(core_cfg.get("temporal_layers", -1)) != 1
-        or str(core_cfg.get("decision_context") or "") != "history"
-        or int(core_cfg.get("max_context", -1)) != 320
-        or str(core_payload.get("archetype_id") or "") != "unknown"
-    ):
-        raise ValueError("protected distilled core has the wrong architecture/role")
+    ordinary_core = bool(
+        int(core_cfg.get("temporal_layers", -1)) == 1
+        and str(core_cfg.get("decision_context") or "") == "history"
+        and int(core_cfg.get("max_context", -1)) == 320
+        and str(core_payload.get("archetype_id") or "") == "unknown"
+    )
+    h10_specialist_parent = bool(
+        args.allow_h10_specialist_parent
+        and int(core_cfg.get("spatial_layers", -1)) == 7
+        and int(core_cfg.get("temporal_layers", -1)) == 3
+        and int(core_cfg.get("option_decoder_layers", -1)) == 7
+        and int(core_cfg.get("ff_dim", -1)) == 2496
+        and int(core_cfg.get("h10_head_residual_width", -1)) == 512
+        and core_cfg.get("h10_capacity_enabled") is True
+        and core_cfg.get("decision_fusion_typed_output_centered_routes_enabled")
+        is True
+        and str(core_payload.get("archetype_id") or "") not in {"", "unknown"}
+    )
+    if not (ordinary_core or h10_specialist_parent):
+        raise ValueError(
+            "bootstrap parent is not an accepted temporal core or exact H10 specialist"
+        )
     corpus_pointer = corpus_argument.expanduser().resolve()
     manifest_requirements = {
         "min_decisions": int(args.min_decisions),
@@ -1621,7 +1740,10 @@ def main(argv: list[str] | None = None) -> int:
             expanded_identity=expanded_identity,
             enable_decision_fusion=bool(args.decision_fusion),
             enable_strategic_curriculum=bool(strategic_curriculum),
-            enable_combo_state_head=bool(args.combo_state_head),
+            enable_combo_state_head=combo_state_architecture,
+            allow_h10_specialist_parent=bool(
+                args.allow_h10_specialist_parent
+            ),
         )
     )
     state_path = run_dir / "state.json"
@@ -2115,7 +2237,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     is not True
                     or best_config.get("combo_state_head_enabled", False)
-                    is not bool(args.combo_state_head)
+                    is not combo_state_architecture
                     or best_config.get(
                         "decision_fusion_dedicated_routes_enabled"
                     )

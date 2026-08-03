@@ -112,6 +112,49 @@ def test_rejected_candidate_restores_exact_pre_eval_behavior_identity() -> None:
     assert "digest=incumbent_before.digest" not in rollback
 
 
+def test_leaf_reload_deadline_is_global_and_preserves_old_identity(
+    monkeypatch,
+) -> None:
+    mod = _load_train_pure_rl()
+    leaf = mod._LeafFarm()
+    control_messages: list[dict] = []
+
+    class ControlQueue:
+        def put(self, value):
+            control_messages.append(value)
+
+    class FirstMissingStatus:
+        def get(self, *, timeout):
+            assert timeout == pytest.approx(240.0)
+            raise TimeoutError("missing first acknowledgement")
+
+    class MustNotWaitAgain:
+        def get(self, *, timeout):
+            raise AssertionError(
+                f"second leaf received a serialized timeout: {timeout}"
+            )
+
+    leaf.ctrl_qs = [ControlQueue(), ControlQueue()]
+    leaf.status_qs = [FirstMissingStatus(), MustNotWaitAgain()]
+    leaf.digest = "sha256:" + "a" * 64
+    leaf.version = 7
+    leaf.remote_channel = {
+        "expected_digest": leaf.digest,
+        "expected_version": leaf.version,
+    }
+    clock = iter((0.0, 0.0, 240.1))
+    monkeypatch.setattr(mod.time, "monotonic", lambda: next(clock))
+
+    with pytest.raises(RuntimeError, match="global reload deadline exceeded"):
+        leaf.reload(Path("candidate.pt"), "sha256:" + "b" * 64)
+
+    assert len(control_messages) == 2
+    assert leaf.digest == "sha256:" + "a" * 64
+    assert leaf.version == 7
+    assert leaf.remote_channel["expected_digest"] == leaf.digest
+    assert leaf.remote_channel["expected_version"] == leaf.version
+
+
 def test_canonical_production_learner_has_one_safety_carry_contract() -> None:
     root = Path(__file__).resolve().parents[1]
     assert not (root / "deploy/staging/train_pure_rl_v11.py").exists()

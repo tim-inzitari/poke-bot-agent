@@ -1,0 +1,23 @@
+[Unit]
+Description=Activate Marnie R109 latest-20 corpus at the iteration-4 to 5 rehearsal boundary
+After=pokebot-marnie-latest20-runtime-stage-r109.service
+Wants=pokebot-marnie-latest20-runtime-stage-r109.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+EnvironmentFile=/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_h10_r104.env
+EnvironmentFile=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/config/final_format_marnie_h10_runtime.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104:/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/apply_marnie_latest20_at_rehearsal_boundary.py --stage-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latest20-runtime-migration-stage-r109.json --activation-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latest20-runtime-activation-r109.json --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k --deployment-root /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104 --completed-iteration 4 --rl-unit pokebot-final-format-marnie-r104-h10-rl.service --gate-unit pokebot-final-format-marnie-r104-h10-gate-handler.service --completion-unit pokebot-final-format-marnie-r104-completion.service --rl-unit-file /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service --gate-unit-file /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-gate-handler.service --completion-unit-file /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-completion.service --rl-dropin /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zz-latest20-r109.conf --gate-dropin /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-gate-handler.service.d/zz-latest20-r109.conf --completion-dropin /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-completion.service.d/zz-latest20-r109.conf --maintenance-dropin /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zz-latest20-r109-maintenance.conf --old-registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r104_fusion_v3.json --old-registration /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-h10-runtime-registration.json --migration-reason receipt_backed_latest20_rehearsal_boundary_r109 --stage-timeout 21600 --boundary-timeout 86400 --poll-seconds 0.1
+Restart=on-failure
+RestartSec=60
+MemoryHigh=1G
+MemoryMax=2G
+MemorySwapMax=0
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -4,10 +4,10 @@ After=pokebot-final-format-alakazam-r79-gate-handler.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r105
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
-ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/complete_final_format_alakazam_refresh.py --handler-state /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-r79-h10-passed-gate-handler-v1.json --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k --original-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/alakazam-owner-accepted-iter39-v1/model.pt --accepted-core /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt --accepted-core-ready /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v9-fused-v1-ready.json --protocol config/rl_protocol.yaml --specialist-state /home/inzi/poke-bot-agent/state/specialists.yaml --refresh-registry /home/inzi/poke-bot-agent/outputs/state/post-fleet-refresh-registry-v1.json --registration-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-r79-h10-registration-v1.json --completion-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-r79-h10-completion-v1.json --next-service pokebot-final-format-marnie-r79-handoff.service --next-unit /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r79-handoff.service
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r105
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/complete_final_format_alakazam_refresh.py --handler-state /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-r79-h10-passed-gate-handler-v1.json --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k --original-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/alakazam-owner-accepted-iter39-v1/model.pt --accepted-core /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/deck_agnostic_core_cumulative_v9_fused_v1/model.pt --accepted-core-ready /home/inzi/poke-bot-agent/outputs/state/deck-agnostic-core-cumulative-v9-fused-v1-ready.json --protocol config/rl_protocol.yaml --specialist-state /home/inzi/poke-bot-agent/state/specialists.yaml --runtime-registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r105_fusion_v3_directional_learner1536_recovery_v2_iter20_exact.json --refresh-registry /home/inzi/poke-bot-agent/outputs/state/post-fleet-refresh-registry-v1.json --registration-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-r79-h10-registration-v1.json --completion-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-r79-h10-completion-v1.json --next-service pokebot-final-format-marnie-r79-handoff.service --next-unit /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r79-handoff.service
 Restart=on-failure
 RestartSec=30
 MemoryHigh=8G
@@ -15,4 +15,3 @@ MemoryMax=12G
 MemorySwapMax=0
 StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/logs/h10_completion.log
 StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/logs/h10_completion.log
-

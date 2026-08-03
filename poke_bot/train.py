@@ -69,6 +69,7 @@ from .strategic_losses import (
     canonical_expanded_loss_weights,
     expanded_strategic_losses,
     guide_outcome_backed_loss_weights,
+    guide_pairwise_route_ranking_loss,
     resident_expanded_strategic_losses,
 )
 from .setup_board_outcome import setup_board_outcome_loss
@@ -89,8 +90,12 @@ BELIEF_AUX_HEAD_KEY_PREFIXES: tuple[str, ...] = (
 
 GUIDE_TRAINING_MODE_LEGACY = "legacy_policy_ce_v1"
 GUIDE_TRAINING_MODE_STRATEGIC = "strategic_curriculum_v1"
+GUIDE_TRAINING_MODE_DIRECTIONAL = "strategic_directional_v2"
+GUIDE_STRATEGIC_TRAINING_MODES = frozenset(
+    {GUIDE_TRAINING_MODE_STRATEGIC, GUIDE_TRAINING_MODE_DIRECTIONAL}
+)
 GUIDE_TRAINING_MODES = frozenset(
-    {GUIDE_TRAINING_MODE_LEGACY, GUIDE_TRAINING_MODE_STRATEGIC}
+    {GUIDE_TRAINING_MODE_LEGACY, *GUIDE_STRATEGIC_TRAINING_MODES}
 )
 SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT = 0.025
 COMBO_STATE_BASE_LOSS_WEIGHT = 0.025
@@ -105,6 +110,10 @@ class TrainConfig:
     epochs: int = 20
     games_per_batch: int = 4
     max_decisions_per_batch: int = 256
+    #: Parent/candidate agreement is inference-only. Keep its independently
+    #: proven cap above the optimizer cap so memory safety does not force two
+    #: full policy scans into hundreds of tiny batches.
+    agreement_max_decisions_per_batch: int = 6144
     val_frac: float = 0.1
     #: Keep both acting-seat records from an episode in the same split.
     split_by_episode: bool = False
@@ -378,6 +387,7 @@ def expand_aux_head_to_current_registry(model: torch.nn.Module) -> bool:
     if old.out_features == target_classes:
         return False
     compatible_orders = (
+        archetypes.PRE_TEAL_AUX_ARCHETYPE_IDS,
         archetypes.CUMULATIVE_V4_AUX_ARCHETYPE_IDS,
         archetypes.PINNED_CORE_AUX_ARCHETYPE_IDS,
         archetypes.LEGACY_AUX_ARCHETYPE_IDS,
@@ -412,6 +422,73 @@ def expand_aux_head_to_current_registry(model: torch.nn.Module) -> bool:
         if new.bias is not None and old.bias is not None:
             new.bias[-1].copy_(old.bias[-1])
     model.aux_head[-1] = new
+
+    # The archetype logits are also consumed by two Fusion-v3 paths. Expanding
+    # only the classifier leaves both paths dimensionally bound to the old
+    # registry and crashes on the first rehearsal batch. Preserve every named
+    # and unknown column, while zero-initializing only genuinely new classes so
+    # the migration cannot change policy behavior before training.
+    fusion = getattr(model, "decision_fusion", None)
+    if fusion is not None:
+        projection = fusion.state_projections["archetype"]
+        if not isinstance(projection, torch.nn.Linear):
+            raise TypeError("archetype fusion projection must be Linear")
+        if projection.in_features != old.out_features:
+            raise RuntimeError("archetype fusion projection width disagrees with aux head")
+        expanded_projection = torch.nn.Linear(
+            target_classes,
+            projection.out_features,
+            bias=projection.bias is not None,
+            device=projection.weight.device,
+            dtype=projection.weight.dtype,
+        )
+        with torch.no_grad():
+            expanded_projection.weight.zero_()
+            for old_i, name in enumerate(legacy):
+                new_i = target_ids.index(name)
+                expanded_projection.weight[:, new_i].copy_(
+                    projection.weight[:, old_i]
+                )
+            expanded_projection.weight[:, -1].copy_(projection.weight[:, -1])
+            if expanded_projection.bias is not None and projection.bias is not None:
+                expanded_projection.bias.copy_(projection.bias)
+        fusion.state_projections["archetype"] = expanded_projection
+
+        if "archetype" in fusion.dedicated_routes:
+            route = fusion.dedicated_routes["archetype"]
+            route_input = route.network[0]
+            if (
+                not isinstance(route_input, torch.nn.Linear)
+                or route_input.in_features != route.d_model + old.out_features
+            ):
+                raise RuntimeError(
+                    "dedicated archetype fusion route width disagrees with aux head"
+                )
+            expanded_route_input = torch.nn.Linear(
+                route.d_model + target_classes,
+                route_input.out_features,
+                bias=route_input.bias is not None,
+                device=route_input.weight.device,
+                dtype=route_input.weight.dtype,
+            )
+            with torch.no_grad():
+                expanded_route_input.weight.zero_()
+                expanded_route_input.weight[:, : route.d_model].copy_(
+                    route_input.weight[:, : route.d_model]
+                )
+                for old_i, name in enumerate(legacy):
+                    new_i = target_ids.index(name)
+                    expanded_route_input.weight[:, route.d_model + new_i].copy_(
+                        route_input.weight[:, route.d_model + old_i]
+                    )
+                expanded_route_input.weight[:, route.d_model - 1 + target_classes].copy_(
+                    route_input.weight[:, -1]
+                )
+                if expanded_route_input.bias is not None and route_input.bias is not None:
+                    expanded_route_input.bias.copy_(route_input.bias)
+            route.network[0] = expanded_route_input
+            route.head_dim = target_classes
+            fusion.dedicated_route_dims["archetype"] = target_classes
     return True
 
 
@@ -906,6 +983,7 @@ def assert_strategic_curriculum_receipt_contract(
     curriculum_spec: str,
     head_role_map: str,
     validation_receipt: str,
+    expected_training_mode: str = GUIDE_TRAINING_MODE_STRATEGIC,
 ) -> None:
     """Require checksum-linked immutable artifacts at every training entry."""
 
@@ -931,11 +1009,14 @@ def assert_strategic_curriculum_receipt_contract(
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("strategic curriculum receipt gate is unreadable") from exc
     specialist = str(specialist_id or "").strip().casefold()
+    expected_mode = canonical_guide_training_mode(expected_training_mode)
+    if expected_mode not in GUIDE_STRATEGIC_TRAINING_MODES:
+        raise ValueError("strategic curriculum receipt expected mode is not strategic")
     if (
         not isinstance(spec, dict)
         or spec.get("schema")
         != "poke_bot.future_specialist_strategic_curriculum/v1"
-        or spec.get("training_mode") != GUIDE_TRAINING_MODE_STRATEGIC
+        or spec.get("training_mode") != expected_mode
         or str(spec.get("specialist_id") or "").strip().casefold()
         != specialist
         or spec.get("direct_policy_cross_entropy_allowed") is not False
@@ -949,7 +1030,7 @@ def assert_strategic_curriculum_receipt_contract(
         or receipt.get("schema")
         != "poke_bot.future_specialist_strategic_curriculum_validation/v1"
         or receipt.get("status") != "validated"
-        or receipt.get("training_mode") != GUIDE_TRAINING_MODE_STRATEGIC
+        or receipt.get("training_mode") != expected_mode
         or str(receipt.get("specialist_id") or "").strip().casefold()
         != specialist
     ):
@@ -972,6 +1053,12 @@ def assert_strategic_curriculum_receipt_contract(
         "observed_outcome_targets_not_replaced",
         "all_training_paths_use_the_declared_mode",
     )
+    if expected_mode == GUIDE_TRAINING_MODE_DIRECTIONAL:
+        required_checks = (
+            *required_checks,
+            "guide_preference_routes_only_selected_causal_heads",
+            "final_policy_logits_not_supervised",
+        )
     if not isinstance(checks, dict) or any(
         checks.get(name) is not True for name in required_checks
     ):
@@ -985,7 +1072,7 @@ def _strategic_curriculum_contract_record(
 
     if (
         canonical_guide_training_mode(cfg.current_deck_guide_training_mode)
-        != GUIDE_TRAINING_MODE_STRATEGIC
+        not in GUIDE_STRATEGIC_TRAINING_MODES
     ):
         raise ValueError("strategic curriculum record requested for legacy mode")
 
@@ -1003,7 +1090,9 @@ def _strategic_curriculum_contract_record(
 
     return {
         "schema": "poke_bot.strategic_guide_training_contract/v1",
-        "mode": GUIDE_TRAINING_MODE_STRATEGIC,
+        "mode": canonical_guide_training_mode(
+            cfg.current_deck_guide_training_mode
+        ),
         "guide_multiplier": float(cfg.alakazam_guide_loss_weight),
         "setup_board_outcome_base_loss_weight": float(
             cfg.setup_board_outcome_loss_weight
@@ -1308,6 +1397,7 @@ def batch_losses(
     awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
     awr_weight_sink: Optional[list[float]] = None,
     prediction_sink: Optional[list[int]] = None,
+    prediction_only: bool = False,
     history_identity_weight: float = 0.0,
     matchup_adapter_training: bool = False,
     pack_temporal_games: bool = False,
@@ -1347,9 +1437,7 @@ def batch_losses(
     guide_training_mode = canonical_guide_training_mode(
         current_deck_guide_training_mode
     )
-    strategic_curriculum = (
-        guide_training_mode == GUIDE_TRAINING_MODE_STRATEGIC
-    )
+    strategic_curriculum = guide_training_mode in GUIDE_STRATEGIC_TRAINING_MODES
     if strategic_curriculum:
         assert_strategic_curriculum_model_contract(
             model,
@@ -1374,7 +1462,7 @@ def batch_losses(
     use_expanded_heads = strategic_curriculum or any(
         weight > 0.0 for weight in expanded_weights.values()
     )
-    use_option_aux_heads = use_expanded_heads or use_combo_state
+    use_option_aux_heads = (use_expanded_heads or use_combo_state) and not prediction_only
     if use_expanded_heads and not bool(
         getattr(model, "expanded_heads_enabled", False)
     ):
@@ -1573,7 +1661,7 @@ def batch_losses(
                     guide_confidence_rows.append(
                         float(getattr(stage, "guide_confidence", 0.0))
                     )
-                if use_legacy_guide:
+                if use_guide_confidence:
                     guide_target_rows.append(
                         int(getattr(stage, "guide_target_index", -1))
                     )
@@ -1635,6 +1723,19 @@ def batch_losses(
         logits_all = decoded
         expanded_option_outputs = {}
         expanded_state_outputs = {}
+    if prediction_only:
+        predictions = logits_all.argmax(dim=1)
+        if prediction_sink is not None:
+            prediction_sink.extend(
+                int(value) for value in predictions.detach().cpu().tolist()
+            )
+        target_idx = torch.tensor(hard_idx, device=device, dtype=torch.long)
+        correct = int((predictions == target_idx).sum().item())
+        return logits_all.sum() * 0.0, BatchMetrics(
+            policy_acc=correct / max(int(logits_all.size(0)), 1),
+            n_decisions=int(logits_all.size(0)),
+            n_games=len(games),
+        )
     value_pred = torch.tanh(model.value_head(policy_value_state)).squeeze(-1)
     need_belief_outputs = any(
         float(weight) > 0.0
@@ -1992,6 +2093,34 @@ def batch_losses(
             row_weights=guide_confidence,
             state_row_weights=decision_guide_confidence,
         )
+        if guide_training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL:
+            guide_directional_loss, guide_directional_metrics = (
+                guide_pairwise_route_ranking_loss(
+                    route_deltas=model.decision_fusion_route_deltas(
+                        option_hidden, state_all
+                    ),
+                    guide_target_indices=torch.tensor(
+                        guide_target_rows,
+                        device=device,
+                        dtype=torch.long,
+                    ),
+                    guide_confidences=guide_confidence,
+                    option_counts=torch.as_tensor(
+                        valid_n, device=device, dtype=torch.long
+                    ),
+                )
+            )
+        else:
+            guide_directional_loss = option_hidden.sum() * 0.0
+            guide_directional_metrics = {
+                "eligible_rows": 0,
+                "heads": {},
+                "margin": 0.10,
+                "disabled_for_mode": guide_training_mode,
+            }
+        guide_strategic_curriculum_loss = (
+            guide_strategic_curriculum_loss + guide_directional_loss
+        )
         resource_target, resource_mask, outcome_target, outcome_mask = (
             _setup_board_targets_from_aux(
                 decision_aux,
@@ -2034,6 +2163,9 @@ def batch_losses(
         n_guide_rows = int(guide_confidence.gt(0.0).sum().item())
         guide_curriculum_metrics = (
             guide_curriculum_metric_record.as_dict()
+        )
+        guide_curriculum_metrics["directional_route_ranking"] = (
+            guide_directional_metrics
         )
         setup_metrics = setup_metric_record.as_dict()
     if use_combo_state:
@@ -2264,9 +2396,7 @@ def device_temporal_batch_losses(
     guide_training_mode = canonical_guide_training_mode(
         current_deck_guide_training_mode
     )
-    strategic_curriculum = (
-        guide_training_mode == GUIDE_TRAINING_MODE_STRATEGIC
-    )
+    strategic_curriculum = guide_training_mode in GUIDE_STRATEGIC_TRAINING_MODES
     if strategic_curriculum:
         assert_strategic_curriculum_model_contract(
             model,
@@ -2624,6 +2754,38 @@ def device_temporal_batch_losses(
             sample_row_weights=guide_confidence,
             decision_row_weights=decision_guide_confidence,
         )
+        if (
+            guide_training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL
+            and corpus.guide_target_index is None
+        ):
+            raise ValueError(
+                "strategic curriculum requires resident guide target indices"
+            )
+        if guide_training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL:
+            assert corpus.guide_target_index is not None
+            guide_directional_loss, guide_directional_metrics = (
+                guide_pairwise_route_ranking_loss(
+                    route_deltas=model.decision_fusion_route_deltas(
+                        option_hidden, policy_value_state
+                    ),
+                    guide_target_indices=(
+                        corpus.guide_target_index.index_select(0, sample_ids)
+                    ),
+                    guide_confidences=guide_confidence,
+                    option_counts=counts,
+                )
+            )
+        else:
+            guide_directional_loss = option_hidden.sum() * 0.0
+            guide_directional_metrics = {
+                "eligible_rows": 0,
+                "heads": {},
+                "margin": 0.10,
+                "disabled_for_mode": guide_training_mode,
+            }
+        guide_strategic_curriculum_loss = (
+            guide_strategic_curriculum_loss + guide_directional_loss
+        )
         setup_required = (
             corpus.strategic_resource_forecast_target,
             corpus.strategic_resource_forecast_mask,
@@ -2692,6 +2854,9 @@ def device_temporal_batch_losses(
         metrics.guide_curriculum_head_metrics = (
             guide_curriculum_metric_record.as_dict()
         )
+        metrics.guide_curriculum_head_metrics[
+            "directional_route_ranking"
+        ] = guide_directional_metrics
         metrics.setup_board_outcome_metrics = setup_metric_record.as_dict()
         metrics.total_loss = float(total.detach().item())
     if use_combo_state:
@@ -3514,6 +3679,49 @@ def _merge_metrics(parts: Sequence[BatchMetrics]) -> BatchMetrics:
                 for name in head_ids
             },
         }
+        directional_parts = [
+            dict(record.get("directional_route_ranking") or {})
+            for record in guide_curriculum_parts
+            if isinstance(record.get("directional_route_ranking"), dict)
+        ]
+        if directional_parts:
+            directional_heads = sorted(
+                {
+                    str(name)
+                    for record in directional_parts
+                    for name in dict(record.get("heads") or {})
+                }
+            )
+            directional_rows = sum(
+                int(record.get("eligible_rows") or 0)
+                for record in directional_parts
+            )
+            guide_curriculum_metrics["directional_route_ranking"] = {
+                "eligible_rows": directional_rows,
+                "heads": {
+                    name: (
+                        sum(
+                            float(dict(record.get("heads") or {})[name])
+                            * int(record.get("eligible_rows") or 0)
+                            for record in directional_parts
+                            if name in dict(record.get("heads") or {})
+                        )
+                        / sum(
+                            int(record.get("eligible_rows") or 0)
+                            for record in directional_parts
+                            if name in dict(record.get("heads") or {})
+                        )
+                        if any(
+                            int(record.get("eligible_rows") or 0) > 0
+                            and name in dict(record.get("heads") or {})
+                            for record in directional_parts
+                        )
+                        else 0.0
+                    )
+                    for name in directional_heads
+                },
+                "margin": float(directional_parts[0].get("margin") or 0.10),
+            }
     setup_parts = [
         dict(part.setup_board_outcome_metrics)
         for part in parts
@@ -3954,7 +4162,10 @@ def evaluate(
     batches = _iter_game_batches(
         list(sequences),
         cfg.games_per_batch,
-        cfg.max_decisions_per_batch,
+        max(
+            int(cfg.max_decisions_per_batch),
+            int(cfg.agreement_max_decisions_per_batch),
+        ),
         shuffle=False,
         seed=cfg.seed,
         epoch=0,
@@ -4468,6 +4679,7 @@ def train_bootstrap(
             validation_receipt=(
                 cfg.current_deck_guide_curriculum_validation_receipt
             ),
+            expected_training_mode=cfg.current_deck_guide_training_mode,
         )
         if device_resident:
             raise ValueError(
@@ -5172,6 +5384,7 @@ def supervised_rehearsal_step(
     current_deck_guide_curriculum_validation_receipt: str = "",
     expanded_head_loss_weights: Optional[dict[str, float]] = None,
     expanded_head_schedule: Optional[dict[str, Any]] = None,
+    reset_expanded_training_history: bool = False,
     output_archetype_id: Optional[str] = None,
     output_model_id: Optional[str] = None,
     extra_updates: Optional[dict[str, Any]] = None,
@@ -5342,6 +5555,7 @@ def supervised_rehearsal_step(
             validation_receipt=(
                 cfg.current_deck_guide_curriculum_validation_receipt
             ),
+            expected_training_mode=cfg.current_deck_guide_training_mode,
         )
         if model.decision_context != "history":
             raise ValueError(
@@ -5607,9 +5821,12 @@ def supervised_rehearsal_step(
     prior_expanded_contract = dict(
         inherited_extra.get("expanded_head_training") or {}
     )
-    prior_trained_expanded = {
+    source_trained_expanded = {
         str(name) for name in prior_expanded_contract.get("trained_heads") or ()
     }
+    prior_trained_expanded = (
+        set() if reset_expanded_training_history else source_trained_expanded
+    )
     expanded_training_contract: dict[str, Any] = {}
     warm_started_expanded_remaining = warm_started_expanded_before
     if expanded_enabled:
@@ -5705,6 +5922,14 @@ def supervised_rehearsal_step(
             "architecture_present_heads": list(EXPANDED_HEAD_IDS),
             "trained_heads": trained_expanded,
             "trained_this_epoch": trained_this_epoch,
+            "specialist_training_history_reset": bool(
+                reset_expanded_training_history
+            ),
+            "source_trained_heads_before_reset": (
+                sorted(source_trained_expanded)
+                if reset_expanded_training_history
+                else []
+            ),
             "gradient_enabled_heads": gradient_enabled,
             "runtime_enabled_heads": [],
             "loss_weights": dict(canonical_expanded_weights),
@@ -5742,8 +5967,7 @@ def supervised_rehearsal_step(
             train_metrics=train_metrics,
             validation_metrics=val_metrics,
         )
-        if cfg.current_deck_guide_training_mode
-        == GUIDE_TRAINING_MODE_STRATEGIC
+        if cfg.current_deck_guide_training_mode in GUIDE_TRAINING_MODES
         else {}
     )
     rehearsal_record = {
@@ -6353,7 +6577,14 @@ def _policy_argmax_predictions(
     batches = _iter_game_batches(
         list(sequences),
         cfg.games_per_batch,
-        cfg.max_decisions_per_batch,
+        # Agreement is inference-only and has its own independently proven
+        # capacity limit.  Do not accidentally inherit the lower optimizer
+        # cap: doing so turns this full policy scan into twice as many tiny
+        # CUDA launches without improving the drift measurement.
+        max(
+            int(cfg.max_decisions_per_batch),
+            int(cfg.agreement_max_decisions_per_batch),
+        ),
         shuffle=False,
         seed=cfg.seed,
         epoch=0,
@@ -6396,6 +6627,7 @@ def _policy_argmax_predictions(
                         entropy_bonus=float(cfg.entropy_bonus),
                         awr_baseline_cache=awr_baseline_cache,
                         prediction_sink=predictions,
+                        prediction_only=True,
                     )
                 return metrics
 
@@ -6794,6 +7026,7 @@ def rl_train_step(
             validation_receipt=(
                 cfg.current_deck_guide_curriculum_validation_receipt
             ),
+            expected_training_mode=cfg.current_deck_guide_training_mode,
         )
         if device_resident:
             raise ValueError(
@@ -7599,8 +7832,7 @@ def rl_train_step(
             train_metrics=last,
             validation_metrics=validation_metrics,
         )
-        if cfg.current_deck_guide_training_mode
-        == GUIDE_TRAINING_MODE_STRATEGIC
+        if cfg.current_deck_guide_training_mode in GUIDE_TRAINING_MODES
         else {}
     )
 
@@ -7852,8 +8084,20 @@ def load_model_from_checkpoint(
             "decision_fusion_dedicated_routes_runtime_enabled",
             False,
         )
+        snap.setdefault(
+            "decision_fusion_typed_output_centered_routes_enabled",
+            False,
+        )
+        snap.setdefault("decision_fusion_action_type_reliability_cap", 1.0)
         snap.setdefault("h10_capacity_enabled", False)
         snap.setdefault("h10_head_residual_width", 512)
+        # Revision-114 latent lookahead is an explicit additive migration.
+        # Historical checkpoints must never inherit an ambient challenger
+        # setting merely because they are loaded inside a newer process.
+        snap.setdefault("latent_lookahead_enabled", False)
+        snap.setdefault("latent_lookahead_action_authority_enabled", False)
+        snap.setdefault("latent_lookahead_width", 512)
+        snap.setdefault("latent_lookahead_policy_aid_cap", 0.25)
         known = set(config.ModelConfig.__dataclass_fields__)  # type: ignore[attr-defined]
         unknown = sorted(set(snap) - known)
         if unknown:

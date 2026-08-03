@@ -1,0 +1,52 @@
+{
+  "schema": "poke_bot.final_format_marnie_epoch_recovery_completion/v1",
+  "status": "epoch1_validator_passed_epoch2_lineage_continuity_verified",
+  "recorded_at_utc": "2026-08-02T17:26:44Z",
+  "goal_revision": 106,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "immutable_step_zero_checkpoint_sha256": "sha256:6545eaa4c8d3e679e50b0da79c28291b2c3108d3762ed3dab5d3eead8b4ad98b",
+  "repaired_epoch_1": {
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10/checkpoints/epoch_01.pt",
+    "checkpoint_sha256": "sha256:6fdf7969dafbec4511b2f49346b2f047c71e50f4427bd912aec26a8a1e5ecb40",
+    "specialist_training_history_reset": true,
+    "trained_heads": [
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility"
+    ],
+    "trained_this_epoch": [
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility"
+    ],
+    "source_core_trained_head_count_preserved_as_provenance": 11,
+    "expanded_head_validator_passed": true,
+    "directional_route_validator_passed": true,
+    "combo_missing_targets_remained_masked": true
+  },
+  "epoch_2_continuity": {
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10/checkpoints/epoch_02.pt",
+    "checkpoint_sha256": "sha256:948dda1bae5150ebac140d66ef42a541e2bd2ed0a4d96d1e9ee974f1fb937e33",
+    "specialist_training_history_reset": false,
+    "source_trained_heads_before_reset": [],
+    "trained_head_count": 5,
+    "trained_this_epoch_count": 5,
+    "expanded_head_validator_passed": true
+  },
+  "managed_service": {
+    "unit": "pokebot-final-format-marnie-r104-h10-bootstrap.service",
+    "main_pid": 608116,
+    "restart_count": 0,
+    "active_state": "activating",
+    "interactive_sessions_modified": false
+  },
+  "failed_unregistered_checkpoints_preserved": [
+    "sha256:f125cd86da7bf17d22079d566ab435c55016249807407baf8c8779abfdf39a3f",
+    "sha256:e67563a19f9ae8bb564aca88531b06f11e2d085d50e7b2e836fc5621e7d24222"
+  ],
+  "next_boundary": "continue_exact_25_epoch_marnie_h10_bootstrap"
+}

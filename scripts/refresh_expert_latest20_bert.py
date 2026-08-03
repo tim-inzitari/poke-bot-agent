@@ -20,6 +20,22 @@ from typing import Any
 
 SCHEMA = "poke_bot.expert_latest20_refresh/v1"
 ARCHIVE_PREFIX = "pokemon-tcg-ai-battle-episodes-"
+KNOWN_SOURCE_DISCREPANCIES = {
+    "2026-07-24": {
+        "index_episode_count": 4_445,
+        "validated_episode_count": 4_444,
+        "archive_sha256": (
+            "sha256:68a5c1be539bef579f03b5de29b901a1fab1dc4904af78824fbf7666d73bc8ab"
+        ),
+    },
+    "2026-08-02": {
+        "index_episode_count": 4_587,
+        "validated_episode_count": 4_586,
+        "archive_sha256": (
+            "sha256:fa91e058a42d5fffab0f3e63f04fba5acc9bfbd2e2225e97aa62f45f5d430eb8"
+        ),
+    },
+}
 
 
 def _run(
@@ -74,7 +90,7 @@ def _window(index_path: Path) -> list[dict[str, Any]]:
     ]
 
 
-def _validate(path: Path, expected: int) -> str:
+def _validate(path: Path, expected: int, *, day: str) -> str:
     with zipfile.ZipFile(path) as archive:
         # Parsing the central directory validates the ZIP structure. Full CRC
         # verification would decompress tens of GiB and defeat the incremental
@@ -83,11 +99,18 @@ def _validate(path: Path, expected: int) -> str:
             name.endswith(".json") and not name.endswith("/")
             for name in archive.namelist()
         )
-    if actual != expected:
+    checksum = _sha256(path)
+    exception = KNOWN_SOURCE_DISCREPANCIES.get(day)
+    if actual != expected and not (
+        exception
+        and expected == int(exception["index_episode_count"])
+        and actual == int(exception["validated_episode_count"])
+        and checksum == exception["archive_sha256"]
+    ):
         raise RuntimeError(
             f"episode-count mismatch: actual={actual} expected={expected}"
         )
-    return _sha256(path)
+    return checksum
 
 
 def _ssh_prefix(host: str, source_address: str) -> list[str]:
@@ -147,7 +170,9 @@ def _download_day(cache: Path, row: dict[str, Any]) -> tuple[Path, str]:
     if destination.is_file():
         try:
             return destination, _validate(
-                destination, int(row["episode_count"])
+                destination,
+                int(row["episode_count"]),
+                day=day,
             )
         except (OSError, RuntimeError, zipfile.BadZipFile):
             destination.unlink(missing_ok=True)
@@ -169,7 +194,11 @@ def _download_day(cache: Path, row: dict[str, Any]) -> tuple[Path, str]:
         timeout=4 * 60 * 60,
     )
     candidate = staging / f"{slug}.zip"
-    checksum = _validate(candidate, int(row["episode_count"]))
+    checksum = _validate(
+        candidate,
+        int(row["episode_count"]),
+        day=day,
+    )
     cache.mkdir(parents=True, exist_ok=True)
     os.replace(candidate, destination)
     shutil.rmtree(staging)

@@ -18,6 +18,7 @@ from poke_bot.matchup_adapters import EXPERT_IDS
 from poke_bot.model import (
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
 )
 from poke_bot.pure_rl.deck_guide_schedule import (
     DECAY_SCHEDULE,
@@ -43,9 +44,11 @@ CANONICAL_LEARNED_DECISION_SOURCES = tuple(
 )
 GUIDE_TRAINING_MODE_LEGACY = "legacy_policy_ce_v1"
 GUIDE_TRAINING_MODE_STRATEGIC = "strategic_curriculum_v1"
+GUIDE_TRAINING_MODE_DIRECTIONAL = "strategic_directional_v2"
 GUIDE_TRAINING_MODES = {
     GUIDE_TRAINING_MODE_LEGACY,
     GUIDE_TRAINING_MODE_STRATEGIC,
+    GUIDE_TRAINING_MODE_DIRECTIONAL,
 }
 STRATEGIC_CURRICULUM_SCHEMA = (
     "poke_bot.future_specialist_strategic_curriculum/v1"
@@ -80,7 +83,10 @@ STRATEGIC_REQUIRED_CHECKS = (
 )
 
 
-def _guide_weight_policy(runtime_root: Path) -> dict[str, Any]:
+def _guide_weight_policy(
+    runtime_root: Path,
+    training_mode: str = GUIDE_TRAINING_MODE_STRATEGIC,
+) -> dict[str, Any]:
     """Bind a newly registered future run to the realized-win schedule."""
 
     module = (
@@ -121,6 +127,7 @@ def _guide_weight_policy(runtime_root: Path) -> dict[str, Any]:
         or not shadow_queue_processor.is_file()
     ):
         raise RuntimeError("fleet guide-weight policy module is missing")
+    directional = training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL
     return {
         "schema": GUIDE_WEIGHT_POLICY_SCHEMA,
         "owner_decision_revision": GUIDE_WEIGHT_OWNER_DECISION_REVISION,
@@ -191,13 +198,19 @@ def _guide_weight_policy(runtime_root: Path) -> dict[str, Any]:
         "direct_action_selection_authority": False,
         "runtime_activation_requirement": "receipt_backed_validation",
         "per_head_action_logit_ablation_required": True,
-        "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
+        "decision_fusion_schema": (
+            DECISION_FUSION_V3_SCHEMA if directional else DECISION_FUSION_V2_SCHEMA
+        ),
         "preserve_v1_additive_residual": True,
         "canonical_learned_decision_sources": list(
             CANONICAL_LEARNED_DECISION_SOURCES
         ),
         "one_route_per_learned_source": True,
-        "route_input": "option_hidden_plus_typed_output",
+        "route_input": (
+            "typed_output_centered_option_interaction"
+            if directional
+            else "option_hidden_plus_typed_output"
+        ),
         "route_reduction": "fixed_mean",
         "aggregate_absolute_logit_cap": 1.0,
         "zero_safe_final_projection": True,
@@ -280,16 +293,28 @@ def _validate_head_role_map(
     *,
     specialist_id: str,
     guide_contract_sha256: str,
+    training_mode: str = GUIDE_TRAINING_MODE_STRATEGIC,
 ) -> tuple[str, ...]:
     heads = payload.get("heads")
     try:
         aggregate_cap = float(payload.get("aggregate_absolute_logit_cap"))
     except (TypeError, ValueError):
         aggregate_cap = float("nan")
+    directional = training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL
+    expected_fusion_schema = (
+        DECISION_FUSION_V3_SCHEMA if directional else DECISION_FUSION_V2_SCHEMA
+    )
+    expected_route_input = (
+        "typed_output_centered_option_interaction"
+        if directional
+        else "option_hidden_plus_typed_output"
+    )
+    declared_sources = tuple(payload.get("canonical_learned_decision_sources") or [])
+    allowed_sources = set((*CANONICAL_LEARNED_DECISION_SOURCES, "combo_state"))
     if (
         payload.get("schema") != STRATEGIC_HEAD_ROLE_MAP_SCHEMA
         or payload.get("specialist_id") != specialist_id
-        or payload.get("training_mode") != GUIDE_TRAINING_MODE_STRATEGIC
+        or payload.get("training_mode") != training_mode
         or int(payload.get("guide_curriculum_revision") or 0)
         != GUIDE_CURRICULUM_REVISION
         or int(payload.get("strategic_branch_scope_revision") or 0)
@@ -298,20 +323,22 @@ def _validate_head_role_map(
         != GUIDE_ACTION_INFLUENCE_REVISION
         or payload.get("guide_contract_sha256")
         != f"sha256:{guide_contract_sha256}"
-        or payload.get("decision_fusion_schema")
-        != DECISION_FUSION_V2_SCHEMA
+        or payload.get("decision_fusion_schema") != expected_fusion_schema
         or payload.get("preserve_v1_additive_residual") is not True
-        or payload.get("canonical_learned_decision_sources")
-        != list(CANONICAL_LEARNED_DECISION_SOURCES)
+        or not declared_sources
+        or len(declared_sources) != len(set(declared_sources))
+        or not set(declared_sources).issubset(allowed_sources)
+        or not set(CANONICAL_LEARNED_DECISION_SOURCES).issubset(
+            set(declared_sources)
+        )
         or payload.get("one_route_per_learned_source") is not True
-        or payload.get("route_input")
-        != "option_hidden_plus_typed_output"
+        or payload.get("route_input") != expected_route_input
         or payload.get("route_reduction") != "fixed_mean"
         or aggregate_cap != 1.0
         or payload.get("zero_safe_final_projection") is not True
         or payload.get("guide_is_only_action_route_exception") is not True
         or not isinstance(heads, dict)
-        or set(heads) != set(CANONICAL_LEARNED_DECISION_SOURCES)
+        or set(heads) != set(declared_sources)
     ):
         raise RuntimeError("strategic curriculum head-role map is invalid")
 
@@ -349,8 +376,7 @@ def _validate_head_role_map(
             or raw.get("direct_action_selection_authority") is not False
             or raw.get("runtime_activation_requirement")
             != "receipt_backed_validation"
-            or raw.get("route_input")
-            != "option_hidden_plus_typed_output"
+            or raw.get("route_input") != expected_route_input
             or raw.get("route_reduction") != "fixed_mean"
             or raw.get("zero_safe_final_projection") is not True
             or not math.isfinite(maximum_contribution)
@@ -361,7 +387,7 @@ def _validate_head_role_map(
                 f"strategic curriculum head role is invalid: {head_id}"
             )
         if (
-            head_id not in CANONICAL_LEARNED_DECISION_SOURCES
+            head_id not in declared_sources
             or raw.get("enters_decision_fusion") is not True
         ):
             raise RuntimeError(
@@ -398,6 +424,7 @@ def _validate_strategic_curriculum_bundle(
     head_role_map_sha256: str,
     validation_receipt: Path | None,
     validation_receipt_sha256: str,
+    training_mode: str = GUIDE_TRAINING_MODE_STRATEGIC,
 ) -> dict[str, Any]:
     """Validate the future-only curriculum before a runtime row can exist."""
 
@@ -410,6 +437,21 @@ def _validate_strategic_curriculum_bundle(
         role_payload,
         specialist_id=specialist_id,
         guide_contract_sha256=guide_contract_sha256,
+        training_mode=training_mode,
+    )
+    directional = training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL
+    expected_fusion_schema = (
+        DECISION_FUSION_V3_SCHEMA if directional else DECISION_FUSION_V2_SCHEMA
+    )
+    expected_route_input = (
+        "typed_output_centered_option_interaction"
+        if directional
+        else "option_hidden_plus_typed_output"
+    )
+    expected_guide_targets = (
+        "observed_causal_targets_plus_selected_pairwise_route_direction"
+        if directional
+        else "observed_causal_strategic_heads_only"
     )
     spec_path, spec, spec_digest = _checked_json_file(
         curriculum_spec,
@@ -419,14 +461,14 @@ def _validate_strategic_curriculum_bundle(
     exact_spec = {
         "schema": STRATEGIC_CURRICULUM_SCHEMA,
         "specialist_id": specialist_id,
-        "training_mode": GUIDE_TRAINING_MODE_STRATEGIC,
+        "training_mode": training_mode,
         "guide_curriculum_revision": GUIDE_CURRICULUM_REVISION,
         "strategic_branch_scope_revision": GUIDE_BRANCH_SCOPE_REVISION,
         "action_influence_revision": GUIDE_ACTION_INFLUENCE_REVISION,
         "guide_contract_sha256": f"sha256:{guide_contract_sha256}",
         "head_role_map_sha256": f"sha256:{role_digest}",
         "curriculum_heads": list(head_ids),
-        "guide_targets": "observed_causal_strategic_heads_only",
+        "guide_targets": expected_guide_targets,
         "direct_policy_cross_entropy_allowed": False,
         "guide_runtime_input_allowed": False,
         "guide_action_selection_allowed": False,
@@ -438,13 +480,13 @@ def _validate_strategic_curriculum_bundle(
         "causal_input": "board_state_and_legal_option",
         "direct_action_selection_authority": False,
         "runtime_activation_requirement": "receipt_backed_validation",
-        "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
+        "decision_fusion_schema": expected_fusion_schema,
         "preserve_v1_additive_residual": True,
         "canonical_learned_decision_sources": list(
-            CANONICAL_LEARNED_DECISION_SOURCES
+            role_payload["canonical_learned_decision_sources"]
         ),
         "one_route_per_learned_source": True,
-        "route_input": "option_hidden_plus_typed_output",
+        "route_input": expected_route_input,
         "route_reduction": "fixed_mean",
         "aggregate_absolute_logit_cap": 1.0,
         "zero_safe_final_projection": True,
@@ -463,7 +505,7 @@ def _validate_strategic_curriculum_bundle(
         "schema": STRATEGIC_VALIDATION_SCHEMA,
         "status": "validated",
         "specialist_id": specialist_id,
-        "training_mode": GUIDE_TRAINING_MODE_STRATEGIC,
+        "training_mode": training_mode,
         "guide_curriculum_revision": GUIDE_CURRICULUM_REVISION,
         "strategic_branch_scope_revision": GUIDE_BRANCH_SCOPE_REVISION,
         "action_influence_revision": GUIDE_ACTION_INFLUENCE_REVISION,
@@ -471,7 +513,7 @@ def _validate_strategic_curriculum_bundle(
         "curriculum_spec_sha256": f"sha256:{spec_digest}",
         "head_role_map_sha256": f"sha256:{role_digest}",
         "required_training_paths": STRATEGIC_REQUIRED_TRAINING_PATHS,
-        "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
+        "decision_fusion_schema": expected_fusion_schema,
         "validated_route_ids": [
             str(role_payload["heads"][head_id]["route_id"])
             for head_id in head_ids
@@ -589,8 +631,7 @@ def _validate_strategic_curriculum_bundle(
             or selection_change_rate > 1.0
             or dict(route or {}).get("route_id")
             != role_payload["heads"][head_id]["route_id"]
-            or dict(route or {}).get("route_input")
-            != "option_hidden_plus_typed_output"
+            or dict(route or {}).get("route_input") != expected_route_input
             or not math.isfinite(route_gradient_norm)
             or route_gradient_norm <= 0.0
             or not math.isfinite(legal_option_delta)
@@ -631,17 +672,20 @@ def _validate_strategic_curriculum_bundle(
 
     return {
         "schema": STRATEGIC_BUNDLE_SCHEMA,
-        "training_mode": GUIDE_TRAINING_MODE_STRATEGIC,
+        "training_mode": training_mode,
         "guide_curriculum_revision": GUIDE_CURRICULUM_REVISION,
         "strategic_branch_scope_revision": GUIDE_BRANCH_SCOPE_REVISION,
         "action_influence_revision": GUIDE_ACTION_INFLUENCE_REVISION,
-        "decision_fusion_schema": DECISION_FUSION_V2_SCHEMA,
+        "decision_fusion_schema": expected_fusion_schema,
         "curriculum_spec": str(spec_path),
         "curriculum_spec_sha256": spec_digest,
         "head_role_map": str(role_path),
         "head_role_map_sha256": role_digest,
         "validation_receipt": str(receipt_path),
         "validation_receipt_sha256": receipt_digest,
+        "required_heads": list(
+            role_payload["canonical_learned_decision_sources"]
+        ),
     }
 
 
@@ -827,7 +871,11 @@ def register(
         if resolved_guide_contract is not None
         else ""
     )
-    if resolved_training_mode == GUIDE_TRAINING_MODE_STRATEGIC:
+    strategic_training = resolved_training_mode in {
+        GUIDE_TRAINING_MODE_STRATEGIC,
+        GUIDE_TRAINING_MODE_DIRECTIONAL,
+    }
+    if strategic_training:
         if guide_loss_weight <= 0.0 or resolved_guide_contract is None:
             raise RuntimeError(
                 "strategic curriculum requires a positive checksum-bound guide"
@@ -841,6 +889,7 @@ def register(
             head_role_map_sha256=strategic_head_role_map_sha256,
             validation_receipt=strategic_validation_receipt,
             validation_receipt_sha256=strategic_validation_receipt_sha256,
+            training_mode=resolved_training_mode,
         )
     else:
         if supplied_strategic_inputs:
@@ -957,17 +1006,15 @@ def register(
         _atomic_json(authorization_path, authorization)
 
     guide_weight_policy = (
-        _guide_weight_policy(runtime_root)
-        if resolved_training_mode == GUIDE_TRAINING_MODE_STRATEGIC
+        _guide_weight_policy(runtime_root, resolved_training_mode)
+        if strategic_training
         else None
     )
-    strategic_decision_fusion = (
-        resolved_training_mode == GUIDE_TRAINING_MODE_STRATEGIC
-    )
+    strategic_decision_fusion = strategic_training
     resolved_fusion_heads = tuple(
         decision_fusion_required_heads
         or (
-            CANONICAL_LEARNED_DECISION_SOURCES
+            tuple(dict(strategic_curriculum or {}).get("required_heads") or ())
             if strategic_decision_fusion
             else DECISION_FUSION_REQUIRED_HEADS
         )
@@ -1008,7 +1055,9 @@ def register(
         "measurement_decks": specialist_id,
         "decision_fusion": {
             "schema": (
-                DECISION_FUSION_V2_SCHEMA
+                DECISION_FUSION_V3_SCHEMA
+                if resolved_training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL
+                else DECISION_FUSION_V2_SCHEMA
                 if strategic_decision_fusion
                 else DECISION_FUSION_SCHEMA
             ),

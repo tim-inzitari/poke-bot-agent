@@ -32,6 +32,12 @@ FINAL_FORMAT_ALAKAZAM_SERVICE = (
 FINAL_FORMAT_ALAKAZAM_H10_SERVICE = (
     "pokebot-final-format-alakazam-r79-h10.service"
 )
+FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_SERVICE = (
+    "pokebot-final-format-marnie-r104-h10-bootstrap.service"
+)
+FINAL_FORMAT_MARNIE_H10_RL_SERVICE = (
+    "pokebot-final-format-marnie-r104-h10-rl.service"
+)
 STRONG_PUBLIC_GATE_SERVICE = "pokebot-alakazam-strong-public-gate.service"
 ROOT = Path("/home/inzi/poke-bot-agent")
 
@@ -91,7 +97,10 @@ FINAL_FORMAT_ALAKAZAM_H10_RUN_DIR = (
 )
 FINAL_FORMAT_ALAKAZAM_H10_REGISTRY = (
     FINAL_FORMAT_ALAKAZAM_ROOT
-    / "runtime/specialist_runtime_registry_h10_v8.json"
+    / "runtime/specialist_runtime_registry_h10_r100_rating1150_minimum_iter11_all_remotes.json"
+)
+FINAL_FORMAT_ALAKAZAM_H10_CAPACITY_RECEIPT = (
+    ROOT / "state/final_format_alakazam_h10_mix_r82.json"
 )
 FINAL_FORMAT_ALAKAZAM_READY = (
     FINAL_FORMAT_ALAKAZAM_ROOT
@@ -104,6 +113,39 @@ FINAL_FORMAT_ALAKAZAM_STATE = (
 FINAL_FORMAT_ALAKAZAM_MODEL_INVENTORY = (
     FINAL_FORMAT_ALAKAZAM_ROOT
     / "receipts/final_format_alakazam_model_inventory_r79.json"
+)
+FINAL_FORMAT_MARNIE_ROOT = ROOT / "outputs/final_format_marnie_r104"
+FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG = (
+    FINAL_FORMAT_MARNIE_ROOT / "logs/h10_bootstrap.log"
+)
+FINAL_FORMAT_MARNIE_H10_LOG = FINAL_FORMAT_MARNIE_ROOT / "logs/h10_rl.log"
+FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG = (
+    FINAL_FORMAT_MARNIE_ROOT / "logs/h10_rl.progress.log"
+)
+FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS = (
+    FINAL_FORMAT_MARNIE_ROOT / "logs/h10_rl.progress.status"
+)
+FINAL_FORMAT_MARNIE_H10_RUN_DIR = (
+    ROOT / "outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k"
+)
+FINAL_FORMAT_MARNIE_H10_REGISTRY = (
+    FINAL_FORMAT_MARNIE_ROOT
+    / "runtime/specialist_runtime_registry_h10_r104_fusion_v3.json"
+)
+FINAL_FORMAT_MARNIE_H10_READY = (
+    ROOT / "outputs/state/final-format-marnie-r104-h10-bootstrap-ready.json"
+)
+FINAL_FORMAT_MARNIE_H10_VALIDATION = (
+    ROOT / "outputs/state/final-format-marnie-r104-h10-validation.json"
+)
+FINAL_FORMAT_MARNIE_ROUTER_V6_FIX = (
+    ROOT
+    / "outputs/state/final-format-marnie-h10-router-v6-registration-fix-r107.json"
+)
+FINAL_FORMAT_MARNIE_EXPERT = (
+    ROOT
+    / "data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic"
+    / "marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json"
 )
 EXACT_LOG = ROOT / "outputs/logs/privileged-belief-full-blackwell.log"
 EXACT_ROOT = ROOT / "outputs/privileged_belief/exact_core_20k_v1"
@@ -140,7 +182,10 @@ RESEARCH_CONTROL_REGISTRY_LATEST = (
 SPECIALIST_PROTOCOL_STATE = Path(
     os.environ.get(
         "POKEBOT_SPECIALIST_PROTOCOL_STATE",
-        str(SPECIALIST_RUNTIME_ROOT / "state/specialists.yaml"),
+        # GOAL.md owns this as mutable canonical program state. Runtime
+        # deployment copies are immutable launch inputs and can legitimately
+        # lag a separately versioned post-fleet refresh.
+        str(ROOT / "state/specialists.yaml"),
     )
 )
 NEXT_SPECIALIST_PRESTAGE_STATE = (
@@ -167,6 +212,24 @@ V6_STRATEGIC_SPECIALIST_CURRENT = (
 )
 V6_STRATEGIC_SPECIALIST_SYNC_STATE = (
     ROOT / "outputs/state/expert-latest20-v6-strategic-sync.json"
+)
+V6_STRATEGIC_STAGED_SYNC_SERVICE = (
+    "pokebot-expert-latest20-v6-strategic-r109-stage-sync-11m.service"
+)
+V6_STRATEGIC_STAGED_CURRENT = (
+    ROOT / "data/bootstrap/staged-specialist-latest20-v6-strategic-r109"
+)
+V6_STRATEGIC_STAGED_SYNC_STATE = (
+    ROOT
+    / "outputs/state/expert-latest20-v6-strategic-r109-staged-sync.json"
+)
+V6_STRATEGIC_STAGED_DATES = [
+    (date(2026, 7, 14) + timedelta(days=offset)).isoformat()
+    for offset in range(20)
+]
+MARNIE_LATEST20_RUNTIME_ACTIVATION_STATE = (
+    ROOT
+    / "outputs/state/final-format-marnie-r104-latest20-runtime-activation-r109.json"
 )
 V6_STRATEGIC_TARGET_SCHEMA = "poke_bot.expanded_strategic_targets/v2"
 V6_STRATEGIC_TARGET_DIGEST = (
@@ -272,6 +335,10 @@ EXPANDED_HEAD_IDS_BY_MODULE = {
 DECISION_FUSION_SCHEMA = "poke_bot.causal_decision_fusion/v1"
 DECISION_FUSION_V2_SCHEMA = "poke_bot.causal_decision_fusion/v2"
 DECISION_FUSION_V2_ROUTE_SCHEMA = "option_conditioned_per_head/v2"
+DECISION_FUSION_V3_SCHEMA = "poke_bot.causal_decision_fusion/v3"
+DECISION_FUSION_V3_ROUTE_SCHEMA = "typed_output_centered_per_head/v3"
+DECISION_FUSION_V3_MIN_RELIABILITY = 0.25
+DECISION_FUSION_V3_MAX_RELIABILITY = 4.0
 DECISION_FUSION_REQUIRED_HEADS = (
     "value",
     "archetype",
@@ -295,6 +362,35 @@ DECISION_FUSION_OPTIONAL_HEAD_FLAGS = (
     ("setup_board_outcome_head_enabled", "setup_board_outcome"),
     ("combo_state_head_enabled", "combo_state"),
 )
+
+
+def _valid_activation_fusion_inventory(
+    schema: object,
+    required_heads: object,
+) -> bool:
+    """Validate the exact learned-head inventory named by an activation receipt.
+
+    V1 has the original 17 fused heads.  V2 adds independently routed heads
+    one at a time (setup, combo, or both) according to the specialist's
+    materialized architecture.  An activation receipt has no model-config
+    flags to derive that choice from, so accept only those four exact V2
+    inventories rather than treating every non-guide list as equivalent.
+    """
+
+    if not isinstance(required_heads, list):
+        return False
+    required = tuple(str(head) for head in required_heads)
+    base = tuple(DECISION_FUSION_REQUIRED_HEADS)
+    if schema == DECISION_FUSION_SCHEMA:
+        return required == base
+    if schema not in {DECISION_FUSION_V2_SCHEMA, DECISION_FUSION_V3_SCHEMA}:
+        return False
+    return required in {
+        base,
+        (*base, "setup_board_outcome"),
+        (*base, "combo_state"),
+        (*base, "setup_board_outcome", "combo_state"),
+    }
 
 
 def reconcile_frozen_specialist_label(row: dict[str, Any]) -> dict[str, Any]:
@@ -713,8 +809,11 @@ def _decision_fusion_checkpoint_contract(
     required = list(declared.get("required_heads") or [])
     declared_schema = declared.get("schema")
     dedicated = dict(declared.get("dedicated_routes") or {})
-    v2_routes_verified = bool(
-        declared_schema == DECISION_FUSION_V2_SCHEMA
+    routed_fusion_verified = bool(
+        declared_schema in {
+            DECISION_FUSION_V2_SCHEMA,
+            DECISION_FUSION_V3_SCHEMA,
+        }
         and model_config.get("decision_fusion_dedicated_routes_enabled") is True
         and bool(dedicated.get("runtime_enabled"))
         == bool(
@@ -722,7 +821,12 @@ def _decision_fusion_checkpoint_contract(
                 "decision_fusion_dedicated_routes_runtime_enabled"
             )
         )
-        and dedicated.get("schema") == DECISION_FUSION_V2_ROUTE_SCHEMA
+        and dedicated.get("schema")
+        == (
+            DECISION_FUSION_V3_ROUTE_SCHEMA
+            if declared_schema == DECISION_FUSION_V3_SCHEMA
+            else DECISION_FUSION_V2_ROUTE_SCHEMA
+        )
         and list(dedicated.get("route_names") or []) == expected_required
         and int(dedicated.get("route_count") or -1) == len(expected_required)
         and dedicated.get("aggregation") == "fixed_mean"
@@ -730,6 +834,32 @@ def _decision_fusion_checkpoint_contract(
         and dedicated.get("zero_safe_final_projection") is True
         and declared.get("guide_excluded") is True
     )
+    if declared_schema == DECISION_FUSION_V3_SCHEMA:
+        routed_fusion_verified = bool(
+            routed_fusion_verified
+            and model_config.get(
+                "decision_fusion_typed_output_centered_routes_enabled"
+            )
+            is True
+            and float(
+                model_config.get(
+                    "decision_fusion_action_type_reliability_cap", -1.0
+                )
+            )
+            == 0.25
+            and (
+                declared.get("typed_output_centered_routes") is True
+                or dedicated.get("typed_output_centered") is True
+            )
+            and dedicated.get("positive_bounded_reliability") is True
+            and list(dedicated.get("reliability_bounds") or [])
+            == [
+                DECISION_FUSION_V3_MIN_RELIABILITY,
+                DECISION_FUSION_V3_MAX_RELIABILITY,
+            ]
+            and float(dedicated.get("action_type_reliability_cap") or -1.0)
+            == 0.25
+        )
     tensor_parameters = sum(int(value.numel()) for value in tensors.values())
     final_weight = tensors.get("decision_fusion.residual.2.weight")
     final_nonzero = bool(
@@ -755,7 +885,7 @@ def _decision_fusion_checkpoint_contract(
         and tensors
         and (
             declared_schema == DECISION_FUSION_SCHEMA
-            or v2_routes_verified
+            or routed_fusion_verified
         )
         and required == expected_required
         and bool(declared.get("runtime_enabled")) == runtime_enabled
@@ -844,15 +974,16 @@ def _successor_decision_fusion_activation(
             and bootstrap.get("specialist_id") == specialist_id
             and registration.get("specialist_id") == specialist_id
             and row_digest == bootstrap.get("checkpoint_digest")
-            and fusion.get("schema") == DECISION_FUSION_SCHEMA
+            and _valid_activation_fusion_inventory(
+                fusion.get("schema"),
+                fusion.get("required_heads"),
+            )
             and fusion.get("runtime_enabled") is True
-            and fusion.get("required_heads")
-            == list(DECISION_FUSION_REQUIRED_HEADS)
-            and runtime_fusion.get("schema") == DECISION_FUSION_SCHEMA
+            and runtime_fusion.get("schema") == fusion.get("schema")
             and runtime_fusion.get("required") is True
             and runtime_fusion.get("runtime_enabled") is True
             and runtime_fusion.get("required_heads")
-            == list(DECISION_FUSION_REQUIRED_HEADS)
+            == fusion.get("required_heads")
         )
         if not receipt_valid:
             continue
@@ -957,6 +1088,77 @@ def _successor_decision_fusion_activation(
             ),
         }
     return {}
+
+
+def _final_refresh_decision_fusion_continuity(
+    *,
+    state_root: Path,
+    specialist_id: str,
+    checkpoint_digest: str,
+) -> dict[str, Any]:
+    """Read the explicit H10 committed-descendant fusion authorization.
+
+    The final-format Alakazam refresh is not a normal roster successor and
+    intentionally has no selector authority.  Its first RL learner is still a
+    descendant of a separately activated H10 bootstrap, so validate its
+    dedicated immutable continuity receipt rather than incorrectly demanding a
+    V1 loop activation row.  This authorizes fused-policy *training* only;
+    terminal serving remains false until the child's exact gates pass.
+    """
+
+    if (
+        specialist_id.strip().casefold() != "alakazam"
+        or not checkpoint_digest.startswith("sha256:")
+    ):
+        return {}
+    path = state_root / "final_format_alakazam_fusion_continuity_r98.json"
+    receipt = read_json(path)
+    bootstrap = dict(receipt.get("bootstrap_activation") or {})
+    bootstrap_fusion = dict(bootstrap.get("decision_fusion") or {})
+    descendant = dict(receipt.get("committed_descendant") or {})
+    registration = dict(receipt.get("runtime_registration") or {})
+    runtime_fusion = dict(registration.get("decision_fusion") or {})
+    required = bootstrap_fusion.get("required_heads")
+    valid = bool(
+        receipt.get("schema")
+        == "poke_bot.final_format_alakazam_fusion_continuity/v1"
+        and receipt.get("status") == "ready"
+        and receipt.get("specialist_id") == "alakazam"
+        and bootstrap.get("bootstrap_checkpoint_sha256")
+        == descendant.get("learner_before_sha256")
+        and descendant.get("checkpoint_sha256") == checkpoint_digest
+        and descendant.get("publication_local_ok") is True
+        and descendant.get("remote_checkpoint_identity_verified") is True
+        and _valid_activation_fusion_inventory(
+            bootstrap_fusion.get("schema"), required
+        )
+        and bootstrap_fusion.get("runtime_enabled") is True
+        and runtime_fusion.get("required") is True
+        and runtime_fusion.get("schema") == bootstrap_fusion.get("schema")
+        and runtime_fusion.get("runtime_enabled") is True
+        and runtime_fusion.get("required_heads") == required
+        and str(bootstrap.get("receipt_sha256") or "").startswith("sha256:")
+        and str(descendant.get("commit_sha256") or "").startswith("sha256:")
+        and str(registration.get("registry_sha256") or "").startswith("sha256:")
+    )
+    if not valid:
+        return {}
+    return {
+        "schema": "poke_bot.final_refresh_decision_fusion_activation/v1",
+        "specialist_id": "alakazam",
+        "checkpoint_digest": checkpoint_digest,
+        "bootstrap_checkpoint_digest": bootstrap.get(
+            "bootstrap_checkpoint_sha256"
+        ),
+        "runtime_enabled": True,
+        "training_action_eligible": True,
+        "terminal_serving_eligible": False,
+        "receipt": str(path),
+        "receipt_digest": _file_sha256(path),
+        "activation_scope": "final_refresh_committed_descendant",
+        "lineage_commit": descendant.get("commit"),
+        "lineage_commit_digest": descendant.get("commit_sha256"),
+    }
 
 
 def _source_only_design_lineage_fingerprints(
@@ -1230,6 +1432,20 @@ def curriculum_worker_state(
                 if ppid in selected and pid not in selected:
                     selected.add(pid)
                     changed = True
+
+    # ``launch_pure_rl.py`` materializes the validated hardware profile into
+    # the environment passed to ``train_pure_rl.py``.  Those effective
+    # PURE_RL_LEAF_GPU* values therefore live on the trainer child, not
+    # necessarily on systemd's launcher MainPID.  Read that child from the
+    # same managed cgroup before projecting the live topology.  Without this,
+    # a healthy 4/12 leaf farm is mislabeled as zero leaves / out of fleet.
+    trainer_pids = sorted(
+        pid
+        for pid in selected
+        if pid in rows and "train_pure_rl.py" in rows[pid][3]
+    )
+    if trainer_pids:
+        environment.update(_process_environment(trainer_pids[0]))
 
     cpu_percent = sum(rows[pid][1] for pid in selected if pid in rows)
     rss_bytes = sum(rows[pid][2] for pid in selected if pid in rows) * 1024
@@ -2661,7 +2877,7 @@ def checkpoint_structure_telemetry(
         }
     cache = read_json(cache_path)
     if (
-        cache.get("schema") == "poke_bot.dashboard_checkpoint_structure/v4"
+        cache.get("schema") == "poke_bot.dashboard_checkpoint_structure/v5"
         and cache.get("checkpoint") == str(path)
         and cache.get("checkpoint_digest") == expected_digest
         and int(cache.get("size_bytes") or -1) == int(stat.st_size)
@@ -2673,7 +2889,7 @@ def checkpoint_structure_telemetry(
     actual_digest = _file_sha256(path)
     if actual_digest != expected_digest:
         return {
-            "schema": "poke_bot.dashboard_checkpoint_structure/v4",
+            "schema": "poke_bot.dashboard_checkpoint_structure/v5",
             "available": True,
             "verified": False,
             "reason": "checkpoint digest does not match immutable commit",
@@ -2752,6 +2968,45 @@ def checkpoint_structure_telemetry(
             state_dict,
             payload,
         )
+        model_config = dict(payload.get("model_config") or {})
+        latent_keys = {
+            str(key): value
+            for key, value in state_dict.items()
+            if str(key).startswith("latent_lookahead.")
+            and hasattr(value, "numel")
+        }
+        latent_parameters = sum(
+            int(value.numel()) for value in latent_keys.values()
+        )
+        latent_enabled = bool(
+            model_config.get("latent_lookahead_enabled", False)
+        )
+        latent_authority_enabled = bool(
+            model_config.get(
+                "latent_lookahead_action_authority_enabled", False
+            )
+        )
+        latent_lookahead = {
+            "schema": "poke_bot.action_conditioned_latent_lookahead/v1",
+            "enabled": latent_enabled,
+            "action_authority_enabled": latent_authority_enabled,
+            "parameters": latent_parameters,
+            "width": int(model_config.get("latent_lookahead_width") or 0),
+            "policy_aid_cap": float(
+                model_config.get("latent_lookahead_policy_aid_cap") or 0.0
+            ),
+            "verified": bool(
+                latent_enabled
+                and latent_authority_enabled
+                and latent_parameters > 0
+                and int(model_config.get("latent_lookahead_width") or 0)
+                == 512
+                and float(
+                    model_config.get("latent_lookahead_policy_aid_cap") or 0.0
+                )
+                == 0.25
+            ),
+        }
         # ``extra.param_count`` is a display cache, not checkpoint identity.
         # Immutable bootstrap-family freezing may omit it while preserving the
         # complete model state, adapter registry, and all executable tensors.
@@ -2763,7 +3018,7 @@ def checkpoint_structure_telemetry(
             and decision_fusion.get("verified") is True
         )
         result = {
-            "schema": "poke_bot.dashboard_checkpoint_structure/v4",
+            "schema": "poke_bot.dashboard_checkpoint_structure/v5",
             "available": True,
             "verified": structure_valid,
             "reason": (
@@ -2798,7 +3053,7 @@ def checkpoint_structure_telemetry(
             "adapter_slot_registry_digest": adapter_registry.get(
                 "slot_registry_digest"
             ),
-            "model_config": dict(payload.get("model_config") or {}),
+            "model_config": model_config,
             "runtime_enabled_at_save": bool(
                 extra.get("matchup_adapters_runtime_enabled")
             ),
@@ -2807,13 +3062,14 @@ def checkpoint_structure_telemetry(
             ),
             "expanded_head_training": expanded_head_training,
             "decision_fusion": decision_fusion,
+            "latent_lookahead": latent_lookahead,
             "rl_iteration": payload.get("rl_iteration"),
             "saved_at": payload.get("saved_at"),
             "source": "active committed checkpoint payload + tensor structure",
         }
     except Exception as exc:
         return {
-            "schema": "poke_bot.dashboard_checkpoint_structure/v4",
+            "schema": "poke_bot.dashboard_checkpoint_structure/v5",
             "available": True,
             "verified": False,
             "reason": f"checkpoint inspection failed: {type(exc).__name__}: {exc}",
@@ -3716,7 +3972,11 @@ def alakazam_bootstrap_progress() -> dict[str, Any]:
     lines = [line.strip() for line in clean.splitlines() if line.strip()]
     latest = ""
     for line in reversed(lines):
-        if re.search(r"(?:train|val) ep\d+:.*?\d+/\d+", line):
+        if re.search(
+            r"(?:train|val) ep\d+:.*?\d+/\d+"
+            r"|expert rehearsal before iter\d+ ep\d+/\d+:.*?\d+/\d+",
+            line,
+        ):
             latest = line
             break
     if not latest:
@@ -3759,7 +4019,28 @@ def alakazam_bootstrap_progress() -> dict[str, Any]:
         eta_match = re.search(r"<([^,]+),", timing)
         if eta_match:
             eta = eta_match.group(1)
-    elif "pack Blackwell corpus" in latest:
+    else:
+        rehearsal = re.search(
+            r"expert rehearsal before iter(\d+) ep\d+/\d+:\s*"
+            r"(\d+)%.*?\s(\d+)/(\d+)\s*\[([^]]*)\]",
+            latest,
+        )
+        if rehearsal:
+            epoch_raw, percent_raw, current_raw, total_raw, timing = (
+                rehearsal.groups()
+            )
+            phase = "training"
+            epoch = int(epoch_raw)
+            percent = float(percent_raw)
+            current = int(current_raw)
+            total = int(total_raw)
+            rate = re.search(r"([0-9.]+)batch/s", timing)
+            if rate:
+                batch_rate = float(rate.group(1))
+            eta_match = re.search(r"<([^,]+),", timing)
+            if eta_match:
+                eta = eta_match.group(1)
+    if phase == "loading" and "pack Blackwell corpus" in latest:
         phase = "packing"
         match = re.search(r"(\d+)%.*?\s(\d+)/(\d+)\s", latest)
         if match:
@@ -3827,6 +4108,321 @@ def alakazam_bootstrap_progress() -> dict[str, Any]:
     }
 
 
+def final_format_marnie_progress() -> dict[str, Any]:
+    """Return the current receipt-bound Marnie H10 bootstrap state."""
+
+    bootstrap_service = unit_state(
+        FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_SERVICE,
+        user=True,
+    )
+    rl_service = unit_state(FINAL_FORMAT_MARNIE_H10_RL_SERVICE, user=True)
+    bootstrap_active = bool(
+        bootstrap_service.get("active")
+        and (
+            int(bootstrap_service.get("pid") or 0) > 0
+            or bootstrap_service.get("sub_state") in {"running", "start"}
+        )
+    )
+    rl_active = bool(
+        rl_service.get("active")
+        and (
+            int(rl_service.get("pid") or 0) > 0
+            or rl_service.get("sub_state") in {"running", "start"}
+        )
+    )
+    ready = read_json(FINAL_FORMAT_MARNIE_H10_READY)
+    validation = read_json(FINAL_FORMAT_MARNIE_H10_VALIDATION)
+    if not (bootstrap_active or rl_active or ready or validation):
+        return {"status": "waiting", "available": False}
+
+    if rl_active:
+        status_text = read_tail(FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS, 20_000)
+        progress_log = read_tail(FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG, 2_000_000)
+        loop_state = read_json(FINAL_FORMAT_MARNIE_H10_RUN_DIR / "loop_state.json")
+        registry = read_json(FINAL_FORMAT_MARNIE_H10_REGISTRY)
+        progress = parse_curriculum_progress(
+            status_text,
+            progress_log,
+            iteration_hint=int(loop_state.get("next_iteration") or 0),
+        )
+        updated = max(
+            (
+                path.stat().st_mtime
+                for path in (
+                    FINAL_FORMAT_MARNIE_H10_LOG,
+                    FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG,
+                    FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS,
+                )
+                if path.is_file()
+            ),
+            default=None,
+        )
+        specialist = dict(
+            (registry.get("specialists") or {}).get(
+                "marnie-s-grimmsnarl-ex"
+            )
+            or {}
+        )
+        learner = dict(loop_state.get("learner") or {})
+        checkpoint = learner.get("path") or specialist.get("initial_checkpoint")
+        checkpoint_digest = (
+            learner.get("digest") or specialist.get("initial_checkpoint_sha256")
+        )
+        if checkpoint_digest and not str(checkpoint_digest).startswith("sha256:"):
+            checkpoint_digest = f"sha256:{checkpoint_digest}"
+        structure = checkpoint_structure_telemetry(
+            checkpoint,
+            checkpoint_digest,
+            cache_path=(
+                ROOT
+                / "outputs/state/dashboard-final-marnie-h10-live-structure-cache.json"
+            ),
+        )
+        model_parameters = int(structure.get("model_parameters") or 0)
+        if model_parameters <= 0:
+            matches = re.findall(
+                r"(?:model_params=|loaded checkpoint params=)(\d+)",
+                read_tail(FINAL_FORMAT_MARNIE_H10_LOG, 200_000),
+            )
+            model_parameters = int(matches[-1]) if matches else 0
+        trainer_args = [str(item) for item in registry.get("common_trainer_args") or []]
+        remote_endpoints: list[str] = []
+        try:
+            endpoint_arg = trainer_args.index("--remote-worker-endpoints")
+            remote_endpoints = [
+                endpoint.strip()
+                for endpoint in trainer_args[endpoint_arg + 1].split(",")
+                if endpoint.strip()
+            ]
+        except (ValueError, IndexError):
+            pass
+        scheduler_queues = scheduler_queue_state(
+            specialist.get("run_name")
+            or "final_format_marnie_r104_h10_i_v6_8k",
+            log_path=FINAL_FORMAT_MARNIE_H10_LOG,
+        )
+        scheduler_queues = scope_scheduler_queues_to_progress(
+            progress,
+            scheduler_queues,
+        )
+        drain_projection = result_drain_projection(progress, scheduler_queues)
+        progress_metrics = dict(progress.get("metrics") or {})
+        progress_metrics.update(drain_projection.get("metrics") or {})
+        return {
+            "available": True,
+            "authoritative": True,
+            "source": str(FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS),
+            "log": str(FINAL_FORMAT_MARNIE_H10_LOG),
+            "latest_line": drain_projection.get("latest_line", progress.get("line")),
+            "raw_latest_line": progress.get("line"),
+            "updated_at": updated,
+            "fresh": bool(updated and time.time() - updated < 30),
+            "status": "running",
+            "mode": "final_format_marnie_h10_rl",
+            "phase": drain_projection.get(
+                "phase", progress.get("stage") or "collect"
+            ),
+            "run": specialist.get("run_name") or "final_format_marnie_r104_h10_i_v6_8k",
+            "specialist_id": "marnie-s-grimmsnarl-ex",
+            "iteration": progress.get("iteration", loop_state.get("next_iteration")),
+            "iterations_target": 16,
+            "current": progress.get("current"),
+            "total": progress.get("total"),
+            "percent": progress.get("percent"),
+            "rate": progress.get("rate"),
+            "rate_unit": progress.get("rate_unit"),
+            "games_per_second": drain_projection.get(
+                "games_per_second", progress.get("gps")
+            ),
+            "samples_per_second": progress.get("sps"),
+            "eta": progress.get("eta"),
+            "metrics": progress_metrics,
+            "remote_workers": drain_projection.get(
+                "remote_workers", progress.get("remotes")
+            ),
+            "remote_endpoints": remote_endpoints,
+            "scheduler_queues": scheduler_queues,
+            "checkpoint": checkpoint,
+            "checkpoint_digest": checkpoint_digest,
+            "checkpoint_structure": structure,
+            "model_parameters": model_parameters,
+            "capacity_profile": validation.get("capacity_profile") or "H10-I/v1",
+            "architecture": dict(validation.get("architecture") or {}),
+            "learned_head_count": len(
+                ((specialist.get("decision_fusion") or {}).get("required_heads") or [])
+            ) or 19,
+            "learned_route_count": 19,
+            "decision_fusion_schema": (
+                (specialist.get("decision_fusion") or {}).get("schema")
+                or validation.get("decision_fusion_schema")
+            ),
+            "service": rl_service,
+        }
+
+    raw = read_tail(FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG, 2_000_000)
+    clean = ANSI_RE.sub("", raw).replace("\r", "\n")
+    lines = [line.strip() for line in clean.splitlines() if line.strip()]
+    latest = ""
+    for line in reversed(lines):
+        if re.search(
+            r"(?:train|val) ep\d+:.*?\d+/\d+"
+            r"|expert rehearsal before iter\d+ ep\d+/\d+:.*?\d+/\d+",
+            line,
+        ):
+            latest = line
+            break
+    if not latest:
+        for line in reversed(lines):
+            if "pack Blackwell corpus" in line or "expert-cpu-pack" in line:
+                latest = line
+                break
+    if not latest and lines:
+        latest = lines[-1]
+
+    phase = "registered_rl" if rl_active else "loading"
+    epoch = None
+    current = None
+    total = None
+    percent = None
+    batch_rate = None
+    eta = None
+    match = re.search(
+        r"(train|val) ep(\d+):\s*(\d+)%.*?\s(\d+)/(\d+)\s*\[([^]]*)\]",
+        latest,
+    )
+    if match:
+        split, epoch_raw, percent_raw, current_raw, total_raw, timing = (
+            match.groups()
+        )
+        phase = "training" if split == "train" else "validation"
+        epoch = int(epoch_raw) + 1
+        percent = float(percent_raw)
+        current = int(current_raw)
+        total = int(total_raw)
+        rate = re.search(r"([0-9.]+)batch/s", timing)
+        if rate:
+            batch_rate = float(rate.group(1))
+        eta_match = re.search(r"<([^,]+),", timing)
+        if eta_match:
+            eta = eta_match.group(1)
+    else:
+        rehearsal = re.search(
+            r"expert rehearsal before iter(\d+) ep\d+/\d+:\s*"
+            r"(\d+)%.*?\s(\d+)/(\d+)\s*\[([^]]*)\]",
+            latest,
+        )
+        if rehearsal:
+            epoch_raw, percent_raw, current_raw, total_raw, timing = (
+                rehearsal.groups()
+            )
+            phase = "training"
+            epoch = int(epoch_raw)
+            percent = float(percent_raw)
+            current = int(current_raw)
+            total = int(total_raw)
+            rate = re.search(r"([0-9.]+)batch/s", timing)
+            if rate:
+                batch_rate = float(rate.group(1))
+            eta_match = re.search(r"<([^,]+),", timing)
+            if eta_match:
+                eta = eta_match.group(1)
+    if phase == "loading" and "pack Blackwell corpus" in latest:
+        phase = "packing"
+        pack = re.search(r"(\d+)%.*?\s(\d+)/(\d+)\s", latest)
+        if pack:
+            percent, current, total = (
+                float(pack.group(1)),
+                int(pack.group(2)),
+                int(pack.group(3)),
+            )
+    elif phase == "loading" and ready:
+        phase = "complete"
+        percent = 100.0
+
+    expert = read_json(FINAL_FORMAT_MARNIE_EXPERT)
+    totals = dict(expert.get("totals") or {})
+    corpus_games = int(totals.get("records_kept") or 0)
+    corpus_decisions = int(totals.get("decisions_kept") or 0)
+    checkpoint = validation.get("checkpoint")
+    checkpoint_digest = validation.get("checkpoint_sha256")
+    structure = checkpoint_structure_telemetry(
+        checkpoint,
+        checkpoint_digest,
+        cache_path=(
+            ROOT
+            / "outputs/state/dashboard-final-marnie-h10-live-structure-cache.json"
+        ),
+    )
+    updated = max(
+        (
+            path.stat().st_mtime
+            for path in (
+                FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG,
+                FINAL_FORMAT_MARNIE_H10_READY,
+                FINAL_FORMAT_MARNIE_H10_VALIDATION,
+            )
+            if path.is_file()
+        ),
+        default=None,
+    )
+    service = rl_service if rl_active else bootstrap_service
+    status = "running" if (bootstrap_active or rl_active) else "complete"
+    return {
+        "available": True,
+        "authoritative": True,
+        "source": str(
+            FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG
+            if bootstrap_active
+            else FINAL_FORMAT_MARNIE_H10_READY
+        ),
+        "log": str(FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG),
+        "latest_line": latest,
+        "updated_at": updated,
+        "fresh": bool(status == "running" and updated and time.time() - updated < 30),
+        "status": status,
+        "mode": (
+            "final_format_marnie_h10_rl"
+            if rl_active
+            else "final_format_marnie_h10_bootstrap"
+        ),
+        "phase": phase,
+        "run": (
+            "final_format_marnie_r104_h10_i_v6_8k"
+            if rl_active
+            else "final_format_marnie_r104_h10_bootstrap"
+        ),
+        "specialist_id": "marnie-s-grimmsnarl-ex",
+        "epoch": epoch,
+        "epochs_target": 25,
+        "current": current,
+        "total": total,
+        "percent": percent,
+        "rate": batch_rate,
+        "rate_unit": "batch/s" if batch_rate is not None else None,
+        "batch_per_second": batch_rate,
+        "eta": eta,
+        "metrics": {
+            name: parse_metric(latest, name)
+            for name in (
+                "acc", "loss", "p", "policy", "v", "value", "aux",
+                "hand", "rem", "lethal", "prize", "guide", "step",
+            )
+        },
+        "corpus_games": corpus_games,
+        "corpus_decisions": corpus_decisions,
+        "checkpoint": checkpoint,
+        "checkpoint_digest": checkpoint_digest,
+        "checkpoint_structure": structure,
+        "model_parameters": int(structure.get("model_parameters") or 0),
+        "capacity_profile": validation.get("capacity_profile") or "H10-I/v1",
+        "architecture": dict(validation.get("architecture") or {}),
+        "learned_head_count": int(validation.get("learned_head_count") or 19),
+        "learned_route_count": int(validation.get("learned_route_count") or 19),
+        "decision_fusion_schema": validation.get("decision_fusion_schema"),
+        "service": service,
+    }
+
+
 def final_format_alakazam_progress() -> dict[str, Any]:
     """Return the receipt-bound live state of the revision-79 refresh."""
 
@@ -3876,8 +4472,28 @@ def final_format_alakazam_progress() -> dict[str, Any]:
         )
         isolated = dict(registry.get("isolated_refresh_contract") or {})
         specialist = dict((registry.get("specialists") or {}).get("alakazam") or {})
-        checkpoint = specialist.get("initial_checkpoint")
-        checkpoint_digest = specialist.get("initial_checkpoint_sha256")
+        live_learner = dict(loop_state.get("learner") or {})
+        checkpoint = (
+            live_learner.get("path") or specialist.get("initial_checkpoint")
+        )
+        checkpoint_digest = (
+            live_learner.get("digest")
+            or specialist.get("initial_checkpoint_sha256")
+        )
+        checkpoint_digest = (
+            f"sha256:{checkpoint_digest}"
+            if checkpoint_digest
+            and not str(checkpoint_digest).startswith("sha256:")
+            else checkpoint_digest
+        )
+        checkpoint_structure = checkpoint_structure_telemetry(
+            checkpoint,
+            checkpoint_digest,
+            cache_path=(
+                ROOT
+                / "outputs/state/dashboard-final-alakazam-h10-live-structure-cache.json"
+            ),
+        )
         model_params = None
         log_tail = read_tail(FINAL_FORMAT_ALAKAZAM_H10_LOG, 200_000)
         matches = re.findall(
@@ -3886,9 +4502,57 @@ def final_format_alakazam_progress() -> dict[str, Any]:
         )
         if matches:
             model_params = int(matches[-1])
+        # Startup parameter lines can age out of the bounded live log after a
+        # long iteration.  The immutable mix receipt independently binds the
+        # selected H10 checkpoint to its benchmarked parameter count.
+        if model_params is None:
+            capacity = read_json(FINAL_FORMAT_ALAKAZAM_H10_CAPACITY_RECEIPT)
+            benchmark = dict(capacity.get("bert_apple_device_check") or {})
+            selected_digest = str(specialist.get("initial_checkpoint_sha256") or "")
+            selected_digest = (
+                selected_digest
+                if selected_digest.startswith("sha256:")
+                else f"sha256:{selected_digest}"
+            )
+            receipt_params = int(benchmark.get("model_parameters") or 0)
+            if (
+                capacity.get("schema")
+                == "poke_bot.final_format_alakazam_h10_mix_activation/v1"
+                and capacity.get("status") == "activated"
+                and capacity.get("run_name")
+                == "final_format_alakazam_r79_h10_i_v6_8k"
+                and capacity.get("checkpoint_sha256") == selected_digest
+                and receipt_params > 0
+            ):
+                model_params = receipt_params
+        if checkpoint_structure.get("verified") is True:
+            model_params = int(checkpoint_structure.get("model_parameters") or 0)
         trainer_args = [
             str(item) for item in registry.get("common_trainer_args") or []
         ]
+        # The managed command is runtime truth for a receipt-backed terminal
+        # ceiling.  Preparation registries can retain an older broad safety
+        # horizon after a safe boundary migration (for example 189 while the
+        # live process is hard-stopped after zero-indexed iteration 20).
+        # Never let that stale preparation value reset the dashboard counter.
+        live_iterations_target: int | None = None
+        iterations_match = re.search(r"--iterations\s+(\d+)", service_command)
+        if iterations_match:
+            live_iterations_target = int(iterations_match.group(1))
+        if live_iterations_target is None:
+            try:
+                iterations_arg = trainer_args.index("--iterations")
+                live_iterations_target = int(trainer_args[iterations_arg + 1])
+            except (ValueError, IndexError, TypeError):
+                pass
+        if live_iterations_target is None:
+            exact_ceiling = registry.get("iteration_ceiling")
+            if exact_ceiling is None:
+                exact_ceiling = specialist.get("iteration_ceiling")
+            if exact_ceiling is not None:
+                # The registry ceiling is zero-indexed; the UI schedule is a
+                # count, so terminal iter_00020 means 21 total iterations.
+                live_iterations_target = int(exact_ceiling) + 1
         remote_endpoints: list[str] = []
         try:
             endpoint_arg = trainer_args.index("--remote-worker-endpoints")
@@ -3904,6 +4568,10 @@ def final_format_alakazam_progress() -> dict[str, Any]:
             or "final_format_alakazam_r79_h10_i_v6_8k",
             log_path=FINAL_FORMAT_ALAKAZAM_H10_LOG,
         )
+        scheduler_queues = scope_scheduler_queues_to_progress(
+            progress,
+            scheduler_queues,
+        )
         return {
             "authoritative": True,
             "source": str(FINAL_FORMAT_ALAKAZAM_H10_PROGRESS_STATUS),
@@ -3917,7 +4585,11 @@ def final_format_alakazam_progress() -> dict[str, Any]:
             "run": specialist.get("run_name") or "final_format_alakazam_r79_h10_i_v6_8k",
             "specialist_id": "alakazam",
             "iteration": progress.get("iteration", loop_state.get("next_iteration")),
-            "iterations_target": int(isolated.get("maximum_iterations") or 189),
+            "iterations_target": int(
+                live_iterations_target
+                or isolated.get("maximum_iterations")
+                or 21
+            ),
             "current": progress.get("current"),
             "total": progress.get("total"),
             "percent": progress.get("percent"),
@@ -3939,10 +4611,13 @@ def final_format_alakazam_progress() -> dict[str, Any]:
             "model_parameters": model_params,
             "model_profile_id": "H10-I/v1",
             "checkpoint": checkpoint,
-            "checkpoint_digest": (
-                f"sha256:{checkpoint_digest}"
-                if checkpoint_digest and not str(checkpoint_digest).startswith("sha256:")
-                else checkpoint_digest
+            "checkpoint_digest": checkpoint_digest,
+            "checkpoint_structure": checkpoint_structure,
+            "decision_fusion": dict(
+                checkpoint_structure.get("decision_fusion") or {}
+            ),
+            "expanded_head_training": dict(
+                checkpoint_structure.get("expanded_head_training") or {}
             ),
             "learned_head_count": len(
                 ((specialist.get("decision_fusion") or {}).get("required_heads") or [])
@@ -3952,7 +4627,7 @@ def final_format_alakazam_progress() -> dict[str, Any]:
                 isolated.get("premium_skill_weighted_win_rate") or 0.65
             ),
             "kaggle_rating_lower_bound": float(
-                isolated.get("kaggle_rating_simulation_projected_lower_bound") or 1000
+                isolated.get("kaggle_rating_simulation_projected_lower_bound") or 1150
             ),
             "rating_gate_separate": bool(
                 isolated.get("strength_gate_and_rating_simulation_are_independent")
@@ -5151,7 +5826,11 @@ def scheduler_queue_state(
     if not run_name:
         return {"available": False, "mode": "waiting"}
     log_path = log_path or (ROOT / "outputs/logs" / f"{run_name}.log")
-    raw = ANSI_RE.sub("", read_tail(log_path, 240_000)).replace("\r", "\n")
+    # Result-drain telemetry can continue for hours after the phase's queue
+    # contract line. Keep enough of the active log to retain that identity;
+    # otherwise the dashboard falls back to a fake live-generation ETA while
+    # only completed results are being compacted.
+    raw = ANSI_RE.sub("", read_tail(log_path, 2_000_000)).replace("\r", "\n")
     matches = list(
         re.finditer(
             r"\[remote\] endpoint_owned_queues depths=(\{[^\n]+?\}) "
@@ -5202,6 +5881,54 @@ def scheduler_queue_state(
         socket_prefetch.setdefault(str(endpoint), int(slots))
     rebalance = list(re.finditer(r"\bremaining=(\d+)\b", phase_tail))
     unassigned = int(rebalance[-1].group(1)) if rebalance else None
+    drain_events = list(
+        re.finditer(
+            r"remote_slots_live=(\d+)\s+remaining=(\d+)\s+"
+            r"result_buffer=(\{[^\n]+\})",
+            dispatch_tail,
+        )
+    )
+    result_drain: dict[str, Any] = {"active": False}
+    if drain_events:
+        event = drain_events[-1]
+        try:
+            buffer = ast.literal_eval(event.group(3))
+        except (SyntaxError, ValueError):
+            buffer = {}
+        if not isinstance(buffer, dict):
+            buffer = {}
+        remote_slots_live = int(event.group(1))
+        remaining_jobs = int(event.group(2))
+        spool_files = max(0, int(buffer.get("spool_files") or 0))
+        memory_items = max(0, int(buffer.get("memory_items") or 0))
+        # The last non-empty buffer sample remains in the bounded log after
+        # collection has sealed. Do not keep presenting that historical tail
+        # once the trainer has explicitly crossed into collection completion
+        # or learner work.
+        drain_phase_closed = bool(
+            re.search(
+                r"\[pure_rl\]\s+(?:collect done|completed collection committed|"
+                r"train begin)\b",
+                dispatch_tail[event.end() :],
+            )
+        )
+        if (
+            remote_slots_live == 0
+            and remaining_jobs == 0
+            and memory_items + spool_files > 0
+            and not drain_phase_closed
+        ):
+            result_drain = {
+                "active": True,
+                "all_jobs_claimed": True,
+                "producers_complete": True,
+                "remote_slots_live": 0,
+                "remaining_unassigned": 0,
+                "memory_items": memory_items,
+                "spool_files": spool_files,
+                "spool_bytes": max(0, int(buffer.get("spool_bytes") or 0)),
+                "buffered_results": memory_items + spool_files,
+            }
     controller_contract = list(
         re.finditer(
             r"\[remote\] queue_refill_controller interval=([\d.]+)s "
@@ -5273,9 +6000,90 @@ def scheduler_queue_state(
         "mode": "endpoint_owned",
         "shared_endpoint_race_disabled": True,
         "unassigned": unassigned,
+        "result_drain": result_drain,
         "refill_contract": contract,
         "endpoints": endpoints,
         "source": str(log_path),
+    }
+
+
+def scope_scheduler_queues_to_progress(
+    progress: dict[str, Any],
+    scheduler_queues: dict[str, Any],
+) -> dict[str, Any]:
+    """Remove phase-local queue state after game generation has ended.
+
+    Queue contracts are intentionally retained in long log tails for drain
+    observability. Optimizer and replay-prep progress is newer runtime truth,
+    however, so a preceding collection's non-empty buffer cannot remain an
+    active scheduler condition after the progress stream crosses that phase.
+    """
+
+    stage = str(progress.get("stage") or "")
+    generation_active = bool(
+        stage.startswith("collect:")
+        or stage.startswith("heldout")
+        or stage.startswith("promotion")
+        or stage.startswith("drain:")
+    )
+    if generation_active or not stage:
+        return scheduler_queues
+    scoped = dict(scheduler_queues)
+    scoped["result_drain"] = {"active": False}
+    scoped["unassigned"] = 0
+    scoped["phase_active"] = False
+    scoped["phase"] = stage
+    return scoped
+
+
+def result_drain_projection(
+    progress: dict[str, Any],
+    scheduler_queues: dict[str, Any],
+) -> dict[str, Any]:
+    """Project producer-complete spool compaction without fake live remotes."""
+
+    drain = dict(scheduler_queues.get("result_drain") or {})
+    if drain.get("active") is not True:
+        return {}
+    stage = str(progress.get("stage") or "collect")
+    if not stage.startswith("collect:"):
+        return {}
+    phase_name = stage.split(":", 1)[1]
+    current = progress.get("current")
+    total = progress.get("total")
+    buffered = int(drain.get("buffered_results") or 0)
+    if isinstance(current, (int, float)) and isinstance(total, (int, float)):
+        buffered = min(buffered, max(0, int(total) - int(current)))
+    spool_files = int(drain.get("spool_files") or 0)
+    memory_items = int(drain.get("memory_items") or 0)
+    iteration = progress.get("iteration")
+    progress_metrics = dict(progress.get("metrics") or {})
+    configured_remote_demand = int(
+        progress_metrics.get("remote_request_sockets")
+        or progress.get("remotes")
+        or 0
+    )
+    return {
+        "phase": f"drain:{phase_name}_results",
+        "remote_workers": 0,
+        "games_per_second": None,
+        "latest_line": (
+            f"pure_rl drain:{phase_name}_results iter={iteration}: "
+            f"{current}/{total} · {buffered} buffered results "
+            f"({spool_files} spool / {memory_items} memory) · "
+            "all simulations claimed; producers complete"
+        ),
+        "metrics": {
+            "result_spool_drain": True,
+            "all_jobs_claimed": True,
+            "remote_slots_live": 0,
+            "remote_request_sockets": 0,
+            "remote_queue_capacity": 0,
+            "configured_remote_demand": configured_remote_demand,
+            "buffered_results": buffered,
+            "result_spool_files": spool_files,
+            "result_spool_bytes": int(drain.get("spool_bytes") or 0),
+        },
     }
 
 
@@ -6274,25 +7082,47 @@ def learner_model_state(
         successor_fusion.get("runtime_enabled") is True
         and successor_fusion.get("training_action_eligible") is True
     )
-    activation_bound = bool(loop_fusion_bound or successor_fusion_bound)
+    final_refresh_fusion = _final_refresh_decision_fusion_continuity(
+        state_root=specialist_activation_state_root,
+        specialist_id=specialist_id,
+        checkpoint_digest=active_digest,
+    )
+    final_refresh_fusion_bound = bool(
+        final_refresh_fusion.get("runtime_enabled") is True
+        and final_refresh_fusion.get("training_action_eligible") is True
+    )
+    activation_bound = bool(
+        loop_fusion_bound
+        or successor_fusion_bound
+        or final_refresh_fusion_bound
+    )
+    receipt_fusion = (
+        successor_fusion
+        if successor_fusion_bound
+        else final_refresh_fusion
+    )
+    receipt_fusion_bound = bool(
+        successor_fusion_bound or final_refresh_fusion_bound
+    )
     decision_fusion = {
         **checkpoint_fusion,
         "checkpoint_digest": active_digest or None,
         "loop_activation_bound": loop_fusion_bound,
         "successor_activation_bound": successor_fusion_bound,
+        "final_refresh_activation_bound": final_refresh_fusion_bound,
         "activation_bound": activation_bound,
         "activation_scope": (
             "loop_boundary"
             if loop_fusion_bound
-            else successor_fusion.get("activation_scope")
-            if successor_fusion_bound
+            else receipt_fusion.get("activation_scope")
+            if receipt_fusion_bound
             else None
         ),
         "activation_receipt": (
             loop_fusion.get("receipt")
             if loop_fusion_bound
-            else successor_fusion.get("receipt")
-            if successor_fusion_bound
+            else receipt_fusion.get("receipt")
+            if receipt_fusion_bound
             else None
         ),
         "boundary_next_iteration": (
@@ -6313,7 +7143,7 @@ def learner_model_state(
             loop_fusion_bound
             and loop_fusion.get("runtime_enabled") is True
         )
-        or successor_fusion_bound
+        or receipt_fusion_bound
     ):
         decision_fusion.update(
             verified=False,
@@ -6326,15 +7156,21 @@ def learner_model_state(
         )
     elif (
         checkpoint_fusion.get("runtime_enabled") is True
-        and successor_fusion_bound
+        and receipt_fusion_bound
     ):
         decision_fusion.update(
             verified=True,
-            serving_eligible=True,
-            phase="runtime_active_successor",
+            serving_eligible=bool(
+                receipt_fusion.get("terminal_serving_eligible")
+            ),
+            phase=(
+                "runtime_active_successor"
+                if successor_fusion_bound
+                else "runtime_active_final_refresh_training"
+            ),
             reason=(
-                "checksum-bound successor bootstrap activation verified; "
-                "terminal freeze still requires this child's exact gates"
+                "checksum-bound fused-policy activation verified; terminal "
+                "freeze and serving still require this child's exact gates"
             ),
         )
     base_heads: dict[str, dict[str, Any]] = {
@@ -6348,6 +7184,22 @@ def learner_model_state(
         "lethal_threat": weighted_head("lethal_threat_loss_weight", outputs=1),
         "prize_race": weighted_head("prize_race_loss_weight", outputs=2),
     }
+    latent_lookahead = dict(
+        checkpoint_structure.get("latent_lookahead") or {}
+    )
+    if latent_lookahead.get("enabled") is True:
+        base_heads["latent_policy_aid"] = {
+            "enabled": latent_lookahead.get("verified") is True,
+            "used_in_decisions": bool(
+                latent_lookahead.get("action_authority_enabled") is True
+            ),
+            "outputs": 4,
+            "parameters": int(latent_lookahead.get("parameters") or 0),
+            "policy_aid_cap": float(
+                latent_lookahead.get("policy_aid_cap") or 0.0
+            ),
+            "scope": "active_committed_checkpoint",
+        }
     expanded_heads: dict[str, dict[str, Any]] = {}
     fusion_required_heads = {
         str(value)
@@ -6404,6 +7256,7 @@ def learner_model_state(
         "parameter_evidence_checkpoint": runtime_parameter_contract.get("checkpoint"),
         "parameter_evidence_source": runtime_parameter_contract.get("source"),
         "checkpoint_structure": checkpoint_structure,
+        "latent_lookahead": latent_lookahead,
         "parameter_breakdown": parameter_breakdown,
         "dormant_modules": dormant_modules,
         "matchup_adapter_roster_stage": (
@@ -6569,6 +7422,35 @@ def active_gate_contract_for_run(run_dir: Path | None) -> Path:
     """
     if run_dir is None:
         return COMPETITION_GATE_PROGRAM
+
+    # The H10 refresh is governed by the live selector's registry, not by the
+    # immutable iteration manifest that originally launched the run.  The
+    # manifest intentionally retains r94 so its collection history remains
+    # reproducible; r100 is the receipt-backed terminal contract now enforced
+    # by the managed gate handler.  Resolve the registry's relative path under
+    # its declared runtime root and require the expected final-format identity
+    # before letting it supersede the historical manifest projection.
+    try:
+        is_h10_run = run_dir.resolve() == FINAL_FORMAT_ALAKAZAM_H10_RUN_DIR.resolve()
+    except OSError:
+        is_h10_run = False
+    if is_h10_run:
+        registry = read_json(FINAL_FORMAT_ALAKAZAM_H10_REGISTRY)
+        raw_contract = str(registry.get("active_gate_contract") or "").strip()
+        runtime_root = str(registry.get("runtime_root") or "").strip()
+        if raw_contract and runtime_root:
+            contract_path = Path(raw_contract).expanduser()
+            if not contract_path.is_absolute():
+                contract_path = Path(runtime_root).expanduser() / contract_path
+            contract = read_json(contract_path)
+            if (
+                contract.get("active_gate_id")
+                == registry.get("terminal_active_gate_id")
+                or str(contract.get("active_gate_id") or "").startswith(
+                    "final-format-alakazam-r100-strength75-rating1150-"
+                )
+            ):
+                return contract_path.resolve()
     identities: list[dict[str, Any]] = []
     candidates = sorted((run_dir / "design_migrations").glob("migration_*.json"))
     for receipt_path in reversed(candidates):
@@ -9134,6 +10016,27 @@ def _specialist_id_from_runtime(command: str, run_name: str | None) -> str | Non
     return None
 
 
+def _is_curriculum_service_unit(unit: str) -> bool:
+    """Return whether an active managed unit owns live curriculum work."""
+
+    lowered = str(unit).lower()
+    if "pure-rl" in lowered or "curriculum" in lowered:
+        return True
+    if (
+        "final-format-alakazam" not in lowered
+        and "final-format-marnie" not in lowered
+    ):
+        return False
+    return any(
+        marker in lowered
+        for marker in (
+            "-h10.service",
+            "-h10-rl.service",
+            "-h10-bootstrap.service",
+        )
+    )
+
+
 def _active_curriculum_services() -> tuple[list[str], list[int], str | None]:
     """Return active units/PIDs and their authoritative ``--run-name``."""
     units = run(
@@ -9161,11 +10064,7 @@ def _active_curriculum_services() -> tuple[list[str], list[int], str | None]:
         if not parts:
             continue
         unit = parts[0]
-        if (
-            "pure-rl" not in unit.lower()
-            and "curriculum" not in unit.lower()
-            and "final-format-alakazam" not in unit.lower()
-        ):
+        if not _is_curriculum_service_unit(unit):
             continue
         pid = as_number(
             run(
@@ -9958,6 +10857,12 @@ def curriculum_state() -> dict[str, Any]:
             int(replay_window["iteration"]) + global_iteration_offset
         )
     effective_design = effective_design_contract_for_run(run_dir, manifest)
+    # The manifest is an immutable launch root.  Its learner batch caps can be
+    # superseded at a receipt-backed boundary, so the model panel must consume
+    # the verified effective contract just as the trainer does rather than
+    # displaying the stale launch-time cap.
+    model_manifest = dict(manifest)
+    model_manifest["design_contract"] = effective_design
     expert_contract = effective_design.get("expert_rehearsal") or {}
     expert_receipt = (
         run_dir / "rehearsals" / "before_iter_00000.json"
@@ -10323,7 +11228,7 @@ def curriculum_state() -> dict[str, Any]:
         ),
         "scheduler_queues": scheduler_queue_state(run_name),
         "model_contract": learner_model_state(
-            manifest,
+            model_manifest,
             loop,
             iteration=(
                 int(lineage_iteration)
@@ -11074,7 +11979,61 @@ def v6_strategic_corpus_state(
             "complete": False,
             "reason": "exact latest-20 archive window is unavailable",
         }
-    sync = read_json(V6_STRATEGIC_SPECIALIST_SYNC_STATE)
+    staged_sync = read_json(V6_STRATEGIC_STAGED_SYNC_STATE)
+    staged_dates = _exact_calendar_dates(
+        [str(value) for value in staged_sync.get("dates") or ()]
+    )
+    staged_current = bool(
+        staged_sync.get("schema") == "poke_bot.latest20_specialist_sync/v1"
+        and staged_sync.get("status") in {"syncing", "incomplete", "ready"}
+        and staged_dates == dates
+        and int(staged_sync.get("specialist_count") or 0) == 18
+        and staged_sync.get("expanded_target_schema")
+        == V6_STRATEGIC_TARGET_SCHEMA
+        and staged_sync.get("expanded_target_digest")
+        == V6_STRATEGIC_TARGET_DIGEST
+    )
+    staged_service_active = (
+        run(
+            [
+                "systemctl",
+                "--user",
+                "is-active",
+                V6_STRATEGIC_STAGED_SYNC_SERVICE,
+            ],
+            timeout=4,
+        ).strip()
+        in {"active", "activating"}
+    )
+    runtime_activation = read_json(MARNIE_LATEST20_RUNTIME_ACTIVATION_STATE)
+    activated_for_marnie = bool(
+        runtime_activation.get("schema")
+        == "poke_bot.marnie_latest20_runtime_activation/v1"
+        and runtime_activation.get("status") == "activated"
+        and runtime_activation.get("window_start") == dates[0]
+        and runtime_activation.get("window_end") == dates[-1]
+        and runtime_activation.get("active_training_corpus") is True
+    )
+    if staged_current or (
+        staged_service_active and dates == V6_STRATEGIC_STAGED_DATES
+    ):
+        using_staged_pipeline = True
+        sync = staged_sync
+        sync_state_path = V6_STRATEGIC_STAGED_SYNC_STATE
+        current_pointer = V6_STRATEGIC_STAGED_CURRENT
+        sync_service = V6_STRATEGIC_STAGED_SYNC_SERVICE
+        activation_state = (
+            "active_marnie_runtime"
+            if activated_for_marnie
+            else "staged_not_active"
+        )
+    else:
+        using_staged_pipeline = False
+        sync = read_json(V6_STRATEGIC_SPECIALIST_SYNC_STATE)
+        sync_state_path = V6_STRATEGIC_SPECIALIST_SYNC_STATE
+        current_pointer = V6_STRATEGIC_SPECIALIST_CURRENT
+        sync_service = V6_STRATEGIC_SPECIALIST_SYNC_SERVICE
+        activation_state = "historical_or_active_pointer"
     sync_dates = _exact_calendar_dates(
         [str(value) for value in sync.get("dates") or ()]
     )
@@ -11089,28 +12048,41 @@ def v6_strategic_corpus_state(
         == V6_STRATEGIC_TARGET_DIGEST
     )
     service_active = (
-        run(
-            [
-                "systemctl",
-                "--user",
-                "is-active",
-                V6_STRATEGIC_SPECIALIST_SYNC_SERVICE,
-            ],
-            timeout=4,
-        ).strip()
-        in {"active", "activating"}
+        staged_service_active
+        if sync_service == V6_STRATEGIC_STAGED_SYNC_SERVICE
+        else (
+            run(
+                [
+                    "systemctl",
+                    "--user",
+                    "is-active",
+                    sync_service,
+                ],
+                timeout=4,
+            ).strip()
+            in {"active", "activating"}
+        )
     )
     pointer_ready = bool(
         sync_current
         and sync.get("status") == "ready"
-        and V6_STRATEGIC_SPECIALIST_CURRENT.is_symlink()
-        and V6_STRATEGIC_SPECIALIST_CURRENT.resolve().is_dir()
+        and current_pointer.is_symlink()
+        and current_pointer.resolve().is_dir()
     )
     daily_status = (
         {}
         if pointer_ready
         else _elmo_latest20_daily_materialization(
-            EXPERT20_V6_STRATEGIC_ELMO_DAILY_STATUS_GLOB
+            (
+                EXPERT20_V6_STRATEGIC_ELMO_DAILY_STATUS_GLOB
+                if dates == [f"2026-07-{day:02d}" for day in range(4, 24)]
+                else (
+                    "/mnt/Main/main/poke-bot-agent/archive/"
+                    "expert-latest20-derived/daily/"
+                    f"roster18-v6-strategic-{dates[0]}_{dates[-1]}/"
+                    "status/*.json"
+                )
+            )
         )
     )
     running_days = {
@@ -11130,7 +12102,12 @@ def v6_strategic_corpus_state(
         for day, status in daily_status.items()
         if day in dates and status.get("state") == "failed"
     }
-    if pointer_ready:
+    # A current sync receipt can only be written after the finalizer's exact
+    # 20-date aggregate receipt has passed validation.  From that point the
+    # aggregate receipt is the coverage authority; per-day worker receipts are
+    # merely lower-grain build history and may exist only for the rebuilt half
+    # of a window that reused ten already-validated shards.
+    if sync_current:
         ready_days = set(dates)
         running_days = set()
         failed_days = set()
@@ -11182,11 +12159,15 @@ def v6_strategic_corpus_state(
         "sync_status": sync.get("status") if sync_current else None,
         "sync_percent": sync_percent,
         "atomic_pointer_ready": pointer_ready,
-        "current_pointer": str(V6_STRATEGIC_SPECIALIST_CURRENT),
-        "sync_receipt": str(V6_STRATEGIC_SPECIALIST_SYNC_STATE),
+        "current_pointer": str(current_pointer),
+        "sync_receipt": str(sync_state_path),
+        "activation_state": activation_state,
+        "active_training_corpus": (
+            activated_for_marnie if using_staged_pipeline else None
+        ),
         "latest_line": (
             "NEXT BOUNDARY EXPANDED STRATEGIC CORPUS · "
-            "Accepted Policy Generation 9 · "
+            "Accepted Policy Generation 15 · "
             f"{len(ready_days)}/20 daily feature shards ready · "
             f"{len(running_days)} running · {phase.replace('_', ' ')}"
             + (
@@ -12505,6 +13486,12 @@ def specialist_protocol_state(
     active_run = active_run if isinstance(active_run, dict) else {}
     canonical_live_execution = active_specialist_commit_overlay(active_run)
     canonical_active_id = str(current.get("active_specialist") or "")
+    canonical_refresh_id = ""
+    if isinstance(post_fleet_refresh, dict):
+        canonical_refresh_id = str(
+            post_fleet_refresh.get("active_refresh_specialist_id") or ""
+        ).strip().lower()
+    canonical_execution_id = canonical_active_id or canonical_refresh_id
     runtime_specialist_id = str(runtime_specialist_id or "").strip().lower()
     runtime_run_name = str(runtime_run_name or "").strip()
     runtime_service_state = str(runtime_service_state or "").strip()
@@ -12517,7 +13504,7 @@ def specialist_protocol_state(
     runtime_identity_reconciled = bool(
         runtime_specialist_id
         and (
-            runtime_specialist_id != canonical_active_id
+            runtime_specialist_id != canonical_execution_id
             or (
                 canonical_active_run_id
                 and canonical_active_run_id != runtime_specialist_id
@@ -12531,7 +13518,7 @@ def specialist_protocol_state(
     )
     canonical_pointer_stale = bool(
         runtime_specialist_id
-        and runtime_specialist_id != canonical_active_id
+        and runtime_specialist_id != canonical_execution_id
     )
     active_id = runtime_specialist_id or canonical_active_id
     live_execution = canonical_live_execution
@@ -12633,6 +13620,9 @@ def specialist_protocol_state(
                 raw.get("public_practice_gate_opponent") or {}
             )
             matchup_router = dict(raw.get("matchup_router") or {})
+            post_fleet_required = (
+                raw.get("post_fleet_specialist_required") is True
+            )
             retained_non_specialist_opponents.append(
                 {
                     "id": specialist_id,
@@ -12645,8 +13635,12 @@ def specialist_protocol_state(
                         )
                     ),
                     "role_label": (
-                        "PUBLIC OPPONENT + ACTIVE ROUTE, "
-                        "NO SPECIALIST TRAIN"
+                        "NEXT H10 SPECIALIST AFTER MARNIE"
+                        if post_fleet_required
+                        else (
+                            "PUBLIC OPPONENT + ACTIVE ROUTE, "
+                            "NO SPECIALIST TRAIN"
+                        )
                     ),
                     "required_specialist": False,
                     "selection_eligible": (
@@ -12676,7 +13670,8 @@ def specialist_protocol_state(
                         public_opponent.get("inference_only") is True
                     ),
                     "historical_artifacts_preserved": True,
-                    "future_specialist_training_planned": False,
+                    "future_specialist_training_planned": post_fleet_required,
+                    "post_fleet_specialist_required": post_fleet_required,
                     "source": str(source),
                 }
             )
@@ -12713,10 +13708,22 @@ def specialist_protocol_state(
         "specialist_core_refresh_handoff",
         "specialist_handoff_waiting_for_teal_full33_corpus",
         "next_specialist_selected_readiness_blocked",
+        "post_fleet_specialist_refresh",
+        "post_fleet_specialist_refresh_rl",
     }
+    post_fleet_required_count = sum(
+        1
+        for raw in specialists
+        if (
+            isinstance(raw, dict)
+            and raw.get("required_specialist") is False
+            and raw.get("post_fleet_specialist_required") is True
+        )
+    )
+    effective_program_target_count = len(rows) + post_fleet_required_count
     if (
         len(ids) != len(set(ids))
-        or len(rows) != expected_count
+        or effective_program_target_count != expected_count
         or (
             allows_no_active
             and (canonical_active_rows or canonical_active_id)
@@ -12765,6 +13772,13 @@ def specialist_protocol_state(
     projected_teal_legacy_guide = (
         projected_overrides.get("teal_guide_weight_nonwinning_reduction")
         or {}
+    )
+    projected_marnie_milestones = dict(
+        projected_overrides.get("final_format_marnie_milestone_submissions")
+        or {}
+    )
+    projected_marnie_policy = dict(
+        projected_overrides.get("marnie_neural_policy_challenger") or {}
     )
     current_deck_guide_weight_policy: dict[str, Any] = {}
     if projected_guide_policy:
@@ -13116,6 +14130,22 @@ def specialist_protocol_state(
         or accepted_core.get("version")
         or 0
     )
+    active_policy_generation = int(
+        projected_marnie_policy.get("accepted_policy_generation") or 0
+    )
+    active_policy_receipt_bound = bool(
+        str(projected_marnie_policy.get("status") or "").startswith(
+            "active_generation_"
+        )
+        and str(
+            projected_marnie_policy.get("activation_receipt_sha256") or ""
+        ).startswith("sha256:")
+        and str(
+            projected_marnie_policy.get("activation_checkpoint_sha256") or ""
+        ).startswith("sha256:")
+    )
+    if active_policy_receipt_bound and active_policy_generation > 0:
+        latest_accepted_core_version = active_policy_generation
     attempted_core_versions: list[tuple[int, str]] = []
     if current_core_refresh.get("output_core_version"):
         attempted_core_versions.append(
@@ -13200,9 +14230,21 @@ def specialist_protocol_state(
         ),
         "latest_accepted_version": latest_accepted_core_version or None,
         "latest_accepted_checkpoint": (
-            projected_core.get("latest_accepted_checkpoint")
+            projected_marnie_policy.get("activation_checkpoint_sha256")
+            if active_policy_receipt_bound
+            else projected_core.get("latest_accepted_checkpoint")
             or accepted_core.get("checkpoint")
             or shared_core.get("checkpoint")
+        ),
+        "active_policy_status": (
+            projected_marnie_policy.get("status")
+            if active_policy_receipt_bound
+            else None
+        ),
+        "active_policy_activation_receipt": (
+            projected_marnie_policy.get("activation_receipt")
+            if active_policy_receipt_bound
+            else None
         ),
         "latest_attempted_version": latest_attempted_core[0] or None,
         "latest_attempted_status": latest_attempted_core[1] or None,
@@ -13272,7 +14314,7 @@ def specialist_protocol_state(
                 if str(row["id"]) == specialist_id
             )
         )
-        not in {"passed_frozen", "population_training"}
+        not in {"passed_frozen", "population_training", "failed_experiment"}
     ]
     raw_priority_rows = priority.get("rows") or []
     if not isinstance(raw_priority_rows, list):
@@ -13322,7 +14364,8 @@ def specialist_protocol_state(
         for row in rows
         if str(row["id"]) != canonical_active_id
         and str(row["id"]) not in owner_removed_ids
-        and row["status"] not in {"passed_frozen", "population_training"}
+        and row["status"]
+        not in {"passed_frozen", "population_training", "failed_experiment"}
     }
     if (
         len(ordered_priority) != len(set(ordered_priority))
@@ -13616,11 +14659,39 @@ def specialist_protocol_state(
         set(frozen_program_ids),
         active_id,
     )
+    runtime_service_active = runtime_service_state.startswith(
+        ("active", "activating")
+    )
+    active_runtime_refresh = bool(
+        runtime_service_active
+        and runtime_specialist_id
+        and runtime_run_name.startswith("final_format_")
+    )
+    # A post-fleet refresh reuses an archetype whose historical specialist row
+    # is already frozen.  Keep that immutable row frozen, but do not erase the
+    # separately versioned live refresh from the operator-facing active card.
+    display_active_id = (
+        program_active_id
+        or (runtime_specialist_id if active_runtime_refresh else "")
+    )
     planning_frozen_ids = [
         specialist_id
         for specialist_id in frozen_program_ids
         if specialist_id not in owner_removed_ids
     ]
+    terminal_exception_ids = {
+        str(value)
+        for value in program_progress.get(
+            "terminal_failed_experiment_specialist_ids", ()
+        )
+        if str(value)
+    }
+    terminal_exception_ids &= {
+        str(row["id"])
+        for row in rows
+        if str(row["status"]) == "failed_experiment"
+    }
+    terminal_disposition_count = len(terminal_exception_ids)
     live_program_progress = {
         **program_progress,
         "required_specialists_total": planning_required_count,
@@ -13631,12 +14702,16 @@ def specialist_protocol_state(
             [program_active_id] if program_active_id else []
         ),
         "remaining_unfinished": max(
-            0, planning_required_count - len(planning_frozen_ids)
+            0,
+            planning_required_count
+            - len(planning_frozen_ids)
+            - terminal_disposition_count,
         ),
         "remaining_after_active": max(
             0,
             planning_required_count
             - len(planning_frozen_ids)
+            - terminal_disposition_count
             - int(bool(program_active_id)),
         ),
         "population_transition_ready": (
@@ -13644,7 +14719,10 @@ def specialist_protocol_state(
         ),
     }
     unfinished_including_active = max(
-        0, planning_required_count - len(planning_frozen_ids)
+        0,
+        planning_required_count
+        - len(planning_frozen_ids)
+        - terminal_disposition_count,
     )
     status_by_id = {
         str(row["id"]): str(row["status"])
@@ -13658,7 +14736,7 @@ def specialist_protocol_state(
             and specialist_id != program_active_id
             and specialist_id not in owner_removed_ids
             and status_by_id.get(specialist_id)
-            not in {"passed_frozen", "population_training"}
+            not in {"passed_frozen", "population_training", "failed_experiment"}
             and specialist_id not in live_ordered_priority
         ):
             live_ordered_priority.append(specialist_id)
@@ -13671,24 +14749,44 @@ def specialist_protocol_state(
     for row in rows:
         row["rank_after_active"] = live_rank_by_id.get(str(row["id"]))
     effective_next_action = current.get("next_action")
-    if live_execution.get("available") is True and program_active_id:
-        active_label = program_active_id.replace("-", " ").title()
-        effective_next_action = (
-            f"Continue live {active_label} iteration "
-            f"{int(live_execution['next_iteration'])} through its exact "
-            f"training and gate contract. {unfinished_including_active} "
-            "specialists remain unfinished including the active specialist; "
-            f"{live_program_progress['remaining_after_active']} remain after it. "
-            "Freeze and register it only after both gates pass, then begin the "
-            "next unfinished specialist. Population training remains blocked "
-            f"until all {planning_required_count} specialists are frozen."
-        )
-    elif runtime_identity_reconciled and program_active_id:
+    if live_execution.get("available") is True and display_active_id:
+        active_label = display_active_id.replace("-", " ").title()
+        if active_runtime_refresh and display_active_id == "alakazam":
+            terminal_iteration = int(
+                (post_fleet_refresh or {}).get(
+                    "terminal_ceiling_completed_iteration", 20
+                )
+            )
+            effective_next_action = (
+                f"Continue live {active_label} iteration "
+                f"{int(live_execution['next_iteration'])} through the exact "
+                f"iteration-{terminal_iteration} refresh boundary. Freeze and "
+                f"register exact iteration {terminal_iteration}: retain a "
+                "measured pass when every gate passes, otherwise record owner "
+                "ceiling acceptance while preserving the failed gate evidence. "
+                f"Do not collect iteration {terminal_iteration + 1}. Then run "
+                "the post-Alakazam core refresh attempt and launch the staged "
+                "H10-I Fusion-v3 Marnie's Grimmsnarl refresh. Population "
+                "training remains blocked until both refreshes are truthfully "
+                "complete, frozen, and registered."
+            )
+        else:
+            effective_next_action = (
+                f"Continue live {active_label} iteration "
+                f"{int(live_execution['next_iteration'])} through its exact "
+                f"training and gate contract. {unfinished_including_active} "
+                "specialists remain unfinished including the active specialist; "
+                f"{live_program_progress['remaining_after_active']} remain after it. "
+                "Freeze and register it only after both gates pass, then begin the "
+                "next unfinished specialist. Population training remains blocked "
+                f"until all {planning_required_count} specialists are frozen."
+            )
+    elif runtime_identity_reconciled and display_active_id:
         # A selector may commit the next specialist before that run has
         # published its first immutable iteration receipt. The selector is
         # still authoritative for identity, so never leave the previous
         # specialist's planning action on screen during this brief boundary.
-        active_label = program_active_id.replace("-", " ").title()
+        active_label = display_active_id.replace("-", " ").title()
         effective_next_action = (
             f"Continue live {active_label} specialist under the selected "
             "runtime contract while its first immutable execution receipt is "
@@ -13760,8 +14858,21 @@ def specialist_protocol_state(
         "protocol_schema_version": payload.get("protocol_schema_version"),
         "last_verified_at_utc": str(verified or "") or None,
         "phase": current.get("phase"),
-        "active_specialist": program_active_id,
+        "active_specialist": display_active_id,
+        "active_runtime_refresh": {
+            "active": active_runtime_refresh,
+            "specialist_id": (
+                runtime_specialist_id if active_runtime_refresh else None
+            ),
+            "run_name": runtime_run_name if active_runtime_refresh else None,
+            "service_state": (
+                runtime_service_state if active_runtime_refresh else None
+            ),
+            "historical_specialist_row_remains_frozen": True,
+            "policy_scope": "refresh_lineage_not_cumulative_core_generation",
+        },
         "canonical_active_specialist": canonical_active_id,
+        "canonical_active_refresh_specialist": canonical_refresh_id or None,
         "runtime_active_specialist": runtime_specialist_id or None,
         "runtime_run_name": runtime_run_name or None,
         "runtime_service_state": runtime_service_state or None,
@@ -13800,6 +14911,9 @@ def specialist_protocol_state(
         ),
         "current_deck_guide_training_modes": (
             current_deck_guide_training_modes
+        ),
+        "final_format_milestone_submissions": (
+            projected_marnie_milestones
         ),
         "head_requirements": {
             "archetype_policy": head_template.get(
@@ -14136,29 +15250,35 @@ def main() -> None:
         transition = transition_state()
         curriculum = curriculum_state()
         final_alakazam = final_format_alakazam_progress()
+        final_marnie = final_format_marnie_progress()
+        active_final_refresh = (
+            final_marnie
+            if final_marnie.get("status") in {"running", "complete"}
+            else final_alakazam
+        )
         final_alakazam_models = final_format_alakazam_model_inventory()
-        if final_alakazam.get("status") in {"running", "complete"}:
-            final_service = final_alakazam.get("service") or {}
+        if active_final_refresh.get("status") in {"running", "complete"}:
+            final_service = active_final_refresh.get("service") or {}
             final_stage = (
-                final_alakazam.get("phase")
+                active_final_refresh.get("phase")
                 or "train:ordinary_alakazam_refresh"
             )
             final_run = (
-                final_alakazam.get("run")
+                active_final_refresh.get("run")
                 or "final_format_alakazam_r79"
             )
             final_service_name = (
                 final_service.get("name")
                 or FINAL_FORMAT_ALAKAZAM_SERVICE
             )
-            if final_alakazam.get("status") == "running":
+            if active_final_refresh.get("status") == "running":
                 service = final_service
             curriculum = {
                 **curriculum,
-                "active": final_alakazam.get("status") == "running",
+                "active": active_final_refresh.get("status") == "running",
                 "active_units": (
                     [final_service_name]
-                    if final_alakazam.get("status") == "running"
+                    if active_final_refresh.get("status") == "running"
                     else []
                 ),
                 "active_pids": (
@@ -14167,44 +15287,44 @@ def main() -> None:
                     else []
                 ),
                 "run": final_run,
-                "iteration": final_alakazam.get(
-                    "iteration", final_alakazam.get("epoch")
+                "iteration": active_final_refresh.get(
+                    "iteration", active_final_refresh.get("epoch")
                 ),
                 "stage": final_stage,
                 "progress": {
-                    "line": final_alakazam.get("latest_line"),
+                    "line": active_final_refresh.get("latest_line"),
                     "stage": final_stage,
-                    "iteration": final_alakazam.get("iteration"),
-                    "epoch": final_alakazam.get("epoch"),
-                    "current": final_alakazam.get("current"),
-                    "total": final_alakazam.get("total"),
-                    "percent": final_alakazam.get("percent"),
-                    "rate": final_alakazam.get("rate"),
-                    "rate_unit": final_alakazam.get("rate_unit"),
-                    "gps": final_alakazam.get("games_per_second"),
-                    "sps": final_alakazam.get("samples_per_second"),
-                    "remotes": final_alakazam.get("remote_workers"),
-                    "metrics": final_alakazam.get("metrics") or {},
+                    "iteration": active_final_refresh.get("iteration"),
+                    "epoch": active_final_refresh.get("epoch"),
+                    "current": active_final_refresh.get("current"),
+                    "total": active_final_refresh.get("total"),
+                    "percent": active_final_refresh.get("percent"),
+                    "rate": active_final_refresh.get("rate"),
+                    "rate_unit": active_final_refresh.get("rate_unit"),
+                    "gps": active_final_refresh.get("games_per_second"),
+                    "sps": active_final_refresh.get("samples_per_second"),
+                    "remotes": active_final_refresh.get("remote_workers"),
+                    "metrics": active_final_refresh.get("metrics") or {},
                 },
-                "progress_source": final_alakazam.get("source"),
-                "progress_status_source": final_alakazam.get("source"),
-                "progress_log_source": final_alakazam.get("log"),
-                "progress_updated_at": final_alakazam.get("updated_at"),
-                "source_current": bool(final_alakazam.get("fresh")),
-                "remote_workers": final_alakazam.get("remote_workers"),
-                "remote_endpoints": final_alakazam.get("remote_endpoints") or [],
+                "progress_source": active_final_refresh.get("source"),
+                "progress_status_source": active_final_refresh.get("source"),
+                "progress_log_source": active_final_refresh.get("log"),
+                "progress_updated_at": active_final_refresh.get("updated_at"),
+                "source_current": bool(active_final_refresh.get("fresh")),
+                "remote_workers": active_final_refresh.get("remote_workers"),
+                "remote_endpoints": active_final_refresh.get("remote_endpoints") or [],
                 "scheduler_queues": (
-                    final_alakazam.get("scheduler_queues")
+                    active_final_refresh.get("scheduler_queues")
                     or {"available": False, "mode": "waiting"}
                 ),
                 "worker": {
                     **(curriculum.get("worker") or {}),
-                    "active": final_alakazam.get("status") == "running",
+                    "active": active_final_refresh.get("status") == "running",
                     "rss_bytes": final_service.get("memory_bytes"),
                     "source": "systemd-user-cgroup",
                     "command": final_service.get("command"),
                 },
-                "final_format_refresh": final_alakazam,
+                "final_format_refresh": active_final_refresh,
             }
         gpus = gpu_state()
         elmo = elmo_future.result()
@@ -14226,11 +15346,28 @@ def main() -> None:
         if runtime_service_selected
         else None
     )
+    runtime_specialist_id = _specialist_id_from_runtime(
+        str(service.get("command") or ""),
+        runtime_run_name,
+    )
+    # Bootstrap/materialization services do not necessarily carry the normal
+    # ``--archetype`` argument.  Their receipt-backed final-refresh projection
+    # is therefore the authoritative runtime identity while that managed
+    # service is selected; falling back to the old production command makes a
+    # live Marnie refresh look like the historical Slowking/Alakazam runtime.
+    if (
+        runtime_service_selected
+        and active_final_refresh.get("status") == "running"
+        and str(active_final_refresh.get("specialist_id") or "").strip()
+    ):
+        runtime_specialist_id = str(
+            active_final_refresh["specialist_id"]
+        ).strip().lower()
+        runtime_run_name = str(
+            active_final_refresh.get("run") or runtime_run_name or ""
+        ).strip() or None
     specialist_protocol = specialist_protocol_state(
-        runtime_specialist_id=_specialist_id_from_runtime(
-            str(service.get("command") or ""),
-            runtime_run_name,
-        ),
+        runtime_specialist_id=runtime_specialist_id,
         runtime_run_name=runtime_run_name,
         runtime_service_state=(
             f"{service.get('active_state')}/{service.get('sub_state')}"
@@ -14289,8 +15426,8 @@ def main() -> None:
     training = authoritative_training_state(
         curriculum, transition, specialist_handoff
     )
-    if final_alakazam.get("status") in {"running", "complete"}:
-        training = final_alakazam
+    if active_final_refresh.get("status") in {"running", "complete"}:
+        training = active_final_refresh
     expert_refresh = active_expert_corpus_state(
         curriculum,
         expert_refresh,
@@ -14310,6 +15447,7 @@ def main() -> None:
         "frozen_inference_opponents": frozen_runtime_rows,
     }
     final_model_override: dict[str, Any] = {}
+    final_matchup_transition: dict[str, Any] = {}
     if final_alakazam_models.get("available") is True:
         ordinary_model = dict(
             final_alakazam_models.get("ordinary_refresh") or {}
@@ -14425,6 +15563,9 @@ def main() -> None:
         h10_parameters = int(final_alakazam.get("model_parameters") or 0)
         h10_checkpoint = final_alakazam.get("checkpoint")
         h10_digest = final_alakazam.get("checkpoint_digest")
+        h10_structure = dict(final_alakazam.get("checkpoint_structure") or {})
+        h10_fusion = dict(final_alakazam.get("decision_fusion") or {})
+        h10_expanded = dict(final_alakazam.get("expanded_head_training") or {})
         h10_registry = str(
             final_alakazam.get("runtime_registry")
             or FINAL_FORMAT_ALAKAZAM_H10_REGISTRY
@@ -14458,25 +15599,7 @@ def main() -> None:
                 "current_checkpoint_total": h10_parameters,
                 "staged_architecture_total": h10_parameters,
             },
-            "checkpoint_structure": {
-                "verified": bool(h10_checkpoint and h10_digest and h10_parameters),
-                "checkpoint": h10_checkpoint,
-                "checkpoint_digest": h10_digest,
-                "model_parameters": h10_parameters,
-                "state_tensor_elements": None,
-                "adapter_parameters": None,
-                "adapter_expert_count": 20,
-                "adapter_expert_ids": [],
-                "adapter_registry_verified": True,
-                "expanded_head_training": {
-                    "schema": "poke_bot.expanded_head_training/v1",
-                    "authoritative_action_path": "fused_policy",
-                    "required_heads": list(h10_heads),
-                    "runtime_enabled_heads": list(h10_heads),
-                    "trained_heads": list(h10_heads),
-                },
-                "source": h10_registry,
-            },
+            "checkpoint_structure": h10_structure,
             "dormant_modules": [],
             "matchup_adapter_roster_stage": {},
             "matchup_adapter_v6": {
@@ -14485,38 +15608,18 @@ def main() -> None:
                 "physical_slot_capacity": 64,
                 "materialized_routes": 20,
             },
-            "expanded_head_training": {
-                "schema": "poke_bot.expanded_head_training/v1",
-                "authoritative_action_path": "fused_policy",
-                "required_heads": list(h10_heads),
-                "runtime_enabled_heads": list(h10_heads),
-                "trained_heads": list(h10_heads),
-            },
+            "expanded_head_training": h10_expanded,
             "training_schedule": {
                 "phase": "high_volume_final_submit_rl",
                 "games_per_iteration": int(
                     final_alakazam.get("games_per_iteration") or 16384
                 ),
                 "maximum_iterations": int(
-                    final_alakazam.get("iterations_target") or 189
+                    final_alakazam.get("iterations_target") or 21
                 ),
                 "training_seat_split": final_alakazam.get("training_seat_split"),
             },
-            "decision_fusion": {
-                "available": True,
-                "verified": True,
-                "schema": DECISION_FUSION_V2_SCHEMA,
-                "route_schema": DECISION_FUSION_V2_ROUTE_SCHEMA,
-                "training_enabled": True,
-                "runtime_enabled": True,
-                "serving_eligible": False,
-                "phase": "h10_high_volume_rl",
-                "required_heads": list(h10_heads),
-                "required_head_count": len(h10_heads),
-                "expected_required_head_count": len(h10_heads),
-                "authoritative_action_path": "fused_policy",
-                "guide_runtime_route_count": 0,
-            },
+            "decision_fusion": h10_fusion,
             "runtime_identity": {
                 "active_learner": "alakazam-refresh-r79-h10",
                 "runtime_build": "final-format-alakazam-r79-h10",
@@ -14533,6 +15636,151 @@ def main() -> None:
                     "kaggle_rating_lower_bound"
                 ),
                 "independent_checks": final_alakazam.get("rating_gate_separate"),
+            },
+        }
+    if active_final_refresh.get("mode") in {
+        "final_format_marnie_h10_bootstrap",
+        "final_format_marnie_h10_rl",
+    }:
+        marnie_heads = (
+            *DECISION_FUSION_REQUIRED_HEADS,
+            "setup_board_outcome",
+            "combo_state",
+        )
+        marnie_parameters = int(
+            active_final_refresh.get("model_parameters") or 0
+        )
+        marnie_checkpoint = active_final_refresh.get("checkpoint")
+        marnie_digest = active_final_refresh.get("checkpoint_digest")
+        marnie_structure = dict(
+            active_final_refresh.get("checkpoint_structure") or {}
+        )
+        marnie_adapter_format = str(
+            marnie_structure.get("adapter_format") or ""
+        )
+        marnie_router_v6_active = (
+            marnie_adapter_format == "poke-bot-matchup-adapter-bank-v6"
+            and int(marnie_structure.get("adapter_slot_capacity") or 0) == 64
+        )
+        marnie_router_fix = read_json(FINAL_FORMAT_MARNIE_ROUTER_V6_FIX)
+        if (
+            marnie_router_fix.get("schema")
+            == "poke_bot.final_format_marnie_h10_router_v6_registration_fix/v1"
+        ):
+            correction = dict(marnie_router_fix.get("correction") or {})
+            final_matchup_transition = {
+                "status": (
+                    "activated"
+                    if marnie_router_v6_active
+                    else "staged_for_post_bootstrap_registration_boundary"
+                ),
+                "source_format": marnie_adapter_format or None,
+                "target_format": correction.get("target_adapter_format"),
+                "target_physical_slot_capacity": correction.get(
+                    "physical_slot_capacity"
+                ),
+                "target_logical_active_route_count": correction.get(
+                    "logical_active_route_count"
+                ),
+                "boundary": correction.get("boundary"),
+                "source_checkpoint_immutable": correction.get(
+                    "source_family_remains_immutable"
+                ),
+                "receipt": str(FINAL_FORMAT_MARNIE_ROUTER_V6_FIX),
+                "training_interrupted": False,
+            }
+        marnie_service = dict(active_final_refresh.get("service") or {})
+        final_model_override = {
+            "implementation": "TemporalCabtTransformer",
+            "architecture": "Marnie's Grimmsnarl ex H10-I Fusion v3",
+            "run": active_final_refresh.get("run"),
+            "profile_id": "H10-I/v1",
+            "profile": {
+                "d_model": 96,
+                "n_heads": 8,
+                "spatial_layers": 7,
+                "temporal_layers": 3,
+                "option_decoder_layers": 7,
+                "ff_dim": 2496,
+                "max_context": 320,
+                "decision_context": "history",
+                "temporal_pos": "rope",
+                "kv_cache": True,
+                "strategic_head_residual_width": 512,
+            },
+            "heads": {name: {"enabled": True} for name in marnie_heads},
+            "trainable_parameters": marnie_parameters,
+            "active_checkpoint": marnie_checkpoint,
+            "active_checkpoint_digest": marnie_digest,
+            "parameter_source": str(FINAL_FORMAT_MARNIE_H10_VALIDATION),
+            "parameter_breakdown": {
+                "optimizer_active_current": marnie_parameters,
+                "current_non_active": 0,
+                "staged_non_active": 0,
+                "current_checkpoint_total": marnie_parameters,
+                "staged_architecture_total": marnie_parameters,
+            },
+            "checkpoint_structure": marnie_structure,
+            "dormant_modules": [],
+            "matchup_adapter_roster_stage": {},
+            "matchup_adapter_v6": {
+                "active": marnie_router_v6_active,
+                "format": 6,
+                "physical_slot_capacity": 64,
+                "materialized_routes": (
+                    20
+                    if marnie_router_v6_active
+                    else int(marnie_structure.get("adapter_expert_count") or 0)
+                ),
+                "activation_boundary": (
+                    None
+                    if marnie_router_v6_active
+                    else "post_bootstrap_registration"
+                ),
+            },
+            "expanded_head_training": {
+                "enabled": True,
+                "learned_head_count": int(
+                    active_final_refresh.get("learned_head_count") or 19
+                ),
+                "learned_route_count": int(
+                    active_final_refresh.get("learned_route_count") or 19
+                ),
+            },
+            "training_schedule": {
+                "phase": (
+                    "exact_25_epoch_h10_specialist_bootstrap"
+                    if active_final_refresh.get("mode")
+                    == "final_format_marnie_h10_bootstrap"
+                    else "specialist_rl_5_plus_5"
+                ),
+                "epochs_completed": active_final_refresh.get("epoch"),
+                "epochs_target": active_final_refresh.get("epochs_target"),
+                "games_per_iteration": 8192,
+            },
+            "decision_fusion": {
+                "available": True,
+                "verified": True,
+                "schema": active_final_refresh.get("decision_fusion_schema"),
+                "training_enabled": True,
+                "runtime_enabled": True,
+                "required_heads": list(marnie_heads),
+                "required_head_count": len(marnie_heads),
+                "authoritative_action_path": "typed_output_centered_fused_policy",
+                "route_schema": "typed_output_centered_per_head/v3",
+                "reliability_bounds": [0.25, 4.0],
+                "action_type_reliability_cap": 0.25,
+            },
+            "runtime_identity": {
+                "active_learner": "marnie-s-grimmsnarl-ex",
+                "runtime_build": "final-format-marnie-r104-h10",
+                "runtime_root": str(SPECIALIST_RUNTIME_ROOT),
+                "service_active": active_final_refresh.get("status") == "running",
+                "service_state": (
+                    f"{marnie_service.get('active_state')}/"
+                    f"{marnie_service.get('sub_state')}"
+                ),
+                "frozen_inference_opponents": [],
             },
         }
     baseline_eval = baseline_eval_state()
@@ -14631,7 +15879,11 @@ def main() -> None:
                     **(curriculum.get("model_contract") or {}),
                     **final_model_override,
                     "final_format_alakazam": final_alakazam_models,
-                    "run": curriculum.get("run"),
+                    "final_format_marnie": final_marnie,
+                    "run": (
+                        final_model_override.get("run")
+                        or curriculum.get("run")
+                    ),
                     "staged_expanded_head_training": (
                         specialist_handoff.get(
                             "staged_expanded_head_training"
@@ -14639,8 +15891,13 @@ def main() -> None:
                         or {}
                     ),
                     "matchup_pipeline": matchup_pipeline,
-                    "runtime_identity": model_runtime_identity,
+                    "runtime_identity": (
+                        final_model_override.get("runtime_identity")
+                        or model_runtime_identity
+                    ),
                     "canonical_matchup_transition": (
+                        final_matchup_transition
+                        or
                         (
                             specialist_protocol.get("training_priority") or {}
                         ).get("staged_v5_transition")

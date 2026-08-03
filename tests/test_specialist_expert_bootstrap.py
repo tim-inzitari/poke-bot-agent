@@ -7,8 +7,8 @@ import pytest
 import torch
 
 from poke_bot import archetypes, checkpoint, config
-from poke_bot.model import build_model
-from poke_bot.train import load_model_from_checkpoint
+from poke_bot.model import CausalDecisionFusion, build_model
+from poke_bot.train import expand_aux_head_to_current_registry, load_model_from_checkpoint
 from scripts import run_starmie_expert_bootstrap as bootstrap
 
 
@@ -92,6 +92,55 @@ def test_rehearsal_expands_historical_archetype_head_before_training() -> None:
     assert "warm_started_expanded_before" in source[optimizer:]
     assert "warm_started_fusion_before" in source[optimizer:]
     assert "or aux_head_expanded" in source[optimizer:]
+
+
+def test_pre_teal_auxiliary_registry_is_supported_for_h10_warm_starts() -> None:
+    assert len(archetypes.PRE_TEAL_AUX_ARCHETYPE_IDS) + 1 == 25
+    assert archetypes.PRE_TEAL_AUX_ARCHETYPE_IDS[-2:] == (
+        "thwackey",
+        "team-rockets-spidops",
+    )
+    model = torch.nn.Module()
+    model.aux_head = torch.nn.Sequential(
+        torch.nn.Linear(4, 4),
+        torch.nn.ReLU(),
+        torch.nn.Identity(),
+        torch.nn.Linear(4, 25),
+    )
+    model.decision_fusion = CausalDecisionFusion(
+        d_model=4,
+        width=3,
+        archetype_classes=25,
+        belief_card_vocab=2,
+        dedicated_routes_enabled=True,
+        typed_output_centered_routes=True,
+    )
+    old_weight = model.aux_head[-1].weight.detach().clone()
+    old_bias = model.aux_head[-1].bias.detach().clone()
+    old_projection = (
+        model.decision_fusion.state_projections["archetype"].weight.detach().clone()
+    )
+    old_route = model.decision_fusion.dedicated_routes[
+        "archetype"
+    ].network[0].weight.detach().clone()
+
+    assert expand_aux_head_to_current_registry(model) is True
+    assert model.aux_head[-1].out_features == len(archetypes.archetype_ids()) + 1
+    projection = model.decision_fusion.state_projections["archetype"]
+    route = model.decision_fusion.dedicated_routes["archetype"]
+    assert projection.in_features == len(archetypes.archetype_ids()) + 1
+    assert route.head_dim == len(archetypes.archetype_ids()) + 1
+    assert route.network[0].in_features == 4 + len(archetypes.archetype_ids()) + 1
+    for old_index, name in enumerate(archetypes.PRE_TEAL_AUX_ARCHETYPE_IDS):
+        new_index = archetypes.archetype_ids().index(name)
+        assert torch.equal(model.aux_head[-1].weight[new_index], old_weight[old_index])
+        assert torch.equal(model.aux_head[-1].bias[new_index], old_bias[old_index])
+        assert torch.equal(projection.weight[:, new_index], old_projection[:, old_index])
+        assert torch.equal(route.network[0].weight[:, 4 + new_index], old_route[:, 4 + old_index])
+    assert torch.equal(model.aux_head[-1].weight[-1], old_weight[-1])
+    assert torch.equal(model.aux_head[-1].bias[-1], old_bias[-1])
+    assert torch.equal(projection.weight[:, -1], old_projection[:, -1])
+    assert torch.equal(route.network[0].weight[:, -1], old_route[:, -1])
 
 
 def test_generic_entrypoint_uses_the_audited_bootstrap() -> None:
@@ -567,6 +616,53 @@ def test_v6_hot_start_preserves_head_tensors_but_resets_specialist_telemetry(
     assert migration["specialist_training_metadata_reset"] is True
     for key, value in state.items():
         assert torch.equal(payload["model_state_dict"][key], value)
+
+
+def test_h10_successor_reuses_exact_parent_without_remigration(
+    tmp_path: Path,
+) -> None:
+    state = {
+        f"decision_fusion.dedicated_routes.route_{index}.weight": torch.ones(1)
+        for index in range(19)
+    }
+    parent = tmp_path / "marnie-h10.pt"
+    checkpoint.atomic_torch_save(
+        {
+            "model_state_dict": state,
+            "model_config": {
+                "spatial_layers": 7,
+                "temporal_layers": 3,
+                "option_decoder_layers": 7,
+                "ff_dim": 2496,
+                "h10_head_residual_width": 512,
+                "h10_capacity_enabled": True,
+                "expanded_heads_enabled": True,
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": True,
+                "decision_fusion_dedicated_routes_enabled": True,
+                "decision_fusion_typed_output_centered_routes_enabled": True,
+            },
+            "archetype_id": "marnie-s-grimmsnarl-ex",
+        },
+        parent,
+    )
+
+    hot_start, digest, evidence = bootstrap._specialist_hot_start_from_core(
+        parent,
+        run_dir=tmp_path / "crustle",
+        archetype="crustle",
+        enable_expanded_heads=True,
+        enable_decision_fusion=True,
+        enable_strategic_curriculum=True,
+        enable_combo_state_head=True,
+        allow_h10_specialist_parent=True,
+    )
+
+    assert hot_start == parent
+    assert digest == checkpoint.checkpoint_digest(parent)
+    assert evidence["status"] == "h10_parent_reused_zero_safe"
+    assert evidence["all_parent_tensors_reused_byte_exact"] is True
+    assert len(evidence["dedicated_fusion_route_names"]) == 19
 
 
 def test_v6_hot_start_loader_materializes_only_missing_expanded_heads(

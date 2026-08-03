@@ -1,0 +1,19 @@
+[Unit]
+Description=Stage Marnie R109 latest-20 runtime candidate without activation
+After=pokebot-expert-latest20-v6-strategic-r109-stage-sync-11m.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/prepare_marnie_latest20_runtime_migration.py --sync-receipt /home/inzi/poke-bot-agent/outputs/state/expert-latest20-v6-strategic-r109-staged-sync.json --source-registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r104_fusion_v3.json --source-registration /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-h10-runtime-registration.json --output-registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r109_latest20_20260714_20260802.json --output-registration /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-h10-runtime-registration-r109-latest20.json --stage-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latest20-runtime-migration-stage-r109.json --minimum-decisions 100000 --wait-seconds 21600 --poll-seconds 30
+Restart=on-failure
+RestartSec=60
+MemoryHigh=1G
+MemoryMax=2G
+MemorySwapMax=0
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -9,7 +9,7 @@ Copy-paste task prompt: `CURSOR_PROMPT.md`
 
 1. Read `AGENTS.md` and `GOAL.md` completely before acting.
 2. Then read the canonical sources named by `GOAL.md` for the action being taken. `ops/current_goal_requirements.json` is only a compatibility projection and never overrides `GOAL.md`.
-3. Preserve the dirty worktree. At this handoff it contains 104 tracked changes and 110 untracked files. Do not run `git reset`, `git clean`, `git checkout --`, broad formatters, or mass rewrites.
+3. Preserve the current worktree. The large controller/runtime change set was committed concurrently as `db5485a`; the only remaining changes at this handoff are the two tracked handoff documents. Do not run `git reset`, `git clean`, `git checkout --`, broad formatters, or mass rewrites.
 4. Never terminate, signal, disconnect, replace, or classify an SSH, Codex, Cursor, terminal, editor, or other interactive session as stale. The owner LAN identity in `AGENTS.md` is hard-allowed.
 5. Operate training and dashboard workloads only through their declared service manager. Never use `kill`, `pkill`, `killall`, shell signals, or process-tree termination.
 6. Inspect live state before changing anything. Do not restart healthy training merely to reconcile planning metadata.
@@ -34,7 +34,8 @@ Canonical receipts:
 
 - `state/final_format_alakazam_h10_iteration_size_r81.json`
 - `state/final_format_alakazam_h10_mix_r82.json`
-- `state/final_format_alakazam_h10_bert_mps_isolation_r86.json`
+
+Revision 86's Bert isolation/benchmark contract is recorded directly in the `GOAL.md` history; there is no repository-local `state/*r86.json` receipt to assume exists.
 
 ## Active recovery state from revision 89
 
@@ -59,6 +60,8 @@ sha256:661450f4e08f6e1f8bea5184ad1fea0f4bb3b85d34f8d04550591277918e1bf2
 
 Revision 89 recorded PID `706275`, restart count `0`, and Elmo as the only configured remote. Treat those values as a receipt snapshot, not as present-time truth. Audit the managed service and immutable artifacts before acting.
 
+Read-only audit at this handoff confirmed that snapshot is still live: the service was `active/running`, `Result=success`, `MainPID=706275`, `NRestarts=0`, and invocation `e178fddb48844a2ba27f2ce429b363e6`. The remote registry digest matched. Training PID `706419` was alive in the `rl-agreement parent` pass, the monitor reported zero OOMs, and the iteration-0 commit was still absent. This is volatile evidence; Cursor must recheck it.
+
 The Blackwell service is:
 
 ```text
@@ -82,7 +85,20 @@ First determine whether `iter_00000.json` exists and validates. If the service i
 
 ## Bert status and required next boundary
 
-Bert was intentionally removed from production for the remainder of iteration 0. The production LaunchAgent is unloaded and ports 8766 and 8776 had no listener at this handoff. Do not restore Bert before the iteration-0 commit validates.
+Bert was intentionally removed from production for the remainder of iteration 0. The production worker LaunchAgent `com.pokebot.remote-worker-8766-h10-r80` is unloaded and ports 8766 and 8776 had no listener at this handoff. Do not restore Bert before the iteration-0 commit validates.
+
+There is also a separate loaded 15-second polling LaunchAgent, `com.pokebot.bert-post-alakazam-iter0-rejoin-r89`. Its marker is absent, but its current script hard-codes optimized MPS, requires MPS health, copies a staged revision-90 registry, and stops/restarts the Blackwell service as soon as it sees the iteration-0 commit. That can race the still-required CPU/MPS selector decision. Cursor must inspect it immediately. If no canonical backend-selection receipt exists, hold this poller with `launchctl bootout` before the commit boundary, using launchd rather than process signals. Correct the workflow to consume the checksum-bound selector, then re-bootstrap it only when the post-commit migration is eligible.
+
+Staged, non-canonical artifacts currently referenced by that poller:
+
+```text
+/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/outputs/runtime_recovery/specialist_runtime_registry_h10_r90_post_iter0_all_remotes.json
+sha256:8e3280f339b40f3a5ad1bafe8cb4855421ef4d2a1875b5b8b165f2761806bd26
+/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/outputs/runtime_recovery/pokebot-final-format-alakazam-r79-h10.post-iter0.service
+sha256:07df8b05e7a7ba48becb6df8ea7bbc5021e1bbe6eb7fae1b68a7e241eed3d469
+```
+
+Do not promote those files merely because they exist; validate and regenerate them after backend selection if their assumptions are wrong.
 
 The optimized exact-H10 MPS benchmark that was still described as in progress by the compatibility projection has now completed locally:
 
@@ -124,11 +140,10 @@ Slowking failed its corrected iteration-5 gate and has a sealed 8,192-game itera
 ## Repository state
 
 - Branch: `codex/worksession-20260728`.
-- The branch was 16 commits ahead of its upstream at the previous audit.
-- At this update: 104 tracked changed files and 110 untracked files.
-- Tracked diff: about 10,957 insertions and 1,032 deletions.
-- These changes are active user/agent work. Preserve unrelated and overlapping edits.
-- `CURSOR_HANDOFF.md` and `CURSOR_PROMPT.md` are handoff artifacts; do not mistake them for canonical runtime receipts.
+- The branch is 17 commits ahead of its upstream at this audit.
+- The large change set is now in commit `db5485a` (`Refactor training controller and update runtime workflows`) and matches `origin/codex/worksession-20260728`.
+- At this update the worktree has exactly two tracked modifications and no untracked files: `CURSOR_HANDOFF.md` and `CURSOR_PROMPT.md`.
+- Preserve those handoff edits and any new concurrent work. Do not mistake the handoff files for canonical runtime receipts.
 
 ## Definition of a successful takeover
 

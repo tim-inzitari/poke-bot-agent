@@ -1,0 +1,45 @@
+{
+  "schema": "poke_bot.final_format_marnie_milestone_submission_stage_correction/v1",
+  "status": "activated_fail_closed_before_h10_rl",
+  "recorded_at_utc": "2026-08-02T18:51:33Z",
+  "goal_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "corrected_defect": {
+    "previous_maximum_iteration": 14,
+    "corrected_maximum_iteration": 184,
+    "reason": "The previous watcher ceiling implemented only the initial 0,4,9,14 prefix and contradicted the canonical every-5n-plus-4 continuation rule. The corrected ceiling covers every possible commit in the current bounded refresh while preserving the separately required terminal submission.",
+    "eligible_zero_indexed_iterations_observed_by_validation": [0, 4, 9, 14, 19, 24, 184],
+    "continuing_rule": "every_5n_plus_4_commit_before_completion",
+    "training_stop_pause_freeze_or_selection_authority": false
+  },
+  "artifacts": {
+    "goal_sha256": "sha256:04c79770e01f4592a9eaf96bb0cdec0a32150d257e1239d466565ade3806f618",
+    "protocol_sha256": "sha256:80151b4422033726ac1a804ff54ed5ec6c2bfefcdcd394f99813ced4c2d9606a",
+    "human_protocol_sha256": "sha256:ae4ee200af708a97107bcef36a58908ac8622bd367be9da8bdb31d4dc3070879",
+    "compatibility_projection_sha256": "sha256:6954b72e816ea188d6cdedee7d01418e82a4525870ba9a26bb34d23b5c658a47",
+    "watcher_sha256": "sha256:a7b43aea0d78732278afa69de3ddd97518b7aadbc70a631624f571e44cc7d446",
+    "corrected_service_unit_sha256": "sha256:7402be1bdcce2e8318909087de9deb5cb5bede36625dd187658002d33570ad9c",
+    "timer_unit_sha256": "sha256:53389c222dbedc4e4f1017f4a0483c2cb1a9361f5673d9e49fc8f1a402230ae5",
+    "superseded_stage_receipt_sha256": "sha256:9a11aa1914a5f5c9a6dcc62c9fa73afe9c23a09070da37d629414afdc0d34835",
+    "regression_test_sha256": "sha256:e86ab550090558a0195629726328231d4d44cf3c50b0a25bd0b18404be08c802"
+  },
+  "managed_runtime": {
+    "service": "pokebot-final-format-marnie-r104-milestone-submissions.service",
+    "timer": "pokebot-final-format-marnie-r104-milestone-submissions.timer",
+    "timer_state": "active/waiting",
+    "runtime_registration_condition_required": true,
+    "corrected_unit_loaded": true,
+    "active_bootstrap_pid": 608116,
+    "active_bootstrap_restart_count": 0,
+    "active_bootstrap_interrupted": false
+  },
+  "validation": {
+    "milestone_tests_passed": 4,
+    "cadence_validation_passed": true,
+    "systemd_daemon_reloaded": true,
+    "loaded_service_contains_corrected_maximum": true,
+    "bootstrap_remained_healthy": true
+  },
+  "activation_boundary": "managed_watcher_unit_before_first_h10_rl_commit",
+  "next_boundary": "first_durable_final_format_marnie_h10_rl_iteration_0_commit"
+}

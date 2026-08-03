@@ -651,6 +651,7 @@ def _required_specialist_ids(state_path: Path) -> set[str]:
         specialist_id: row
         for specialist_id, row in all_rows.items()
         if specialist_id not in owner_removed_ids
+        and row.get("post_fleet_specialist_required") is not True
     }
     identifiers = set(rows)
     order = [
@@ -789,7 +790,7 @@ def _validated_post_fleet_refresh_progress(
         contract.get("schema") != POST_FLEET_REFRESH_SCHEMA
         or contract.get("completion_receipt_schema")
         != POST_FLEET_REFRESH_COMPLETION_SCHEMA
-        or int(contract.get("owner_decision_revision") or 0) != 79
+        or int(contract.get("owner_decision_revision") or 0) < 79
         or int(contract.get("required_fleet_count") or 0) != 15
         or contract.get("terminal_required_specialist_id") != "slowking"
         or int(contract.get("frozen_required_specialist_count") or 0) != 14
@@ -801,11 +802,12 @@ def _validated_post_fleet_refresh_progress(
             "slowking_terminal_disposition_immediately_triggers_first_refresh"
         ) is not True
         or required_order
-        != ["alakazam", "marnie-s-grimmsnarl-ex"]
+        != ["alakazam", "marnie-s-grimmsnarl-ex", "crustle"]
         or phase.get("schema") != POST_FLEET_REFRESH_SCHEMA
         or phase.get("completion_receipt_schema")
         != POST_FLEET_REFRESH_COMPLETION_SCHEMA
-        or int(phase.get("owner_decision_revision") or 0) != 79
+        or int(phase.get("owner_decision_revision") or 0)
+        < int(contract.get("owner_decision_revision") or 0)
         or int(phase.get("required_fleet_count") or 0) != 15
         or dict(phase.get("trigger") or {}).get(
             "terminal_required_specialist_id"
@@ -838,7 +840,7 @@ def _validated_post_fleet_refresh_progress(
         or broader_capacity_gate.get("required_receipt")
         != "post_refresh_sequence_complete_for_capacity_v2"
         or broader_capacity_gate.get(
-            "requires_final_format_alakazam_and_marnie_refresh_complete"
+            "requires_final_format_alakazam_marnie_and_crustle_complete"
         )
         is not True
         or broader_capacity_gate.get("no_receipt_no_model_work") is not True
@@ -892,7 +894,7 @@ def _validated_post_fleet_refresh_progress(
         or len(completed_ids) != len(receipt_rows)
         or completed_ids != required_order[: len(completed_ids)]
         or pending_ids != required_order[len(completed_ids) :]
-        or set(originals) != set(required_order)
+        or set(originals) != {"alakazam", "marnie-s-grimmsnarl-ex"}
         or dict(originals.get("alakazam") or {}).get("immutable") is not True
         or dict(originals.get("alakazam") or {}).get(
             "may_satisfy_new_refresh_gate"
@@ -903,15 +905,12 @@ def _validated_post_fleet_refresh_progress(
         or (
             phase_complete
             and (
-                phase.get("status") != "complete"
+                phase.get("status")
+                != "refresh_sequence_complete_population_handoff_pending"
                 or phase.get("active_refresh_specialist_id") is not None
                 or phase.get("next_refresh_specialist_id") is not None
                 or dict(phase.get("trigger") or {}).get(
-                    "all_required_specialists_training_complete"
-                )
-                is not True
-                or dict(phase.get("trigger") or {}).get(
-                    "all_required_specialists_frozen_and_registered"
+                    "all_non_excepted_required_specialists_frozen_and_registered"
                 )
                 is not True
             )
@@ -945,17 +944,30 @@ def _validated_post_fleet_refresh_progress(
         )
         core = dict(receipt.get("resolved_core") or {})
         training = dict(receipt.get("training_contract") or {})
+        measured_pass = (
+            receipt.get("status") == "passed_frozen_registered"
+            and receipt.get("current_gate_pass") is True
+            and receipt.get("measured_gate_pass", True) is True
+        )
+        owner_ceiling_complete = (
+            receipt.get("status")
+            == "ceiling_accepted_frozen_registered"
+            and receipt.get("completion_authority")
+            == "explicit_owner_ceiling_acceptance"
+            and receipt.get("current_gate_pass") is False
+            and receipt.get("measured_gate_pass") is False
+            and receipt.get("failed_gate_results_preserved") is True
+        )
         if (
             receipt.get("schema")
             != POST_FLEET_REFRESH_COMPLETION_SCHEMA
-            or receipt.get("status") != "passed_frozen_registered"
+            or not (measured_pass or owner_ceiling_complete)
             or str(receipt.get("specialist_id") or "") != specialist_id
             or not str(receipt.get("refresh_model_version") or "")
             or not checkpoint_digest.startswith("sha256:")
             or checkpoint_digest == original_digest
             or receipt.get("original_checkpoint_checksum")
             != original_digest
-            or receipt.get("current_gate_pass") is not True
             or receipt.get("frozen") is not True
             or receipt.get("registered") is not True
             or not str(receipt.get("gate_receipt_sha256") or "").startswith(
@@ -971,9 +983,11 @@ def _validated_post_fleet_refresh_progress(
             or not str(core.get("checkpoint_checksum") or "").startswith(
                 "sha256:"
             )
-            or not str(core.get("ready_receipt_sha256") or "").startswith(
-                "sha256:"
-            )
+            or not str(
+                core.get("ready_receipt_sha256")
+                or core.get("boundary_receipt_sha256")
+                or ""
+            ).startswith("sha256:")
             or training.get("canonical_source")
             != "config/rl_protocol.yaml#/specialist_training"
             or not str(training.get("sha256") or "").startswith("sha256:")

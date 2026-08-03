@@ -1,0 +1,33 @@
+{
+  "schema": "poke_bot.final_format_marnie_h10_registration_guard_correction/v1",
+  "status": "activated_before_registration",
+  "recorded_at_utc": "2026-08-02T19:06:56Z",
+  "goal_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "correction": {
+    "superseded_selected_epoch_minimum": 21,
+    "corrected_selected_epoch_minimum": 16,
+    "selected_epoch_maximum": 25,
+    "reason": "The cumulative 25-epoch schedule adds outcome_distribution and remaining_turns at epoch 16, so every one of the eleven expanded heads is gradient-enabled from epochs 16 through 25. Restricting selection to 21 through 25 would have rejected valid full-head candidates and contradicted the implemented best-checkpoint selector.",
+    "incomplete_head_epochs_rejected": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    "full_head_epochs_eligible": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+    "failure_behavior": "fail_closed_before_runtime_registration"
+  },
+  "artifacts": {
+    "protocol_sha256": "sha256:80151b4422033726ac1a804ff54ed5ec6c2bfefcdcd394f99813ced4c2d9606a",
+    "corrected_registration_script_sha256": "sha256:9b37b1bf3c852a4b09feb157f38778ab82232b251620bf3b0663252ec29ea0ff",
+    "corrected_focused_test_sha256": "sha256:1f95dddd4fb2a04dc7401693023478003839958050ee1df3025f601aded46b0c",
+    "superseded_guard_receipt_sha256": "sha256:2f8fa76c454afd5d866422bf17c3b2ffb837769433907024339e6a26b8ac800c"
+  },
+  "validation": {
+    "focused_tests_passed": 8,
+    "python_compile_passed": true,
+    "deployed_script_digest_matches": true,
+    "registration_service_active_during_change": false,
+    "bootstrap_pid": 608116,
+    "bootstrap_restart_count": 0,
+    "bootstrap_interrupted": false
+  },
+  "activation_boundary": "before_epoch_16_full_head_candidate_and_runtime_registration",
+  "next_boundary": "first_completed_full_head_epoch_16_checkpoint"
+}

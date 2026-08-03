@@ -84,6 +84,27 @@ def test_remote_result_queue_is_two_ram_waves_plus_bounded_disk() -> None:
     assert "POKEBOT_REMOTE_RESULT_SPOOL_MAX_GB" in src
 
 
+def test_early_pool_release_is_explicitly_boundary_gated() -> None:
+    src = (ROOT / "scripts" / "train_pure_rl.py").read_text(encoding="utf-8")
+    scheduler_src = (ROOT / "poke_bot" / "remote_jobs.py").read_text(
+        encoding="utf-8"
+    )
+    assert "POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN" in src
+    assert 'BEFORE_RESULT_DRAIN", "0"' in src
+    assert "on_producers_drained=(" in src
+    additive_branch = src.split("return iter_additive_results(", 1)[1].split(
+        "# Primary: pure self-play", 1
+    )[0]
+    assert "on_producers_drained=(" in additive_branch
+    assert "pool.release()" in src
+    grow = scheduler_src.split(
+        "def _maybe_grow_remote_slots(dec: Any) -> None:", 1
+    )[1].split("def _maybe_shrink_remote_slots", 1)[0]
+    assert "with claim_lock:" in grow
+    assert "if not remaining:" in grow
+    assert grow.index("if not remaining:") < grow.index("demand = dict(")
+
+
 def test_remote_result_overflow_spills_and_is_removed(tmp_path: Path) -> None:
     out_q = _SpillableResultQueue(
         memory_capacity=1,
@@ -176,6 +197,16 @@ def test_leaf_farm_reaps_terminated_children_and_closes_every_queue() -> None:
     assert "close_mp_queue(q)" in leaf
     for queue_group in ("self.req_qs", "self.ctrl_qs", "self.status_qs", "self.resp_qs"):
         assert queue_group in leaf
+
+
+def test_leaf_reload_uses_one_global_fail_closed_deadline() -> None:
+    src = (ROOT / "scripts" / "train_pure_rl.py").read_text(encoding="utf-8")
+    leaf = src[src.index("class _LeafFarm:") : src.index("def run_smoke_loop(")]
+    reload_src = leaf[leaf.index("    def reload(") : leaf.index("    def stop(")]
+    assert "reload_deadline = time.monotonic() + 240.0" in reload_src
+    assert "remaining = reload_deadline - time.monotonic()" in reload_src
+    assert "status = sq.get(timeout=remaining)" in reload_src
+    assert "sq.get(timeout=240)" not in reload_src
 
 
 def test_systemd_unit_disables_dynamic_growth_and_enforces_cgroup_limits() -> None:

@@ -27,13 +27,17 @@ def test_static_handoff_preflight_performs_no_model_or_replay_work() -> None:
             / "ops/final_submission/final_format_alakazam_static_preparation_v1.json"
         ),
         validation_receipt_path=(
-            ROOT / "state/final_format_alakazam_static_preparation_validation_v11.json"
+            ROOT / "state/final_format_alakazam_static_preparation_validation_v12.json"
         ),
         cycle_contract_path=ROOT / "ops/specialist_cycle_handoff_v1.json",
         state_path=ROOT / "state/specialists.yaml",
     )
     assert result["checked_artifact_count"] == 10
-    assert result["refresh_order"] == ["alakazam", "marnie-s-grimmsnarl-ex"]
+    assert result["refresh_order"] == [
+        "alakazam",
+        "marnie-s-grimmsnarl-ex",
+        "crustle",
+    ]
     assert result["completed_refresh_specialist_ids"] == []
     assert result["model_or_replay_computation_performed"] is False
 

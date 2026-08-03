@@ -76,3 +76,29 @@ def test_h10_widening_preserves_parent_neurons_and_zeroes_new_outputs() -> None:
             or key.startswith("decision_fusion.dedicated_routes.")
         ) and ".network.2." in key:
             assert torch.count_nonzero(tensor).item() == 0
+
+
+def test_h10_can_materialize_directional_fusion_v3_before_training() -> None:
+    parent = _ordinary_parent()
+    child, evidence = build_h10_child(parent, directional_fusion_v3=True)
+
+    assert evidence["directional_fusion_v3"] is True
+    assert evidence["step_zero_parity"]["passed"] is True
+    assert child.cfg.decision_fusion_typed_output_centered_routes_enabled is True
+    assert child.cfg.decision_fusion_action_type_reliability_cap == 0.25
+    fusion = child.decision_fusion
+    assert isinstance(fusion, CausalDecisionFusion)
+    assert fusion.typed_output_centered_routes is True
+    assert len(fusion.dedicated_route_log_reliability) == 19
+    assert all(
+        float(value.detach().item()) == 0.0
+        for value in fusion.dedicated_route_log_reliability.values()
+    )
+    inventory = child.decision_fusion_inventory()
+    assert inventory["schema"] == "poke_bot.causal_decision_fusion/v3"
+    assert (
+        inventory["dedicated_routes"]["schema"]
+        == "typed_output_centered_per_head/v3"
+    )
+    assert inventory["dedicated_routes"]["reliability_bounds"] == [0.25, 4.0]
+    assert inventory["dedicated_routes"]["action_type_reliability_cap"] == 0.25

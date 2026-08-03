@@ -404,8 +404,9 @@ def test_slowking_is_required_but_fail_closed_behind_archaludon() -> None:
 
     crustle = next(row for row in state["specialists"] if row["id"] == "crustle")
     assert crustle["required_specialist"] is False
+    assert crustle["post_fleet_specialist_required"] is True
     assert crustle["selector_eligible"] is False
-    assert crustle["completion_eligible"] is False
+    assert crustle["completion_eligible"] is True
     assert crustle["submission_authorized"] is False
     assert crustle["matchup_router"] == {
         "stable_matchup_slot": 0,

@@ -1,0 +1,31 @@
+[Unit]
+Description=Exact 25-epoch Marnie H10-I Fusion-v3 expert bootstrap
+After=pokebot-final-format-marnie-r104-h10-materialize.service
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-h10-materialization.json
+OnSuccess=pokebot-final-format-marnie-r104-h10-register.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg
+Environment=POKEBOT_H10_CAPACITY_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_TYPED_OUTPUT_CENTERED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ACTION_TYPE_RELIABILITY_CAP=0.25
+Environment=POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_HEAD_ENABLED=1
+Environment=POKEBOT_EXPANDED_HEADS_ENABLED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_final_format_marnie_h10_bootstrap.py --prestage /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r79-prestage-r104-h10-19.json --latest-core /home/inzi/poke-bot-agent/outputs/state/latest-cumulative-core.json --child /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/h10/marnie_r104_h10_i_fusion_v3_step_zero.pt --migration-receipt /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/h10/marnie_r104_h10_i_fusion_v3_migration.json --role-route-receipt /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/h10/marnie_r104_h10_i_fusion_v3_roles.json --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json --curriculum-spec /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-r104.json --head-role-map /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-head-roles-r104.json --curriculum-validation /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-validation-r104.json --rl-protocol /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/config/rl_protocol.yaml --run-name final_format_marnie_r104_h10_bootstrap --run-dir /home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10 --cpu-pack-root /home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/final_format_marnie_r104_h10 --registry-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models --family final-format-marnie-r104-h10-expert-bootstrap-v1 --ready /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-h10-bootstrap-ready.json --epochs 25 --batch-size 2048
+Restart=on-failure
+RestartSec=60
+MemoryHigh=64G
+MemoryMax=80G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/h10_bootstrap.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/h10_bootstrap.log

@@ -5,6 +5,7 @@ import pytest
 
 from poke_bot.strategic_losses import (
     expanded_strategic_losses,
+    guide_pairwise_route_ranking_loss,
     resident_expanded_strategic_losses,
 )
 from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
@@ -338,3 +339,47 @@ def test_host_action_utility_only_trains_final_canonical_stage() -> None:
     total.backward()
     assert torch.count_nonzero(option["action_utility"].grad[0]) == 0
     assert torch.count_nonzero(option["action_utility"].grad[1]) > 0
+
+
+def test_guide_pairwise_route_ranking_is_training_only_and_head_scoped() -> None:
+    route_deltas = {
+        "action_q": torch.zeros(3, 4, requires_grad=True),
+        "action_resource": torch.zeros(3, 4, requires_grad=True),
+        "setup_board_outcome": torch.zeros(3, 4, requires_grad=True),
+        # Deliberately excluded: an unlabeled action_type route must not become
+        # a hidden guide-imitation path.
+        "action_type": torch.zeros(3, 4, requires_grad=True),
+    }
+    loss, metrics = guide_pairwise_route_ranking_loss(
+        route_deltas=route_deltas,
+        guide_target_indices=torch.tensor([2, -1, 1]),
+        guide_confidences=torch.tensor([1.0, 0.0, 0.5]),
+        option_counts=torch.tensor([4, 3, 2]),
+    )
+    assert loss.item() > 0.0
+    assert metrics["eligible_rows"] == 2
+    assert set(metrics["heads"]) == {
+        "action_q",
+        "action_resource",
+        "setup_board_outcome",
+    }
+    loss.backward()
+    assert torch.count_nonzero(route_deltas["action_q"].grad) > 0
+    assert torch.count_nonzero(route_deltas["action_resource"].grad) > 0
+    assert torch.count_nonzero(route_deltas["setup_board_outcome"].grad) > 0
+    assert route_deltas["action_type"].grad is None
+
+
+def test_guide_pairwise_route_ranking_masks_forced_single_option_rows() -> None:
+    route = torch.zeros(3, 3, requires_grad=True)
+    loss, metrics = guide_pairwise_route_ranking_loss(
+        route_deltas={"action_q": route},
+        guide_target_indices=torch.tensor([0, 1, 2]),
+        guide_confidences=torch.tensor([1.0, 1.0, 1.0]),
+        option_counts=torch.tensor([1, 2, 3]),
+    )
+    assert loss.item() > 0.0
+    assert metrics["eligible_rows"] == 2
+    loss.backward()
+    assert torch.count_nonzero(route.grad[0]) == 0
+    assert torch.count_nonzero(route.grad[1:]) > 0

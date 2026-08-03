@@ -1,0 +1,32 @@
+{
+  "schema": "poke_bot.final_format_alakazam_gate_handler_repair/v1",
+  "status": "active_guard_corrected",
+  "recorded_at_utc": "2026-07-31T21:28:12Z",
+  "owner_decision_revision": 98,
+  "specialist_id": "alakazam",
+  "finding": {
+    "stale_handler_registry": "specialist_runtime_registry_h10_v8.json",
+    "stale_gate_contract": "ops/final_format_alakazam_gate_r80_v3.json",
+    "stale_premium_skill_weighted_win_rate": 0.65,
+    "risk": "The long-running terminal handler could have evaluated a future checkpoint against the superseded 65-percent gate."
+  },
+  "repair": {
+    "managed_unit": "pokebot-final-format-alakazam-r79-gate-handler.service",
+    "unit_sha256": "sha256:372980d96e43de586982ed53fea302c6bd59e4dd274d4aeadbbb0d9df8b7705c",
+    "runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r90_post_iter0_all_remotes.json",
+    "runtime_registry_sha256": "sha256:741bd8d1f90768e2fb0a42ca15527d6005beb6fa0b457777d59ba3c77de87f4a",
+    "gate_contract": "ops/final_format_alakazam_gate_r94_v4.json",
+    "gate_contract_sha256": "sha256:41a30f1f5069e3f7ce3ce0285724a63bd5d18b0fe1198f8868b13474a0492cd3",
+    "premium_skill_weighted_win_rate": 0.75,
+    "rating_simulation_projected_lower_bound": 1000,
+    "handler_pid_after_repair": 1080343
+  },
+  "continuity": {
+    "training_service": "pokebot-final-format-alakazam-r79-h10.service",
+    "training_pid_before_and_after": 1001946,
+    "training_restart_count_before_and_after": 1,
+    "training_restart_performed": false,
+    "active_iteration": 1,
+    "handler_phase": "waiting_for_exact_gate_pass"
+  }
+}

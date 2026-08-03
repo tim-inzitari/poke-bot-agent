@@ -1,0 +1,35 @@
+{
+  "schema": "poke_bot.final_format_marnie_h10_runtime_route_guard/v1",
+  "status": "activated_before_registration",
+  "recorded_at_utc": "2026-08-02T19:10:54Z",
+  "goal_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "guard": {
+    "decision_fusion_schema": "poke_bot.causal_decision_fusion/v3",
+    "decision_fusion_runtime_enabled_required": true,
+    "guide_excluded_from_runtime_fusion_required": true,
+    "dedicated_routes_enabled_required": true,
+    "dedicated_routes_runtime_enabled_required": true,
+    "exact_route_count": 19,
+    "route_schema": "typed_output_centered_per_head/v3",
+    "failure_behavior": "fail_closed_before_runtime_registration"
+  },
+  "artifacts": {
+    "registration_script_sha256": "sha256:c0ddbc479dd0dcfdff72afe7b6c3559ff4b1937bbf8db4eee82ef44ce553d874",
+    "bootstrap_test_sha256": "sha256:1f95dddd4fb2a04dc7401693023478003839958050ee1df3025f601aded46b0c",
+    "h10_migration_test_sha256": "sha256:5b149dae92964d82ec132933ac57f95ea6c7d6b413d84661b74d63ad50463aff",
+    "prior_schedule_guard_receipt_sha256": "sha256:97f8c0291d0622ba1597d0f990004f181fac06ac10cbbcaaad6ec765b150f740"
+  },
+  "validation": {
+    "focused_tests_passed": 11,
+    "python_compile_passed": true,
+    "cg_runtime_bound_for_model_tests": true,
+    "deployed_script_digest_matches": true,
+    "registration_service_active_during_change": false,
+    "bootstrap_pid": 608116,
+    "bootstrap_restart_count": 0,
+    "bootstrap_interrupted": false
+  },
+  "activation_boundary": "before_first_full_head_checkpoint_registration",
+  "next_boundary": "completed_epoch_16_or_later_best_checkpoint"
+}

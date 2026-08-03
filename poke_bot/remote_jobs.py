@@ -291,9 +291,9 @@ class _EndpointClaimCredits:
     ``inflight`` counts jobs claimed by an endpoint but not yet completed.
     Healthy endpoints with live emitters receive a bounded credit target; a
     faster peer may refill its own credit but cannot consume another
-    endpoint's deficit.  Reservations deliberately stop in the final 5% of a
-    wave, where avoiding stranded tail work matters more than steady-state
-    queue depth.
+    endpoint's deficit. Reservations deliberately taper in the final 20% of a
+    wave, where keeping the shared local pool eligible matters more than
+    steady-state queue depth.
 
     The caller serializes this object with the dispatcher's claim lock.  It is
     intentionally bookkeeping-only: no health probe, connect, submit, or
@@ -302,7 +302,24 @@ class _EndpointClaimCredits:
 
     def __init__(self, *, total_jobs: int) -> None:
         total = max(0, int(total_jobs))
-        self.tail_jobs = max(1, (total + 19) // 20) if total > 0 else 0
+        fraction = min(
+            0.50,
+            max(
+                0.05,
+                _env_float(
+                    "POKEBOT_REMOTE_TAIL_WORK_STEAL_FRACTION",
+                    0.20,
+                ),
+            ),
+        )
+        self.tail_fraction = float(fraction)
+        self.tail_jobs = (
+            max(1, int(total * fraction + 0.999999999)) if total > 0 else 0
+        )
+        # Endpoint-credit spill keeps its established final-5% escape hatch.
+        # The broader configurable window is consumed only by the mixed
+        # dispatcher, which can prove that a local work-stealing pool exists.
+        self.credit_spill_tail_jobs = max(1, (total + 19) // 20) if total else 0
         self.targets: dict[str, int] = {}
         self.inflight: dict[str, int] = {}
         self.claimed_total: dict[str, int] = {}
@@ -351,6 +368,23 @@ class _EndpointClaimCredits:
                 f"finished={count} inflight={have}"
             )
         self.inflight[ep] = have - count
+
+    def note_released(self, endpoint: str, n: int) -> None:
+        """Return controller-owned jobs to the exact shared pool."""
+        ep = str(endpoint)
+        count = max(0, int(n))
+        inflight = max(0, int(self.inflight.get(ep, 0)))
+        claimed = max(0, int(self.claimed_total.get(ep, 0)))
+        if count > inflight or count > claimed:
+            raise RuntimeError(
+                f"remote endpoint credit release underflow for {ep}: "
+                f"released={count} inflight={inflight} claimed={claimed}"
+            )
+        self.inflight[ep] = inflight - count
+        self.claimed_total[ep] = claimed - count
+
+    def in_tail(self, wave_remaining: int) -> bool:
+        return max(0, int(wave_remaining)) <= int(self.tail_jobs)
 
     def _eligible_endpoints(self) -> list[str]:
         return sorted(
@@ -419,8 +453,10 @@ class _EndpointClaimCredits:
         requested = min(max(0, int(want)), max(0, int(remaining_count)))
         if requested <= 0:
             return 0
-        # The allocation tail is an explicit correctness/throughput override.
-        if max(0, int(wave_remaining)) <= self.tail_jobs:
+        # Preserve the endpoint allocator's final-5% spill escape hatch.
+        # Mixed collection applies its broader 20% one-game cap in the
+        # dispatcher, where it knows a local claimant actually exists.
+        if max(0, int(wave_remaining)) <= self.credit_spill_tail_jobs:
             return requested
 
         ep = str(endpoint)
@@ -1939,6 +1975,7 @@ def iter_additive_results(
     local_workers: int,
     remote_workers: int = 0,
     on_execution: Optional[Callable[[dict[str, Any]], None]] = None,
+    on_producers_drained: Optional[Callable[[], None]] = None,
 ) -> Iterator[dict[str, Any]]:
     """Run local WorkerPool and optional remote TCP workers in parallel.
 
@@ -1949,18 +1986,26 @@ def iter_additive_results(
     ``info.workers`` sockets (one job in flight per socket), so additive
     capacity is real in-flight games — not one serial pipeline per host.
     """
-    if not remote_clients or int(remote_workers) <= 0:
+    remote_enabled = bool(remote_clients and int(remote_workers) > 0)
+    if not remote_enabled and on_producers_drained is None:
         for row in local_pool.imap_unordered(local_fn, jobs):
             if on_execution is not None:
                 on_execution({"origin": "local", "kind": kind})
             yield row
         return
 
-    local_jobs, remote_jobs = split_jobs_additive(
-        jobs,
-        local_workers=local_workers,
-        remote_workers=remote_workers,
-    )
+    if remote_enabled:
+        local_jobs, remote_jobs = split_jobs_additive(
+            jobs,
+            local_workers=local_workers,
+            remote_workers=remote_workers,
+        )
+    else:
+        # With an early-release callback, put the local iterator behind the
+        # same bounded spill queue as additive dispatch. This lets the pool's
+        # producer finish and release its worker processes while the serialized
+        # consumer is still compacting already-durable rows.
+        local_jobs, remote_jobs = list(jobs), []
     out_q = _SpillableResultQueue(
         memory_capacity=result_queue_capacity(
             local_workers=local_workers, remote_workers=remote_workers
@@ -1971,6 +2016,29 @@ def iter_additive_results(
     producer_stop = threading.Event()
     threads: list[threading.Thread] = []
     remote_slots: list[RemoteJobClient] = []
+    producer_lifecycle_lock = threading.Lock()
+    producers_registered = 0
+    producers_finished = 0
+    producers_drained_notified = False
+
+    def _producer_finished() -> None:
+        nonlocal producers_finished, producers_drained_notified
+        callback: Optional[Callable[[], None]] = None
+        with producer_lifecycle_lock:
+            producers_finished += 1
+            if (
+                not producers_drained_notified
+                and producers_registered > 0
+                and producers_finished == producers_registered
+            ):
+                producers_drained_notified = True
+                callback = on_producers_drained
+        if callback is not None:
+            try:
+                callback()
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+                producer_stop.set()
 
     def _emit_local() -> None:
         try:
@@ -1989,6 +2057,7 @@ def iter_additive_results(
             _put_thread_result(out_q, producer_stop, ("err", exc))
         finally:
             _put_thread_result(out_q, producer_stop, ("done", None))
+            _producer_finished()
 
     no_local_fallback = _env_truthy("POKEBOT_REMOTE_NO_LOCAL_FALLBACK") or _env_truthy(
         "POKEBOT_REMOTE_ONLY"
@@ -2092,6 +2161,7 @@ def iter_additive_results(
             _put_thread_result(out_q, producer_stop, ("err", exc))
         finally:
             _put_thread_result(out_q, producer_stop, ("done", None))
+            _producer_finished()
 
     try:
         if remote_jobs:
@@ -2163,6 +2233,10 @@ def iter_additive_results(
                     f"per_endpoint[{', '.join(parts)}]",
                     flush=True,
                 )
+        with producer_lifecycle_lock:
+            producers_registered = len(threads)
+        if not threads and on_producers_drained is not None:
+            on_producers_drained()
         for thread in threads:
             thread.start()
 
@@ -2213,6 +2287,7 @@ def iter_scheduled_additive_results(
     remote_workers: int = 0,
     on_remote_slots: Optional[Callable[[dict[str, int]], None]] = None,
     on_execution: Optional[Callable[[dict[str, Any]], None]] = None,
+    on_producers_drained: Optional[Callable[[], None]] = None,
 ) -> Iterator[dict[str, Any]]:
     """Additive collect with mid-wave rebalance of *new chunk claims*.
 
@@ -2223,6 +2298,13 @@ def iter_scheduled_additive_results(
     ``on_remote_slots`` (optional) is invoked with
     ``{active, demand, claimed_remote}`` whenever open remote sockets or
     scheduler demand change — used to keep tqdm ``remotes=`` live.
+
+    ``on_producers_drained`` runs exactly once after every local/remote
+    producer has finished and all result/done records are durably queued, but
+    potentially before the consumer has compacted the queue.  Production uses
+    this only behind an explicit boundary-gated flag to join the exhausted
+    local simulator pool and release anonymous model memory during a long
+    result-spool drain.
     """
     if scheduler is None or not remote_clients or int(remote_workers) <= 0:
         yield from iter_additive_results(
@@ -2234,6 +2316,7 @@ def iter_scheduled_additive_results(
             local_workers=local_workers,
             remote_workers=remote_workers,
             on_execution=on_execution,
+            on_producers_drained=on_producers_drained,
         )
         return
 
@@ -2256,6 +2339,10 @@ def iter_scheduled_additive_results(
     refill_monitor: Optional[threading.Thread] = None
     pending_lock = threading.Lock()
     threads: list[threading.Thread] = []
+    producer_lifecycle_lock = threading.Lock()
+    producers_registered = 0
+    producers_finished = 0
+    producers_drained_notified = False
     slots_by_endpoint: dict[str, int] = {}
     refill_slot_floor: dict[str, int] = {}
     low_water_recovery: set[str] = set()
@@ -2294,7 +2381,12 @@ def iter_scheduled_additive_results(
     endpoint_queue_safety_ceiling: dict[str, int] = {
         endpoint: 0 for endpoint in endpoint_templates
     }
+    endpoint_execution_target: dict[str, int] = {
+        endpoint: 0 for endpoint in endpoint_templates
+    }
     endpoint_credits = _EndpointClaimCredits(total_jobs=total_jobs)
+    tail_work_steal_started = False
+    tail_work_steal_released = 0
     credit_demand_signature: Optional[tuple[tuple[str, int], ...]] = None
     log_scheduler = getattr(scheduler, "maybe_tick", None)
     no_local_fallback = _env_truthy(
@@ -2303,6 +2395,73 @@ def iter_scheduled_additive_results(
     remote_only = _env_truthy("POKEBOT_REMOTE_ONLY")
     demand_queue_mode = _env_truthy("POKEBOT_REMOTE_DEMAND_QUEUE")
     endpoint_owned_queue_mode = bool(demand_queue_mode or remote_only)
+    self_play_elmo_tail_only = bool(
+        kind == "self_play"
+        and _env_truthy("POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY")
+    )
+
+    def _tail_endpoint_target(endpoint: str) -> int:
+        """Return the controller-owned target once tail stealing starts.
+
+        Self-play has a materially different tail profile from public play:
+        Bert's CPU games are the long stragglers, while Elmo can productively
+        keep one GPU execution wave plus one queued wave.  The opt-in policy
+        therefore stops new Bert tail claims and gives Elmo the two-wave
+        target. Other collection kinds retain the existing one-wave target.
+        """
+        ep = str(endpoint)
+        execution = max(0, int(endpoint_execution_target.get(ep, 0)))
+        if not self_play_elmo_tail_only:
+            return execution
+        template = endpoint_templates.get(ep)
+        if template is None or template.host.strip().lower() not in _ELMO_HOSTS:
+            return 0
+        return min(
+            max(0, int(endpoint_queue_safety_ceiling.get(ep, 0))),
+            2 * execution,
+        )
+
+    def _register_producer(thread: threading.Thread) -> bool:
+        """Register ``thread`` unless the producer boundary already sealed.
+
+        Refill monitors open sockets concurrently with the final claims.  A
+        monitor may therefore finish connecting after the last registered
+        producer has durably queued its done record.  That late socket owns no
+        work and must be declined rather than turning a sealed producer
+        boundary back into a live one.
+        """
+        nonlocal producers_registered
+        with producer_lifecycle_lock:
+            if producers_drained_notified:
+                return False
+            producers_registered += 1
+            threads.append(thread)
+            return True
+
+    def _producer_finished() -> None:
+        nonlocal producers_finished, producers_drained_notified
+        callback: Optional[Callable[[], None]] = None
+        with producer_lifecycle_lock:
+            producers_finished += 1
+            with claim_lock:
+                no_unclaimed_jobs = not remaining
+            if (
+                not producers_drained_notified
+                and no_unclaimed_jobs
+                and producers_registered > 0
+                and producers_finished == producers_registered
+            ):
+                producers_drained_notified = True
+                callback = on_producers_drained
+        if callback is not None:
+            try:
+                callback()
+            except BaseException as exc:  # noqa: BLE001
+                # The final producer has already queued its ``done`` record.
+                # Preserve that ordering, retain the failure for the consumer's
+                # post-drain error check, and stop any ancillary monitor work.
+                errors.append(exc)
+                producer_stop.set()
 
     def _refresh_endpoint_credit_targets(dec: Any) -> None:
         """Refresh pure per-endpoint work targets under ``claim_lock``.
@@ -2343,6 +2502,7 @@ def iter_scheduled_additive_results(
                 max(0, int(execution_demand)),
                 endpoint_max_workers(template.host, template.port),
             )
+            endpoint_execution_target[ep] = execution
             if execution <= 0:
                 endpoint_credits.set_target(ep, 0)
                 endpoint_queue_high_water[ep] = 0
@@ -2379,6 +2539,60 @@ def iter_scheduled_additive_results(
             available = max(0, available - local_reserve)
         return available
 
+    def _start_tail_work_steal_locked() -> None:
+        """Return excess endpoint reservations before the remote-only tail.
+
+        Caller holds ``claim_lock``. Only controller-owned deque rows can be
+        returned; jobs already executing or held by a request emitter retain
+        their exact owner and finish normally.
+        """
+        nonlocal claimed_remote
+        nonlocal tail_work_steal_started, tail_work_steal_released
+        if tail_work_steal_started:
+            return
+        if not endpoint_owned_queue_mode or remote_only:
+            return
+        if not endpoint_credits.in_tail(len(remaining)):
+            return
+        tail_work_steal_started = True
+        returned: list[dict[str, Any]] = []
+        released_by_endpoint: dict[str, int] = {}
+        for endpoint in sorted(endpoint_owned_queues):
+            owned = endpoint_owned_queues[endpoint]
+            execution_wave = _tail_endpoint_target(endpoint)
+            # Credit inflight includes this controller deque plus jobs already
+            # executing or held in an emitter-private request list. Only the
+            # deque is safely returnable, so subtract those non-deque owners
+            # before deciding how much of the deque may remain reserved.
+            non_deque_inflight = max(
+                0,
+                int(endpoint_credits.inflight.get(endpoint, 0)) - len(owned),
+            )
+            keep = max(0, execution_wave - non_deque_inflight)
+            count = max(0, len(owned) - keep)
+            if count <= 0:
+                continue
+            rows = [owned.pop() for _ in range(count)]
+            endpoint_credits.note_released(endpoint, count)
+            claimed_remote -= count
+            released_by_endpoint[endpoint] = count
+            returned.extend(rows)
+        returned.sort(key=lambda row: int(row.get("job_index", 0)))
+        for row in reversed(returned):
+            remaining.appendleft(row)
+        tail_work_steal_released = len(returned)
+        print(
+            "[remote] tail_work_steal=start "
+            f"fraction={endpoint_credits.tail_fraction:.2f} "
+            f"threshold_jobs={endpoint_credits.tail_jobs} "
+            f"returned_to_shared={len(returned)} "
+            f"released_by_endpoint={released_by_endpoint} "
+            f"shared_remaining={len(remaining)} "
+            "remote_claim_games=1 local_pool_remains_eligible=true "
+            f"self_play_elmo_tail_only={self_play_elmo_tail_only}",
+            flush=True,
+        )
+
     def _refill_endpoint_queue_locked(endpoint: str, dec: Any) -> int:
         """Fill one endpoint-owned queue without consuming peer credit.
 
@@ -2390,8 +2604,16 @@ def iter_scheduled_additive_results(
         nonlocal claimed_remote
         ep = str(endpoint)
         _refresh_endpoint_credit_targets(dec)
+        _start_tail_work_steal_locked()
         owned = endpoint_owned_queues.setdefault(ep, deque())
-        target = max(0, int(endpoint_queue_high_water.get(ep, 0)))
+        target = max(
+            0,
+            int(
+                _tail_endpoint_target(ep)
+                if tail_work_steal_started
+                else endpoint_queue_high_water.get(ep, 0)
+            ),
+        )
         if target <= 0 or not remaining:
             return 0
         need = max(0, target - len(owned))
@@ -2400,7 +2622,7 @@ def iter_scheduled_additive_results(
         available = _endpoint_remote_available_locked()
         granted = endpoint_credits.claim_limit(
             ep,
-            want=need,
+            want=(min(1, need) if tail_work_steal_started else need),
             remaining_count=available,
             wave_remaining=len(remaining),
         )
@@ -2442,6 +2664,10 @@ def iter_scheduled_additive_results(
         if want <= 0:
             return []
         with claim_lock:
+            _start_tail_work_steal_locked()
+            if side == "remote" and tail_work_steal_started:
+                requested_want = min(requested_want, 1)
+                want = min(want, 1)
             initial_attempt = bool(
                 side == "remote"
                 and initial_token is not None
@@ -2670,6 +2896,7 @@ def iter_scheduled_additive_results(
         finally:
             local_emitter_done.set()
             _put_thread_result(out_q, producer_stop, ("done", None))
+            _producer_finished()
 
     # Cooperative retire tokens: when demand shrinks, excess emit threads
     # exit between chunks so live sockets fall with demand (not grow-only).
@@ -2756,6 +2983,20 @@ def iter_scheduled_additive_results(
                     (int(endpoint_backlog) + live_endpoint_slots - 1)
                     // live_endpoint_slots,
                 )
+                if endpoint_owned_queue_mode and not remote_only:
+                    # A mixed collection may not hide more than half of the
+                    # tail window in emitter-private lists. Production's many
+                    # sockets remain at their existing small per-slot chunks,
+                    # while a small fleet cannot privately span the boundary
+                    # before its controller-owned reservations are released.
+                    private_tail_cap = max(
+                        1,
+                        int(endpoint_credits.tail_jobs)
+                        // max(1, 2 * live_endpoint_slots),
+                    )
+                    chunk = min(chunk, private_tail_cap)
+                    if tail_work_steal_started:
+                        chunk = 1
                 batch = _claim(
                     "remote",
                     chunk,
@@ -2879,6 +3120,7 @@ def iter_scheduled_additive_results(
                     flush=True,
                 )
             _put_thread_result(out_q, producer_stop, ("done", None))
+            _producer_finished()
 
     try:
         bind = getattr(scheduler, "bind_remote_endpoints", None)
@@ -2936,7 +3178,7 @@ def iter_scheduled_additive_results(
         if not initial_remote_leaders:
             initial_endpoint_leaders_ready.set()
         if not remote_only:
-            threads.append(
+            _register_producer(
                 threading.Thread(target=_emit_local, name="sched-local", daemon=True)
             )
         for slot_index, client in enumerate(remote_slots):
@@ -2947,7 +3189,7 @@ def iter_scheduled_additive_results(
             # first fast Elmo claimant already protects Bert's full credit;
             # fairness does not depend on OS thread-start order.
             endpoint_credits.register(client.endpoint)
-            threads.append(
+            _register_producer(
                 threading.Thread(
                     target=_emit_remote,
                     args=(client, slot_index),
@@ -3017,6 +3259,14 @@ def iter_scheduled_additive_results(
         def _maybe_grow_remote_slots(dec: Any) -> None:
             """Hot-add remote sockets when scheduler demand rises mid-wave."""
             nonlocal pending
+            # A scheduler decision can retain its last nonzero demand after
+            # every job has already been claimed. Never create empty producer
+            # threads during the consumer-only result-spool tail: besides
+            # wasting sockets, that would violate the producer-drained
+            # callback's once-only lifecycle boundary.
+            with claim_lock:
+                if not remaining:
+                    return
             demand = dict(getattr(dec, "remote_demand", None) or {})
             if not demand:
                 return
@@ -3039,17 +3289,19 @@ def iter_scheduled_additive_results(
                                 flush=True,
                             )
                             break
-                        owned_clients.append(clone)
-                        slots_by_endpoint[ep] = slots_by_endpoint.get(ep, 0) + 1
-                        with claim_lock:
-                            endpoint_credits.register(ep)
                         t = threading.Thread(
                             target=_emit_remote,
                             args=(clone,),
                             name=f"sched-remote-grow-{ep}-{have + i}",
                             daemon=True,
                         )
-                        threads.append(t)
+                        if not _register_producer(t):
+                            clone.close()
+                            break
+                        owned_clients.append(clone)
+                        slots_by_endpoint[ep] = slots_by_endpoint.get(ep, 0) + 1
+                        with claim_lock:
+                            endpoint_credits.register(ep)
                         with pending_lock:
                             pending += 1
                         t.start()
@@ -3313,19 +3565,21 @@ def iter_scheduled_additive_results(
                         ):
                             clone.close()
                             continue
+                        thread = threading.Thread(
+                            target=_emit_remote,
+                            args=(clone,),
+                            name=f"sched-remote-low-water-{ep}-{have}",
+                            daemon=True,
+                        )
+                        if not _register_producer(thread):
+                            clone.close()
+                            continue
                         owned_clients.append(clone)
                         slots_by_endpoint[ep] = have + 1
                         retire_tokens[ep] = 0
                         refill_slot_floor[ep] = slots_by_endpoint[ep]
                         with claim_lock:
                             endpoint_credits.register(ep)
-                    thread = threading.Thread(
-                        target=_emit_remote,
-                        args=(clone,),
-                        name=f"sched-remote-low-water-{ep}-{have}",
-                        daemon=True,
-                    )
-                    threads.append(thread)
                     with pending_lock:
                         pending += 1
                     started[ep] += 1

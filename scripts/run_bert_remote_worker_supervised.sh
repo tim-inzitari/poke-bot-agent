@@ -2,9 +2,9 @@
 # Stable launchd entrypoint for Bert's remote self-play worker.
 #
 # POKEBOT_BERT_MEMORY_GUARD_V2
-# Bert's production backend is selected only from the completed exact-H10
-# whole-game receipt.  The current optimized topology uses four MPS leaves,
-# home-leaf worker affinity, BF16 autocast, and no per-batch cache eviction.
+# Bert's production backend is selected only from completed exact-H10
+# whole-game receipts. The current topology uses four CPU leaves with four
+# threads each; this beat 1t, 2t, 8t, and optimized MPS in whole-game GPS.
 # Keep the whole tree in an isolated process group and stop it before launchd
 # is allowed to retry if a guard is crossed.
 set -euo pipefail
@@ -32,10 +32,11 @@ export POKEBOT_MPS_AUTOCAST_DTYPE="bfloat16"
 # while the supervisor retains the 18 GiB tree cap and 30% free-memory floor.
 # Environment overrides make fleet tuning a service-owned configuration change
 # instead of another source edit.
-export OMP_NUM_THREADS="1"
-export MKL_NUM_THREADS="1"
-export OPENBLAS_NUM_THREADS="1"
-export VECLIB_MAXIMUM_THREADS="1"
+cpu_threads="${POKEBOT_BERT_CPU_THREADS:-4}"
+export OMP_NUM_THREADS="$cpu_threads"
+export MKL_NUM_THREADS="$cpu_threads"
+export OPENBLAS_NUM_THREADS="$cpu_threads"
+export VECLIB_MAXIMUM_THREADS="$cpu_threads"
 export NUMEXPR_NUM_THREADS="1"
 sim_workers="${POKEBOT_BERT_SIM_WORKERS:-16}"
 default_workers="${POKEBOT_BERT_DEFAULT_WORKERS:-16}"
@@ -387,7 +388,7 @@ trap 'handle_stop INT' INT
 trap 'handle_stop HUP' HUP
 trap 'terminate_worker_group "supervisor exit" || true' EXIT
 
-log "starting validated optimized MPS fleet worker on :$port workers=$sim_workers default=$default_workers leaf_servers=$leaf_servers checkpoint=$(readlink "$checkpoint" 2>/dev/null || printf '%s' "$checkpoint")"
+log "starting validated CPU-4t fleet worker on :$port workers=$sim_workers default=$default_workers leaf_servers=$leaf_servers threads=$cpu_threads checkpoint=$(readlink "$checkpoint" 2>/dev/null || printf '%s' "$checkpoint")"
 cd "$repo"
 
 # setsid places the parent, pool workers, resource tracker, manager, and MPS
@@ -405,7 +406,7 @@ os.execv(sys.argv[1], sys.argv[1:])
 ' "$python" -u "$worker" \
   --host 0.0.0.0 --port "$port" \
   --workers "$sim_workers" --default-workers "$default_workers" \
-  --leaf-servers "$leaf_servers" --leaf-gpu mps \
+  --leaf-servers "$leaf_servers" --leaf-gpu cpu \
   --leaf-max-batch "$leaf_max_batch" --leaf-queue-depth "$leaf_queue_depth" \
   --leaf-coalesce-ms "2" \
   --max-connections "$max_connections" \

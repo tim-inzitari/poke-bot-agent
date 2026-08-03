@@ -173,9 +173,20 @@ def evaluate_candidate_gate(
         and sample_ok
         and lower > config.threshold
     )
+    if failures:
+        reason = "invalid_games"
+    elif not sample_ok:
+        reason = "insufficient_balanced_valid_games"
+    elif lower <= config.threshold:
+        # An empty ``failures`` list means every game was valid; it does not
+        # mean the candidate passed the statistical non-regression gate.
+        reason = "confidence_lower_bound_not_above_threshold"
+    else:
+        reason = "passed"
     return {
         "passed": passed,
         "valid": not failures and sample_ok,
+        "reason": reason,
         "failures": failures,
         "games": valid_games,
         "wins": wins,

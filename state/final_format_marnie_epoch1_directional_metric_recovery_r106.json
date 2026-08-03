@@ -1,0 +1,54 @@
+{
+  "schema": "poke_bot.final_format_marnie_epoch_recovery/v1",
+  "status": "failed_unregistered_epoch_quarantined_repair_deployed",
+  "recorded_at_utc": "2026-08-02T16:54:31Z",
+  "goal_revision": 106,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "bootstrap_epoch": 1,
+  "failure": {
+    "kind": "directional_route_metric_aggregation_omission",
+    "message": "directional guide omitted a required Marnie route",
+    "checkpoint_was_registered": false,
+    "checkpoint_was_training_authoritative": false,
+    "checkpoint_was_selector_authoritative": false,
+    "directional_route_training_occurred": true,
+    "directional_routes_with_changed_head_or_route_tensors": [
+      "action_q",
+      "action_resource",
+      "action_utility",
+      "setup_board_outcome",
+      "combo_state"
+    ],
+    "source_corpus_combo_observed_rows": 0,
+    "source_corpus_setup_observed_rows": 0,
+    "missing_causal_labels_remain_masked": true,
+    "fabricated_labels_allowed": false
+  },
+  "quarantine": {
+    "original_path": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10/checkpoints/epoch_01.pt",
+    "preserved_path": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10/quarantine/failed-unregistered-epoch1-directional-metrics-r106/epoch_01.pt",
+    "checkpoint_sha256": "sha256:f125cd86da7bf17d22079d566ab435c55016249807407baf8c8779abfdf39a3f",
+    "checkpoint_bytes": 127297565,
+    "recoverable": true
+  },
+  "repair": {
+    "merge_directional_route_metrics_across_batches": true,
+    "require_all_five_directional_routes": true,
+    "require_positive_directional_eligible_rows": true,
+    "preserve_valid_all_masked_combo_targets": true,
+    "train_module_sha256": "sha256:d4fcaf5d175a53e098173e81c40d2d230f1e04e9e0c6e23d85ad28cfdbf12f07",
+    "bootstrap_module_sha256": "sha256:a17f07a6366afdd0412f5f824adb777cd98d4a8ff4fb80e688f5e028e569bc1a",
+    "focused_tests": {
+      "passed": 25,
+      "failed": 0,
+      "cg_lib_path": "/home/inzi/poke-bot-agent/kaggle/input/cg-lib"
+    }
+  },
+  "managed_service": {
+    "unit": "pokebot-final-format-marnie-r104-h10-bootstrap.service",
+    "stopped_before_quarantine": true,
+    "main_pid_after_stop": 0,
+    "interactive_sessions_modified": false
+  },
+  "next_boundary": "restart_same_managed_bootstrap_from_immutable_step_zero_child"
+}

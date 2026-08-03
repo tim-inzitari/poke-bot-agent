@@ -1,0 +1,19 @@
+[Unit]
+Description=Attempt normal post-Alakazam core refresh before Marnie H10
+After=pokebot-final-format-marnie-r79-handoff.service
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-alakazam-r79-h10-completion-v1.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r79-prestage-r104-h10-19.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_post_alakazam_core_refresh.py --template /home/inzi/poke-bot-agent/outputs/state/post-archaludon-ex-cumulative-core-v14-fused-v1-handoff.json --refresh-registry /home/inzi/poke-bot-agent/outputs/state/post-fleet-refresh-registry-v1.json --latest-core /home/inzi/poke-bot-agent/outputs/state/latest-cumulative-core.json --contract /home/inzi/poke-bot-agent/outputs/state/post-alakazam-cumulative-core-v15-r104-handoff.json --state /home/inzi/poke-bot-agent/outputs/state/post-alakazam-core-refresh-r104-state.json --lock /home/inzi/.local/state/pokebot/post-alakazam-core-refresh-r104.lock --receipt /home/inzi/poke-bot-agent/outputs/state/post-alakazam-core-refresh-boundary-r104.json --next-service pokebot-final-format-marnie-r104-h10-materialize.service
+Restart=on-failure
+RestartSec=30
+MemoryHigh=44G
+MemoryMax=47G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/post_alakazam_core_refresh.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/post_alakazam_core_refresh.log

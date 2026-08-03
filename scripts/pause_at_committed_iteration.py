@@ -132,12 +132,15 @@ def pause(
     status_path: Path,
     poll_seconds: float,
     timeout_seconds: float,
+    next_unit: str | None,
 ) -> None:
     run_dir = run_dir.expanduser().resolve()
     if _service_value(unit, "RefuseManualStop").strip().lower() != "no":
         raise RuntimeError("boundary watcher requires RefuseManualStop=no")
     if _service_value(unit, "ActiveState") not in {"active", "activating"}:
         raise RuntimeError("trainer is not active before the boundary watch")
+    if next_unit and _service_value(next_unit, "LoadState") != "loaded":
+        raise RuntimeError("boundary successor unit is not loaded")
     next_iteration = completed_iteration + 1
     _publish(
         status_path,
@@ -211,6 +214,33 @@ def pause(
         ),
         service_active_state=_service_value(unit, "ActiveState"),
     )
+    if next_unit:
+        started = _systemctl("start", "--no-block", next_unit)
+        if started.returncode:
+            raise RuntimeError(
+                f"could not start boundary successor {next_unit}: "
+                f"{started.stdout.strip()}"
+            )
+        _publish(
+            status_path,
+            status="paused_successor_started",
+            unit=unit,
+            commit=str(commit_path),
+            commit_digest=_sha256(commit_path),
+            checkpoint=str(checkpoint),
+            checkpoint_digest=digest,
+            completed_iteration=completed_iteration,
+            next_iteration=next_iteration,
+            uncommitted_next_iteration_started=bool(
+                raced_iteration is not None and raced_iteration >= next_iteration
+            ),
+            recovery_required=bool(
+                raced_iteration is not None and raced_iteration >= next_iteration
+            ),
+            service_active_state=_service_value(unit, "ActiveState"),
+            successor_unit=next_unit,
+            successor_start_requested=True,
+        )
 
 
 def main() -> int:
@@ -221,6 +251,7 @@ def main() -> int:
     parser.add_argument("--status", type=Path, required=True)
     parser.add_argument("--poll-seconds", type=float, default=0.02)
     parser.add_argument("--timeout-seconds", type=float, default=21600.0)
+    parser.add_argument("--next-unit")
     args = parser.parse_args()
     if args.completed_iteration < 0:
         raise ValueError("--completed-iteration must be non-negative")
@@ -231,6 +262,7 @@ def main() -> int:
         status_path=args.status.expanduser().resolve(),
         poll_seconds=args.poll_seconds,
         timeout_seconds=args.timeout_seconds,
+        next_unit=args.next_unit,
     )
     return 0
 

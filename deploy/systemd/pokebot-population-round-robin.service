@@ -1,14 +1,21 @@
 [Unit]
-Description=Pokemon 22-specialist own-model population round robin
+Description=Pokemon 15-specialist current-plus-history own-model population round robin
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-WorkingDirectory=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=PURE_RL_SIM_WORKERS=96
+Environment=PURE_RL_GAMES_IN_FLIGHT=96
+Environment=PURE_RL_HELDOUT_LOCAL_WORKERS=96
+Environment=POKEBOT_REBALANCE_MIN_LOCAL_WORKERS=96
+Environment=POKEBOT_REBALANCE_MAX_LOCAL_WORKERS=96
+Environment=POKEBOT_LIVE_POOL_MAX_WORKERS=96
+Environment=POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN=1
 ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_population_round_robin.py --contract ops/population_round_robin_v1.json --check
 ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_population_round_robin.py --contract ops/population_round_robin_v1.json
 Restart=on-failure
@@ -16,9 +23,9 @@ RestartSec=30
 TimeoutStopSec=60
 KillMode=control-group
 LimitNOFILE=16384
-MemoryHigh=110G
-MemoryMax=116G
-MemorySwapMax=16G
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
 OOMPolicy=stop
 StandardOutput=append:/home/inzi/poke-bot-agent/outputs/logs/population-round-robin.log
 StandardError=append:/home/inzi/poke-bot-agent/outputs/logs/population-round-robin.log

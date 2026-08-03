@@ -1,28 +1,199 @@
 # Post-Fleet Final Model Capacity, Decision Replay, and Submission Plan
 
-Status: authorized static implementation preparation; all model computation blocked
+Status: live final-format Marnie execution; broader capacity research remains blocked
 
 Plan type: receipt-gated static implementation-preparation companion
 
-Revised: 2026-07-30
+Revised: 2026-08-03
 
-Runtime authority: none
+Runtime authority: none; live runtime truth remains the canonical selector,
+immutable receipts, and managed-service state named by `GOAL.md`
 
-Model-computation authority: none
+Model-computation authority: final-format Marnie only, under its isolated
+checksum-bound runtime registry
 
 Implementation authority: static schemas, receipt templates, tests, package
-manifests, and release-check specifications only
+manifests, and release-check specifications only, except for the already
+authorized final-format Marnie execution described below
 
-Canonical planning basis: `GOAL.md` Revision 64, including owner decisions
-55–59 and 61–64.
+Canonical planning basis: `GOAL.md` Revision 114. This companion is a derived
+plan; it never overrides the current goal gateway, typed protocol sources, or
+runtime receipts.
 
-This document prepares a later receipt-gated research and final-submission
-phase. It authorizes only non-computing static preparation. It does not
-authorize model instantiation, checkpoint conversion, replay scanning,
-benchmarking, training, evaluation, service or selector changes, a runnable
-package, a Kaggle submission, or production resource reservation. Static code
-or schema changes created under this authority must remain unreachable from
-the active runtime and must not load a checkpoint or materialize data.
+## Current execution status (2026-08-03)
+
+The historical static-only pre-fleet assumptions below are superseded for the
+current final-format execution by the current goal gateway and receipts:
+
+- Slowking is a sealed `failed_experiment`, not a passing/frozen specialist.
+  Its artifacts remain audit-only and it receives no selector, freeze,
+  registration, serving, or submission authority.
+- Final-format Alakazam H10-I completed, froze, and registered. Marnie's active
+  opponent roster uses its immutable checkpoint
+  `sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92`.
+- Final-format Marnie's Grimmsnarl ex is the sole active learner. Iteration 5
+  remains immutable under its launch contract and may not be interrupted,
+  reinterpreted, restarted, or partially migrated.
+- Marnie retains H10-I `7/3/7`, FF-2496, 512-wide strategic residuals,
+  independently action-influencing learned routes, Fusion v3, Router Format 6,
+  matchup adapters, and its training-only directional guide.
+- Revisions 111 and 112 are staged together for the exact checksum-backed
+  iteration-5→6 boundary: opponent reweighting and exact-once tail
+  work-stealing. Revision 113 extends Marnie through durable `iter_00020`,
+  forbids `iter_00021`, and places a new separately versioned H10 Crustle
+  specialist after Marnie and before population training.
+- Revision 114 stages the neural-only, action-conditioned latent-lookahead
+  policy aid at that boundary under a zero-safe, authority-off, fail-closed
+  contract. It does not authorize MCTS, beam search, or competition-time
+  simulator search.
+- Broader two/three-archetype capacity research remains blocked until the
+  then-current canonical completion and resource-isolation receipts authorize
+  it.
+
+## Canonical Marnie latent-lookahead coordination
+
+`GOAL.md` Revision 114 selects a neural-only Marnie challenger based on
+action-conditioned latent lookahead plus a bounded policy aid. It explicitly
+forbids MCTS, beam search, competition-time simulator search, tree expansion,
+and repeated inference. The goal ledger is the design authority; this derived
+plan has no independent implementation, migration, gradient, runtime, or
+selector authority.
+
+The Revision-114 typed contract and activation receipts must preserve all of
+the following:
+
+1. Finish and checksum-commit iteration 5 exactly as launched. Do not use the
+   challenger to reinterpret its collection, candidate, gate, or receipts.
+2. Share the iteration-5→6 managed boundary with revisions 111–112, but keep
+   the three mutations independently receipted. Failure of the lookahead
+   challenger must not block the already-canonical opponent reweighting or
+   exact-once scheduler repair.
+3. Resolve the best checksum-exact heldout Marnie parent only after the
+   iteration-5 commit. Never select a parent from a filename, timestamp, shape,
+   stale projection, or uncommitted work.
+4. Create a separately versioned challenger. Copy the parent exactly and make
+   every new latent module and policy-aid output zero-safe so authority-off
+   inference reproduces the parent legal masks, logits within tolerance,
+   greedy actions, value, learned routes, matchup route/bypass behavior, and
+   causal history behavior.
+5. Keep latent action authority disabled by default. Enabling the policy aid
+   requires paired ladder-proxy, fixed-holdout, causal-suffix-invariance,
+   parent/parity, CPU latency and reliability, and whole-game replay-isolation
+   receipts for the exact challenger checksum.
+6. Compare the exact parent, authority-off challenger, and authority-on
+   challenger with identical opponent versions, seeds, seats, and evaluation
+   games. Evaluation and ladder-proxy rows remain training-ineligible.
+7. Fail closed to the existing Marnie lineage. If migration, training,
+   distinctness, parity, causality, latency, replay isolation, or gameplay
+   evidence fails, iteration 6 resumes from the checksum-selected existing
+   lineage with revisions 111–112 applied and no latent action authority.
+
+This Marnie challenger is not automatically `S1/v2`. The existing S1 plan
+predicts a scalar option-conditioned continuation advantage. The Marnie design
+may reuse that schema only if its eventual canonical target, latent state,
+bounded action route, masks, and loss contract match exactly. Otherwise it
+receives a new search/lookahead schema and its results are reported separately.
+Either form remains a single ordinary neural forward pass.
+
+Additional policy ideas and newly downloaded Kaggle replay evidence remain
+analysis-only until a later canonical design decision names their authority,
+target, isolation, and activation boundary.
+
+## Fresh Marnie Kaggle evidence (analysis only)
+
+The comparison under
+`outputs/analysis/kaggle-marnie-iter0-4-20260803/` is suitable for descriptive
+error discovery, but not for a causal checkpoint-strength conclusion.
+
+### Integrity and grain
+
+- The download receipt is complete and names submissions `55195978` and
+  `55214587`, mapped to iterations 0 and 4.
+- It contains 94 unique episodes and replay files: 67 from iteration 0 and 27
+  from iteration 4. Exactly 36 loss-agent logs are present.
+- All 131 files named by `DOWNLOAD_RECEIPT.json` independently reproduce their
+  recorded SHA-256 digests; no replay episode ID or replay byte digest is
+  duplicated.
+- This is a local integrity manifest, not externally signed provenance. The
+  public games are convenience samples with different opponent, rating, and
+  seat mixes. The omniscient visualization timeline may describe setup timing
+  but may not be used as causal action attribution or gradient data.
+
+### What the public replays say
+
+| Measure | Iteration 0 | Iteration 4 | Read |
+|---|---:|---:|---|
+| Public replay wins | 42/67 (62.7%) | 16/27 (59.3%) | Raw delta −3.43 points |
+| Wilson 95% interval | 50.7%–73.3% | 40.7%–75.5% | Broadly overlapping |
+| First-seat games | 36/67 | 16/27 | Not a matched seat experiment |
+| Grimmsnarl by own turn 2 | 25/67 (37.3%) | 16/27 (59.3%) | Faster observed setup |
+| Mean attacks | 4.55 | 6.37 | More attacking, not more wins |
+| Median first Grimmsnarl turn | 3 | 2 | One no-Grimmsnarl game omitted in each arm |
+
+The exact two-sided Fisher comparison of `[[42, 25], [16, 11]]` is
+`p = 0.8166`. Therefore these replays do not reproduce the live rating gap as
+a clear raw-win-rate gap. They also do not prove equivalence: iteration 4 has
+only 27 games, the opponent distribution changed materially, and the cohorts
+are not paired.
+
+Crustle is the strongest error-discovery slice, not a strength estimate.
+Iteration 4 went 0/6, including two deckouts, while averaging 12 attacks, 11
+Shadow Bullets, and 17 own turns; Grimmsnarl appeared by own turn 2 in 4/6.
+Iteration 0 went 3/10 with four deckouts, 5.8 attacks, and a 13.5-turn median.
+The small samples cannot estimate the matchup accurately, but the combination
+of faster setup, long games, repeated attacks, and terminal failure is
+consistent with a resource/terminal-hazard or action-sequencing weakness. It
+is not evidence that latent lookahead will necessarily fix it.
+
+### Training-signal evidence boundary
+
+The coordination report additionally cites exact skill-weighted win rate
+`74.575% → 71.7125%`, agreement `91.03% → 94.86%`, NLL `0.392 → 0.271`,
+promotion margins of `38–42`, and AWR ESS of `24%–29%`. Those fields and their
+source receipts are not present in this Kaggle replay package. Retain them as
+provisional cross-thread receipt claims until the exact artifact paths and
+checksums are attached and independently verified. If verified, the joint
+pattern would mean that closer agreement and lower NLL did not translate into
+measured skill, which is a reason to test policy-conservatism and weighting
+hypotheses—not proof that any one change is correct.
+
+### Effect on the research sequence
+
+1. Keep the Revision-114 zero-safe latent-lookahead challenger as the selected
+   primary experiment. Do not bundle any additional policy mutation into its
+   first authority-on comparison.
+2. Add a training-ineligible Crustle/terminal-hazard diagnostic slice to the
+   challenger evaluation. Parent, authority-off, and authority-on arms must use
+   identical opponent packages, seeds, seats, and game rows. Report wins,
+   deckouts, board wipes, own turns, attacks, remaining deck/resource state,
+   and predicted-versus-observed continuation outcomes.
+3. Treat faster setup and attack count as diagnostic measures only. The
+   challenger still passes or fails on the canonical paired ladder-proxy,
+   fixed-holdout, causality, parity, latency, and replay-isolation gates.
+4. Preserve this ranked hypothesis backlog as analysis-only, each requiring a
+   separate future owner decision and one-change-at-a-time ablation:
+   champion-relative KL/trust-region plus one-strike exact-gate rollback; an
+   AWR beta/cap grid with ESS and clip acceptance bands; separate RL and
+   rehearsal optimizer state; Fusion-v3 reliability anchoring around 1 plus
+   route dropout; terminal-hazard/resource curriculum for Crustle and deckout
+   states; collection-only target entropy; and champion-disagreement
+   distillation.
+5. Never use these Kaggle games, their outcomes, the omniscient timeline, or
+   the same-candidate Kaggle score as gradient-bearing or checkpoint-selection
+   data.
+
+The remainder of this document preserves the original static preparation and
+historical design rationale. Where it conflicts with this status section or
+`GOAL.md`, the canonical gateway and live receipts prevail.
+
+The static sections of this document prepare the later receipt-gated broader
+capacity-research and final-submission phase. They do not authorize model
+instantiation, checkpoint conversion, replay scanning, benchmarking, training,
+evaluation, service or selector changes, a runnable package, a Kaggle
+submission, or production resource reservation **outside the live Marnie
+registry and its exact canonical milestone and terminal authorizations**. Static code or schema
+changes created under this authority must remain unreachable from the active
+runtime and must not load a checkpoint or materialize data.
 
 It is separate from:
 
@@ -87,7 +258,7 @@ from `pilkwang/pok-mon-tcg-ai-battle-meta-snapshot-08-july`.
 It receives no gradients and is never frozen, submitted, or counted as a
 specialist.
 
-The main architecture bet remains **H10-I**:
+The live final-format architecture is **H10-I**:
 
 ```text
 d_model                         96
@@ -96,33 +267,28 @@ spatial / temporal / option    7 / 3 / 7
 FF width                       2496
 history context                 320
 fusion width                     16
-learned decision routes          late-bound from final role/route inventory
-minimum successor inventory      18 (historical 17 + setup_board_outcome)
-possible Slowking combo route    +1 only if its coverage gate requires it
+learned decision routes          19 independent bounded routes
+learned decision-head inventory  19 (historical 17 + setup_board_outcome + combo_state)
 current-deck guide routes          0 (training-only metadata)
+actual learned parameters        10,428,046
 ```
 
-Every learned decision head, including `setup_board_outcome` and any validated
-Slowking combo-state head, retains an independently computed causal view and a
+Every learned decision head, including `setup_board_outcome` and `combo_state`,
+retains an independently computed causal view and a
 distinct bounded action route. Each route combines that typed head output with
 the current legal-option representation after the option has cross-attended
 the causal board/state. The current-deck guide is the sole no-route exception:
 it remains training-only curriculum metadata and never becomes a runtime
 tensor or action input.
 
-Slowking's ordinary two-million-parameter specialist target is a soft target,
-not a launch ceiling, when checksum-bound combo coverage and ablation evidence
-justifies extra typed capacity. Its initial specialist-scoped hard ceiling
-remains 3.5 million. This exception may affect the late-bound parent inventory,
-but it does not authorize pre-fleet H10 computation or create a global
-parameter-limit override.
+The historical Slowking parameter exception is preserved only as audit context;
+it does not alter the live Alakazam inventory or authorize any Slowking model
+work.
 
-For the historical roster18/V5-sized, 17-input, 11-branch parent, the old
-H10-I arithmetic produced `10,080,599` learned parameters and added
-`8,396,722` parameters. Those values are historical references only. They are
-not the final implementation count because the post-fleet learned-head and
-distinct-route inventory is late-bound. The post-fleet migration receipt must
-instantiate and publish the actual module-by-module count.
+The historical roster18/V5-sized, 17-input H10 arithmetic (`10,080,599`
+learned parameters) is retained only for comparison. The live 19-head H10
+implementation is receipt-verified at `10,428,046` learned parameters; no
+later planning prose may replace that count.
 
 Include one learned single-pass search candidate, **H10-I+S1**, but do not
 bundle it into the initial H10-I result. S1 adds a masked,

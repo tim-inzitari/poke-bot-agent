@@ -1,0 +1,18 @@
+[Unit]
+Description=Join split R109 daily features before releasing the finalizer
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/admin/pokebot-expert-src-v6-strategic
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -u scripts/finalize_split_latest20_feature_days.py --root /mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v6-strategic-2026-07-14_2026-08-02 --day 2026-07-24 --day 2026-07-25 --day 2026-07-26 --day 2026-07-27 --day 2026-07-28 --day 2026-07-29 --day 2026-07-30 --day 2026-07-31 --day 2026-08-01 --day 2026-08-02 --worker-container pokebot-expert-latest20-v6-strategic-pair-r109-schema6 --worker-container pokebot-expert-latest20-v6-strategic-tail-r109-schema6 --finalizer-container pokebot-expert-latest20-v6-strategic-finalizer-r109 --required-dataset-schema 6 --required-expanded-target-schema poke_bot.expanded_strategic_targets/v2 --required-expanded-target-digest sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f --poll-seconds 10 --timeout-seconds 21600
+Restart=on-failure
+RestartSec=60
+MemoryHigh=512M
+MemoryMax=1G
+MemorySwapMax=0
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

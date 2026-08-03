@@ -120,10 +120,19 @@ class SnapshotCache:
         post_fleet = (
             overrides.get("post_fleet_alakazam_grimms_refresh") or {}
         )
+        marnie_milestones = dict(
+            overrides.get("final_format_marnie_milestone_submissions") or {}
+        )
         slowking_failure = (
             overrides.get("slowking_failed_experiment_alakazam_transition")
             or {}
         )
+        if marnie_milestones:
+            protocol = value.get("specialist_protocol")
+            if isinstance(protocol, dict):
+                protocol["final_format_milestone_submissions"] = (
+                    marnie_milestones
+                )
         protocol = value.get("specialist_protocol")
         if not isinstance(protocol, dict):
             return
@@ -345,6 +354,9 @@ class SnapshotCache:
                 "first_refresh": dict(
                     post_fleet.get("first_refresh") or {}
                 ),
+                "second_refresh": dict(
+                    post_fleet.get("second_refresh") or {}
+                ),
                 "core_hot_start_selector": post_fleet.get(
                     "core_hot_start_selector"
                 ),
@@ -401,7 +413,28 @@ class SnapshotCache:
                     protocol["program_progress"] = progress
                 frozen_count = len(frozen_rows)
                 active_count = min(len(active_rows), 1)
-                unfinished_count = max(required - frozen_count, 0)
+                terminal_exception_ids = {
+                    str(value)
+                    for value in progress.get(
+                        "terminal_failed_experiment_specialist_ids", ()
+                    )
+                    if str(value)
+                }
+                terminal_exception_count = len(
+                    {
+                        str(row.get("id") or "")
+                        for row in projected_rows
+                        if isinstance(row, dict)
+                        and str(row.get("status") or "")
+                        == "failed_experiment"
+                        and str(row.get("id") or "")
+                        in terminal_exception_ids
+                    }
+                )
+                unfinished_count = max(
+                    required - frozen_count - terminal_exception_count,
+                    0,
+                )
                 remaining_after_active = max(
                     unfinished_count - active_count, 0
                 )
@@ -422,8 +455,11 @@ class SnapshotCache:
                         ],
                         "remaining_unfinished": unfinished_count,
                         "remaining_after_active": remaining_after_active,
-                        "population_transition_ready": (
-                            unfinished_count == 0
+                        # Terminal fleet disposition releases the refresh
+                        # phase, not population training. Preserve the
+                        # canonical post-refresh completion gate.
+                        "population_transition_ready": bool(
+                            progress.get("population_transition_ready")
                         ),
                     }
                 )
@@ -454,6 +490,16 @@ class SnapshotCache:
                     next_action,
                 )
                 protocol["next_action"] = next_action
+        projected_refresh_action = str(
+            post_fleet.get("alakazam_dashboard_next_action") or ""
+        ).strip()
+        projected_runtime_id = str(
+            protocol.get("runtime_active_specialist")
+            or protocol.get("active_specialist")
+            or ""
+        ).strip().lower()
+        if projected_refresh_action and projected_runtime_id == "alakazam":
+            protocol["next_action"] = projected_refresh_action
         if isinstance(guide_policy, dict) and guide_policy:
             protocol["current_deck_guide_weight_policy"] = {
                 **guide_policy,
@@ -933,6 +979,11 @@ class SnapshotCache:
         iteration = progress.get("iteration", curriculum.get("iteration"))
         phase_identity = f"{run_name}:{iteration}:{stage}"
         curriculum_active = bool(curriculum.get("active"))
+        result_draining = bool(
+            curriculum_active
+            and stage.startswith("drain:")
+            and (progress.get("metrics") or {}).get("result_spool_drain") is True
+        )
         collecting = bool(
             curriculum_active
             and (
@@ -1018,7 +1069,9 @@ class SnapshotCache:
         scheduler_remote_sps = None
         scheduler_wave_gps = None
         scheduler_wave_sps = None
-        buffered_results = 0
+        buffered_results = max(
+            0, int((progress.get("metrics") or {}).get("buffered_results") or 0)
+        )
         if collecting and bool(curriculum.get("source_current")):
             for event in reversed(value.get("recent_events") or []):
                 event_text = str(event)
@@ -1250,6 +1303,11 @@ class SnapshotCache:
                 worker["allocation_state"] = "OFFLINE · no production allocation"
             elif training:
                 worker["allocation_state"] = "ALLOCATION COMPLETE · optimizer phase"
+            elif result_draining:
+                worker["allocation_state"] = (
+                    "RESULT SPOOL DRAIN · generation complete"
+                    f" · {buffered_results} results awaiting ingest"
+                )
             elif remote_phase_active:
                 if all_games_claimed:
                     worker["allocation_state"] = (
@@ -1385,7 +1443,15 @@ class SnapshotCache:
         )
         local_slots = max(1, int(inzi_worker.get("workers") or 96))
         leaf_servers = max(0, int(inzi_worker.get("leaf_servers") or 0))
-        if collecting:
+        if result_draining:
+            inzi_worker["active_games"] = 0
+            inzi_worker["allocation_state"] = (
+                f"COMPACTING · {buffered_results} buffered results"
+            )
+            inzi_worker["allocation"] = (
+                "Result spool → iteration shard · simulators retained by legacy process"
+            )
+        elif collecting:
             current_games = progress.get("current")
             total_games = progress.get("total")
             remaining_games = (
@@ -1531,6 +1597,11 @@ class SnapshotCache:
             curriculum.get("active")
             and (stage.startswith("collect:") or stage in {"heldout", "promotion"})
         )
+        result_draining = bool(
+            curriculum.get("active")
+            and stage.startswith("drain:")
+            and (progress.get("metrics") or {}).get("result_spool_drain") is True
+        )
         identity = (
             f"{curriculum.get('run')}:{progress.get('iteration')}:"
             f"{stage}"
@@ -1618,7 +1689,13 @@ class SnapshotCache:
         # collection it counts games, but during learner prep/training it
         # counts optimizer batches. Never turn the remaining batch count into
         # an apparent rollout backlog after collection has completed.
-        if not generation_stage:
+        if result_draining:
+            queues["unassigned"] = 0
+            queues["unassigned_estimated"] = False
+            queues["unassigned_source"] = (
+                "all simulations claimed; producer-complete result spool drain"
+            )
+        elif not generation_stage:
             queues["unassigned"] = 0 if curriculum.get("active") and stage else None
             queues["unassigned_estimated"] = False
             queues["unassigned_source"] = (
@@ -1708,18 +1785,39 @@ class SnapshotCache:
             service.get("active") and int(service.get("pid") or 0) > 0
         )
         post_fleet_refresh = protocol.get("post_fleet_refresh") or {}
+        post_fleet_status = str(post_fleet_refresh.get("status") or "")
+        post_fleet_runtime_active = bool(
+            post_fleet_status.endswith("_active")
+            or "_active_" in post_fleet_status
+            or "allocator_recovery_activated_training" in post_fleet_status
+            or "recovery_completed_training" in post_fleet_status
+        )
         terminal_transition = protocol.get("terminal_specialist_transition") or {}
-        final_refresh_current = bool(
+        active_runtime_refresh = protocol.get("active_runtime_refresh") or {}
+        receipt_backed_final_refresh = bool(
+            service_active
+            and active_runtime_refresh.get("active") is True
+            and str(training.get("mode") or "").startswith("final_format_")
+            and runtime_specialist
+            == str(active_runtime_refresh.get("specialist_id") or "")
+            == str(protocol.get("canonical_active_refresh_specialist") or "")
+            and str(active_runtime_refresh.get("run_name") or "")
+            == str(training.get("run") or "")
+        )
+        final_refresh_current = receipt_backed_final_refresh or bool(
             service_active
             and training.get("mode")
             in {
                 "final_format_alakazam_ordinary_refresh",
                 "final_format_alakazam_h10_rl",
             }
-            and runtime_specialist == "alakazam"
+            and runtime_specialist
+            == str(
+                protocol.get("canonical_active_refresh_specialist")
+                or "alakazam"
+            )
             and int(post_fleet_refresh.get("goal_revision") or 0) >= 79
-            and post_fleet_refresh.get("status")
-            == "alakazam_ordinary_fallback_bootstrap_active"
+            and post_fleet_runtime_active
             and terminal_transition.get("status") == "activated"
             and terminal_transition.get("terminal_disposition")
             == "failed_experiment"
@@ -2512,9 +2610,18 @@ class SnapshotCache:
             ]
             bert_worker = bert.get("worker") or {}
             bert_ready = bool(bert_worker.get("active") and bert_worker.get("listening"))
+            # The scheduler may register Bert by its stable LAN address rather
+            # than its mDNS alias.  Both identify the same production worker.
+            bert_production_endpoints = (
+                "bert.local:8766",
+                "192.168.1.158:8766",
+            )
             bert_in_production = bert_ready and (
-                "bert.local:8766" in trainer_command
-                or any("bert.local:8766" in endpoint for endpoint in configured_endpoints)
+                any(endpoint in trainer_command for endpoint in bert_production_endpoints)
+                or any(
+                    endpoint in bert_production_endpoints
+                    for endpoint in configured_endpoints
+                )
             )
             if bert_in_production:
                 bert["role"] = "production simulator"

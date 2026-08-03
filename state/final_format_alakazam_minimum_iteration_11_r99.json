@@ -1,0 +1,33 @@
+{
+  "schema": "poke_bot.final_format_alakazam_terminal_floor_activation/v1",
+  "status": "activated_without_training_restart",
+  "recorded_at_utc": "2026-07-31T21:35:17Z",
+  "owner_decision_revision": 99,
+  "specialist_id": "alakazam",
+  "terminal_floor": {
+    "previous_minimum_completed_iteration": 5,
+    "minimum_completed_iteration": 11,
+    "ceiling_completed_iteration": 188,
+    "gate_contract": "ops/final_format_alakazam_gate_r94_v4.json",
+    "premium_skill_weighted_win_rate": 0.75,
+    "premium_skill_weighted_confidence_lower": 0.60,
+    "official_control_win_rate": 0.60,
+    "kaggle_rating_simulation_projected_lower_bound": 1000
+  },
+  "runtime": {
+    "registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r99_minimum_iter11_all_remotes.json",
+    "registry_sha256": "sha256:2044585795b4ca765ea9cf8258e9d0138c200381e09d456cc874e43ac74277fe",
+    "render_receipt_sha256": "sha256:d68d4c1815729433fea0a665f2b81e82f639ab04183fc4f4be0cacde0cf6269d",
+    "activation_receipt_sha256": "sha256:0d53e07b4dbcef3742bd9cb23f081dc2a4ac54afbb70e8c2da28f948ae0f915e",
+    "gate_handler_service": "pokebot-final-format-alakazam-r79-gate-handler.service",
+    "gate_handler_preflight": "SPECIALIST_GATE_HANDLER_OK id=alakazam minimum=11",
+    "gate_handler_command_contains_minimum_completed_iteration": 11
+  },
+  "continuity": {
+    "training_service": "pokebot-final-format-alakazam-r79-h10.service",
+    "training_pid_before_and_after": 1001946,
+    "training_restart_count_before_and_after": 1,
+    "training_restart_performed": false,
+    "active_iteration": 1
+  }
+}

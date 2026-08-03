@@ -22,6 +22,7 @@ from poke_bot.remote_jobs import (
     remote_result_failure_reason,
     require_remote_result_success,
 )
+from poke_bot.worker_pool import WorkerPool
 
 
 def test_digest_addressed_basename_embeds_content_digest(tmp_path: Path) -> None:
@@ -488,6 +489,10 @@ class _ScheduledPool:
         return fn(job)
 
 
+def _identity_job(job):
+    return job
+
+
 class _ScheduledRemote:
     host = "unmapped.example"
     port = 8765
@@ -603,6 +608,133 @@ def test_scheduled_dispatch_reports_remote_execution_origin(
             "kind": "self_play",
         }
     ]
+
+
+def test_scheduled_dispatch_notifies_after_producers_before_result_drain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
+    drained = threading.Event()
+    callback_calls: list[str] = []
+
+    def _on_drained() -> None:
+        callback_calls.append("drained")
+        drained.set()
+
+    stream = iter_scheduled_additive_results(
+        local_pool=_ScheduledPool(),
+        local_fn=lambda job: job,
+        jobs=[{"job_index": index} for index in range(32)],
+        remote_clients=[_ScheduledRemote(fail=False)],  # type: ignore[list-item]
+        kind="self_play",
+        scheduler=_ScheduledScheduler(),
+        local_workers=1,
+        remote_workers=1,
+        on_producers_drained=_on_drained,
+    )
+
+    first = next(stream)
+    assert drained.wait(timeout=2.0)
+    # The callback can fire while most durably queued rows are still waiting
+    # for the serialized consumer, which is the memory-release opportunity.
+    rows = [first, *stream]
+    assert len(rows) == 32
+    assert callback_calls == ["drained"]
+
+
+def test_local_only_fallback_notifies_before_result_drain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("POKEBOT_REMOTE_ONLY", raising=False)
+    drained = threading.Event()
+    callback_calls: list[str] = []
+
+    def _on_drained() -> None:
+        callback_calls.append("drained")
+        drained.set()
+
+    stream = iter_scheduled_additive_results(
+        local_pool=_ScheduledPool(),
+        local_fn=lambda job: job,
+        jobs=[{"job_index": index} for index in range(32)],
+        remote_clients=[],
+        kind="self_play",
+        scheduler=_ScheduledScheduler(),
+        local_workers=1,
+        remote_workers=0,
+        on_producers_drained=_on_drained,
+    )
+
+    first = next(stream)
+    assert drained.wait(timeout=2.0)
+    rows = [first, *stream]
+    assert len(rows) == 32
+    assert callback_calls == ["drained"]
+
+
+def test_local_only_fallback_can_release_real_pool_without_losing_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("POKEBOT_REMOTE_ONLY", raising=False)
+    with WorkerPool(num_workers=1) as pool:
+        stream = iter_scheduled_additive_results(
+            local_pool=pool,
+            local_fn=_identity_job,
+            jobs=[{"job_index": index} for index in range(24)],
+            remote_clients=[],
+            kind="self_play",
+            scheduler=_ScheduledScheduler(),
+            local_workers=1,
+            remote_workers=0,
+            on_producers_drained=pool.release,
+        )
+        rows = list(stream)
+        assert pool._pool is None
+    assert [row["job_index"] for row in rows] == list(range(24))
+
+
+def test_producer_drain_callback_can_release_real_pool_without_losing_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
+    with WorkerPool(num_workers=1) as pool:
+        stream = iter_scheduled_additive_results(
+            local_pool=pool,
+            local_fn=lambda job: job,
+            jobs=[{"job_index": index} for index in range(24)],
+            remote_clients=[_ScheduledRemote(fail=False)],  # type: ignore[list-item]
+            kind="self_play",
+            scheduler=_ScheduledScheduler(),
+            local_workers=1,
+            remote_workers=1,
+            on_producers_drained=pool.release,
+        )
+        rows = list(stream)
+        assert pool._pool is None
+    assert [row["job_index"] for row in rows] == list(range(24))
+
+
+def test_scheduled_dispatch_surfaces_producer_drain_callback_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
+
+    def _fail_release() -> None:
+        raise RuntimeError("release failed")
+
+    stream = iter_scheduled_additive_results(
+        local_pool=_ScheduledPool(),
+        local_fn=lambda job: job,
+        jobs=[{"job_index": index} for index in range(8)],
+        remote_clients=[_ScheduledRemote(fail=False)],  # type: ignore[list-item]
+        kind="self_play",
+        scheduler=_ScheduledScheduler(),
+        local_workers=1,
+        remote_workers=1,
+        on_producers_drained=_fail_release,
+    )
+    with pytest.raises(RuntimeError, match="release failed"):
+        list(stream)
 
 
 def test_scheduled_emitter_closes_its_socket_before_outer_cleanup(
@@ -1197,16 +1329,78 @@ def test_endpoint_credit_keeps_slow_bert_fed_across_a_long_wave() -> None:
     spill.set_target(elmo, 240)
     spill.set_target(bert, 80)
     assert spill.claim_limit(
-        elmo, want=100, remaining_count=100, wave_remaining=100
+        elmo, want=100, remaining_count=100, wave_remaining=201
     ) == 75
     spill.set_healthy(bert, False)
     assert spill.claim_limit(
-        elmo, want=100, remaining_count=100, wave_remaining=100
+        elmo, want=100, remaining_count=100, wave_remaining=201
     ) == 100
     spill.set_healthy(bert, True)
     assert spill.claim_limit(
         elmo, want=100, remaining_count=50, wave_remaining=50
     ) == 50
+
+
+def test_tail_work_steal_returns_remote_reservations_to_local_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The final fifth remains shared instead of becoming a remote-only tail."""
+
+    monkeypatch.setenv("POKEBOT_REMOTE_DEMAND_QUEUE", "1")
+    monkeypatch.setenv(
+        "POKEBOT_REMOTE_ENDPOINT_CHUNKS",
+        "unmapped.example:8765=80",
+    )
+    monkeypatch.setenv("POKEBOT_REMOTE_TAIL_WORK_STEAL_FRACTION", "0.20")
+    remote = _ScheduledRemote(fail=False)
+    monkeypatch.setattr(
+        remote_jobs,
+        "_parallel_remote_slots",
+        lambda *_args, **_kwargs: ([remote], []),
+    )
+    execution_origins: list[str] = []
+
+    def _slow_remote(job, *, kind="play"):
+        time.sleep(0.002)
+        return {**job, "source": "remote"}
+
+    remote.submit_job = _slow_remote  # type: ignore[method-assign]
+    jobs = [
+        {"job_index": index, "seat": index % 2, "seed": 9000 + index}
+        for index in range(200)
+    ]
+    rows = list(
+        iter_scheduled_additive_results(
+            local_pool=_ScheduledPool(),
+            local_fn=lambda job: {**job, "source": "local"},
+            jobs=jobs,
+            remote_clients=[remote],  # type: ignore[list-item]
+            kind="play",
+            scheduler=_ScheduledScheduler(),
+            local_workers=8,
+            remote_workers=1,
+            on_execution=lambda row: execution_origins.append(
+                str(row.get("origin"))
+            ),
+        )
+    )
+
+    assert len(rows) == len(jobs)
+    assert sorted(int(row["job_index"]) for row in rows) == list(range(200))
+    assert len({int(row["job_index"]) for row in rows}) == len(jobs)
+    expected = {int(row["job_index"]): row for row in jobs}
+    for row in rows:
+        source = expected[int(row["job_index"])]
+        assert row["seat"] == source["seat"]
+        assert row["seed"] == source["seed"]
+    assert "local" in execution_origins
+    assert "remote" in execution_origins
+    output = capsys.readouterr().out
+    assert "tail_work_steal=start" in output
+    assert "returned_to_shared=" in output
+    assert "returned_to_shared=0" not in output
+    assert "remote_claim_games=1 local_pool_remains_eligible=true" in output
 
 
 def test_scheduled_fast_elmo_cannot_starve_slow_bert_refills(

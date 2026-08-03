@@ -1,0 +1,63 @@
+{
+  "schema": "poke_bot.final_format_marnie_iteration_commit_recovery/v1",
+  "status": "recovered_iteration_1_collection_active",
+  "owner_decision_revision": 107,
+  "created_at_utc": "2026-08-02T22:38:08Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+  "completed_iteration": 0,
+  "next_iteration": 1,
+  "checkpoint_sha256": "sha256:85637aabd79a0033979dfee4486b4bac9324f947ed3acef056d2fb14e41e7985",
+  "commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/commits/iter_00000.json",
+  "commit_sha256": "sha256:69dec3ac3f09e1708399bfbeb53c0db64b209eb052535fa6c723c355160a7547",
+  "formal_gate": {
+    "games": 4250,
+    "skill_weighted_win_rate": 0.746,
+    "skill_weighted_confidence_lower": 0.736,
+    "passed": true
+  },
+  "research_controls": {
+    "games": 1000,
+    "win_rate": 0.7325,
+    "passed": true,
+    "training_eligible": false,
+    "replay_eligible": false
+  },
+  "failure": {
+    "stage": "post_commit_research_control_retirement",
+    "message": "passed gate result lacks exact audit/check evidence",
+    "cause": "the retirement verifier required an exact legacy check-key set and did not recognize the gate contract's accepted_official_holdout_non_regression check",
+    "completed_commit_or_checkpoint_modified": false,
+    "games_recollected": false
+  },
+  "repair": {
+    "module": "poke_bot/pure_rl/research_controls.py",
+    "module_sha256": "sha256:1cd36a1ff65daeeeae5f8de576c62133b698924b51292b0877838d2261dc3048",
+    "test": "tests/test_research_controls.py",
+    "test_sha256": "sha256:038e8530cf4c4fc40927d05b2b906fda6d40c483e837b4ae7f20a342bd309d4a",
+    "behavior": "recognize the contract-declared official-holdout check and independently verify its audit, checkpoint binding, isolation flags, threshold, and realized win rate",
+    "tests": "19 passed",
+    "managed_service_control_only": true
+  },
+  "post_repair_evidence": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "main_pid": 1567720,
+    "restart_count": 0,
+    "research_control_registry_version": 10,
+    "research_control_registry_sha256": "sha256:41a7314f2b5933ed532f92166d627d10133c6823b04c9171e3390d0387af1c76",
+    "boundary_migration_sha256": "sha256:8a8b5c72191765e7938af5d0625b23cbf00e930c8410bc8fcbc002452047ce1a",
+    "blackwell_workers": 96,
+    "elmo_workers": 36,
+    "bert_workers": 16,
+    "iteration_1_collection_started": true,
+    "combo_state_loss_weight": 0.025
+  },
+  "milestone_submission": {
+    "status": "queued",
+    "turn_order_preference": "first_if_allowed",
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-milestone-submissions-r107/iter_00000.json",
+    "receipt_sha256": "sha256:48ce0890ed65c600b6325c2954443b2c11ec0a61ea0a5b498b97de3a10958855",
+    "bundle_sha256": "sha256:53ec4b7b13b4fe4bd5cb565f6509dace1c538d638e02d69d30e6a3b82096a315",
+    "training_stop_or_freeze_authority": false
+  }
+}

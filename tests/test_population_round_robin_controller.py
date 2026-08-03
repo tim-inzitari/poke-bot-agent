@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.prepare_population_round_robin import prepare
+from scripts.prepare_population_round_robin import _readiness_identity, prepare
 from scripts.run_population_round_robin import (
     _member_command,
     validate_contract,
@@ -24,13 +24,17 @@ def test_population_controller_contract_is_exact() -> None:
     )
     validate_contract(contract)
     assert contract["schedule"] == {
-        "members": 22,
+        "members": 15,
         "rl_iterations_per_member_cycle": 5,
         "expert_rehearsal_epochs_per_member_cycle": 5,
         "games_per_rl_iteration": 8192,
         "train_epochs_per_rl_iteration": 1,
         "expert_rehearsal_every": 5,
     }
+    assert contract["training"]["train_max_decisions_per_batch"] == 2048
+    assert contract["paths"]["runtime_root"].endswith(
+        "/final-format-marnie-h10-r104"
+    )
 
 
 def test_population_member_command_is_own_models_only() -> None:
@@ -90,6 +94,11 @@ def test_population_service_is_the_declared_terminal_target() -> None:
         ROOT / "deploy/systemd/pokebot-population-round-robin.service"
     ).read_text(encoding="utf-8")
     assert "scripts/run_population_round_robin.py" in unit
+    assert "final-format-marnie-h10-r104" in unit
+    handoff = (
+        ROOT / "deploy/systemd/pokebot-population-round-robin-handoff.service"
+    ).read_text(encoding="utf-8")
+    assert "post_refresh_sequence_complete_for_capacity_v2.json" in handoff
 
 
 def test_direct_population_preparation_requires_post_fleet_refreshes(
@@ -109,7 +118,7 @@ def test_direct_population_preparation_requires_post_fleet_refreshes(
 
     with pytest.raises(
         RuntimeError,
-        match="post-fleet specialist refresh phase is incomplete",
+        match="post-fleet.*refresh",
     ):
         prepare(path, launch=False)
 
@@ -122,3 +131,23 @@ def test_population_controller_reuses_immutable_cycle_boundary() -> None:
     assert source.index("fleet = [") < source.index(
         "state = record_completed_member_cycle"
     )
+
+
+def test_population_readiness_identity_binds_complete_canonical_payload() -> None:
+    left = {
+        "schema": "poke_bot.population_round_robin_ready/v1",
+        "status": "ready",
+        "members": [{"specialist_id": "alakazam", "digest": "sha256:a"}],
+        "member_count": 1,
+    }
+    reordered = {
+        "member_count": 1,
+        "members": [{"digest": "sha256:a", "specialist_id": "alakazam"}],
+        "status": "ready",
+        "schema": "poke_bot.population_round_robin_ready/v1",
+    }
+    changed = json.loads(json.dumps(left))
+    changed["members"][0]["digest"] = "sha256:b"
+
+    assert _readiness_identity(left) == _readiness_identity(reordered)
+    assert _readiness_identity(left) != _readiness_identity(changed)

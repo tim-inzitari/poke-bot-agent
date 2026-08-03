@@ -1,0 +1,40 @@
+{
+  "schema": "poke_bot.final_format_marnie_h10_route_reliability_telemetry_guard/v1",
+  "status": "activated_before_registration",
+  "recorded_at_utc": "2026-08-02T19:12:38Z",
+  "goal_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "telemetry_contract": {
+    "source": "checkpoint_model_state_dict",
+    "parameter_prefix": "decision_fusion.dedicated_route_log_reliability.",
+    "exact_route_roster_required": true,
+    "exact_route_count": 19,
+    "scalar_tensor_required": true,
+    "finite_log_reliability_required": true,
+    "effective_bounds": [0.25, 4.0],
+    "action_type_effective_cap": 0.25,
+    "registration_receipt_field": "effective_route_reliabilities",
+    "check_mode_recomputes_and_requires_exact_match": true,
+    "runtime_behavior_changed": false
+  },
+  "artifacts": {
+    "registration_script_sha256": "sha256:34f4f8abfb9ae51ce0b338cbb6bbee1ab8aca0e12bd9401c90f14534991e904c",
+    "bootstrap_test_sha256": "sha256:245cbafb3eb75ca19be09337232cb48eaed42f3bd614233b6132e6e686bc7ce2",
+    "h10_migration_test_sha256": "sha256:5b149dae92964d82ec132933ac57f95ea6c7d6b413d84661b74d63ad50463aff",
+    "prior_runtime_route_guard_receipt_sha256": "sha256:13aa0da80dac029d6a6bc4efc0cd5f6819d85876d5843985cac92afe5358f71a"
+  },
+  "validation": {
+    "focused_tests_passed": 13,
+    "python_compile_passed": true,
+    "cg_runtime_bound_for_model_tests": true,
+    "nonfinite_reliability_rejected": true,
+    "action_type_cap_verified": true,
+    "deployed_script_digest_matches": true,
+    "registration_service_active_during_change": false,
+    "bootstrap_pid": 608116,
+    "bootstrap_restart_count": 0,
+    "bootstrap_interrupted": false
+  },
+  "activation_boundary": "before_first_full_head_checkpoint_registration",
+  "next_boundary": "completed_epoch_16_or_later_best_checkpoint"
+}

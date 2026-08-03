@@ -15,6 +15,104 @@ allowed_phases:
 training_hardware_throughput:
   objective: owner_pinned_blackwell_96_local_workers
   raw_simulator_slot_count_is_not_the_objective: false
+  producer_complete_result_drain:
+    goal_revision: 110
+    status: activated_iteration_5_self_play_and_public_mix_release_verified
+    required_environment: POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN=1
+    applies_to:
+      - self_play
+      - public_mix
+      - promotion
+      - research_control
+      - formal_holdout
+    producer_completion_definition:
+      every_local_and_remote_producer_finished: true
+      every_result_and_done_record_durably_queued: true
+    release_phase_owned_local_pool_before_buffer_compaction: true
+    scheduled_and_legacy_additive_dispatch_required: true
+    bounded_ram_and_disk_result_buffer_required: true
+    durable_buffered_results_may_be_discarded_or_recollected: false
+    exact_row_and_checksum_audits_unchanged: true
+    rejected_observed_tail:
+      specialist: marnie-s-grimmsnarl-ex
+      iteration: 4
+      displayed_seconds_per_game_approx: 20
+      elapsed_hours_approx: 8
+      classification: memory_pressure_ingest_failure_not_simulator_rate
+    next_iteration_activation_required: 5
+    activation_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latest20-runtime-activation-r109.json
+    activation_receipt_sha256: sha256:fc23eed0dabb0e42e80eadfad74f6ec6975dd68e4f3de63eda9f3accd6bcadf6
+    activated_at_utc: 2026-08-03T14:50:23.222533+00:00
+    first_live_release_evidence:
+      iteration: 5
+      phase: self_play
+      released_local_children: 96
+      release_before_compaction_tail: true
+      host_available_memory_before_gib_approx: 12.4
+      host_available_memory_after_gib_approx: 37.2
+      next_phase_started: public_mix
+    public_mix_release_evidence:
+      iteration: 5
+      source_games: 7168
+      released_local_children: 96
+      release_before_compaction_tail: true
+      collection_receipt: /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/collection_receipts/iter_00005.json
+      collection_receipt_sha256: sha256:1f7786a721df6ea22a6e6b467b5e4681c2dbbb42ababb4f4b8df3c9464c471dd
+      next_phase_started: expert_rehearsal
+    pending_live_phase_audits:
+      - promotion
+      - research_control
+      - formal_holdout
+  scheduled_fleet_tail_work_stealing:
+    goal_revision: 112
+    status: activated_for_iteration_6
+    applies_to_future_scheduled_additive_waves: true
+    first_affected_iteration: 6
+    tail_entry_unclaimed_fraction: 0.20
+    endpoint_owned_reservations_above_execution_wave_returned_to_shared_pool: true
+    remote_reservation_cap_in_tail: one_execution_wave_per_endpoint
+    remote_claim_games_in_tail: 1
+    blackwell_local_workers_remain_eligible_until_global_completion: 96
+    result_transport: per_game_streaming
+    network_rpc_batching_introduced: false
+    stage_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-tail-work-steal-stage-r112-v2.json
+    activation_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-tail-work-steal-activation-r112.json
+    activation_receipt_sha256: sha256:2226ecbda30d652a6d30f5b93c756732d8819a46331729073ca94575e5bb548e
+    implementation_sha256: sha256:9c231047f5edc04a9421993edbca7e70ebad418fd67841707b88400d2cc94053
+    late_refill_after_producer_seal: decline_without_registration_or_start
+    exact_once_invariants:
+      jobs: true
+      seeds: true
+      seats: true
+      replay_rows: true
+      checksums: true
+      retries: true
+      producer_complete_drain: true
+    current_iteration_5_mutated: false
+  self_play_elmo_tail_policy:
+    goal_revision: 119
+    status: activated_for_restarted_iteration_6
+    required_environment: POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY=1
+    tail_entry_unclaimed_fraction: 0.20
+    bert:
+      new_tail_claims: 0
+      controller_owned_queue_returns_to_blackwell: true
+    elmo:
+      execution_waves_retained: 1
+      queued_waves_retained: 1
+      first_remote_tail_claim: true
+    blackwell_local_workers_remain_eligible_until_global_completion: 96
+    applies_to:
+      - self_play
+    excluded_phases:
+      - public_mix
+      - promotion
+      - research_control
+      - formal_holdout
+    dragapult_family_public_practice_models:
+      - specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1
+      - specialist-hammer-pult-gate-iter15-c256a0ababee
+    deleted_dragapult_specialist_targets_restored: false
   active_teal_local_profile:
     simulator_workers: 48
     environments_per_worker: 4
@@ -30,6 +128,7 @@ training_hardware_throughput:
     boundary: immediate_managed_restart_during_uncommitted_archaludon_iteration_0
     simulator_workers: 96
     games_in_flight: 96
+    heldout_local_workers: 96
     environments_per_worker: 4
     effective_environment_slots: 384
     worker_floor: 96
@@ -103,9 +202,9 @@ training_hardware_throughput:
     elmo:
       endpoint: 192.168.1.143:8765
       simulator_workers: 36
-      process_tree_rss_limit_gib: 30
+      process_tree_rss_limit_gib: 45
       process_tree_rss_role: diagnostic_only
-      service_memory_guard_limit_gib: 30
+      service_memory_guard_limit_gib: 45
       service_memory_guard_source_priority:
         - cgroup_v2_memory_current
         - process_tree_pss
@@ -448,7 +547,6 @@ specialist_training:
       - dragapult
       - dragapult-blaziken
       - dragapult-dudunsparce
-      - crustle
       - walrein
     owner_removed_specialists_are_selection_eligible: false
     owner_removed_specialists_count_toward_completion: false
@@ -461,17 +559,21 @@ specialist_training:
     meta_share_training_eligible: false
     authoritative_runtime_values: state/specialists.yaml#/training_priority
   post_fleet_refresh:
-    owner_decision_revision: 83
-    owner_decision_revisions: [36, 64, 79, 80, 81, 82, 83]
-    phase_id: post-fleet-alakazam-grimms-refresh-v1
+    owner_decision_revision: 113
+    owner_decision_revisions: [36, 64, 79, 80, 81, 82, 83, 103, 104, 105, 113]
+    phase_id: post-fleet-alakazam-grimms-crustle-v2
     enabled: true
-    status: alakazam_h10_high_volume_rl_active
+    status: alakazam_complete_marnie_iteration6_active_crustle_v2_prestage
+    iteration15_allocator_recovery_activation_receipt: state/final_format_alakazam_iteration15_allocator_recovery_activation_r105.json
+    iteration15_allocator_recovery_activation_receipt_sha256: sha256:ae4c9e349c2429de33e24fce87a875eed684e27b40cd38f6e68ba1d4f58bac59
+    iteration15_allocator_recovery_completion_receipt: state/final_format_alakazam_iteration15_allocator_recovery_completion_r105.json
+    iteration15_allocator_recovery_completion_receipt_sha256: sha256:6a60b657396f5917f759b321bc4e1f4e5c040ea1e1d2dd717458bc55b314fc41
     static_preparation:
       status: static_preparation_complete_slowking_failed_experiment_boundary_reached
       contract: ops/final_submission/final_format_alakazam_static_preparation_v1.json
-      contract_sha256: sha256:078704f45a8f0958c977cec8bbe4827db1326989ef0ae0be80181d4705a90a9c
-      validation_receipt: state/final_format_alakazam_static_preparation_validation_v11.json
-      validation_receipt_sha256: sha256:2e2eb9f11705e1ee9a7935ed78dc088842cadb07932e6170f1a85fe76c61a593
+      contract_sha256: sha256:ba7ea3c6117ff3d86668930d588b80b36de05e4b6152f8ba45db3f6c0aec1b6b
+      validation_receipt: state/final_format_alakazam_static_preparation_validation_v12.json
+      validation_receipt_sha256: sha256:bd3a0044b18424e2d203ce501388555d9f65a7b3cd97d00a67160ae17cb0b1d1
       receipt_template_count: 8
       model_computation_started: true
       active_runtime_modified: false
@@ -489,6 +591,7 @@ specialist_training:
     ordered_specialist_ids:
       - alakazam
       - marnie-s-grimmsnarl-ex
+      - crustle
     order_is_strict: true
     release_gates:
       final_alakazam_model_computation:
@@ -500,12 +603,25 @@ specialist_training:
         no_receipt_no_model_work: true
       broader_multi_archetype_capacity_program:
         required_receipt: post_refresh_sequence_complete_for_capacity_v2
-        requires_final_format_alakazam_and_marnie_refresh_complete: true
+        requires_final_format_alakazam_marnie_and_crustle_complete: true
         no_receipt_no_model_work: true
     first_refresh:
       specialist_id: alakazam
       start_timing: immediately_after_slowking_failed_experiment_receipt_and_g0_g1
       model_format: final_submission_format
+      capacity_profile: H10-I/v1
+      h10_architecture:
+        spatial_layers: 7
+        temporal_layers: 3
+        option_decoder_layers: 7
+        feed_forward_width: 2496
+        strategic_head_residual_width: 512
+        final_learned_head_count: 19
+        final_distinct_action_route_count: 19
+      decision_fusion_schema: poke_bot.causal_decision_fusion/v3
+      typed_output_centered_routes: true
+      route_reliability_bounds: [0.25, 4.0]
+      action_type_reliability_cap_until_versioned_labels: 0.25
       format_contract: docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md
       first_final_format_model: true
       final_format_computation_before_slowking_terminal_disposition_allowed: false
@@ -533,6 +649,16 @@ specialist_training:
           bert_after_iteration_0_commit_if_stable: [self_play, public_mix, holdout, evaluation]
           public_mix_local_only: false
           minimum_blackwell_fraction: 0.50
+        blackwell_worker_profile:
+          simulator_workers: 96
+          games_in_flight: 96
+          heldout_local_workers: 96
+          worker_floor: 96
+          worker_target: 96
+          worker_ceiling: 96
+          live_pool_max_workers: 96
+          adaptive_worker_rebalance_allowed: false
+          automatic_worker_fallback_allowed: false
         apple_benchmark:
           games: 512
           checkpoint_format: exact_h10
@@ -548,14 +674,16 @@ specialist_training:
         learner_epochs_per_iteration: 1
         learner_batch:
           games_per_batch_cap: 240
-          decisions_per_batch_cap: 4096
-          warmup_decisions_per_batch_cap: 4096
-          dormant_matchup_adapter_decisions_per_batch_cap: 2048
+          decisions_per_batch_cap: 1536
+          warmup_decisions_per_batch_cap: 1536
+          agreement_decisions_per_batch_cap: 6144
+          agreement_forward: policy_only
+          dormant_matchup_adapter_decisions_per_batch_cap: 3072
           dormant_matchup_adapter_oom_splitting: true
           cuda_cache_release_before_adapter_phase: true
           completed_collection_reuse_required: true
           recollection_allowed: false
-          status: recovery_staged_after_adapter_oom
+          status: active_revision_105_iteration15_allocator_recovery
           baseline_preparation:
             value_only_forward_required: true
             bypass_policy_decoder_fusion_guides_and_auxiliary_heads: true
@@ -567,24 +695,28 @@ specialist_training:
               activation_requires_exact_cached_value_parity: true
               activation_requires_exact_awr_weight_parity: true
             optional_multi_gpu_sharding_order: after_value_only_packed_and_prefetch
-        maximum_iterations: 189
-        maximum_training_games: 3096576
-        minimum_terminal_iteration: 5
-        ordinary_iteration_ceiling_acceptance_allowed: false
+        maximum_iterations: 21
+        maximum_training_games: 344064
+        minimum_terminal_iteration: 20
+        terminal_ceiling_completed_iteration: 20
+        collect_after_terminal_ceiling: false
+        ordinary_iteration_ceiling_acceptance_allowed: true
+        ceiling_acceptance_is_not_a_measured_gate_pass: true
+        ceiling_failed_gate_results_must_be_preserved: true
         ordinary_lc50_fallback_allowed: false
         premium_gate_games: 4250
-        premium_skill_weighted_win_rate: 0.65
+        premium_skill_weighted_win_rate: 0.75
         premium_skill_weighted_confidence_lower: 0.60
         official_control_games: 1000
         official_control_win_rate: 0.60
-        kaggle_rating_target: 1000
+        kaggle_rating_target: 1150
         kaggle_rating_simulation:
           separate_from_premium_strength_gate: true
           source: actual_balanced_seat_simulations_against_checksum_bound_frozen_rating_anchors
           estimator: multiplayer_bradley_terry_elo_mle
           confidence_level: 0.90
           minimum_anchor_count: 8
-          projected_rating_lower_bound: 1000
+          projected_rating_lower_bound: 1150
           training_eligible: false
           replay_eligible: false
         exact_training_seat_split: {first: 0.5, second: 0.5}
@@ -604,6 +736,173 @@ specialist_training:
           expand_only_that_completed_alakazam_derivative_to_final_format: true
           latest_core_direct_final_format_tensor_parent_allowed: false
           partial_old_alakazam_core_overlay_allowed: false
+    second_refresh:
+      specialist_id: marnie-s-grimmsnarl-ex
+      display_name: Marnie's Grimmsnarl ex
+      neural_policy_challenger:
+        owner_decision_revision: 118
+        status: active_generation_15_restarted_iteration_6
+        activation_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latent-lookahead-r118-activation.json
+        activation_receipt_sha256: sha256:9243ccd6632785e6c01bd7a3380b8c57eda0c9b5d0c4db0abddc2b87deaba22d
+        activation_checkpoint_sha256: sha256:9ff2a8bcaf9ee51db1f6bb7dd86fb5d480a1737d80859140323f9b6fcab36cc5
+        static_validation_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latent-lookahead-r116-static-validation.json
+        static_validation_receipt_sha256: sha256:4bca1e99166468757e2d5191f8a495b882c04988d00fa2f619eba4dfe7153f88
+        static_validation_status: passed_authority_off_heavy_gates_pending
+        architecture: action_conditioned_latent_lookahead_plus_policy_aid
+        neural_only: true
+        mcts_allowed: false
+        beam_search_allowed: false
+        competition_time_simulator_search_allowed: false
+        parent_selection: best_checksum_exact_heldout_parent
+        migration_initialization: zero_safe
+        latent_action_authority_default: enabled_at_revision_118_restart_boundary
+        accepted_policy_generation: 15
+        policy_aid_cap: 0.25
+        rollback_parent_generation: 9
+        rollback_parent_preserved: true
+        post_activation_nonregression_monitor_required: true
+        activation_requires_all_gates:
+          - paired_ladder_proxy
+          - fixed_holdout
+          - causality
+          - step_zero_parity
+          - latency
+          - replay_isolation
+        missing_or_failed_gate_behavior: resume_existing_lineage_unchanged
+        may_delay_revision_111_112_113_boundary: false
+        authority_gate_scope:
+          independent_from_terminal_specialist_gate: true
+          terminal_skill_weighted_win_rate_gate: 0.80
+          terminal_gate_controls: [completion, freeze, move_to_crustle]
+          latent_gate_controls: bounded_latent_action_authority_only
+          latent_gate_comparison: parent_relative_nonregression
+          terminal_strength_or_rating_required_for_latent_authority: false
+          earliest_clean_activation_boundary: restarted_iteration_6
+          revision_117_gates_are_post_activation_monitors: true
+          passing_latent_gate_completes_specialist: false
+          passing_latent_gate_advances_deck: false
+          merge_target: then_current_shape_compatible_marnie_learner
+          merge_scope: validated_latent_tensors_only
+          required_additional_gates:
+            - bounded_authority_on_kl_and_drift
+            - exact_gate_nonregression
+        iteration_6_shadow_update:
+          required: true
+          starts_after_committed_iteration: 5
+          first_affected_iteration: 6
+          training_data: training_eligible_marnie_replay_only
+          kaggle_or_formal_evaluation_training_eligible: false
+          protected_parent_and_base_policy_tensors_frozen: true
+          optimizer_state: isolated_fresh
+          latent_action_authority: disabled
+          serving_eligible: false
+          existing_lineage_nonblocking_fallback: true
+          may_delay_ordinary_marnie_training: false
+          required_training_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latent-lookahead-r116-shadow-train.json
+          required_training_receipt_sha256: sha256:6bbbae1e93cc007f5558780c819a3524144b9906f0f08eadbd83a29a477bd1aa
+        further_policy_changes_and_fresh_kaggle_evidence: analysis_only_until_canonicalized
+      opponent_tier_policy:
+        owner_decision_revision: 111
+        status: activated_for_iteration_6
+        activation_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-opponent-tier-activation-r111.json
+        activation_receipt_sha256: sha256:1d866f198c9e02f51dbd91f2cce6847843011a36457c9634f00a69405afed080
+        scope: [public_mix, formal_premium_holdout]
+        activation_boundary:
+          after_completed_iteration: 5
+          first_affected_iteration: 6
+          current_iteration_5_contract_immutable: true
+        canonical_tiers:
+          eligible_non_active_h10_specialist: {tier: S, weight: 2.0}
+          other_frozen_specialist: {tier: A, weight: 1.0}
+          remaining_public_opponent: {tier: A, weight: 1.0}
+        active_learner_opponent_eligible: false
+        exact_roster_size: 17
+        games_per_opponent: 250
+        formal_games_total: 4250
+        seat_games_per_opponent: {first: 125, second: 125}
+        preserve_opponent_ids_and_content_digests: true
+        preserve_research_controls: true
+        preserve_terminal_pass_criteria:
+          skill_weighted_win_rate: 0.80
+          skill_weighted_confidence_lower: 0.50
+      starts_after_first_refresh_frozen_and_registered: true
+      predecessor_boundary_core_refresh_attempt_required: true
+      resolved_core_selector: latest_checksum_accepted_cumulative_core_after_predecessor_attempt
+      rejected_core_candidate_behavior: preserve_immutable_and_use_latest_accepted_fallback
+      model_format: final_submission_format
+      exact_bootstrap_epochs: 25
+      ordinary_bootstrap_must_precede_final_format_expansion: false
+      training_before_h10_migration_allowed: false
+      bootstrap_runs_entirely_after_h10_migration: true
+      current_structure_resolution_required_at_start: true
+      capacity_profile: H10-I/v1
+      h10_architecture:
+        spatial_layers: 7
+        temporal_layers: 3
+        option_decoder_layers: 7
+        feed_forward_width: 2496
+        strategic_head_residual_width: 512
+      required_learned_head_count: 19
+      required_distinct_action_route_count: 19
+      all_heads_option_conditioned_and_action_influencing: true
+      decision_fusion_schema: poke_bot.causal_decision_fusion/v3
+      typed_output_centered_routes: true
+      route_reliability_bounds: [0.25, 4.0]
+      action_type_reliability_cap_until_versioned_labels: 0.25
+      guide_mode: strategic_directional_v2_training_only
+      guide_pairwise_route_heads:
+        - action_q
+        - action_resource
+        - action_utility
+        - setup_board_outcome
+        - combo_state_when_available
+      guide_serving_authority: false
+      current_selector_authority: false
+      current_training_authority: false
+      current_gradient_authority: false
+      router_format: 6
+      matchup_adapters_required: true
+      original_checkpoint_immutable: true
+      separately_versioned_derivative_required: true
+      current_selector_authority_before_completion: false
+      terminal_iteration_contract:
+        owner_decision_revision: 113
+        status: activated_for_iteration_6
+        activation_receipt: /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-iteration20-activation-r113.json
+        activation_receipt_sha256: sha256:9e45f35117c8c0edd32ba40a7f67e2bc9fecde1ab2ea1085f047881b032d4199
+        minimum_terminal_iteration: 20
+        terminal_ceiling_completed_iteration: 20
+        maximum_iterations: 21
+        collect_after_terminal_ceiling: false
+        activation_boundary: durable_iteration_5_commit_before_iteration_6_collection
+        current_iteration_5_contract_immutable: true
+    third_specialist:
+      specialist_id: crustle
+      display_name: Crustle
+      starts_after_marnie_iteration_20_frozen_and_registered: true
+      new_separately_versioned_h10_specialist_required: true
+      existing_public_agent_is_baseline_only: pilkwang-meta-20260708
+      existing_public_agent_may_substitute_for_specialist: false
+      capacity_profile: H10-I/v1
+      decision_fusion_schema: poke_bot.causal_decision_fusion/v3
+      required_learned_head_count: 19
+      required_distinct_action_route_count: 19
+      all_heads_option_conditioned_and_action_influencing: true
+      guide_mode: strategic_directional_v2_training_only
+      guide_serving_authority: false
+      router_format: 6
+      preserve_stable_matchup_slot: 0
+      matchup_adapters_required: true
+      exact_representative_required: true
+      current_deck_guide_contract: config/deck_guides/crustle.yaml
+      exact_corpus_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/crustle-v2/PROTECTED_EXPERT_CORPUS.json
+      terminal_preflight_required_before_launch: true
+      freeze_register_and_submission_required: true
+      handoff_stage_receipt: /home/inzi/poke-bot-agent/outputs/state/post-marnie-crustle-r113-handoff-stage-v1.json
+      handoff_stage_receipt_sha256: sha256:e1ed637c2262e749fb7ca45867c6618ad172cd77e204580f0b7658ceca6f2ccc
+      current_selector_authority: false
+      current_training_authority: false
+      current_gradient_authority: false
     identity:
       new_separately_versioned_derivative_required: true
       logical_specialist_id_is_preserved: true
@@ -669,6 +968,8 @@ specialist_training:
         - resolved_core
         - training_contract
         - current_gate_pass
+        - completion_authority
+        - measured_gate_pass
         - gate_receipt_sha256
         - frozen
         - freeze_receipt_sha256
@@ -676,6 +977,8 @@ specialist_training:
         - registration_receipt_sha256
       resolved_core_status_required: checksum_accepted
       training_contract_source_required: config/rl_protocol.yaml#/specialist_training
+      explicit_owner_ceiling_acceptance_counts_as_training_complete: true
+      ceiling_acceptance_must_not_set_current_gate_pass: true
       population_transition_blocked_until_all_refreshes_complete: true
     authoritative_runtime_values: state/specialists.yaml#/post_fleet_refresh
   meta_analysis:
@@ -1111,7 +1414,7 @@ specialist_training:
       teal-mask-ogerpon-ex: config/deck_guides/teal-mask-ogerpon-ex.yaml
       archaludon-ex: config/deck_guides/archaludon-ex.yaml
       slowking: config/deck_guides/slowking.yaml
-    historical_nonplanning_contracts:
+    staged_post_marnie_contracts:
       crustle:
         contract: config/deck_guides/crustle.yaml
         research_contract: config/deck_guides/crustle-research-proposal.yaml
@@ -1128,7 +1431,7 @@ specialist_training:
           content_digest: sha256:7120bc67415e06c1cf69d64574f1a41545fd4c2fd084a029d77c5e43a357957f
           inference_only: true
           gradient_or_update_authority: false
-        selection_training_completion_and_submission_authority: false
+        selection_training_completion_and_submission_authority: staged_after_marnie_iteration_20
   slowking_combo_specialist:
     owner_decision_revisions: [57, 58, 59, 61, 62, 63, 64, 77, 78]
     status: active_iteration_3_collection_combo_rl_supervision_verified
@@ -1747,6 +2050,38 @@ kaggle:
         - {copy_number: 2, turn_order_preference: second_if_allowed}
       choice_absent_behavior: continue_without_inventing_turn_order_choice
       submission_completion_blocks_next_specialist: false
+  training_milestone_submission_profiles:
+    marnie-s-grimmsnarl-ex:
+      owner_decision_revision: 107
+      zero_indexed_iterations: [0, 4, 9, 14]
+      continuing_cadence: every_5n_plus_4_commit_before_completion
+      copies_per_milestone: 1
+      turn_order_preference: first_if_allowed
+      completion_authority: training_milestone_snapshot
+      terminal_completion_submission_remains_separate: true
+      training_stop_pause_freeze_or_selection_authority: false
+      quota_or_spacing_wait_blocks_training: false
+  owner_authorized_one_off_submissions:
+    alakazam-h10-new-list-no-train-r115:
+      owner_decision_revision: 115
+      purpose: no_training_deck_list_experiment
+      source_specialist_id: alakazam
+      source_model_profile: H10-I/v1
+      source_submission_bundle_sha256: sha256:e596630536d5052ae172ba2a42d72023709eba8b98c17a47243d1275b33a5b75
+      source_checkpoint_sha256: sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92
+      deck_path: decks/experiments/alakazam-h10-new-list-no-train-r115.csv
+      deck_card_count: 60
+      deck_file_sha256: sha256:655419f0372062dfc7301b87f0228ad6737d6c630e5b7afdcfb9b2ed2bab6383
+      deck_cards_sha256: sha256:803d00583b98f81bc3908dab22974a6d65f3d35724e95874bda1eb5ea76ac9ea
+      exact_label: new list experiment, h10 alakazam, no train
+      copies: 1
+      turn_order_preference: first_if_allowed
+      only_archive_member_allowed_to_change: deck.csv
+      canonical_specialist_representative_changed: false
+      training_freeze_registration_or_selector_authority: none
+      normal_specialist_submission_obligation_changed: false
+      submit_via_digest_bound_one_shot_guard_only: true
+      receipt: state/alakazam_h10_no_train_list_experiment_r115.json
   automatic_one_shot_authorization_on_training_complete: true
   one_shot_authorization_uses: 1
   standing_owner_decision_source: GOAL.md#/decision-ledger/revision-18
@@ -1795,7 +2130,11 @@ population_phase:
   starts_after_all_specialists_pass: false
   requires_all_specialists_pass: true
   requires_post_fleet_refresh_complete: true
-  starts_after_all_specialists_and_post_fleet_refreshes_pass: true
+  requires_post_marnie_crustle_complete: true
+  starts_after_alakazam_marnie_and_crustle_complete: true
+  trainable_logical_member_count: 15
+  crustle_member_source: newly_completed_h10_specialist
+  public_crustle_agent_training_eligible: false
   unfreeze_population: true
   local_round_robin_self_play: true
   include_current_versions: true

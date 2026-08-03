@@ -1,0 +1,40 @@
+{
+  "schema": "poke_bot.bert_portable_baseline_library_repair/v1",
+  "status": "active_public_mix_continuity_verified",
+  "recorded_at_utc": "2026-07-31T21:17:17Z",
+  "goal_revision": 98,
+  "cause": {
+    "failed_component": "bert_portable_public_opponent_loader",
+    "missing_path": "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/baselines/manifest.json",
+    "production_failure_at_utc": "2026-07-31T21:01:41Z",
+    "managed_service_auto_restart_at_utc": "2026-07-31T21:02:43Z"
+  },
+  "repair": {
+    "source": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v9/baselines",
+    "target": "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/baselines",
+    "manifest_sha256": "sha256:94f3ae9b95b867780aebe3cc69cb372a218481ac5443c8e50c2781125801ec91",
+    "portable_baseline_packages": 40,
+    "complete_main_and_deck_pairs": 40,
+    "production_service_restarted_for_repair": false,
+    "bert_worker_restarted_for_repair": false,
+    "persistent_rejoin_preflight": "scripts/rejoin_bert_after_alakazam_iter0.sh"
+  },
+  "continuity": {
+    "managed_service": "pokebot-final-format-alakazam-r79-h10.service",
+    "managed_pid": 1001946,
+    "managed_restart_count": 1,
+    "active_state": "active/running",
+    "iteration": 1,
+    "stage": "collect:public_mix",
+    "public_mix_games_observed": 390,
+    "public_mix_games_target": 14336,
+    "bert_checkpoint_sha256": "sha256:8f8ab3adee66416a7400f73e8fb0fe2749b183976407c8c7f5d28cb552878981",
+    "bert_checkpoint_version": 10,
+    "bert_workers": 16,
+    "bert_leaf_servers": 4,
+    "bert_jobs_completed": 843,
+    "bert_jobs_failed": 0,
+    "bert_controller_healthy": true,
+    "new_baseline_loader_failures_after_repair": 0
+  }
+}

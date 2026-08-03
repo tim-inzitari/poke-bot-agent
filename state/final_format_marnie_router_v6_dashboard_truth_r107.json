@@ -1,0 +1,38 @@
+{
+  "schema": "poke_bot.final_format_marnie_router_v6_dashboard_truth/v1",
+  "status": "activated_projection_only",
+  "recorded_at_utc": "2026-08-02T19:31:49Z",
+  "owner_decision_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "correction": {
+    "previous_contradiction": "the active checkpoint structure truthfully reported Router Format 5 while the derived Router Format 6 card was hard-coded active",
+    "current_checkpoint_format": "poke-bot-matchup-adapter-bank-v5-roster18",
+    "current_physical_slots": 18,
+    "router_v6_currently_active": false,
+    "router_v6_target_format": "poke-bot-matchup-adapter-bank-v6",
+    "router_v6_target_physical_slots": 64,
+    "router_v6_target_logical_routes": 20,
+    "router_v6_activation_boundary": "post_bootstrap_registration",
+    "transition_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-h10-router-v6-registration-fix-r107.json",
+    "runtime_or_training_behavior_changed": false
+  },
+  "deployed_snapshot": {
+    "sha256": "sha256:eb037f116d0e5f55483202b34fb51e3dfd2f91e200a4bb9a09245c705c9894a7",
+    "root_copy": "/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py",
+    "selector_owned_copy": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/scripts/dashboard_snapshot.py",
+    "marnie_deployment_copy": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/scripts/dashboard_snapshot.py",
+    "all_hashes_equal": true
+  },
+  "validation": {
+    "dashboard_api_ok": true,
+    "dashboard_epoch": 18,
+    "reported_router_v6_active": false,
+    "reported_current_materialized_routes": 18,
+    "reported_transition_status": "staged_for_post_bootstrap_registration_boundary",
+    "reported_target_physical_slots": 64,
+    "reported_target_logical_routes": 20,
+    "focused_dashboard_tests": "3 passed"
+  },
+  "training_authority": false,
+  "selector_authority": false
+}

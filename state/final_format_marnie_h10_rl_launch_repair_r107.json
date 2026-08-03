@@ -1,0 +1,52 @@
+{
+  "schema": "poke_bot.final_format_marnie_h10_rl_launch_repair/v1",
+  "status": "activated_before_iteration_0_commit",
+  "recorded_at_utc": "2026-08-02T20:39:29Z",
+  "goal_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "repaired_fail_closed_launch_inputs": {
+    "cg_package_path": "/home/inzi/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg",
+    "h10_override_environment": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/config/final_format_marnie_h10_runtime.env",
+    "baseline_manifest": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/baselines/manifest.json",
+    "baseline_manifest_target": "/home/inzi/poke-bot-agent-deployments/pure-rl-resident-v9/baselines/manifest.json",
+    "deck_root_target": "/home/inzi/poke-bot-agent/decks",
+    "kaggle_root_target": "/home/inzi/poke-bot-agent/kaggle",
+    "canonical_output_root_target": "/home/inzi/poke-bot-agent/outputs",
+    "bert_remote_root": "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage"
+  },
+  "preserved_evidence": {
+    "bootstrap_ready_sha256": "sha256:201a563cfd640fe6f7531d989145cb9d027bd3209f6f5f6694b1abfd4063dcd4",
+    "router_v6_migration_sha256": "sha256:2d2a18899a1694da744ccb8e9ff1f4ee7d28af362c0882b806ddd6e75816f8a4",
+    "runtime_registration_sha256": "sha256:7d25fc7d6814c4a1439775053e41c1b53715dccc98d0c8d6ffadbec5e054dc44",
+    "failed_private_output_quarantine": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/outputs.failed-launch-pre-iter0-r107",
+    "failed_attempt_collected_games": 0,
+    "failed_attempt_created_commit": false
+  },
+  "artifacts": {
+    "h10_override_environment_sha256": "sha256:ffa018a2a81a566856c4e25e8e3614ba541fb5cb9404f0f1a11f0604a1584fae",
+    "managed_rl_unit_sha256": "sha256:87fb060832cadcf2d40c1ad1a534ac425f90c78b371c50ce982054071c8068e5",
+    "managed_chain_validator_sha256": "sha256:8c58de81683f0d5f1581c8a51522e0bbc02585ff62edc282fadc7a85a60d9d59",
+    "baseline_manifest_sha256": "sha256:94f3ae9b95b867780aebe3cc69cb372a218481ac5443c8e50c2781125801ec91",
+    "cg_accuracy_canary_sha256": "sha256:2499c76dfde81179f3d151976c67743f5d698ef2a8d928ad58151a524d716a05",
+    "managed_chain_revalidation_sha256": "sha256:6c7300e2709b068feb970a2e411cdfd517240c5bced66df30a71352cd7b6ec68"
+  },
+  "live_validation": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "main_pid": 1191609,
+    "restart_count": 0,
+    "state": "active/running",
+    "model_parameters": 10428065,
+    "model_layers": "7/3/7",
+    "feed_forward_width": 2496,
+    "blackwell_workers": 96,
+    "elmo_workers": 36,
+    "bert_workers": 16,
+    "between_iteration_hard_gate_remotes_verified": 2,
+    "iteration": 0,
+    "phase": "collect:self_play",
+    "observed_completed_self_play_games": 515,
+    "iteration_0_commit_present": false,
+    "milestone_watcher_state": "active/waiting",
+    "training_interrupted_after_successful_relaunch": false
+  }
+}

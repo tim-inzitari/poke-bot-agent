@@ -1,14 +1,15 @@
 [Unit]
-Description=Verify all 22 specialists and authorize population round-robin
+Description=Verify 14 frozen own-model identities plus both refreshes and authorize population round-robin
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/post_refresh_sequence_complete_for_capacity_v2.json
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/population-v1-prep
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
 ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/prepare_population_round_robin.py --contract ops/specialist_cycle_handoff_v1.json
 Restart=on-failure
 RestartSec=60

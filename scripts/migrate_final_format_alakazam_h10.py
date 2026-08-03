@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Expand one ordinary Alakazam refresh into the exact H10-I format."""
+"""Expand one ordinary final-format refresh into the exact H10-I format.
+
+The original Alakazam invocation remains byte-for-byte compatible through the
+defaults.  Later refreshes provide their logical specialist and model IDs so a
+Marnie H10 child cannot be mislabeled as Alakazam in a checkpoint or receipt.
+"""
 
 from __future__ import annotations
 
@@ -24,6 +29,8 @@ from poke_bot.model import (  # noqa: E402
     DECISION_FUSION_SCHEMA,
     DECISION_FUSION_V2_SCHEMA,
     DECISION_FUSION_V2_ROUTE_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
+    DECISION_FUSION_V3_ROUTE_SCHEMA,
     COMBO_STATE_HEAD_NAME,
     SETUP_BOARD_OUTCOME_HEAD_NAME,
 )
@@ -57,7 +64,7 @@ def _write_exclusive(path: Path, value: object) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _role_inventory(model) -> dict[str, object]:
+def _role_inventory(model, *, specialist_id: str = "alakazam") -> dict[str, object]:
     fusion = model.decision_fusion
     if not isinstance(fusion, CausalDecisionFusion):
         raise RuntimeError("H10 child lacks causal decision fusion")
@@ -67,6 +74,12 @@ def _role_inventory(model) -> dict[str, object]:
         raise RuntimeError(
             f"H10 head/route inventory changed: heads={heads} routes={routes}"
         )
+    typed_v3 = bool(fusion.typed_output_centered_routes)
+    route_schema = (
+        DECISION_FUSION_V3_ROUTE_SCHEMA
+        if typed_v3
+        else DECISION_FUSION_V2_ROUTE_SCHEMA
+    )
     roles = [
         {
             "ordinal": ordinal,
@@ -77,7 +90,7 @@ def _role_inventory(model) -> dict[str, object]:
             ),
             "route_id": f"decision_fusion.dedicated_routes.{name}",
             "route_schema_sha256": _json_digest(
-                {"schema": DECISION_FUSION_V2_ROUTE_SCHEMA, "head_id": name}
+                {"schema": route_schema, "head_id": name}
             ),
             "option_conditioned": True,
             "causal_board_state_cross_attention": True,
@@ -89,6 +102,7 @@ def _role_inventory(model) -> dict[str, object]:
     ]
     return {
         "schema": "poke_bot.final_format_learned_role_route_inventory/v1",
+        "specialist_id": specialist_id,
         "template_only": False,
         "status": "issued_step_zero_training_pending",
         "runtime_authority": "none",
@@ -103,6 +117,16 @@ def _role_inventory(model) -> dict[str, object]:
         "all_routes_finite_bounded": True,
         "all_routes_zero_safe": True,
         "all_learned_heads_influence_actions": True,
+        "decision_fusion_schema": (
+            DECISION_FUSION_V3_SCHEMA if typed_v3 else DECISION_FUSION_V2_SCHEMA
+        ),
+        "route_schema": route_schema,
+        "typed_output_centered_routes": typed_v3,
+        "positive_bounded_route_reliability": typed_v3,
+        "route_reliability_bounds": [0.25, 4.0] if typed_v3 else None,
+        "action_type_reliability_cap": (
+            float(fusion.action_type_reliability_cap) if typed_v3 else None
+        ),
         "setup_board_outcome_included": "setup_board_outcome" in heads,
         "validated_slowking_combo_head_included": "combo_state" in heads,
         "guide": {
@@ -119,21 +143,43 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--parent", type=Path, required=True)
     parser.add_argument("--expected-parent-sha256", required=True)
+    parser.add_argument("--specialist-id", default="alakazam")
+    parser.add_argument("--model-id", default="final-format-alakazam-r79-h10-i")
+    parser.add_argument(
+        "--migration-schema",
+        default="poke_bot.final_format_alakazam_migration/v1",
+    )
     parser.add_argument("--child", type=Path, required=True)
     parser.add_argument("--migration-receipt", type=Path, required=True)
     parser.add_argument("--role-route-receipt", type=Path, required=True)
+    parser.add_argument("--directional-fusion-v3", action="store_true")
     args = parser.parse_args()
 
     parent_path = args.parent.expanduser().resolve()
+    specialist_id = str(args.specialist_id).strip().casefold()
+    if not specialist_id or any(
+        char not in "abcdefghijklmnopqrstuvwxyz0123456789-"
+        for char in specialist_id
+    ):
+        raise RuntimeError("unsafe final-format specialist id")
+    model_id = str(args.model_id).strip()
+    if not model_id:
+        raise RuntimeError("final-format model id is required")
+    migration_schema = str(args.migration_schema).strip()
+    if not migration_schema.startswith("poke_bot.final_format_") or not migration_schema.endswith("/v1"):
+        raise RuntimeError("invalid final-format migration schema")
     actual_parent_sha = _sha256(parent_path)
     if actual_parent_sha != args.expected_parent_sha256:
         raise RuntimeError(
-            f"ordinary Alakazam parent checksum changed: {actual_parent_sha}"
+            f"ordinary {specialist_id} parent checksum changed: {actual_parent_sha}"
         )
     parent_payload = checkpoint.load_checkpoint(parent_path, map_location="cpu")
     parent = load_model_from_checkpoint(parent_path, device=torch.device("cpu"))
-    child, evidence = build_h10_child(parent)
-    role_inventory = _role_inventory(child)
+    child, evidence = build_h10_child(
+        parent,
+        directional_fusion_v3=args.directional_fusion_v3,
+    )
+    role_inventory = _role_inventory(child, specialist_id=specialist_id)
     role_inventory["inventory_sha256"] = _json_digest(role_inventory["roles"])
     _write_exclusive(args.role_route_receipt, role_inventory)
     role_sha = _sha256(args.role_route_receipt)
@@ -151,12 +197,29 @@ def main() -> int:
     inherited_fusion_keys = sorted(
         key
         for key in child_keys
-        if key.startswith("decision_fusion.") and key not in dedicated_keys
+        if key.startswith("decision_fusion.")
+        and key not in dedicated_keys
+        and key in dict(parent_payload.get("model_state_dict") or {})
+    )
+    target_fusion_schema = (
+        DECISION_FUSION_V3_SCHEMA
+        if args.directional_fusion_v3
+        else DECISION_FUSION_V2_SCHEMA
+    )
+    target_route_schema = (
+        DECISION_FUSION_V3_ROUTE_SCHEMA
+        if args.directional_fusion_v3
+        else DECISION_FUSION_V2_ROUTE_SCHEMA
     )
     extra["decision_fusion_migration"] = {
-        "schema": "poke_bot.causal_decision_fusion_v2_migration/v1",
+        "schema": (
+            "poke_bot.causal_decision_fusion_v3_migration/v1"
+            if args.directional_fusion_v3
+            else "poke_bot.causal_decision_fusion_v2_migration/v1"
+        ),
         "source_schema": DECISION_FUSION_SCHEMA,
-        "target_schema": DECISION_FUSION_V2_SCHEMA,
+        "target_schema": target_fusion_schema,
+        "target_route_schema": target_route_schema,
         "source_checkpoint": str(parent_path),
         "source_checkpoint_digest": actual_parent_sha,
         "zero_safe_initialization": True,
@@ -177,6 +240,14 @@ def main() -> int:
             COMBO_STATE_HEAD_NAME,
         ],
         "one_option_conditioned_route_per_learned_head": True,
+        "typed_output_centered_routes": bool(args.directional_fusion_v3),
+        "positive_bounded_reliability": bool(args.directional_fusion_v3),
+        "reliability_bounds": (
+            [0.25, 4.0] if args.directional_fusion_v3 else None
+        ),
+        "action_type_reliability_cap": (
+            0.25 if args.directional_fusion_v3 else None
+        ),
     }
     payload = checkpoint.build_checkpoint(
         model=child,
@@ -186,8 +257,8 @@ def main() -> int:
         rl_iteration=int(parent_payload.get("rl_iteration", 0)),
         best_metric=parent_payload.get("best_metric"),
         extra=extra,
-        archetype_id="alakazam",
-        model_id="final-format-alakazam-r79-h10-i",
+        archetype_id=specialist_id,
+        model_id=model_id,
     )
     checkpoint.immutable_torch_save(payload, args.child)
     child_sha = _sha256(args.child)
@@ -200,7 +271,8 @@ def main() -> int:
     migration = evidence["migration"]
     parity = evidence["step_zero_parity"]
     receipt = {
-        "schema": "poke_bot.final_format_alakazam_migration/v1",
+        "schema": migration_schema,
+        "specialist_id": specialist_id,
         "template_only": False,
         "status": "issued_step_zero_passed_training_pending",
         "capacity_profile": "H10-I/v1",
@@ -218,6 +290,16 @@ def main() -> int:
         "learned_head_count": role_inventory["learned_head_count"],
         "learned_route_count": role_inventory["learned_route_count"],
         "one_distinct_bounded_option_conditioned_route_per_learned_head": True,
+        "decision_fusion_schema": target_fusion_schema,
+        "route_schema": target_route_schema,
+        "typed_output_centered_routes": bool(args.directional_fusion_v3),
+        "positive_bounded_route_reliability": bool(args.directional_fusion_v3),
+        "route_reliability_bounds": (
+            [0.25, 4.0] if args.directional_fusion_v3 else None
+        ),
+        "action_type_reliability_cap": (
+            0.25 if args.directional_fusion_v3 else None
+        ),
         "guide_runtime_route_count": 0,
         "aggregate_route_bound": 1.0,
         "parameter_inventory": {

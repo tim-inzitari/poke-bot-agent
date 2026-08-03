@@ -1,0 +1,65 @@
+{
+  "schema": "poke_bot.alakazam_h10_no_train_list_experiment/v1",
+  "owner_decision_revision": 115,
+  "status": "submitted_pending_evaluation",
+  "authorized_at_utc": "2026-08-03T17:00:34.776135+00:00",
+  "competition": "pokemon-tcg-ai-battle",
+  "label": "new list experiment, h10 alakazam, no train",
+  "copies": 1,
+  "turn_order_preference": "first_if_allowed",
+  "source": {
+    "specialist_id": "alakazam",
+    "model_profile": "H10-I/v1",
+    "bundle": "/home/inzi/poke-bot-agent/outputs/submissions/final-format-alakazam-r79-h10-refresh-v1/copy-1/submission.tar.gz",
+    "bundle_sha256": "sha256:e596630536d5052ae172ba2a42d72023709eba8b98c17a47243d1275b33a5b75",
+    "checkpoint_sha256": "sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92"
+  },
+  "deck": {
+    "path": "decks/experiments/alakazam-h10-new-list-no-train-r115.csv",
+    "card_count": 60,
+    "file_sha256": "sha256:655419f0372062dfc7301b87f0228ad6737d6c630e5b7afdcfb9b2ed2bab6383",
+    "cards_sha256": "sha256:803d00583b98f81bc3908dab22974a6d65f3d35724e95874bda1eb5ea76ac9ea",
+    "dudunsparce_count": 3,
+    "alakazam_count": 3
+  },
+  "invariants": {
+    "only_archive_member_allowed_to_change": "deck.csv",
+    "canonical_specialist_representative_changed": false,
+    "training_performed": false,
+    "freeze_or_registration_performed": false,
+    "active_selector_changed": false,
+    "active_training_interrupted": false,
+    "normal_specialist_submission_obligation_changed": false
+  },
+  "derived_bundle": {
+    "path": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-h10-new-list-no-train-r115/submission.tar.gz",
+    "sha256": "sha256:5696a66f47f1f9fd7999cf70b5fc93908e97537a76678a728a228339f526a5b0",
+    "member_count": 153,
+    "changed_members_from_source": [
+      "deck.csv"
+    ],
+    "checkpoint_sha256": "sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92",
+    "deck_sha256": "sha256:655419f0372062dfc7301b87f0228ad6737d6c630e5b7afdcfb9b2ed2bab6383",
+    "isolated_smoke": {
+      "passed": true,
+      "deck_card_count": 60,
+      "live_engine_steps": 80,
+      "turn_order_preference": "first_if_allowed"
+    },
+    "turn_order_attestation": "/home/inzi/poke-bot-agent/outputs/submissions/alakazam-h10-new-list-no-train-r115/submission.tar.gz.go-first-verified.json"
+  },
+  "authorization": {
+    "nonce": "alakazam-h10-new-list-no-train-r115-f4fb79daeafe4baaba35f7a43b1298bd",
+    "remaining_uses": 0,
+    "consumed_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260803T170605.011554Z-alakazam-h10-new-list-no-train-r115-f4fb79daeafe4baaba35f7a43b1298bd.authorization-consumed.json",
+    "attempt_receipt": "/home/inzi/.local/state/pokebot/kaggle-submission-attempts/20260803T170827.541486Z-alakazam-h10-new-list-no-train-r115-f4fb79daeafe4baaba35f7a43b1298bd.json",
+    "guard_returncode": 0
+  },
+  "submission": {
+    "id": 55217604,
+    "submitted_at_utc": "2026-08-03T17:08:25.873000+00:00",
+    "status": "PENDING",
+    "public_score": null,
+    "private_score": null
+  }
+}

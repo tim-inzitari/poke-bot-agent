@@ -236,10 +236,27 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
     if not slowking:
         raise RuntimeError("base registry lacks the current strategic-row scaffold")
 
+    # The base registry predates the final-format gate derivatives.  Do not
+    # inherit its historical terminal-gate label: bind both the relative
+    # contract path and the exact gate identity from the same immutable file.
+    active_gate_path = Path(args.active_gate_contract).expanduser()
+    if not active_gate_path.is_absolute():
+        active_gate_path = runtime_root / active_gate_path
+    active_gate_path = active_gate_path.resolve()
+    _require(active_gate_path)
+    active_gate = json.loads(active_gate_path.read_text(encoding="utf-8"))
+    terminal_active_gate_id = str(active_gate.get("active_gate_id") or "").strip()
+    if not terminal_active_gate_id:
+        raise RuntimeError("active final-format gate lacks active_gate_id")
+
     curriculum_root = runtime_root / "state/final_format_alakazam_curriculum_r79"
-    role_map = curriculum_root / "alakazam-strategic-head-roles-r56.json"
-    curriculum = curriculum_root / "alakazam-strategic-curriculum-r56.json"
-    curriculum_receipt = curriculum_root / "alakazam-strategic-curriculum-validation-r56.json"
+    role_map = curriculum_root / "alakazam-strategic-head-roles-r104.json"
+    curriculum = curriculum_root / "alakazam-strategic-curriculum-r104.json"
+    curriculum_receipt = (
+        args.curriculum_validation_receipt.expanduser().resolve()
+        if args.curriculum_validation_receipt is not None
+        else curriculum_root / "alakazam-strategic-curriculum-validation-r104.json"
+    )
     role_digest = _require(role_map)
     curriculum_digest = _require(curriculum)
     curriculum_receipt_digest = _require(curriculum_receipt)
@@ -282,15 +299,19 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
         "guide_contract": str(guide),
         "guide_contract_sha256": guide_digest.removeprefix("sha256:"),
         "guide_loss_weight": 0.05,
-        "guide_training_mode": "strategic_curriculum_v1",
+        "guide_training_mode": "strategic_directional_v2",
         "guide_weight_policy": policy,
         "strategic_curriculum": {
             "schema": "poke_bot.specialist_guide_training_contract/v1",
-            "training_mode": "strategic_curriculum_v1",
-            "guide_curriculum_revision": 51,
+            "training_mode": "strategic_directional_v2",
+            "guide_curriculum_revision": 104,
             "strategic_branch_scope_revision": 56,
-            "action_influence_revision": 56,
-            "decision_fusion_schema": "poke_bot.causal_decision_fusion/v2",
+            "action_influence_revision": 104,
+            "decision_fusion_schema": "poke_bot.causal_decision_fusion/v3",
+            "typed_output_centered_routes": True,
+            "route_reliability_bounds": [0.25, 4.0],
+            "action_type_reliability_cap": 0.25,
+            "final_policy_logits_are_guide_targets": False,
             "require_all_registered_learned_sources": True,
             "head_role_map": str(role_map),
             "head_role_map_sha256": role_digest.removeprefix("sha256:"),
@@ -300,15 +321,18 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
             "validation_receipt_sha256": curriculum_receipt_digest.removeprefix("sha256:"),
         },
         "decision_fusion": {
-            "schema": "poke_bot.causal_decision_fusion/v2",
+            "schema": "poke_bot.causal_decision_fusion/v3",
             "required": True,
             "runtime_enabled": True,
+            "typed_output_centered_routes": True,
+            "route_reliability_bounds": [0.25, 4.0],
+            "action_type_reliability_cap": 0.25,
             "required_heads": LEARNED_HEADS,
         },
         "setup_board_outcome_loss_weight": 0.025,
         "combo_state_loss_weight": 0.0,
-        "minimum_terminal_iteration": 5,
-        "iteration_ceiling": 188,
+        "minimum_terminal_iteration": args.minimum_terminal_iteration,
+        "iteration_ceiling": 20,
         "terminal_gate_marker": "SPECIALIST_GATE_PASSED.alakazam-final-h10-r79",
         "pass_handler": {
             "family": "final-format-alakazam-r79-h10-refresh-v1",
@@ -333,16 +357,28 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
     common_args = _replace_option(common_args, "--games-per-iter", "16384")
     common_args = _replace_option(common_args, "--train-epochs", "1")
     common_args = _replace_option(common_args, "--train-games-per-batch", "240")
+    # Gate arguments are appended canonically by launch_active_specialist.
+    # Keeping them out of the common vector prevents a stale registry from
+    # overriding the receipt-bound row/gate pair during a managed resume.
     common_args = _replace_option(
-        common_args, "--train-max-decisions-per-batch", "4096"
+        common_args,
+        "--train-max-decisions-per-batch",
+        str(args.train_decisions_cap),
     )
     common_args = _replace_option(
-        common_args, "--train-warmup-max-decisions-per-batch", "4096"
+        common_args,
+        "--train-warmup-max-decisions-per-batch",
+        str(args.train_warmup_decisions_cap),
     )
     common_args = _replace_option(
         common_args,
         "--dormant-matchup-adapter-max-decisions-per-batch",
-        "2048",
+        str(args.dormant_matchup_adapter_decisions_cap),
+    )
+    common_args = _replace_option(
+        common_args,
+        "--boundary-design-migration-reason",
+        str(args.boundary_design_migration_reason),
     )
     common_args = _replace_option(
         common_args,
@@ -350,16 +386,19 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
         "192.168.1.143:8765,192.168.1.158:8766",
     )
     registry["common_trainer_args"] = common_args
-    registry["active_gate_contract"] = "ops/final_format_alakazam_gate_r80_v3.json"
+    registry["minimum_terminal_iteration"] = args.minimum_terminal_iteration
+    registry["iteration_ceiling"] = 20
+    registry["active_gate_contract"] = args.active_gate_contract
+    registry["terminal_active_gate_id"] = terminal_active_gate_id
     handler = dict(base["pass_handler"])
     handler["training_service"] = "pokebot-final-format-alakazam-r79-h10.service"
-    # The post-fleet refresh must independently pass.  Unlike ordinary
-    # specialist production, reaching iteration 15 is not owner-authorized as
-    # a ceiling acceptance for this Alakazam derivative.
-    handler["ceiling_behavior"] = ""
+    # Revision 103 makes exact iteration 20 terminal. A measured pass remains
+    # preferred; otherwise preserve the failed gate and use the explicit owner
+    # ceiling authority without relabeling it as a pass.
+    handler["ceiling_behavior"] = "freeze_submit_and_continue_without_false_pass"
     profiles = dict(handler.get("specialist_submission_profiles") or {})
     profiles["alakazam"] = {
-        "owner_decision_revision": 82,
+        "owner_decision_revision": 104,
         "submission_count": 1,
         "turn_order_preferences": ["first_if_allowed"],
         "same_frozen_checkpoint_required": True,
@@ -370,6 +409,7 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
     registry["isolated_refresh_contract"] = {
         "schema": "poke_bot.final_format_alakazam_h10_isolated_runtime/v1",
         "owner_decision_revision": 82,
+        "allocator_recovery_revision": 105,
         "production_selector_write_authority": False,
         "historical_alakazam_replacement_allowed": False,
         "training_seat_split": {"first": 0.5, "second": 0.5},
@@ -383,9 +423,11 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
         "learner_epochs_per_iteration": 1,
         "learner_batch": {
             "games_per_batch_cap": 240,
-            "decisions_per_batch_cap": 4096,
-            "warmup_decisions_per_batch_cap": 4096,
-            "dormant_matchup_adapter_decisions_per_batch_cap": 2048,
+            "decisions_per_batch_cap": args.train_decisions_cap,
+            "warmup_decisions_per_batch_cap": args.train_warmup_decisions_cap,
+            "agreement_decisions_per_batch_cap": 6144,
+            "agreement_forward": "policy_only",
+            "dormant_matchup_adapter_decisions_per_batch_cap": args.dormant_matchup_adapter_decisions_cap,
             "dormant_matchup_adapter_oom_splitting": True,
         },
         "awr_baseline_preparation": {
@@ -393,12 +435,13 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
             "cpu_prefetch_batches": 1,
             "packed_temporal": "shadow_pending_exact_blackwell_parity",
         },
-        "maximum_iterations": 189,
-        "maximum_training_games": 3096576,
-        "premium_skill_weighted_win_rate": 0.65,
+        "maximum_iterations": 21,
+        "maximum_training_games": 344064,
+        "minimum_terminal_iteration": args.minimum_terminal_iteration,
+        "premium_skill_weighted_win_rate": 0.75,
         "premium_skill_weighted_confidence_lower": 0.60,
         "official_control_win_rate": 0.60,
-        "kaggle_rating_simulation_projected_lower_bound": 1000.0,
+        "kaggle_rating_simulation_projected_lower_bound": args.kaggle_rating_lower_bound,
         "strength_gate_and_rating_simulation_are_independent": True,
         "blackwell_workers": 96,
         "blackwell_games_in_flight": 96,
@@ -411,8 +454,11 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
     _write_once(args.output.expanduser().resolve(), registry)
     registry_digest = _sha256(args.output.expanduser().resolve())
     fusion_authority = {
-        "schema": "poke_bot.causal_decision_fusion/v2",
+        "schema": "poke_bot.causal_decision_fusion/v3",
         "runtime_enabled": True,
+        "typed_output_centered_routes": True,
+        "route_reliability_bounds": [0.25, 4.0],
+        "action_type_reliability_cap": 0.25,
         "required_heads": LEARNED_HEADS,
     }
     activation = {
@@ -450,12 +496,15 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
         "self_play_fraction": 0.125,
         "self_play_games_per_iteration": 2048,
         "public_opponent_games_per_iteration": 14336,
-        "maximum_iterations": 189,
-        "maximum_training_games": 3096576,
-        "premium_skill_weighted_win_rate": 0.65,
+        "maximum_iterations": 21,
+        "maximum_training_games": 344064,
+        "minimum_terminal_iteration": args.minimum_terminal_iteration,
+        "active_gate_contract": str(active_gate_path),
+        "terminal_active_gate_id": terminal_active_gate_id,
+        "premium_skill_weighted_win_rate": 0.75,
         "premium_skill_weighted_confidence_lower": 0.60,
         "official_control_win_rate": 0.60,
-        "kaggle_rating_simulation_projected_lower_bound": 1000.0,
+        "kaggle_rating_simulation_projected_lower_bound": args.kaggle_rating_lower_bound,
         "h10_router_v6_handoff_sha256": handoff_digest,
     }
     _write_once(args.activation_receipt.expanduser().resolve(), activation)
@@ -504,7 +553,39 @@ def main() -> int:
     parser.add_argument("--activation-receipt", type=Path, required=True)
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--log", type=Path, required=True)
+    parser.add_argument("--minimum-terminal-iteration", type=int, default=20)
+    parser.add_argument(
+        "--active-gate-contract",
+        default="ops/final_format_alakazam_gate_r100_v1.json",
+    )
+    parser.add_argument("--kaggle-rating-lower-bound", type=float, default=1150.0)
+    parser.add_argument("--train-decisions-cap", type=int, default=3072)
+    parser.add_argument("--train-warmup-decisions-cap", type=int, default=3072)
+    parser.add_argument(
+        "--dormant-matchup-adapter-decisions-cap", type=int, default=3072
+    )
+    parser.add_argument(
+        "--boundary-design-migration-reason",
+        default="receipt_backed_completed_collection_resume_v1",
+    )
+    parser.add_argument("--curriculum-validation-receipt", type=Path)
     args = parser.parse_args()
+    if args.minimum_terminal_iteration != 20:
+        parser.error("--minimum-terminal-iteration must be exactly 20")
+    if args.kaggle_rating_lower_bound <= 0:
+        parser.error("--kaggle-rating-lower-bound must be positive")
+    if not args.boundary_design_migration_reason.strip():
+        parser.error("--boundary-design-migration-reason must be non-empty")
+    for option, value in (
+        ("--train-decisions-cap", args.train_decisions_cap),
+        ("--train-warmup-decisions-cap", args.train_warmup_decisions_cap),
+        (
+            "--dormant-matchup-adapter-decisions-cap",
+            args.dormant_matchup_adapter_decisions_cap,
+        ),
+    ):
+        if value <= 0:
+            parser.error(f"{option} must be positive")
     print(json.dumps(render(args), sort_keys=True))
     return 0
 

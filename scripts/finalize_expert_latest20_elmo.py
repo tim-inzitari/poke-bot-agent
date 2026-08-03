@@ -17,6 +17,34 @@ from typing import Any
 
 SCHEMA = "poke_bot.expert_latest20_receipt/v1"
 ARCHIVE_PREFIX = "pokemon-tcg-ai-battle-episodes-"
+KNOWN_SOURCE_DISCREPANCIES = {
+    # Kaggle's immutable 2026-07-24 dataset manifest lists 4,445 episode IDs,
+    # but its published ZIP contains 4,444 JSON files.  The sole absent ID is
+    # 87841523 and Kaggle's per-file endpoint returns 404 for it.  Bind this
+    # exception to the exact published archive checksum so no other truncated
+    # or incomplete daily source can pass by count proximity.
+    "2026-07-24": {
+        "index_episode_count": 4_445,
+        "validated_episode_count": 4_444,
+        "missing_episode_ids": ["87841523"],
+        "archive_sha256": (
+            "sha256:68a5c1be539bef579f03b5de29b901a1fab1dc4904af78824fbf7666d73bc8ab"
+        ),
+        "reason": "published_kaggle_zip_omits_one_manifest_episode",
+    },
+    # The 2026-08-02 publisher artifact has the identical defect pattern: its
+    # manifest contains 4,587 IDs, while the immutable ZIP omits only 89488639
+    # and Kaggle returns 404 for that exact file.
+    "2026-08-02": {
+        "index_episode_count": 4_587,
+        "validated_episode_count": 4_586,
+        "missing_episode_ids": ["89488639"],
+        "archive_sha256": (
+            "sha256:fa91e058a42d5fffab0f3e63f04fba5acc9bfbd2e2225e97aa62f45f5d430eb8"
+        ),
+        "reason": "published_kaggle_zip_omits_one_manifest_episode",
+    },
+}
 
 
 def _sha256(path: Path) -> str:
@@ -82,15 +110,33 @@ def _archive_count(path: Path) -> int:
         )
 
 
-def _validate(path: Path, expected: int) -> None:
+def _validate(path: Path, expected: int, *, day: str) -> dict[str, Any]:
     if not path.is_file() or path.stat().st_size <= 0:
         raise RuntimeError(f"missing replay archive: {path}")
     actual = _archive_count(path)
-    if actual != expected:
+    if actual == expected:
+        return {
+            "index_episode_count": expected,
+            "validated_episode_count": actual,
+            "source_discrepancy": None,
+        }
+    exception = KNOWN_SOURCE_DISCREPANCIES.get(day)
+    checksum = _sha256(path) if exception else None
+    if not (
+        exception
+        and expected == int(exception["index_episode_count"])
+        and actual == int(exception["validated_episode_count"])
+        and checksum == exception["archive_sha256"]
+    ):
         raise RuntimeError(
             f"episode-count mismatch for {path.name}: "
             f"actual={actual} expected={expected}"
         )
+    return {
+        "index_episode_count": expected,
+        "validated_episode_count": actual,
+        "source_discrepancy": dict(exception),
+    }
 
 
 def _archive_path(archive_root: Path, day: str) -> Path:
@@ -100,17 +146,18 @@ def _archive_path(archive_root: Path, day: str) -> Path:
 def _reuse_archive(
     destination: Path,
     *,
+    day: str,
     expected: int,
     reuse_roots: list[Path],
 ) -> bool:
     if destination.is_file():
-        _validate(destination, expected)
+        _validate(destination, expected, day=day)
         return True
     for root in reuse_roots:
         candidate = root / destination.name
         if not candidate.is_file():
             continue
-        _validate(candidate, expected)
+        _validate(candidate, expected, day=day)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_name(f".{destination.name}.reuse")
         temporary.unlink(missing_ok=True)
@@ -136,6 +183,7 @@ def prepare(
         destination = _archive_path(archive_root, row["date"])
         if not _reuse_archive(
             destination,
+            day=str(row["date"]),
             expected=int(row["episode_count"]),
             reuse_roots=reuse_roots,
         ):
@@ -160,7 +208,11 @@ def install(
     if day not in rows:
         raise RuntimeError(f"{day} is not in the current latest-20 window")
     row = rows[day]
-    _validate(incoming, int(row["episode_count"]))
+    validation = _validate(
+        incoming,
+        int(row["episode_count"]),
+        day=day,
+    )
     destination = _archive_path(archive_root, day)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.install")
@@ -173,6 +225,7 @@ def install(
         "path": str(destination),
         "bytes": destination.stat().st_size,
         "sha256": _sha256(destination),
+        **validation,
     }
 
 
@@ -203,7 +256,11 @@ def commit(
     for row in rows:
         day = row["date"]
         path = _archive_path(archive_root, day)
-        _validate(path, int(row["episode_count"]))
+        validation = _validate(
+            path,
+            int(row["episode_count"]),
+            day=day,
+        )
         stat = path.stat()
         prior_row = prior.get(day, {})
         checksum = None
@@ -218,6 +275,7 @@ def commit(
         archives.append(
             {
                 **row,
+                **validation,
                 "path": str(path),
                 "bytes": stat.st_size,
                 "sha256": checksum,
@@ -243,7 +301,20 @@ def commit(
             "transfer_source_address": "192.168.1.158",
         },
         "archives": archives,
-        "total_episodes": sum(int(row["episode_count"]) for row in rows),
+        "total_indexed_episodes": sum(
+            int(row["episode_count"]) for row in rows
+        ),
+        "total_episodes": sum(
+            int(row["validated_episode_count"]) for row in archives
+        ),
+        "source_discrepancies": [
+            {
+                "date": row["date"],
+                **dict(row["source_discrepancy"]),
+            }
+            for row in archives
+            if row.get("source_discrepancy")
+        ],
         "total_bytes": sum(int(row["bytes"]) for row in archives),
         "committed_at": now,
     }

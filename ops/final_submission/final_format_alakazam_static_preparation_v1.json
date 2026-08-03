@@ -3,7 +3,7 @@
   "status": "static_preparation_complete_slowking_failed_experiment_boundary_reached_waiting_for_g0_g1",
   "owner_goal_revision": 79,
   "canonical_plan": "docs/FINAL_MODEL_CAPACITY_AND_DECISION_REPLAY_PLAN.md",
-  "canonical_plan_sha256": "sha256:34338711cb4b15f35dff54eef5711f75f475132afddb94eb2f611527c92e67b9",
+  "canonical_plan_sha256": "sha256:b958e0b9a750f656ce8e4f275d616af87c7e1f5053ace2463f19b998e2c59368",
   "authority": {
     "static_implementation": true,
     "model_computation": false,
@@ -54,7 +54,7 @@
     },
     "final_format_alakazam_source_compatibility_v1": {
       "path": "ops/final_submission/final_format_alakazam_source_compatibility_v1.json",
-      "sha256": "sha256:a6a1688382e7a168bbee63f5d5afe738ff80fb8a53818175e052b6c30ba7ae00"
+      "sha256": "sha256:1994149478f0ec2f0e387e9f2088f621d47cc5f943fce34be54e1f0b4699856b"
     }
   },
   "templates": {

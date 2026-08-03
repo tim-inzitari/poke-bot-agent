@@ -94,7 +94,14 @@ FATAL_PATTERNS = {
         r"trust(?:ed)?[_ -](?:search[_ -])?failures?=[1-9]", re.I
     ),
     "game_timeout": re.compile(
-        r"game_timeouts?=[1-9]|game exceeded \d+s", re.I
+        # A remote job timeout is retried by the collection scheduler when
+        # its line explicitly ends in ``reconnect+retry remote``.  Treating
+        # that one transient attempt as fatal tears down a healthy append-only
+        # wave, even though the scheduler has seven attempts remaining.
+        r"^(?!\[remote\].*scheduled job attempt \d+/\d+ failed.*"
+        r"reconnect\+retry remote).*"
+        r"(?:game_timeouts?=[1-9]|game exceeded \d+s)",
+        re.I | re.M,
     ),
 }
 OOM_PATTERN = re.compile(r"out of memory|CUDA OOM|OutOfMemory", re.I)

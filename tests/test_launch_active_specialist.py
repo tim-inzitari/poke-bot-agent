@@ -547,6 +547,28 @@ def test_slowking_command_enables_typed_combo_loss(tmp_path: Path) -> None:
     assert required_targets[-1] == "combo_state_rows"
 
 
+def test_registered_combo_loss_weight_is_honored_for_non_slowking_refresh(
+    tmp_path: Path,
+) -> None:
+    registry = _load_registry(_fixture(tmp_path))
+    row, checkpoint, expert, runtime_tree, authorization = _resolve(
+        registry, "dragapult-dusknoir"
+    )
+    row["combo_state_loss_weight"] = 0.025
+
+    command = _build_command(
+        registry,
+        "marnie-s-grimmsnarl-ex",
+        row,
+        checkpoint,
+        expert,
+        runtime_tree,
+        authorization,
+    )
+
+    assert command[command.index("--combo-state-loss-weight") + 1] == "0.025"
+
+
 def test_revision44_prospective_guide_weight_policy_is_checksum_bound(
     tmp_path: Path,
 ) -> None:
@@ -914,7 +936,7 @@ def test_gate_missing_frozen_predecessor_fails_closed(tmp_path: Path) -> None:
     row, checkpoint, expert, runtime_tree, authorization = _resolve(
         registry, "dragapult-dusknoir"
     )
-    with pytest.raises(RuntimeError, match="S\\+ gate/registry"):
+    with pytest.raises(RuntimeError, match="gate/registry"):
         _build_command(
             registry,
             "dragapult-dusknoir",

@@ -1,0 +1,19 @@
+[Unit]
+Description=Freeze, submit, and complete passed Marnie Grimmsnarl H10 refresh
+After=pokebot-final-format-marnie-r104-h10-rl.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+EnvironmentFile=/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_h10_r104.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_active_specialist_gate_handler.py --registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r104_fusion_v3.json --check
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_active_specialist_gate_handler.py --registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r104_fusion_v3.json
+Restart=on-failure
+RestartSec=30
+MemoryHigh=8G
+MemoryMax=12G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/h10_gate_handler.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/h10_gate_handler.log

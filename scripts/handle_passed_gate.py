@@ -36,6 +36,10 @@ from poke_bot.model import (
     DECISION_FUSION_SCHEMA,
     DECISION_FUSION_V2_OPTIONAL_HEADS,
     DECISION_FUSION_V2_SCHEMA,
+    DECISION_FUSION_V3_MAX_RELIABILITY,
+    DECISION_FUSION_V3_MIN_RELIABILITY,
+    DECISION_FUSION_V3_ROUTE_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
 )
 from poke_bot.pure_rl.model_registry import (
     freeze_model,
@@ -202,6 +206,7 @@ def _successor_decision_fusion_runtime_ready(
     """
 
     run_dir = Path(run_dir).expanduser().resolve()
+    state_learner = dict(state.get("learner") or {})
     learner_path = Path(str(learner.get("path") or "")).expanduser().resolve()
     learner_digest = str(learner.get("digest") or "")
     if (
@@ -214,17 +219,21 @@ def _successor_decision_fusion_runtime_ready(
     model_config = dict(payload.get("model_config") or {})
     fusion = dict((payload.get("provenance") or {}).get("decision_fusion") or {})
     core_required_heads = list(DECISION_FUSION_REQUIRED_HEADS)
-    supported_schemas = {DECISION_FUSION_SCHEMA, DECISION_FUSION_V2_SCHEMA}
+    supported_schemas = {
+        DECISION_FUSION_SCHEMA,
+        DECISION_FUSION_V2_SCHEMA,
+        DECISION_FUSION_V3_SCHEMA,
+    }
 
     def valid_fusion_contract(row: dict[str, Any]) -> bool:
         schema = str(row.get("schema") or "")
         heads = list(row.get("required_heads") or [])
         if schema == DECISION_FUSION_SCHEMA:
             return heads == core_required_heads
-        if schema != DECISION_FUSION_V2_SCHEMA:
+        if schema not in {DECISION_FUSION_V2_SCHEMA, DECISION_FUSION_V3_SCHEMA}:
             return False
         optional = heads[len(core_required_heads) :]
-        return (
+        head_inventory_is_valid = (
             heads[: len(core_required_heads)] == core_required_heads
             and len(optional) == len(set(optional))
             and all(name in DECISION_FUSION_V2_OPTIONAL_HEADS for name in optional)
@@ -235,8 +244,41 @@ def _successor_decision_fusion_runtime_ready(
                 if name in optional
             ]
         )
+        if not head_inventory_is_valid or schema == DECISION_FUSION_V2_SCHEMA:
+            return head_inventory_is_valid
+        routes = dict(row.get("dedicated_routes") or {})
+        return (
+            row.get("typed_output_centered_routes") is True
+            or routes.get("typed_output_centered") is True
+        ) and (
+            routes.get("schema") == DECISION_FUSION_V3_ROUTE_SCHEMA
+            and routes.get("enabled") is True
+            and routes.get("runtime_enabled") is True
+            and routes.get("positive_bounded_reliability") is True
+            and list(routes.get("reliability_bounds") or [])
+            == [
+                DECISION_FUSION_V3_MIN_RELIABILITY,
+                DECISION_FUSION_V3_MAX_RELIABILITY,
+            ]
+            and float(routes.get("action_type_reliability_cap", -1.0)) == 0.25
+            and int(routes.get("route_count", -1)) == len(heads)
+            and list(routes.get("route_names") or []) == heads
+        )
 
     specialist_id = str(payload.get("archetype_id") or "").strip().casefold()
+    v3_config_is_valid = fusion.get("schema") != DECISION_FUSION_V3_SCHEMA or (
+        model_config.get("decision_fusion_dedicated_routes_enabled") is True
+        and model_config.get("decision_fusion_dedicated_routes_runtime_enabled")
+        is True
+        and model_config.get(
+            "decision_fusion_typed_output_centered_routes_enabled"
+        )
+        is True
+        and float(
+            model_config.get("decision_fusion_action_type_reliability_cap", -1.0)
+        )
+        == 0.25
+    )
     if not (
         specialist_id
         and model_config.get("decision_fusion_enabled") is True
@@ -244,6 +286,7 @@ def _successor_decision_fusion_runtime_ready(
         and fusion.get("schema") in supported_schemas
         and fusion.get("runtime_enabled") is True
         and valid_fusion_contract(fusion)
+        and v3_config_is_valid
     ):
         return False, "successor checkpoint is not the complete fused runtime"
 
@@ -343,6 +386,10 @@ def _successor_decision_fusion_runtime_ready(
     )
     if commit_design_fingerprint is None:
         return False, commit_design_reason
+    commit_state_learner = dict(commit.get("learner") or {})
+    terminal_candidate_mode = bool(
+        allow_terminal_gate_evidence and learner != state_learner
+    )
     if not (
         completed_iteration >= 0
         and int(state.get("next_iteration", -1)) == completed_iteration + 1
@@ -350,7 +397,8 @@ def _successor_decision_fusion_runtime_ready(
         and int(commit.get("last_completed_iteration", -1))
         == completed_iteration
         and int(commit.get("next_iteration", -1)) == completed_iteration + 1
-        and dict(commit.get("learner") or {}) == learner
+        and commit_state_learner == state_learner
+        and (terminal_candidate_mode or commit_state_learner == learner)
     ):
         return False, "successor immutable commit does not bind the active learner"
     lineage_rows = [
@@ -379,12 +427,21 @@ def _successor_decision_fusion_runtime_ready(
         audit = dict(result.get("audit") or {})
         runtime = dict(audit.get("matchup_runtime") or {})
         games = int(result.get("games") or 0)
+        promotion = dict(lineage.get("promotion") or {})
+        terminal_rollback_is_bound = bool(
+            learner_after == state_learner
+            and promotion.get("passed") is False
+            and dict(promotion.get("candidate") or {}) == learner
+        )
         terminal_gate_audited = bool(
             allow_terminal_gate_evidence
             and not publish
             and lineage.get("completed") is True
             and candidate == learner
-            and learner_after == learner
+            and (
+                learner_after == learner
+                or (terminal_candidate_mode and terminal_rollback_is_bound)
+            )
             and result.get("schema") == GATE_RESULT_SCHEMA
             and int(result.get("iteration", -1)) == completed_iteration
             and str(result.get("checkpoint") or "") == str(learner_path)
@@ -427,6 +484,31 @@ def _successor_decision_fusion_runtime_ready(
     )
 
 
+def _terminal_gate_candidate(state: dict[str, Any]) -> dict[str, Any]:
+    """Return the uniquely gate-audited terminal candidate, if one is bound."""
+    completed_iteration = int(state.get("last_completed_iteration", -1))
+    terminal_rows = [
+        dict(row)
+        for row in (state.get("history") or [])
+        if isinstance(row, dict)
+        and int(row.get("iteration", -1)) == completed_iteration
+    ]
+    if len(terminal_rows) != 1:
+        return {}
+    terminal_row = terminal_rows[0]
+    terminal_candidate = dict(terminal_row.get("candidate") or {})
+    terminal_result = dict(terminal_row.get("active_gate_result") or {})
+    if (
+        terminal_candidate
+        and str(terminal_result.get("checkpoint") or "")
+        == str(terminal_candidate.get("path") or "")
+        and str(terminal_result.get("checkpoint_digest") or "")
+        == str(terminal_candidate.get("digest") or "")
+    ):
+        return terminal_candidate
+    return {}
+
+
 def _decision_fusion_runtime_ready(
     run_dir: Path,
     *,
@@ -435,6 +517,8 @@ def _decision_fusion_runtime_ready(
     """Verify the exact learner is the receipted all-head serving checkpoint."""
     state = _read_json(Path(run_dir) / "loop_state.json")
     learner = dict(state.get("learner") or {})
+    if allow_terminal_gate_evidence:
+        learner = _terminal_gate_candidate(state) or learner
     activation = dict(state.get("decision_fusion_activation") or {})
     digest = str(learner.get("digest") or "")
     receipt_path = Path(str(activation.get("receipt") or "")).expanduser()
@@ -1503,11 +1587,15 @@ def queue_submission_copies(
                     "frozen checkpoint, and pinned deck"
                 )
             identity = (specialist_id, slot, checkpoint_digest)
+            completion_authority = gate_plan.get("completion_authority")
             outcome_label = (
                 "ceiling accepted"
-                if gate_plan.get("completion_authority")
-                == "explicit_owner_ceiling_acceptance"
-                else "exact gate"
+                if completion_authority == "explicit_owner_ceiling_acceptance"
+                else (
+                    "training milestone"
+                    if completion_authority == "training_milestone_snapshot"
+                    else "exact gate"
+                )
             )
             label = (
                 f"{specialist_id} {outcome_label} iter "
@@ -2444,8 +2532,7 @@ def run(args: argparse.Namespace) -> int:
                     time.sleep(max(float(args.poll_seconds), 1.0))
                     continue
             elif (
-                not marker.is_file()
-                and bool(getattr(args, "accept_ceiling_and_continue", False))
+                bool(getattr(args, "accept_ceiling_and_continue", False))
                 and _service_main_pid(args.training_service) == 0
             ):
                 try:
@@ -2530,10 +2617,18 @@ def run(args: argparse.Namespace) -> int:
                     decision_fusion_runtime_ready=True,
                     decision_fusion_runtime_reason=fusion_reason,
                 )
-                active_learner = dict(
-                    _read_json(args.run_dir / "loop_state.json").get("learner")
-                    or {}
-                )
+                loop_state = _read_json(args.run_dir / "loop_state.json")
+                active_learner = dict(loop_state.get("learner") or {})
+                if (
+                    plan is not None
+                    and plan.get("schema")
+                    == "poke_bot.ceiling_acceptance_archive_plan/v1"
+                    and plan.get("completion_authority")
+                    == "explicit_owner_ceiling_acceptance"
+                ):
+                    active_learner = (
+                        _terminal_gate_candidate(loop_state) or active_learner
+                    )
                 if plan is not None and (
                     str(plan.get("checkpoint") or "")
                     != str(active_learner.get("path") or "")

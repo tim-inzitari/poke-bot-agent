@@ -8,6 +8,7 @@ import pytest
 
 from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
 from scripts.sync_latest20_specialist_corpora_from_elmo import (
+    atomic_ready_json,
     atomic_symlink,
     tree_bytes,
     validate_balanced_core,
@@ -25,6 +26,48 @@ def _write_json(path: Path, value: object) -> None:
 
 def _sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_ready_receipt_is_checksum_stable_across_noop_runs(
+    tmp_path: Path,
+) -> None:
+    receipt = tmp_path / "sync.json"
+    first = {
+        "schema": "poke_bot.latest20_specialist_sync/v1",
+        "status": "ready",
+        "destination": "/immutable/corpus",
+        "completed_at_utc": "2026-08-03T05:00:00+00:00",
+    }
+    atomic_ready_json(receipt, first)
+    first_bytes = receipt.read_bytes()
+
+    rerun = dict(first)
+    rerun["completed_at_utc"] = "2026-08-03T06:00:00+00:00"
+    atomic_ready_json(receipt, rerun)
+
+    assert receipt.read_bytes() == first_bytes
+
+
+def test_ready_receipt_updates_content_but_preserves_completion_time(
+    tmp_path: Path,
+) -> None:
+    receipt = tmp_path / "sync.json"
+    first = {
+        "schema": "poke_bot.latest20_specialist_sync/v1",
+        "status": "ready",
+        "destination": "/immutable/corpus",
+        "copied_bytes": 10,
+        "completed_at_utc": "2026-08-03T05:00:00+00:00",
+    }
+    atomic_ready_json(receipt, first)
+    corrected = dict(first)
+    corrected["copied_bytes"] = 11
+    corrected["completed_at_utc"] = "2026-08-03T06:00:00+00:00"
+    atomic_ready_json(receipt, corrected)
+
+    published = json.loads(receipt.read_text(encoding="utf-8"))
+    assert published["copied_bytes"] == 11
+    assert published["completed_at_utc"] == first["completed_at_utc"]
 
 
 def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -136,6 +179,30 @@ def test_validate_corpora_requires_checksum_bound_expanded_targets(
         required_expanded_target_schema=schema,
         required_expanded_target_digest=digest,
     )
+
+    # A causal target may be genuinely unavailable for every row in a small
+    # specialist shard. Exact masking is valid; fabricating one positive label
+    # to satisfy the transfer validator would violate the training contract.
+    head_id = next(iter(EXPANDED_HEAD_IDS))
+    expanded["head_coverage"][head_id] = {
+        "labeled_rows": 0,
+        "masked_rows": 1,
+        "total_rows": 1,
+    }
+    _write_json(manifest, manifest_payload)
+    manifest_digest = _sha256(manifest)
+    pointer_payload["manifest_sha256"] = manifest_digest
+    pointer_payload["expanded_strategic_targets"] = expanded
+    _write_json(pointer, pointer_payload)
+    ready_payload["results"][0]["manifest_sha256"] = manifest_digest
+    _write_json(ready, ready_payload)
+    validate_corpora(
+        root,
+        roster,
+        required_expanded_target_schema=schema,
+        required_expanded_target_digest=digest,
+    )
+
     pointer_payload["expanded_strategic_targets"]["decisions"] = 2
     _write_json(pointer, pointer_payload)
     with pytest.raises(

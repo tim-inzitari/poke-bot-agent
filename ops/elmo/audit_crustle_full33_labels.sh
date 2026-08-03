@@ -3,7 +3,7 @@
 set -euo pipefail
 
 source_root="${POKEBOT_CRUSTLE_SOURCE:-/home/admin/pokebot-expert-guide-src-v1}"
-corpus_root="${POKEBOT_CRUSTLE_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v1}"
+corpus_root="${POKEBOT_CRUSTLE_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v2}"
 ready="$corpus_root/CURRENT_DECK_GUIDE_CORPUS_READY.json"
 output="$corpus_root/CRUSTLE_GUIDE_LABEL_AUDIT_FULL33.json"
 validated="$corpus_root/CRUSTLE_GUIDE_CORPUS_VALIDATED.json"
@@ -27,7 +27,7 @@ if (
     ready.get("schema") != "poke_bot.current_deck_guide_corpus_ready/v1"
     or ready.get("status") != "ready"
     or ready.get("specialist_id") != "crustle"
-    or ready.get("guide_version") != "crustle-north-star-v1"
+    or ready.get("guide_version") != "crustle-north-star-v2"
     or int(ready.get("days") or 0) != 33
     or int(ready.get("records") or 0) <= 0
     or len(rows) != 33
@@ -61,7 +61,7 @@ cd "$source_root"
 python3 scripts/audit_current_deck_guide_labels.py \
   "${audit_args[@]}" \
   --specialist-id crustle \
-  --guide-version crustle-north-star-v1 \
+  --guide-version crustle-north-star-v2 \
   --corpus-ready-receipt "$ready" \
   --out "$output"
 
@@ -83,7 +83,7 @@ if (
     audit.get("status")
     != "passed_structural_and_observational_validation"
     or audit.get("specialist_id") != "crustle"
-    or audit.get("guide_version") != "crustle-north-star-v1"
+    or audit.get("guide_version") != "crustle-north-star-v2"
     or int(audit.get("shard_count") or 0) != 33
     or int(metrics.get("records") or 0)
     != int(ready.get("records") or 0)
@@ -102,7 +102,7 @@ identity = {
     "schema": "poke_bot.crustle_guide_corpus_validation/v1",
     "status": "ready_checksum_validated",
     "specialist_id": "crustle",
-    "guide_version": "crustle-north-star-v1",
+    "guide_version": "crustle-north-star-v2",
     "guide_ready_receipt_sha256": sha256(ready_path),
     "label_audit_sha256": sha256(audit_path),
     "records": int(ready["records"]),

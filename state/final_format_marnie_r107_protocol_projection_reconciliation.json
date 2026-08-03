@@ -1,0 +1,34 @@
+{
+  "schema": "poke_bot.final_format_marnie_protocol_projection_reconciliation/v1",
+  "status": "validated",
+  "owner_decision_revision": 107,
+  "created_at_utc": "2026-08-02T22:12:36Z",
+  "canonical_protocol": "/home/inzi/poke-bot-agent/config/rl_protocol.yaml",
+  "canonical_protocol_sha256": "sha256:80151b4422033726ac1a804ff54ed5ec6c2bfefcdcd394f99813ced4c2d9606a",
+  "deployment_protocol": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/config/rl_protocol.yaml",
+  "deployment_protocol_sha256": "sha256:80151b4422033726ac1a804ff54ed5ec6c2bfefcdcd394f99813ced4c2d9606a",
+  "reconciled_fields": {
+    "milestone_iterations": [
+      0,
+      4,
+      9,
+      14
+    ],
+    "continuing_cadence": "every_5n_plus_4_commit_before_completion",
+    "heldout_local_workers": 96,
+    "terminal_completion_submission_remains_separate": true,
+    "training_stop_pause_freeze_or_selection_authority": false
+  },
+  "managed_training_restarted": false,
+  "managed_training_interrupted": false,
+  "validation": {
+    "milestone_regression_test": {
+      "command": "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -m pytest -q tests/test_alakazam_milestone_submissions.py",
+      "result": "4 passed"
+    },
+    "completion_preflight": {
+      "result": "FINAL_FORMAT_MARNIE_COMPLETION_OK",
+      "protocol_sha256": "sha256:80151b4422033726ac1a804ff54ed5ec6c2bfefcdcd394f99813ced4c2d9606a"
+    }
+  }
+}

@@ -29,6 +29,7 @@ from poke_bot.strategic_losses import (
 )
 from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
 from poke_bot.train import (
+    GUIDE_TRAINING_MODE_DIRECTIONAL,
     GUIDE_TRAINING_MODE_STRATEGIC,
     batch_losses,
     device_temporal_batch_losses,
@@ -306,6 +307,40 @@ def test_resident_strategic_loss_is_guide_target_permutation_invariant() -> None
         )
 
 
+def test_directional_v2_guides_typed_routes_without_policy_ce() -> None:
+    torch.manual_seed(20260801)
+    model = _future_model()
+
+    def route_gradient(guide_target_index: int) -> torch.Tensor:
+        model.zero_grad(set_to_none=True)
+        loss, metrics = batch_losses(
+            model,
+            [_sequence(guide_target_index)],
+            aux_weight=0.0,
+            opp_hand_weight=0.0,
+            opp_remainder_weight=0.0,
+            alakazam_guide_weight=0.05,
+            current_deck_guide_training_mode=GUIDE_TRAINING_MODE_DIRECTIONAL,
+            setup_board_outcome_loss_weight=0.025,
+            expanded_head_weights={},
+        )
+        loss.backward()
+        directional = metrics.guide_curriculum_head_metrics[
+            "directional_route_ranking"
+        ]
+        assert directional["eligible_rows"] == 1
+        assert "action_type" not in directional["heads"]
+        parameter = dict(model.named_parameters())[
+            "decision_fusion.dedicated_routes.action_q.network.2.weight"
+        ]
+        assert parameter.grad is not None
+        return parameter.grad.detach().clone()
+
+    first = route_gradient(0)
+    second = route_gradient(1)
+    assert not torch.equal(first, second)
+
+
 def _sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -393,6 +428,24 @@ def test_slowking_requires_typed_combo_loss_during_pure_rl() -> None:
         "specialist",
         "--specialist-archetype",
         "slowking",
+    ]
+    with pytest.raises(SystemExit):
+        _parse_args(base)
+
+    parsed = _parse_args(
+        [*base, "--combo-state-loss-weight", "0.025"]
+    )
+    assert parsed.combo_state_loss_weight == pytest.approx(0.025)
+
+
+def test_marnie_requires_typed_combo_loss_during_pure_rl() -> None:
+    base = [
+        "--run-name",
+        "marnie-combo-rl",
+        "--mode",
+        "specialist",
+        "--specialist-archetype",
+        "marnie-s-grimmsnarl-ex",
     ]
     with pytest.raises(SystemExit):
         _parse_args(base)

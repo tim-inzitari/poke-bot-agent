@@ -13,7 +13,7 @@ from scripts.population_round_robin_state import (
 
 def readiness() -> dict:
     members = []
-    for index in range(22):
+    for index in range(14):
         specialist_id = f"specialist-{index:02d}"
         members.append(
             {
@@ -35,7 +35,7 @@ def readiness() -> dict:
     return {
         "schema": "poke_bot.population_round_robin_ready/v1",
         "status": "ready",
-        "member_count": 22,
+        "member_count": 14,
         "members": members,
         "training_opponent_scope": "own_models_only",
         "external_agents_training_eligible": False,
@@ -44,14 +44,14 @@ def readiness() -> dict:
     }
 
 
-def test_initial_population_has_exact_22_and_only_own_opponents() -> None:
+def test_initial_population_has_exact_14_and_only_own_opponents() -> None:
     state = initialize_state(readiness())
     opponents = eligible_own_opponents(
         state,
         active_specialist_id=state["active_specialist_id"],
     )
-    assert len(state["members"]) == 22
-    assert len(opponents) == 22
+    assert len(state["members"]) == 14
+    assert len(opponents) == 14
     assert all(row["external_agent"] is False for row in opponents)
 
 
@@ -89,7 +89,7 @@ def test_member_rotation_requires_exact_five_plus_five() -> None:
         advanced,
         active_specialist_id=advanced["active_specialist_id"],
     )
-    assert len(opponents) == 23
+    assert len(opponents) == 15
 
     bad = copy.deepcopy(boundary)
     bad["rl_iterations_completed"] = 6
@@ -109,6 +109,46 @@ def test_member_rotation_requires_exact_five_plus_five() -> None:
             },
         )
 
+
+def test_refresh_current_preserves_original_as_selected_history() -> None:
+    value = readiness()
+    original = {
+        key: value["members"][0][key]
+        for key in (
+            "checkpoint",
+            "checkpoint_digest",
+            "content_digest",
+            "opponent_id",
+            "baseline_group",
+            "baseline_dir",
+            "baseline_package",
+        )
+    }
+    value["members"][0].update(
+        {
+            "checkpoint": "/models/specialist-00/refresh.pt",
+            "checkpoint_digest": "sha256:" + "d" * 64,
+            "content_digest": "sha256:" + "e" * 64,
+            "opponent_id": "population-refresh-specialist-00",
+            "baseline_group": "population-refresh",
+            "baseline_dir": "specialist-00-refresh",
+            "baseline_package": "/baselines/population-refresh/specialist-00-refresh",
+            "current_role": "current_post_fleet_refresh",
+            "selected_history": [original],
+        }
+    )
+    state = initialize_state(value)
+    first = state["members"][0]
+    assert first["current"]["role"] == "current_post_fleet_refresh"
+    assert first["current"]["checkpoint_digest"] == "sha256:" + "d" * 64
+    assert first["selected_history"][0]["checkpoint_digest"] == original[
+        "checkpoint_digest"
+    ]
+    assert len(
+        eligible_own_opponents(
+            state, active_specialist_id=state["active_specialist_id"]
+        )
+    ) == 15
 
 def test_population_rejects_external_training_member() -> None:
     value = readiness()

@@ -572,6 +572,49 @@ Controllers must not introduce global barriers for unrelated work. Parallel
 jobs remain subject to the configured memory guards and may not starve,
 restart, or preempt healthy production training.
 
+Completed-result compaction is part of wall-clock throughput. Beginning with
+Marnie iteration 5, every self-play, public-mix, promotion, research-control,
+and formal-holdout wave must enable
+`POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN=1`. Once every local and remote
+producer has finished and every result/done record is durably present in the
+bounded RAM/disk queue, the phase-owned local simulator pool is released before
+the serialized consumer compacts the remaining rows. The same lifecycle is
+required for scheduled and legacy additive dispatch. This preserves every
+exact row and retry/checksum audit while preventing exhausted simulator model
+copies from holding the trainer near its memory-high boundary during ingest.
+The Marnie iteration-4 tail near `20 s/game` and roughly eight hours is retained
+as rejected historical evidence; it is not an acceptable self-play or holdout
+rate and may not recur as the next iteration's operating mode. The iteration-5
+activation is bound by
+`/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-latest20-runtime-activation-r109.json`
+(`sha256:fc23eed0dabb0e42e80eadfad74f6ec6975dd68e4f3de63eda9f3accd6bcadf6`).
+Its first live self-play wave released all 96 phase-owned local children before
+the compaction tail; host available memory rose from about 12.4 GiB to 37.2
+GiB before public mix started. The following 7,168-game public-mix wave also
+released all 96 exhausted local children before its compaction tail and sealed
+collection receipt
+`sha256:1f7786a721df6ea22a6e6b467b5e4681c2dbbb42ababb4f4b8df3c9464c471dd`
+before expert rehearsal began. Promotion, research-control, and formal-holdout
+waves remain independently observable under the same mandatory lifecycle.
+
+Future scheduled additive waves beginning with Marnie iteration 6 use a
+20%-remaining tail work-stealing boundary. At that point the controller returns
+endpoint-owned reservations above one execution wave to the shared exact-job
+pool, remote emitters claim one game at a time, and Blackwell's exact 96-worker
+pool remains eligible until global completion. This prevents a slow remote-only
+tail after local completion. It does not batch network results: each completed
+game still streams independently into the bounded result queue. Job identity,
+seed, seat, replay-row, retry, checksum, and producer-drain audits remain exact.
+
+Beginning at the immutable Marnie iteration-5→6 boundary, the shared
+public-mix/formal-holdout roster uses architecture-aware tier weights. Every
+eligible non-active H10 specialist is `S`/`2.0`; every other frozen specialist
+and every remaining public opponent is `A`/`1.0`. This changes adaptive
+practice allocation and the formal skill-weighted aggregate only. It does not
+change the exact 17 opponent identities, their content checksums, 250 games per
+opponent, 125/125 seats, the 4,250-game audit, research controls, or the
+independent 80% skill-weighted and 50% confidence-lower terminal guards.
+
 #### Retrofitting expanded heads onto completed specialists
 
 After the first cumulative core containing the expanded Model Format 6 architecture is
@@ -688,6 +731,15 @@ continuity result: 4,000/4,000 formal rows passed the exact audit at 68.51%
 skill-weighted win rate, the disjoint 1,000/1,000 research-control rows passed
 at 59.9%, iteration 4 committed, and the required iteration-5 curriculum began
 without a CUDA OOM, failed leaf, traceback, or service restart.
+
+Those 64-local evaluations are immutable historical evidence, not the current
+worker default. Under the owner-pinned Blackwell profile, every current and
+future collection, formal heldout, and evaluation pool inherits exactly 96
+local simulator workers and 96 local games in flight. The runtime must also
+pin `PURE_RL_HELDOUT_LOCAL_WORKERS=96`; a missing heldout override may not
+silently fall back to 64. The worker floor, target, ceiling, rebalance bounds,
+and live-pool maximum remain 96, with memory guards failing closed rather than
+substituting a smaller pool.
 
 The current Archaludon run intentionally uses the already imported protected
 dataset-schema-6 corpus authorized by goal revision 69. Dataset schema 7 added
@@ -1187,13 +1239,57 @@ a later owner decision supersedes it.
 The active final-format refresh uses 16,384 games per iteration and one learner
 epoch. After iteration 0 completed its ordinary 6,144-decision epoch but OOMed
 on the first adapter-only batch, recovery reuses the exact completed corpus and
-replay cache without recollection. Warmup and ordinary learner batches are
-capped at 4,096 decisions. Dormant matchup-adapter fitting has its own 2,048
-decision cap, releases unused CUDA cache before fitting, and recursively splits
+replay cache without recollection. After dense 4,096-decision optimizer batches
+also poisoned the CUDA context, iteration 0 recovers at 2,048 decisions and
+future warmup and ordinary learner batches initially used the measured middle
+cap of 3,072 decisions. Revision 102 reduced those optimizer paths to 2,048.
+At uncommitted iteration 15, the Fusion-v3 learner exhausted GPU 1 even at
+2,048, with allocator failures followed by a poisoned CUDA context. Revision
+105 therefore resumes the preserved iteration-15 collection and completed
+rehearsal at exactly 1,536 ordinary and warmup decisions; it must not recollect
+or regenerate rehearsal work. This recovery activated through design migration
+`migration_0023.json`: the managed learner reused the sealed collection,
+rehearsal, and seat receipts and advanced through optimizer batch 36 without an
+allocator failure, beyond the prior batch-24 crash. The immutable activation
+receipt is
+`state/final_format_alakazam_iteration15_allocator_recovery_activation_r105.json`.
+After the repaired 2,048-decision iteration-0 adapter phase
+proved 27.8 GiB of free headroom, future adapter fitting also uses 3,072,
+releases unused CUDA cache before fitting, and recursively splits
 an OOMing multi-game batch without dropping a sequence. A single-sequence OOM
 still fails closed. The adapter bank alone receives gradients in that phase;
 all base tensors remain frozen and every learned head remains present in the
 ordinary fused-policy epoch.
+
+Parent/candidate policy agreement is inference-only and does not inherit the
+optimizer cap. It uses the previously completed 6,144-decision inference cap
+and a policy-only forward that retains deterministic argmaxes while bypassing
+value, guide, AWR, auxiliary-loss, and diagnostic calculations. Exact argmax
+parity with the reference loss path is required before activation.
+
+Beginning at the first safe process boundary after iteration 0, the immutable
+final-format Alakazam terminal gate requires a complete 4,250-game premium
+evaluation with at least `0.75` skill-weighted win rate and a separate `0.60`
+skill-weighted confidence lower bound. The disjoint official-control floor
+remains `0.60`, and the actual-simulation Kaggle-rating 90% lower bound remains
+an independent `1000`. An evaluation already started under the earlier 65%
+contract is never reinterpreted in place.
+
+Kaggle milestone snapshots are nonterminal observations. After durable
+zero-indexed commits `4`, `9`, `14`, `19`, and every later `5n+4` commit through
+`184`, an idempotent managed watcher packages one exact `first_if_allowed`
+copy and appends it to the asynchronous one-shot queue. Each row binds the
+commit, checkpoint, exact 60-card Alakazam representative, matchup tree, and
+bundle digests. Packaging, quota waits, spacing waits, and uploads never
+freeze, select, stop, pause, or block the continuing trainer.
+
+The final-format Marnie's Grimmsnarl ex refresh uses the same nonterminal
+watcher and also includes an explicit zero-indexed iteration-`0` snapshot.
+Its cadence is therefore `0`, `4`, `9`, `14`, and every later `5n+4` durable
+commit available before refresh completion. Every Marnie milestone is one
+exact `first_if_allowed` copy bound to the Marnie commit, checkpoint, 60-card
+representative, matchup tree, and bundle. These snapshots neither replace nor
+consume the separately required terminal completion submission.
 
 Resolve inputs independently at the start of each refresh. Hot-start from the
 newest checksum-accepted cumulative core available at that boundary, not from
@@ -1202,6 +1298,14 @@ refresh after the preceding frozen model; if its candidate is rejected,
 preserve the rejection immutably and use the newest accepted fallback. After
 the new Alakazam version passes and freezes, perform that normal core boundary
 before resolving the base for the Grimmsnarl refresh.
+
+The Grimmsnarl refresh resolves current weights at that boundary but not a
+smaller shape: its required final shape is H10-I with seven spatial, three
+temporal, and seven option-decoder layers, FF width 2,496, 512-wide strategic
+head residuals, and 19 learned heads with 19 distinct action routes. It uses
+typed-output-centered Fusion v3 and bounded learned route reliabilities. Its
+guide is training-only `strategic_directional_v2`; guide preference ranks the
+declared causal strategic routes and never supervises final policy logits.
 
 Also checksum-bind the then-current complete canonical specialist-training
 contract at each bootstrap. At minimum it must retain the exact 25-epoch

@@ -5,7 +5,7 @@ set -euo pipefail
 source_root="${POKEBOT_CRUSTLE_SOURCE:-/home/admin/pokebot-expert-guide-src-v1}"
 archive_root="${POKEBOT_EPISODE_ARCHIVE:-/mnt/Main/main/poke-bot-agent/archive/episode-days}"
 catalog_source="${POKEBOT_CRUSTLE_CATALOG_SOURCE:-/mnt/Main/main/poke-bot-agent/archive/crustle-public-family-full33-v1.json}"
-output_root="${POKEBOT_CRUSTLE_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v1}"
+output_root="${POKEBOT_CRUSTLE_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v2}"
 cg_runtime="${POKEBOT_CG_RUNTIME:-/mnt/Main/main/poke-bot-agent/engine-runtimes/znver3-v1}"
 teacher_module="$source_root/poke_bot/crustle_heuristics.py"
 catalog="$output_root/PUBLIC_DECK_ARCHETYPE_CATALOG.json"
@@ -104,7 +104,7 @@ python3 scripts/finalize_current_deck_guide_window.py \
   --start "$start_date" \
   --end "$end_date" \
   --specialist-id crustle \
-  --guide-version crustle-north-star-v1 \
+  --guide-version crustle-north-star-v2 \
   --minimum-records "$minimum_records" \
   --public-deck-catalog "$catalog"
 
@@ -133,7 +133,7 @@ excluded_records = expected_records - actual_records
 if (
     ready.get("status") != "ready"
     or ready.get("specialist_id") != "crustle"
-    or ready.get("guide_version") != "crustle-north-star-v1"
+    or ready.get("guide_version") != "crustle-north-star-v2"
     or int(ready.get("days") or 0) != 33
     or actual_records < minimum_records
     or actual_records > expected_records

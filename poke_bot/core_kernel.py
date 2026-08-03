@@ -312,8 +312,12 @@ class CoreKernel(nn.Module):
                     "combo_state_head_enabled",
                     "decision_fusion_dedicated_routes_enabled",
                     "decision_fusion_dedicated_routes_runtime_enabled",
+                    "decision_fusion_typed_output_centered_routes_enabled",
                 ):
                     filtered_snap.setdefault(field, False)
+                filtered_snap.setdefault(
+                    "decision_fusion_action_type_reliability_cap", 1.0
+                )
                 cfg = config.ModelConfig(
                     **filtered_snap
                 )

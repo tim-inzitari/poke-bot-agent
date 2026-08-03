@@ -12,13 +12,19 @@ guide_research_mode: reuse_existing_validated_evidence
 new_strategy_research_performed: false
 
 policy_target:
-  type: sparse_causal_curriculum_row_selector
-  training_mode: strategic_curriculum_v1
+  type: sparse_causal_curriculum_with_pairwise_route_direction
+  training_mode: strategic_directional_v2
   parameterized_head: false
   target_logits: none
   direct_policy_cross_entropy_allowed: false
-  guide_preference_index_role: diagnostics_and_row_qualification_only
-  guide_preference_index_may_affect_loss_or_gradient: false
+  guide_preference_index_role: selected_causal_route_pairwise_direction_only
+  guide_preference_index_may_affect_loss_or_gradient: true
+  guide_pairwise_route_heads:
+    - action_q
+    - action_resource
+    - action_utility
+    - setup_board_outcome
+  final_policy_logits_are_guide_targets: false
   observed_target_authority:
     - expanded_strategic_targets
     - setup_board_outcome
@@ -138,12 +144,13 @@ causal_heuristic_contract:
   runtime_authority: none
 
 strategic_curriculum:
-  owner_design_revisions: [51, 55, 56]
-  training_mode: strategic_curriculum_v1
+  owner_design_revisions: [51, 55, 56, 104]
+  training_mode: strategic_directional_v2
   initial_guide_loss_weight: 0.05
   setup_board_outcome_base_loss_weight: 0.025
-  guide_weight_scope: observed_causal_learned_head_targets_only
-  guide_preference_index_may_affect_loss_or_gradient: false
+  guide_weight_scope: observed_targets_plus_selected_pairwise_route_direction
+  guide_preference_index_may_affect_loss_or_gradient: true
+  final_policy_logits_are_guide_targets: false
   every_learned_head_has_distinct_bounded_option_conditioned_fusion_route: true
   guide_is_only_no_route_exception: true
   setup_board_outcome:

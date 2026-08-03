@@ -26,6 +26,7 @@ ORIGINAL_ALAKAZAM = (
 ACCEPTED_CORE = (
     "sha256:7d9b60e68f4c51bb931298ae3941e5b7bddf1370566b23d18acadd33e8357056"
 )
+EXPECTED_TERMINAL_ITERATION = 20
 
 
 def _sha256(path: Path) -> str:
@@ -82,10 +83,91 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _validated_population_inputs(
+    *, handler: Mapping[str, Any], runtime_registry: Path, checkpoint_digest: str
+) -> dict[str, str]:
+    registry = _read_json(runtime_registry)
+    runtime_row = dict((registry.get("specialists") or {}).get("alakazam") or {})
+    expert = Path(str(runtime_row.get("expert_manifest") or "")).resolve()
+    tree = Path(str(runtime_row.get("matchup_runtime_tree") or "")).resolve()
+    bundle = dict(handler.get("submission_bundle") or {})
+    queued = dict((handler.get("queued_submissions") or [{}])[0])
+    bundle_path = Path(str(queued.get("file") or "")).resolve()
+    bundle_digest = str(queued.get("file_sha256") or "")
+    if (
+        registry.get("schema") != "poke_bot.specialist_runtime_registry/v1"
+        or runtime_row.get("status") != "ready"
+        or not expert.is_file()
+        or _sha256(expert).removeprefix("sha256:")
+        != str(runtime_row.get("expert_manifest_sha256") or "")
+        or not tree.is_file()
+        or _sha256(tree).removeprefix("sha256:")
+        != str(runtime_row.get("matchup_runtime_tree_sha256") or "")
+        or bundle.get("specialist_id") != "alakazam"
+        or bundle.get("turn_order_preference") != "first_if_allowed"
+        or str((bundle.get("contents") or {}).get("model_sha256") or "")
+        != checkpoint_digest
+        or str(bundle.get("sha256") or "") != bundle_digest
+        or queued.get("checkpoint_checksum") != checkpoint_digest
+        or not bundle_path.is_file()
+        or _sha256(bundle_path) != bundle_digest
+    ):
+        raise RuntimeError("Alakazam population runtime/package identity is invalid")
+    return {
+        "expert_manifest": str(expert),
+        "expert_manifest_sha256": _sha256(expert),
+        "matchup_runtime_tree": str(tree),
+        "matchup_runtime_tree_sha256": _sha256(tree),
+        "submission_bundle": str(bundle_path),
+        "submission_bundle_sha256": bundle_digest,
+    }
+
+
+def _completion_disposition(gate: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep owner ceiling acceptance distinct from a measured gate pass."""
+
+    authority = str(gate.get("completion_authority") or "")
+    if authority not in {
+        "measured_both_gates_pass",
+        "explicit_owner_ceiling_acceptance",
+    }:
+        raise RuntimeError("terminal completion authority is absent or invalid")
+    ceiling_accepted = authority == "explicit_owner_ceiling_acceptance"
+    if ceiling_accepted:
+        return {
+            "status": "ceiling_accepted_frozen_registered",
+            "completion_authority": authority,
+            "current_gate_pass": False,
+            "measured_gate_pass": False,
+            "failed_gate_results_preserved": True,
+        }
+    return {
+        "status": "passed_frozen_registered",
+        "completion_authority": "measured_gate_pass",
+        "current_gate_pass": True,
+        "measured_gate_pass": True,
+        "failed_gate_results_preserved": False,
+    }
+
+
 def _validate_stage(path: Path, *, iteration: int, stage: str) -> str:
     payload = _read_json(path)
     first = int(payload.get("first_games", -1))
     second = int(payload.get("second_games", -1))
+    source_game_stage = stage in {"assigned", "actual"}
+    projection_stage = stage == "consumed"
+    legacy_exact_source_stage = (
+        source_game_stage
+        and payload.get("seat_balance_applicable") is None
+        and payload.get("exact_even_split") is True
+        and first == second
+    )
+    legacy_exact_projection = (
+        projection_stage
+        and payload.get("seat_balance_applicable") is None
+        and payload.get("exact_even_split") is True
+        and first == second
+    )
     if (
         payload.get("schema") != SEAT_SCHEMA
         or payload.get("status") != "issued_passed"
@@ -94,9 +176,24 @@ def _validate_stage(path: Path, *, iteration: int, stage: str) -> str:
         or int(payload.get("iteration", -1)) != iteration
         or payload.get("stage") != stage
         or first <= 0
-        or first != second
+        or (source_game_stage and first != second)
         or int(payload.get("total_games", -1)) != first + second
-        or payload.get("exact_even_split") is not True
+        or (
+            source_game_stage
+            and not legacy_exact_source_stage
+            and (
+                payload.get("exact_even_split") is not True
+                or payload.get("seat_balance_applicable") is not True
+            )
+        )
+        or (
+            projection_stage
+            and not legacy_exact_projection
+            and (
+                payload.get("exact_even_split") is not False
+                or payload.get("seat_balance_applicable") is not False
+            )
+        )
         or payload.get("second_focus_1_to_7_used") is not False
         or payload.get("package_preference") != "first_if_allowed"
         or not str(payload.get("deterministic_assignment_manifest_sha256") or "").startswith("sha256:")
@@ -179,6 +276,7 @@ def _validate_static(args: argparse.Namespace) -> dict[str, str]:
         "protocol": args.protocol,
         "state": args.specialist_state,
         "next_unit": args.next_unit,
+        "runtime_registry": args.runtime_registry,
     }
     missing = [name for name, path in required.items() if not path.expanduser().is_file()]
     # The handler state is intentionally absent before training. Its configured
@@ -199,24 +297,34 @@ def _validate_static(args: argparse.Namespace) -> dict[str, str]:
     }
 
 
+def _handler_is_terminal_and_queued(handler: dict[str, Any]) -> bool:
+    phase = str(handler.get("phase") or "")
+    phase_is_terminal = phase == "submissions_queued" or (
+        phase == "complete_handoff_started"
+        and handler.get("handoff_started") is True
+    )
+    return bool(
+        handler.get("schema") == HANDLER_SCHEMA
+        and phase_is_terminal
+        and handler.get("submission_mode") == "queue_and_continue"
+        and len(handler.get("queued_submissions") or []) == 1
+    )
+
+
 def complete(args: argparse.Namespace) -> dict[str, Any]:
     static = _validate_static(args)
     handler = _read_json(args.handler_state.expanduser())
-    if (
-        handler.get("schema") != HANDLER_SCHEMA
-        or handler.get("phase") != "submissions_queued"
-        or handler.get("submission_mode") != "queue_and_continue"
-        or len(handler.get("queued_submissions") or []) != 1
-    ):
+    if not _handler_is_terminal_and_queued(handler):
         raise RuntimeError("Alakazam refresh handler is not terminal and queued")
     gate = dict(handler.get("gate") or {})
     frozen = dict(handler.get("frozen_model") or {})
     terminal_iteration = int(gate.get("iteration", -1))
     checkpoint_digest = str(frozen.get("checkpoint_digest") or "")
     checkpoint_path = Path(str(frozen.get("model_path") or "")).expanduser().resolve()
+    disposition = _completion_disposition(gate)
     frozen_manifest = checkpoint_path.parent / "manifest.json"
     if (
-        terminal_iteration < 5
+        terminal_iteration != EXPECTED_TERMINAL_ITERATION
         or gate.get("checkpoint_digest") != checkpoint_digest
         or not checkpoint_path.is_file()
         or _sha256(checkpoint_path) != checkpoint_digest
@@ -226,6 +334,11 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     ):
         raise RuntimeError("Alakazam refresh frozen identity is invalid")
     seats = _validate_seat_receipts(args.run_dir.expanduser(), terminal_iteration)
+    population = _validated_population_inputs(
+        handler=handler,
+        runtime_registry=args.runtime_registry.expanduser().resolve(),
+        checkpoint_digest=checkpoint_digest,
+    )
 
     registry_path = args.refresh_registry.expanduser().resolve()
     existing = _read_json(registry_path) if registry_path.is_file() else {}
@@ -242,9 +355,12 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         "original_checkpoint_checksum": ORIGINAL_ALAKAZAM,
         "gate_id": str(gate.get("gate_id") or ""),
         "gate_iteration": terminal_iteration,
+        "completion_authority": disposition["completion_authority"],
+        "measured_gate_pass": disposition["measured_gate_pass"],
         "package_preference": "first_if_allowed",
         "training_seat_split": {"first": 0.5, "second": 0.5},
         "historical_specialist_row_replaced": False,
+        **population,
     }
     matching = [entry for entry in entries if entry.get("specialist_id") == "alakazam"]
     if matching and matching != [row]:
@@ -254,7 +370,11 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     registry = {
         "schema": REGISTRY_SCHEMA,
         "historical_frozen_registry_modified": False,
-        "ordered_refresh_ids": ["alakazam", "marnie-s-grimmsnarl-ex"],
+        "ordered_refresh_ids": [
+            "alakazam",
+            "marnie-s-grimmsnarl-ex",
+            "crustle",
+        ],
         "refreshes": entries,
     }
     registry_body = json.dumps(registry, indent=2, sort_keys=True) + "\n"
@@ -279,6 +399,8 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         "registry_sha256": registry_digest,
         "historical_frozen_registry_modified": False,
         "original_checkpoint_checksum": ORIGINAL_ALAKAZAM,
+        "completion_authority": disposition["completion_authority"],
+        "measured_gate_pass": disposition["measured_gate_pass"],
     }
     _atomic_json(args.registration_receipt.expanduser(), registration)
     registration_digest = _sha256(args.registration_receipt.expanduser())
@@ -287,12 +409,11 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError("terminal gate receipt digest is absent")
     completion = {
         "schema": COMPLETION_SCHEMA,
-        "status": "passed_frozen_registered",
+        **disposition,
         "specialist_id": "alakazam",
         "refresh_model_version": row["refresh_model_version"],
         "refresh_checkpoint_checksum": checkpoint_digest,
         "original_checkpoint_checksum": ORIGINAL_ALAKAZAM,
-        "current_gate_pass": True,
         "frozen": True,
         "registered": True,
         "gate_receipt_sha256": gate_digest,
@@ -342,7 +463,7 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError("Alakazam completion receipt projection changed")
 
     started = subprocess.run(
-        ["systemctl", "--user", "start", args.next_service],
+        ["systemctl", "--user", "--no-block", "start", args.next_service],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -368,6 +489,7 @@ def main() -> int:
     parser.add_argument("--refresh-registry", type=Path, required=True)
     parser.add_argument("--registration-receipt", type=Path, required=True)
     parser.add_argument("--completion-receipt", type=Path, required=True)
+    parser.add_argument("--runtime-registry", type=Path, required=True)
     parser.add_argument("--next-service", required=True)
     parser.add_argument("--next-unit", type=Path, required=True)
     args = parser.parse_args()

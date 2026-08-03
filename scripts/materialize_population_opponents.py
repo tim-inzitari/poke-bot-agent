@@ -7,8 +7,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import re
 import shutil
+import tarfile
 import tempfile
 from typing import Any
 
@@ -41,6 +43,143 @@ def _canonical_digest(value: Any) -> str:
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _register_manifest_agent(
+    *,
+    baseline_manifest: Path,
+    opponent_id: str,
+    name: str,
+    group: str,
+    baseline_dir: str,
+    source: str,
+) -> None:
+    manifest = json.loads(baseline_manifest.read_text(encoding="utf-8"))
+    agents = [
+        dict(row)
+        for row in (manifest.get("agents") or [])
+        if str(row.get("id") or "") != opponent_id
+    ]
+    agents.append(
+        {
+            "id": opponent_id,
+            "name": name,
+            "group": group,
+            "dir": baseline_dir,
+            "source": source,
+        }
+    )
+    if len({str(row.get("id") or "") for row in agents}) != len(agents):
+        raise RuntimeError("population baseline manifest has duplicate ids")
+    manifest["agents"] = agents
+    notes = dict(manifest.get("field_notes") or {})
+    notes["total"] = len(agents)
+    notes["population_versions"] = sum(
+        str(row.get("group") or "") in {"population", "population-refresh"}
+        for row in agents
+    )
+    manifest["field_notes"] = notes
+    _atomic_json(baseline_manifest, manifest)
+
+
+def materialize_refresh_bundle(
+    *,
+    specialist_id: str,
+    checkpoint_digest: str,
+    bundle: Path,
+    bundle_digest: str,
+    baseline_root: Path,
+    baseline_manifest: Path,
+) -> dict[str, Any]:
+    """Extract one exact final-format refresh bundle as a runnable opponent."""
+
+    specialist_id = str(specialist_id)
+    if (
+        not SAFE_ID.fullmatch(specialist_id)
+        or not str(checkpoint_digest).startswith("sha256:")
+        or not str(bundle_digest).startswith("sha256:")
+    ):
+        raise ValueError("unsafe refresh population package identity")
+    bundle = bundle.expanduser().resolve()
+    baseline_root = baseline_root.expanduser().resolve()
+    baseline_manifest = baseline_manifest.expanduser().resolve()
+    if (
+        not bundle.is_file()
+        or sha256(bundle) != bundle_digest
+        or not baseline_manifest.is_file()
+    ):
+        raise RuntimeError("refresh population bundle inputs changed")
+    suffix = checkpoint_digest.removeprefix("sha256:")[:12]
+    baseline_dir = f"{specialist_id}-refresh-{suffix}"
+    opponent_id = f"population-refresh-{baseline_dir}"
+    group_root = baseline_root / "population-refresh"
+    destination = group_root / baseline_dir
+    group_root.mkdir(parents=True, exist_ok=True)
+    if not destination.exists():
+        temporary = Path(
+            tempfile.mkdtemp(prefix=f".{baseline_dir}.", dir=str(group_root))
+        )
+        try:
+            with tarfile.open(bundle, "r:gz") as archive:
+                members = archive.getmembers()
+                for member in members:
+                    path = PurePosixPath(member.name)
+                    if (
+                        path.is_absolute()
+                        or ".." in path.parts
+                        or member.issym()
+                        or member.islnk()
+                        or member.isdev()
+                    ):
+                        raise RuntimeError(
+                            "unsafe member in refresh submission bundle"
+                        )
+                archive.extractall(temporary)
+            for required in (
+                "main.py",
+                "model.pt",
+                "deck.csv",
+                "matchup_tree.json",
+            ):
+                if not (temporary / required).is_file():
+                    raise RuntimeError(
+                        f"refresh package missing required file: {required}"
+                    )
+            if sha256(temporary / "model.pt") != checkpoint_digest:
+                raise RuntimeError("refresh package contains the wrong model")
+            os.replace(temporary, destination)
+        except BaseException:
+            if temporary.exists():
+                shutil.rmtree(temporary)
+            raise
+    if (
+        not (destination / "model.pt").is_file()
+        or sha256(destination / "model.pt") != checkpoint_digest
+    ):
+        raise RuntimeError("materialized refresh model identity changed")
+    content_digest = baseline_content_digest(destination)
+    _register_manifest_agent(
+        baseline_manifest=baseline_manifest,
+        opponent_id=opponent_id,
+        name=f"{specialist_id} post-fleet refresh {suffix}",
+        group="population-refresh",
+        baseline_dir=baseline_dir,
+        source=(
+            "checksum-bound final-format refresh bundle " + bundle_digest
+        ),
+    )
+    return {
+        "specialist_id": specialist_id,
+        "opponent_id": opponent_id,
+        "checkpoint": str(destination / "model.pt"),
+        "checkpoint_digest": checkpoint_digest,
+        "content_digest": content_digest,
+        "baseline_group": "population-refresh",
+        "baseline_dir": baseline_dir,
+        "baseline_package": str(destination),
+        "submission_bundle": str(bundle),
+        "submission_bundle_digest": bundle_digest,
+    }
 
 
 def materialize_current_version(
@@ -109,36 +248,17 @@ def materialize_current_version(
             shutil.rmtree(temporary)
         raise
 
-    manifest = json.loads(baseline_manifest.read_text(encoding="utf-8"))
-    agents = [
-        dict(row)
-        for row in (manifest.get("agents") or [])
-        if str(row.get("id") or "") != opponent_id
-    ]
-    agents.append(
-        {
-            "id": opponent_id,
-            "name": (
-                f"{specialist_id} population cycle {population_cycle:04d}"
-            ),
-            "group": "population",
-            "dir": baseline_dir,
-            "source": (
-                "local checksum-bound population current version "
-                f"{checkpoint_digest}"
-            ),
-        }
+    _register_manifest_agent(
+        baseline_manifest=baseline_manifest,
+        opponent_id=opponent_id,
+        name=f"{specialist_id} population cycle {population_cycle:04d}",
+        group="population",
+        baseline_dir=baseline_dir,
+        source=(
+            "local checksum-bound population current version "
+            f"{checkpoint_digest}"
+        ),
     )
-    if len({str(row.get("id") or "") for row in agents}) != len(agents):
-        raise RuntimeError("population baseline manifest has duplicate ids")
-    manifest["agents"] = agents
-    notes = dict(manifest.get("field_notes") or {})
-    notes["total"] = len(agents)
-    notes["population_versions"] = sum(
-        str(row.get("group") or "") == "population" for row in agents
-    )
-    manifest["field_notes"] = notes
-    _atomic_json(baseline_manifest, manifest)
     return {
         "specialist_id": specialist_id,
         "population_cycle": int(population_cycle),

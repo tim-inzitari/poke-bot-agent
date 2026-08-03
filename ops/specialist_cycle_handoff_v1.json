@@ -117,11 +117,12 @@
   },
   "post_fleet_refresh": {
     "schema": "poke_bot.post_fleet_specialist_refresh/v1",
-    "owner_decision_revision": 79,
+    "owner_decision_revision": 113,
     "owner_decision_revisions": [
       36,
       64,
-      79
+      79,
+      113
     ],
     "state_source": "selection.state#/post_fleet_refresh",
     "required_fleet_count": 15,
@@ -137,7 +138,8 @@
     "slowking_terminal_disposition_immediately_triggers_first_refresh": true,
     "ordered_specialist_ids": [
       "alakazam",
-      "marnie-s-grimmsnarl-ex"
+      "marnie-s-grimmsnarl-ex",
+      "crustle"
     ],
     "release_gates": {
       "final_alakazam_model_computation": {
@@ -151,7 +153,7 @@
       },
       "broader_multi_archetype_capacity_program": {
         "required_receipt": "post_refresh_sequence_complete_for_capacity_v2",
-        "requires_final_format_alakazam_and_marnie_refresh_complete": true,
+        "requires_final_format_alakazam_marnie_and_crustle_complete": true,
         "no_receipt_no_model_work": true
       }
     },

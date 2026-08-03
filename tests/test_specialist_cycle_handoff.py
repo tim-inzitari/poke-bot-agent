@@ -1332,7 +1332,7 @@ def test_starmie_pass_still_leaves_unfinished_roster_before_population() -> None
 
 def test_population_requires_every_canonical_specialist_and_refresh() -> None:
     required = _required_specialist_ids(ROOT / "state/specialists.yaml")
-    refresh_order = ["alakazam", "marnie-s-grimmsnarl-ex"]
+    refresh_order = ["alakazam", "marnie-s-grimmsnarl-ex", "crustle"]
     assert not population_transition_ready(
         set(sorted(required)[:-1]),
         required,
@@ -1421,5 +1421,5 @@ def test_post_fleet_refresh_progress_is_staged_and_receipt_bound() -> None:
         state_path=ROOT / "state/specialists.yaml",
         cycle_contract=contract,
     )
-    assert order == ["alakazam", "marnie-s-grimmsnarl-ex"]
-    assert completed == []
+    assert order == ["alakazam", "marnie-s-grimmsnarl-ex", "crustle"]
+    assert completed == ["alakazam"]

@@ -301,6 +301,9 @@ def retire_passed_gate(
         raise ValueError("only a committed, pipeline-passed exact gate may retire")
     checks = result.get("checks")
     audit = result.get("audit")
+    criteria = active.get("pass_criteria")
+    if not isinstance(criteria, dict):
+        raise ValueError("active gate pass criteria are missing")
     required_checks = {
         "audit",
         "skill_weighted_win_rate",
@@ -309,9 +312,11 @@ def retire_passed_gate(
         "individual_opponent_floor",
     }
     if "s_plus_individual_floor" in dict(
-        (active.get("pass_criteria") or {})
+        criteria
     ):
         required_checks.add("s_plus_matchup_floor_allowance")
+    if "accepted_official_holdout_non_regression" in criteria:
+        required_checks.add("accepted_official_holdout_non_regression")
     if (
         not isinstance(checks, dict)
         or set(checks) != required_checks
@@ -352,9 +357,7 @@ def retire_passed_gate(
     expected_total = _exact_int(evaluation.get("games_total"), "games_total")
     if expected_per <= 0 or expected_per % 2 or expected_total <= 0:
         raise ValueError("active gate evaluation counts are invalid")
-    criteria = active.get("pass_criteria")
-    if not isinstance(criteria, dict):
-        raise ValueError("active gate pass criteria are missing")
+    official_control_gate = result.get("official_control_gate")
     if (
         _finite_float(result.get("skill_weighted_wr"), "skill_weighted_wr")
         < _finite_float(
@@ -384,6 +387,33 @@ def retire_passed_gate(
             > _exact_int(
                 criteria.get("s_plus_below_floor_allowance"),
                 "s_plus_below_floor_allowance",
+            )
+        )
+        or (
+            "accepted_official_holdout_non_regression" in criteria
+            and (
+                not isinstance(official_control_gate, dict)
+                or official_control_gate.get("passed") is not True
+                or official_control_gate.get("audit_passed") is not True
+                or official_control_gate.get("checkpoint_digest_matches") is not True
+                or official_control_gate.get("training_eligible") is not False
+                or official_control_gate.get("replay_eligible") is not False
+                or _finite_float(
+                    official_control_gate.get("minimum_win_rate"),
+                    "official control minimum_win_rate",
+                )
+                != _finite_float(
+                    criteria.get("accepted_official_holdout_non_regression"),
+                    "accepted official holdout threshold",
+                )
+                or _finite_float(
+                    official_control_gate.get("win_rate"),
+                    "official control win_rate",
+                )
+                < _finite_float(
+                    criteria.get("accepted_official_holdout_non_regression"),
+                    "accepted official holdout threshold",
+                )
             )
         )
     ):

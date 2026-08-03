@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
 import yaml
 
-from poke_bot import archetypes, crustle_heuristics as guide, deck_guides
+from poke_bot import archetypes, deck_guides
+from poke_bot import crustle_heuristics as guide
 from poke_bot.ladder_deck_mix import canonical_payload_digest
 
 ROOT = Path(__file__).resolve().parents[1]
+CARD_DATA_PATH = ROOT / "cards" / "EN_Card_Data.csv"
 DECK_PATH = (
     ROOT
     / "decks"
@@ -53,6 +57,15 @@ CANONICAL_DECK = [
 
 def _sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _engine_rows(card_id: int) -> list[dict[str, str]]:
+    with CARD_DATA_PATH.open(newline="", encoding="utf-8-sig") as source:
+        return [
+            row
+            for row in csv.DictReader(source)
+            if int(row["Card ID"]) == card_id
+        ]
 
 
 def _player(
@@ -209,6 +222,71 @@ def test_ultra_ball_fills_visible_crustle_evolution_gap() -> None:
     assert scores[0] > scores[1] + guide.ABSTENTION_MARGIN
 
 
+def test_poffin_resolves_psyduck_and_prefers_missing_dwebble() -> None:
+    obs = _obs(
+        _player(active=[guide.MEGA_KANGASKHAN_EX]),
+        [
+            {"type": guide.OPT_CARD, "area": guide.AREA_DECK, "index": 0},
+            {"type": guide.OPT_CARD, "area": guide.AREA_DECK, "index": 1},
+        ],
+        context=guide.CTX_TO_BENCH,
+        effect_id=guide.BUDDY_BUDDY_POFFIN,
+        deck_cards=[guide.DWEBBLE, guide.PSYDUCK],
+    )
+    scores = _scores(obs)
+    assert scores is not None
+    assert scores[0] > scores[1] + guide.ABSTENTION_MARGIN
+
+
+def test_search_counts_the_acting_players_current_hand() -> None:
+    obs = _obs(
+        _player(
+            active=[guide.MEGA_KANGASKHAN_EX],
+            hand=[guide.DWEBBLE, guide.DWEBBLE],
+        ),
+        [
+            {"type": guide.OPT_CARD, "area": guide.AREA_DECK, "index": 0},
+            {"type": guide.OPT_CARD, "area": guide.AREA_DECK, "index": 1},
+        ],
+        context=guide.CTX_TO_BENCH,
+        effect_id=guide.BUDDY_BUDDY_POFFIN,
+        deck_cards=[guide.DWEBBLE, guide.PSYDUCK],
+    )
+    scores = _scores(obs)
+    assert scores is not None
+    assert scores[1] > scores[0] + guide.ABSTENTION_MARGIN
+
+
+def test_lumiose_search_is_labeled_only_after_exact_activation() -> None:
+    obs = _obs(
+        _player(active=[guide.MEGA_KANGASKHAN_EX]),
+        [
+            {"type": guide.OPT_CARD, "area": guide.AREA_DECK, "index": 0},
+            {"type": guide.OPT_CARD, "area": guide.AREA_DECK, "index": 1},
+        ],
+        context=guide.CTX_TO_BENCH,
+        effect_id=guide.LUMIOSE_CITY,
+        deck_cards=[guide.DWEBBLE, guide.MEGA_KANGASKHAN_EX],
+    )
+    scores = _scores(obs)
+    assert scores is not None
+    assert scores[0] > scores[1] + guide.ABSTENTION_MARGIN
+
+    wrong_origin = _obs(
+        _player(
+            active=[guide.MEGA_KANGASKHAN_EX],
+            hand=[guide.DWEBBLE, guide.MEGA_KANGASKHAN_EX],
+        ),
+        [
+            {"type": guide.OPT_CARD, "area": guide.AREA_HAND, "index": 0},
+            {"type": guide.OPT_CARD, "area": guide.AREA_HAND, "index": 1},
+        ],
+        context=guide.CTX_TO_BENCH,
+        effect_id=guide.LUMIOSE_CITY,
+    )
+    assert _scores(wrong_origin) is None
+
+
 def test_run_errand_uses_only_current_deck_count() -> None:
     options = [{"type": guide.OPT_YES}, {"type": guide.OPT_NO}]
     safe = _obs(
@@ -227,6 +305,31 @@ def test_run_errand_uses_only_current_deck_count() -> None:
     unsafe_scores = _scores(unsafe)
     assert safe_scores is not None and safe_scores[0] > safe_scores[1]
     assert unsafe_scores is not None and unsafe_scores[1] > unsafe_scores[0]
+
+
+def test_audit_is_training_only_directional_and_never_a_policy_logit_target() -> None:
+    obs = _obs(
+        _player(active=[guide.MEGA_KANGASKHAN_EX]),
+        [{"type": guide.OPT_YES}, {"type": guide.OPT_NO}],
+        context=guide.CTX_TO_HAND,
+        effect_id=guide.MEGA_KANGASKHAN_EX,
+    )
+    audit = guide.guide_audit(
+        obs,
+        [[0], [1]],
+        deck=CANONICAL_DECK,
+        force_enabled=True,
+    )
+    assert audit is not None
+    assert audit["training_mode"] == "strategic_directional_v2"
+    assert audit["guide_preference_index_role"] == (
+        "selected_causal_route_pairwise_direction_only"
+    )
+    assert audit["target_logits"] == "none"
+    assert audit["direct_policy_cross_entropy_allowed"] is False
+    assert audit["final_policy_logits_are_guide_targets"] is False
+    assert audit["runtime_input_allowed"] is False
+    assert audit["runtime_action_logit_route_allowed"] is False
 
 
 def test_hidden_information_does_not_change_a_supported_label() -> None:
@@ -315,7 +418,81 @@ def test_contract_binds_artifacts_sources_and_canonical_registry() -> None:
     )
     assert contract["target_safety"]["missing_label_behavior"] == "mask_not_zero"
     assert contract["target_safety"]["hidden_or_future_information_allowed"] is False
-    assert len(contract["strategy_sources"]) >= 10
+    assert contract["policy_target"]["training_mode"] == "strategic_directional_v2"
+    assert contract["policy_target"]["target_logits"] == "none"
+    assert contract["policy_target"]["direct_policy_cross_entropy_allowed"] is False
+    assert contract["policy_target"]["runtime_action_logit_route_allowed"] is False
+    assert len(contract["strategy_sources"]) == 22
+
+
+def test_contracts_and_writeup_use_the_same_complete_source_set() -> None:
+    research = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    canonical = yaml.safe_load(
+        CANONICAL_CONTRACT_PATH.read_text(encoding="utf-8")
+    )
+    writeup = WRITEUP_PATH.read_text(encoding="utf-8")
+    sources = writeup.split("\nSOURCES\n", maxsplit=1)[1]
+    writeup_urls = {
+        line.strip() for line in sources.splitlines() if line.startswith("http")
+    }
+    research_urls = {row["url"] for row in research["strategy_sources"]}
+    canonical_urls = {row["url"] for row in canonical["strategy_sources"]}
+    assert len(writeup_urls) == 22
+    assert research_urls == canonical_urls == writeup_urls
+
+
+def test_expert_writeup_records_exact_turn_and_card_engine_constraints() -> None:
+    writeup = WRITEUP_PATH.read_text(encoding="utf-8")
+    assert "cannot attack or play an ordinary Supporter" in writeup
+    assert "using its Ability ends your turn" in writeup
+    assert "Damp stops only self-Knock-Out Abilities" in writeup
+    assert "4 Grow Grass Energy" in writeup
+    assert "Growing Grass Energy" not in writeup
+
+
+def test_claimed_card_engine_matches_the_repository_card_records() -> None:
+    crustle = _engine_rows(guide.CRUSTLE)
+    assert {(row["Move Name"], row["Cost"], row["Damage"]) for row in crustle} == {
+        ("[Ability] Mysterious Rock Inn", "n/a", "n/a"),
+        ("Superb Scissors", "{G}●●", "120"),
+    }
+    assert crustle[0]["Effect Explanation"] == (
+        "Prevent all damage done to this Pokémon by attacks from your "
+        "opponent’s Pokémon {ex}."
+    )
+
+    dwebble = _engine_rows(guide.DWEBBLE)[0]
+    assert dwebble["HP"] == "70"
+    assert dwebble["Move Name"] == "Ascension"
+    assert dwebble["Cost"] == "●"
+
+    kangaskhan = _engine_rows(guide.MEGA_KANGASKHAN_EX)
+    run_errand = next(row for row in kangaskhan if row["Move Name"].endswith("Run Errand"))
+    assert "in the Active Spot" in run_errand["Effect Explanation"]
+    assert "Draw 2 cards" in run_errand["Effect Explanation"]
+
+    psyduck = _engine_rows(guide.PSYDUCK)[0]
+    assert psyduck["HP"] == "70"
+    assert "requires the Pokémon using it to Knock Out itself" in psyduck[
+        "Effect Explanation"
+    ]
+
+    poffin = _engine_rows(guide.BUDDY_BUDDY_POFFIN)[0]["Effect Explanation"]
+    assert "up to 2 Basic Pokémon with 70 HP or less" in poffin
+    potion = _engine_rows(guide.SUPER_POTION)[0]["Effect Explanation"]
+    assert "Heal 60 damage" in potion and "discard an Energy" in potion
+    lumiose = _engine_rows(guide.LUMIOSE_CITY)[0]["Effect Explanation"]
+    assert "Basic Pokémon" in lumiose and "their turn ends" in lumiose
+
+    energy_names = {
+        _engine_rows(card_id)[0]["Card Name"]
+        for card_id in (
+            guide.GROW_GRASS_ENERGY,
+            guide.MIST_ENERGY,
+            guide.SPIKY_ENERGY,
+        )
+    }
+    assert energy_names == {"Grow Grass Energy", "Mist Energy", "Spiky Energy"}
 
 
 def test_full33_corpus_and_label_audit_are_receipt_gated() -> None:
@@ -391,5 +568,10 @@ def test_canonical_contract_and_representative_are_self_consistent() -> None:
     ]
     assert binding["cards_sha256"] == row["cards_sha256"]
     assert row["card_ids"] == CANONICAL_DECK
+    assert Counter(binding["exact_card_counts"]) == Counter(CANONICAL_DECK)
+    assert contract["policy_target"]["training_mode"] == "strategic_directional_v2"
+    assert contract["policy_target"]["target_logits"] == "none"
+    assert contract["policy_target"]["final_policy_logits_are_guide_targets"] is False
+    assert contract["policy_target"]["runtime_action_logit_route_allowed"] is False
     assert contract["target_safety"]["missing_label_behavior"] == "mask_not_zero"
     assert contract["target_safety"]["runtime_authority"] == "none"

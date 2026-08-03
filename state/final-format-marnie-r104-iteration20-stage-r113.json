@@ -1,0 +1,15 @@
+{
+  "candidate_registry": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r113_iter20.json",
+  "candidate_registry_sha256": "sha256:78a4bacba6241901e05cde1057e8a5ab12fec9abd959a140f0793dfd537b9bf1",
+  "collect_iteration_21": false,
+  "current_iteration_5_mutated": false,
+  "iteration_ceiling": 20,
+  "maximum_iterations": 21,
+  "minimum_terminal_iteration": 20,
+  "owner_decision_revision": 113,
+  "parent_registry": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r111_tiered.json",
+  "parent_registry_sha256": "sha256:fa92c7b25d640ddae3619b645b816851e317faa459545ab16e445fe857cfcfd8",
+  "schema": "poke_bot.marnie_iteration20_stage/v1",
+  "staged_at_utc": "2026-08-03T16:32:49.834022+00:00",
+  "status": "ready_for_iteration_5_to_6_boundary"
+}

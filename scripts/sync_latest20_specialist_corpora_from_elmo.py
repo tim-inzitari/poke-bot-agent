@@ -56,6 +56,32 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def atomic_ready_json(path: Path, value: dict[str, Any]) -> None:
+    """Publish a ready receipt without changing its checksum on a no-op run.
+
+    The corpus sync is intentionally safe to invoke more than once.  A later
+    migration stage checksum-binds this receipt, so regenerating only its
+    completion timestamp would invalidate an otherwise identical immutable
+    stage.  Preserve the first completion timestamp and skip the replace when
+    every attested field is unchanged.
+    """
+
+    payload = dict(value)
+    try:
+        existing = read_json(path)
+    except (FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        existing = {}
+    if (
+        existing.get("schema") == "poke_bot.latest20_specialist_sync/v1"
+        and existing.get("status") == "ready"
+        and existing.get("completed_at_utc")
+    ):
+        payload["completed_at_utc"] = existing["completed_at_utc"]
+    if existing == payload:
+        return
+    atomic_json(path, payload)
+
+
 def remote_ready(host: str, path: str) -> bool:
     result = subprocess.run(
         [
@@ -174,7 +200,8 @@ def validate_corpora(
                     or not isinstance(rows, dict)
                     or set(rows) != set(EXPANDED_HEAD_IDS)
                     or any(
-                        int(value.get("labeled_rows") or 0) <= 0
+                        int(value.get("labeled_rows") or 0) < 0
+                        or int(value.get("masked_rows") or 0) < 0
                         or int(value.get("labeled_rows") or 0)
                         + int(value.get("masked_rows") or 0)
                         != decisions
@@ -386,7 +413,7 @@ def main() -> int:
         )
         atomic_symlink(destination, args.current)
         landed_bytes = tree_bytes(destination)
-        atomic_json(
+        atomic_ready_json(
             args.state,
             {
                 "schema": "poke_bot.latest20_specialist_sync/v1",
@@ -535,8 +562,34 @@ def main() -> int:
             else None
         )
         os.replace(staging, destination)
+        # Revalidate from the promoted root so the final receipt never retains
+        # pre-rename ``.partial`` paths even though their content hashes are
+        # identical.
+        split_receipt = validate_corpora(
+            destination,
+            args.roster,
+            required_expanded_target_schema=(
+                args.required_expanded_target_schema
+            ),
+            required_expanded_target_digest=(
+                args.required_expanded_target_digest
+            ),
+        )
+        core_receipt = (
+            validate_balanced_core(
+                destination / "core-balanced-v6",
+                required_expanded_target_schema=(
+                    args.required_expanded_target_schema
+                ),
+                required_expanded_target_digest=(
+                    args.required_expanded_target_digest
+                ),
+            )
+            if require_balanced_core
+            else None
+        )
         atomic_symlink(destination, args.current)
-        atomic_json(
+        atomic_ready_json(
             args.state,
             {
                 "schema": "poke_bot.latest20_specialist_sync/v1",

@@ -28,6 +28,102 @@ GUIDE_OUTCOME_BACKED_HEAD_IDS: tuple[str, ...] = (
     "remaining_turns",
 )
 
+GUIDE_DIRECTIONAL_ROUTE_HEAD_IDS: tuple[str, ...] = (
+    "action_q",
+    "action_resource",
+    "action_utility",
+    "setup_board_outcome",
+    "combo_state",
+)
+
+
+def guide_pairwise_route_ranking_loss(
+    *,
+    route_deltas: Mapping[str, torch.Tensor],
+    guide_target_indices: torch.Tensor,
+    guide_confidences: torch.Tensor,
+    option_counts: torch.Tensor,
+    margin: float = 0.10,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """Guide selected causal routes without supervising final policy logits.
+
+    Each eligible typed route is asked only to rank the guide-preferred legal
+    option above the mean alternative by ``margin``. The guide remains absent
+    from serving and does not replace observed strategic targets.
+    """
+
+    available = [
+        name for name in GUIDE_DIRECTIONAL_ROUTE_HEAD_IDS if name in route_deltas
+    ]
+    if not available:
+        if route_deltas:
+            zero = next(iter(route_deltas.values())).sum() * 0.0
+        else:
+            zero = guide_confidences.sum() * 0.0
+        return zero, {"eligible_rows": 0, "heads": {}, "margin": float(margin)}
+    reference = route_deltas[available[0]]
+    if reference.dim() != 2:
+        raise ValueError("guide route delta must be [rows, options]")
+    rows, max_options = reference.shape
+    targets = guide_target_indices.reshape(-1).to(device=reference.device, dtype=torch.long)
+    confidence = guide_confidences.reshape(-1).to(device=reference.device, dtype=reference.dtype)
+    counts = option_counts.reshape(-1).to(device=reference.device, dtype=torch.long)
+    if not (targets.numel() == confidence.numel() == counts.numel() == rows):
+        raise ValueError("guide route-ranking rows do not align")
+    if not math.isfinite(float(margin)) or float(margin) < 0.0:
+        raise ValueError("guide route-ranking margin must be finite and nonnegative")
+    if bool((counts <= 0).any()) or bool((counts > max_options).any()):
+        raise ValueError("guide route-ranking option count is invalid")
+    if not bool(torch.isfinite(confidence).all()) or bool(
+        ((confidence < 0.0) | (confidence > 1.0)).any()
+    ):
+        raise ValueError("guide route-ranking confidence is outside [0, 1]")
+    # A legal state can expose only one action (including forced/no-choice
+    # transitions).  It has no alternative to rank, so it is a valid masked
+    # row rather than malformed training data.
+    eligible = (
+        (counts > 1)
+        & (targets >= 0)
+        & (targets < counts)
+        & confidence.gt(0.0)
+    )
+    if not bool(eligible.any()):
+        return reference.sum() * 0.0, {
+            "eligible_rows": 0,
+            "heads": {name: 0.0 for name in available},
+            "margin": float(margin),
+        }
+    row_ids = torch.nonzero(eligible, as_tuple=False).flatten()
+    local_targets = targets.index_select(0, row_ids)
+    local_counts = counts.index_select(0, row_ids)
+    local_confidence = confidence.index_select(0, row_ids)
+    option_ids = torch.arange(max_options, device=reference.device).unsqueeze(0)
+    legal = option_ids < local_counts.unsqueeze(1)
+    preferred_mask = option_ids.eq(local_targets.unsqueeze(1))
+    alternative_mask = legal & ~preferred_mask
+    losses: list[torch.Tensor] = []
+    metrics: dict[str, float] = {}
+    for name in available:
+        scores = route_deltas[name]
+        if scores.shape != reference.shape:
+            raise ValueError(f"guide route delta shape mismatch: {name}")
+        selected_scores = scores.index_select(0, row_ids)
+        preferred = selected_scores.gather(1, local_targets.unsqueeze(1)).squeeze(1)
+        alternative = (
+            selected_scores.masked_fill(~alternative_mask, 0.0).sum(dim=1)
+            / alternative_mask.sum(dim=1).clamp_min(1)
+        )
+        row_loss = F.softplus(float(margin) - (preferred - alternative))
+        loss = (row_loss * local_confidence).sum() / local_confidence.sum().clamp_min(1e-12)
+        losses.append(loss)
+        metrics[name] = float(loss.detach().item())
+    total = torch.stack(losses).mean()
+    return total, {
+        "eligible_rows": int(row_ids.numel()),
+        "heads": metrics,
+        "margin": float(margin),
+    }
+
 
 def guide_outcome_backed_loss_weights() -> dict[str, float]:
     """Equal-weight the outcome-backed heads used by future guide curricula."""

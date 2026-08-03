@@ -2,14 +2,32 @@
 schema_version: poke_bot.current_deck_guide/v1
 specialist_id: marnie-s-grimmsnarl-ex
 display_name: Marnie's Grimmsnarl ex
-status: staged_corpus_promotion
+status: staged_final_format_strategic_curriculum
 guide_version: marnie-grimmsnarl-north-star-v1
 teacher_module: poke_bot.grimmsnarl_heuristics
 policy_target:
-  type: sparse_confidence_weighted_legal_action_preference
+  # Marnie is the first prospective directional-v2 refresh. The guide retains
+  # its 0.05 ceiling, qualifies observed causal rows, and may add a pairwise
+  # preferred-vs-alternative ranking term to selected typed routes only. Final
+  # policy logits remain unsupervised by the guide and runtime has no guide path.
+  type: sparse_causal_curriculum_with_pairwise_route_direction
+  training_mode: strategic_directional_v2
   parameterized_head: false
-  target_logits: shared_flat_policy
+  target_logits: none
+  direct_policy_cross_entropy_allowed: false
+  guide_preference_index_role: selected_causal_route_pairwise_direction_only
+  guide_preference_index_may_affect_loss_or_gradient: true
+  guide_pairwise_route_heads:
+    - action_q
+    - action_resource
+    - action_utility
+    - setup_board_outcome
+  final_policy_logits_are_guide_targets: false
+  observed_target_authority:
+    - expanded_strategic_targets
+    - setup_board_outcome
   serving_authority: false
+  override_authoritative_policy: false
 deck_signature:
   minimum_card_counts:
     646: 2 # Marnie's Impidimp

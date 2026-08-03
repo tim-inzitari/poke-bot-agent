@@ -5,27 +5,40 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import subprocess
 from pathlib import Path
 from typing import Any
+import yaml
 
 from poke_bot.baselines_runtime import baseline_content_digest
 from poke_bot.pure_rl.model_registry import sha256
-from scripts.materialize_frozen_specialist_gate import materialize_from_contract
+from scripts.materialize_population_opponents import materialize_refresh_bundle
 from scripts.run_specialist_cycle_handoff import (
-    _active_specialist,
     _path,
     _read,
-    _required_specialist_ids,
-    _source,
     _validated_post_fleet_refresh_progress,
 )
 
 
 SCHEMA = "poke_bot.specialist_cycle_handoff_contract/v1"
 RECEIPT_SCHEMA = "poke_bot.population_round_robin_ready/v1"
+
+
+def _readiness_identity(value: dict[str, Any]) -> str:
+    """Bind the complete readiness payload before adding its own digest."""
+
+    if "identity_sha256" in value:
+        raise RuntimeError("population readiness identity is already present")
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _atomic(path: Path, value: dict[str, Any]) -> None:
@@ -45,10 +58,20 @@ def _population_roster(
     frozen_registry_path: Path,
     runtime_registry_path: Path,
     baseline_root: Path,
+    baseline_manifest: Path,
+    refresh_registry_path: Path,
 ) -> list[dict[str, Any]]:
-    required_ids = _required_specialist_ids(state_path)
+    state = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+    passed_ids = {
+        str(row.get("id") or "")
+        for row in (state.get("specialists") or [])
+        if isinstance(row, dict)
+        and row.get("status") == "passed_frozen"
+        and row.get("frozen") is True
+    }
     frozen = _read(frozen_registry_path)
     runtime = _read(runtime_registry_path)
+    refresh_registry = _read(refresh_registry_path)
     frozen_rows = [
         dict(row) for row in (frozen.get("specialists") or [])
     ]
@@ -56,39 +79,76 @@ def _population_roster(
         str(row.get("specialist_id") or ""): row for row in frozen_rows
     }
     runtime_rows = dict(runtime.get("specialists") or {})
+    refresh_rows = {
+        str(row.get("specialist_id") or ""): dict(row)
+        for row in (refresh_registry.get("refreshes") or [])
+    }
     if (
         frozen.get("schema") != "poke_bot.frozen_specialist_registry/v1"
-        or set(by_id) != required_ids
-        or len(frozen_rows) != 22
-        or set(runtime_rows) != required_ids
+        or set(by_id) != passed_ids
+        or len(frozen_rows) != 15
+        or refresh_registry.get("schema")
+        != "poke_bot.post_fleet_refresh_registry/v1"
+        or list(refresh_registry.get("ordered_refresh_ids") or [])
+        != ["alakazam", "marnie-s-grimmsnarl-ex", "crustle"]
+        or set(refresh_rows)
+        != {"alakazam", "marnie-s-grimmsnarl-ex", "crustle"}
     ):
-        raise RuntimeError("complete 22-specialist population identity failed")
+        raise RuntimeError("complete 15-specialist population identity failed")
     roster: list[dict[str, Any]] = []
-    for specialist_id in sorted(required_ids):
+    for specialist_id in sorted(passed_ids):
         frozen_row = by_id[specialist_id]
-        runtime_row = dict(runtime_rows[specialist_id])
         package = (
             baseline_root
             / str(frozen_row["baseline_group"])
             / str(frozen_row["baseline_dir"])
         )
         checkpoint = package / "model.pt"
-        expert = Path(str(runtime_row.get("expert_manifest") or "")).resolve()
-        tree = Path(str(runtime_row.get("matchup_runtime_tree") or "")).resolve()
+        historical = {
+            "opponent_id": frozen_row["opponent_id"],
+            "baseline_group": frozen_row["baseline_group"],
+            "baseline_dir": frozen_row["baseline_dir"],
+            "baseline_package": str(package),
+            "checkpoint": str(checkpoint),
+            "checkpoint_digest": frozen_row["checkpoint_digest"],
+            "content_digest": frozen_row["content_digest"],
+        }
+        refresh = refresh_rows.get(specialist_id)
+        runtime_row = dict(runtime_rows.get(specialist_id) or {})
+        if refresh is not None:
+            current = materialize_refresh_bundle(
+                specialist_id=specialist_id,
+                checkpoint_digest=str(refresh["checkpoint_checksum"]),
+                bundle=Path(str(refresh["submission_bundle"])),
+                bundle_digest=str(refresh["submission_bundle_sha256"]),
+                baseline_root=baseline_root,
+                baseline_manifest=baseline_manifest,
+            )
+            expert = Path(str(refresh.get("expert_manifest") or "")).resolve()
+            tree = Path(str(refresh.get("matchup_runtime_tree") or "")).resolve()
+            expert_digest = str(refresh.get("expert_manifest_sha256") or "")
+            tree_digest = str(refresh.get("matchup_runtime_tree_sha256") or "")
+        else:
+            current = historical
+            expert = Path(str(runtime_row.get("expert_manifest") or "")).resolve()
+            tree = Path(str(runtime_row.get("matchup_runtime_tree") or "")).resolve()
+            expert_digest = "sha256:" + str(
+                runtime_row.get("expert_manifest_sha256") or ""
+            )
+            tree_digest = "sha256:" + str(
+                runtime_row.get("matchup_runtime_tree_sha256") or ""
+            )
         if (
             frozen_row.get("frozen") is not True
             or frozen_row.get("public_mix_eligible") is not True
-            or runtime_row.get("status") != "ready"
             or not checkpoint.is_file()
             or sha256(checkpoint) != frozen_row.get("checkpoint_digest")
             or baseline_content_digest(package)
             != frozen_row.get("content_digest")
             or not expert.is_file()
-            or sha256(expert).removeprefix("sha256:")
-            != str(runtime_row.get("expert_manifest_sha256") or "")
+            or sha256(expert) != expert_digest
             or not tree.is_file()
-            or sha256(tree).removeprefix("sha256:")
-            != str(runtime_row.get("matchup_runtime_tree_sha256") or "")
+            or sha256(tree) != tree_digest
         ):
             raise RuntimeError(
                 f"population member identity failed: {specialist_id}"
@@ -96,13 +156,24 @@ def _population_roster(
         roster.append(
             {
                 "specialist_id": specialist_id,
-                "opponent_id": frozen_row["opponent_id"],
-                "baseline_group": frozen_row["baseline_group"],
-                "baseline_dir": frozen_row["baseline_dir"],
-                "baseline_package": str(package),
-                "checkpoint": str(checkpoint),
-                "checkpoint_digest": frozen_row["checkpoint_digest"],
-                "content_digest": frozen_row["content_digest"],
+                **{
+                    key: current[key]
+                    for key in (
+                        "opponent_id",
+                        "baseline_group",
+                        "baseline_dir",
+                        "baseline_package",
+                        "checkpoint",
+                        "checkpoint_digest",
+                        "content_digest",
+                    )
+                },
+                "current_role": (
+                    "current_post_fleet_refresh"
+                    if refresh is not None
+                    else "immutable_baseline_history"
+                ),
+                "selected_history": [historical],
                 "expert_manifest": str(expert),
                 "expert_manifest_digest": sha256(expert),
                 "matchup_runtime_tree": str(tree),
@@ -135,39 +206,25 @@ def prepare(contract_path: Path, *, launch: bool = True) -> dict[str, Any]:
             raise RuntimeError(
                 "post-fleet specialist refresh phase is incomplete"
             )
-        active_id = _active_specialist(runtime)
-        source_contract, source_evidence = _source(
-            contract=contract,
-            active_id=active_id,
-        )
         gate = dict(contract["gate_materialization"])
         state_root = _path(runtime, "state_root")
-        final_contract = {
-            "source_specialist": source_contract,
-            "next_specialist": {
-                "gate_contract": gate["base_gate_contract"],
-                "frozen_specialist_registry": gate[
-                    "base_frozen_specialist_registry"
-                ],
-            },
-            "gate_materialization": {
-                **gate,
-                "archetype_label": active_id.replace("-", " ").title(),
-                "receipt": str(
-                    state_root
-                    / f"{active_id}-final-population-materialization-v1.json"
-                ),
-            },
-        }
-        materialized = materialize_from_contract(
-            final_contract,
-            source_evidence,
-        )
+        capacity_path = state_root / "post_refresh_sequence_complete_for_capacity_v2.json"
+        capacity = _read(capacity_path)
+        if (
+            capacity.get("schema")
+            != "poke_bot.post_refresh_sequence_complete_for_capacity/v2"
+            or capacity.get("status")
+            != "post_refresh_sequence_complete_for_capacity_v2"
+            or capacity.get("ordered_refresh_ids") != required_refresh_order
+        ):
+            raise RuntimeError("post-refresh capacity release receipt is invalid")
         roster = _population_roster(
             state_path=state_path,
             frozen_registry_path=_path(runtime, "frozen_specialist_registry"),
             runtime_registry_path=_path(runtime, "runtime_registry"),
             baseline_root=Path(str(gate["baseline_root"])).resolve(),
+            baseline_manifest=Path(str(gate["baseline_manifest"])).resolve(),
+            refresh_registry_path=state_root / "post-fleet-refresh-registry-v1.json",
         )
         receipt = {
             "schema": RECEIPT_SCHEMA,
@@ -176,7 +233,8 @@ def prepare(contract_path: Path, *, launch: bool = True) -> dict[str, Any]:
             "members": roster,
             "post_fleet_refresh_order": required_refresh_order,
             "post_fleet_refresh_specialist_ids": completed_refresh_ids,
-            "final_specialist_materialization": materialized,
+            "post_refresh_capacity_receipt": str(capacity_path),
+            "post_refresh_capacity_receipt_sha256": sha256(capacity_path),
             "training_opponent_scope": "own_models_only",
             "external_agents_training_eligible": False,
             "official_agents_role": "research_only",
@@ -187,9 +245,7 @@ def prepare(contract_path: Path, *, launch: bool = True) -> dict[str, Any]:
                 "population_training_service"
             ],
         }
-        receipt["identity_sha256"] = "sha256:" + sha256(
-            Path(str(materialized["frozen_specialist_registry"]))
-        ).removeprefix("sha256:")
+        receipt["identity_sha256"] = _readiness_identity(receipt)
         output = state_root / "population-round-robin-ready-v1.json"
         if output.is_file():
             existing = _read(output)

@@ -1,0 +1,42 @@
+{
+  "schema": "poke_bot.final_format_alakazam_allocator_recovery_stage/v1",
+  "status": "staged_waiting_for_managed_resume",
+  "owner_decision_revision": 105,
+  "specialist_id": "alakazam",
+  "iteration": 15,
+  "failure": {
+    "kind": "cuda_allocator_exhaustion_then_illegal_memory_access",
+    "failed_decisions_per_batch_cap": 2048,
+    "observed_free_bytes_min": 14680064,
+    "managed_service_stopped": true,
+    "managed_main_pid": 0,
+    "iteration_commit_created": false
+  },
+  "recovery": {
+    "ordinary_decisions_per_batch_cap": 1536,
+    "warmup_decisions_per_batch_cap": 1536,
+    "agreement_decisions_per_batch_cap": 6144,
+    "dormant_matchup_adapter_decisions_per_batch_cap": 3072,
+    "games_per_batch_cap": 240,
+    "blackwell_workers": 96,
+    "all_19_fused_heads_preserved": true,
+    "recollection_allowed": false,
+    "rehearsal_regeneration_allowed": false
+  },
+  "preserved_inputs": {
+    "collection_receipt": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/collection_receipts/iter_00015.json",
+    "collection_receipt_sha256": "sha256:671fe45607f43d35ec7eb333a618d3fc42eee5eca326b1c4d2e8b6bb6b60f995",
+    "source_games": 16384,
+    "seat_split_receipt": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/seat_split_receipts/iter_00015.index.json",
+    "seat_split_receipt_sha256": "sha256:d11d22c4371d927c36c63f71590ed4a4997c66b06694ff96cef11bcc473dd90f",
+    "rehearsal_receipt": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/rehearsals/before_iter_00015.json",
+    "rehearsal_receipt_sha256": "sha256:71e040d0f3cd5202995e1bd37b2d2e99ae79d044324d7b81faa8acc049523b5b",
+    "rehearsal_checkpoint_sha256": "sha256:ddde6b8daba1702442de7ed8d2432397883bf29bbf6fdbf99dca0de53290fffc",
+    "rehearsal_seat_split_receipt_sha256": "sha256:b62dab852805e41e852179b3148825bb7d235e24d689274af75002ea1599af89"
+  },
+  "runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r105_fusion_v3_directional_learner1536_recovery_v2_iter20_exact.json",
+  "runtime_registry_sha256": "sha256:59066811823f5165d646964088fcbfd95b4e519f99a8ef193f6a19473bba3871",
+  "terminal_ceiling_completed_iteration": 20,
+  "collect_iteration_21_allowed": false,
+  "marnie_h10_contract_modified": false
+}

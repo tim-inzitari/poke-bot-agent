@@ -1,0 +1,21 @@
+[Unit]
+Description=Materialize receipt-bound Marnie H10-I Fusion-v3 child
+After=pokebot-final-format-marnie-r79-handoff.service
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r79-prestage-r104-h10-19.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/post-alakazam-core-refresh-boundary-r104.json
+OnSuccess=pokebot-final-format-marnie-r104-h10-bootstrap.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/materialize_final_format_marnie_h10.py --prestage /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r79-prestage-r104-h10-19.json --core-boundary /home/inzi/poke-bot-agent/outputs/state/post-alakazam-core-refresh-boundary-r104.json --latest-core /home/inzi/poke-bot-agent/outputs/state/latest-cumulative-core.json --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --migration-script /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/scripts/migrate_final_format_alakazam_h10.py --child /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/h10/marnie_r104_h10_i_fusion_v3_step_zero.pt --migration-receipt /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/h10/marnie_r104_h10_i_fusion_v3_migration.json --role-route-receipt /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/h10/marnie_r104_h10_i_fusion_v3_roles.json --validation-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-h10-validation.json --receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-h10-materialization.json
+Restart=on-failure
+RestartSec=30
+MemoryHigh=12G
+MemoryMax=16G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/h10_materialize.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/h10_materialize.log

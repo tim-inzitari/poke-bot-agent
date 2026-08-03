@@ -168,7 +168,10 @@ def main() -> int:
     signal.signal(signal.SIGINT, _shutdown)
 
     available_variants = (
+        ("cpu-1t", "cpu", {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}),
         ("cpu-2t", "cpu", {"OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2"}),
+        ("cpu-4t", "cpu", {"OMP_NUM_THREADS": "4", "MKL_NUM_THREADS": "4"}),
+        ("cpu-8t", "cpu", {"OMP_NUM_THREADS": "8", "MKL_NUM_THREADS": "8"}),
         ("mps", "mps", {}),
     )
     requested_variants = {

@@ -1,0 +1,32 @@
+{
+  "activation_boundary": "durable_iteration_5_commit_before_iteration_6_collection",
+  "blackwell_local_workers_remain_eligible": 96,
+  "created_at_utc": "2026-08-03T16:03:42Z",
+  "current_iteration_5_mutated": false,
+  "first_affected_iteration": 6,
+  "implementation_sha256": "sha256:9c231047f5edc04a9421993edbca7e70ebad418fd67841707b88400d2cc94053",
+  "implementation_source": "/home/inzi/poke-bot-agent/outputs/state/runtime_sources/remote_jobs.r112.9c231047f5edc04a.py",
+  "implementation_target": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/poke_bot/remote_jobs.py",
+  "late_refill_after_producer_seal": "decline_socket_without_registering_or_starting_producer",
+  "network_rpc_batching_introduced": false,
+  "owner_decision_revision": 112,
+  "prior_target_sha256": "sha256:e410085c605d509ecca3352930a783a47af9620b531710f40861aae98255fd71",
+  "remote_claim_games_in_tail": 1,
+  "result_transport": "per_game_streaming",
+  "schema": "poke_bot.scheduled_fleet_tail_work_steal_stage/v1",
+  "status": "ready_for_iteration_5_to_6_boundary",
+  "supersedes_stage_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-tail-work-steal-stage-r112.json",
+  "supersedes_stage_receipt_sha256": "sha256:601b7c183f2a79fc417eca83a6411ffd7e3709c3de9ab656e8305803b8a3f657",
+  "tail_entry_unclaimed_fraction": 0.2,
+  "tests": {
+    "command": "pytest -q tests/test_remote_checkpoint_staging.py tests/test_stage_marnie_opponent_tiers_r111.py tests/test_goal_gateway.py",
+    "completed_at_utc": "2026-08-03T16:03:00Z",
+    "endpoint_credit_release": true,
+    "endpoint_total_reservation_cap_includes_private_inflight": true,
+    "exact_once_jobs_seeds_seats_rows": true,
+    "failed": 0,
+    "long_running_oneshot_activation_state_accepted": true,
+    "passed": 55,
+    "remote_only_fairness_preserved": true
+  }
+}

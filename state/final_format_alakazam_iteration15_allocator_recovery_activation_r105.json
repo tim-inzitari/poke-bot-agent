@@ -1,0 +1,65 @@
+{
+  "schema": "poke_bot.final_format_alakazam_allocator_recovery_activation/v1",
+  "status": "activated_training_stable_past_prior_failure_point",
+  "activated_at_utc": "2026-08-02T05:13:12Z",
+  "owner_decision_revision": 105,
+  "specialist_id": "alakazam",
+  "iteration": 15,
+  "runtime": {
+    "managed_service": "pokebot-final-format-alakazam-r79-h10.service",
+    "managed_main_pid": 2788618,
+    "managed_restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "deployment_root": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r105",
+    "runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r105_fusion_v3_directional_learner1536_recovery_v2_iter20_exact.json",
+    "runtime_registry_sha256": "sha256:59066811823f5165d646964088fcbfd95b4e519f99a8ef193f6a19473bba3871"
+  },
+  "migration": {
+    "reason": "receipt_backed_iteration15_optimizer_cap_recovery_v1",
+    "receipt": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r105/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/design_migrations/migration_0023.json",
+    "receipt_sha256": "sha256:2c9d964c2416d16a99ee1f65d01d753c36881cd24efb34cd2651d1bfd0fa1f28",
+    "boundary_next_iteration": 15,
+    "previous_design_fingerprint": "sha256:448dd5d988013c9c2f1f6fbaddb2484316294ce064a9ce5bc55164cdd92881b5",
+    "current_design_fingerprint": "sha256:099d89482b84a59789c39836c9509e25b507524ca55769fa2a636161e8f0272a"
+  },
+  "preserved_evidence": {
+    "collection_source_games": 16384,
+    "recollection_performed": false,
+    "completed_rehearsal_reused": true,
+    "seat_split_receipt_reused_byte_for_byte": true,
+    "seat_split_receipt_sha256": "sha256:d11d22c4371d927c36c63f71590ed4a4997c66b06694ff96cef11bcc473dd90f",
+    "assigned_first_games": 8192,
+    "assigned_second_games": 8192,
+    "retained_first_games": 8192,
+    "retained_second_games": 8192,
+    "replay_projection_first_sequences": 16384,
+    "replay_projection_second_sequences": 16384
+  },
+  "optimizer_proof": {
+    "ordinary_decisions_per_batch_cap": 1536,
+    "warmup_decisions_per_batch_cap": 1536,
+    "agreement_decisions_per_batch_cap": 6144,
+    "dormant_matchup_adapter_decisions_per_batch_cap": 3072,
+    "observed_batch": 36,
+    "total_batches": 1256,
+    "prior_failure_batch": 24,
+    "advanced_past_prior_failure": true,
+    "observed_gpu1_free_mib_after_batch_33": 17002,
+    "cuda_allocator_failure_observed_after_activation": false,
+    "illegal_memory_access_observed_after_activation": false
+  },
+  "non_regression": {
+    "all_19_fused_heads_preserved": true,
+    "fusion_schema": "poke_bot.causal_decision_fusion/v3",
+    "guide_training_mode": "strategic_directional_v2",
+    "blackwell_workers": 96,
+    "terminal_ceiling_completed_iteration": 20,
+    "collect_iteration_21_allowed": false,
+    "marnie_h10_contract_modified": false
+  },
+  "focused_recovery_tests": {
+    "passed": 32,
+    "failed": 0
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "poke_bot.final_format_marnie_dashboard_gpu_topology_repair/v1",
+  "recorded_at_utc": "2026-08-02T22:54:20Z",
+  "goal_revision": 107,
+  "scope": "dashboard_projection_only",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+  "managed_training_service": {
+    "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "pid": 1567720,
+    "active_state": "active",
+    "restart_count": 0,
+    "restarted_for_repair": false
+  },
+  "defect": {
+    "observed_gpu0_utilization_percent": 99,
+    "incorrect_projection": "OUT OF FLEET · no active trainer leaf replicas",
+    "cause": "The final-format Marnie service was omitted from active curriculum-service discovery and the dashboard read only the systemd launcher environment, while launch_pure_rl.py materialized the effective leaf topology into the managed train_pure_rl.py child environment."
+  },
+  "repair": {
+    "service_discovery": "Recognize the managed final-format Marnie H10 RL/bootstrap units as curriculum owners while excluding the milestone-submission unit.",
+    "topology_source": "Read the effective PURE_RL hardware environment from train_pure_rl.py inside the same systemd user cgroup.",
+    "script": "scripts/dashboard_snapshot.py",
+    "script_digest": "sha256:b57a8fb50039e5bddb619767a07816ae5b993d05307f9533501a60be59f2a4ac",
+    "test": "tests/test_dashboard_regressions.py",
+    "test_digest": "sha256:e17134bb0d0bfc7e49d82377ca76466de3dda44fc38553151017269668cab4cf"
+  },
+  "validation": {
+    "focused_tests": {
+      "passed": 5,
+      "deselected": 212,
+      "result": "passed"
+    },
+    "live_curriculum_worker": {
+      "workers": 96,
+      "multi_env_per_worker": 4,
+      "leaf_servers": 16,
+      "gpu0_leaf_replicas": 4,
+      "gpu1_leaf_replicas": 12,
+      "topology_source": "active managed trainer effective environment"
+    },
+    "live_gpu_projection": {
+      "gpu0": "PRODUCTION · 4 policy leaf replicas",
+      "gpu1": "PRODUCTION · policy leaves + trainer",
+      "gpu0_production_active": true,
+      "gpu1_production_active": true
+    },
+    "dashboard_ok": true,
+    "source_integrity_current": true,
+    "required_current_sources": 19,
+    "required_total_sources": 19,
+    "training_progress_before": 336,
+    "training_progress_after": 2284,
+    "training_phase": "collect:public_mix",
+    "training_total": 7168,
+    "training_restarts_during_repair": 0
+  },
+  "deployed_paths": [
+    "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/scripts/dashboard_snapshot.py",
+    "/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py"
+  ],
+  "authority": {
+    "training_mutation": false,
+    "checkpoint_mutation": false,
+    "selector_mutation": false,
+    "service_restart": false,
+    "dashboard_projection": true
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "schema": "poke_bot.final_format_alakazam_fusion_continuity/v1",
+  "status": "ready",
+  "recorded_at_utc": "2026-07-31T21:22:00Z",
+  "owner_decision_revision": 98,
+  "specialist_id": "alakazam",
+  "activation_scope": "final_refresh_committed_descendant",
+  "bootstrap_activation": {
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/alakazam-specialist-rl-activation-v84.json",
+    "receipt_sha256": "sha256:69c48a19560f900d40f769c482ae6a968057e1d9c4a012e2d768b3c8b85d03cd",
+    "bootstrap_checkpoint_sha256": "sha256:e65123a13abb61332fe89e66946103a83c766e2f15315b945bfe9b6bf0c2d32e",
+    "decision_fusion": {
+      "schema": "poke_bot.causal_decision_fusion/v2",
+      "runtime_enabled": true,
+      "required_heads": [
+        "value",
+        "archetype",
+        "opponent_hand",
+        "opponent_remainder",
+        "lethal_threat",
+        "prize_race",
+        "action_q",
+        "action_type",
+        "action_target",
+        "action_resource",
+        "action_utility",
+        "tactical_outcomes",
+        "opponent_response",
+        "resource_forecast",
+        "game_phase",
+        "outcome_distribution",
+        "remaining_turns",
+        "setup_board_outcome",
+        "combo_state"
+      ]
+    }
+  },
+  "committed_descendant": {
+    "iteration": 0,
+    "commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/commits/iter_00000.json",
+    "commit_sha256": "sha256:6e4dbe511539568afe1566b14c5c38545aa1e5766f4de4cc757e0ae69a078f49",
+    "learner_before_sha256": "sha256:e65123a13abb61332fe89e66946103a83c766e2f15315b945bfe9b6bf0c2d32e",
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/checkpoints/iter_00000.pt",
+    "checkpoint_sha256": "sha256:8f8ab3adee66416a7400f73e8fb0fe2749b183976407c8c7f5d28cb552878981",
+    "publication_local_ok": true,
+    "remote_checkpoint_identity_verified": true
+  },
+  "runtime_registration": {
+    "registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r90_post_iter0_all_remotes.json",
+    "registry_sha256": "sha256:741bd8d1f90768e2fb0a42ca15527d6005beb6fa0b457777d59ba3c77de87f4a",
+    "decision_fusion": {
+      "required": true,
+      "schema": "poke_bot.causal_decision_fusion/v2",
+      "runtime_enabled": true,
+      "required_heads": [
+        "value",
+        "archetype",
+        "opponent_hand",
+        "opponent_remainder",
+        "lethal_threat",
+        "prize_race",
+        "action_q",
+        "action_type",
+        "action_target",
+        "action_resource",
+        "action_utility",
+        "tactical_outcomes",
+        "opponent_response",
+        "resource_forecast",
+        "game_phase",
+        "outcome_distribution",
+        "remaining_turns",
+        "setup_board_outcome",
+        "combo_state"
+      ]
+    }
+  },
+  "terminal_serving_eligible": false,
+  "reason": "The H10 refresh is authorized for fused-policy training only; terminal freeze and production selection remain blocked on the exact child gates."
+}

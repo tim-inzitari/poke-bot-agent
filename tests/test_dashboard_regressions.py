@@ -58,6 +58,8 @@ from scripts.dashboard_snapshot import (
     research_control_registry_state,
     replay_window_state,
     scheduler_queue_state,
+    scope_scheduler_queues_to_progress,
+    result_drain_projection,
     service_state,
     specialist_protocol_state,
     strong_public_practice_plan_state,
@@ -191,6 +193,73 @@ def test_curriculum_worker_reads_effective_environment_file_topology(
     assert (
         worker["topology_source"]
         == "active managed trainer effective environment"
+    )
+
+
+def test_curriculum_worker_reads_leaf_topology_from_managed_trainer_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_unit_values",
+        lambda *_args, **_kwargs: {
+            "MainPID": "123",
+            "ControlGroup": "/user.slice/test.service",
+            "MemoryCurrent": "1024",
+            "TasksCurrent": "8",
+            "Environment": "",
+            "EnvironmentFiles": "",
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_cgroup_pids",
+        lambda _group: {123, 456},
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_process_environment",
+        lambda pid: (
+            {
+                "PURE_RL_SIM_WORKERS": "96",
+                "PURE_RL_LEAF_GPU0_REPLICAS": "4",
+                "PURE_RL_LEAF_GPU1_REPLICAS": "12",
+                "POKEBOT_MULTI_ENV_PER_WORKER": "4",
+            }
+            if pid == 456
+            else {}
+        ),
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "process_rows",
+        lambda: {
+            123: (1, 1.0, 1024, "launch_pure_rl.py --run-name current"),
+            456: (123, 12.0, 2048, "python scripts/train_pure_rl.py"),
+        },
+    )
+
+    worker = dashboard_snapshot_module.curriculum_worker_state(
+        ["production.service"],
+        [123],
+    )
+
+    assert worker["workers"] == 96
+    assert worker["multi_env_per_worker"] == 4
+    assert worker["leaf_gpu0_replicas"] == 4
+    assert worker["leaf_gpu1_replicas"] == 12
+    assert worker["leaf_servers"] == 16
+
+
+def test_final_format_marnie_is_a_live_curriculum_service() -> None:
+    assert dashboard_snapshot_module._is_curriculum_service_unit(
+        "pokebot-final-format-marnie-r104-h10-rl.service"
+    )
+    assert dashboard_snapshot_module._is_curriculum_service_unit(
+        "pokebot-final-format-alakazam-r79-h10.service"
+    )
+    assert not dashboard_snapshot_module._is_curriculum_service_unit(
+        "pokebot-final-format-marnie-r104-milestone-submissions.service"
     )
 
 
@@ -1703,6 +1772,35 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     assert transition_state["active_specialist"] == ""
     assert transition_state["phase"] == "shared_core_derivation"
     assert transition_state["training_priority"]["next_specialist"] == "hammer-pult"
+
+    refresh_state = specialist_protocol_state(
+        path,
+        runtime_specialist_id="alakazam",
+        runtime_run_name="final_format_alakazam_r79_h10_i_v6_8k",
+        runtime_service_state="active/running",
+    )
+    assert refresh_state["active_specialist"] == "alakazam"
+    assert refresh_state["active_runtime_refresh"] == {
+        "active": True,
+        "specialist_id": "alakazam",
+        "run_name": "final_format_alakazam_r79_h10_i_v6_8k",
+        "service_state": "active/running",
+        "historical_specialist_row_remains_frozen": True,
+        "policy_scope": "refresh_lineage_not_cumulative_core_generation",
+    }
+    assert next(
+        row for row in refresh_state["specialists"] if row["id"] == "alakazam"
+    )["status"] == "passed_frozen"
+    assert "Continue live Alakazam" in refresh_state["next_action"]
+
+    activating_refresh_state = specialist_protocol_state(
+        path,
+        runtime_specialist_id="alakazam",
+        runtime_run_name="final_format_alakazam_r79_h10_bootstrap",
+        runtime_service_state="activating/start",
+    )
+    assert activating_refresh_state["active_specialist"] == "alakazam"
+    assert activating_refresh_state["active_runtime_refresh"]["active"] is True
 
     payload["current"]["phase"] = "specialist_core_refresh_handoff"
 
@@ -3555,6 +3653,39 @@ def test_bert_launchd_has_descriptor_budget_for_four_x_socket_queue() -> None:
     assert "max_connections=68" not in supervisor
 
 
+def test_bert_rejoin_requires_complete_portable_baseline_library() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts/rejoin_bert_after_alakazam_iter0.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "ensure_baseline_library" in script
+    assert "ensure_baselines_installed(load_manifest())" in script
+    assert "expected 40 portable baseline packages" in script
+    assert script.index("ensure_baseline_library") < script.index(
+        '[[ -f "$marker" ]] && exit 0'
+    )
+
+
+def test_h10_terminal_guard_uses_exact_iter20_r105_recovery_registry() -> None:
+    root = Path(__file__).resolve().parents[1]
+    registry = (
+        "specialist_runtime_registry_h10_r105_fusion_v3_directional_learner1536_recovery_v2_iter20_exact.json"
+    )
+    for name in (
+        "pokebot-final-format-alakazam-r79-h10.service",
+        "pokebot-final-format-alakazam-r79-gate-handler.service",
+    ):
+        unit = (root / "deploy/systemd" / name).read_text(encoding="utf-8")
+        assert registry in unit
+        assert "specialist_runtime_registry_h10_v8.json" not in unit
+        assert "specialist_runtime_registry_h10_r90_iter0_elmo_only" not in unit
+    renderer = (
+        root / "scripts/render_final_format_alakazam_h10_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert '"--minimum-terminal-iteration", type=int, default=20' in renderer
+    assert '"--minimum-terminal-iteration must be exactly 20"' in renderer
+
+
 def test_trainer_service_has_descriptor_budget_for_four_x_remote_queues() -> None:
     root = Path(__file__).resolve().parents[1]
     unit = (root / "deploy/systemd/pokebot-pure-rl-continuous-rehearsal.service").read_text()
@@ -3707,6 +3838,33 @@ def test_live_model_footer_prefers_active_awr_environment_over_old_metrics() -> 
     assert optimizer["source"] == (
         "live systemd environment + immutable manifest contract"
     )
+
+
+def test_live_model_footer_uses_receipt_migrated_batch_cap() -> None:
+    manifest = {
+        "design_contract": {
+            "learner": {
+                "profile": {"d_model": 96, "temporal_layers": 1},
+                "max_decisions_per_batch": 8_192,
+                "warmup_max_decisions_per_batch": 8_192,
+                "warmup_iterations": 30,
+            }
+        }
+    }
+    effective = {
+        **manifest["design_contract"],
+        "learner": {
+            **manifest["design_contract"]["learner"],
+            "max_decisions_per_batch": 3_072,
+            "warmup_max_decisions_per_batch": 3_072,
+        },
+    }
+    model_manifest = {**manifest, "design_contract": effective}
+
+    model = learner_model_state(model_manifest, iteration=2)
+
+    assert model["training_schedule"]["active_max_decisions_per_batch"] == 3_072
+    assert model["optimizer"]["curriculum"]["max_decisions_per_batch"] == 3_072
 
 
 def test_live_model_footer_contract_separates_staged_dormant_parameters(
@@ -4603,7 +4761,8 @@ def test_model_panel_labels_current_and_staged_profiles_separately() -> None:
     html = (
         Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
     ).read_text(encoding="utf-8")
-    assert "Current production model" in html
+    assert "Current model lineage" in html
+    assert "H10-I final-format target" in html
     assert 'id="model-params-source"' in html
     assert 'id="model-runtime-roles"' in html
     assert 'id="model-training"' in html
@@ -4871,6 +5030,11 @@ def test_expert_refresh_overlays_live_elmo_daily_materialization(
     )
     monkeypatch.setattr(
         dashboard_snapshot_module,
+        "V6_STRATEGIC_STAGED_SYNC_STATE",
+        tmp_path / "missing-v6-staged-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
         "V6_STRATEGIC_SPECIALIST_CURRENT",
         tmp_path / "missing-v6-current",
     )
@@ -4964,6 +5128,262 @@ def test_v6_strategic_corpus_progress_is_separate_and_receipt_backed(
     assert state["target_schema"] == "poke_bot.expanded_strategic_targets/v2"
     assert state["target_digest"].startswith("sha256:")
     assert "2/20 daily feature shards ready" in state["latest_line"]
+
+
+def test_v6_strategic_new_window_is_staged_without_claiming_training_activation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    days = [
+        (date(2026, 7, 14) + timedelta(days=offset)).isoformat()
+        for offset in range(20)
+    ]
+    receipt = tmp_path / "expert-latest20-v6-strategic-r109-staged-sync.json"
+    staged_target = tmp_path / "expert-latest20-r109"
+    staged_target.mkdir()
+    staged_pointer = tmp_path / "staged-specialist-latest20-v6-strategic-r109"
+    staged_pointer.symlink_to(staged_target, target_is_directory=True)
+    _write_json(
+        receipt,
+        {
+            "schema": "poke_bot.latest20_specialist_sync/v1",
+            "status": "ready",
+            "dates": days,
+            "specialist_count": 18,
+            "expanded_target_schema": (
+                dashboard_snapshot_module.V6_STRATEGIC_TARGET_SCHEMA
+            ),
+            "expanded_target_digest": (
+                dashboard_snapshot_module.V6_STRATEGIC_TARGET_DIGEST
+            ),
+            "source_bytes": 100,
+            "copied_bytes": 100,
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "V6_STRATEGIC_STAGED_SYNC_STATE", receipt
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "V6_STRATEGIC_STAGED_CURRENT", staged_pointer
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_SYNC_STATE",
+        tmp_path / "missing-old-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "MARNIE_LATEST20_RUNTIME_ACTIVATION_STATE",
+        tmp_path / "missing-activation.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "run",
+        lambda _command, **_kwargs: "inactive\n",
+    )
+
+    state = dashboard_snapshot_module.v6_strategic_corpus_state(days)
+
+    assert state["complete"] is True
+    assert state["phase"] == "ready"
+    assert state["activation_state"] == "staged_not_active"
+    assert state["active_training_corpus"] is False
+    assert state["current_pointer"] == str(staged_pointer)
+    assert state["sync_receipt"] == str(receipt)
+
+
+def test_v6_strategic_new_window_reports_marnie_activation_receipt(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    days = [
+        (date(2026, 7, 14) + timedelta(days=offset)).isoformat()
+        for offset in range(20)
+    ]
+    receipt = tmp_path / "expert-latest20-v6-strategic-r109-staged-sync.json"
+    staged_target = tmp_path / "expert-latest20-r109"
+    staged_target.mkdir()
+    staged_pointer = tmp_path / "staged-specialist-latest20-v6-strategic-r109"
+    staged_pointer.symlink_to(staged_target, target_is_directory=True)
+    _write_json(
+        receipt,
+        {
+            "schema": "poke_bot.latest20_specialist_sync/v1",
+            "status": "ready",
+            "dates": days,
+            "specialist_count": 18,
+            "expanded_target_schema": (
+                dashboard_snapshot_module.V6_STRATEGIC_TARGET_SCHEMA
+            ),
+            "expanded_target_digest": (
+                dashboard_snapshot_module.V6_STRATEGIC_TARGET_DIGEST
+            ),
+            "source_bytes": 100,
+            "copied_bytes": 100,
+        },
+    )
+    activation = tmp_path / "activation.json"
+    _write_json(
+        activation,
+        {
+            "schema": "poke_bot.marnie_latest20_runtime_activation/v1",
+            "status": "activated",
+            "window_start": days[0],
+            "window_end": days[-1],
+            "active_training_corpus": True,
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "V6_STRATEGIC_STAGED_SYNC_STATE", receipt
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "V6_STRATEGIC_STAGED_CURRENT", staged_pointer
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_SYNC_STATE",
+        tmp_path / "missing-old-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "MARNIE_LATEST20_RUNTIME_ACTIVATION_STATE",
+        activation,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "run",
+        lambda _command, **_kwargs: "inactive\n",
+    )
+
+    state = dashboard_snapshot_module.v6_strategic_corpus_state(days)
+
+    assert state["complete"] is True
+    assert state["activation_state"] == "active_marnie_runtime"
+    assert state["active_training_corpus"] is True
+
+
+def test_v6_strategic_new_window_reports_staging_before_sync_receipt(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    days = list(dashboard_snapshot_module.V6_STRATEGIC_STAGED_DATES)
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_STAGED_SYNC_STATE",
+        tmp_path / "pending-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_SPECIALIST_SYNC_STATE",
+        tmp_path / "missing-old-sync.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "MARNIE_LATEST20_RUNTIME_ACTIVATION_STATE",
+        tmp_path / "missing-activation.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_elmo_latest20_daily_materialization",
+        lambda _glob: {
+            day: {
+                "current_date": day,
+                "state": "running",
+                "completed": [],
+            }
+            for day in days[-10:]
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "run",
+        lambda command, **_kwargs: (
+            "active\n"
+            if command[-1]
+            == dashboard_snapshot_module.V6_STRATEGIC_STAGED_SYNC_SERVICE
+            else "inactive\n"
+        ),
+    )
+
+    state = dashboard_snapshot_module.v6_strategic_corpus_state(days)
+
+    assert state["available"] is True
+    assert state["active"] is True
+    assert state["activation_state"] == "staged_not_active"
+    assert state["active_training_corpus"] is False
+    assert state["running_days"] == 10
+    assert state["current_pointer"] == str(
+        dashboard_snapshot_module.V6_STRATEGIC_STAGED_CURRENT
+    )
+
+
+def test_v6_strategic_sync_receipt_supersedes_partial_daily_status_grain(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    days = list(dashboard_snapshot_module.V6_STRATEGIC_STAGED_DATES)
+    receipt = tmp_path / "staged-sync.json"
+    _write_json(
+        receipt,
+        {
+            "schema": "poke_bot.latest20_specialist_sync/v1",
+            "status": "syncing",
+            "dates": days,
+            "specialist_count": 18,
+            "source_bytes": 1_000,
+            "copied_bytes": 100,
+            "expanded_target_schema": (
+                dashboard_snapshot_module.V6_STRATEGIC_TARGET_SCHEMA
+            ),
+            "expanded_target_digest": (
+                dashboard_snapshot_module.V6_STRATEGIC_TARGET_DIGEST
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "V6_STRATEGIC_STAGED_SYNC_STATE", receipt
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "V6_STRATEGIC_STAGED_CURRENT",
+        tmp_path / "not-promoted-yet",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "MARNIE_LATEST20_RUNTIME_ACTIVATION_STATE",
+        tmp_path / "missing-activation.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "_elmo_latest20_daily_materialization",
+        lambda _glob: {
+            day: {
+                "current_date": day,
+                "state": "complete",
+                "completed": [{"date": day}],
+            }
+            for day in days[-10:]
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "run",
+        lambda command, **_kwargs: (
+            "active\n"
+            if command[-1]
+            == dashboard_snapshot_module.V6_STRATEGIC_STAGED_SYNC_SERVICE
+            else "inactive\n"
+        ),
+    )
+
+    state = dashboard_snapshot_module.v6_strategic_corpus_state(days)
+
+    assert state["phase"] == "atomic_checksum_sync_to_inzi"
+    assert state["completed_days"] == 20
+    assert state["running_days"] == 0
+    assert state["failed_days"] == 0
+    assert state["sync_percent"] == 10.0
+    assert "20/20 daily feature shards ready" in state["latest_line"]
 
 
 def test_expert_refresh_uses_finalized_sync_receipt_for_twenty_days(
@@ -5332,6 +5752,193 @@ def test_scheduler_unassigned_uses_current_phase_heartbeat(monkeypatch) -> None:
     state = scheduler_queue_state("active-run")
 
     assert state["unassigned"] == 62000
+
+
+def test_scheduler_reports_producer_complete_result_spool_drain(monkeypatch) -> None:
+    queue = (
+        "[remote] endpoint_owned_queues "
+        "depths={'192.168.1.143:8765': 372} "
+        "high_water={'192.168.1.143:8765': 372} "
+        "shared_endpoint_race=disabled"
+    )
+    raw = "\n".join(
+        [
+            queue,
+            "[pure_rl] mid_iter_rebalance=scheduler=mid_iter "
+            "remote_slots_live=0 remaining=0 "
+            "result_buffer={'memory_items': 129, 'spool_files': 1059, "
+            "'spool_bytes': 591201127}",
+        ]
+    )
+    monkeypatch.setattr("scripts.dashboard_snapshot.read_tail", lambda *_args: raw)
+
+    state = scheduler_queue_state("active-run")
+
+    assert state["result_drain"] == {
+        "active": True,
+        "all_jobs_claimed": True,
+        "producers_complete": True,
+        "remote_slots_live": 0,
+        "remaining_unassigned": 0,
+        "memory_items": 129,
+        "spool_files": 1059,
+        "spool_bytes": 591201127,
+        "buffered_results": 1188,
+    }
+    projected = result_drain_projection(
+        {
+            "stage": "collect:public_mix",
+            "iteration": 4,
+            "current": 5980,
+            "total": 7168,
+            "remotes": 52,
+            "metrics": {"remote_request_sockets": 52},
+        },
+        state,
+    )
+    assert projected["phase"] == "drain:public_mix_results"
+    assert projected["remote_workers"] == 0
+    assert projected["metrics"]["buffered_results"] == 1188
+    assert projected["metrics"]["remote_request_sockets"] == 0
+    assert projected["metrics"]["configured_remote_demand"] == 52
+    assert "producers complete" in projected["latest_line"]
+
+
+def test_scheduler_keeps_memory_only_result_tail_after_spool_reaches_zero(
+    monkeypatch,
+) -> None:
+    queue = (
+        "[remote] endpoint_owned_queues "
+        "depths={'192.168.1.143:8765': 372} "
+        "high_water={'192.168.1.143:8765': 372} "
+        "shared_endpoint_race=disabled"
+    )
+    raw = "\n".join(
+        [
+            queue,
+            "[pure_rl] mid_iter_rebalance=scheduler=mid_iter "
+            "remote_slots_live=0 remaining=0 "
+            "result_buffer={'memory_items': 15, 'spool_files': 0, "
+            "'spool_bytes': 0}",
+            "pure_rl collect:public_mix iter=4: 7166/7168",
+        ]
+    )
+    monkeypatch.setattr("scripts.dashboard_snapshot.read_tail", lambda *_args: raw)
+
+    state = scheduler_queue_state("active-run")
+    projected = result_drain_projection(
+        {
+            "stage": "collect:public_mix",
+            "iteration": 4,
+            "current": 7166,
+            "total": 7168,
+            "remotes": 52,
+            "metrics": {"remote_request_sockets": 52},
+        },
+        state,
+    )
+
+    assert state["result_drain"]["active"] is True
+    assert state["result_drain"]["memory_items"] == 15
+    assert state["result_drain"]["spool_files"] == 0
+    # The last queue sample can precede newer consumer progress. Bound the
+    # displayed backlog by the exact remaining result count.
+    assert projected["metrics"]["buffered_results"] == 2
+    assert projected["phase"] == "drain:public_mix_results"
+
+
+def test_scheduler_result_drain_closes_when_collection_commits(monkeypatch) -> None:
+    raw = "\n".join(
+        [
+            "[remote] endpoint_owned_queues "
+            "depths={'192.168.1.143:8765': 372} "
+            "high_water={'192.168.1.143:8765': 372} "
+            "shared_endpoint_race=disabled",
+            "[pure_rl] mid_iter_rebalance=scheduler=mid_iter "
+            "remote_slots_live=0 remaining=0 "
+            "result_buffer={'memory_items': 2, 'spool_files': 0, "
+            "'spool_bytes': 0}",
+            "[pure_rl] collect done iter=4 ok=8192",
+            "[pure_rl] completed collection committed iter=4 source_games=8192",
+            "[pure_rl] train begin iter=4 seqs=16981",
+        ]
+    )
+    monkeypatch.setattr("scripts.dashboard_snapshot.read_tail", lambda *_args: raw)
+
+    state = scheduler_queue_state("active-run")
+
+    assert state["result_drain"] == {"active": False}
+
+
+def test_optimizer_progress_clears_prior_collection_queue_state() -> None:
+    scoped = scope_scheduler_queues_to_progress(
+        {"stage": "train:agreement:parent", "iteration": 4},
+        {
+            "available": True,
+            "unassigned": 0,
+            "result_drain": {
+                "active": True,
+                "buffered_results": 2,
+            },
+        },
+    )
+
+    assert scoped["result_drain"] == {"active": False}
+    assert scoped["phase_active"] is False
+    assert scoped["phase"] == "train:agreement:parent"
+
+
+def test_result_drain_fleet_and_scheduler_cards_are_not_generation_ready() -> None:
+    payload = _fleet_payload(active=True, elmo_jobs=0, bert_jobs=0)
+    payload["curriculum"]["stage"] = "drain:public_mix_results"
+    payload["curriculum"]["progress"].update(
+        stage="drain:public_mix_results",
+        current=7166,
+        total=7168,
+        remotes=0,
+        metrics={
+            "result_spool_drain": True,
+            "buffered_results": 2,
+            "remote_slots_live": 0,
+        },
+    )
+    payload["curriculum"]["scheduler_queues"] = {
+        "available": True,
+        "unassigned": 0,
+    }
+    cache = SnapshotCache()
+
+    cache._annotate_fleet_rates(payload)
+    cache._annotate_scheduler_queues(payload)
+
+    assert payload["fleet_rates"]["buffered_results"] == 2
+    assert payload["fleet"]["inzi"]["worker"]["allocation_state"] == (
+        "COMPACTING · 2 buffered results"
+    )
+    assert payload["fleet"]["elmo"]["worker"]["allocation_state"] == (
+        "RESULT SPOOL DRAIN · generation complete · 2 results awaiting ingest"
+    )
+    assert payload["fleet"]["bert"]["worker"]["allocation_state"] == (
+        "RESULT SPOOL DRAIN · generation complete · 2 results awaiting ingest"
+    )
+    queues = payload["scheduler_queues"]
+    assert queues["unassigned"] == 0
+    assert queues["unassigned_estimated"] is False
+    assert queues["results"]["waiting_ingest"] == 2
+    assert queues["unassigned_source"] == (
+        "all simulations claimed; producer-complete result spool drain"
+    )
+
+
+def test_dashboard_labels_result_drain_without_linear_generation_eta() -> None:
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+
+    assert "startsWith('drain:')" in html
+    assert "compacting completed result spool" in html
+    assert "completed results awaiting ingest · all simulations claimed" in html
+    assert "draining '+Number(rlMetrics.buffered_results||0)" in html
 
 
 def test_optimizer_batches_are_never_reported_as_unassigned_games() -> None:
@@ -6102,6 +6709,125 @@ def test_dashboard_source_integrity_rejects_canonical_frozen_pool_drift() -> Non
     assert protocol_row["checks"]["specialist_roster"] is True
     assert protocol_row["checks"]["model_roster"] is True
     assert protocol_row["checks"]["frozen_pool"] is False
+
+
+@pytest.mark.parametrize(
+    "post_fleet_status",
+    [
+        "alakazam_iteration15_recovery_completed_training_iter16",
+        "alakazam_iteration18_active_after_exact_heldout96_and_fusion_v3_contract_repair",
+    ],
+)
+def test_dashboard_source_integrity_accepts_completed_allocator_recovery_training(
+    post_fleet_status: str,
+) -> None:
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 2788618,
+            "restart_count": 0,
+            "name": "pokebot-final-format-alakazam-r79-h10.service",
+        },
+        "training": {"mode": "final_format_alakazam_h10_rl"},
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": True,
+            "runtime_active_specialist": "alakazam",
+            "canonical_active_specialist": "",
+            "canonical_active_refresh_specialist": "alakazam",
+            "active_specialist": "alakazam",
+            "required_target_count": 1,
+            "specialists": [
+                {
+                    "id": "alakazam",
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                }
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": "alakazam", "inference_only": True}
+            ],
+            "post_fleet_refresh": {
+                "status": post_fleet_status,
+                "goal_revision": 105,
+            },
+            "terminal_specialist_transition": {
+                "status": "activated",
+                "terminal_disposition": "failed_experiment",
+            },
+            "program_progress": {"completed_specialist_ids": ["alakazam"]},
+            "source": "/state/specialists.yaml",
+        },
+        "model": {"checkpoint_structure": {}},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    protocol = payload["source_integrity"]["rows"]["protocol"]
+    assert protocol["checks"]["specialist_roster"] is True
+    assert protocol["checks"]["live_runtime_identity"] is True
+    assert protocol["current"] is True
+
+
+def test_dashboard_source_integrity_accepts_receipt_backed_marnie_bootstrap() -> None:
+    specialist = "marnie-s-grimmsnarl-ex"
+    run = "final_format_marnie_r104_h10_bootstrap"
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 512755,
+            "restart_count": 4,
+            "name": "pokebot-final-format-marnie-r104-h10-bootstrap.service",
+        },
+        "training": {
+            "mode": "final_format_marnie_h10_bootstrap",
+            "run": run,
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": False,
+            "runtime_identity_reconciled": True,
+            "runtime_active_specialist": specialist,
+            "canonical_active_specialist": "",
+            "canonical_active_refresh_specialist": specialist,
+            "active_specialist": specialist,
+            "active_runtime_refresh": {
+                "active": True,
+                "specialist_id": specialist,
+                "run_name": run,
+                "service_state": "activating/start",
+            },
+            "required_target_count": 1,
+            "specialists": [
+                {
+                    "id": specialist,
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                }
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": specialist, "inference_only": True}
+            ],
+            "post_fleet_refresh": {
+                "status": "marnie_refresh_handoff_pending",
+                "goal_revision": 106,
+            },
+            "program_progress": {"completed_specialist_ids": [specialist]},
+            "source": "/state/specialists.yaml",
+        },
+        "model": {"checkpoint_structure": {}},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    protocol = payload["source_integrity"]["rows"]["protocol"]
+    assert protocol["checks"]["specialist_roster"] is True
+    assert protocol["checks"]["live_runtime_identity"] is True
+    assert protocol["current"] is True
 
 
 def test_dashboard_uses_training_environment_for_checkpoint_snapshot() -> None:
@@ -7458,6 +8184,61 @@ def test_decision_fusion_checkpoint_contract_validates_v2_dedicated_routes() -> 
     assert result["required_head_count"] == 18
 
 
+def test_decision_fusion_checkpoint_contract_validates_v3_typed_routes() -> None:
+    required = [
+        *dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS,
+        "setup_board_outcome",
+        "combo_state",
+    ]
+    result = dashboard_snapshot_module._decision_fusion_checkpoint_contract(
+        {
+            "decision_fusion.residual.2.weight": _DashboardFakeFusionTensor(4, 4),
+        },
+        {
+            "model_config": {
+                "decision_fusion_enabled": True,
+                "decision_fusion_runtime_enabled": True,
+                "decision_fusion_dedicated_routes_enabled": True,
+                "decision_fusion_dedicated_routes_runtime_enabled": True,
+                "decision_fusion_typed_output_centered_routes_enabled": True,
+                "decision_fusion_action_type_reliability_cap": 0.25,
+                "setup_board_outcome_head_enabled": True,
+                "combo_state_head_enabled": True,
+            },
+            "provenance": {
+                "decision_fusion": {
+                    "schema": dashboard_snapshot_module.DECISION_FUSION_V3_SCHEMA,
+                    "required_heads": required,
+                    "runtime_enabled": True,
+                    "guide_excluded": True,
+                    "typed_output_centered_routes": True,
+                    "dedicated_routes": {
+                        "schema": (
+                            dashboard_snapshot_module
+                            .DECISION_FUSION_V3_ROUTE_SCHEMA
+                        ),
+                        "runtime_enabled": True,
+                        "typed_output_centered": True,
+                        "positive_bounded_reliability": True,
+                        "reliability_bounds": [0.25, 4.0],
+                        "action_type_reliability_cap": 0.25,
+                        "route_names": required,
+                        "route_count": len(required),
+                        "aggregation": "fixed_mean",
+                        "total_delta_cap": 1.0,
+                        "zero_safe_final_projection": True,
+                    },
+                }
+            },
+        },
+    )
+
+    assert result["verified"] is True
+    assert result["schema"] == dashboard_snapshot_module.DECISION_FUSION_V3_SCHEMA
+    assert result["phase"] == "runtime_active"
+    assert result["required_head_count"] == 19
+
+
 def test_decision_fusion_checkpoint_contract_fails_closed_if_successor_drops_head() -> None:
     required = list(dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS)
     result = dashboard_snapshot_module._decision_fusion_checkpoint_contract(
@@ -7597,6 +8378,108 @@ def test_successor_fusion_activation_binds_exact_bootstrap_checkpoint(
     assert result["training_action_eligible"] is True
     assert result["terminal_serving_eligible"] is False
     assert result["checkpoint_digest"] == digest
+
+
+def test_successor_fusion_activation_binds_h10_v2_all_head_inventory(
+    tmp_path: Path,
+) -> None:
+    digest = "sha256:" + "d" * 64
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    required = [
+        *dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS,
+        "setup_board_outcome",
+        "combo_state",
+    ]
+    fusion = {
+        "schema": dashboard_snapshot_module.DECISION_FUSION_V2_SCHEMA,
+        "runtime_enabled": True,
+        "required_heads": required,
+    }
+    _write_json(
+        state_root / "alakazam-specialist-rl-activation-v98.json",
+        {
+            "schema": "poke_bot.specialist_rl_activation/v2",
+            "status": "ready",
+            "identity": {
+                "next_specialist_bootstrap": {
+                    "specialist_id": "alakazam",
+                    "checkpoint_digest": digest,
+                    "decision_fusion": fusion,
+                },
+                "runtime_registration": {
+                    "specialist_id": "alakazam",
+                    "runtime_row": {
+                        "initial_checkpoint_sha256": digest,
+                        "decision_fusion": {**fusion, "required": True},
+                    },
+                },
+            },
+        },
+    )
+
+    result = dashboard_snapshot_module._successor_decision_fusion_activation(
+        state_root=state_root,
+        specialist_id="alakazam",
+        checkpoint_digest=digest,
+    )
+
+    assert result["runtime_enabled"] is True
+    assert result["training_action_eligible"] is True
+    assert result["checkpoint_digest"] == digest
+
+
+def test_final_refresh_fusion_continuity_binds_h10_committed_descendant(
+    tmp_path: Path,
+) -> None:
+    digest = "sha256:" + "e" * 64
+    bootstrap = "sha256:" + "f" * 64
+    required = [
+        *dashboard_snapshot_module.DECISION_FUSION_REQUIRED_HEADS,
+        "setup_board_outcome",
+        "combo_state",
+    ]
+    fusion = {
+        "schema": dashboard_snapshot_module.DECISION_FUSION_V2_SCHEMA,
+        "runtime_enabled": True,
+        "required_heads": required,
+    }
+    _write_json(
+        tmp_path / "final_format_alakazam_fusion_continuity_r98.json",
+        {
+            "schema": (
+                "poke_bot.final_format_alakazam_fusion_continuity/v1"
+            ),
+            "status": "ready",
+            "specialist_id": "alakazam",
+            "bootstrap_activation": {
+                "receipt_sha256": "sha256:" + "1" * 64,
+                "bootstrap_checkpoint_sha256": bootstrap,
+                "decision_fusion": fusion,
+            },
+            "committed_descendant": {
+                "learner_before_sha256": bootstrap,
+                "checkpoint_sha256": digest,
+                "publication_local_ok": True,
+                "remote_checkpoint_identity_verified": True,
+                "commit_sha256": "sha256:" + "2" * 64,
+            },
+            "runtime_registration": {
+                "registry_sha256": "sha256:" + "3" * 64,
+                "decision_fusion": {**fusion, "required": True},
+            },
+        },
+    )
+
+    result = dashboard_snapshot_module._final_refresh_decision_fusion_continuity(
+        state_root=tmp_path,
+        specialist_id="alakazam",
+        checkpoint_digest=digest,
+    )
+
+    assert result["runtime_enabled"] is True
+    assert result["training_action_eligible"] is True
+    assert result["terminal_serving_eligible"] is False
 
 
 def test_successor_fusion_activation_rejects_wrong_checkpoint(
@@ -8523,9 +9406,9 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
     }
     allowed_statuses = set(state["allowed_status_values"]["specialist"])
 
-    assert active_id == "slowking"
+    assert active_id is None
     assert state["current"]["transition_source_specialist"] == (
-        "archaludon-ex"
+        "slowking"
     )
     assert state["current"]["staged_successor_specialist"] is None
     assert all(
@@ -8549,6 +9432,10 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
 
     protocol = specialist_protocol_state(root / "state/specialists.yaml")
     assert protocol["available"] is True, protocol.get("reason")
+    assert protocol["canonical_active_refresh_specialist"] == (
+        "marnie-s-grimmsnarl-ex"
+    )
+    assert protocol["status_counts"]["failed_experiment"] == 1
     assert protocol["training_priority"]["strict_post_spidops_prefix"][
         "ids"
     ] == strict_ids
@@ -8565,11 +9452,12 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         if row["id"] == "crustle"
     )
     assert retained_crustle["role_label"] == (
-        "PUBLIC OPPONENT + ACTIVE ROUTE, NO SPECIALIST TRAIN"
+        "NEXT H10 SPECIALIST AFTER MARNIE"
     )
     assert retained_crustle["stable_matchup_slot"] == 0
     assert retained_crustle["stable_matchup_slot_status"] == "active"
     assert retained_crustle["inference_only"] is True
+    assert retained_crustle["future_specialist_training_planned"] is True
     assert retained_crustle["public_practice_gate_opponent"][
         "opponent_id"
     ] == "pilkwang-meta-20260708"
@@ -8606,7 +9494,12 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         "teal-mask-ogerpon-ex",
         "archaludon-ex",
     ]
-    assert display_order[-1] == "slowking"
+    assert display_order == [
+        "hammer-pult",
+        "teal-mask-ogerpon-ex",
+        "archaludon-ex",
+    ]
+    assert "slowking" not in display_order
     assert removed_ids.isdisjoint(display_order)
 
     snapshot_source = (
@@ -9232,12 +10125,16 @@ def test_dashboard_separates_core_generation_from_matchup_adapter_version(
         core["checkpoint_display_namespace"]
         == "Accepted Policy Generation"
     )
-    assert core["latest_accepted_version"] == 9
-    assert core["latest_attempted_version"] == 13
+    assert core["latest_accepted_version"] == 15
+    assert core["active_policy_status"] == (
+        "active_generation_15_restarted_iteration_6"
+    )
+    assert core["latest_attempted_version"] == 14
     assert core["attempted_statuses"]["10"] == "rejected_gameplay_regression"
     assert core["attempted_statuses"]["11"] == "rejected_pretraining_validation"
     assert core["attempted_statuses"]["12"] == "rejected_pretraining_validation"
     assert core["attempted_statuses"]["13"] == "rejected_pretraining_validation"
+    assert core["attempted_statuses"]["14"] == "rejected_pretraining_validation"
     assert core["matchup_adapter_format_version"] == 6
     assert core["matchup_adapter_display_name"] == "Matchup Router Format 6"
 
@@ -9299,6 +10196,16 @@ def test_future_guide_curriculum_and_bounded_head_routes_are_explicit(
             encoding="utf-8"
         )
     )
+    marnie_milestones = projection["current_owner_overrides"][
+        "final_format_marnie_milestone_submissions"
+    ]
+    assert marnie_milestones["milestone_iterations"] == [0, 4, 9, 14]
+    assert marnie_milestones["milestone_submissions_nonblocking"] is True
+    assert marnie_milestones[
+        "terminal_completion_submission_remains_separate"
+    ] is True
+    html = (root / "dashboard/lan/index.html").read_text(encoding="utf-8")
+    assert "MARNIE KAGGLE MILESTONES" in html
     assert (
         "scales_guide_gradient_contribution_to_shared_policy_learning"
         not in json.dumps(projection)
@@ -9489,6 +10396,7 @@ def test_final_format_alakazam_progress_prefers_live_h10_rl(
     trainer_log = tmp_path / "h10.log"
     run_dir = tmp_path / "run"
     registry = tmp_path / "registry.json"
+    capacity_receipt = tmp_path / "h10-capacity.json"
     run_dir.mkdir()
     line = (
         "pure_rl collect:self_play iter=0:  12%|x| 3318/27853 "
@@ -9496,16 +10404,14 @@ def test_final_format_alakazam_progress_prefers_live_h10_rl(
     )
     status.write_text(line, encoding="utf-8")
     progress_log.write_text(line, encoding="utf-8")
-    trainer_log.write_text(
-        "[pure_rl] loaded checkpoint params=10428046 path=/models/h10.pt\n",
-        encoding="utf-8",
-    )
+    trainer_log.write_text("resumed from receipt\n", encoding="utf-8")
     (run_dir / "loop_state.json").write_text(
         json.dumps({"next_iteration": 0}), encoding="utf-8"
     )
     registry.write_text(
         json.dumps(
             {
+                "iteration_ceiling": 20,
                 "isolated_refresh_contract": {
                     "maximum_iterations": 189,
                     "games_per_iteration": 32768,
@@ -9527,6 +10433,18 @@ def test_final_format_alakazam_progress_prefers_live_h10_rl(
                         },
                     }
                 },
+            }
+        ),
+        encoding="utf-8",
+    )
+    capacity_receipt.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.final_format_alakazam_h10_mix_activation/v1",
+                "status": "activated",
+                "run_name": "final_format_alakazam_r79_h10_i_v6_8k",
+                "checkpoint_sha256": "sha256:abc123",
+                "bert_apple_device_check": {"model_parameters": 10428046},
             }
         ),
         encoding="utf-8",
@@ -9558,6 +10476,11 @@ def test_final_format_alakazam_progress_prefers_live_h10_rl(
     )
     monkeypatch.setattr(
         dashboard_snapshot_module,
+        "FINAL_FORMAT_ALAKAZAM_H10_CAPACITY_RECEIPT",
+        capacity_receipt,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
         "unit_state",
         lambda name, user=False: {
             "name": name,
@@ -9579,6 +10502,255 @@ def test_final_format_alakazam_progress_prefers_live_h10_rl(
     assert result["model_parameters"] == 10_428_046
     assert result["learned_head_count"] == 19
     assert result["blackwell_workers"] == 96
+    assert result["iterations_target"] == 21
     assert result["premium_strength_gate"] == 0.65
     assert result["kaggle_rating_lower_bound"] == 1000.0
     assert result["rating_gate_separate"] is True
+
+
+def test_final_format_marnie_progress_prefers_live_h10_bootstrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = tmp_path / "marnie-bootstrap.log"
+    ready = tmp_path / "ready.json"
+    validation = tmp_path / "validation.json"
+    expert = tmp_path / "expert.json"
+    checkpoint = tmp_path / "marnie.pt"
+    checkpoint.write_bytes(b"marnie-h10")
+    log.write_text(
+        "pack Blackwell corpus:  77%|x| 32304/42155 "
+        "[05:01<01:31, 107.4game/s]\n",
+        encoding="utf-8",
+    )
+    validation.write_text(
+        json.dumps(
+            {
+                "checkpoint": str(checkpoint),
+                "checkpoint_sha256": "sha256:" + "6" * 64,
+                "capacity_profile": "H10-I/v1",
+                "architecture": {
+                    "spatial_layers": 7,
+                    "temporal_layers": 3,
+                    "option_decoder_layers": 7,
+                    "feed_forward_width": 2496,
+                    "strategic_head_residual_width": 512,
+                },
+                "learned_head_count": 19,
+                "learned_route_count": 19,
+                "decision_fusion_schema": "poke_bot.causal_decision_fusion/v3",
+            }
+        ),
+        encoding="utf-8",
+    )
+    expert.write_text(
+        json.dumps(
+            {"totals": {"records_kept": 42155, "decisions_kept": 3776077}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG",
+        log,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_READY",
+        ready,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_VALIDATION",
+        validation,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_EXPERT",
+        expert,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "checkpoint_structure_telemetry",
+        lambda *args, **kwargs: {
+            "verified": True,
+            "model_parameters": 10_674_448,
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, user=False: {
+            "name": name,
+            "active": name
+            == dashboard_snapshot_module.FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_SERVICE,
+            "active_state": "activating",
+            "sub_state": "start",
+            "pid": 468117,
+        },
+    )
+
+    result = dashboard_snapshot_module.final_format_marnie_progress()
+
+    assert result["status"] == "running"
+    assert result["mode"] == "final_format_marnie_h10_bootstrap"
+    assert result["phase"] == "packing"
+    assert result["percent"] == 77.0
+    assert result["current"] == 32304
+    assert result["total"] == 42155
+    assert result["specialist_id"] == "marnie-s-grimmsnarl-ex"
+    assert result["model_parameters"] == 10_674_448
+    assert result["learned_head_count"] == 19
+    assert result["learned_route_count"] == 19
+
+
+def test_final_format_marnie_progress_parses_rehearsal_epoch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = tmp_path / "marnie-bootstrap.log"
+    log.write_text(
+        "expert rehearsal before iter1 ep1/1:  37%|x| 683/1846 "
+        "[02:41<04:35,  4.22batch/s, acc=66.4%, loss=1.55]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG",
+        log,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_READY",
+        tmp_path / "missing-ready.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_VALIDATION",
+        tmp_path / "missing-validation.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_EXPERT",
+        tmp_path / "missing-expert.json",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "checkpoint_structure_telemetry",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, user=False: {
+            "name": name,
+            "active": name
+            == dashboard_snapshot_module.FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_SERVICE,
+            "active_state": "activating",
+            "sub_state": "start",
+            "pid": 512755,
+        },
+    )
+
+    result = dashboard_snapshot_module.final_format_marnie_progress()
+
+    assert result["phase"] == "training"
+    assert result["epoch"] == 1
+    assert result["percent"] == 37.0
+    assert result["current"] == 683
+    assert result["total"] == 1846
+    assert result["rate"] == 4.22
+
+
+def test_final_format_marnie_progress_uses_rl_progress_after_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "run"
+    root.mkdir()
+    (root / "loop_state.json").write_text(
+        json.dumps(
+            {
+                "next_iteration": 0,
+                "learner": {
+                    "path": str(tmp_path / "router6.pt"),
+                    "digest": "sha256:" + "e" * 64,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = tmp_path / "rl.status"
+    status.write_text(
+        "pure_rl collect:self_play iter=0:  50%|x| 512/1024 "
+        "[00:56<00:42, 12.10game/s, remotes=52, sps=403.1]\n",
+        encoding="utf-8",
+    )
+    progress = tmp_path / "rl.progress"
+    progress.write_text(status.read_text(encoding="utf-8"), encoding="utf-8")
+    log = tmp_path / "rl.log"
+    log.write_text(
+        "[pure_rl] loaded checkpoint params=10674448 path=router6.pt\n",
+        encoding="utf-8",
+    )
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "common_trainer_args": [
+                    "--remote-worker-endpoints",
+                    "192.168.1.143:8765,192.168.1.158:8766",
+                ],
+                "specialists": {
+                    "marnie-s-grimmsnarl-ex": {
+                        "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+                        "decision_fusion": {
+                            "schema": "poke_bot.causal_decision_fusion/v3",
+                            "required_heads": [str(i) for i in range(19)],
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_RUN_DIR", root)
+    monkeypatch.setattr(dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS", status)
+    monkeypatch.setattr(dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG", progress)
+    monkeypatch.setattr(dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_LOG", log)
+    monkeypatch.setattr(dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_REGISTRY", registry)
+    monkeypatch.setattr(dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_READY", tmp_path / "missing-ready")
+    monkeypatch.setattr(dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_VALIDATION", tmp_path / "missing-validation")
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "checkpoint_structure_telemetry",
+        lambda *args, **kwargs: {"verified": True, "model_parameters": 10_674_448},
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "scheduler_queue_state",
+        lambda *args, **kwargs: {"available": True},
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, user=False: {
+            "name": name,
+            "active": name == dashboard_snapshot_module.FINAL_FORMAT_MARNIE_H10_RL_SERVICE,
+            "active_state": "active",
+            "sub_state": "running",
+            "pid": 1191609,
+        },
+    )
+
+    result = dashboard_snapshot_module.final_format_marnie_progress()
+
+    assert result["mode"] == "final_format_marnie_h10_rl"
+    assert result["source"] == str(status)
+    assert result["phase"] == "collect:self_play"
+    assert result["iteration"] == 0
+    assert result["current"] == 512
+    assert result["total"] == 1024
+    assert result["remote_workers"] == 52
+    assert result["model_parameters"] == 10_674_448
+    assert result["learned_head_count"] == 19

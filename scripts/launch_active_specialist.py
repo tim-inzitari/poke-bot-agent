@@ -35,6 +35,11 @@ SELECTOR_ENV = "POKEBOT_ACTIVE_SPECIALIST"
 GUIDE_WEIGHT_POLICY_SCHEMA = "poke_bot.current_deck_guide_weight_policy/v1"
 GUIDE_TRAINING_MODE_LEGACY = "legacy_policy_ce_v1"
 GUIDE_TRAINING_MODE_STRATEGIC = "strategic_curriculum_v1"
+GUIDE_TRAINING_MODE_DIRECTIONAL = "strategic_directional_v2"
+GUIDE_STRATEGIC_TRAINING_MODES = {
+    GUIDE_TRAINING_MODE_STRATEGIC,
+    GUIDE_TRAINING_MODE_DIRECTIONAL,
+}
 STRATEGIC_CURRICULUM_SCHEMA = (
     "poke_bot.future_specialist_strategic_curriculum/v1"
 )
@@ -105,9 +110,7 @@ def _load_registry(path: Path) -> dict[str, Any]:
 def _required_runtime_fusion_heads(row: dict[str, Any]) -> list[str]:
     """Resolve the exact registered head inventory without weakening its base."""
 
-    strategic = (
-        row.get("guide_training_mode") == GUIDE_TRAINING_MODE_STRATEGIC
-    )
+    strategic = row.get("guide_training_mode") in GUIDE_STRATEGIC_TRAINING_MODES
     mandatory = list(
         CANONICAL_LEARNED_DECISION_SOURCES
         if strategic
@@ -347,7 +350,7 @@ def _validate_guide_training_contract(
         return GUIDE_TRAINING_MODE_LEGACY
     if raw_mode not in {
         GUIDE_TRAINING_MODE_LEGACY,
-        GUIDE_TRAINING_MODE_STRATEGIC,
+        *GUIDE_STRATEGIC_TRAINING_MODES,
     }:
         raise RuntimeError("unknown guide training mode")
     if raw_mode == GUIDE_TRAINING_MODE_LEGACY:
@@ -355,6 +358,41 @@ def _validate_guide_training_contract(
             raise RuntimeError(
                 "legacy guide training cannot bind future curriculum policy"
             )
+        return raw_mode
+    if raw_mode == GUIDE_TRAINING_MODE_DIRECTIONAL:
+        if (
+            float(row.get("guide_loss_weight") or 0.0) <= 0.0
+            or not isinstance(policy, dict)
+            or not isinstance(bundle, dict)
+            or bundle.get("schema") != STRATEGIC_BUNDLE_SCHEMA
+            or bundle.get("training_mode") != raw_mode
+            or int(bundle.get("guide_curriculum_revision") or 0) != 104
+            or bundle.get("decision_fusion_schema")
+            != "poke_bot.causal_decision_fusion/v3"
+            or bundle.get("typed_output_centered_routes") is not True
+            or bundle.get("route_reliability_bounds") != [0.25, 4.0]
+            or float(bundle.get("action_type_reliability_cap") or 0.0) != 0.25
+            or bundle.get("final_policy_logits_are_guide_targets") is not False
+        ):
+            raise RuntimeError("directional guide training contract is incomplete")
+        role_path = _required_file(
+            bundle, "head_role_map", "head_role_map_sha256"
+        )
+        spec_path = _required_file(
+            bundle, "curriculum_spec", "curriculum_spec_sha256"
+        )
+        receipt_path = _required_file(
+            bundle, "validation_receipt", "validation_receipt_sha256"
+        )
+        from poke_bot.train import assert_strategic_curriculum_receipt_contract
+
+        assert_strategic_curriculum_receipt_contract(
+            specialist_id=specialist_id,
+            curriculum_spec=str(spec_path),
+            head_role_map=str(role_path),
+            validation_receipt=str(receipt_path),
+            expected_training_mode=raw_mode,
+        )
         return raw_mode
     if (
         float(row.get("guide_loss_weight") or 0.0) <= 0.0
@@ -844,16 +882,35 @@ def _resolve(
         )
     import torch
 
+    validation_checkpoint = checkpoint
+    loop_state_path = (
+        ROOT / "outputs" / "pure_rl" / str(row["run_name"]) / "loop_state.json"
+    )
+    if loop_state_path.is_file():
+        loop_state = _read_json_object(loop_state_path, label="specialist loop state")
+        learner = dict(loop_state.get("learner") or {})
+        learner_path = Path(str(learner.get("path") or "")).expanduser()
+        learner_digest = str(learner.get("digest") or "").removeprefix("sha256:")
+        if (
+            learner_path.is_file()
+            and len(learner_digest) == 64
+            and _sha256(learner_path) == learner_digest
+        ):
+            validation_checkpoint = learner_path
     checkpoint_payload = torch.load(
-        checkpoint, map_location="cpu", weights_only=False
+        validation_checkpoint, map_location="cpu", weights_only=False
     )
     fusion_contract = dict(row.get("decision_fusion") or {})
     model_config = dict(checkpoint_payload.get("model_config") or {})
     required_fusion_heads = list(required_fusion_heads)
     required_fusion_schema = (
-        DECISION_FUSION_V2_SCHEMA
-        if row.get("guide_training_mode") == GUIDE_TRAINING_MODE_STRATEGIC
-        else DECISION_FUSION_SCHEMA
+        "poke_bot.causal_decision_fusion/v3"
+        if row.get("guide_training_mode") == GUIDE_TRAINING_MODE_DIRECTIONAL
+        else (
+            DECISION_FUSION_V2_SCHEMA
+            if row.get("guide_training_mode") == GUIDE_TRAINING_MODE_STRATEGIC
+            else DECISION_FUSION_SCHEMA
+        )
     )
     if (
         fusion_contract.get("required") is True
@@ -980,6 +1037,7 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
     gate_id = str(gate.get("id") or "")
     games_total = int(evaluation.get("games_total", -1))
     semantics = dict(gate_contract.get("active_gate_semantics") or {})
+    tier_policy = dict(semantics.get("opponent_tier_policy") or {})
     superseded_archetypes = superseded_external_archetypes(registry)
     base_premium_agents = int(
         semantics.get(
@@ -1000,17 +1058,43 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
         or int(evaluation.get("seat0_games_per_opponent", -1)) != 125
         or int(evaluation.get("seat1_games_per_opponent", -1)) != 125
     ):
-        raise RuntimeError("active specialist S+ gate/registry contract changed")
+        raise RuntimeError("active specialist gate/registry contract changed")
     for opponent_id, frozen_row in frozen_by_id.items():
         gate_row = gate_by_id[opponent_id]
-        if (
-            gate_row.get("tier") != "S+"
-            or gate_row.get("frozen_checkpoint_digest")
-            != frozen_row.get("checkpoint_digest")
+        if gate_row.get("frozen_checkpoint_digest") != frozen_row.get(
+            "checkpoint_digest"
         ):
             raise RuntimeError(
-                f"active specialist S+ checkpoint mismatch: {opponent_id}"
+                f"active specialist checkpoint mismatch: {opponent_id}"
             )
+        if tier_policy:
+            is_h10 = (
+                opponent_id
+                == "specialist-alakazam-final-format-h10-02c014ad7c33"
+                and gate_row.get("frozen_checkpoint_digest")
+                == "sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92"
+            )
+            expected = ("S", 2.0) if is_h10 else ("A", 1.0)
+            if (gate_row.get("tier"), float(gate_row.get("weight", -1))) != expected:
+                raise RuntimeError(
+                    f"active specialist tier-policy mismatch: {opponent_id}"
+                )
+        elif gate_row.get("tier") != "S+":
+            raise RuntimeError(
+                f"active specialist S+ tier mismatch: {opponent_id}"
+            )
+    if tier_policy:
+        expected_policy = {
+            "eligible_non_active_h10_specialist": {"tier": "S", "weight": 2.0},
+            "other_frozen_specialist": {"tier": "A", "weight": 1.0},
+            "remaining_public_opponent": {"tier": "A", "weight": 1.0},
+        }
+        public_rows = [row for row in roster if row.get("frozen_specialist") is not True]
+        if tier_policy != expected_policy or any(
+            (row.get("tier"), float(row.get("weight", -1))) != ("A", 1.0)
+            for row in public_rows
+        ):
+            raise RuntimeError("active specialist public tier policy changed")
     return gate_id, games_total
 
 
@@ -1127,6 +1211,12 @@ def _build_command(
         # a later checkpoint here during resume conflicts with that lineage;
         # the checksum-validated loop state is authoritative instead.
         initial_checkpoint_args = []
+    combo_state_loss_weight = float(
+        row.get(
+            "combo_state_loss_weight",
+            0.025 if specialist_id == "slowking" else 0.0,
+        )
+    )
     command = [
         python,
         "-u",
@@ -1159,11 +1249,11 @@ def _build_command(
         "--current-deck-guide-loss-weight",
         str(float(row.get("guide_loss_weight") or 0.0)),
         "--combo-state-loss-weight",
-        "0.025" if specialist_id == "slowking" else "0.0",
+        str(combo_state_loss_weight),
         *(
             [
                 "--current-deck-guide-training-mode",
-                GUIDE_TRAINING_MODE_STRATEGIC,
+                str(row["guide_training_mode"]),
                 "--current-deck-guide-curriculum-spec",
                 str(dict(row["strategic_curriculum"])["curriculum_spec"]),
                 "--current-deck-guide-head-role-map",
@@ -1175,8 +1265,7 @@ def _build_command(
                     ]
                 ),
             ]
-            if row.get("guide_training_mode")
-            == GUIDE_TRAINING_MODE_STRATEGIC
+            if row.get("guide_training_mode") in GUIDE_STRATEGIC_TRAINING_MODES
             else []
         ),
         *(

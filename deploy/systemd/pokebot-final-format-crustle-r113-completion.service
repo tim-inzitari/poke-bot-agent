@@ -1,0 +1,20 @@
+[Unit]
+Description=Register completed Crustle H10 and release capacity boundary
+After=pokebot-final-format-crustle-r113-h10-gate-handler.service
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/crustle-passed-gate-handler-v1.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent:/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/complete_post_marnie_crustle_h10.py --check --handler-state /home/inzi/poke-bot-agent/outputs/state/crustle-passed-gate-handler-v1.json --bootstrap-ready /home/inzi/poke-bot-agent/outputs/state/final-format-crustle-r113-h10-bootstrap-ready.json --runtime-registry /home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/runtime/specialist_runtime_registry_h10_r113.json --protocol /home/inzi/poke-bot-agent/config/rl_protocol.yaml --specialist-state /home/inzi/poke-bot-agent/state/specialists.yaml --refresh-registry /home/inzi/poke-bot-agent/outputs/state/post-fleet-refresh-registry-v1.json --completion-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-crustle-r113-h10-completion-v1.json --next-service pokebot-post-refresh-capacity-boundary-r104.service --next-unit /home/inzi/.config/systemd/user/pokebot-post-refresh-capacity-boundary-r104.service
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/complete_post_marnie_crustle_h10.py --handler-state /home/inzi/poke-bot-agent/outputs/state/crustle-passed-gate-handler-v1.json --bootstrap-ready /home/inzi/poke-bot-agent/outputs/state/final-format-crustle-r113-h10-bootstrap-ready.json --runtime-registry /home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/runtime/specialist_runtime_registry_h10_r113.json --protocol /home/inzi/poke-bot-agent/config/rl_protocol.yaml --specialist-state /home/inzi/poke-bot-agent/state/specialists.yaml --refresh-registry /home/inzi/poke-bot-agent/outputs/state/post-fleet-refresh-registry-v1.json --completion-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-crustle-r113-h10-completion-v1.json --next-service pokebot-post-refresh-capacity-boundary-r104.service --next-unit /home/inzi/.config/systemd/user/pokebot-post-refresh-capacity-boundary-r104.service
+Restart=on-failure
+RestartSec=60
+MemoryHigh=8G
+MemoryMax=12G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/logs/completion.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/logs/completion.log
+

@@ -48,7 +48,9 @@ def _write_once(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def render(source: Path) -> dict[str, Any]:
+def render(
+    source: Path, *, rating_lower_bound: float, owner_decision_revision: int
+) -> dict[str, Any]:
     contract = json.loads(source.read_text(encoding="utf-8"))
     if contract.get("schema") != "poke_bot.competition_gate_program/v1":
         raise RuntimeError("source gate has the wrong schema")
@@ -68,18 +70,20 @@ def render(source: Path) -> dict[str, Any]:
             anchored += 1
     if anchored < 8:
         raise RuntimeError("too few checksum-bound Kaggle rating anchors")
+    rating_label = f"{rating_lower_bound:g}"
     gate_id = (
-        "final-format-alakazam-r80-strength65-rating1000-v1"
-        "+frozen-specialists-r14"
+        f"final-format-alakazam-r{owner_decision_revision}-strength75-"
+        f"rating{rating_label}-v1+frozen-specialists-r14"
     )
     gate["id"] = gate_id
     gate["label"] = (
-        "Final-format Alakazam: 65% strength plus independent 1000-rating simulation"
+        "Final-format Alakazam: 75% strength plus independent "
+        f"{rating_label}-rating simulation"
     )
     gate["status"] = "queued"
     gate["roster"] = roster
     criteria = dict(gate.get("pass_criteria") or {})
-    criteria["skill_weighted_win_rate"] = 0.65
+    criteria["skill_weighted_win_rate"] = 0.75
     criteria["skill_weighted_confidence_lower"] = 0.60
     criteria["accepted_official_holdout_non_regression"] = 0.60
     gate["pass_criteria"] = criteria
@@ -91,16 +95,16 @@ def render(source: Path) -> dict[str, Any]:
         "confidence_level": 0.90,
         "bootstrap_resamples": 4000,
         "minimum_anchor_count": 8,
-        "projected_rating_lower_bound": 1000.0,
+        "projected_rating_lower_bound": rating_lower_bound,
         "training_eligible": False,
         "replay_eligible": False,
     }
     gate["milestones"] = [
         {"label": "learning signal", "win_rate": 0.25},
         {"label": "competitive", "win_rate": 0.50},
-        {"label": "final-submit strength floor", "win_rate": 0.65},
+        {"label": "final-submit strength floor", "win_rate": 0.75},
     ]
-    contract["owner_decision_revision"] = 82
+    contract["owner_decision_revision"] = owner_decision_revision
     contract["active_gate_id"] = gate_id
     contract["next_gate"] = gate
     contract.pop("fallback_transition", None)
@@ -117,7 +121,7 @@ def render(source: Path) -> dict[str, Any]:
         "ordinary_ceiling_acceptance_allowed": False,
         "strength_gate_and_rating_simulation_are_independent": True,
     }
-    contract["updated_at_utc"] = "2026-07-31T00:00:00Z"
+    contract["updated_at_utc"] = "2026-07-31T21:45:00Z"
     return contract
 
 
@@ -126,25 +130,33 @@ def main() -> int:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--rating-lower-bound", type=float, default=1150.0)
+    parser.add_argument("--owner-decision-revision", type=int, default=100)
     args = parser.parse_args()
     source = args.source.expanduser().resolve()
     output = args.output.expanduser().resolve()
-    payload = render(source)
+    if args.rating_lower_bound <= 0:
+        parser.error("--rating-lower-bound must be positive")
+    payload = render(
+        source,
+        rating_lower_bound=args.rating_lower_bound,
+        owner_decision_revision=args.owner_decision_revision,
+    )
     _write_once(output, payload)
     receipt = {
         "schema": "poke_bot.final_format_alakazam_gate_render/v1",
         "status": "ready",
-        "owner_decision_revision": 82,
+        "owner_decision_revision": args.owner_decision_revision,
         "source": str(source),
         "source_sha256": _sha256(source),
         "gate": str(output),
         "gate_sha256": _sha256(output),
         "gate_id": payload["active_gate_id"],
         "games_per_iteration": 16384,
-        "premium_skill_weighted_win_rate": 0.65,
+        "premium_skill_weighted_win_rate": 0.75,
         "premium_skill_weighted_confidence_lower": 0.60,
         "official_control_win_rate": 0.60,
-        "rating_simulation_projected_lower_bound": 1000.0,
+        "rating_simulation_projected_lower_bound": args.rating_lower_bound,
         "rating_simulation_is_separate": True,
         "fallback_transition_present": False,
         "ceiling_acceptance_allowed": False,

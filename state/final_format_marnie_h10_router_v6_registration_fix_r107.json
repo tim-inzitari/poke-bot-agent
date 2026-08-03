@@ -1,0 +1,73 @@
+{
+  "schema": "poke_bot.final_format_marnie_h10_router_v6_registration_fix/v1",
+  "status": "staged_for_post_bootstrap_registration_boundary",
+  "recorded_at_utc": "2026-08-02T19:28:17Z",
+  "owner_decision_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "issue": {
+    "discovered_state": "the H10 step-zero bootstrap checkpoint still carried the historical Router Format 5 roster18 bank",
+    "risk": "the launcher derives adapter format from checkpoint bytes, so environment labels alone could not make the future managed RL launch Router Format 6",
+    "activation_before_fix": false
+  },
+  "correction": {
+    "boundary": "after the exact 25-epoch bootstrap ready receipt and before runtime registration or RL",
+    "source_checkpoint_requirement": "immutable selected full-head bootstrap checkpoint from epochs 16 through 25 after all 25 epochs complete",
+    "target_family": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-marnie-r104-h10-router-v6-bootstrap-v1",
+    "target_adapter_format": "poke-bot-matchup-adapter-bank-v6",
+    "physical_slot_capacity": 64,
+    "logical_active_route_count": 20,
+    "source_family_remains_immutable": true,
+    "runtime_registry_uses_derivative_checkpoint": true,
+    "adapter_authorization_uses_derivative_manifest": true,
+    "registration_and_rl_fail_closed_on_non_v6_checkpoint": true
+  },
+  "exact_epoch16_rehearsal": {
+    "source_checkpoint": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10/checkpoints/epoch_16.pt",
+    "source_checkpoint_sha256": "sha256:6eb99031f291522dbd3134d5849934745d9948de0891b9f0144c5dd1c34ca28a",
+    "temporary_target_checkpoint_sha256": "sha256:ae1331846a9cfd285f7135c8925ec392f012ff06bf51ab1c6b09aeea75f30883",
+    "repeated_materialization_digest_identical": true,
+    "retained_v5_adapter_tensors_bit_exact": 72,
+    "appended_adapter_tensors_exact_zero": 184,
+    "non_adapter_model_tensors_bit_exact": 465,
+    "validated_physical_slots": 64,
+    "temporary_family_removed_after_validation": true
+  },
+  "runtime_tree_validation": {
+    "registry_schema": "poke_bot.matchup_adapter_roster/v1",
+    "registry_sha256": "sha256:08322efe30c0f8b75d922aae8b882b4e78a20df03a63ed997ec8288165bfd1bc",
+    "tree": "/home/inzi/poke-bot-agent/outputs/state/slowking-public-matchup-tree-v33.json",
+    "tree_targets_equal_active_expert_ids": true,
+    "logical_active_route_count": 20,
+    "one_route_per_decision": true,
+    "unknown_route_exact_bypass": true
+  },
+  "deployed_artifacts": {
+    "registration_script_sha256": "sha256:51935825faf39432b74d7be9b284415977340f53a12f9a04858f298d90afcb19",
+    "registration_unit_sha256": "sha256:a783d508e89ab23ddb4f46993dcd0371f6fbd2ea40927500298fbeb48633c110",
+    "rl_unit_sha256": "sha256:4f3728f2bf930efdb2ff3db0a28f14b78de8212f80954607083b736980f1bb75",
+    "local_remote_hash_parity": true,
+    "managed_registration_service": "pokebot-final-format-marnie-r104-h10-register.service",
+    "managed_rl_service": "pokebot-final-format-marnie-r104-h10-rl.service"
+  },
+  "validation": {
+    "focused_tests": "13 passed",
+    "test_files": [
+      "tests/test_final_format_marnie_h10_bootstrap.py",
+      "tests/test_h10_migration.py"
+    ],
+    "registration_script_compiles": true,
+    "exact_checkpoint_integration_passed": true
+  },
+  "live_workload_preservation": {
+    "bootstrap_service": "pokebot-final-format-marnie-r104-h10-bootstrap.service",
+    "main_pid": 608116,
+    "restart_count": 0,
+    "active_state": "activating",
+    "sub_state": "start",
+    "registration_service_inactive": true,
+    "rl_service_inactive": true,
+    "bootstrap_interrupted": false
+  },
+  "training_authority": false,
+  "selector_authority": false
+}

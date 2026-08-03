@@ -2,7 +2,7 @@
 # Materialize only missing canonical latest-20 daily feature shards on Elmo.
 set -euo pipefail
 
-SOURCE="${POKEBOT_SOURCE:-/home/admin/pokebot-expert-src-v41}"
+SOURCE="${POKEBOT_SOURCE:-/home/admin/pokebot-expert-src-v6-strategic}"
 RAW="${POKEBOT_RAW:-/mnt/Main/main/poke-bot-agent/archive/episode-days}"
 ARCHIVE_RECEIPT="${POKEBOT_ARCHIVE_RECEIPT:-/mnt/Main/main/poke-bot-agent/archive/expert-latest20/current.json}"
 OUTPUT="${POKEBOT_OUTPUT:-/mnt/Main/main/poke-bot-agent/archive/expert-latest20-derived/daily/roster18-v5}"
@@ -11,19 +11,33 @@ IMAGE="${POKEBOT_IMAGE:-poke-bot-truenas-worker:matchup-v33-runtime}"
 NATIVE_IMAGE="${POKEBOT_NATIVE_IMAGE:-pokebot-native-expert-featurizer:x86_64}"
 NAME="${POKEBOT_CONTAINER_NAME:-pokebot-expert-latest20-missing-days}"
 STATUS_ROOT="$OUTPUT/status"
-LOCK="${POKEBOT_LOCK:-/tmp/${NAME}.lock}"
+LOCK="${POKEBOT_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/${NAME}.lock}"
 CONTAINER_CPUS="${POKEBOT_CPUS:-24}"
 CONTAINER_MEMORY="${POKEBOT_MEMORY:-56g}"
+CPU_SHARES="${POKEBOT_CPU_SHARES:-256}"
 DAY_PARALLELISM="${POKEBOT_DAY_PARALLELISM:-8}"
+NATIVE_DAY_PARALLELISM="${POKEBOT_NATIVE_DAY_PARALLELISM:-$DAY_PARALLELISM}"
 WORKERS_PER_DAY="${POKEBOT_WORKERS_PER_DAY:-3}"
 MAX_IN_FLIGHT_PER_DAY="${POKEBOT_MAX_IN_FLIGHT_PER_DAY:-6}"
 NATIVE_CPUS_PER_DAY="${POKEBOT_NATIVE_CPUS_PER_DAY:-2}"
+READY_RECEIPT_NAME="${POKEBOT_READY_RECEIPT_NAME:-MISSING_DAYS_READY.json}"
+REQUIRED_DATASET_SCHEMA="${POKEBOT_REQUIRED_DATASET_SCHEMA:-6}"
+REQUIRED_EXPANDED_TARGET_SCHEMA="${POKEBOT_REQUIRED_EXPANDED_TARGET_SCHEMA:-poke_bot.expanded_strategic_targets/v2}"
+REQUIRED_EXPANDED_TARGET_DIGEST="${POKEBOT_REQUIRED_EXPANDED_TARGET_DIGEST:-sha256:f086683173c94ff87360b4b692d2d5dcf81e122a2ce8271115d4ce9e2aba514f}"
+
+[[ "$READY_RECEIPT_NAME" != */* && "$READY_RECEIPT_NAME" == *.json ]] || {
+  echo "feature ready receipt must be a JSON basename" >&2
+  exit 2
+}
 
 for value in \
   "$DAY_PARALLELISM" \
+  "$NATIVE_DAY_PARALLELISM" \
   "$WORKERS_PER_DAY" \
   "$MAX_IN_FLIGHT_PER_DAY" \
-  "$NATIVE_CPUS_PER_DAY"
+  "$NATIVE_CPUS_PER_DAY" \
+  "$CPU_SHARES" \
+  "$REQUIRED_DATASET_SCHEMA"
 do
   [[ "$value" =~ ^[1-9][0-9]*$ ]] || {
     echo "feature-pipeline concurrency values must be positive integers" >&2
@@ -54,6 +68,29 @@ test -s "$SOURCE/scripts/materialize_authoritative_archetype_window.py"
 test -s "$SOURCE/state/matchup_adapter_roster.json"
 test -f "$CG_RUNTIME_SOURCE/cg/__init__.py"
 test -s "$CG_RUNTIME_SOURCE/cg/libcg.so"
+
+# Fail before expensive native validation or featurization when the mounted
+# source snapshot cannot produce the exact strategic shard contract expected
+# by the finalizer and trainer.
+sudo -n docker run --rm \
+  -v "$SOURCE:/workspace:ro" \
+  -e REQUIRED_DATASET_SCHEMA="$REQUIRED_DATASET_SCHEMA" \
+  -e REQUIRED_EXPANDED_TARGET_SCHEMA="$REQUIRED_EXPANDED_TARGET_SCHEMA" \
+  -e REQUIRED_EXPANDED_TARGET_DIGEST="$REQUIRED_EXPANDED_TARGET_DIGEST" \
+  --entrypoint python \
+  "$IMAGE" -c '
+import os
+import sys
+sys.path.insert(0, "/workspace")
+from poke_bot.dataset import DATASET_CACHE_SCHEMA_VERSION
+from poke_bot.strategic_heads import (
+    EXPANDED_STRATEGIC_SCHEMA,
+    EXPANDED_STRATEGIC_SCHEMA_DIGEST,
+)
+assert DATASET_CACHE_SCHEMA_VERSION == int(os.environ["REQUIRED_DATASET_SCHEMA"])
+assert EXPANDED_STRATEGIC_SCHEMA == os.environ["REQUIRED_EXPANDED_TARGET_SCHEMA"]
+assert EXPANDED_STRATEGIC_SCHEMA_DIGEST == os.environ["REQUIRED_EXPANDED_TARGET_DIGEST"]
+'
 sudo -n mkdir -p "$STATUS_ROOT/native"
 sudo -n chown -R "$(id -u):$(id -g)" "$OUTPUT"
 
@@ -73,7 +110,9 @@ PY
 
 expected_for_day() {
   sudo -n jq -er --arg day "$1" \
-    '.archives[] | select(.date == $day and .validated == true) | .episode_count' \
+    '.archives[]
+      | select(.date == $day and .validated == true)
+      | (.validated_episode_count // .episode_count)' \
     "$ARCHIVE_RECEIPT"
 }
 
@@ -122,7 +161,7 @@ PY
   fi
   native_validate_day "$day" &
   native_pids+=("$!")
-  if (( ${#native_pids[@]} >= DAY_PARALLELISM )); then
+  if (( ${#native_pids[@]} >= NATIVE_DAY_PARALLELISM )); then
     for pid in "${native_pids[@]}"; do
       wait "$pid"
     done
@@ -147,6 +186,7 @@ sudo -n docker run -d \
   --name "$NAME" \
   --restart on-failure:5 \
   --cpus "$CONTAINER_CPUS" \
+  --cpu-shares "$CPU_SHARES" \
   --memory "$CONTAINER_MEMORY" \
   --memory-swap "$CONTAINER_MEMORY" \
   --pids-limit 4096 \
@@ -155,6 +195,7 @@ sudo -n docker run -d \
   -e POKEBOT_DAY_PARALLELISM="$DAY_PARALLELISM" \
   -e POKEBOT_WORKERS_PER_DAY="$WORKERS_PER_DAY" \
   -e POKEBOT_MAX_IN_FLIGHT_PER_DAY="$MAX_IN_FLIGHT_PER_DAY" \
+  -e POKEBOT_READY_RECEIPT_NAME="$READY_RECEIPT_NAME" \
   -e CG_LIB_PATH=/workspace/kaggle/input/cg-lib \
   -v "$SOURCE:/workspace:ro" \
   -v "$CG_RUNTIME_SOURCE:/workspace/kaggle/input/cg-lib:ro" \
@@ -245,9 +286,11 @@ payload={
     "completed_at":datetime.now(timezone.utc).isoformat(),
     "corpus_location":"elmo_only",
 }
-tmp=root/".MISSING_DAYS_READY.json.tmp"
+name=os.environ["POKEBOT_READY_RECEIPT_NAME"]
+assert "/" not in name and name.endswith(".json")
+tmp=root/f".{name}.tmp"
 tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n")
-tmp.replace(root/"MISSING_DAYS_READY.json")
+tmp.replace(root/name)
 PY
 '
 

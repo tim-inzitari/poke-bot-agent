@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the checksum-bound 22-member own-model population round robin."""
+"""Run the checksum-bound 15-member own-model population round robin."""
 
 from __future__ import annotations
 

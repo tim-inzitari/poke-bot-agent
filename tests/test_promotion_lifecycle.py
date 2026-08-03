@@ -50,14 +50,20 @@ def test_promotion_acceptance_and_rejection_are_seat_stratified() -> None:
         for pair in ("p0", "p1")
         for seat in (0, 1)
     ]
-    assert evaluate_candidate_gate(accepted, cfg)["passed"] is True
-    assert evaluate_candidate_gate(accepted, cfg)["pairing_claimed"] is False
-    assert evaluate_candidate_gate(rejected, cfg)["passed"] is False
+    accepted_report = evaluate_candidate_gate(accepted, cfg)
+    rejected_report = evaluate_candidate_gate(rejected, cfg)
+    assert accepted_report["passed"] is True
+    assert accepted_report["reason"] == "passed"
+    assert accepted_report["pairing_claimed"] is False
+    assert rejected_report["passed"] is False
+    assert rejected_report["failures"] == []
+    assert rejected_report["reason"] == "confidence_lower_bound_not_above_threshold"
 
     incomplete = accepted[:-1]
     report = evaluate_candidate_gate(incomplete, cfg)
     assert report["valid"] is False
     assert report["passed"] is False
+    assert report["reason"] == "insufficient_balanced_valid_games"
 
 
 def test_resume_continues_at_next_completed_iteration() -> None:

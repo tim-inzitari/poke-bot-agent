@@ -9,6 +9,7 @@ from poke_bot.pure_rl.model_registry import sha256, verify_frozen_model
 from scripts.handle_passed_gate import (
     _canonical_digest,
     _decision_fusion_runtime_ready,
+    _terminal_gate_candidate,
     freeze_exact_pass,
     materialize_pinned_specialist_deck,
     validate_exact_pass,
@@ -17,6 +18,8 @@ from scripts.handle_passed_gate import (
 from poke_bot.model import (
     DECISION_FUSION_REQUIRED_HEADS,
     DECISION_FUSION_V2_OPTIONAL_HEADS,
+    DECISION_FUSION_V3_ROUTE_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
 )
 
 
@@ -142,18 +145,40 @@ def _successor_fusion_fixture(
             },
         },
     )
+    terminal_fusion = {
+        "schema": terminal_schema,
+        "runtime_enabled": True,
+        "required_heads": terminal_required,
+    }
+    model_config = {
+        "decision_fusion_enabled": True,
+        "decision_fusion_runtime_enabled": True,
+    }
+    if terminal_schema == DECISION_FUSION_V3_SCHEMA:
+        terminal_fusion["typed_output_centered_routes"] = True
+        terminal_fusion["dedicated_routes"] = {
+            "schema": DECISION_FUSION_V3_ROUTE_SCHEMA,
+            "enabled": True,
+            "runtime_enabled": True,
+            "positive_bounded_reliability": True,
+            "reliability_bounds": [0.25, 4.0],
+            "action_type_reliability_cap": 0.25,
+            "route_count": len(terminal_required),
+            "route_names": terminal_required,
+        }
+        model_config.update(
+            {
+                "decision_fusion_dedicated_routes_enabled": True,
+                "decision_fusion_dedicated_routes_runtime_enabled": True,
+                "decision_fusion_typed_output_centered_routes_enabled": True,
+                "decision_fusion_action_type_reliability_cap": 0.25,
+            }
+        )
     payload = {
         "archetype_id": "test-specialist",
-        "model_config": {
-            "decision_fusion_enabled": True,
-            "decision_fusion_runtime_enabled": True,
-        },
+        "model_config": model_config,
         "provenance": {
-            "decision_fusion": {
-                "schema": terminal_schema,
-                "runtime_enabled": True,
-                "required_heads": terminal_required,
-            }
+            "decision_fusion": terminal_fusion
         },
     }
     monkeypatch.setattr(
@@ -173,7 +198,7 @@ def test_generated_successor_fusion_descendant_is_terminal_ready(
 ) -> None:
     run_dir, _commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
     ready, reason = _decision_fusion_runtime_ready(run_dir)
-    assert ready is True
+    assert ready is True, reason
     assert "verified successor fused descendant" in reason
 
 
@@ -188,7 +213,22 @@ def test_generated_successor_v2_fusion_descendant_accepts_optional_heads(
         terminal_optional_heads=(DECISION_FUSION_V2_OPTIONAL_HEADS[0],),
     )
     ready, reason = _decision_fusion_runtime_ready(run_dir)
-    assert ready is True
+    assert ready is True, reason
+    assert "verified successor fused descendant" in reason
+
+
+def test_generated_successor_v3_fusion_descendant_accepts_typed_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, _commit_path = _successor_fusion_fixture(
+        tmp_path,
+        monkeypatch,
+        terminal_schema=DECISION_FUSION_V3_SCHEMA,
+        terminal_optional_heads=DECISION_FUSION_V2_OPTIONAL_HEADS,
+    )
+    ready, reason = _decision_fusion_runtime_ready(run_dir)
+    assert ready is True, reason
     assert "verified successor fused descendant" in reason
 
 
@@ -272,6 +312,88 @@ def test_generated_successor_fusion_accepts_complete_terminal_gate_for_ceiling(
     )
 
     assert ready is True
+    assert "complete audited active gate" in reason
+
+
+def test_generated_successor_fusion_accepts_rejected_terminal_candidate_for_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir, commit_path = _successor_fusion_fixture(tmp_path, monkeypatch)
+    commit = json.loads(commit_path.read_text(encoding="utf-8"))
+    rollback_learner = dict(commit["learner"])
+    candidate_path = run_dir / "checkpoints" / "iter_00005_candidate.pt"
+    candidate_path.write_bytes(b"rejected-terminal-fused-checkpoint")
+    candidate = {
+        "path": str(candidate_path.resolve()),
+        "digest": "sha256:" + "8" * 64,
+    }
+    games = 3500
+    lineage = commit["history"][0]
+    lineage["candidate"] = candidate
+    lineage["learner_after"] = rollback_learner
+    lineage["next_collection_publish"] = None
+    lineage["promotion"] = {
+        "passed": False,
+        "candidate": candidate,
+        "incumbent": rollback_learner,
+        "reason": "confidence_lower_bound_not_above_threshold",
+    }
+    lineage["active_gate_result"] = {
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "iteration": 5,
+        "games": games,
+        "checkpoint": candidate["path"],
+        "checkpoint_digest": candidate["digest"],
+        "passed": False,
+        "audit": {
+            "passed": True,
+            "exact_distribution": True,
+            "exact_weights": True,
+            "greedy_required": True,
+            "greedy": True,
+            "both_seats": True,
+            "valid_games": games,
+            "rows": games,
+            "requested_games": games,
+            "checkpoint_digest": candidate["digest"],
+            "matchup_runtime": {
+                "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+                "all_games_audited": True,
+                "all_runtime_enabled": True,
+                "contract_clean": True,
+                "games": games,
+                "audited_games": games,
+                "runtime_enabled_games": games,
+                "runtime_disabled_games": 0,
+                "missing_games": 0,
+                "malformed_games": 0,
+                "transition_contract_violations": 0,
+            },
+        },
+    }
+    _write(commit_path, commit)
+    _write(run_dir / "loop_state.json", commit)
+
+    assert _terminal_gate_candidate(commit) == candidate
+
+    rollback_digest = rollback_learner["digest"]
+    candidate_digest = candidate["digest"]
+    monkeypatch.setattr(
+        "scripts.handle_passed_gate.checkpoint.checkpoint_digest",
+        lambda path: (
+            candidate_digest
+            if Path(path).resolve() == candidate_path.resolve()
+            else rollback_digest
+        ),
+    )
+
+    ready, reason = _decision_fusion_runtime_ready(
+        run_dir,
+        allow_terminal_gate_evidence=True,
+    )
+
+    assert ready is True, reason
     assert "complete audited active gate" in reason
 
 

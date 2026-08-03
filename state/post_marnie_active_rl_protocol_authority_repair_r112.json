@@ -1,0 +1,18 @@
+{
+  "active_trainer_modified": false,
+  "active_trainer_pid": 280792,
+  "active_trainer_restarts": 0,
+  "base_unit": "/home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service",
+  "base_unit_sha256": "sha256:ffe3e0943763b8c2d82e18243b24fcb3c107816502db975ceea930e025912053",
+  "canonical_protocol": "/home/inzi/poke-bot-agent/config/rl_protocol.yaml",
+  "canonical_protocol_sha256": "sha256:ee69b2ce044eb61cb0f46b969885e028fbd035324c1f3827404312ab8b092b01",
+  "created_at_utc": "2026-08-03T16:08:07Z",
+  "exact_completion_preflight_passed": true,
+  "latest20_dropin": "/home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zz-latest20-r109.conf",
+  "latest20_dropin_sha256": "sha256:b5df702ab9667d3eb939eaa1c9ab3d82062427abeff3a724bc54e0e17588298c",
+  "next_managed_restart_uses_canonical_protocol": true,
+  "owner_goal_revision": 112,
+  "schema": "poke_bot.post_marnie_active_rl_protocol_authority_repair/v1",
+  "status": "activated_for_next_managed_rl_restart",
+  "systemd_verify_passed": true
+}

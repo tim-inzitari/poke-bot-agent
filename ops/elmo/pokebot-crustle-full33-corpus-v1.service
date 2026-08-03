@@ -1,5 +1,5 @@
 [Unit]
-Description=Crustle family full33 guide corpus
+Description=Crustle family full33 v2 guide corpus rebind
 After=pokebot-crustle-full33-catalog-v1.service
 ConditionPathExists=/mnt/Main/main/poke-bot-agent/archive/crustle-public-family-full33-v1.json
 OnSuccess=pokebot-crustle-full33-label-audit-v1.service
@@ -9,7 +9,7 @@ Type=oneshot
 User=admin
 Group=admin
 WorkingDirectory=/home/admin/pokebot-expert-guide-src-v1
-Environment=POKEBOT_CRUSTLE_TEACHER_SHA256=e68a759bc8c3566dab2d49420d09dff8fcec7d9563da5f659fd2e2569f73ba6d
+Environment=POKEBOT_CRUSTLE_TEACHER_SHA256=e3f7d0cccd541c6b0031b5e67d6a283dd642a85734bb4325eca9147bde7fa28e
 Environment=POKEBOT_CRUSTLE_DAY_PARALLELISM=2
 Environment=POKEBOT_CRUSTLE_WORKERS_PER_DAY=2
 Environment=POKEBOT_CRUSTLE_MAX_IN_FLIGHT_PER_DAY=4

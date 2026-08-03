@@ -81,6 +81,18 @@ def test_apply_runs_single_job_in_pool_child() -> None:
     assert value == 42
 
 
+def test_exhausted_pool_can_be_released_before_context_exit() -> None:
+    with WorkerPool(num_workers=1) as pool:
+        child_pid, value = pool.apply(_single_apply_task, 7)
+        assert child_pid != os.getpid()
+        assert value == 14
+        pool.release()
+        assert pool._pool is None
+        # Early release and the eventual context exit are both idempotent.
+        pool.release()
+    assert pool._pool is None
+
+
 def test_imap_unordered_surfaces_latched_stop_while_waiting_for_result() -> None:
     """A lost Pool result must not leave the scheduler emitter blocked forever."""
 

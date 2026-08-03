@@ -1,0 +1,26 @@
+{
+  "schema": "poke_bot.final_format_marnie_route_reliability_observation/v1",
+  "status": "observed_nonblocking_design_risk",
+  "recorded_at_utc": "2026-08-02T19:33:00Z",
+  "owner_decision_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "bootstrap_epoch": 18,
+  "checkpoint": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10/checkpoints/epoch_18.pt",
+  "checkpoint_sha256": "sha256:50efe016a31a352aed9af781cfd29f8c56e67c4b1a311bba97fb205fcbe2f343",
+  "checkpoint_contract_validation_passed": true,
+  "effective_route_reliabilities": {
+    "action_q": 4.0,
+    "action_resource": 4.0,
+    "action_utility": 3.5523948938419654,
+    "setup_board_outcome": 3.224636902107394,
+    "combo_state": 3.2153534156249464,
+    "action_type": 0.25
+  },
+  "non_guide_non_action_type_route_mean": 1.103492428103893,
+  "finding": "the five strategic_directional_v2 guide-ranked serving routes are again gaining several times the authority of non-guide routes; action_q and action_resource have reached the configured 4.0 ceiling",
+  "relationship_to_alakazam": "independent Marnie bootstrap replication of the Alakazam Fusion-v3 gain-amplification signature",
+  "activation_effect": "none",
+  "bootstrap_interrupted": false,
+  "training_authority": false,
+  "selector_authority": false
+}

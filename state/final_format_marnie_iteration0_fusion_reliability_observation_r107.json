@@ -1,0 +1,96 @@
+{
+  "schema": "poke_bot.final_format_marnie_iteration0_fusion_reliability_observation/v1",
+  "recorded_at_utc": "2026-08-02T22:42:06Z",
+  "goal_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+  "architecture": {
+    "training_core_revision": 10,
+    "matchup_router_format": 6,
+    "model": "H10-I 7/3/7 FF-2496 residual-512",
+    "fusion": "Fusion v3",
+    "learned_routes": 19,
+    "route_reliability_bounds": [0.25, 4.0],
+    "action_type_cap": 0.25
+  },
+  "checkpoint_pair": {
+    "seed": {
+      "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/seed.pt",
+      "digest": "sha256:939a147ff7d81bf49d0cf819d434aabe379bb8de89ff8546a38604abb1c379ff"
+    },
+    "iteration_0": {
+      "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00000.pt",
+      "digest": "sha256:85637aabd79a0033979dfee4486b4bac9324f947ed3acef056d2fb14e41e7985",
+      "commit_digest": "sha256:69dec3ac3f09e1708399bfbeb53c0db64b209eb052535fa6c723c355160a7547"
+    }
+  },
+  "effective_route_reliability": {
+    "seed": {
+      "action_q": 1.0,
+      "action_resource": 1.0,
+      "action_target": 1.0,
+      "action_type": 0.25,
+      "action_utility": 1.0,
+      "archetype": 1.0,
+      "combo_state": 1.0,
+      "game_phase": 1.0,
+      "lethal_threat": 1.0,
+      "opponent_hand": 1.0,
+      "opponent_remainder": 1.0,
+      "opponent_response": 1.0,
+      "outcome_distribution": 1.0,
+      "prize_race": 1.0,
+      "remaining_turns": 1.0,
+      "resource_forecast": 1.0,
+      "setup_board_outcome": 1.0,
+      "tactical_outcomes": 1.0,
+      "value": 1.0
+    },
+    "iteration_0": {
+      "action_q": 4.0,
+      "action_resource": 4.0,
+      "action_target": 1.086715545587131,
+      "action_type": 0.25,
+      "action_utility": 4.0,
+      "archetype": 1.1477504854027998,
+      "combo_state": 3.8124525302460457,
+      "game_phase": 1.2338478695012993,
+      "lethal_threat": 1.1514207905589735,
+      "opponent_hand": 1.0853582194286746,
+      "opponent_remainder": 1.074631552774955,
+      "opponent_response": 1.261093242550541,
+      "outcome_distribution": 1.1670785129244,
+      "prize_race": 1.0950409032879533,
+      "remaining_turns": 1.0765927865556963,
+      "resource_forecast": 1.1967671587084958,
+      "setup_board_outcome": 3.8217711913365613,
+      "tactical_outcomes": 1.2571814482031485,
+      "value": 1.0652099974344502
+    }
+  },
+  "measured_iteration_0_evidence": {
+    "policy_parent_agreement": 0.9102670106436128,
+    "formal_games": 4250,
+    "formal_skill_weighted_win_rate": 0.74575,
+    "formal_confidence_lower": 0.7355,
+    "formal_passed": true,
+    "research_control_games": 1000,
+    "research_control_win_rate": 0.7325,
+    "research_control_passed": true,
+    "research_controls_training_eligible": false,
+    "research_controls_replay_eligible": false
+  },
+  "assessment": {
+    "observation": "Three directional-guide-ranked causal routes reached the configured reliability ceiling after one committed RL iteration; setup and combo routes are also near the ceiling.",
+    "risk": "The shape matches the route-reliability saturation observed in the later Alakazam Fusion-v3 regression, but current Marnie iteration-0 measured gates passed and do not prove a gameplay regression.",
+    "required_follow_up": "Track parent agreement, per-route reliability, full formal holdout, and training-ineligible research controls at each commit. Preserve selector rejection evidence if later gameplay regresses.",
+    "training_mutation_authority": false,
+    "selector_authority": false,
+    "freeze_authority": false,
+    "service_restart_authority": false
+  },
+  "source_receipt": {
+    "path": "state/final_format_marnie_iteration0_commit_recovery_r107.json",
+    "digest": "sha256:553a02851035f0613537a8b1bc25e94aa2ec90967e36a7357be1d2fc82674097"
+  }
+}

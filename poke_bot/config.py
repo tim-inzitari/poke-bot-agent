@@ -340,11 +340,34 @@ class ModelConfig:
     decision_fusion_dedicated_routes_runtime_enabled: bool = _env_bool(
         "DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED", False
     )
+    #: Fusion-v3 routes subtract their option-hidden-only baseline, ensuring
+    #: every named route's action effect actually depends on its typed head.
+    #: Positive learned reliability remains bounded and action_type may be
+    #: capped nonzero until its versioned supervision contract is populated.
+    decision_fusion_typed_output_centered_routes_enabled: bool = _env_bool(
+        "DECISION_FUSION_TYPED_OUTPUT_CENTERED_ROUTES_ENABLED", False
+    )
+    decision_fusion_action_type_reliability_cap: float = _env_float(
+        "DECISION_FUSION_ACTION_TYPE_RELIABILITY_CAP", 1.0
+    )
     decision_fusion_width: int = _env_int("DECISION_FUSION_WIDTH", 16)
     #: Final-submission H10-I capacity branches. Historical checkpoints omit
     #: this field and therefore retain their exact tensor inventory.
     h10_capacity_enabled: bool = _env_bool("H10_CAPACITY_ENABLED", False)
     h10_head_residual_width: int = _env_int("H10_HEAD_RESIDUAL_WIDTH", 512)
+    #: Revision-114 single-pass neural challenger. Architecture presence and
+    #: action authority are independent so a migrated checkpoint is an exact
+    #: parent-policy no-op until every activation receipt passes.
+    latent_lookahead_enabled: bool = _env_bool(
+        "LATENT_LOOKAHEAD_ENABLED", False
+    )
+    latent_lookahead_action_authority_enabled: bool = _env_bool(
+        "LATENT_LOOKAHEAD_ACTION_AUTHORITY_ENABLED", False
+    )
+    latent_lookahead_width: int = _env_int("LATENT_LOOKAHEAD_WIDTH", 512)
+    latent_lookahead_policy_aid_cap: float = _env_float(
+        "LATENT_LOOKAHEAD_POLICY_AID_CAP", 0.25
+    )
     dropout: float = _env_float("DROPOUT", 0.1)
 
     @property

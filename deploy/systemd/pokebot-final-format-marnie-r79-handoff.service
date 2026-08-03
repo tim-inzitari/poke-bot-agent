@@ -1,13 +1,14 @@
 [Unit]
 Description=Receipt-bound Marnie final-format refresh pre-stage after Alakazam
 After=pokebot-final-format-alakazam-r79-completion.service
+OnSuccess=pokebot-post-alakazam-core-refresh-r104.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
-ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/prepare_final_format_marnie_refresh.py --specialist-state /home/inzi/poke-bot-agent/state/specialists.yaml --guide config/deck_guides/marnie-s-grimmsnarl-ex.yaml --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json --original-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex-protocol-gate-pass-v1/model.pt --refresh-registry /home/inzi/poke-bot-agent/outputs/state/post-fleet-refresh-registry-v1.json --receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r79-prestage-v1.json
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/prepare_final_format_marnie_refresh.py --specialist-state /home/inzi/poke-bot-agent/state/specialists.yaml --guide config/deck_guides/marnie-s-grimmsnarl-ex.yaml --guide-ready /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/marnie-s-grimmsnarl-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json --head-role-map /home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-head-roles-r104.json --curriculum-spec /home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-r104.json --curriculum-validation /home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-validation-r104.json --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json --original-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/marnie-s-grimmsnarl-ex-protocol-gate-pass-v1/model.pt --refresh-registry /home/inzi/poke-bot-agent/outputs/state/post-fleet-refresh-registry-v1.json --receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r79-prestage-r104-h10-19.json
 Restart=on-failure
 RestartSec=30
 MemoryHigh=4G
@@ -15,4 +16,3 @@ MemoryMax=6G
 MemorySwapMax=0
 StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/logs/marnie_handoff.log
 StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/logs/marnie_handoff.log
-

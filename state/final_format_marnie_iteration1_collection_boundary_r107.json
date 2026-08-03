@@ -1,0 +1,88 @@
+{
+  "schema": "poke_bot.final_format_marnie_collection_boundary/v1",
+  "status": "collection_sealed_training_active",
+  "recorded_at_utc": "2026-08-02T23:17:33Z",
+  "owner_decision_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "iteration": 1,
+  "behavior_checkpoint": {
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00000.pt",
+    "sha256": "sha256:85637aabd79a0033979dfee4486b4bac9324f947ed3acef056d2fb14e41e7985"
+  },
+  "collection": {
+    "receipt": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/collection_receipts/iter_00001.json",
+    "receipt_sha256": "sha256:e858c0b191572fac00bf52c6016f5aa09b4be991c9018fe96d07518d884010fb",
+    "requested_source_games": 8192,
+    "retained_source_games": 8192,
+    "usable_game_fraction": 1.0,
+    "failures": 0,
+    "self_play_source_games": 1024,
+    "public_mix_source_games": 7168,
+    "research_control_source_games": 0,
+    "trajectories": 8704,
+    "decisions": 709025
+  },
+  "shard": {
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/shards/iter_00001.jsonl",
+    "sha256": "sha256:0b07207de51ced87be50a8783ead22b6f2e4280ffc6988f73c970fc44eb38215",
+    "size_bytes": 4539858573
+  },
+  "seat_split": {
+    "receipt": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/seat_split_receipts/iter_00001.index.json",
+    "receipt_sha256": "sha256:dbc1a8d12c731e742303eff185fd3958135abd3d9fe2da4250eb3406c1a6df70",
+    "assigned_first": 4096,
+    "assigned_second": 4096,
+    "retained_first": 4096,
+    "retained_second": 4096,
+    "passed": true,
+    "second_seat_priority": false
+  },
+  "execution": {
+    "local_completions": 4054,
+    "remote_completions": 4138,
+    "elmo_completions": 3278,
+    "bert_completions": 860,
+    "self_play_remote_proof": {
+      "elmo": 508,
+      "bert": 223,
+      "missing_endpoints": [],
+      "local_fallback_count": 0,
+      "strict": true
+    },
+    "blackwell_workers": 96,
+    "multi_env_per_worker": 4
+  },
+  "matchup_runtime": {
+    "audited_games": 8192,
+    "runtime_enabled_games": 8192,
+    "contract_clean": true,
+    "enforcement_passed": true,
+    "practice_records_expected": 4584,
+    "practice_records_written": 4584
+  },
+  "replay_cache": {
+    "parts": 68,
+    "records": 8704,
+    "sequences": 8704,
+    "dropped": 0
+  },
+  "managed_runtime_observation": {
+    "service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "main_pid": 1567720,
+    "restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "memory_peak_bytes": 90773262336,
+    "memory_high_bytes": 103079215104,
+    "memory_max_bytes": 120259084288,
+    "memory_pressure_or_oom_events_observed": false,
+    "post_collection_leaf_farm_suspended": true,
+    "learner_epoch_zero_started": true
+  },
+  "authority": {
+    "training_or_selector_mutation": false,
+    "freeze_or_registration_authority": false,
+    "submission_authority": false,
+    "purpose": "Immutable audit binding for the completed iteration-1 collection boundary while the healthy managed learner continues."
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "ceiling_acceptance_allowed": false,
+  "fallback_transition_present": false,
+  "games_per_iteration": 16384,
+  "gate": "/Users/tsinzitari/Documents/poke-agent-codex/ops/final_format_alakazam_gate_r94_v4.json",
+  "gate_id": "final-format-alakazam-r94-strength75-rating1000-v1+frozen-specialists-r14",
+  "gate_sha256": "sha256:41a30f1f5069e3f7ce3ce0285724a63bd5d18b0fe1198f8868b13474a0492cd3",
+  "official_control_win_rate": 0.6,
+  "owner_decision_revision": 94,
+  "premium_skill_weighted_confidence_lower": 0.6,
+  "premium_skill_weighted_win_rate": 0.75,
+  "rating_simulation_is_separate": true,
+  "rating_simulation_projected_lower_bound": 1000.0,
+  "schema": "poke_bot.final_format_alakazam_gate_render/v1",
+  "source": "/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79/ops/final_format_alakazam_gate_r80_v3.json",
+  "source_sha256": "sha256:6416aeab2f6eba0c7d7ce85bc59a02929cc900f573f74b0a6a7767a7b94148f0",
+  "status": "ready"
+}

@@ -1,0 +1,19 @@
+[Unit]
+Description=Register final-format Crustle H10 runtime
+After=pokebot-final-format-crustle-r113-h10-bootstrap.service
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-crustle-r113-h10-bootstrap-ready.json
+OnSuccess=pokebot-final-format-crustle-r113-h10-rl.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent:/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/register_post_marnie_crustle_h10.py --bootstrap-family /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-crustle-r113-h10-expert-bootstrap-v2 --bootstrap-ready /home/inzi/poke-bot-agent/outputs/state/final-format-crustle-r113-h10-bootstrap-ready.json --expert /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/crustle-v2/PROTECTED_EXPERT_CORPUS.json --runtime-tree /home/inzi/poke-bot-agent/outputs/state/slowking-public-matchup-tree-v33.json --source-registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r113_iter20_v3.json --runtime-registry /home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/runtime/specialist_runtime_registry_h10_r113.json --source-selector /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_h10_r104.env --selector /home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/runtime/specialist_runtime_h10_r113.env --state-root /home/inzi/poke-bot-agent/outputs/state --guide /home/inzi/poke-bot-agent/config/deck_guides/crustle.yaml --curriculum-root /home/inzi/poke-bot-agent/outputs/state/final_format_crustle_curriculum_r113_h10_19
+Restart=on-failure
+RestartSec=60
+MemoryHigh=8G
+MemoryMax=12G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/logs/register.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/logs/register.log

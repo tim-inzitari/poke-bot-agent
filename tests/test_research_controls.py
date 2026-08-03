@@ -57,6 +57,11 @@ def _passing_result(contract: dict) -> tuple[dict, dict, str]:
                 if "s_plus_individual_floor" in criteria
                 else {}
             ),
+            **(
+                {"accepted_official_holdout_non_regression": True}
+                if "accepted_official_holdout_non_regression" in criteria
+                else {}
+            ),
         },
         "audit": {
             "passed": True,
@@ -80,6 +85,24 @@ def _passing_result(contract: dict) -> tuple[dict, dict, str]:
             }
             for row in gate["roster"]
         ],
+        **(
+            {
+                "official_control_gate": {
+                    "audit_passed": True,
+                    "checkpoint_digest_matches": True,
+                    "games": 1000,
+                    "minimum_win_rate": float(
+                        criteria["accepted_official_holdout_non_regression"]
+                    ),
+                    "passed": True,
+                    "replay_eligible": False,
+                    "training_eligible": False,
+                    "win_rate": 0.60,
+                }
+            }
+            if "accepted_official_holdout_non_regression" in criteria
+            else {}
+        ),
     }
     commit = {
         "last_completed_iteration": 20,
@@ -268,6 +291,36 @@ def test_retirement_rejects_partial_roster_and_package_alias() -> None:
             exact_result_digest=DIGEST,
             commit_record=commit,
             commit_digest=commit_digest,
+        )
+
+
+def test_retirement_accepts_and_verifies_official_holdout_check() -> None:
+    registry = load_research_control_registry(REGISTRY)
+    contract = json.loads(GATE.read_text())
+    contract["next_gate"]["pass_criteria"][
+        "accepted_official_holdout_non_regression"
+    ] = 0.5
+    result, commit, commit_digest = _passing_result(contract)
+    updated = retire_passed_gate(
+        registry=registry,
+        gate_contract=contract,
+        exact_result=result,
+        exact_result_digest=DIGEST,
+        commit_record=commit,
+        commit_digest=commit_digest,
+    )
+    assert updated["version"] == registry["version"] + 1
+
+    bad_result, bad_commit, bad_commit_digest = _passing_result(contract)
+    bad_result["official_control_gate"]["checkpoint_digest_matches"] = False
+    with pytest.raises(ValueError, match="contract thresholds"):
+        retire_passed_gate(
+            registry=registry,
+            gate_contract=contract,
+            exact_result=bad_result,
+            exact_result_digest=DIGEST,
+            commit_record=bad_commit,
+            commit_digest=bad_commit_digest,
         )
 
     registry = load_research_control_registry(REGISTRY)

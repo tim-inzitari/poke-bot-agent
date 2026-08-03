@@ -18,7 +18,11 @@ H10_FF_DIM = 2496
 H10_HEAD_RESIDUAL_WIDTH = 512
 
 
-def final_format_config(parent: config.ModelConfig) -> config.ModelConfig:
+def final_format_config(
+    parent: config.ModelConfig,
+    *,
+    directional_fusion_v3: bool = False,
+) -> config.ModelConfig:
     """Return the exact H10-I child config for the validated ordinary parent."""
 
     expected = {
@@ -52,6 +56,12 @@ def final_format_config(parent: config.ModelConfig) -> config.ModelConfig:
         combo_state_head_enabled=True,
         decision_fusion_dedicated_routes_enabled=True,
         decision_fusion_dedicated_routes_runtime_enabled=True,
+        decision_fusion_typed_output_centered_routes_enabled=bool(
+            directional_fusion_v3
+        ),
+        decision_fusion_action_type_reliability_cap=(
+            0.25 if directional_fusion_v3 else 1.0
+        ),
         h10_capacity_enabled=True,
         h10_head_residual_width=H10_HEAD_RESIDUAL_WIDTH,
     )
@@ -187,6 +197,7 @@ def migrate_state(
         "setup_board_outcome_head.",
         "combo_state_head.",
         "decision_fusion.dedicated_routes.",
+        "decision_fusion.dedicated_route_log_reliability.",
         "h10_head_residuals.",
     )
     unexpected = [
@@ -296,8 +307,15 @@ def step_zero_parity(
     }
 
 
-def build_h10_child(parent: TemporalCabtTransformer) -> tuple[TemporalCabtTransformer, dict[str, Any]]:
-    cfg = final_format_config(parent.cfg)
+def build_h10_child(
+    parent: TemporalCabtTransformer,
+    *,
+    directional_fusion_v3: bool = False,
+) -> tuple[TemporalCabtTransformer, dict[str, Any]]:
+    cfg = final_format_config(
+        parent.cfg,
+        directional_fusion_v3=directional_fusion_v3,
+    )
     child = build_model(
         cfg,
         device=torch.device("cpu"),
@@ -315,4 +333,5 @@ def build_h10_child(parent: TemporalCabtTransformer) -> tuple[TemporalCabtTransf
         "migration": migration,
         "step_zero_parity": parity,
         "learned_parameters": int(sum(p.numel() for p in child.parameters())),
+        "directional_fusion_v3": bool(directional_fusion_v3),
     }

@@ -36,7 +36,7 @@ from scripts.run_specialist_cycle_handoff import (  # noqa: E402
 
 STATIC_SCHEMA = "poke_bot.final_format_alakazam_static_preparation/v1"
 VALIDATION_SCHEMA = (
-    "poke_bot.final_format_alakazam_static_preparation_validation/v11"
+    "poke_bot.final_format_alakazam_static_preparation_validation/v12"
 )
 FROZEN_REGISTRY_SCHEMA = "poke_bot.frozen_specialist_registry/v1"
 EXPECTED_PARENT = (
@@ -162,7 +162,7 @@ def validate_static(
         != "static_preparation_complete_slowking_failed_experiment_boundary_reached_waiting_for_g0_g1"
         or validation.get("schema") != VALIDATION_SCHEMA
         or validation.get("status")
-        != "validated_static_and_h10_handoff_rehearsal_seat_gate_ready"
+        != "revalidated_against_revision105_h10_source_snapshot"
         or validation.get("static_contract_sha256")
         != sha256(static_contract_path)
         or bridge.get("specialist_id") != "alakazam"
@@ -240,7 +240,7 @@ def validate_static(
         state_path=state_path,
         cycle_contract=cycle,
     )
-    if order != ["alakazam", "marnie-s-grimmsnarl-ex"]:
+    if order != ["alakazam", "marnie-s-grimmsnarl-ex", "crustle"]:
         raise RuntimeError("post-fleet refresh order changed")
     return {
         "static_contract_sha256": sha256(static_contract_path),

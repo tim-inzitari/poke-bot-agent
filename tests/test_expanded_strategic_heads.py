@@ -14,6 +14,8 @@ from poke_bot.model import (
     DECISION_FUSION_V2_ROUTE_SCHEMA,
     DECISION_FUSION_V2_SCHEMA,
     DECISION_FUSION_V2_TOTAL_DELTA_CAP,
+    DECISION_FUSION_V3_ROUTE_SCHEMA,
+    DECISION_FUSION_V3_SCHEMA,
     EXPANDED_HEAD_KEY_PREFIXES,
     EXPANDED_HEAD_NAMES,
     EXPANDED_HEAD_SCHEMA,
@@ -35,6 +37,8 @@ def _cfg(
     combo_state: bool = False,
     dedicated_routes: bool = False,
     dedicated_routes_runtime: bool = False,
+    typed_output_centered_routes: bool = False,
+    action_type_reliability_cap: float = 1.0,
 ) -> config.ModelConfig:
     cfg = config.ModelConfig(
         d_model=16,
@@ -56,6 +60,12 @@ def _cfg(
         decision_fusion_dedicated_routes_runtime_enabled=(
             dedicated_routes_runtime
         ),
+        decision_fusion_typed_output_centered_routes_enabled=(
+            typed_output_centered_routes
+        ),
+        decision_fusion_action_type_reliability_cap=(
+            action_type_reliability_cap
+        ),
         decision_fusion_width=8,
         dropout=0.0,
     )
@@ -71,6 +81,8 @@ def _model(
     combo_state: bool = False,
     dedicated_routes: bool = False,
     dedicated_routes_runtime: bool = False,
+    typed_output_centered_routes: bool = False,
+    action_type_reliability_cap: float = 1.0,
 ):
     return build_model(
         _cfg(
@@ -81,6 +93,8 @@ def _model(
             combo_state=combo_state,
             dedicated_routes=dedicated_routes,
             dedicated_routes_runtime=dedicated_routes_runtime,
+            typed_output_centered_routes=typed_output_centered_routes,
+            action_type_reliability_cap=action_type_reliability_cap,
         ),
         aux_archetype_classes=4,
         encoder_vocab=64,
@@ -508,6 +522,59 @@ def test_fusion_v2_routes_are_distinct_option_conditioned_and_bounded() -> None:
         with torch.no_grad():
             route.network[-1].weight.copy_(saved_weight)
             route.network[-1].bias.copy_(saved_bias)
+
+
+def test_fusion_v3_routes_require_typed_output_and_bound_reliability() -> None:
+    model = _model(
+        enabled=True,
+        fusion=True,
+        fusion_runtime=True,
+        setup_board_outcome=True,
+        dedicated_routes=True,
+        dedicated_routes_runtime=True,
+        typed_output_centered_routes=True,
+        action_type_reliability_cap=0.25,
+    )
+    fusion = model.decision_fusion
+    assert fusion is not None
+    assert fusion.inventory(runtime_enabled=True)["schema"] == DECISION_FUSION_V3_SCHEMA
+    assert (
+        fusion.inventory(runtime_enabled=True)["dedicated_routes"]["schema"]
+        == DECISION_FUSION_V3_ROUTE_SCHEMA
+    )
+    with torch.no_grad():
+        for route in fusion.dedicated_routes.values():
+            route.network[-1].weight.fill_(0.1)
+            route.network[-1].bias.fill_(0.2)
+
+    batch, option_count = 2, 4
+    option_hidden = torch.randn(batch, option_count, model.d_model)
+    state_sources, option_sources = _fusion_sources(
+        model, batch=batch, options=option_count
+    )
+    original_action_type = option_sources["action_type"]
+    option_sources["action_type"] = torch.zeros_like(original_action_type)
+    zero_delta = fusion.dedicated_route_deltas(
+        option_hidden,
+        state_sources=state_sources,
+        option_sources=option_sources,
+    )["action_type"]
+    torch.testing.assert_close(zero_delta, torch.zeros_like(zero_delta), rtol=0, atol=0)
+
+    option_sources["action_type"] = original_action_type
+    deltas = fusion.dedicated_route_deltas(
+        option_hidden,
+        state_sources=state_sources,
+        option_sources=option_sources,
+    )
+    assert bool(torch.count_nonzero(deltas["action_type"]).item())
+    assert bool((deltas["action_type"].abs() <= 0.25 + 1e-7).all())
+    total = fusion.dedicated_action_delta(
+        option_hidden,
+        state_sources=state_sources,
+        option_sources=option_sources,
+    )
+    assert bool((total.abs() <= DECISION_FUSION_V2_TOTAL_DELTA_CAP + 1e-7).all())
 
 
 def test_fusion_v2_serving_route_is_separately_receipt_gated() -> None:

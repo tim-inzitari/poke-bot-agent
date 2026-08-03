@@ -113,6 +113,7 @@ from poke_bot.train import (  # noqa: E402
     COMBO_STATE_BASE_LOSS_WEIGHT,
     GUIDE_TRAINING_MODE_LEGACY,
     GUIDE_TRAINING_MODE_STRATEGIC,
+    GUIDE_STRATEGIC_TRAINING_MODES,
     GUIDE_TRAINING_MODES,
     SETUP_BOARD_OUTCOME_BASE_LOSS_WEIGHT,
     TrainConfig,
@@ -429,7 +430,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         help=(
             "Checksum-bound current + selected-history registry for the "
-            "22-member own-model population. Required in population mode."
+            "14-member own-model population. Required in population mode."
         ),
     )
     p.add_argument(
@@ -1342,7 +1343,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     combo_weight = float(args.combo_state_loss_weight)
     if not math.isfinite(combo_weight) or combo_weight < 0.0:
         p.error("--combo-state-loss-weight must be finite and nonnegative")
-    if specialist == "slowking":
+    combo_required_specialists = {"slowking", "marnie-s-grimmsnarl-ex"}
+    if specialist in combo_required_specialists:
         if not math.isclose(
             combo_weight,
             COMBO_STATE_BASE_LOSS_WEIGHT,
@@ -1350,11 +1352,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             abs_tol=1e-12,
         ):
             p.error(
-                "Slowking requires --combo-state-loss-weight 0.025 during "
+                f"{specialist} requires --combo-state-loss-weight 0.025 during "
                 "ordinary RL and scheduled expert rehearsal"
             )
     elif combo_weight != 0.0:
-        p.error("--combo-state-loss-weight is authorized only for Slowking")
+        p.error(
+            "--combo-state-loss-weight is authorized only for Slowking and "
+            "Marnie's Grimmsnarl ex"
+        )
     guide_training_mode = str(args.current_deck_guide_training_mode)
     if guide_training_mode not in GUIDE_TRAINING_MODES:
         p.error(
@@ -1365,10 +1370,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         args.current_deck_guide_head_role_map,
         args.current_deck_guide_curriculum_validation_receipt,
     )
-    if guide_training_mode == GUIDE_TRAINING_MODE_STRATEGIC:
+    if guide_training_mode in GUIDE_STRATEGIC_TRAINING_MODES:
         if args.mode != "specialist":
             p.error(
-                "--current-deck-guide-training-mode strategic_curriculum_v1 "
+                "a strategic --current-deck-guide-training-mode "
                 "requires --mode specialist"
             )
         if not math.isclose(
@@ -1378,12 +1383,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             abs_tol=1e-12,
         ):
             p.error(
-                "strategic_curriculum_v1 requires "
+                "strategic guide training requires "
                 "--setup-board-outcome-loss-weight 0.025"
             )
         if any(value is None for value in strategic_inputs):
             p.error(
-                "strategic_curriculum_v1 requires its curriculum spec, "
+                "strategic guide training requires its curriculum spec, "
                 "head-role map, and validation receipt"
             )
         try:
@@ -1396,13 +1401,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 validation_receipt=str(
                     args.current_deck_guide_curriculum_validation_receipt
                 ),
+                expected_training_mode=guide_training_mode,
             )
         except (OSError, TypeError, ValueError) as exc:
             p.error(f"strategic curriculum receipt gate failed: {exc}")
     elif any(value is not None for value in strategic_inputs):
         p.error(
             "strategic curriculum artifacts require "
-            "--current-deck-guide-training-mode strategic_curriculum_v1"
+            "a strategic --current-deck-guide-training-mode"
         )
     adapter_epochs = int(args.dormant_matchup_adapter_epochs)
     if adapter_epochs < 0:
@@ -2156,8 +2162,24 @@ def _checkpoint_contract(
             str(key).startswith("decision_fusion.") for key in state_dict
         )
     )
+    v2_to_v3_inference_profile = bool(
+        allow_legacy_inference_profile
+        and actual.get("decision_fusion_enabled") is True
+        and actual.get("decision_fusion_runtime_enabled") is True
+        and expected.get("decision_fusion_typed_output_centered_routes_enabled")
+        is True
+        and expected.get("decision_fusion_action_type_reliability_cap") == 0.25
+        and actual.get("decision_fusion_typed_output_centered_routes_enabled")
+        in {None, False}
+        and actual.get("decision_fusion_action_type_reliability_cap") in {None, 1.0}
+        and changed
+        == [
+            "decision_fusion_action_type_reliability_cap",
+            "decision_fusion_typed_output_centered_routes_enabled",
+        ]
+    )
     if actual != expected:
-        if not legacy_inference_profile:
+        if not (legacy_inference_profile or v2_to_v3_inference_profile):
             raise RuntimeError(
                 f"checkpoint does not match exact intended pure-RL model profile at "
                 f"{path}; changed_fields={changed}"
@@ -2267,8 +2289,9 @@ def _population_collect_specs(
             != "poke_bot.population_opponent_registry/v1"
             or opponent_registry.get("external_agents_training_eligible")
             is not False
-            or int(opponent_registry.get("member_count") or 0) != 22
-            or len(specialist_ids) != 22
+            or int(opponent_registry.get("member_count") or 0) < 1
+            or len(specialist_ids)
+            != int(opponent_registry.get("member_count") or 0)
             or covered != specialist_ids
             or not rows
             or "" in opponent_ids
@@ -2299,11 +2322,11 @@ def _population_collect_specs(
                 )
         return [by_id[opponent_id] for opponent_id in opponent_ids]
     if (
-        len(frozen_specialist_ids) != 22
-        or len(set(frozen_specialist_ids)) != 22
+        not frozen_specialist_ids
+        or len(set(frozen_specialist_ids)) != len(frozen_specialist_ids)
     ):
         raise RuntimeError(
-            "population collection requires exactly 22 frozen specialists"
+            "population collection requires a nonempty unique frozen roster"
         )
     missing = [
         specialist_id
@@ -2461,7 +2484,7 @@ def _design_contract(
                     },
                 }
                 if args.current_deck_guide_training_mode
-                == GUIDE_TRAINING_MODE_STRATEGIC
+                in GUIDE_STRATEGIC_TRAINING_MODES
                 else {}
             ),
             "expanded_head_loss_weight_overrides": (
@@ -2829,6 +2852,9 @@ _BOUNDARY_MIGRATABLE_DESIGN_PATHS = frozenset(
         # A source repair changes the checksum-bound training implementation.
         # The replacement curriculum receipt is fully revalidated by launch
         # preflight and may replace only its identity tuple at a clean boundary.
+        "learner.current_deck_guide_training_mode",
+        "learner.current_deck_guide_strategic_curriculum.curriculum_spec",
+        "learner.current_deck_guide_strategic_curriculum.head_role_map",
         "learner.current_deck_guide_strategic_curriculum.validation_receipt",
         "learner.exact_gate_regression_margin",
         "learner.exact_gate_regression_patience",
@@ -2904,6 +2930,180 @@ _CURRENT_DECK_GUIDE_WEIGHT_MIGRATION_PATHS = frozenset(
 _TEAL_AUXILIARY_HEAD_REBALANCE_PATHS = frozenset(
     {"learner.expanded_head_loss_weight_overrides"}
 )
+
+_ITERATION15_OPTIMIZER_CAP_RECOVERY_PATHS = frozenset(
+    {
+        "learner.max_decisions_per_batch",
+        "learner.warmup_max_decisions_per_batch",
+    }
+)
+
+_ITERATION15_R105_RELOCATION_PATHS = frozenset(
+    {
+        "gates.active_contract.path",
+        "gates.frozen_specialist_registry.path",
+        "learner.current_deck_guide_strategic_curriculum.curriculum_spec.path",
+        "learner.current_deck_guide_strategic_curriculum.head_role_map.path",
+        "learner.current_deck_guide_strategic_curriculum.validation_receipt.path",
+    }
+)
+
+_FUSION_V3_CONTRACT_REPAIR_PATHS = frozenset(
+    {
+        "learner.profile.decision_fusion_action_type_reliability_cap",
+        "learner.profile.decision_fusion_typed_output_centered_routes_enabled",
+        "learner.trainable_parameters",
+    }
+)
+
+
+_LATENT_LOOKAHEAD_R118_ACTIVATION_PATHS = frozenset(
+    {
+        "learner.profile.latent_lookahead_action_authority_enabled",
+        "learner.profile.latent_lookahead_enabled",
+        "learner.profile.latent_lookahead_policy_aid_cap",
+        "learner.profile.latent_lookahead_width",
+        "learner.trainable_parameters",
+    }
+)
+
+
+def _safe_latent_lookahead_r118_activation(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only the owner-requested Generation-15 latent-head shape.
+
+    This is intentionally narrower than the ordinary boundary allowlist: the
+    protected Marnie parent must gain exactly the four latent-profile fields
+    and the corresponding 412,130 trainable parameters.  No other model,
+    collection, gate, optimizer, or opponent field may ride this migration.
+    """
+    if str(reason or "").strip() != "receipt_backed_latent_policy_activation_r118":
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if non_source != _LATENT_LOOKAHEAD_R118_ACTIVATION_PATHS:
+        return False
+    before = dict(stored.get("learner") or {})
+    after = dict(current.get("learner") or {})
+    before_profile = dict(before.get("profile") or {})
+    after_profile = dict(after.get("profile") or {})
+    before_params = int(before.get("trainable_parameters", -1))
+    after_params = int(after.get("trainable_parameters", -1))
+    return bool(
+        before_profile.get("latent_lookahead_enabled") in (None, False)
+        and before_profile.get("latent_lookahead_action_authority_enabled")
+        in (None, False)
+        and after_profile.get("latent_lookahead_enabled") is True
+        and after_profile.get("latent_lookahead_action_authority_enabled") is True
+        and int(after_profile.get("latent_lookahead_width", -1)) == 512
+        and float(after_profile.get("latent_lookahead_policy_aid_cap", -1.0))
+        == 0.25
+        and before_params == 10_645_185
+        and after_params == 11_057_315
+        and after_params - before_params == 412_130
+    )
+
+
+def _safe_fusion_v3_contract_repair(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Repair only the iter-17 Fusion-v3 schema/19-route omission.
+
+    The learner checkpoint is the architecture authority.  The prior design
+    receipt omitted the two typed-routing fields and was written before its 19
+    learned route-reliability scalars were represented in the parameter count.
+    This is deliberately exact so it cannot authorize a wider model change.
+    """
+    if str(reason or "").strip() != "receipt_backed_fusion_v3_contract_repair_v1":
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    if non_source != _FUSION_V3_CONTRACT_REPAIR_PATHS:
+        return False
+    before = dict(stored.get("learner") or {})
+    after = dict(current.get("learner") or {})
+    before_profile = dict(before.get("profile") or {})
+    after_profile = dict(after.get("profile") or {})
+    return bool(
+        before_profile.get(
+            "decision_fusion_typed_output_centered_routes_enabled"
+        )
+        is None
+        and before_profile.get("decision_fusion_action_type_reliability_cap")
+        is None
+        and after_profile.get(
+            "decision_fusion_typed_output_centered_routes_enabled"
+        )
+        is True
+        and after_profile.get("decision_fusion_action_type_reliability_cap")
+        == 0.25
+        and int(before.get("trainable_parameters", -1)) == 10_645_166
+        and int(after.get("trainable_parameters", -1)) == 10_645_185
+        and after_profile.get("decision_fusion_enabled") is True
+        and after_profile.get("decision_fusion_runtime_enabled") is True
+    )
+
+
+def _safe_iteration15_optimizer_cap_recovery(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Allow only the revision-105 2,048 -> 1,536 optimizer recovery."""
+    if (
+        str(reason or "").strip()
+        != "receipt_backed_iteration15_optimizer_cap_recovery_v1"
+    ):
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    relocation_paths = non_source - _ITERATION15_OPTIMIZER_CAP_RECOVERY_PATHS
+    if (
+        not _ITERATION15_OPTIMIZER_CAP_RECOVERY_PATHS.issubset(non_source)
+        or not relocation_paths.issubset(_ITERATION15_R105_RELOCATION_PATHS)
+    ):
+        return False
+    before = dict(stored.get("learner") or {})
+    after = dict(current.get("learner") or {})
+
+    def path_value(root: dict[str, Any], path: str) -> Any:
+        value: Any = root
+        for part in path.split("."):
+            if not isinstance(value, dict) or part not in value:
+                return None
+            value = value[part]
+        return value
+
+    for path in relocation_paths:
+        before_path = str(path_value(stored, path) or "")
+        after_path = str(path_value(current, path) or "")
+        if (
+            "/final-format-alakazam-fusion-v3-r104/" not in before_path
+            or after_path
+            != before_path.replace(
+                "/final-format-alakazam-fusion-v3-r104/",
+                "/final-format-alakazam-fusion-v3-r105/",
+            )
+        ):
+            return False
+    return bool(
+        int(before.get("games_per_batch", -1)) == 240
+        and int(after.get("games_per_batch", -1)) == 240
+        and int(before.get("warmup_iterations", -1)) == 30
+        and int(after.get("warmup_iterations", -1)) == 30
+        and int(before.get("max_decisions_per_batch", -1)) == 2048
+        and int(before.get("warmup_max_decisions_per_batch", -1)) == 2048
+        and int(after.get("max_decisions_per_batch", -1)) == 1536
+        and int(after.get("warmup_max_decisions_per_batch", -1)) == 1536
+    )
 
 
 def _safe_teal_auxiliary_head_rebalance(
@@ -3191,10 +3391,13 @@ def _validate_or_migrate_design_fingerprint(
     last_completed = int(state.get("last_completed_iteration", -2))
 
     # A specialist ceiling reduction is safe at a committed boundary when the
-    # new ceiling remains strictly beyond the next iteration. Increasing the
-    # ceiling, lowering it past current progress, or changing any other run
-    # identity field remains forbidden. The paired strong-public seed-contract
-    # field is already covered by the collection migration allowlist.
+    # new ceiling remains strictly beyond the next iteration.  Revision 113's
+    # one exact Marnie extension (16 -> 21 launched iterations at the committed
+    # 5 -> 6 boundary) is also safe and owner-authorized: it changes only the
+    # future stopping boundary and cannot reinterpret an existing collection.
+    # Every other increase, lowering past current progress, or run-identity
+    # change remains forbidden. The paired strong-public seed-contract field
+    # is already covered by the collection migration allowlist.
     stored_iterations = int((stored.get("run") or {}).get("iterations", -1))
     current_iterations = int((current.get("run") or {}).get("iterations", -1))
     safe_ceiling_reduction = bool(
@@ -3202,6 +3405,14 @@ def _validate_or_migrate_design_fingerprint(
         and stored_iterations > 0
         and next_iteration >= 0
         and next_iteration < current_iterations < stored_iterations
+    )
+    safe_marnie_revision113_ceiling_extension = bool(
+        "run.iterations" in changed
+        and stored_iterations == 16
+        and current_iterations == 21
+        and last_completed == 5
+        and next_iteration == 6
+        and str(migration_reason).strip() == "receipt_backed_opponent_tiers_r111"
     )
     safe_decision_fusion_warmup = _safe_decision_fusion_warmup_migration(
         stored=stored,
@@ -3231,6 +3442,28 @@ def _validate_or_migrate_design_fingerprint(
             reason=migration_reason,
         )
     )
+    safe_iteration15_optimizer_cap_recovery = (
+        _safe_iteration15_optimizer_cap_recovery(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
+    safe_fusion_v3_contract_repair = _safe_fusion_v3_contract_repair(
+        stored=stored,
+        current=current,
+        changed=changed,
+        reason=migration_reason,
+    )
+    safe_latent_lookahead_r118_activation = (
+        _safe_latent_lookahead_r118_activation(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
     disallowed = [
         path
         for path in changed
@@ -3240,6 +3473,10 @@ def _validate_or_migrate_design_fingerprint(
         )
         and not path.startswith("source.")
         and not (path == "run.iterations" and safe_ceiling_reduction)
+        and not (
+            path == "run.iterations"
+            and safe_marnie_revision113_ceiling_extension
+        )
         and not (
             safe_decision_fusion_warmup
             and path in _DECISION_FUSION_WARMUP_MIGRATION_PATHS
@@ -3255,6 +3492,14 @@ def _validate_or_migrate_design_fingerprint(
         and not (
             safe_teal_auxiliary_head_rebalance
             and path in _TEAL_AUXILIARY_HEAD_REBALANCE_PATHS
+        )
+        and not (
+            safe_fusion_v3_contract_repair
+            and path in _FUSION_V3_CONTRACT_REPAIR_PATHS
+        )
+        and not (
+            safe_latent_lookahead_r118_activation
+            and path in _LATENT_LOOKAHEAD_R118_ACTIVATION_PATHS
         )
     ]
     if disallowed:
@@ -3337,11 +3582,55 @@ def _validate_or_migrate_design_fingerprint(
             ),
         )
     )
+    # The immutable N+1 collection is governed by the design fingerprint bound
+    # into its own receipt.  At the receipt-backed train boundary, a later
+    # *allowlisted* operational or gate upgrade governs only the continuation.
+    # Do not force recollection merely because its stricter terminal gate or a
+    # recovery source fix now has a different current fingerprint.
+    receipt_backed_allowed_migration = bool(
+        preserved_collection is not None
+        and preserved_collection_fingerprint == stored_digest
+        and all(
+            path.startswith("source.")
+            # A collection is bound to its original operational contract.
+            # Only its future formal gate identity may be upgraded at this
+            # recovery boundary; learner, scheduling, and collection-shape
+            # changes must start a genuinely clean next transaction.
+            or path == "collection.strong_public_practice.active_gate_id"
+            # A receipt-backed terminal-ceiling reduction does not alter the
+            # already sealed N+1 games.  The seed contract records the same
+            # horizon and must migrate atomically with run.iterations.
+            or (
+                safe_ceiling_reduction
+                and path
+                in {
+                    "run.iterations",
+                    "collection.strong_public_practice.seed_contract.iterations",
+                }
+            )
+            or path == "gates.active_contract"
+            or path.startswith("gates.active_contract.")
+            or (
+                safe_iteration15_optimizer_cap_recovery
+                and path
+                in (
+                    _ITERATION15_OPTIMIZER_CAP_RECOVERY_PATHS
+                    | _ITERATION15_R105_RELOCATION_PATHS
+                )
+            )
+            or (
+                safe_fusion_v3_contract_repair
+                and path in _FUSION_V3_CONTRACT_REPAIR_PATHS
+            )
+            for path in changed
+        )
+    )
     artifacts_are_preserved_collection = bool(
         preserved_collection is not None
         and (
             initial_collection_resume
             or preserved_collection_fingerprint == current_digest
+            or receipt_backed_allowed_migration
             or (
                 source_only_change
                 and (
@@ -3417,7 +3706,15 @@ def _validate_or_migrate_design_fingerprint(
     ):
         raise RuntimeError(
             "design migration requires a clean boundary or one verified completed "
-            "collection shard with no train/eval artifacts"
+            "collection shard with no train/eval artifacts; "
+            f"next={next_iteration} last={last_completed} changed={changed} "
+            f"source_only={source_only_change} "
+            f"preserved_collection={preserved_collection is not None} "
+            f"preserved_fingerprint={preserved_collection_fingerprint} "
+            f"stored={stored_digest} current={current_digest} "
+            f"next_artifacts={sorted(str(path) for path in next_artifact_set)} "
+            f"preserved_collection_ok={artifacts_are_preserved_collection} "
+            f"preserved_transaction_ok={artifacts_are_preserved_transaction}"
         )
     committed = (
         json.loads(commit_path.read_text(encoding="utf-8"))
@@ -3608,6 +3905,31 @@ def _assert_exact_training_seat_stage(stage: dict[str, Any]) -> None:
         )
 
 
+def _assert_valid_replay_seat_projection(stage: dict[str, Any]) -> None:
+    """Validate replay provenance without imposing source-game scheduling on it.
+
+    A source game has exactly one *assigned* learner seat, which is the
+    population governed by the final-format 50/50 contract.  A self-play game
+    can, however, emit records from both player perspectives.  The replay
+    window additionally spans immutable adjacent shards.  Its raw sequence
+    count is therefore a projection of the scheduled games, not a second game
+    scheduler and is not required to be even.
+    """
+
+    if (
+        stage.get("invalid_seats")
+        or int(stage.get("total", 0)) <= 0
+        or int(stage.get("total", -1)) != int(stage.get("expected_total", -2))
+    ):
+        raise RuntimeError(
+            "invalid replay-seat projection: "
+            f"stage={stage.get('stage')} seat0={stage.get('seat0')} "
+            f"seat1={stage.get('seat1')} total={stage.get('total')} "
+            f"expected={stage.get('expected_total')} "
+            f"invalid={stage.get('invalid_seats')}"
+        )
+
+
 def _commit_training_seat_split_receipt(
     *,
     run_dir: Path,
@@ -3616,7 +3938,7 @@ def _commit_training_seat_split_receipt(
     collection_receipt: dict[str, Any],
     sequences: Sequence[Any],
 ) -> dict[str, Any]:
-    """Bind assigned, retained, and actually consumed seat populations."""
+    """Bind source-game seat populations and the derived replay projection."""
 
     collection_receipt_path = Path(
         collection_receipt.get("receipt_path")
@@ -3627,19 +3949,47 @@ def _commit_training_seat_split_receipt(
             "training-seat receipt cannot bind missing collection receipt: "
             f"{collection_receipt_path}"
         )
+    collection_evidence = collection_receipt
+    if (
+        collection_receipt.get("shard") is not None
+        and not isinstance(collection_receipt.get("shard"), dict)
+    ):
+        try:
+            sealed_collection = json.loads(
+                collection_receipt_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, ValueError, TypeError) as exc:
+            raise RuntimeError(
+                "training-seat recovery cannot read its sealed collection receipt"
+            ) from exc
+        if (
+            not isinstance(sealed_collection, dict)
+            or sealed_collection.get("schema") != _COMPLETED_COLLECTION_SCHEMA
+            or int(sealed_collection.get("iteration", -1)) != int(iteration)
+        ):
+            raise RuntimeError(
+                "training-seat recovery found an invalid sealed collection receipt"
+            )
+        collection_evidence = {
+            **sealed_collection,
+            "receipt_path": str(collection_receipt_path),
+        }
     # Seat receipts describe the already-collected population, so bind them to
     # the design that produced that collection.  A recovery-only source patch
     # may legitimately change the current design fingerprint without changing
     # the immutable collection or its seat assignment.
     receipt_design_fingerprint = str(
-        collection_receipt.get("design_fingerprint_at_collection")
+        collection_evidence.get("design_fingerprint_at_collection")
         or design_fingerprint
     )
     if not receipt_design_fingerprint.startswith("sha256:"):
         raise RuntimeError(
             "training-seat receipt lacks a valid collection design fingerprint"
         )
-    split = dict((collection_receipt.get("stats") or {}).get("training_seat_split") or {})
+    split = dict(
+        (collection_evidence.get("stats") or {}).get("training_seat_split")
+        or {}
+    )
     assigned = dict(split.get("assigned_source_games") or {})
     actual = dict(split.get("retained_source_games") or {})
     _assert_exact_training_seat_stage(assigned)
@@ -3649,7 +3999,7 @@ def _commit_training_seat_split_receipt(
         [getattr(sequence, "seat", None) for sequence in sequences],
         expected_total=len(sequences),
     )
-    _assert_exact_training_seat_stage(consumed)
+    _assert_valid_replay_seat_projection(consumed)
     sequence_identity_digest = _canonical_digest(
         [
             {
@@ -3662,6 +4012,74 @@ def _commit_training_seat_split_receipt(
         ]
     )
     receipt_root = Path(run_dir) / "seat_split_receipts"
+    receipt_path = receipt_root / f"iter_{int(iteration):05d}.index.json"
+
+    # A deployment-root migration can relocate the same hard-linked run tree
+    # after collection and seat receipts have already been sealed.  Their
+    # embedded absolute paths are immutable audit evidence, not mutable runtime
+    # pointers.  Validate the existing index semantically and reuse it byte for
+    # byte instead of rebuilding it with the new root spelling.
+    if receipt_path.is_file():
+        existing = json.loads(receipt_path.read_text(encoding="utf-8"))
+        sequence_digest_matches = bool(
+            existing.get("sequence_identity_digest") == sequence_identity_digest
+        )
+        migrated_recovery = bool(design_fingerprint != receipt_design_fingerprint)
+        sealed_shard = dict(collection_evidence.get("shard") or {})
+        sealed_replay = dict(collection_evidence.get("replay_cache") or {})
+        migrated_replay_evidence_valid = bool(
+            migrated_recovery
+            and str(sealed_shard.get("sha256") or "").startswith("sha256:")
+            and int(sealed_shard.get("games", -1))
+            == int(actual.get("total", -2))
+            and int(sealed_replay.get("sequences", -1))
+            == int(actual.get("total", -2))
+        )
+        expected_populations = {
+            "assigned_source_games": assigned,
+            "retained_source_games": actual,
+            "replay_sequences_consumed": consumed,
+        }
+        if (
+            existing.get("schema")
+            != "poke_bot.alakazam_refresh_seat_split_index/v1"
+            or int(existing.get("iteration", -1)) != int(iteration)
+            or existing.get("design_fingerprint") != receipt_design_fingerprint
+            or existing.get("policy") != "exact_50_50_first_second_training"
+            or existing.get("second_seat_priority") is not False
+            or existing.get("passed") is not True
+            or (not sequence_digest_matches and not migrated_replay_evidence_valid)
+            or any(
+                existing.get(key) != value
+                for key, value in expected_populations.items()
+            )
+        ):
+            raise RuntimeError("immutable training-seat receipt changed on recovery")
+        bound_collection = dict(existing.get("collection_receipt") or {})
+        if bound_collection.get("sha256") != _sha256_file(collection_receipt_path):
+            raise RuntimeError(
+                "immutable training-seat receipt collection digest changed on recovery"
+            )
+        existing_stage_receipts = dict(existing.get("stage_receipts") or {})
+        for stage_name in ("assigned", "actual", "consumed"):
+            binding = dict(existing_stage_receipts.get(stage_name) or {})
+            bound_path = Path(str(binding.get("path") or ""))
+            if (
+                not bound_path.is_file()
+                or binding.get("sha256") != _sha256_file(bound_path)
+            ):
+                raise RuntimeError(
+                    f"immutable {stage_name} training-seat receipt binding changed"
+                )
+        print(
+            "[pure_rl] exact training-seat split reused "
+            f"iter={iteration} receipt={receipt_path} "
+            f"sequence_order_digest_match={int(sequence_digest_matches)} "
+            f"migrated_shard_proof={int(migrated_replay_evidence_valid)}",
+            flush=True,
+        )
+        return {**existing, "receipt_path": str(receipt_path)}
+
     stage_manifest_digests = dict(split.get("stage_manifest_sha256") or {})
     stage_manifest_digests["consumed"] = sequence_identity_digest
     stages = {
@@ -3675,6 +4093,7 @@ def _commit_training_seat_split_receipt(
             receipt_root
             / f"iter_{int(iteration):05d}.{stage_name}.json"
         )
+        is_source_game_stage = stage_name in {"assigned", "actual"}
         immutable_stage = {
             "schema": _TRAINING_SEAT_SPLIT_SCHEMA,
             "template_only": False,
@@ -3689,7 +4108,12 @@ def _commit_training_seat_split_receipt(
             "first_games": int(stage_row["seat0"]),
             "second_games": int(stage_row["seat1"]),
             "total_games": int(stage_row["total"]),
-            "exact_even_split": True,
+            # The first two rows are the exact scheduled source-game
+            # population.  ``consumed`` is an integrity-audited replay
+            # projection and intentionally may contain both perspectives of a
+            # self-play source game.
+            "exact_even_split": bool(is_source_game_stage),
+            "seat_balance_applicable": bool(is_source_game_stage),
             "deterministic_assignment_manifest_sha256": str(
                 stage_manifest_digests.get(stage_name) or ""
             ),
@@ -3724,7 +4148,6 @@ def _commit_training_seat_split_receipt(
             "sha256": _sha256_file(stage_path),
         }
 
-    receipt_path = receipt_root / f"iter_{int(iteration):05d}.index.json"
     immutable = {
         "schema": "poke_bot.alakazam_refresh_seat_split_index/v1",
         "iteration": int(iteration),
@@ -3742,12 +4165,6 @@ def _commit_training_seat_split_receipt(
         },
         "passed": True,
     }
-    if receipt_path.is_file():
-        existing = json.loads(receipt_path.read_text(encoding="utf-8"))
-        comparable = {key: value for key, value in existing.items() if key != "created_at_utc"}
-        if comparable != immutable:
-            raise RuntimeError("immutable training-seat receipt changed on recovery")
-        return {**existing, "receipt_path": str(receipt_path)}
     payload = {
         **immutable,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -3757,7 +4174,7 @@ def _commit_training_seat_split_receipt(
         "[pure_rl] exact training-seat split committed "
         f"iter={iteration} assigned={assigned['seat0']}/{assigned['seat1']} "
         f"retained={actual['seat0']}/{actual['seat1']} "
-        f"consumed={consumed['seat0']}/{consumed['seat1']} "
+        f"replay_projection={consumed['seat0']}/{consumed['seat1']} "
         f"receipt={receipt_path}",
         flush=True,
     )
@@ -6284,9 +6701,20 @@ class _LeafFarm:
                 }
             )
         mismatches: list[str] = []
+        # One fail-closed deadline covers the entire fan-out.  A separate
+        # 240-second wait per status queue can serialize multiple missing
+        # acknowledgements into an hour-long boundary stall even though every
+        # reload command was issued concurrently.
+        reload_deadline = time.monotonic() + 240.0
         for i, sq in enumerate(self.status_qs):
+            remaining = reload_deadline - time.monotonic()
+            if remaining <= 0.0:
+                mismatches.append(
+                    f"leaf[{i}] status timeout/error: global reload deadline exceeded"
+                )
+                continue
             try:
-                status = sq.get(timeout=240)
+                status = sq.get(timeout=remaining)
             except Exception as exc:
                 mismatches.append(f"leaf[{i}] status timeout/error: {exc}")
                 continue
@@ -9278,6 +9706,24 @@ def _collect_wave(
             except Exception:
                 pass
 
+        release_pool_before_drain = str(
+            os.environ.get(
+                "POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN", "0"
+            )
+        ).strip().lower() in {"1", "true", "yes", "on"}
+
+        def _release_exhausted_local_pool() -> None:
+            before = len(getattr(pool, "live_worker_pids", ()))
+            pool.release()
+            stats["early_local_pool_releases"] = int(
+                stats.get("early_local_pool_releases", 0)
+            ) + 1
+            print(
+                "[pure_rl] result producers drained; released exhausted "
+                f"local WorkerPool children={before} before compaction tail",
+                flush=True,
+            )
+
         if scheduler is not None:
             return iter_scheduled_additive_results(
                 local_pool=pool,
@@ -9290,6 +9736,11 @@ def _collect_wave(
                 remote_workers=remote_cap,
                 on_remote_slots=_on_remote_slots,
                 on_execution=_record_execution,
+                on_producers_drained=(
+                    _release_exhausted_local_pool
+                    if release_pool_before_drain
+                    else None
+                ),
             )
         return iter_additive_results(
             local_pool=pool,
@@ -9300,6 +9751,11 @@ def _collect_wave(
             local_workers=local_slots,
             remote_workers=remote_cap,
             on_execution=_record_execution,
+            on_producers_drained=(
+                _release_exhausted_local_pool
+                if release_pool_before_drain
+                else None
+            ),
         )
 
     # Primary: pure self-play — local MultiEnv + additive remote self_play sockets.
@@ -10675,6 +11131,87 @@ def _terminal_gate_target_matches(
     )
 
 
+def _design_contract_active_gate_id(contract: dict[str, Any]) -> str:
+    """Resolve the gate identity pinned by one design-contract snapshot."""
+
+    active = dict((contract.get("gates") or {}).get("active_contract") or {})
+    raw_path = str(active.get("path") or "").strip()
+    if not raw_path:
+        return ""
+    path = Path(raw_path).expanduser()
+    if not path.is_file():
+        return ""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(
+        (payload.get("next_gate") or {}).get("id")
+        or payload.get("active_gate_id")
+        or ""
+    )
+
+
+def _receipt_backed_gate_pointer_transition_authorized(
+    *,
+    run_dir: Path,
+    existing_gate_id: str,
+    active_gate_id: str,
+    existing_iteration: int,
+    iteration: int,
+) -> bool:
+    """Allow only an append-only, boundary-recorded gate-identity chain.
+
+    A global result pointer is mutable presentation state.  Its historical
+    result remains immutable in the old iteration commit, but a later owner
+    gate upgrade must be able to publish the next committed result.  Accept
+    neither an arbitrary pointer rewrite nor a merely similarly named gate:
+    every identity hop must be present in the design-migration receipts between
+    the two immutable commits.
+    """
+
+    if (
+        not existing_gate_id
+        or not active_gate_id
+        or existing_gate_id == active_gate_id
+        or existing_iteration >= iteration
+    ):
+        return False
+    cursor = str(existing_gate_id)
+    saw_transition = False
+    migration_dir = Path(run_dir) / "design_migrations"
+    for path in sorted(migration_dir.glob("migration_*.json")):
+        try:
+            receipt = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        boundary = int(receipt.get("boundary_next_iteration", -1))
+        if not (existing_iteration < boundary <= iteration):
+            continue
+        changed = set(receipt.get("changed_paths") or ())
+        if not any(
+            item == "gates.active_contract.path"
+            or item == "gates.active_contract.digest"
+            for item in changed
+        ):
+            continue
+        previous = receipt.get("previous_contract")
+        current = receipt.get("current_contract")
+        if not isinstance(previous, dict) or not isinstance(current, dict):
+            return False
+        prior_id = _design_contract_active_gate_id(previous)
+        next_id = _design_contract_active_gate_id(current)
+        if not prior_id or not next_id:
+            return False
+        if prior_id == next_id:
+            continue
+        if cursor != prior_id:
+            return False
+        cursor = next_id
+        saw_transition = True
+    return saw_transition and cursor == str(active_gate_id)
+
+
 def _publish_committed_active_gate_result(
     *,
     run_dir: Path,
@@ -10832,11 +11369,21 @@ def _publish_committed_active_gate_result(
             and existing_iteration >= 0
             and existing_iteration < iteration
         )
+        authorized_receipt_backed_gate_transition = (
+            _receipt_backed_gate_pointer_transition_authorized(
+                run_dir=run_dir,
+                existing_gate_id=str(existing.get("gate_id") or ""),
+                active_gate_id=str(active_gate.get("id") or ""),
+                existing_iteration=existing_iteration,
+                iteration=iteration,
+            )
+        )
         if (
             same_lineage
             and not same_gate
             and not authorized_lc55_revision
             and not authorized_configured_lc50_fallback
+            and not authorized_receipt_backed_gate_transition
         ):
             raise RuntimeError(
                 "active-gate result pointer changes gate inside one lineage"
@@ -12757,22 +13304,58 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 args.require_exact_training_seat_split
             )
             training_seat_split_receipt: Optional[dict[str, Any]] = None
-            record = None
-            if not exact_rehearsal_seats:
-                record = recover_rehearsal(
-                    run_dir,
-                    before_iteration=it,
-                    parent_digest=parent.digest,
-                    epochs=int(args.expert_rehearsal_epochs),
-                    learning_rate=float(args.expert_rehearsal_lr),
-                    manifest_identity=manifest_identity,
-                    loss_weights=loss_weights,
-                    corpus_split_seed=corpus_split_seed,
-                    expanded_head_contract=expanded_head_contract,
-                    option_conditioned_loss_weights=(
-                        option_conditioned_loss_weights
-                    ),
+            if exact_rehearsal_seats:
+                _checkpoint_path, existing_rehearsal_path = rehearsal_paths(
+                    run_dir, it
                 )
+                if existing_rehearsal_path.is_file():
+                    existing_rehearsal = json.loads(
+                        existing_rehearsal_path.read_text(encoding="utf-8")
+                    )
+                    declared_receipt = dict(
+                        existing_rehearsal.get("training_seat_split_receipt")
+                        or {}
+                    )
+                    if declared_receipt:
+                        training_seat_split_receipt = declared_receipt
+                if training_seat_split_receipt is None:
+                    existing_seat_index = (
+                        run_dir
+                        / "seat_split_receipts"
+                        / f"rehearsal_before_iter_{int(it):05d}.index.json"
+                    )
+                    if existing_seat_index.is_file():
+                        existing_index = json.loads(
+                            existing_seat_index.read_text(encoding="utf-8")
+                        )
+                        if existing_index.get("schema") != (
+                            "poke_bot.alakazam_refresh_rehearsal_seat_split_index/v1"
+                        ):
+                            raise RuntimeError(
+                                "existing rehearsal seat index schema changed"
+                            )
+                        training_seat_split_receipt = {
+                            "schema": str(existing_index["schema"]),
+                            "path": str(existing_seat_index.resolve()),
+                            "sha256": _sha256_file(existing_seat_index),
+                        }
+            # A completed rehearsal is immutable training evidence.  Reuse it
+            # before rebuilding the CPU pack, including in exact-seat mode;
+            # otherwise a benign later learner-cap migration would recompute a
+            # receipt-bound index under a new design fingerprint and fail.
+            record = recover_rehearsal(
+                run_dir,
+                before_iteration=it,
+                parent_digest=parent.digest,
+                epochs=int(args.expert_rehearsal_epochs),
+                learning_rate=float(args.expert_rehearsal_lr),
+                manifest_identity=manifest_identity,
+                loss_weights=loss_weights,
+                corpus_split_seed=corpus_split_seed,
+                expanded_head_contract=expanded_head_contract,
+                option_conditioned_loss_weights=option_conditioned_loss_weights,
+                training_seat_split_receipt=training_seat_split_receipt,
+            )
             if record is None:
                 print(
                     f"pure_rl train:expert iter={it}:   0%|"
@@ -13455,7 +14038,12 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 1,
                 min(
                     int(hw.sim_workers),
-                    int(os.environ.get("PURE_RL_HELDOUT_LOCAL_WORKERS", "64")),
+                    int(
+                        os.environ.get(
+                            "PURE_RL_HELDOUT_LOCAL_WORKERS",
+                            str(hw.sim_workers),
+                        )
+                    ),
                 ),
             )
             print(

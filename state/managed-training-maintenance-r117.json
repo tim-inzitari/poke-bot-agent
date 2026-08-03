@@ -1,0 +1,8 @@
+{
+  "schema": "poke_bot.managed_training_maintenance/v1",
+  "authority": "owner_requested_revision_117_immediate_latent_boundary",
+  "training_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+  "reason": "stop uncommitted iteration 6 and apply staged iteration-7 latent-head changes now",
+  "owner_requested": true,
+  "resume_required": true
+}

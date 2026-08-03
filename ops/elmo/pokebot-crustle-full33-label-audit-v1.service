@@ -1,7 +1,7 @@
 [Unit]
-Description=Crustle family full33 guide-label audit
+Description=Crustle family full33 v2 guide-label audit
 After=pokebot-crustle-full33-corpus-v1.service
-ConditionPathExists=/mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v1/CURRENT_DECK_GUIDE_CORPUS_READY.json
+ConditionPathExists=/mnt/Main/main/poke-bot-agent/archive/crustle-guide-corpus-family-full33-v2/CURRENT_DECK_GUIDE_CORPUS_READY.json
 
 [Service]
 Type=oneshot

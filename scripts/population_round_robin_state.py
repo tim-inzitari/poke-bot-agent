@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checksum-bound state machine for the 22-member population phase.
+"""Checksum-bound state machine for the 15-member population phase.
 
 This module does not start population training.  It provides the authoritative
 rotation and checkpoint-history rules consumed by the population controller:
@@ -20,7 +20,7 @@ from typing import Any
 READY_SCHEMA = "poke_bot.population_round_robin_ready/v1"
 STATE_SCHEMA = "poke_bot.population_round_robin_state/v1"
 BOUNDARY_SCHEMA = "poke_bot.population_member_cycle_boundary/v1"
-MEMBER_COUNT = 22
+MEMBER_COUNT = 15
 RL_EPOCHS = 5
 REHEARSAL_EPOCHS = 5
 
@@ -74,6 +74,24 @@ def validate_readiness(receipt: dict[str, Any]) -> list[dict[str, Any]]:
             raise RuntimeError(
                 "population member lacks checksum-bound own-model identity"
             )
+        for historical in row.get("selected_history") or []:
+            if (
+                not isinstance(historical, dict)
+                or not str(historical.get("checkpoint_digest") or "").startswith(
+                    "sha256:"
+                )
+                or not str(historical.get("content_digest") or "").startswith(
+                    "sha256:"
+                )
+                or not str(historical.get("checkpoint") or "")
+                or not str(historical.get("opponent_id") or "")
+                or not str(historical.get("baseline_group") or "")
+                or not str(historical.get("baseline_dir") or "")
+                or not str(historical.get("baseline_package") or "")
+            ):
+                raise RuntimeError(
+                    "population selected history lacks checksum-bound identity"
+                )
     return members
 
 
@@ -81,8 +99,8 @@ def initialize_state(receipt: dict[str, Any]) -> dict[str, Any]:
     members = validate_readiness(receipt)
     rows: list[dict[str, Any]] = []
     for row in members:
-        baseline = {
-            "role": "immutable_baseline_history",
+        current = {
+            "role": str(row.get("current_role") or "immutable_baseline_history"),
             "checkpoint": str(row["checkpoint"]),
             "checkpoint_digest": str(row["checkpoint_digest"]),
             "content_digest": str(row["content_digest"]),
@@ -99,8 +117,23 @@ def initialize_state(receipt: dict[str, Any]) -> dict[str, Any]:
                 "expert_manifest_digest": str(
                     row["expert_manifest_digest"]
                 ),
-                "current": copy.deepcopy(baseline),
-                "selected_history": [copy.deepcopy(baseline)],
+                "current": copy.deepcopy(current),
+                "selected_history": [
+                    {
+                        "role": "immutable_baseline_history",
+                        "checkpoint": str(history["checkpoint"]),
+                        "checkpoint_digest": str(history["checkpoint_digest"]),
+                        "content_digest": str(history["content_digest"]),
+                        "opponent_id": str(history["opponent_id"]),
+                        "baseline_group": str(history["baseline_group"]),
+                        "baseline_dir": str(history["baseline_dir"]),
+                        "baseline_package": str(history["baseline_package"]),
+                        "population_cycle": -1,
+                    }
+                    for history in (
+                        row.get("selected_history") or [copy.deepcopy(current)]
+                    )
+                ],
                 "rl_epochs_completed": 0,
                 "rehearsal_epochs_completed": 0,
                 "cycles_completed": 0,

@@ -1,0 +1,50 @@
+{
+  "schema": "poke_bot.final_format_marnie_h10_registration_guard/v1",
+  "status": "activated_before_registration",
+  "recorded_at_utc": "2026-08-02T19:05:14Z",
+  "goal_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "guard": {
+    "selected_bootstrap_epoch_minimum": 21,
+    "selected_bootstrap_epoch_maximum": 25,
+    "exact_bootstrap_epochs_total": 25,
+    "required_expanded_heads": [
+      "action_q",
+      "action_type",
+      "action_target",
+      "action_resource",
+      "action_utility",
+      "tactical_outcome",
+      "opponent_response",
+      "resource_forecast",
+      "game_phase",
+      "outcome_distribution",
+      "remaining_turns"
+    ],
+    "per_head_positive_train_labels_required": true,
+    "per_head_positive_validation_labels_required": true,
+    "per_head_gradient_enabled_required": true,
+    "per_head_trained_this_epoch_required": true,
+    "guide_mode_required": "strategic_directional_v2",
+    "guide_weight_required": 0.05,
+    "decision_fusion_schema_required": "poke_bot.causal_decision_fusion/v3",
+    "failure_behavior": "fail_closed_before_runtime_registration"
+  },
+  "artifacts": {
+    "goal_sha256": "sha256:04c79770e01f4592a9eaf96bb0cdec0a32150d257e1239d466565ade3806f618",
+    "registration_script_sha256": "sha256:ca7ad59b0119bf9207b1bab1e7e2d5e9f7afcf305bb522f536c1009e9a66408b",
+    "focused_test_sha256": "sha256:0284889c90736134a3d2b02085c03b7d3cdd418fa03aded031240ce80cdc6f0d",
+    "superseded_static_chain_stage_sha256": "sha256:dd61cc5c09a481f80c1877e899632c9c1c8051c6b819ee3672154777a5c4c15f"
+  },
+  "validation": {
+    "focused_tests_passed": 8,
+    "python_compile_passed": true,
+    "deployed_script_digest_matches": true,
+    "registration_service_active_during_change": false,
+    "bootstrap_pid": 608116,
+    "bootstrap_restart_count": 0,
+    "bootstrap_interrupted": false
+  },
+  "activation_boundary": "before_exact_h10_bootstrap_ready_receipt_and_registration",
+  "next_boundary": "selected_full_head_epoch_21_through_25_checkpoint"
+}

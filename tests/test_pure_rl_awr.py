@@ -13,6 +13,7 @@ from poke_bot.train import (
     _precompute_awr_baseline_cache,
     _precompute_awr_baseline_cache_reference,
     _precompute_awr_baseline_cache_value_only,
+    _policy_argmax_predictions,
     batch_losses,
     rl_train_step,
 )
@@ -109,6 +110,70 @@ def test_pure_rl_defaults_zero_aux_weights() -> None:
     assert cfg.awr_normalize_advantages is True
     assert cfg.awr_freeze_baseline is True
     assert cfg.epochs == 2
+
+
+def test_policy_only_agreement_matches_argmax_and_skips_value_head(
+    monkeypatch,
+) -> None:
+    torch.manual_seed(29)
+    model = _small_model()
+    seq = GameSequence(
+        episode_id="agreement-fast-path",
+        seat=0,
+        archetype="dragapult",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0), _decision(1)],
+    )
+    reference: list[int] = []
+    batch_losses(model, [seq], prediction_sink=reference)
+
+    def fail_value_head(*_args, **_kwargs):
+        raise AssertionError("policy-only agreement evaluated the value head")
+
+    monkeypatch.setattr(model.value_head, "forward", fail_value_head)
+    optimized: list[int] = []
+    _loss, metrics = batch_losses(
+        model,
+        [seq],
+        prediction_sink=optimized,
+        prediction_only=True,
+    )
+    assert optimized == reference
+    assert metrics.n_decisions == len(reference)
+
+
+def test_policy_agreement_uses_its_proven_inference_decision_cap(
+    monkeypatch,
+) -> None:
+    model = _small_model()
+    seq = GameSequence(
+        episode_id="agreement-cap",
+        seat=0,
+        archetype="dragapult",
+        opp_archetype="iono",
+        deck=[1] * 60,
+        value=1.0,
+        decisions=[_decision(0)],
+    )
+    cfg = TrainConfig.pure_rl_defaults(
+        games_per_batch=7,
+        max_decisions_per_batch=3072,
+        agreement_max_decisions_per_batch=6144,
+    )
+    captured: dict[str, int] = {}
+
+    def capture_batches(
+        sequences, games_per_batch, max_decisions, shuffle, seed, epoch
+    ):
+        captured["games_per_batch"] = int(games_per_batch)
+        captured["max_decisions"] = int(max_decisions)
+        return []
+
+    monkeypatch.setattr("poke_bot.train._iter_game_batches", capture_batches)
+    assert _policy_argmax_predictions(model, [seq], cfg=cfg) == []
+    assert captured == {"games_per_batch": 7, "max_decisions": 6144}
 
 
 def test_pure_rl_model_under_param_budget() -> None:

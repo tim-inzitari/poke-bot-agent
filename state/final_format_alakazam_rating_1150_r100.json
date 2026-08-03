@@ -1,0 +1,32 @@
+{
+  "schema": "poke_bot.final_format_alakazam_rating_gate_activation/v1",
+  "status": "activated_without_training_restart",
+  "recorded_at_utc": "2026-07-31T21:48:00Z",
+  "owner_decision_revision": 100,
+  "specialist_id": "alakazam",
+  "supersession": {
+    "prior_rating_lower_bound": 1000,
+    "activated_rating_lower_bound": 1150,
+    "unactivated_transient_request": 1300
+  },
+  "gate": {
+    "contract": "ops/final_format_alakazam_gate_r100_v1.json",
+    "contract_sha256": "sha256:d20be23a1077ae18d959c511d4c20c08f484baab7c000f881b250d22ebcfdc23",
+    "id": "final-format-alakazam-r100-strength75-rating1150-v1+frozen-specialists-r14",
+    "premium_skill_weighted_win_rate": 0.75,
+    "premium_skill_weighted_confidence_lower": 0.60,
+    "official_control_win_rate": 0.60,
+    "kaggle_rating_simulation_projected_lower_bound": 1150
+  },
+  "runtime": {
+    "registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r100_rating1150_minimum_iter11_all_remotes.json",
+    "registry_sha256": "sha256:ce40e8ce092fb9a9f652da0661531bbf92c39711216573834601f82bb6519333",
+    "minimum_completed_iteration": 11,
+    "curriculum_validation_receipt": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/curriculum-validation-r98/alakazam-strategic-curriculum-validation-r56.json",
+    "future_start_preflight": "passed"
+  },
+  "continuity": {
+    "training_service": "pokebot-final-format-alakazam-r79-h10.service",
+    "training_restart_performed": false
+  }
+}

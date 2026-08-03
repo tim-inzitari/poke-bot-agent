@@ -1,0 +1,12 @@
+[Unit]
+Description=Activate Marnie revisions 111-113 tiers, fleet-tail scheduler, and iteration-20 ceiling at iteration 5 commit
+After=pokebot-final-format-marnie-r104-h10-rl.service
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+WorkingDirectory=/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/apply_marnie_opponent_tiers_r111.py --stage-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-opponent-tier-stage-r111.json --activation-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-opponent-tier-activation-r111.json --ceiling-stage-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-iteration20-stage-r113-v3.json --ceiling-activation-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-iteration20-activation-r113.json --implementation-stage-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-tail-work-steal-stage-r112-v2.json --implementation-activation-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r104-tail-work-steal-activation-r112.json --implementation-source /home/inzi/poke-bot-agent/outputs/state/runtime_sources/remote_jobs.r112.9c231047f5edc04a.py --implementation-target /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/poke_bot/remote_jobs.py --implementation-sha256 sha256:9c231047f5edc04a9421993edbca7e70ebad418fd67841707b88400d2cc94053 --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k --commit /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/commits/iter_00005.json --registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r113_iter20_v3.json --runtime-root /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104 --rl-unit pokebot-final-format-marnie-r104-h10-rl.service --gate-unit pokebot-final-format-marnie-r104-h10-gate-handler.service --rl-dropin /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zz-opponent-tiers-r111.conf --gate-dropin /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-gate-handler.service.d/zz-opponent-tiers-r111.conf --maintenance-dropin /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zz-opponent-tiers-r111-maintenance.conf --poll-seconds 0.1
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,43 @@
+{
+  "schema": "poke_bot.final_format_alakazam_post_iter0_activation/v1",
+  "status": "active_iteration_1",
+  "recorded_at_utc": "2026-07-31T21:10:43Z",
+  "owner_decision_revision": 98,
+  "specialist_id": "alakazam",
+  "refresh_lineage": true,
+  "historical_specialist_row_replaced": false,
+  "activation_boundary": {
+    "completed_iteration": 0,
+    "next_iteration": 1,
+    "iteration_commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/commits/iter_00000.json",
+    "iteration_commit_sha256": "sha256:6e4dbe511539568afe1566b14c5c38545aa1e5766f4de4cc757e0ae69a078f49",
+    "promoted_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/checkpoints/iter_00000.pt",
+    "promoted_checkpoint_sha256": "sha256:8f8ab3adee66416a7400f73e8fb0fe2749b183976407c8c7f5d28cb552878981"
+  },
+  "matchup_adapter_training": {
+    "epochs": 1,
+    "steps": 322,
+    "rows": 718133,
+    "populated_routes": 15,
+    "enabled_for_iteration_1": true
+  },
+  "runtime": {
+    "managed_service": "pokebot-final-format-alakazam-r79-h10.service",
+    "run_name": "final_format_alakazam_r79_h10_i_v6_8k",
+    "runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r90_post_iter0_all_remotes.json",
+    "runtime_registry_sha256": "sha256:741bd8d1f90768e2fb0a42ca15527d6005beb6fa0b457777d59ba3c77de87f4a",
+    "blackwell_workers": 96,
+    "elmo_workers": 36,
+    "bert_workers": 16,
+    "terminal_gate_id": "final-format-alakazam-r94-strength75-rating1000-v1+frozen-specialists-r14",
+    "premium_skill_weighted_win_rate": 0.75,
+    "rating_simulation_projected_lower_bound": 1000,
+    "production_selector_authority": false
+  },
+  "iteration_0_submission": {
+    "turn_order_preference": "first_if_allowed",
+    "bundle_sha256": "sha256:8896797abbd21585ed5d4db4e7621a73e6add792db837f59ab4701c8d4cc603b",
+    "kaggle_submission_id": 55146726,
+    "training_paused_or_stopped": false
+  }
+}

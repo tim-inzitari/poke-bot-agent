@@ -27,6 +27,7 @@ Architecture
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional, Sequence, Union
 
@@ -84,6 +85,8 @@ COMBO_STATE_HEAD_HIDDEN = 192
 COMBO_STATE_HEAD_KEY_PREFIX = f"{COMBO_STATE_HEAD_NAME}."
 H10_CAPACITY_SCHEMA = "poke_bot.h10_capacity/v1"
 H10_CAPACITY_INIT_SEED = 0x10_2026_07
+LATENT_LOOKAHEAD_SCHEMA = "poke_bot.action_conditioned_latent_lookahead/v1"
+LATENT_LOOKAHEAD_INIT_SEED = 0x114_2026_08
 H10_STRATEGIC_OUTPUT_DIMS: dict[str, int] = {
     "action_q": 1,
     "action_type": 1,
@@ -102,8 +105,12 @@ H10_STRATEGIC_OUTPUT_DIMS: dict[str, int] = {
 DECISION_FUSION_SCHEMA = "poke_bot.causal_decision_fusion/v1"
 DECISION_FUSION_V2_SCHEMA = "poke_bot.causal_decision_fusion/v2"
 DECISION_FUSION_V2_ROUTE_SCHEMA = "option_conditioned_per_head/v2"
+DECISION_FUSION_V3_SCHEMA = "poke_bot.causal_decision_fusion/v3"
+DECISION_FUSION_V3_ROUTE_SCHEMA = "typed_output_centered_per_head/v3"
 DECISION_FUSION_V2_ROUTE_WIDTH = 16
 DECISION_FUSION_V2_TOTAL_DELTA_CAP = 1.0
+DECISION_FUSION_V3_MIN_RELIABILITY = 0.25
+DECISION_FUSION_V3_MAX_RELIABILITY = 4.0
 DECISION_FUSION_REQUIRED_HEADS: tuple[str, ...] = (
     "value",
     "archetype",
@@ -231,13 +238,21 @@ class H10StrategicResidual(nn.Module):
 class OptionConditionedHeadRoute(nn.Module):
     """One nonlinear, zero-safe action route for one typed prediction head."""
 
-    def __init__(self, *, d_model: int, head_dim: int, width: int) -> None:
+    def __init__(
+        self,
+        *,
+        d_model: int,
+        head_dim: int,
+        width: int,
+        typed_output_centered: bool = False,
+    ) -> None:
         super().__init__()
         if d_model <= 0 or head_dim <= 0 or width <= 0:
             raise ValueError("dedicated fusion-route dimensions must be positive")
         self.d_model = int(d_model)
         self.head_dim = int(head_dim)
         self.width = int(width)
+        self.typed_output_centered = bool(typed_output_centered)
         self.network = nn.Sequential(
             nn.Linear(self.d_model + self.head_dim, self.width),
             nn.GELU(),
@@ -270,7 +285,96 @@ class OptionConditionedHeadRoute(nn.Module):
             ],
             dim=-1,
         )
-        return torch.tanh(self.network(bounded_input).squeeze(-1))
+        routed = torch.tanh(self.network(bounded_input).squeeze(-1))
+        if not self.typed_output_centered:
+            return routed
+        zero_typed_input = torch.cat(
+            [
+                bounded_input[..., : self.d_model],
+                torch.zeros_like(bounded_input[..., self.d_model :]),
+            ],
+            dim=-1,
+        )
+        zero_typed = torch.tanh(
+            self.network(zero_typed_input).squeeze(-1)
+        )
+        # The half difference is exactly zero when the typed output is zero
+        # and remains unit bounded. A route can therefore no longer masquerade
+        # as its named head by using option_hidden alone.
+        return 0.5 * (routed - zero_typed)
+
+
+class ActionConditionedLatentLookahead(nn.Module):
+    """One-pass causal option lookahead with a separately gated policy aid."""
+
+    def __init__(
+        self,
+        d_model: int,
+        *,
+        width: int = 512,
+        policy_aid_cap: float = 0.25,
+    ) -> None:
+        super().__init__()
+        if d_model <= 0 or width <= 0:
+            raise ValueError("latent lookahead dimensions must be positive")
+        if not 0.0 < float(policy_aid_cap) <= 1.0:
+            raise ValueError("latent lookahead policy-aid cap is invalid")
+        self.d_model = int(d_model)
+        self.width = int(width)
+        self.policy_aid_cap = float(policy_aid_cap)
+        self.input_norm = nn.LayerNorm(2 * self.d_model)
+        self.trunk = nn.Sequential(
+            nn.Linear(2 * self.d_model, self.width),
+            nn.GELU(),
+            nn.Linear(self.width, self.width),
+            nn.GELU(),
+        )
+        self.next_state_latent = nn.Linear(self.width, self.d_model)
+        self.continuation_value = nn.Linear(self.width, 1)
+        self.policy_aid = nn.Linear(self.width, 1)
+        nn.init.zeros_(self.policy_aid.weight)
+        nn.init.zeros_(self.policy_aid.bias)
+
+    def forward(
+        self,
+        option_hidden: Tensor,
+        state_vec: Tensor,
+    ) -> dict[str, Tensor]:
+        if option_hidden.dim() != 3:
+            raise ValueError("latent lookahead options must be [B,N,D]")
+        if state_vec.dim() == 1:
+            state_vec = state_vec.unsqueeze(0)
+        if state_vec.dim() != 2 or state_vec.size(-1) != self.d_model:
+            raise ValueError("latent lookahead state shape changed")
+        if option_hidden.size(0) != state_vec.size(0):
+            raise ValueError("latent lookahead batch shape changed")
+        expanded_state = state_vec.unsqueeze(1).expand(
+            -1, option_hidden.size(1), -1
+        )
+        hidden = self.trunk(
+            self.input_norm(torch.cat((option_hidden, expanded_state), dim=-1))
+        )
+        return {
+            "predicted_next_state_latent": self.next_state_latent(hidden),
+            "continuation_value": self.continuation_value(hidden).squeeze(-1),
+            "policy_aid": self.policy_aid_cap
+            * torch.tanh(self.policy_aid(hidden).squeeze(-1)),
+        }
+
+    def inventory(self, *, action_authority_enabled: bool) -> dict[str, object]:
+        return {
+            "schema": LATENT_LOOKAHEAD_SCHEMA,
+            "enabled": True,
+            "neural_only": True,
+            "single_forward_pass": True,
+            "mcts_allowed": False,
+            "beam_search_allowed": False,
+            "competition_time_simulator_search_allowed": False,
+            "action_authority_enabled": bool(action_authority_enabled),
+            "policy_aid_cap": self.policy_aid_cap,
+            "zero_safe_policy_projection": True,
+            "parameters": int(sum(p.numel() for p in self.parameters())),
+        }
 
 
 class CausalDecisionFusion(nn.Module):
@@ -315,6 +419,8 @@ class CausalDecisionFusion(nn.Module):
         ),
         setup_board_outcome_outputs: int = 0,
         combo_state_outputs: int = 0,
+        typed_output_centered_routes: bool = False,
+        action_type_reliability_cap: float = 1.0,
     ) -> None:
         super().__init__()
         if width <= 0:
@@ -345,6 +451,18 @@ class CausalDecisionFusion(nn.Module):
         nn.init.zeros_(self.residual[-1].weight)
         nn.init.zeros_(self.residual[-1].bias)
         self.dedicated_routes_enabled = bool(dedicated_routes_enabled)
+        self.typed_output_centered_routes = bool(
+            typed_output_centered_routes
+        )
+        if self.typed_output_centered_routes and not self.dedicated_routes_enabled:
+            raise ValueError("typed-output-centered routes require dedicated routes")
+        self.action_type_reliability_cap = float(action_type_reliability_cap)
+        if not (
+            DECISION_FUSION_V3_MIN_RELIABILITY
+            <= self.action_type_reliability_cap
+            <= DECISION_FUSION_V3_MAX_RELIABILITY
+        ):
+            raise ValueError("action-type route reliability cap is outside bounds")
         self.dedicated_route_total_delta_cap = float(
             dedicated_route_total_delta_cap
         )
@@ -385,9 +503,18 @@ class CausalDecisionFusion(nn.Module):
                     d_model=d_model,
                     head_dim=head_dim,
                     width=dedicated_route_width,
+                    typed_output_centered=self.typed_output_centered_routes,
                 )
                 for name, head_dim in self.dedicated_route_dims.items()
             }
+        )
+        self.dedicated_route_log_reliability = nn.ParameterDict(
+            {
+                name: nn.Parameter(torch.zeros(()))
+                for name in self.dedicated_route_dims
+            }
+            if self.typed_output_centered_routes
+            else {}
         )
 
     @property
@@ -501,7 +628,20 @@ class CausalDecisionFusion(nn.Module):
                 option_count=option_count,
                 already_option_conditioned=already_option_conditioned,
             )
-            deltas[name] = route(option_hidden, typed_output)
+            delta = route(option_hidden, typed_output)
+            if self.typed_output_centered_routes:
+                reliability = torch.exp(
+                    self.dedicated_route_log_reliability[name].clamp(
+                        min=math.log(DECISION_FUSION_V3_MIN_RELIABILITY),
+                        max=math.log(DECISION_FUSION_V3_MAX_RELIABILITY),
+                    )
+                )
+                if name == "action_type":
+                    reliability = reliability.clamp(
+                        max=self.action_type_reliability_cap
+                    )
+                delta = reliability * delta
+            deltas[name] = delta
         return deltas
 
     def dedicated_action_delta(
@@ -525,6 +665,8 @@ class CausalDecisionFusion(nn.Module):
                 dtype=option_hidden.dtype,
             )
         mean_delta = torch.stack(tuple(deltas.values()), dim=0).mean(dim=0)
+        if self.typed_output_centered_routes:
+            mean_delta = torch.tanh(mean_delta)
         return self.dedicated_route_total_delta_cap * mean_delta
 
     def inventory(
@@ -536,7 +678,9 @@ class CausalDecisionFusion(nn.Module):
         route_count = len(self.dedicated_routes)
         return {
             "schema": (
-                DECISION_FUSION_V2_SCHEMA
+                DECISION_FUSION_V3_SCHEMA
+                if self.typed_output_centered_routes
+                else DECISION_FUSION_V2_SCHEMA
                 if self.dedicated_routes_enabled
                 else DECISION_FUSION_SCHEMA
             ),
@@ -547,7 +691,11 @@ class CausalDecisionFusion(nn.Module):
             "zero_safe_initialization": True,
             "guide_excluded": True,
             "dedicated_routes": {
-                "schema": DECISION_FUSION_V2_ROUTE_SCHEMA,
+                "schema": (
+                    DECISION_FUSION_V3_ROUTE_SCHEMA
+                    if self.typed_output_centered_routes
+                    else DECISION_FUSION_V2_ROUTE_SCHEMA
+                ),
                 "enabled": self.dedicated_routes_enabled,
                 "runtime_enabled": bool(dedicated_routes_runtime_enabled),
                 "route_count": route_count,
@@ -555,6 +703,13 @@ class CausalDecisionFusion(nn.Module):
                 "aggregation": "fixed_mean",
                 "total_delta_cap": self.dedicated_route_total_delta_cap,
                 "zero_safe_final_projection": True,
+                "typed_output_centered": self.typed_output_centered_routes,
+                "positive_bounded_reliability": self.typed_output_centered_routes,
+                "reliability_bounds": [
+                    DECISION_FUSION_V3_MIN_RELIABILITY,
+                    DECISION_FUSION_V3_MAX_RELIABILITY,
+                ],
+                "action_type_reliability_cap": self.action_type_reliability_cap,
                 "computation_role": "independent_head",
                 "fusion_role": "fused_input",
                 "action_influence": "bounded_option_conditioned_route",
@@ -1161,6 +1316,20 @@ class TemporalCabtTransformer(nn.Module):
                 False,
             )
         )
+        self.decision_fusion_typed_output_centered_routes_enabled = bool(
+            getattr(
+                cfg,
+                "decision_fusion_typed_output_centered_routes_enabled",
+                False,
+            )
+        )
+        self.decision_fusion_action_type_reliability_cap = float(
+            getattr(
+                cfg,
+                "decision_fusion_action_type_reliability_cap",
+                1.0,
+            )
+        )
         if (
             self.setup_board_outcome_head_enabled
             and not self.expanded_heads_enabled
@@ -1264,6 +1433,13 @@ class TemporalCabtTransformer(nn.Module):
                 "dedicated decision-fusion routes require decision_fusion_enabled"
             )
         if (
+            self.decision_fusion_typed_output_centered_routes_enabled
+            and not self.decision_fusion_dedicated_routes_enabled
+        ):
+            raise ValueError(
+                "typed-output-centered routes require dedicated routes"
+            )
+        if (
             self.decision_fusion_dedicated_routes_runtime_enabled
             and not self.decision_fusion_dedicated_routes_enabled
         ):
@@ -1298,10 +1474,45 @@ class TemporalCabtTransformer(nn.Module):
                         if self.combo_state_head_enabled
                         else 0
                     ),
+                    typed_output_centered_routes=(
+                        self.decision_fusion_typed_output_centered_routes_enabled
+                    ),
+                    action_type_reliability_cap=(
+                        self.decision_fusion_action_type_reliability_cap
+                    ),
                 )
         else:
             self.decision_fusion = None
         self.warm_started_decision_fusion = False
+        self.latent_lookahead_enabled = bool(
+            getattr(cfg, "latent_lookahead_enabled", False)
+        )
+        self.latent_lookahead_action_authority_enabled = bool(
+            getattr(
+                cfg,
+                "latent_lookahead_action_authority_enabled",
+                False,
+            )
+        )
+        if (
+            self.latent_lookahead_action_authority_enabled
+            and not self.latent_lookahead_enabled
+        ):
+            raise ValueError(
+                "latent lookahead action authority requires the architecture"
+            )
+        if self.latent_lookahead_enabled:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(LATENT_LOOKAHEAD_INIT_SEED)
+                self.latent_lookahead = ActionConditionedLatentLookahead(
+                    cfg.d_model,
+                    width=int(getattr(cfg, "latent_lookahead_width", 512)),
+                    policy_aid_cap=float(
+                        getattr(cfg, "latent_lookahead_policy_aid_cap", 0.25)
+                    ),
+                )
+        else:
+            self.latent_lookahead = None
 
     def _load_from_state_dict(
         self,
@@ -1474,6 +1685,45 @@ class TemporalCabtTransformer(nn.Module):
             ),
         )
 
+    def latent_lookahead_inventory(self) -> dict[str, object]:
+        module = self.latent_lookahead
+        if not isinstance(module, ActionConditionedLatentLookahead):
+            return {
+                "schema": LATENT_LOOKAHEAD_SCHEMA,
+                "enabled": False,
+                "action_authority_enabled": False,
+                "parameters": 0,
+            }
+        return module.inventory(
+            action_authority_enabled=(
+                self.latent_lookahead_action_authority_enabled
+            )
+        )
+
+    def latent_lookahead_outputs(
+        self,
+        option_hidden: Tensor,
+        state_vec: Tensor,
+    ) -> dict[str, Tensor]:
+        module = self.latent_lookahead
+        if not isinstance(module, ActionConditionedLatentLookahead):
+            raise RuntimeError("latent lookahead architecture is disabled")
+        return module(option_hidden, state_vec)
+
+    def latent_aided_policy_logits(
+        self,
+        option_hidden: Tensor,
+        state_vec: Tensor,
+        base_logits: Tensor,
+    ) -> Tensor:
+        if not self.latent_lookahead_action_authority_enabled:
+            return base_logits
+        outputs = self.latent_lookahead_outputs(option_hidden, state_vec)
+        aid = outputs["policy_aid"]
+        if aid.shape != base_logits.shape:
+            raise RuntimeError("latent policy-aid shape changed")
+        return base_logits + aid
+
     def fused_policy_logits(
         self,
         option_hidden: Tensor,
@@ -1497,6 +1747,32 @@ class TemporalCabtTransformer(nn.Module):
             raise RuntimeError(
                 "decision fusion policy path is enabled without fusion tensors"
             )
+        state_sources, expanded_option = self.decision_fusion_sources(
+            option_hidden, state_vec
+        )
+        return self.decision_fusion(
+            option_hidden,
+            base_logits,
+            state_sources=state_sources,
+            option_sources=expanded_option,
+            dedicated_routes_active=(
+                self.decision_fusion_dedicated_routes_enabled
+                and (
+                    self.training
+                    or self.decision_fusion_dedicated_routes_runtime_enabled
+                )
+            ),
+        )
+
+    def decision_fusion_sources(
+        self,
+        option_hidden: Tensor,
+        state_vec: Tensor,
+    ) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+        """Build the typed causal sources consumed by fusion and audits."""
+
+        if not isinstance(self.decision_fusion, CausalDecisionFusion):
+            raise RuntimeError("decision fusion sources require fusion tensors")
         belief = self.belief_aux_logits(state_vec)
         expanded_state = self.expanded_state_logits(state_vec)
         expanded_option = self.expanded_option_logits(option_hidden)
@@ -1522,18 +1798,24 @@ class TemporalCabtTransformer(nn.Module):
             "outcome_distribution": expanded_state["outcome_distribution"],
             "remaining_turns": expanded_state["remaining_turns"],
         }
-        return self.decision_fusion(
+        return state_sources, expanded_option
+
+    def decision_fusion_route_deltas(
+        self,
+        option_hidden: Tensor,
+        state_vec: Tensor,
+    ) -> dict[str, Tensor]:
+        """Expose typed per-head deltas for training-only ranking/audits."""
+
+        if not isinstance(self.decision_fusion, CausalDecisionFusion):
+            raise RuntimeError("decision fusion route deltas require fusion tensors")
+        state_sources, option_sources = self.decision_fusion_sources(
+            option_hidden, state_vec
+        )
+        return self.decision_fusion.dedicated_route_deltas(
             option_hidden,
-            base_logits,
             state_sources=state_sources,
-            option_sources=expanded_option,
-            dedicated_routes_active=(
-                self.decision_fusion_dedicated_routes_enabled
-                and (
-                    self.training
-                    or self.decision_fusion_dedicated_routes_runtime_enabled
-                )
-            ),
+            option_sources=option_sources,
         )
 
     def expanded_option_logits(self, option_hidden: Tensor) -> dict[str, Tensor]:
@@ -2273,6 +2555,7 @@ class TemporalCabtTransformer(nn.Module):
             else decision_fusion_state_vec
         )
         logits = self.fused_policy_logits(h, fusion_state, logits)
+        logits = self.latent_aided_policy_logits(h, fusion_state, logits)
 
         # Mask padded options.
         counts = torch.as_tensor(n_options, device=device, dtype=torch.long).reshape(-1)

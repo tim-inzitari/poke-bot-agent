@@ -1,0 +1,65 @@
+{
+  "schema": "poke_bot.final_format_marnie_h10_registration_preflight_repair/v1",
+  "status": "corrected_and_full_isolated_rehearsal_passed",
+  "recorded_at_utc": "2026-08-02T19:52:08Z",
+  "owner_decision_revision": 107,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "defects_repaired": [
+    {
+      "defect": "registration inherited the historical Alakazam r11 active gate while the current frozen registry was r14",
+      "failure": "active specialist S+ gate/registry contract changed",
+      "repair": "derive a checksum-bound Marnie LC50 gate using the complete frozen-r14 17-opponent, 4250-game roster",
+      "active_gate_id": "specialist-strong-public-roster-lc50-at-iter5-v1+frozen-specialists-r14",
+      "derived_gate_sha256": "sha256:daea937565ee83f224b4ab67a860fd5424b34d408763388abba11fbe3b38fafe"
+    },
+    {
+      "defect": "the Marnie deployment omitted runtime and terminal-package assets required by the exact launcher path",
+      "failure_sequence": [
+        "missing data/training_mixes/top_ladder.v1.json",
+        "missing data/training_mixes/top_ladder_representatives.v1.json",
+        "missing submission/main.py"
+      ],
+      "repair": "install every required asset from the canonical main deployment and checksum-bind all five assets during registration and managed-chain validation",
+      "asset_sha256": {
+        "data/training_mixes/specialist_representatives.v1.json": "sha256:47f624f35ab5f497055b3059cdf6dfd7d7e06312ccf3e87b01910d6b142c3a35",
+        "data/training_mixes/top_ladder.v1.json": "sha256:de9f2f5f65794ed8f0ffd3fff41b04aafd68f7ffc9d562ab2cfc774ea5cac79d",
+        "data/training_mixes/top_ladder_representatives.v1.json": "sha256:ee42f146fd746ed3dd953515a974b22eeb264ea8eb9513c6e69a41a524454002",
+        "submission/main.py": "sha256:30deadd1d8dc7e3d885dd107600468e5d0dcd6e9227c86fba52504e85fe0b70f",
+        "submission/search_config.json": "sha256:7ce431662904d97727d6838bcd60d9f54426d7922058f9aa018614378fbca819"
+      }
+    }
+  ],
+  "implementation": {
+    "registration_script_sha256": "sha256:234db7a6da75de8e16602cd7b67e57506cc2e94af83f8646c9b2c602c8022317",
+    "managed_chain_validator_sha256": "sha256:48b904c4286e01fe119585eda8d50e9e6966129ebd224d1d1524d92e279b5c75",
+    "focused_test_sha256": "sha256:093746a6fe4d7a53975017111f3b58b7bce578edd2b0351986573eaee5aff5e2",
+    "register_unit_sha256": "sha256:a783d508e89ab23ddb4f46993dcd0371f6fbd2ea40927500298fbeb48633c110",
+    "rl_unit_sha256": "sha256:4f3728f2bf930efdb2ff3db0a28f14b78de8212f80954607083b736980f1bb75"
+  },
+  "validation": {
+    "focused_tests_passed": 14,
+    "python_compile_passed": true,
+    "isolated_source_checkpoint": "/home/inzi/poke-bot-agent/outputs/bootstrap/final_format_marnie_r104_h10/checkpoints/epoch_18.pt",
+    "isolated_source_checkpoint_sha256": "sha256:50efe016a31a352aed9af781cfd29f8c56e67c4b1a311bba97fb205fcbe2f343",
+    "registration_passed": true,
+    "registration_receipt_check_passed": true,
+    "router_v6_migration_passed": true,
+    "router_v6_slot_capacity": 64,
+    "rl_launcher_check_passed": true,
+    "gate_handler_and_submission_package_check_passed": true,
+    "temporary_registration_removed_after_rehearsal": true
+  },
+  "live_bootstrap": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-bootstrap.service",
+    "pid": 608116,
+    "restart_count": 0,
+    "active_state": "activating",
+    "sub_state": "start",
+    "latest_committed_epoch_at_receipt": 20,
+    "ready_receipt_absent_as_expected": true,
+    "interrupted_for_repair": false
+  },
+  "activation_effect": "none_until_exact_25_epoch_bootstrap_ready_receipt",
+  "selector_authority": false,
+  "training_authority": false
+}

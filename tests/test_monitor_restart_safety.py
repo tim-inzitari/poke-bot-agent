@@ -83,6 +83,19 @@ def test_retriable_remote_fail_closed_does_not_stop_trainer() -> None:
     )
 
 
+def test_retriable_remote_game_timeout_does_not_stop_trainer() -> None:
+    retriable = (
+        "[remote] 192.168.1.158:8766 scheduled job attempt 1/8 failed "
+        "(RemoteResultError: remote result failed: resource_error, "
+        "game_timeout: [timeout] our-agent: RuntimeError: policy runtime "
+        "failed closed: TimeoutError: game exceeded 600s); reconnect+retry remote"
+    )
+    timeout = unattended_monitor.FATAL_PATTERNS["game_timeout"]
+    assert not timeout.search(retriable)
+    assert timeout.search("local worker game_timeouts=1; collection unsafe")
+    assert timeout.search("remote scheduler exhausted; game exceeded 600s")
+
+
 
 def test_out_of_band_log_shrink_does_not_replay_retained_fatal_tail(
     tmp_path: Path,

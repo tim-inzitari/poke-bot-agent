@@ -4,13 +4,13 @@ After=pokebot-final-format-alakazam-r79-h10.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r105
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
-Environment=POKEBOT_SPECIALIST_RUNTIME_ROOT=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-h10-r79
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r105
+Environment=POKEBOT_SPECIALIST_RUNTIME_ROOT=/home/inzi/poke-bot-agent-deployments/final-format-alakazam-fusion-v3-r104
 Environment=POKEBOT_ACTIVE_SPECIALIST=alakazam
-ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_active_specialist_gate_handler.py --registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_v8.json --check
-ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_active_specialist_gate_handler.py --registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_v8.json
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_active_specialist_gate_handler.py --registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r105_fusion_v3_directional_learner1536_recovery_v2_iter20_exact.json --check
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_active_specialist_gate_handler.py --registry /home/inzi/poke-bot-agent/outputs/final_format_alakazam_r79/runtime/specialist_runtime_registry_h10_r105_fusion_v3_directional_learner1536_recovery_v2_iter20_exact.json
 Restart=on-failure
 RestartSec=30
 MemoryHigh=8G
