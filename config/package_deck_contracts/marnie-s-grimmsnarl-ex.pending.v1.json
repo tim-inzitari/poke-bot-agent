@@ -1,0 +1,17 @@
+{
+  "schema": "poke_bot.package_deck_contract/v1",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "status": "pending_owner_exact_list",
+  "automatic_selection": false,
+  "authorized_exact_card_ids": null,
+  "required_validation": [
+    "exactly_60_cards",
+    "existing_legality",
+    "family_identity",
+    "engine_smoke",
+    "existing_exact_formal_evaluation",
+    "paired_comparison_against_old_package",
+    "clean_boundary_activation"
+  ],
+  "current_package_remains_authoritative": true
+}

@@ -392,7 +392,7 @@ def test_disconnected_registered_client_reconnects_before_retry(
     monkeypatch.setattr(
         remote_jobs,
         "send_frame",
-        lambda _sock, message: sent.append(message),
+        lambda _sock, message, **_kwargs: sent.append(message),
     )
     if operation == "control":
         monkeypatch.setattr(
@@ -1403,6 +1403,19 @@ def test_tail_work_steal_returns_remote_reservations_to_local_exactly_once(
     assert "remote_claim_games=1 local_pool_remains_eligible=true" in output
 
 
+def test_fixed_self_play_tail_count_overrides_percentage() -> None:
+    credits = remote_jobs._EndpointClaimCredits(
+        total_jobs=1024,
+        tail_fraction=0.75,
+        tail_jobs=20,
+    )
+
+    assert credits.tail_jobs == 20
+    assert credits.tail_fraction == pytest.approx(20 / 1024)
+    assert not credits.in_tail(21)
+    assert credits.in_tail(20)
+
+
 def test_scheduled_fast_elmo_cannot_starve_slow_bert_refills(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1535,3 +1548,91 @@ def test_scheduled_fast_elmo_cannot_starve_slow_bert_refills(
     assert slot_updates[-1]["active"] == 0
     assert sorted(int(row["job_index"]) for row in rows) == list(range(1500))
     assert len(rows) == len(jobs)
+
+
+def test_self_play_one_wave_gives_every_remote_socket_one_game_before_refill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A few emitter threads must not privately hoard the execution wave."""
+
+    endpoint = "192.168.1.143:8765"
+    monkeypatch.setenv("POKEBOT_REMOTE_DEMAND_QUEUE", "1")
+    monkeypatch.setenv("POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY", "1")
+    monkeypatch.setenv("POKEBOT_SELF_PLAY_TAIL_WORK_STEAL_FRACTION", "0.05")
+    monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH", "1")
+    monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH_MAX", "1")
+    first_wave = threading.Barrier(4)
+    first_call_ids: set[int] = set()
+    first_call_lock = threading.Lock()
+
+    class SlotRemote(_ScheduledRemote):
+        timeout_s = 5.0
+        connect_timeout_s = 5.0
+        control_timeout_s = 5.0
+
+        def __init__(self, slot_id: int) -> None:
+            super().__init__(fail=False)
+            self.slot_id = slot_id
+            self.endpoint = endpoint
+            self.host = "192.168.1.143"
+            self.port = 8765
+            self.info = RemoteWorkerInfo(
+                endpoint=endpoint,
+                workers=4,
+                leaf_servers=0,
+                gpu_name="",
+                device="cpu",
+                checkpoint_digest=None,
+                hostname=self.host,
+                max_workers=4,
+                default_workers=4,
+            )
+
+        def submit_job(self, job, *, kind="play"):
+            with first_call_lock:
+                first = self.slot_id not in first_call_ids
+                first_call_ids.add(self.slot_id)
+            if first:
+                first_wave.wait(timeout=2.0)
+            return {"job_index": job["job_index"], "source": self.slot_id}
+
+    class Decision(_ScheduledDecision):
+        remote_chunk = 128
+        remote_demand = {endpoint: 4}
+
+    class Scheduler(_ScheduledScheduler):
+        def decision(self):
+            return Decision()
+
+        def remote_demand(self):
+            return dict(Decision.remote_demand)
+
+    slots = [SlotRemote(index) for index in range(4)]
+    monkeypatch.setattr(
+        remote_jobs,
+        "_parallel_remote_slots",
+        lambda *_args, **_kwargs: (slots, []),
+    )
+    slot_updates: list[dict[str, int]] = []
+    jobs = [{"job_index": index} for index in range(64)]
+    rows = list(
+        iter_scheduled_additive_results(
+            local_pool=_ScheduledPool(),
+            local_fn=lambda job: {**job, "source": "local"},
+            jobs=jobs,
+            remote_clients=[slots[0]],  # type: ignore[list-item]
+            kind="self_play",
+            scheduler=Scheduler(),
+            local_workers=4,
+            remote_workers=4,
+            on_remote_slots=slot_updates.append,
+        )
+    )
+
+    assert first_call_ids == {0, 1, 2, 3}
+    assert slot_updates[0]["active"] == 4
+    assert slot_updates[0]["outstanding_elmo"] == 4
+    assert slot_updates[0]["outstanding_bert"] == 0
+    assert slot_updates[-1]["active"] == 0
+    assert slot_updates[-1]["outstanding"] == 0
+    assert sorted(int(row["job_index"]) for row in rows) == list(range(64))

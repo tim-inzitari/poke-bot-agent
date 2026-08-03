@@ -6123,6 +6123,9 @@ class _TqdmProgress:
         self.total = max(0, int(total))
         self.remotes = int(remotes)  # live open remote sockets (dispatch)
         self.remote_demand: Optional[int] = None  # scheduler demand (may lag sockets)
+        self.remote_outstanding: Optional[int] = None
+        self.remote_outstanding_elmo: Optional[int] = None
+        self.remote_outstanding_bert: Optional[int] = None
         self.wr: Optional[str] = None  # live win-rate readout (heldout gate)
         self._t0 = time.time()
         self._last_heartbeat = self._t0
@@ -6169,15 +6172,22 @@ class _TqdmProgress:
             print(
                 f"[pure_rl] tqdm games bar {mode} on stderr "
                 f"(stage={stage} iter={iteration} total={self.total}); "
-                f"remotes=active_sockets (rdmd=demand when desynced); "
+                f"rsock=active_sockets, rout=outstanding_remote_games "
+                f"(rdmd=demand when desynced); "
                 f"watch: bash scripts/watch_pure_rl_progress.sh "
                 f"(or: watch -n1 cat {status_hint}; less -r +F {progress_hint})",
                 flush=True,
             )
 
     def _postfix(self, *, sps: str) -> dict[str, Any]:
-        """``remotes`` = live open sockets; ``rdmd`` only when ≠ demand."""
-        out: dict[str, Any] = {"remotes": int(self.remotes), "sps": sps}
+        """Report remote socket capacity separately from owned game results."""
+        out: dict[str, Any] = {"rsock": int(self.remotes), "sps": sps}
+        if self.remote_outstanding is not None:
+            out["rout"] = int(self.remote_outstanding)
+        if self.remote_outstanding_elmo is not None:
+            out["eout"] = int(self.remote_outstanding_elmo)
+        if self.remote_outstanding_bert is not None:
+            out["bout"] = int(self.remote_outstanding_bert)
         if self.wr is not None:
             out["wr"] = self.wr
         dem = self.remote_demand
@@ -6186,12 +6196,24 @@ class _TqdmProgress:
         return out
 
     def set_remotes(
-        self, active: int, *, demand: Optional[int] = None
+        self,
+        active: int,
+        *,
+        demand: Optional[int] = None,
+        outstanding: Optional[int] = None,
+        outstanding_elmo: Optional[int] = None,
+        outstanding_bert: Optional[int] = None,
     ) -> None:
         """Hot-update bar when mid-iter demand grows/shrinks dispatch sockets."""
         self.remotes = max(0, int(active))
         if demand is not None:
             self.remote_demand = max(0, int(demand))
+        if outstanding is not None:
+            self.remote_outstanding = max(0, int(outstanding))
+        if outstanding_elmo is not None:
+            self.remote_outstanding_elmo = max(0, int(outstanding_elmo))
+        if outstanding_bert is not None:
+            self.remote_outstanding_bert = max(0, int(outstanding_bert))
         try:
             # Keep last sps token if present; tick() refreshes on next game.
             prev = getattr(self._bar, "postfix", None) or {}
@@ -8904,16 +8926,64 @@ def _hard_gate_publish_weights(
             # socket at this strict boundary before issuing reload/pin.  This
             # is intentionally fail-closed: if a required endpoint cannot
             # reconnect, no next-iteration work may start on mixed weights.
-            client.reconnect()
-            reload_reply = client.reload_checkpoint(
-                str(ckpt), digest=dig, version=int(version)
-            )
+            initial_info = client.reconnect()
+            # A managed remote may have completed the exact reload/pin before
+            # its prior controller socket disappeared (for example, during a
+            # receipt-backed service rotation).  Reissuing the same control
+            # transaction can then wait on that dead socket even though every
+            # live leaf already advertises the required immutable identity.
+            # Accept the idempotent state only from a fresh, complete health
+            # proof; anything missing or mismatched retains the normal reload.
+            exact_health = None
+            health_call = getattr(client, "health", None)
+            if (
+                getattr(initial_info, "checkpoint_digest", None) == dig
+                and callable(health_call)
+            ):
+                try:
+                    candidate_health = health_call()
+                    leaves = list(candidate_health.get("leaves") or [])
+                    pinned = {
+                        str(value)
+                        for value in candidate_health.get("pinned_digests") or ()
+                    }
+                    if (
+                        candidate_health.get("ok") is True
+                        and candidate_health.get("controller_healthy") is True
+                        and candidate_health.get("leaf_alive") is True
+                        and candidate_health.get("leaf_identity_ok") is True
+                        and candidate_health.get("checkpoint_digest") == dig
+                        and dig in pinned
+                        and leaves
+                        and all(
+                            row.get("healthy") is True
+                            and row.get("checkpoint_digest") == dig
+                            for row in leaves
+                        )
+                    ):
+                        exact_health = candidate_health
+                except Exception:
+                    exact_health = None
+
+            if exact_health is not None:
+                reload_reply = {
+                    "ok": True,
+                    "checkpoint_digest": dig,
+                    "version": exact_health.get("checkpoint_version"),
+                }
+                pin_reply = {"ok": True, "checkpoint_digest": dig}
+                reload_skipped_exact_health = True
+            else:
+                reload_reply = client.reload_checkpoint(
+                    str(ckpt), digest=dig, version=int(version)
+                )
+                pin_reply = client.pin_checkpoint(str(ckpt), digest=dig)
+                reload_skipped_exact_health = False
             got = reload_reply.get("checkpoint_digest")
             if not reload_reply.get("ok", False) or got != dig:
                 raise RemoteJobsError(
                     f"reload digest mismatch on {ep}: reply={reload_reply!r}"
                 )
-            pin_reply = client.pin_checkpoint(str(ckpt), digest=dig)
             pin_got = pin_reply.get("checkpoint_digest")
             if not pin_reply.get("ok", False) or pin_got != dig:
                 raise RemoteJobsError(
@@ -8996,6 +9066,7 @@ def _hard_gate_publish_weights(
                     "pin_digest": pin_got,
                     "hello_digest": hello_dig,
                     "version": reload_reply.get("version"),
+                    "reload_skipped_exact_health": reload_skipped_exact_health,
                     "matchup_runtime": dict(runtime) if runtime is not None else None,
                     "matchup_runtime_worker_probe": runtime_probe,
                 }
@@ -9702,6 +9773,21 @@ def _collect_wave(
                 progress.set_remotes(
                     int(info.get("active", 0)),
                     demand=int(info["demand"]) if "demand" in info else None,
+                    outstanding=(
+                        int(info["outstanding"])
+                        if "outstanding" in info
+                        else None
+                    ),
+                    outstanding_elmo=(
+                        int(info["outstanding_elmo"])
+                        if "outstanding_elmo" in info
+                        else None
+                    ),
+                    outstanding_bert=(
+                        int(info["outstanding_bert"])
+                        if "outstanding_bert" in info
+                        else None
+                    ),
                 )
             except Exception:
                 pass

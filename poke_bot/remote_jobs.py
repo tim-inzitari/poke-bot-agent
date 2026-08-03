@@ -8,7 +8,9 @@ RPCs — that keeps LAN chatter to ~1 RTT per game instead of thousands of
 leaf forwards per move.
 
 Wire format: length-prefixed JSON frames (``!I`` big-endian uint32 + UTF-8
-JSON body). Additive / optional: local trainers keep using in-process
+JSON body).  After a plain hello handshake, peers may negotiate zlib framing;
+the high length bit then marks a compressed JSON body. Additive / optional:
+local trainers keep using in-process
 ``WorkerPool`` until ``--remote-worker-endpoints`` (or the canary client) is
 explicitly set.
 """
@@ -29,6 +31,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,6 +46,9 @@ PROTO_VERSION = 1
 DEFAULT_PORT = 8765
 _HDR = struct.Struct("!I")
 _MAX_FRAME = 256 * 1024 * 1024  # 256 MiB — self-play records can be large
+_COMPRESSED_FRAME_FLAG = 0x80000000
+_FRAME_COMPRESSION_MIN_BYTES = 64 * 1024
+_FRAME_CODEC_ZLIB_V1 = "zlib_frames_v1"
 
 
 def _env_truthy(name: str) -> bool:
@@ -300,22 +306,30 @@ class _EndpointClaimCredits:
     other network operation belongs in these methods.
     """
 
-    def __init__(self, *, total_jobs: int) -> None:
+    def __init__(
+        self,
+        *,
+        total_jobs: int,
+        tail_fraction: Optional[float] = None,
+        tail_jobs: Optional[int] = None,
+    ) -> None:
         total = max(0, int(total_jobs))
-        fraction = min(
-            0.50,
-            max(
-                0.05,
-                _env_float(
-                    "POKEBOT_REMOTE_TAIL_WORK_STEAL_FRACTION",
-                    0.20,
-                ),
-            ),
-        )
-        self.tail_fraction = float(fraction)
-        self.tail_jobs = (
-            max(1, int(total * fraction + 0.999999999)) if total > 0 else 0
-        )
+        if tail_jobs is not None and int(tail_jobs) > 0:
+            self.tail_jobs = min(total, max(1, int(tail_jobs))) if total else 0
+            self.tail_fraction = (
+                float(self.tail_jobs) / float(total) if total else 0.0
+            )
+        else:
+            configured_fraction = (
+                _env_float("POKEBOT_REMOTE_TAIL_WORK_STEAL_FRACTION", 0.20)
+                if tail_fraction is None
+                else float(tail_fraction)
+            )
+            fraction = min(0.50, max(0.05, configured_fraction))
+            self.tail_fraction = float(fraction)
+            self.tail_jobs = (
+                max(1, int(total * fraction + 0.999999999)) if total > 0 else 0
+            )
         # Endpoint-credit spill keeps its established final-5% escape hatch.
         # The broader configurable window is consumed only by the mixed
         # dispatcher, which can prove that a local work-stealing pool exists.
@@ -1370,7 +1384,7 @@ def require_remote_result_success(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def encode_frame(payload: dict[str, Any]) -> bytes:
+def encode_frame(payload: dict[str, Any], *, compress: bool = False) -> bytes:
     if _orjson is not None:
         try:
             # Match stdlib json's acceptance/stringification of integer keys.
@@ -1384,7 +1398,14 @@ def encode_frame(payload: dict[str, Any]) -> bytes:
         )
     if len(body) > _MAX_FRAME:
         raise RemoteJobsError(f"frame too large: {len(body)} bytes")
-    return _HDR.pack(len(body)) + body
+    wire_body = body
+    wire_length = len(body)
+    if bool(compress) and len(body) >= _FRAME_COMPRESSION_MIN_BYTES:
+        compressed = zlib.compress(body, level=1)
+        if len(compressed) < len(body):
+            wire_body = compressed
+            wire_length = len(compressed) | _COMPRESSED_FRAME_FLAG
+    return _HDR.pack(wire_length) + wire_body
 
 
 def _recvexact(sock: socket.socket, n: int) -> bytes:
@@ -1399,10 +1420,21 @@ def _recvexact(sock: socket.socket, n: int) -> bytes:
 
 def read_frame(sock: socket.socket) -> dict[str, Any]:
     header = _recvexact(sock, _HDR.size)
-    (length,) = _HDR.unpack(header)
+    (wire_length,) = _HDR.unpack(header)
+    compressed = bool(wire_length & _COMPRESSED_FRAME_FLAG)
+    length = wire_length & ~_COMPRESSED_FRAME_FLAG
     if length > _MAX_FRAME:
         raise RemoteJobsError(f"frame length {length} exceeds max {_MAX_FRAME}")
     body = _recvexact(sock, length)
+    if compressed:
+        try:
+            body = zlib.decompress(body)
+        except zlib.error as exc:
+            raise RemoteJobsError(f"invalid compressed frame: {exc}") from exc
+        if len(body) > _MAX_FRAME:
+            raise RemoteJobsError(
+                f"decompressed frame length {len(body)} exceeds max {_MAX_FRAME}"
+            )
     try:
         payload = (
             _orjson.loads(body)
@@ -1416,8 +1448,13 @@ def read_frame(sock: socket.socket) -> dict[str, Any]:
     return payload
 
 
-def send_frame(sock: socket.socket, payload: dict[str, Any]) -> None:
-    sock.sendall(encode_frame(payload))
+def send_frame(
+    sock: socket.socket,
+    payload: dict[str, Any],
+    *,
+    compress: bool = False,
+) -> None:
+    sock.sendall(encode_frame(payload, compress=compress))
 
 
 @dataclass
@@ -1480,6 +1517,7 @@ class RemoteJobClient:
         )
         self._sock: Optional[socket.socket] = None
         self.info: Optional[RemoteWorkerInfo] = None
+        self._compress_frames = False
 
     @property
     def endpoint(self) -> str:
@@ -1497,11 +1535,20 @@ class RemoteJobClient:
                 "type": "hello",
                 "proto": PROTO_VERSION,
                 "client": "poke-bot-agent",
+                "frame_codecs": [_FRAME_CODEC_ZLIB_V1],
             },
         )
         reply = read_frame(sock)
         if reply.get("type") != "hello_ok" or int(reply.get("proto", -1)) != PROTO_VERSION:
             raise RemoteJobsError(f"unexpected hello reply: {reply!r}")
+        raw_frame_codecs = reply.get("frame_codecs") or []
+        if isinstance(raw_frame_codecs, str):
+            frame_codecs = {
+                value.strip() for value in raw_frame_codecs.split(",") if value.strip()
+            }
+        else:
+            frame_codecs = {str(value) for value in raw_frame_codecs}
+        self._compress_frames = _FRAME_CODEC_ZLIB_V1 in frame_codecs
         raw_kinds = reply.get("job_kinds") or []
         if isinstance(raw_kinds, str):
             kinds = tuple(k.strip() for k in raw_kinds.split(",") if k.strip())
@@ -1549,7 +1596,11 @@ class RemoteJobClient:
         self._sock = None
         if sock is not None:
             try:
-                send_frame(sock, {"type": "bye"})
+                send_frame(
+                    sock,
+                    {"type": "bye"},
+                    compress=self._compress_frames,
+                )
             except Exception:
                 pass
             try:
@@ -1561,6 +1612,7 @@ class RemoteJobClient:
         """Drop any half-open socket and open a fresh hello session."""
         sock = self._sock
         self._sock = None
+        self._compress_frames = False
         if sock is not None:
             try:
                 sock.close()
@@ -1601,12 +1653,15 @@ class RemoteJobClient:
             raise RemoteJobsError("not connected")
         return self._sock
 
+    def _send(self, sock: socket.socket, payload: dict[str, Any]) -> None:
+        send_frame(sock, payload, compress=self._compress_frames)
+
     def ping(self) -> dict[str, Any]:
         sock = self._require_sock()
         prev = sock.gettimeout()
         sock.settimeout(self.control_timeout_s)
         try:
-            send_frame(sock, {"type": "ping", "t0": time.time()})
+            self._send(sock, {"type": "ping", "t0": time.time()})
             reply = read_frame(sock)
         finally:
             try:
@@ -1622,7 +1677,7 @@ class RemoteJobClient:
         prev = sock.gettimeout()
         sock.settimeout(self.control_timeout_s)
         try:
-            send_frame(sock, {"type": "health"})
+            self._send(sock, {"type": "health"})
             reply = read_frame(sock)
         finally:
             try:
@@ -1662,7 +1717,7 @@ class RemoteJobClient:
                         + job_buffer_s,
                     )
                 )
-                send_frame(sock, {"type": "job", "kind": kind, "job": remote_job})
+                self._send(sock, {"type": "job", "kind": kind, "job": remote_job})
                 reply = read_frame(sock)
             except (TimeoutError, OSError, RemoteJobsError) as exc:
                 last_exc = exc
@@ -1704,7 +1759,7 @@ class RemoteJobClient:
                 sock = self._require_sock()
                 prev = sock.gettimeout()
                 sock.settimeout(self.control_timeout_s)
-                send_frame(sock, msg)
+                self._send(sock, msg)
                 return read_frame(sock)
             except (TimeoutError, OSError, RemoteJobsError) as exc:
                 last_exc = exc
@@ -2295,9 +2350,9 @@ def iter_scheduled_additive_results(
     amortize) — never chatty per-game scheduler RPCs. Scheduler metrics use
     wave wall-clock GPS only (see ``mid_iter_scheduler.WaveGpsTracker``).
 
-    ``on_remote_slots`` (optional) is invoked with
-    ``{active, demand, claimed_remote}`` whenever open remote sockets or
-    scheduler demand change — used to keep tqdm ``remotes=`` live.
+    ``on_remote_slots`` (optional) is invoked with live socket, scheduler
+    demand, and exact outstanding-game counts. Socket count is capacity, not
+    work ownership, and must never be displayed as remaining remote games.
 
     ``on_producers_drained`` runs exactly once after every local/remote
     producer has finished and all result/done records are durably queued, but
@@ -2306,6 +2361,23 @@ def iter_scheduled_additive_results(
     local simulator pool and release anonymous model memory during a long
     result-spool drain.
     """
+    # Self-play is a short 1,024-game wave on the current H10 runtime.  A
+    # remote endpoint that accepts work but stops answering control probes can
+    # strand its final executing claims after Blackwell has exhausted the
+    # shared queue.  There is no exact-once-safe way to steal an already
+    # executing claim, so the fail-closed production profile keeps self-play
+    # local while leaving public mix and every evaluation phase additive.
+    # This is deliberately checked before the scheduled path so no remote
+    # producer, socket, reservation, or endpoint-owned queue is created.
+    if kind == "self_play" and _env_truthy("POKEBOT_SELF_PLAY_LOCAL_ONLY"):
+        print(
+            "[remote] self_play_local_only=true remote_claims=0 "
+            "reason=fail_closed_no_remote_return_tail",
+            flush=True,
+        )
+        remote_clients = []
+        remote_workers = 0
+
     if scheduler is None or not remote_clients or int(remote_workers) <= 0:
         yield from iter_additive_results(
             local_pool=local_pool,
@@ -2384,7 +2456,32 @@ def iter_scheduled_additive_results(
     endpoint_execution_target: dict[str, int] = {
         endpoint: 0 for endpoint in endpoint_templates
     }
-    endpoint_credits = _EndpointClaimCredits(total_jobs=total_jobs)
+    self_play_elmo_tail_only = bool(
+        kind == "self_play"
+        and _env_truthy("POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY")
+    )
+    tail_fraction = (
+        _env_float("POKEBOT_SELF_PLAY_TAIL_WORK_STEAL_FRACTION", 0.35)
+        if self_play_elmo_tail_only
+        else None
+    )
+    try:
+        configured_tail_games = int(
+            os.environ.get("POKEBOT_SELF_PLAY_TAIL_WORK_STEAL_GAMES", "0")
+            or "0"
+        )
+    except (TypeError, ValueError):
+        configured_tail_games = 0
+    tail_games = (
+        max(1, configured_tail_games)
+        if self_play_elmo_tail_only and configured_tail_games > 0
+        else None
+    )
+    endpoint_credits = _EndpointClaimCredits(
+        total_jobs=total_jobs,
+        tail_fraction=tail_fraction,
+        tail_jobs=tail_games,
+    )
     tail_work_steal_started = False
     tail_work_steal_released = 0
     credit_demand_signature: Optional[tuple[tuple[str, int], ...]] = None
@@ -2395,19 +2492,60 @@ def iter_scheduled_additive_results(
     remote_only = _env_truthy("POKEBOT_REMOTE_ONLY")
     demand_queue_mode = _env_truthy("POKEBOT_REMOTE_DEMAND_QUEUE")
     endpoint_owned_queue_mode = bool(demand_queue_mode or remote_only)
-    self_play_elmo_tail_only = bool(
-        kind == "self_play"
-        and _env_truthy("POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY")
-    )
+
+    def _publish_remote_slots() -> None:
+        """Push sockets and exact remote-owned games as separate values.
+
+        This definition must precede the initial endpoint-queue fill: that fill
+        updates ownership immediately, before producer threads are started.
+        Keeping telemetry available at that first claim also prevents the
+        dashboard from briefly presenting socket capacity as owned work.
+        """
+        if on_remote_slots is None:
+            return
+        try:
+            active = int(sum(slots_by_endpoint.values()))
+            dem_map = dict(scheduler.remote_demand() or {})
+            demand_n = (
+                int(sum(int(v) for v in dem_map.values()))
+                if dem_map
+                else active
+            )
+            outstanding_by_role = {"elmo": 0, "bert": 0, "other": 0}
+            for endpoint, count in endpoint_credits.inflight.items():
+                template = endpoint_templates.get(endpoint)
+                role = (
+                    endpoint_role(template.host)
+                    if template is not None
+                    else "other"
+                )
+                outstanding_by_role[role] = (
+                    int(outstanding_by_role.get(role, 0))
+                    + max(0, int(count))
+                )
+            on_remote_slots(
+                {
+                    "active": active,
+                    "demand": demand_n,
+                    "claimed_remote": int(claimed_remote),
+                    "outstanding": int(sum(outstanding_by_role.values())),
+                    "outstanding_elmo": int(outstanding_by_role["elmo"]),
+                    "outstanding_bert": int(outstanding_by_role["bert"]),
+                }
+            )
+        except Exception:
+            # Progress telemetry is observational and may never break exact
+            # job ownership or result delivery.
+            pass
 
     def _tail_endpoint_target(endpoint: str) -> int:
         """Return the controller-owned target once tail stealing starts.
 
         Self-play has a materially different tail profile from public play:
-        Bert's CPU games are the long stragglers, while Elmo can productively
-        keep one GPU execution wave plus one queued wave.  The opt-in policy
-        therefore stops new Bert tail claims and gives Elmo the two-wave
-        target. Other collection kinds retain the existing one-wave target.
+        Bert's CPU games are the long stragglers, while even an extra queued
+        Elmo wave can outlive Blackwell's shared work.  The opt-in policy stops
+        new Bert tail claims and keeps only one Elmo execution wave. Other
+        collection kinds retain the existing one-wave target.
         """
         ep = str(endpoint)
         execution = max(0, int(endpoint_execution_target.get(ep, 0)))
@@ -2418,7 +2556,7 @@ def iter_scheduled_additive_results(
             return 0
         return min(
             max(0, int(endpoint_queue_safety_ceiling.get(ep, 0))),
-            2 * execution,
+            execution,
         )
 
     def _register_producer(thread: threading.Thread) -> bool:
@@ -2517,7 +2655,15 @@ def iter_scheduled_additive_results(
             # waiting queue. With production settings this is Elmo 48+336 and
             # Bert 16+112. The queues are disjoint even though their source is
             # the same finite collection wave.
-            high_water = execution + queue_target
+            # Self-play jobs are long and remote execution can be far slower
+            # than Blackwell.  Do not pre-reserve hundreds of them: one
+            # controller-owned wave plus one executing wave preserves remote
+            # throughput without creating an unreclaimable remote-only tail.
+            high_water = (
+                execution
+                if self_play_elmo_tail_only
+                else execution + queue_target
+            )
             endpoint_queue_high_water[ep] = high_water
             # The scheduling target is soft: one execution wave may be in
             # transition while a low-water refill is being admitted. This
@@ -2632,6 +2778,7 @@ def iter_scheduled_additive_results(
             owned.append(remaining.popleft())
         claimed_remote += granted
         endpoint_credits.note_claimed(ep, granted)
+        _publish_remote_slots()
         return granted
 
     def _finish_remote_credit(endpoint: str, n: int = 1) -> None:
@@ -2640,6 +2787,7 @@ def iter_scheduled_additive_results(
             endpoint_credits.note_finished(endpoint, n)
             # A returned game is stronger evidence than a failed control probe.
             endpoint_credits.set_healthy(endpoint, True)
+        _publish_remote_slots()
 
     def _finish_initial_remote_claim(token: Optional[int]) -> None:
         if token is None:
@@ -2849,6 +2997,7 @@ def iter_scheduled_additive_results(
             if side == "remote":
                 claimed_remote += len(batch)
                 endpoint_credits.note_claimed(str(endpoint), len(batch))
+                _publish_remote_slots()
             else:
                 claimed_local += len(batch)
                 local_batch_size = len(batch)
@@ -2983,6 +3132,15 @@ def iter_scheduled_additive_results(
                     (int(endpoint_backlog) + live_endpoint_slots - 1)
                     // live_endpoint_slots,
                 )
+                if self_play_elmo_tail_only:
+                    # One socket represents one execution worker in the
+                    # revision-123 self-play profile.  Letting the first few
+                    # socket threads privately claim multi-game batches leaves
+                    # most of Elmo/Bert idle even though the dashboard reports
+                    # every socket as live.  A one-game claim keeps all 36+16
+                    # workers fed and makes ``inflight`` exactly represent
+                    # remote-owned work.
+                    chunk = 1
                 if endpoint_owned_queue_mode and not remote_only:
                     # A mixed collection may not hide more than half of the
                     # tail window in emitter-private lists. Production's many
@@ -3235,24 +3393,6 @@ def iter_scheduled_additive_results(
 
         pending = len(threads)
         last_log = time.monotonic()
-
-        def _publish_remote_slots() -> None:
-            """Push live active-socket + demand counts to tqdm / monitors."""
-            if on_remote_slots is None:
-                return
-            try:
-                active = int(sum(slots_by_endpoint.values()))
-                dem_map = dict(scheduler.remote_demand() or {})
-                demand_n = int(sum(int(v) for v in dem_map.values())) if dem_map else active
-                on_remote_slots(
-                    {
-                        "active": active,
-                        "demand": demand_n,
-                        "claimed_remote": int(claimed_remote),
-                    }
-                )
-            except Exception:
-                pass
 
         _publish_remote_slots()
 
@@ -4076,6 +4216,16 @@ def serve_forever(
                 except OSError:
                     pass
                 return
+            raw_requested_codecs = first.get("frame_codecs") or []
+            if isinstance(raw_requested_codecs, str):
+                requested_codecs = {
+                    value.strip()
+                    for value in raw_requested_codecs.split(",")
+                    if value.strip()
+                }
+            else:
+                requested_codecs = {str(value) for value in raw_requested_codecs}
+            compress_frames = _FRAME_CODEC_ZLIB_V1 in requested_codecs
             info = hello() if hello is not None else {}
             try:
                 send_frame(
@@ -4083,6 +4233,9 @@ def serve_forever(
                     {
                         "type": "hello_ok",
                         "proto": PROTO_VERSION,
+                        "frame_codecs": (
+                            [_FRAME_CODEC_ZLIB_V1] if compress_frames else []
+                        ),
                         **info,
                     },
                 )
@@ -4112,6 +4265,7 @@ def serve_forever(
                                 "t0": msg.get("t0"),
                                 "t1": time.time(),
                             },
+                            compress=compress_frames,
                         )
                     except OSError:
                         break
@@ -4127,12 +4281,13 @@ def serve_forever(
                                 "ok": False,
                                 "error": f"{type(exc).__name__}: {exc}",
                             },
+                            compress=compress_frames,
                         )
                     except OSError:
                         break
                     continue
                 try:
-                    send_frame(conn, reply)
+                    send_frame(conn, reply, compress=compress_frames)
                 except OSError:
                     break
         finally:

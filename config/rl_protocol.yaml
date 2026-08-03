@@ -90,16 +90,31 @@ training_hardware_throughput:
       producer_complete_drain: true
     current_iteration_5_mutated: false
   self_play_elmo_tail_policy:
-    goal_revision: 119
-    status: activated_for_restarted_iteration_6
+    goal_revision: 124
+    status: full_remote_execution_resync_and_live_canary_pending
+    required_local_only_environment: POKEBOT_SELF_PLAY_LOCAL_ONLY=0
+    self_play_remote_claims: full_36_plus_16_execution_targets
+    self_play_remote_execution_caps: unchanged_full_fleet
+    remote_result_transport: zlib_level1_large_json_frames
+    request_socket_contract:
+      sockets_per_execution_worker: 1
+      speculative_low_water_socket_wave: 0
+      elmo_execution_workers: 36
+      bert_execution_workers: 16
+    blackwell_local_workers: 96
+    public_mix_and_evaluation_remotes_unchanged: true
     required_environment: POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY=1
-    tail_entry_unclaimed_fraction: 0.20
+    tail_entry_unclaimed_games: 20
+    tail_games_environment: POKEBOT_SELF_PLAY_TAIL_WORK_STEAL_GAMES
+    private_self_play_games_per_request_socket: 1
+    steady_state_controller_owned_queue_waves_per_endpoint: 1
+    pre_reserve_entire_remote_share: false
     bert:
       new_tail_claims: 0
       controller_owned_queue_returns_to_blackwell: true
     elmo:
       execution_waves_retained: 1
-      queued_waves_retained: 1
+      queued_waves_retained: 0
       first_remote_tail_claim: true
     blackwell_local_workers_remain_eligible_until_global_completion: 96
     applies_to:
@@ -197,7 +212,7 @@ training_hardware_throughput:
     shared_mid_iteration_backlog_enabled: true
     endpoint_owned_reserves_enabled: true
     socket_prefetch_factor: 1
-    socket_prefetch_max_factor: 2
+    socket_prefetch_max_factor: 1
     dashboard_dispatch_generation_scoping_required: true
     elmo:
       endpoint: 192.168.1.143:8765

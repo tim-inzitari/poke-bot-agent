@@ -6830,6 +6830,71 @@ def test_dashboard_source_integrity_accepts_receipt_backed_marnie_bootstrap() ->
     assert protocol["current"] is True
 
 
+def test_dashboard_source_integrity_counts_explicit_failed_experiment_slot() -> None:
+    specialist = "marnie-s-grimmsnarl-ex"
+    run = "final_format_marnie_r104_h10_i_v6_8k"
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": True,
+            "pid": 512755,
+            "restart_count": 0,
+            "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+        },
+        "training": {"mode": "final_format_marnie_h10_rl", "run": run},
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": True,
+            "runtime_active_specialist": specialist,
+            "canonical_active_specialist": "",
+            "canonical_active_refresh_specialist": specialist,
+            "active_specialist": specialist,
+            "active_runtime_refresh": {
+                "active": True,
+                "specialist_id": specialist,
+                "run_name": run,
+            },
+            "required_target_count": 2,
+            "specialists": [
+                {
+                    "id": specialist,
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                }
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": specialist, "inference_only": True}
+            ],
+            "program_progress": {
+                "completed_specialist_ids": [specialist],
+                "terminal_failed_experiment_exceptions": 1,
+                "terminal_failed_experiment_specialist_ids": ["slowking"],
+            },
+            "terminal_specialist_transition": {
+                "status": "activated",
+                "specialist_id": "slowking",
+                "terminal_disposition": "failed_experiment",
+                "passing_status_granted": False,
+                "completion_credit_granted": False,
+            },
+            "post_fleet_refresh": {
+                "status": "marnie_iteration6_active",
+                "goal_revision": 113,
+            },
+            "source": "/state/specialists.yaml",
+        },
+        "model": {"checkpoint_structure": {}},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    protocol = payload["source_integrity"]["rows"]["protocol"]
+    assert protocol["checks"]["specialist_roster"] is True
+    assert protocol["checks"]["live_runtime_identity"] is True
+    assert protocol["current"] is True
+
+
 def test_dashboard_uses_training_environment_for_checkpoint_snapshot() -> None:
     server_source = (
         Path(__file__).resolve().parents[1] / "dashboard/lan/server.py"

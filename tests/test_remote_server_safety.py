@@ -54,6 +54,69 @@ def test_fast_and_stdlib_json_frames_are_wire_compatible(monkeypatch) -> None:
         right.close()
 
 
+def test_negotiated_compressed_frame_round_trip() -> None:
+    payload = {
+        "type": "result",
+        "record_jsons": ["x" * (remote_jobs._FRAME_COMPRESSION_MIN_BYTES + 4096)],
+    }
+    frame = remote_jobs.encode_frame(payload, compress=True)
+    (wire_length,) = remote_jobs._HDR.unpack(frame[: remote_jobs._HDR.size])
+    assert wire_length & remote_jobs._COMPRESSED_FRAME_FLAG
+    assert (wire_length & ~remote_jobs._COMPRESSED_FRAME_FLAG) < len(
+        payload["record_jsons"][0]
+    )
+
+    left, right = socket.socketpair()
+    try:
+        left.sendall(frame)
+        assert remote_jobs.read_frame(right) == payload
+    finally:
+        left.close()
+        right.close()
+
+
+def test_server_negotiates_compression_but_legacy_hello_stays_plain() -> None:
+    port = _unused_port()
+    stop = threading.Event()
+    thread = threading.Thread(
+        target=_server,
+        args=(port, stop),
+        kwargs={"max_connections": 2},
+    )
+    thread.start()
+    modern = _connect(port)
+    legacy = _connect(port)
+    try:
+        send_frame(
+            modern,
+            {
+                "type": "hello",
+                "proto": PROTO_VERSION,
+                "frame_codecs": [remote_jobs._FRAME_CODEC_ZLIB_V1],
+            },
+        )
+        modern_hello = read_frame(modern)
+        assert modern_hello["frame_codecs"] == [
+            remote_jobs._FRAME_CODEC_ZLIB_V1
+        ]
+        large = "z" * (remote_jobs._FRAME_COMPRESSION_MIN_BYTES + 4096)
+        send_frame(modern, {"type": "echo", "blob": large}, compress=True)
+        modern_reply = read_frame(modern)
+        assert modern_reply["echo"]["blob"] == large
+
+        legacy_hello = _hello(legacy)
+        assert legacy_hello["frame_codecs"] == []
+        send_frame(legacy, {"type": "echo", "blob": large})
+        legacy_reply = read_frame(legacy)
+        assert legacy_reply["echo"]["blob"] == large
+    finally:
+        modern.close()
+        legacy.close()
+        stop.set()
+        thread.join(timeout=3.0)
+    assert not thread.is_alive()
+
+
 def _unused_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))

@@ -1884,6 +1884,35 @@ class SnapshotCache:
                 if isinstance(row, dict)
             ]
             required_target_count = protocol.get("required_target_count")
+            program_progress = protocol.get("program_progress") or {}
+            terminal_failed_ids = {
+                str(value)
+                for value in program_progress.get(
+                    "terminal_failed_experiment_specialist_ids", ()
+                )
+                if str(value)
+            }
+            declared_terminal_exceptions = int(
+                program_progress.get("terminal_failed_experiment_exceptions")
+                or 0
+            )
+            terminal_exception_current = bool(
+                declared_terminal_exceptions == len(terminal_failed_ids)
+                and (
+                    not terminal_failed_ids
+                    or (
+                        terminal_transition.get("status") == "activated"
+                        and terminal_transition.get("terminal_disposition")
+                        == "failed_experiment"
+                        and str(terminal_transition.get("specialist_id") or "")
+                        in terminal_failed_ids
+                        and terminal_transition.get("passing_status_granted")
+                        is False
+                        and terminal_transition.get("completion_credit_granted")
+                        is False
+                    )
+                )
+            )
             active_record_ids = {
                 str(row.get("id") or "")
                 for row in protocol_specialists
@@ -1921,7 +1950,11 @@ class SnapshotCache:
                 and len(set(specialist_ids)) == len(specialist_ids)
                 and (
                     not isinstance(required_target_count, int)
-                    or len(specialist_ids) == required_target_count
+                    or (
+                        terminal_exception_current
+                        and len(set(specialist_ids) | terminal_failed_ids)
+                        == required_target_count
+                    )
                 )
                 and active_records_current
             )

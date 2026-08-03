@@ -9183,8 +9183,15 @@ def parse_curriculum_progress(
             gps = None
             if rate is not None:
                 gps = rate if rate_unit == "game/s" else 1.0 / max(rate, 1e-9)
-            request_sockets = parse_metric(timing, "remotes")
+            request_sockets = parse_metric(timing, "rsock")
+            if request_sockets is None:
+                # Backward-compatible read for immutable pre-revision-124
+                # progress logs, where ``remotes`` meant request sockets.
+                request_sockets = parse_metric(timing, "remotes")
             remote_demand = parse_metric(timing, "rdmd")
+            remote_outstanding = parse_metric(timing, "rout")
+            remote_outstanding_elmo = parse_metric(timing, "eout")
+            remote_outstanding_bert = parse_metric(timing, "bout")
             # With socket prefetch, ``remotes`` is the number of admitted TCP
             # requests, while ``rdmd`` remains execution-worker demand.  Keep
             # the public ``remotes`` metric at worker grain so the dashboard
@@ -9226,6 +9233,21 @@ def parse_curriculum_progress(
                             else None
                         ),
                         "remote_queue_capacity": remote_queue_capacity,
+                        "remote_outstanding": (
+                            int(remote_outstanding)
+                            if remote_outstanding is not None
+                            else None
+                        ),
+                        "remote_outstanding_elmo": (
+                            int(remote_outstanding_elmo)
+                            if remote_outstanding_elmo is not None
+                            else None
+                        ),
+                        "remote_outstanding_bert": (
+                            int(remote_outstanding_bert)
+                            if remote_outstanding_bert is not None
+                            else None
+                        ),
                     }.items()
                     if value is not None
                 },
@@ -11220,6 +11242,15 @@ def curriculum_state() -> dict[str, Any]:
         ),
         "remote_queue_capacity": (
             (progress.get("metrics") or {}).get("remote_queue_capacity")
+        ),
+        "remote_outstanding": (
+            (progress.get("metrics") or {}).get("remote_outstanding")
+        ),
+        "remote_outstanding_elmo": (
+            (progress.get("metrics") or {}).get("remote_outstanding_elmo")
+        ),
+        "remote_outstanding_bert": (
+            (progress.get("metrics") or {}).get("remote_outstanding_bert")
         ),
         "remote_dispatch": (
             handoff.get("remote_dispatch")

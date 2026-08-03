@@ -252,6 +252,71 @@ def test_hard_gate_refreshes_stale_present_client_before_reload(tmp_path: Path) 
     ]
 
 
+def test_hard_gate_skips_redundant_reload_from_exact_leaf_health(
+    tmp_path: Path,
+) -> None:
+    """A fresh exact leaf-and-pin proof makes the publish idempotent."""
+    mod = _load_train_pure_rl()
+    digest = "sha256:" + "a" * 64
+    calls: list[str] = []
+
+    class ExactClient:
+        host = "worker.local"
+        port = 8765
+
+        def reconnect(self):
+            calls.append("reconnect")
+            return SimpleNamespace(checkpoint_digest=digest)
+
+        def health(self):
+            calls.append("health")
+            return {
+                "ok": True,
+                "controller_healthy": True,
+                "leaf_alive": True,
+                "leaf_identity_ok": True,
+                "checkpoint_digest": digest,
+                "checkpoint_version": 60,
+                "pinned_digests": [digest],
+                "leaves": [
+                    {"healthy": True, "checkpoint_digest": digest},
+                    {"healthy": True, "checkpoint_digest": digest},
+                ],
+            }
+
+        def reload_checkpoint(self, *_args, **_kwargs):
+            raise AssertionError("exact health must bypass reload")
+
+        def pin_checkpoint(self, *_args, **_kwargs):
+            raise AssertionError("exact health must bypass pin")
+
+    client = ExactClient()
+    farm = SimpleNamespace(
+        clients=[client],
+        _reconnect_missing=lambda: calls.append("farm_reconnect_missing"),
+    )
+    checkpoint = tmp_path / "candidate.pt"
+    checkpoint.write_bytes(b"checkpoint")
+
+    proof = mod._hard_gate_publish_weights(
+        leaf=SimpleNamespace(remote_channel=None),
+        remote_farm=farm,
+        ckpt=checkpoint,
+        digest=digest,
+        version=11,
+        required_endpoints=["worker.local:8765"],
+    )
+
+    assert proof["remote_ok"] is True
+    assert proof["remote_endpoints"][0]["reload_skipped_exact_health"] is True
+    assert calls == [
+        "farm_reconnect_missing",
+        "reconnect",
+        "health",
+        "reconnect",
+    ]
+
+
 def test_weight_publish_refuses_shadow_only_remote_when_runtime_is_required(
     tmp_path: Path, monkeypatch
 ) -> None:

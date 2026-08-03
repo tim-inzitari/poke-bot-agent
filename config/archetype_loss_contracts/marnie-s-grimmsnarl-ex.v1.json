@@ -1,0 +1,63 @@
+{
+  "schema": "poke_bot.archetype_loss_contract/v1",
+  "contract_id": "marnie-s-grimmsnarl-ex-observed-family-v1",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "status": "staged_runtime_inert",
+  "owner_revision": 120,
+  "new_policy_heads": false,
+  "new_routes": false,
+  "optimizer_groups": [
+    "action_semantics",
+    "short_horizon_tactics_opponent_response",
+    "state_setup_resource_forecasting",
+    "long_horizon_outcome_remaining_turns",
+    "marnie_residual_objectives"
+  ],
+  "residual_objectives": {
+    "core_setup_continuity": {
+      "initial_weight": 0.0125,
+      "weight": 0.0125,
+      "bounds": [0.0, 0.05],
+      "existing_head_targets": ["setup_board_outcome"]
+    },
+    "resource_attack_readiness": {
+      "initial_weight": 0.0125,
+      "weight": 0.0125,
+      "bounds": [0.0, 0.05],
+      "existing_head_targets": ["resource_forecast", "action_resource"]
+    },
+    "long_horizon_prize_pressure": {
+      "initial_weight": 0.0125,
+      "weight": 0.0125,
+      "bounds": [0.0, 0.05],
+      "existing_head_targets": ["outcome_distribution", "remaining_turns", "prize_race"]
+    }
+  },
+  "applicability": [
+    "family_applicable",
+    "list_capability_present",
+    "row_applicable",
+    "target_observable",
+    "label_valid"
+  ],
+  "normalization": "active_objective_and_valid_row_then_equal_list_macro_average",
+  "fully_masked_behavior": "zero_loss_zero_gradient",
+  "guide_gradient_authorization": [
+    "action_q",
+    "action_resource",
+    "action_utility",
+    "setup_board_outcome",
+    "combo_state"
+  ],
+  "preserve": {
+    "core_policy_awr_value_authority": true,
+    "guide_weight": 0.05,
+    "combo_weight": 0.025,
+    "router_format": 6,
+    "latent_policy_cap": 0.25,
+    "route_reliability": true,
+    "formal_gates": true,
+    "game_caps": true,
+    "serving_configuration": true
+  }
+}
