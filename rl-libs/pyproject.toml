@@ -1,0 +1,53 @@
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "rl-libs"
+version = "0.2.0"
+description = "Generalized C++/Python RL infrastructure: IO, leaf IPC, pools, eval, checkpoints, resources, schedules, submit guard"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "rl-libs contributors" }]
+keywords = ["rl", "kaggle", "checkpoint", "shm", "eval"]
+classifiers = [
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+torch = ["torch"]
+
+[tool.scikit-build]
+wheel.packages = [
+  "python/rl_io",
+  "python/rl_runtime",
+  "python/proc_pool",
+  "python/rl_eval",
+  "python/torch_ckpt",
+  "python/artifact_registry",
+  "python/rl_resource",
+  "python/schedule_engine",
+  "python/test_profiles",
+  "python/submit_guard",
+  "python/log_trim",
+]
+cmake.build-type = "Release"
+cmake.args = [
+  "-DRL_LIBS_BUILD_PYTHON=ON",
+  "-DRL_LIBS_BUILD_TESTS=OFF",
+  "-DRL_LIBS_BUILD_APPS=OFF",
+]
+sdist.exclude = [".venv", "build", "**/__pycache__"]
+wheel.exclude = [".venv", "build"]
+
+[tool.scikit-build.cmake.define]
+RL_LIBS_BUILD_PYTHON = "ON"
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]
+pythonpath = ["python"]
