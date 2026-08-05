@@ -13,6 +13,12 @@ Sizing is profile-bound:
 - ``pure_rl`` → d_model=96, dynamics_width=192
 """
 
+from .agent_bridge import (
+    RTPAgentBridge,
+    RTPBridgeDiagnostics,
+    resolve_rtp_config_for_model,
+    turn_key_from_obs,
+)
 from .config import RTPConfig
 from .dynamics import LatentTransitionDynamics, LookaheadBackedDynamics
 from .executor import PlanExecutor, PlanStepResult
@@ -47,6 +53,8 @@ __all__ = [
     "PlanNode",
     "PlanProposal",
     "PlanStepResult",
+    "RTPAgentBridge",
+    "RTPBridgeDiagnostics",
     "RTPConfig",
     "RecursiveTurnPlanner",
     "SubgoalKind",
@@ -57,4 +65,6 @@ __all__ = [
     "VERIFY_ABLATONS",
     "get_profile",
     "profile_inventory",
+    "resolve_rtp_config_for_model",
+    "turn_key_from_obs",
 ]

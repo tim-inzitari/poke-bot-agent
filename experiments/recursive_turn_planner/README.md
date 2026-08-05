@@ -51,18 +51,21 @@ Shared with existing search code:
 
 ```text
 poke_bot/recursive_turn_planner/
-  config.py      # hard budgets + sizing fields
-  profiles.py    # named parent-bound sizing contracts
-  types.py       # typed turn-program AST
-  memory.py      # encode-once H + option_hidden
-  dynamics.py    # D(z,a) + lookahead adapter
-  planner.py     # propose / recurse / score
-  legality.py    # exact legal-action prune
-  executor.py    # persist / branch / repair
+  config.py        # hard budgets + sizing fields
+  profiles.py      # named parent-bound sizing contracts
+  types.py         # typed turn-program AST
+  memory.py        # encode-once H + option_hidden
+  dynamics.py      # D(z,a) + lookahead adapter
+  planner.py       # propose / recurse / score
+  legality.py      # exact legal-action prune
+  executor.py      # persist / branch / repair
+  agent_bridge.py  # PolicyAgent encode/plan/execute map
 ```
 
+Swap-in instructions: [`SWAP_IN.md`](SWAP_IN.md)
+
 ```bash
-pytest -m unit tests/test_recursive_turn_planner.py
+pytest -m unit tests/test_recursive_turn_planner.py tests/test_rtp_agent_bridge.py
 ```
 
 ## Non-goals for this lane
