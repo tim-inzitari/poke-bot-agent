@@ -22,6 +22,8 @@ This tree is for **isolated R&D only**. It is not a production training lane.
 
 - `experiments/cuda-sim-lab/` — CUDA simulator feasibility / parity slices
 - `experiments/apple-optimization/` — Apple GPU telemetry / optimization plists
+- `experiments/recursive_turn_planner/` — lightweight Recursive Turn Planner
+  (importable under `poke_bot/recursive_turn_planner/`)
 
 Add new experiment folders beside these. Prefer small, receipt-backed probes
 over broad production-path edits.
