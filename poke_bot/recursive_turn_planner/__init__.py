@@ -20,6 +20,14 @@ from .agent_bridge import (
     resolve_rtp_config_for_model,
     turn_key_from_obs,
 )
+from .pipeline import (
+    ArchetypeRTPJob,
+    ArchetypeRTPResult,
+    example_registry_jobs,
+    load_archetype_registry,
+    run_archetype_rtp_pipeline,
+    run_registry,
+)
 from .config import RTPConfig
 from .dynamics import LatentTransitionDynamics, LookaheadBackedDynamics
 from .executor import PlanExecutor, PlanStepResult
@@ -43,6 +51,8 @@ from .types import (
 )
 
 __all__ = [
+    "ArchetypeRTPJob",
+    "ArchetypeRTPResult",
     "GLOBAL_TRANSFORMER",
     "LatentTransitionDynamics",
     "LookaheadBackedDynamics",
@@ -64,8 +74,12 @@ __all__ = [
     "TypedLegalityVerifier",
     "UNIT_TEST",
     "VERIFY_ABLATONS",
+    "example_registry_jobs",
     "get_profile",
+    "load_archetype_registry",
     "profile_inventory",
     "resolve_rtp_config_for_model",
+    "run_archetype_rtp_pipeline",
+    "run_registry",
     "turn_key_from_obs",
 ]

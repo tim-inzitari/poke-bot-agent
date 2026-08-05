@@ -109,7 +109,8 @@ def test_train_cli_synthetic(tmp_path: Path) -> None:
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
-    summary = json.loads((out / "train_summary.json").read_text(encoding="utf-8"))
-    assert summary["source"] == "synthetic"
-    assert Path(summary["rtp"]["checkpoint_path"]).is_file()
-    assert Path(summary["poke_rlm"]["checkpoint_path"]).is_file()
+    payload = json.loads(proc.stdout)
+    assert payload["source"] == "synthetic"
+    assert Path(payload["rtp_checkpoint"]).is_file()
+    assert Path(payload["poke_rlm_checkpoint"]).is_file()
+    assert (out / "experimental" / "pipeline_summary.json").is_file()

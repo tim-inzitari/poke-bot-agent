@@ -64,13 +64,25 @@ poke_bot/recursive_turn_planner/
 
 Swap-in instructions: [`SWAP_IN.md`](SWAP_IN.md)
 
+## Archetype-generic training pipeline
+
+One recipe for Alakazam / Marnie / Crustle / any future specialist:
+
+- Registry: `config/rtp_archetype_pipeline.example.yaml`
+- Runner: `scripts/run_rtp_archetype_pipeline.py`
+- Library: `poke_bot/recursive_turn_planner/pipeline.py`
+
 ```bash
-pytest -m unit tests/test_recursive_turn_planner.py tests/test_rtp_agent_bridge.py
+pytest -m unit \
+  tests/test_recursive_turn_planner.py \
+  tests/test_rtp_agent_bridge.py \
+  tests/test_recursive_turn_planner_training.py \
+  tests/test_rtp_archetype_pipeline.py
 ```
 
 ## Non-goals for this lane
 
-- No production `PolicyAgent` default switch
 - No `GOAL.md` / owner-contract changes
 - No healthy training restarts
+- No selector self-promotion from RTP sidecars
 - No REPL / natural-language recursive prompts

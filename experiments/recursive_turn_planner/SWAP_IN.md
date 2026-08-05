@@ -23,24 +23,37 @@ PolicyAgent.__call__(obs)
         └─ else → greedy_select
 ```
 
-## Train multi-turn planner heads
+## Train multi-turn planner heads (any archetype)
+
+Same pipeline for Alakazam, Marnie, Crustle, and every future specialist.
 
 ```bash
-# Synthetic smoke
-python3 scripts/train_recursive_turn_planner.py --out-dir outputs/rtp_smoke --synthetic --also-poke-rlm
+# 1) Copy registry and fill checkpoint/shard paths
+cp config/rtp_archetype_pipeline.example.yaml config/rtp_archetype_pipeline.yaml
 
-# Host: freeze CABT encoder, train RTP (+ optional PokeRLM) on shard features
-python3 scripts/train_recursive_turn_planner.py \
-  --out-dir outputs/rtp_host \
-  --checkpoint /path/to/parent.pt \
-  --shard /path/to/training_shard \
-  --also-poke-rlm
+# 2) Smoke fleet
+python3 scripts/run_rtp_archetype_pipeline.py \
+  --registry config/rtp_archetype_pipeline.example.yaml \
+  --out-dir outputs/rtp_fleet_smoke --synthetic --also-poke-rlm
+
+# 3) Host: one specialist
+python3 scripts/run_rtp_archetype_pipeline.py \
+  --registry config/rtp_archetype_pipeline.yaml \
+  --out-dir outputs/rtp_fleet \
+  --specialist alakazam
+
+# 4) Host: every job with paths filled
+python3 scripts/run_rtp_archetype_pipeline.py \
+  --registry config/rtp_archetype_pipeline.yaml \
+  --out-dir outputs/rtp_fleet --only-ready
 ```
+
+Add a new deck by appending another `specialist_id` block to the registry (no code change).
 
 Load trained RTP weights at runtime (sidecar only; does not rewrite parent):
 
 ```bash
-export POKEBOT_RTP_CHECKPOINT=outputs/rtp_host/rtp/rtp_shadow_planner.pt
+export POKEBOT_RTP_CHECKPOINT=outputs/rtp_fleet/alakazam/rtp/rtp_shadow_planner.pt
 ```
 
 ## Enable / disable
