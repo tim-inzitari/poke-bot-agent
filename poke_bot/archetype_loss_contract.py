@@ -63,6 +63,27 @@ def guide_gradient_allowed(contract: Mapping[str, Any], head_name: str) -> bool:
     return str(head_name) in set(contract.get("guide_gradient_authorization") or ())
 
 
+def canonical_residual_weights(
+    values: Mapping[str, Any] | None,
+) -> dict[str, float]:
+    """Return the complete bounded residual vector used by the learner."""
+    raw = dict(values or {})
+    unknown = set(raw) - set(RESIDUALS)
+    if unknown:
+        raise ArchetypeLossContractError(
+            f"unknown archetype residual objectives: {sorted(unknown)}"
+        )
+    result = {name: 0.0 for name in RESIDUALS}
+    for name, value in raw.items():
+        weight = float(value)
+        if not math.isfinite(weight) or not 0.0 <= weight <= 0.05:
+            raise ArchetypeLossContractError(
+                f"invalid residual objective weight: {name}"
+            )
+        result[name] = weight
+    return result
+
+
 @dataclass(frozen=True)
 class MaskedObjective:
     name: str
@@ -70,6 +91,9 @@ class MaskedObjective:
     row_mask: torch.Tensor
     weight: float
     capability: str
+    row_applicable: torch.Tensor | None = None
+    target_observable: torch.Tensor | None = None
+    label_valid: torch.Tensor | None = None
 
 
 def macro_list_loss(
@@ -103,6 +127,13 @@ def macro_list_loss(
         for objective in objectives:
             values = objective.values.reshape(n, -1)
             row_valid = objective.row_mask.reshape(n, -1).to(torch.bool)
+            for explicit in (
+                objective.row_applicable,
+                objective.target_observable,
+                objective.label_valid,
+            ):
+                if explicit is not None:
+                    row_valid = row_valid & explicit.reshape(n, -1).to(torch.bool)
             capability = capabilities.get(objective.capability)
             if capability is None:
                 continue
@@ -126,6 +157,7 @@ def macro_list_loss(
 
 __all__ = [
     "ArchetypeLossContractError",
+    "canonical_residual_weights",
     "GROUPS",
     "MaskedObjective",
     "RESIDUALS",

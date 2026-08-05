@@ -1,0 +1,31 @@
+{
+  "schema": "poke_bot.marnie_new_system_boundary_stage/v1",
+  "status": "staged_immutable_boundary_active_iteration_unchanged",
+  "goal_revision": 130,
+  "created_at_utc": "2026-08-03T22:56:34Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "trigger": "successful_checksum_exact_iteration_9_kaggle_upload_receipt",
+  "successful_upload_is_last_old_system_boundary": true,
+  "first_post_upload_training_collection_system": "new_system",
+  "old_system_collection_after_successful_upload_allowed": false,
+  "boundary_is_owner_immutable": true,
+  "activation_inputs_must_be_prepared_before_trigger": true,
+  "missing_or_inconclusive_evidence_after_successful_upload": "pause_before_next_collection",
+  "current_runtime": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "main_pid": 1267326,
+    "restart_count": 0,
+    "active_state": "active",
+    "sub_state": "running",
+    "iteration": 6,
+    "current_iteration_modified": false,
+    "scheduler_modified": false,
+    "selector_modified": false
+  },
+  "canonical_sha256": {
+    "config/rl_protocol.yaml": "sha256:68cbd24090076b664102c69666ac423bc6e73e6e00571c7bc3e7907d1a299d4c",
+    "state/specialists.yaml": "sha256:0ac310727cb0bdbbf418fd3b265dc4930cb678f08b0795ce57478562dd742f1d",
+    "ops/current_goal_requirements.json": "sha256:0f11cc4d8db737d50752aa938eff2a7cd9a36eebf982c7dd8b428ccd0afe30af"
+  },
+  "activation_status": "staged_not_yet_triggered"
+}

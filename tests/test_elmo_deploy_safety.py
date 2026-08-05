@@ -111,7 +111,7 @@ def test_rollback_override_preserves_the_prior_immutable_image_tag() -> None:
 def test_production_override_is_bounded_and_preserves_hard_limits() -> None:
     text = _text("docker-compose.production.yml")
     assert (
-        "image: poke-bot-truenas-worker:archaludon-fusion-v2-r74-memory-v1"
+            "poke-bot-truenas-worker:r125-checkpoint-digest-verify-v2"
         in text
     )
     assert 'command: ["production"]' in text
@@ -137,7 +137,7 @@ def test_production_override_is_bounded_and_preserves_hard_limits() -> None:
         re.M,
     )
     assert re.search(
-        r'^\s*POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: ["\']30["\']', text, re.M
+        r'^\s*POKEBOT_REMOTE_TREE_RSS_LIMIT_GB: ["\']45["\']', text, re.M
     )
     assert re.search(
         r'^\s*POKEBOT_REMOTE_MIN_FREE_RAM_GB: ["\']24["\']', text, re.M
@@ -197,7 +197,7 @@ def test_entrypoint_enforces_production_rotation_contract() -> None:
     assert 'production_rotation_code" != "75"' in text
     assert '"POKEBOT_WORKER_RECYCLE_GAMES:256"' in text
     assert '"WORKER_RECYCLE_GAMES:256"' in text
-    assert '"POKEBOT_REMOTE_TREE_RSS_LIMIT_GB:30"' in text
+    assert '"POKEBOT_REMOTE_TREE_RSS_LIMIT_GB:45"' in text
     assert '"POKEBOT_REMOTE_MIN_FREE_RAM_GB:24"' in text
     assert (
         '"POKEBOT_REMOTE_WORKER_CAPACITY_RECOVERY_GRACE_S:300"' in text

@@ -6,7 +6,7 @@ change the singular package deck, or make evaluation rows training eligible.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict, deque
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 import hashlib
 import json
@@ -24,6 +24,66 @@ SPLITS = frozenset({"train", "dev", "locked"})
 
 class ArchetypeFamilyError(ValueError):
     """The observed-list family contract is incomplete or inconsistent."""
+
+
+@dataclass(frozen=True)
+class FamilyDeckEntry:
+    deck_id: str
+
+
+@dataclass(frozen=True)
+class FamilyDeckMix:
+    """Ladder-mix-compatible scheduler backed by one family manifest."""
+
+    manifest: Mapping[str, Any]
+    mix_id: str
+    artifact_sha256: str
+    decks: tuple[FamilyDeckEntry, ...]
+
+    @classmethod
+    def from_manifest(cls, manifest: Mapping[str, Any]) -> "FamilyDeckMix":
+        validated = validate_manifest(manifest, require_activation_ready=True)
+        ids = tuple(sorted(family_probabilities(validated)))
+        return cls(
+            manifest=validated,
+            mix_id=f"{SPECIALIST_ID}-observed-family-v1",
+            artifact_sha256=str(validated["artifact_sha256"]),
+            decks=tuple(FamilyDeckEntry(deck_id=value) for value in ids),
+        )
+
+    def weights(self, basis: str = "train") -> dict[str, float]:
+        if basis != "train":
+            raise ArchetypeFamilyError("family v1 exposes only train weights")
+        return family_probabilities(self.manifest)
+
+    def quotas(self, total: int, basis: str = "train") -> dict[str, int]:
+        return hamilton_quotas(int(total), self.weights(basis))
+
+    def schedule_ids(
+        self,
+        total: int,
+        *,
+        seed: int,
+        iteration: int = 0,
+        stream: str = "self_play_our",
+        basis: str = "train",
+    ) -> tuple[str, ...]:
+        quotas = self.quotas(total, basis)
+        tokens = [
+            (variant_id, ordinal)
+            for variant_id in sorted(quotas)
+            for ordinal in range(quotas[variant_id])
+        ]
+        prefix = (
+            f"{self.artifact_sha256}|{int(seed)}|{int(iteration)}|"
+            f"{stream}|{basis}|"
+        )
+        tokens.sort(
+            key=lambda token: hashlib.sha256(
+                f"{prefix}{token[0]}|{token[1]}".encode("utf-8")
+            ).digest()
+        )
+        return tuple(variant_id for variant_id, _ordinal in tokens)
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -185,18 +245,17 @@ def schedule_variants(
             )
     rng = random.Random(int(hashlib.sha256(checksum_seed.encode()).hexdigest(), 16))
     rng.shuffle(scheduled)
-    # Rotate opponent variants by one; if adjacent values still match, choose
-    # the first different value. This minimizes identical-list self-play and
-    # is deterministic for the fixed permutation.
+    # Choose the cyclic shift with the fewest mirrors.  Under the locked 20%
+    # package cap and equal-cluster allocation a zero-mirror shift normally
+    # exists; the fallback is still the deterministic minimum.
     ids = [row["variant_id"] for row in scheduled]
-    rotated = deque(ids)
-    if rotated:
-        rotated.rotate(1)
+    positions = sorted(range(len(ids)), key=lambda index: (ids[index], index))
+    ordered = [ids[index] for index in positions]
+    max_count = max(Counter(ordered).values(), default=0)
+    best = ordered[max_count:] + ordered[:max_count]
+    opponent_by_position = {position: best[index] for index, position in enumerate(positions)}
     for index, row in enumerate(scheduled):
-        opponent = rotated[index]
-        if len(set(ids)) > 1 and opponent == row["variant_id"]:
-            opponent = next(value for value in ids if value != row["variant_id"])
-        row["opponent_variant_id"] = opponent
+        row["opponent_variant_id"] = opponent_by_position[index]
     return scheduled
 
 
@@ -219,6 +278,8 @@ def validate_manifest(
     packages = 0
     measurements = 0
     for row in rows:
+        if row.get("family_id") != SPECIALIST_ID:
+            raise ArchetypeFamilyError("variant family identity mismatch")
         cards = row.get("card_ids")
         if not isinstance(cards, list) or len(cards) != 60:
             raise ArchetypeFamilyError("every variant must contain exactly 60 cards")
@@ -252,6 +313,15 @@ def validate_manifest(
             raise ArchetypeFamilyError("invalid split or missing cluster")
         if not isinstance(row.get("capability_mask"), dict):
             raise ArchetypeFamilyError("capability mask is required")
+        if set(row["capability_mask"]) != {
+            "core_setup_continuity",
+            "resource_attack_readiness",
+            "long_horizon_prize_pressure",
+        } or any(not isinstance(value, bool) for value in row["capability_mask"].values()):
+            raise ArchetypeFamilyError("capability mask is incomplete or untyped")
+        weight = row.get("training_weight")
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or not math.isfinite(float(weight)) or float(weight) < 0.0:
+            raise ArchetypeFamilyError("training weight must be finite and nonnegative")
         packages += bool(row.get("package"))
         measurements += bool(row.get("measurement"))
     if packages != 1 or measurements != 1:
@@ -264,6 +334,17 @@ def validate_manifest(
         cluster_splits[row["cluster_id"]].add(row["split"])
     if any(len(splits) != 1 for splits in cluster_splits.values()):
         raise ArchetypeFamilyError("similarity cluster leaked across splits")
+    recomputed = cluster_variants(rows)
+    declared_partition = {
+        frozenset(str(row["variant_id"]) for row in rows if row["cluster_id"] == cluster)
+        for cluster in cluster_splits
+    }
+    recomputed_partition = {
+        frozenset(variant for variant, value in recomputed.items() if value == cluster)
+        for cluster in set(recomputed.values())
+    }
+    if declared_partition != recomputed_partition:
+        raise ArchetypeFamilyError("declared similarity clusters do not match swap-distance clustering")
     non_package_clusters = set(cluster_splits) - {package["cluster_id"]}
     if require_activation_ready and len(non_package_clusters) < 12:
         raise ArchetypeFamilyError("activation requires at least 12 non-package clusters")
@@ -286,8 +367,83 @@ def legacy_row_variant(
     )
 
 
+def validate_training_row(
+    manifest: Mapping[str, Any], row: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Validate replay/rehearsal provenance and reject evaluation splits.
+
+    Legacy rows are accepted only when their exact deck multiset matches the
+    singular package variant.  The returned provenance is suitable for
+    recording on a normalized replay row.
+    """
+    variants = {str(item["variant_id"]): item for item in manifest["variants"]}
+    variant_id = str(row.get("variant_id") or "")
+    if not variant_id:
+        variant_id = legacy_row_variant(
+            manifest,
+            exact_deck_multiset_digest=str(row.get("multiset_digest") or ""),
+        ) or ""
+    variant = variants.get(variant_id)
+    if variant is None:
+        raise ArchetypeFamilyError("row has no exact admitted family variant")
+    if variant["split"] != "train":
+        raise ArchetypeFamilyError("development/locked variant entered training")
+    required = {
+        "family_id": manifest["family_id"],
+        "variant_id": variant_id,
+        "manifest_digest": manifest["artifact_sha256"],
+        "ordered_digest": variant["ordered_digest"],
+        "multiset_digest": variant["multiset_digest"],
+    }
+    for key, expected in required.items():
+        observed = row.get(key)
+        if observed not in (None, "", expected):
+            raise ArchetypeFamilyError(f"row provenance mismatch: {key}")
+    return required
+
+
+def macro_replay_rows(
+    manifest: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    total: int,
+    checksum_seed: str,
+) -> list[dict[str, Any]]:
+    """Deterministically resample replay/rehearsal to family macro weights."""
+    buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for source in rows:
+        provenance = validate_training_row(manifest, source)
+        normalized = dict(source)
+        normalized.update(provenance)
+        buckets[provenance["variant_id"]].append(normalized)
+    quotas = hamilton_quotas(int(total), family_probabilities(manifest))
+    selected: list[dict[str, Any]] = []
+    for variant_id, quota in sorted(quotas.items()):
+        bucket = buckets.get(variant_id) or []
+        if quota and not bucket:
+            raise ArchetypeFamilyError(f"missing replay rows for train variant: {variant_id}")
+        ranked = sorted(bucket, key=digest_json)
+        rng = random.Random(int(hashlib.sha256(f"{checksum_seed}:{variant_id}".encode()).hexdigest(), 16))
+        rng.shuffle(ranked)
+        for index in range(quota):
+            selected.append(dict(ranked[index % len(ranked)]))
+    rng = random.Random(int(hashlib.sha256(f"{checksum_seed}:final".encode()).hexdigest(), 16))
+    rng.shuffle(selected)
+    return selected
+
+
+def singular_package_variant(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the only checksum-pinned package/measurement deck."""
+    rows = [row for row in manifest["variants"] if row["package"] or row["measurement"]]
+    if len(rows) != 1 or not rows[0]["package"] or not rows[0]["measurement"]:
+        raise ArchetypeFamilyError("package materialization is not singular")
+    return dict(rows[0])
+
+
 __all__ = [
     "ArchetypeFamilyError",
+    "FamilyDeckEntry",
+    "FamilyDeckMix",
     "SCHEMA",
     "SPECIALIST_ID",
     "canonical_counts",
@@ -297,9 +453,12 @@ __all__ = [
     "hamilton_quotas",
     "legacy_row_variant",
     "multiset_digest",
+    "macro_replay_rows",
     "ordered_digest",
     "schedule_variants",
+    "singular_package_variant",
     "split_clusters",
     "swap_distance",
     "validate_manifest",
+    "validate_training_row",
 ]

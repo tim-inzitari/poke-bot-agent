@@ -1,0 +1,42 @@
+{
+  "schema": "poke_bot.marnie_iteration9_upload_pause_hook_armed/v1",
+  "status": "armed_waiting_iteration_8_commit",
+  "owner_revisions": [130, 132, 134, 135],
+  "recorded_at_utc": "2026-08-04T02:04:59Z",
+  "managed_boundary_unit": {
+    "name": "pokebot-marnie-iteration9-upload-pause-boundary-r135.service",
+    "source": "deploy/systemd/pokebot-marnie-iteration9-upload-pause-boundary-r135.service",
+    "sha256": "sha256:2e8683679076bb12d64863f71ab88346ba7c2464221b2dad82850070abfe68d9",
+    "active_state": "activating",
+    "sub_state": "start",
+    "main_pid": 1731699
+  },
+  "boundary": {
+    "restart_after_completed_iteration": 8,
+    "next_current_system_iteration": 9,
+    "pause_after_completed_iteration": 9,
+    "blocked_next_collection_iteration": 10
+  },
+  "runtime_patch": {
+    "module": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/poke_bot/archetype_family_activation.py",
+    "sha256": "sha256:dc352ddd697f7fbfc239895f243921b640b458274067541d232c715b28987aa8",
+    "focused_tests": "5 passed"
+  },
+  "live_training_at_arm": {
+    "service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "main_pid": 1471079,
+    "restart_count": 0,
+    "last_completed_iteration": 7,
+    "next_iteration": 8,
+    "learner_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381"
+  },
+  "guarantees": {
+    "current_iteration_interrupted": false,
+    "current_system_required_through_iteration_9": true,
+    "iteration_10_old_system_collection_allowed_before_successful_upload": false,
+    "restart_prevent_exit_status": 75,
+    "scheduler_changed": false,
+    "fleet_allocation_changed": false,
+    "self_play_tail_rule_changed": false
+  }
+}

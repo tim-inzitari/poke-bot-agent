@@ -333,6 +333,72 @@ def test_training_seat_receipt_reuses_sealed_index_after_root_relocation(
     assert recovered["stage_receipts"] == original["stage_receipts"]
 
 
+def test_training_seat_receipt_recovery_allows_family_replay_expansion(
+    tmp_path: Path,
+) -> None:
+    run_root = tmp_path / "family-run"
+    run_root.mkdir(parents=True)
+    collection_path = run_root / "collection.json"
+    collection_path.write_text("{}", encoding="utf-8")
+    collection = {
+        "design_fingerprint_at_collection": "sha256:" + "a" * 64,
+        "receipt_path": str(collection_path),
+        "shard": {"sha256": "sha256:" + "f" * 64, "games": 3},
+        "replay_cache": {"sequences": 3},
+        "stats": {
+            "training_seat_split": {
+                "assigned_source_games": train_pure_rl._training_seat_stage(
+                    "assigned_source_games", [0, 1], expected_total=2
+                ),
+                "retained_source_games": train_pure_rl._training_seat_stage(
+                    "retained_source_games", [0, 1], expected_total=2
+                ),
+                "stage_manifest_sha256": {
+                    "assigned": "sha256:" + "c" * 64,
+                    "actual": "sha256:" + "d" * 64,
+                },
+            }
+        },
+    }
+    sequences = [
+        SimpleNamespace(
+            episode_id=f"game-{index}",
+            seat=index % 2,
+            archetype="marnie-s-grimmsnarl-ex",
+            source="pure_rl",
+        )
+        for index in range(6)
+    ]
+    original = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=run_root,
+        iteration=10,
+        design_fingerprint="sha256:" + "b" * 64,
+        collection_receipt=collection,
+        sequences=sequences,
+    )
+
+    recovered = train_pure_rl._commit_training_seat_split_receipt(
+        run_dir=run_root,
+        iteration=10,
+        design_fingerprint="sha256:" + "e" * 64,
+        collection_receipt=collection,
+        sequences=list(reversed(sequences)),
+    )
+
+    assert recovered == original
+    assert recovered["retained_source_games"]["total"] == 2
+    assert recovered["replay_sequences_consumed"]["total"] == 6
+
+
+def test_replay_sampling_seed_stays_bound_to_collection_design() -> None:
+    assert train_pure_rl._replay_sampling_design_fingerprint(
+        current_design_fingerprint="sha256:" + "b" * 64,
+        collection_receipt={
+            "design_fingerprint_at_collection": "sha256:" + "a" * 64
+        },
+    ) == "sha256:" + "a" * 64
+
+
 def test_training_seat_receipt_reuses_recovered_collection_bundle(
     tmp_path: Path,
 ) -> None:
@@ -921,6 +987,28 @@ def test_targeted_replacements_preserve_schedule_cell_and_use_disjoint_seed() ->
         job["target_provenance"]["replacement_round"] == 3
         for job in retries
     )
+
+
+def test_extended_public_mix_replacement_seed_lanes_are_bounded_and_disjoint() -> None:
+    historical = {
+        train_pure_rl._targeted_replacement_seed_offset(retry_round)
+        for retry_round in range(4)
+    }
+    extended = {
+        train_pure_rl._targeted_replacement_seed_offset(retry_round)
+        for retry_round in range(
+            4, train_pure_rl._PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS
+        )
+    }
+
+    assert historical == {60_000, 70_000, 80_000, 90_000}
+    assert len(extended) == 28
+    assert historical.isdisjoint(extended)
+    assert max(extended) < 2_147_483_647
+    with pytest.raises(ValueError, match="retry_round"):
+        train_pure_rl._targeted_replacement_seed_offset(
+            train_pure_rl._PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS
+        )
 
 
 def test_second_self_play_retry_reschedules_only_to_current_mirror() -> None:

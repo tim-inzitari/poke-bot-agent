@@ -550,22 +550,46 @@ class SnapshotCache:
             )
             if legacy_weight is None:
                 legacy_weight = teal_legacy_guide.get("target_weight")
+            existing_guide_modes = (
+                protocol.get("current_deck_guide_training_modes")
+                if isinstance(
+                    protocol.get("current_deck_guide_training_modes"), dict
+                )
+                else {}
+            )
+            existing_active_guide = (
+                existing_guide_modes.get("active_started_lineage")
+                if isinstance(
+                    existing_guide_modes.get("active_started_lineage"), dict
+                )
+                else {}
+            )
+            preserve_live_shadow = bool(
+                existing_active_guide.get("is_active") is True
+                and int(existing_active_guide.get("owner_revision") or 0) >= 141
+                and existing_active_guide.get("mode")
+                == "optional_offline_shadow_non_authoritative"
+            )
             protocol["current_deck_guide_training_modes"] = {
-                "active_started_lineage": {
-                    "specialist_id": "teal-mask-ogerpon-ex",
-                    "display_name": "Slop Box (Teal Mask Ogerpon ex)",
-                    "is_active": (
-                        str(protocol.get("active_specialist") or "")
-                        == "teal-mask-ogerpon-ex"
-                    ),
-                    "scope": "already_started_legacy_run",
-                    "mode": "confidence_weighted_policy_cross_entropy",
-                    "guide_weight": legacy_weight,
-                    "revision_51_retrofit_allowed": False,
-                    "runtime_input_authority": False,
-                    "action_selection_authority": False,
-                    "serving_authority": False,
-                },
+                "active_started_lineage": (
+                    existing_active_guide
+                    if preserve_live_shadow
+                    else {
+                        "specialist_id": "teal-mask-ogerpon-ex",
+                        "display_name": "Slop Box (Teal Mask Ogerpon ex)",
+                        "is_active": (
+                            str(protocol.get("active_specialist") or "")
+                            == "teal-mask-ogerpon-ex"
+                        ),
+                        "scope": "already_started_legacy_run",
+                        "mode": "confidence_weighted_policy_cross_entropy",
+                        "guide_weight": legacy_weight,
+                        "revision_51_retrofit_allowed": False,
+                        "runtime_input_authority": False,
+                        "action_selection_authority": False,
+                        "serving_authority": False,
+                    }
+                ),
                 "future_lineage": {
                     "scope": future_guide_scope.get("scope"),
                     "effective_from_specialist": future_guide_scope.get(
@@ -1750,6 +1774,7 @@ class SnapshotCache:
         handoff = value.get("specialist_handoff") or {}
         protocol = value.get("specialist_protocol") or {}
         training = value.get("training") or {}
+        managed_boundary = value.get("managed_boundary") or {}
         model = value.get("model") or {}
         structure = model.get("checkpoint_structure") or {}
         expanded_heads = structure.get("expanded_head_training") or {}
@@ -1784,6 +1809,22 @@ class SnapshotCache:
         service_active = bool(
             service.get("active") and int(service.get("pid") or 0) > 0
         )
+        managed_boundary_current = bool(
+            managed_boundary.get("current") is True
+            and managed_boundary.get("authoritative") is True
+            and managed_boundary.get("active") is True
+            and int((managed_boundary.get("service") or {}).get("pid") or 0) > 0
+            and str(managed_boundary.get("source") or "")
+        )
+        managed_boundary_paused_current = bool(
+            managed_boundary.get("current") is True
+            and managed_boundary.get("authoritative") is True
+            and managed_boundary.get("paused") is True
+            and managed_boundary.get("active") is False
+            and managed_boundary.get("status") == "paused_inconclusive"
+            and int((managed_boundary.get("service") or {}).get("pid") or 0) == 0
+            and str(managed_boundary.get("outcome_source") or "")
+        )
         post_fleet_refresh = protocol.get("post_fleet_refresh") or {}
         post_fleet_status = str(post_fleet_refresh.get("status") or "")
         post_fleet_runtime_active = bool(
@@ -1804,23 +1845,54 @@ class SnapshotCache:
             and str(active_runtime_refresh.get("run_name") or "")
             == str(training.get("run") or "")
         )
-        final_refresh_current = receipt_backed_final_refresh or bool(
-            service_active
-            and training.get("mode")
-            in {
-                "final_format_alakazam_ordinary_refresh",
-                "final_format_alakazam_h10_rl",
-            }
+        receipt_backed_stopped_final_refresh = bool(
+            not service_active
+            and training.get("status") == "stopped"
+            and active_runtime_refresh.get("active") is False
+            and str(training.get("mode") or "").startswith("final_format_")
             and runtime_specialist
-            == str(
-                protocol.get("canonical_active_refresh_specialist")
-                or "alakazam"
+            == str(active_runtime_refresh.get("specialist_id") or "")
+            == str(protocol.get("canonical_active_refresh_specialist") or "")
+            and str(active_runtime_refresh.get("run_name") or "")
+            == str(training.get("run") or "")
+        )
+        final_refresh_current = (
+            receipt_backed_final_refresh
+            or receipt_backed_stopped_final_refresh
+            or bool(
+                service_active
+                and training.get("mode")
+                == "final_format_crustle_h10_bootstrap"
+                and runtime_specialist == "crustle"
+                and str(curriculum.get("run") or "")
+                == "final_format_crustle_r113_h10_bootstrap"
             )
-            and int(post_fleet_refresh.get("goal_revision") or 0) >= 79
-            and post_fleet_runtime_active
-            and terminal_transition.get("status") == "activated"
-            and terminal_transition.get("terminal_disposition")
-            == "failed_experiment"
+            or bool(
+                (managed_boundary_current or managed_boundary_paused_current)
+                and str(managed_boundary.get("run") or "")
+                == str(curriculum.get("run") or "")
+                and str(managed_boundary.get("specialist_id") or "")
+                == runtime_specialist
+                == str(protocol.get("canonical_active_refresh_specialist") or "")
+            )
+            or bool(
+                service_active
+                and training.get("mode")
+                in {
+                    "final_format_alakazam_ordinary_refresh",
+                    "final_format_alakazam_h10_rl",
+                }
+                and runtime_specialist
+                == str(
+                    protocol.get("canonical_active_refresh_specialist")
+                    or "alakazam"
+                )
+                and int(post_fleet_refresh.get("goal_revision") or 0) >= 79
+                and post_fleet_runtime_active
+                and terminal_transition.get("status") == "activated"
+                and terminal_transition.get("terminal_disposition")
+                == "failed_experiment"
+            )
         )
         handoff_active = bool(
             handoff.get("active")
@@ -2092,18 +2164,28 @@ class SnapshotCache:
                 "current": bool(
                     handoff_progress_current
                     or handoff_transition_current
+                    or managed_boundary_current
+                    or managed_boundary_paused_current
                     or (
                         service_active
                         and int(service.get("restart_count") or 0) >= 0
                     )
                 ),
                 "identity": (
-                    handoff.get("service", {}).get("name")
+                    (managed_boundary.get("service") or {}).get("name")
+                    if managed_boundary_current or managed_boundary_paused_current
+                    else handoff.get("service", {}).get("name")
                     if handoff_active
                     else service.get("name")
                 ),
                 "source": (
-                    handoff.get("source")
+                    (
+                        managed_boundary.get("outcome_source")
+                        if managed_boundary_paused_current
+                        else managed_boundary.get("source")
+                    )
+                    if managed_boundary_current or managed_boundary_paused_current
+                    else handoff.get("source")
                     if handoff_active or handoff_transition_current
                     else "systemd user cgroup"
                 ),
@@ -2113,6 +2195,7 @@ class SnapshotCache:
                 "current": bool(
                     handoff_progress_current
                     or handoff_transition_current
+                    or managed_boundary_paused_current
                     or (
                         curriculum.get("active")
                         and curriculum.get("source_current") is True

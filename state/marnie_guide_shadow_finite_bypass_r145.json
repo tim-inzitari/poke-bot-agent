@@ -1,0 +1,50 @@
+{
+  "schema": "poke_bot.marnie_guide_shadow_finite_bypass_repair/v1",
+  "owner_revision": 145,
+  "recorded_at": "2026-08-04T20:40:23Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "defect": {
+    "scope": "resident temporal expert-rehearsal telemetry with expanded heads enabled and guide weight zero",
+    "cause": "inactive guide/setup losses were anchored to the sum of packed option logits, whose masked padding is negative infinity; multiplying that sum by zero produced a NaN scalar",
+    "observed_effect": "total-loss telemetry was NaN while every enabled non-guide component and optimizer gradient remained finite",
+    "action_or_gradient_authority": false
+  },
+  "repair": {
+    "behavior": "anchor inactive losses to the finite causal policy/value state, preserving an exact zero-gradient bypass",
+    "source": "poke_bot/train.py",
+    "previous_sha256": "sha256:a065e093c9228933ff902d0ec394e39afa2c4c6ce3fda8bcf121799706f09fa2",
+    "repaired_sha256": "sha256:fa8792460f3afcfddb36e7ae5e96f6b437188d32d98aff4914bc829b96638ccb",
+    "canonical_training_path": "/home/inzi/poke-bot-agent/poke_bot/train.py",
+    "active_deployment_path": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/poke_bot/train.py",
+    "remote_digests_verified": true
+  },
+  "runtime": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "active_pid": 3773819,
+    "restart_count": 0,
+    "observed_phase": "train:expert",
+    "iteration": 10,
+    "interrupted": false,
+    "loaded_module_generation": "pre-repair",
+    "activation": "next managed interpreter start at or after a clean durable boundary"
+  },
+  "guide_contract": {
+    "effective_loss_weight": 0.0,
+    "target_generation": false,
+    "gradient_authority": false,
+    "fusion_authority": false,
+    "action_authority": false,
+    "serving_authority": false,
+    "gate_authority": false,
+    "submission_authority": false,
+    "blocking_authority": false,
+    "optional_offline_shadow_only": true
+  },
+  "validation": {
+    "masked_negative_infinity_reproduction": "NaN forward diagnostic with finite non-guide gradients under the previous implementation",
+    "new_regression": "expanded resident temporal loss must remain finite and report guide loss exactly zero",
+    "optimizer_guard": "expert rehearsal raises before backward or optimizer step on any non-finite total loss",
+    "focused_tests": "3 passed",
+    "broader_focused_tests": "27 passed; 1 pre-existing CPU stateless-AWR numerical-tolerance failure outside the changed temporal path"
+  }
+}

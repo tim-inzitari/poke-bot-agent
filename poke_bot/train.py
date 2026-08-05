@@ -25,6 +25,7 @@ from torch.nn.utils.rnn import pad_sequence
 from tqdm.auto import tqdm
 
 from . import archetypes, checkpoint, config, device as device_mod, features
+from .archetype_loss_contract import canonical_residual_weights
 from .aux_label_contract import validated_unique_card_ids
 from .blackwell_heads import (
     BLACKWELL_STRATEGY_HEAD_PREFIXES,
@@ -35,6 +36,11 @@ from .blackwell_heads import (
 )
 from .dataset import BootstrapDataset, GameSequence, PolicyStage
 from .device_corpus import DEFAULT_MIN_FREE_GIB, DeviceResidentBootstrapCorpus
+from .expert_pilot_importance import (
+    MAX_IMPORTANCE_WEIGHT as EXPERT_PILOT_MAX_IMPORTANCE_WEIGHT,
+    OWNER_DECISION_REVISION as EXPERT_PILOT_OWNER_DECISION_REVISION,
+    SCHEMA as EXPERT_PILOT_IMPORTANCE_SCHEMA,
+)
 from .combo_state import (
     COMBO_STATE_KEY,
     VECTOR_WIDTH as COMBO_STATE_VECTOR_WIDTH,
@@ -145,6 +151,8 @@ class TrainConfig:
     #: Additive V6 auxiliary weights keyed by canonical expanded head id.
     #: Empty/all-zero preserves the exact V5 optimizer and forward path.
     expanded_head_loss_weights: dict[str, float] = field(default_factory=dict)
+    #: Family-v1 adds bounded losses only through already-existing heads.
+    archetype_residual_loss_weights: dict[str, float] = field(default_factory=dict)
     #: One clean-boundary, receipt-backed loss rebalance may change inherited
     #: expanded-head multipliers without changing tensors or optimizer state.
     expanded_head_weight_migration_reason: str = ""
@@ -1163,6 +1171,32 @@ def _strategic_curriculum_training_record(
     }
 
 
+def _maybe_strategic_curriculum_training_record(
+    *,
+    cfg: TrainConfig,
+    train_metrics: BatchMetrics,
+    validation_metrics: BatchMetrics,
+) -> dict[str, Any]:
+    """Return strategic-guide telemetry only for an active strategic mode.
+
+    Guide-off/legacy lineages intentionally carry no strategic curriculum
+    record.  Keeping this guard in one helper prevents rehearsal and RL save
+    paths from diverging and accidentally making shadow-guide retirement a
+    checkpoint blocker.
+    """
+
+    if (
+        canonical_guide_training_mode(cfg.current_deck_guide_training_mode)
+        not in GUIDE_STRATEGIC_TRAINING_MODES
+    ):
+        return {}
+    return _strategic_curriculum_training_record(
+        cfg=cfg,
+        train_metrics=train_metrics,
+        validation_metrics=validation_metrics,
+    )
+
+
 def count_usable_strategic_guide_rows(
     sequences: Sequence[GameSequence],
 ) -> int:
@@ -1344,6 +1378,7 @@ def sequence_losses(
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
+    archetype_residual_weights: Optional[dict[str, float]] = None,
     pure_rl: bool = False,
     awr_beta: float = 0.5,
     awr_weight_max: float = 20.0,
@@ -1363,6 +1398,7 @@ def sequence_losses(
         lethal_threat_weight=lethal_threat_weight,
         prize_race_weight=prize_race_weight,
         expanded_head_weights=expanded_head_weights,
+        archetype_residual_weights=archetype_residual_weights,
         pure_rl=pure_rl,
         awr_beta=awr_beta,
         awr_weight_max=awr_weight_max,
@@ -1386,6 +1422,7 @@ def batch_losses(
     lethal_threat_weight: float = 0.0,
     prize_race_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
+    archetype_residual_weights: Optional[dict[str, float]] = None,
     opp_hand_multihot: Optional[torch.Tensor] = None,
     opp_remainder_multihot: Optional[torch.Tensor] = None,
     pure_rl: bool = False,
@@ -1397,6 +1434,7 @@ def batch_losses(
     awr_capture_baseline: Optional[dict[tuple[int, int, int], float]] = None,
     awr_weight_sink: Optional[list[float]] = None,
     prediction_sink: Optional[list[int]] = None,
+    policy_log_prob_sink: Optional[list[list[float]]] = None,
     prediction_only: bool = False,
     history_identity_weight: float = 0.0,
     matchup_adapter_training: bool = False,
@@ -1448,6 +1486,25 @@ def batch_losses(
                 "strategic guide curriculum cannot run in adapter-only fitting"
             )
     expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
+    residual_weights = canonical_residual_weights(archetype_residual_weights)
+    expanded_weights["action_resource"] += residual_weights[
+        "resource_attack_readiness"
+    ]
+    expanded_weights["resource_forecast"] += residual_weights[
+        "resource_attack_readiness"
+    ]
+    expanded_weights["outcome_distribution"] += residual_weights[
+        "long_horizon_prize_pressure"
+    ]
+    expanded_weights["remaining_turns"] += residual_weights[
+        "long_horizon_prize_pressure"
+    ]
+    prize_race_weight = float(prize_race_weight) + residual_weights[
+        "long_horizon_prize_pressure"
+    ]
+    effective_setup_board_outcome_loss_weight = float(
+        setup_board_outcome_loss_weight
+    ) + residual_weights["core_setup_continuity"]
     if not math.isfinite(float(combo_state_loss_weight)) or float(
         combo_state_loss_weight
     ) < 0.0:
@@ -1729,6 +1786,20 @@ def batch_losses(
             prediction_sink.extend(
                 int(value) for value in predictions.detach().cpu().tolist()
             )
+        if policy_log_prob_sink is not None:
+            prediction_log_p = F.log_softmax(logits_all.float(), dim=-1)
+            for row_index, option_count in enumerate(valid_n):
+                policy_log_prob_sink.append(
+                    [
+                        float(value)
+                        for value in prediction_log_p[
+                            row_index, : int(option_count)
+                        ]
+                        .detach()
+                        .cpu()
+                        .tolist()
+                    ]
+                )
         target_idx = torch.tensor(hard_idx, device=device, dtype=torch.long)
         correct = int((predictions == target_idx).sum().item())
         return logits_all.sum() * 0.0, BatchMetrics(
@@ -2150,7 +2221,7 @@ def batch_losses(
             outcome_targets=outcome_target,
             outcome_masks=outcome_mask,
             guide_confidences=guide_confidence,
-            base_loss_weight=setup_board_outcome_loss_weight,
+            base_loss_weight=effective_setup_board_outcome_loss_weight,
             guide_loss_weight=alakazam_guide_weight,
         )
         total = (
@@ -2380,9 +2451,11 @@ def device_temporal_batch_losses(
     ),
     combo_state_loss_weight: float = 0.0,
     expanded_head_weights: Optional[dict[str, float]] = None,
+    archetype_residual_weights: Optional[dict[str, float]] = None,
     matchup_adapter_route: int | None = None,
     teacher_policy_targets: Optional[torch.Tensor] = None,
     teacher_policy_weight: float = 0.0,
+    allow_repeated_games: bool = False,
 ) -> tuple[torch.Tensor, BatchMetrics]:
     """Hard-target full-game loss with every resident temporal target.
 
@@ -2403,6 +2476,25 @@ def device_temporal_batch_losses(
             setup_board_outcome_loss_weight=setup_board_outcome_loss_weight,
         )
     expanded_weights = canonical_expanded_loss_weights(expanded_head_weights)
+    residual_weights = canonical_residual_weights(archetype_residual_weights)
+    expanded_weights["action_resource"] += residual_weights[
+        "resource_attack_readiness"
+    ]
+    expanded_weights["resource_forecast"] += residual_weights[
+        "resource_attack_readiness"
+    ]
+    expanded_weights["outcome_distribution"] += residual_weights[
+        "long_horizon_prize_pressure"
+    ]
+    expanded_weights["remaining_turns"] += residual_weights[
+        "long_horizon_prize_pressure"
+    ]
+    prize_race_weight = float(prize_race_weight) + residual_weights[
+        "long_horizon_prize_pressure"
+    ]
+    effective_setup_board_outcome_loss_weight = float(
+        setup_board_outcome_loss_weight
+    ) + residual_weights["core_setup_continuity"]
     if not math.isfinite(float(combo_state_loss_weight)) or float(
         combo_state_loss_weight
     ) < 0.0:
@@ -2588,9 +2680,14 @@ def device_temporal_batch_losses(
         value_weight=value_weight,
         n_games=int(game_ids.numel()),
     )
-    guide_loss = logits.sum() * 0.0
-    guide_strategic_curriculum_loss = logits.sum() * 0.0
-    setup_loss = logits.sum() * 0.0
+    # Packed option logits use ``-inf`` for masked padding.  Deriving a zero
+    # loss from their raw sum produces ``-inf * 0 == nan`` even when the guide
+    # is disabled.  Anchor inactive objectives to the finite causal state so
+    # guide-off remains an exact, finite, zero-gradient bypass.
+    inactive_loss = policy_value_state.sum() * 0.0
+    guide_loss = inactive_loss
+    guide_strategic_curriculum_loss = inactive_loss
+    setup_loss = inactive_loss
     sample_ids: Optional[torch.Tensor] = None
     if float(teacher_policy_weight) > 0.0:
         assert teacher_policy_targets is not None
@@ -2711,6 +2808,7 @@ def device_temporal_batch_losses(
                 sample_ids=sample_ids,
                 decision_ids=decision_ids,
                 weights=expanded_weights,
+                allow_repeated_target_ids=allow_repeated_games,
             )
         )
         total = total + expanded_loss
@@ -2753,6 +2851,7 @@ def device_temporal_batch_losses(
             weights=guide_outcome_backed_loss_weights(),
             sample_row_weights=guide_confidence,
             decision_row_weights=decision_guide_confidence,
+            allow_repeated_target_ids=allow_repeated_games,
         )
         if (
             guide_training_mode == GUIDE_TRAINING_MODE_DIRECTIONAL
@@ -2831,7 +2930,7 @@ def device_temporal_batch_losses(
                 )
             ),
             guide_confidences=guide_confidence,
-            base_loss_weight=setup_board_outcome_loss_weight,
+            base_loss_weight=effective_setup_board_outcome_loss_weight,
             guide_loss_weight=alakazam_guide_weight,
         )
         total = (
@@ -4192,6 +4291,7 @@ def evaluate(
                 ),
                 combo_state_loss_weight=cfg.combo_state_loss_weight,
                 expanded_head_weights=cfg.expanded_head_loss_weights,
+                archetype_residual_weights=cfg.archetype_residual_loss_weights,
                 pure_rl=bool(cfg.pure_rl),
                 awr_beta=float(cfg.awr_beta),
                 awr_weight_max=float(cfg.awr_weight_max),
@@ -4270,6 +4370,7 @@ def evaluate_device_corpus(
                     ),
                     combo_state_loss_weight=cfg.combo_state_loss_weight,
                     expanded_head_weights=cfg.expanded_head_loss_weights,
+                    archetype_residual_weights=cfg.archetype_residual_loss_weights,
                     teacher_policy_targets=teacher_policy_targets,
                     teacher_policy_weight=teacher_policy_weight,
                 )
@@ -5383,6 +5484,7 @@ def supervised_rehearsal_step(
     current_deck_guide_head_role_map: str = "",
     current_deck_guide_curriculum_validation_receipt: str = "",
     expanded_head_loss_weights: Optional[dict[str, float]] = None,
+    archetype_residual_loss_weights: Optional[dict[str, float]] = None,
     expanded_head_schedule: Optional[dict[str, Any]] = None,
     reset_expanded_training_history: bool = False,
     output_archetype_id: Optional[str] = None,
@@ -5393,6 +5495,8 @@ def supervised_rehearsal_step(
     teacher_policy_target_digest: str = "",
     teacher_policy_checkpoint_digests: Sequence[str] = (),
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
+    training_game_sampling_weights: Optional[torch.Tensor] = None,
+    training_game_importance_contract: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Run a bounded, resumable expert-policy rehearsal on a resident corpus.
 
@@ -5454,8 +5558,58 @@ def supervised_rehearsal_step(
     canonical_expanded_weights = canonical_expanded_loss_weights(
         expanded_head_loss_weights
     )
+    canonical_residuals = canonical_residual_weights(
+        archetype_residual_loss_weights
+    )
+    importance_contract = dict(training_game_importance_contract or {})
+    importance_enabled = training_game_sampling_weights is not None
+    if importance_enabled:
+        if (
+            importance_contract.get("schema")
+            != EXPERT_PILOT_IMPORTANCE_SCHEMA
+            or int(importance_contract.get("owner_decision_revision", -1))
+            != EXPERT_PILOT_OWNER_DECISION_REVISION
+            or importance_contract.get("actions_and_labels_unchanged") is not True
+            or importance_contract.get("validation_unweighted") is not True
+            or importance_contract.get("kaggle_evaluation_replays_excluded")
+            is not True
+            or importance_contract.get("support_partition") != "training_only"
+        ):
+            raise ValueError("expert pilot importance contract is invalid")
+        if not corpus.has_temporal_layout:
+            raise ValueError(
+                "expert pilot importance requires temporal game layout"
+            )
+        weights = training_game_sampling_weights.reshape(-1).to(
+            device=corpus.device, dtype=torch.float32
+        )
+        if int(weights.numel()) != int(corpus.train_games):
+            raise ValueError(
+                "expert pilot importance weights do not align with train games"
+            )
+        if not bool(torch.isfinite(weights).all()) or bool(
+            (
+                (weights < 1.0)
+                | (weights > EXPERT_PILOT_MAX_IMPORTANCE_WEIGHT)
+            ).any()
+        ):
+            raise ValueError(
+                "expert pilot importance weights must be finite in "
+                f"[1, {EXPERT_PILOT_MAX_IMPORTANCE_WEIGHT:g}]"
+            )
+        training_game_sampling_weights = weights
+    elif importance_contract:
+        raise ValueError(
+            "expert pilot importance metadata lacks sampling weights"
+        )
     expanded_enabled = any(
         weight > 0.0 for weight in canonical_expanded_weights.values()
+    ) or any(
+        canonical_residuals[name] > 0.0
+        for name in (
+            "resource_attack_readiness",
+            "long_horizon_prize_pressure",
+        )
     )
     schedule_record = dict(expanded_head_schedule or {})
     if expanded_enabled:
@@ -5523,6 +5677,7 @@ def supervised_rehearsal_step(
             current_deck_guide_curriculum_validation_receipt
         ),
         expanded_head_loss_weights=canonical_expanded_weights,
+        archetype_residual_loss_weights=canonical_residuals,
         amp=device.type == "cuda",
         seed=int(seed),
     )
@@ -5667,6 +5822,7 @@ def supervised_rehearsal_step(
                 shuffle=True,
                 seed=cfg.seed,
                 epoch=epoch_offset,
+                sampling_weights=training_game_sampling_weights,
             )
             if temporal_rehearsal
             else corpus.batches(
@@ -5710,8 +5866,10 @@ def supervised_rehearsal_step(
                         ),
                         combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
+                        archetype_residual_weights=cfg.archetype_residual_loss_weights,
                         teacher_policy_targets=teacher_policy_targets,
                         teacher_policy_weight=float(teacher_policy_weight),
+                        allow_repeated_games=importance_enabled,
                     )
                 else:
                     total, metrics = device_batch_losses(
@@ -5723,6 +5881,10 @@ def supervised_rehearsal_step(
                             cfg.current_deck_guide_training_mode
                         ),
                     )
+            if not bool(torch.isfinite(total)):
+                raise FloatingPointError(
+                    "non-finite expert rehearsal loss before optimizer update"
+                )
             scaler.scale(total).backward()
             if cfg.grad_clip > 0:
                 scaler.unscale_(optimizer)
@@ -5834,10 +5996,23 @@ def supervised_rehearsal_step(
         validation_expanded = dict(val_metrics.expanded_head_metrics or {})
         train_labeled = dict(train_expanded.get("labeled") or {})
         validation_labeled = dict(validation_expanded.get("labeled") or {})
+        effective_expanded_weights = dict(canonical_expanded_weights)
+        effective_expanded_weights["action_resource"] = float(
+            effective_expanded_weights.get("action_resource", 0.0)
+        ) + canonical_residuals["resource_attack_readiness"]
+        effective_expanded_weights["resource_forecast"] = float(
+            effective_expanded_weights.get("resource_forecast", 0.0)
+        ) + canonical_residuals["resource_attack_readiness"]
+        effective_expanded_weights["outcome_distribution"] = float(
+            effective_expanded_weights.get("outcome_distribution", 0.0)
+        ) + canonical_residuals["long_horizon_prize_pressure"]
+        effective_expanded_weights["remaining_turns"] = float(
+            effective_expanded_weights.get("remaining_turns", 0.0)
+        ) + canonical_residuals["long_horizon_prize_pressure"]
         gradient_enabled = [
             name
             for name in EXPANDED_HEAD_IDS
-            if float(canonical_expanded_weights[name]) > 0.0
+            if float(effective_expanded_weights[name]) > 0.0
         ]
         trained_this_epoch = [
             name
@@ -5889,7 +6064,7 @@ def supervised_rehearsal_step(
                 "trained_this_epoch": name in trained_this_epoch,
                 "gradient_enabled": name in gradient_enabled,
                 "runtime_enabled": False,
-                "loss_weight": float(canonical_expanded_weights[name]),
+                "loss_weight": float(effective_expanded_weights[name]),
                 "train_loss": (
                     float(train_losses[name]) if name in train_losses else None
                 ),
@@ -5933,6 +6108,8 @@ def supervised_rehearsal_step(
             "gradient_enabled_heads": gradient_enabled,
             "runtime_enabled_heads": [],
             "loss_weights": dict(canonical_expanded_weights),
+            "effective_loss_weights": effective_expanded_weights,
+            "archetype_residual_loss_weights": dict(canonical_residuals),
             "train_metrics": {
                 name: {"loss": train_losses.get(name)}
                 for name in EXPANDED_HEAD_IDS
@@ -5961,14 +6138,10 @@ def supervised_rehearsal_step(
                 "fused_policy" if fused_action_path else "flat_policy"
             ),
         }
-    strategic_training_record = (
-        _strategic_curriculum_training_record(
-            cfg=cfg,
-            train_metrics=train_metrics,
-            validation_metrics=val_metrics,
-        )
-        if cfg.current_deck_guide_training_mode in GUIDE_TRAINING_MODES
-        else {}
+    strategic_training_record = _maybe_strategic_curriculum_training_record(
+        cfg=cfg,
+        train_metrics=train_metrics,
+        validation_metrics=val_metrics,
     )
     rehearsal_record = {
         "schema": 1,
@@ -5997,6 +6170,14 @@ def supervised_rehearsal_step(
         "decision_context": str(model.decision_context),
         "resident_temporal_layout": bool(corpus.has_temporal_layout),
         "corpus_split_seed": int(corpus_split_seed),
+        "expert_pilot_importance": (
+            importance_contract
+            if importance_enabled
+            else {
+                "schema": "poke_bot.expert_pilot_importance/v1",
+                "enabled": False,
+            }
+        ),
         **(
             {"training_seat_split_receipt": dict(training_seat_split_receipt)}
             if training_seat_split_receipt
@@ -6012,6 +6193,7 @@ def supervised_rehearsal_step(
             "alakazam_guide": float(cfg.alakazam_guide_loss_weight),
             "combo_state": float(cfg.combo_state_loss_weight),
             "expanded_strategic": dict(canonical_expanded_weights),
+            "archetype_residuals": dict(canonical_residuals),
         },
         **(
             {"current_deck_guide_training": strategic_training_record}
@@ -6056,6 +6238,28 @@ def supervised_rehearsal_step(
         # The exact checkpoint-producing step owns this record. Callers may
         # add bootstrap provenance but cannot override tensor-bound telemetry.
         inherited_extra["expanded_head_training"] = expanded_training_contract
+    if strategic_training_record:
+        # Keep the top-level convenience record aligned with this exact
+        # checkpoint-producing step.  Without this assignment, a guide-off
+        # rehearsal could inherit an older nonzero guide contract even though
+        # its authoritative rehearsal record and optimized loss were zero.
+        inherited_extra["current_deck_guide_training"] = strategic_training_record
+    # ``extra`` is inherited for immutable provenance, but this display cache
+    # describes the checkpoint being written.  Recompute it after any H10,
+    # latent-policy, fusion, head, or adapter materialization so dashboards do
+    # not retain the narrower parent's count.
+    inherited_extra["param_count"] = int(
+        sum(parameter.numel() for parameter in model.parameters())
+    )
+    # Supervised rehearsal does not currently calculate a model-update norm.
+    # Do not expose a pure-RL parent's measurement as if it described this
+    # checkpoint-producing step; the exact parent remains available by digest.
+    inherited_extra.pop("update_norm_l2", None)
+    inherited_extra.pop("relative_update_norm_l2", None)
+    inherited_extra["update_norm_provenance"] = {
+        "status": "not_measured_for_supervised_rehearsal",
+        "parent_digest": actual_parent_digest,
+    }
     payload = checkpoint.build_checkpoint(
         model=model,
         optimizer=optimizer,
@@ -6479,6 +6683,7 @@ def _precompute_awr_baseline_cache_reference(
                         ),
                         combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
+                        archetype_residual_weights=cfg.archetype_residual_loss_weights,
                         pure_rl=True,
                         awr_beta=float(cfg.awr_beta),
                         awr_weight_max=float(cfg.awr_weight_max),
@@ -6618,6 +6823,7 @@ def _policy_argmax_predictions(
                         ),
                         combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
+                        archetype_residual_weights=cfg.archetype_residual_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
                         awr_weight_max=float(cfg.awr_weight_max),
@@ -6641,6 +6847,325 @@ def _policy_argmax_predictions(
     finally:
         model.train(was_training)
     return predictions
+
+
+@torch.no_grad()
+def _policy_distribution_predictions(
+    model: TemporalCabtTransformer,
+    sequences: Sequence[GameSequence],
+    *,
+    cfg: TrainConfig,
+    desc: Optional[str] = None,
+) -> tuple[list[int], list[list[float]]]:
+    """Return stable greedy actions and exact valid-option log probabilities."""
+    if not sequences:
+        return [], []
+    predictions: list[int] = []
+    log_probabilities: list[list[float]] = []
+    was_training = model.training
+    model.eval()
+    device = next(model.parameters()).device
+    use_amp = bool(cfg.amp and device.type == "cuda")
+    amp_dtype = (
+        torch.bfloat16
+        if (use_amp and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+    batches = _iter_game_batches(
+        list(sequences),
+        cfg.games_per_batch,
+        max(
+            int(cfg.max_decisions_per_batch),
+            int(cfg.agreement_max_decisions_per_batch),
+        ),
+        shuffle=False,
+        seed=cfg.seed,
+        epoch=0,
+    )
+    try:
+        visible = (
+            tqdm(batches, desc=desc, leave=False, unit="batch")
+            if desc
+            else batches
+        )
+        for batch in visible:
+            def _predict(work: list[GameSequence]) -> BatchMetrics:
+                with torch.amp.autocast(
+                    "cuda", enabled=use_amp, dtype=amp_dtype
+                ):
+                    _, metrics = batch_losses(
+                        model,
+                        work,
+                        value_weight=cfg.value_loss_weight,
+                        aux_weight=cfg.aux_loss_weight,
+                        opp_hand_weight=cfg.opp_hand_loss_weight,
+                        opp_remainder_weight=cfg.opp_remainder_loss_weight,
+                        lethal_threat_weight=cfg.lethal_threat_loss_weight,
+                        prize_race_weight=cfg.prize_race_loss_weight,
+                        alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+                        current_deck_guide_training_mode=(
+                            cfg.current_deck_guide_training_mode
+                        ),
+                        setup_board_outcome_loss_weight=(
+                            cfg.setup_board_outcome_loss_weight
+                        ),
+                        combo_state_loss_weight=cfg.combo_state_loss_weight,
+                        expanded_head_weights=cfg.expanded_head_loss_weights,
+                        archetype_residual_weights=(
+                            cfg.archetype_residual_loss_weights
+                        ),
+                        pure_rl=bool(cfg.pure_rl),
+                        awr_beta=float(cfg.awr_beta),
+                        awr_weight_max=float(cfg.awr_weight_max),
+                        awr_normalize_advantages=bool(
+                            cfg.awr_normalize_advantages
+                        ),
+                        entropy_bonus=float(cfg.entropy_bonus),
+                        prediction_sink=predictions,
+                        policy_log_prob_sink=log_probabilities,
+                        prediction_only=True,
+                    )
+                return metrics
+
+            process_with_oom_splitting(
+                batch,
+                _predict,
+                on_split=(
+                    torch.cuda.empty_cache if device.type == "cuda" else None
+                ),
+            )
+    finally:
+        model.train(was_training)
+    if len(predictions) != len(log_probabilities):
+        raise RuntimeError("policy distribution scan lost row alignment")
+    return predictions, log_probabilities
+
+
+def policy_drift_diagnostics(
+    *,
+    parent_checkpoint: Union[str, Path],
+    candidate_checkpoint: Union[str, Path],
+    dataset: BootstrapDataset,
+    cfg: TrainConfig,
+    device: Optional[torch.device] = None,
+) -> dict[str, Any]:
+    """Measure parent-relative KL and greedy flips on one sealed causal corpus."""
+    selected_device = device or device_mod.training_device(
+        prefer_name=config.HARDWARE.train_gpu_name, allow_cpu=False
+    )
+    sequences = [sequence for sequence in dataset.sequences if sequence.decisions]
+    if not sequences:
+        raise ValueError("policy drift corpus has no decision-bearing sequences")
+    parent = load_model_from_checkpoint(parent_checkpoint, device=selected_device)
+    parent_actions, parent_log_p = _policy_distribution_predictions(
+        parent, sequences, cfg=cfg, desc="family-drift parent"
+    )
+    del parent
+    if selected_device.type == "cuda":
+        torch.cuda.empty_cache()
+    candidate = load_model_from_checkpoint(
+        candidate_checkpoint, device=selected_device
+    )
+    candidate_actions, candidate_log_p = _policy_distribution_predictions(
+        candidate, sequences, cfg=cfg, desc="family-drift candidate"
+    )
+    del candidate
+    if selected_device.type == "cuda":
+        torch.cuda.empty_cache()
+    if not parent_actions or len(parent_actions) != len(candidate_actions):
+        raise RuntimeError("policy drift scans have different row counts")
+    divergences: list[float] = []
+    for parent_row, candidate_row in zip(parent_log_p, candidate_log_p):
+        if not parent_row or len(parent_row) != len(candidate_row):
+            raise RuntimeError("policy drift scans have different legal options")
+        divergence = sum(
+            math.exp(parent_value) * (parent_value - candidate_value)
+            for parent_value, candidate_value in zip(parent_row, candidate_row)
+        )
+        if not math.isfinite(divergence):
+            raise FloatingPointError("non-finite parent-relative policy KL")
+        divergences.append(max(0.0, float(divergence)))
+    ordered = sorted(divergences)
+    p99_index = min(len(ordered) - 1, math.ceil(0.99 * len(ordered)) - 1)
+    return {
+        "schema": "poke_bot.parent_relative_policy_drift/v1",
+        "rows": len(ordered),
+        "mean_policy_kl": sum(ordered) / len(ordered),
+        "p99_policy_kl": ordered[p99_index],
+        "greedy_action_flip_rate": sum(
+            int(parent_action != candidate_action)
+            for parent_action, candidate_action in zip(
+                parent_actions, candidate_actions
+            )
+        )
+        / len(parent_actions),
+        "finite": True,
+        "causal_rows_only": True,
+    }
+
+
+def archetype_residual_gradient_diagnostics(
+    *,
+    checkpoint_path: Union[str, Path],
+    dataset: BootstrapDataset,
+    cfg: TrainConfig,
+    device: Optional[torch.device] = None,
+    maximum_batches: int = 32,
+) -> dict[str, Any]:
+    """Measure residual/core trunk-gradient geometry without updating tensors."""
+    residuals = canonical_residual_weights(cfg.archetype_residual_loss_weights)
+    if not any(value > 0.0 for value in residuals.values()):
+        raise ValueError("gradient diagnostic requires a nonzero residual vector")
+    selected_device = device or device_mod.training_device(
+        prefer_name=config.HARDWARE.train_gpu_name, allow_cpu=False
+    )
+    model = load_model_from_checkpoint(checkpoint_path, device=selected_device)
+    model.eval()
+    named_trunk = [
+        (name, parameter)
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+        and not any(
+            token in name.casefold()
+            for token in (
+                "head", "decoder", "option", "matchup_adapter",
+                "decision_fusion", "route_reliability",
+            )
+        )
+    ]
+    if not named_trunk:
+        raise RuntimeError("no causal trunk parameters found for gradient audit")
+    parameters = [parameter for _name, parameter in named_trunk]
+    accumulated_core = [torch.zeros_like(parameter) for parameter in parameters]
+    accumulated_total = [torch.zeros_like(parameter) for parameter in parameters]
+    coverage = {
+        "core_setup_continuity": False,
+        "resource_attack_readiness": False,
+        "long_horizon_prize_pressure": False,
+    }
+    diagnostic_batches = 0
+    diagnostic_decisions = 0
+    batches = _iter_game_batches(
+        [sequence for sequence in dataset.sequences if sequence.decisions],
+        cfg.games_per_batch,
+        cfg.max_decisions_per_batch,
+        shuffle=False,
+        seed=cfg.seed,
+        epoch=0,
+    )
+
+    def _loss(work: list[GameSequence], vector: dict[str, float]):
+        return batch_losses(
+            model,
+            work,
+            value_weight=cfg.value_loss_weight,
+            aux_weight=cfg.aux_loss_weight,
+            opp_hand_weight=cfg.opp_hand_loss_weight,
+            opp_remainder_weight=cfg.opp_remainder_loss_weight,
+            lethal_threat_weight=cfg.lethal_threat_loss_weight,
+            prize_race_weight=cfg.prize_race_loss_weight,
+            alakazam_guide_weight=cfg.alakazam_guide_loss_weight,
+            current_deck_guide_training_mode=cfg.current_deck_guide_training_mode,
+            setup_board_outcome_loss_weight=cfg.setup_board_outcome_loss_weight,
+            combo_state_loss_weight=cfg.combo_state_loss_weight,
+            expanded_head_weights=cfg.expanded_head_loss_weights,
+            archetype_residual_weights=vector,
+            pure_rl=bool(cfg.pure_rl),
+            awr_beta=float(cfg.awr_beta),
+            awr_weight_max=float(cfg.awr_weight_max),
+            awr_normalize_advantages=bool(cfg.awr_normalize_advantages),
+            entropy_bonus=float(cfg.entropy_bonus),
+        )
+
+    try:
+        for work in batches:
+            if diagnostic_batches >= max(1, int(maximum_batches)):
+                break
+            core_loss, core_metrics = _loss(
+                work,
+                {name: 0.0 for name in residuals},
+            )
+            total_loss, total_metrics = _loss(work, residuals)
+            if total_metrics.n_decisions <= 0:
+                continue
+            core_grads = torch.autograd.grad(
+                core_loss, parameters, allow_unused=True
+            )
+            total_grads = torch.autograd.grad(
+                total_loss, parameters, allow_unused=True
+            )
+            for index, parameter in enumerate(parameters):
+                core_grad = core_grads[index]
+                total_grad = total_grads[index]
+                if core_grad is not None:
+                    accumulated_core[index].add_(core_grad.detach())
+                if total_grad is not None:
+                    accumulated_total[index].add_(total_grad.detach())
+            expanded = dict(total_metrics.expanded_head_metrics or {})
+            labeled = dict(expanded.get("labeled") or {})
+            setup = dict(total_metrics.setup_board_outcome_metrics or {})
+            coverage["core_setup_continuity"] |= int(
+                setup.get("eligible_rows", 0)
+            ) > 0
+            coverage["resource_attack_readiness"] |= all(
+                int(labeled.get(name, 0)) > 0
+                for name in ("action_resource", "resource_forecast")
+            )
+            coverage["long_horizon_prize_pressure"] |= (
+                all(
+                    int(labeled.get(name, 0)) > 0
+                    for name in ("outcome_distribution", "remaining_turns")
+                )
+                and int(total_metrics.n_prize_race_rows) > 0
+            )
+            diagnostic_batches += 1
+            diagnostic_decisions += int(total_metrics.n_decisions)
+            if all(coverage.values()):
+                break
+    finally:
+        del model
+        if selected_device.type == "cuda":
+            torch.cuda.empty_cache()
+    core_sq = 0.0
+    residual_sq = 0.0
+    total_sq = 0.0
+    total_core_dot = 0.0
+    finite = True
+    for core_grad, total_grad in zip(accumulated_core, accumulated_total):
+        residual_grad = total_grad - core_grad
+        finite &= bool(
+            torch.isfinite(core_grad).all()
+            and torch.isfinite(total_grad).all()
+            and torch.isfinite(residual_grad).all()
+        )
+        core_sq += float(torch.sum(core_grad.float() ** 2).item())
+        residual_sq += float(torch.sum(residual_grad.float() ** 2).item())
+        total_sq += float(torch.sum(total_grad.float() ** 2).item())
+        total_core_dot += float(
+            torch.sum(total_grad.float() * core_grad.float()).item()
+        )
+    core_norm = math.sqrt(core_sq)
+    residual_norm = math.sqrt(residual_sq)
+    total_norm = math.sqrt(total_sq)
+    cosine = total_core_dot / max(total_norm * core_norm, 1e-12)
+    return {
+        "schema": "poke_bot.archetype_residual_gradient_diagnostics/v1",
+        "residual_weights": residuals,
+        "trunk_parameter_names": [name for name, _parameter in named_trunk],
+        "trunk_parameter_count": sum(
+            int(parameter.numel()) for _name, parameter in named_trunk
+        ),
+        "diagnostic_batches": diagnostic_batches,
+        "diagnostic_decisions": diagnostic_decisions,
+        "required_label_coverage": coverage,
+        "complete_required_label_coverage": all(coverage.values()),
+        "finite_gradients": finite,
+        "core_gradient_norm": core_norm,
+        "auxiliary_gradient_norm": residual_norm,
+        "auxiliary_to_core_gradient_norm": residual_norm / max(core_norm, 1e-12),
+        "total_core_gradient_cosine": cosine,
+        "tensors_updated": False,
+    }
 
 
 def _train_dormant_matchup_adapter_phase(
@@ -6939,6 +7464,24 @@ def _train_dormant_matchup_adapter_phase(
         "last_metrics": dict(last_metrics.__dict__),
     }
     return fit, copy.deepcopy(adapter_optimizer.state_dict())
+
+
+def _inherited_dormant_matchup_adapter_continuation(
+    learner_ckpt: Optional[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Copy a parent's frozen-adapter fit proof and optimizer continuation.
+
+    Validation deliberately remains the checkpoint builder's responsibility:
+    this helper must not turn incomplete parent metadata into an apparently
+    valid receipt.
+    """
+    extra = dict((learner_ckpt or {}).get("extra") or {})
+    return (
+        copy.deepcopy(dict(extra.get("dormant_matchup_adapter_fit") or {})),
+        copy.deepcopy(
+            dict(extra.get("dormant_matchup_adapter_optimizer_state") or {})
+        ),
+    )
 
 
 def rl_train_step(
@@ -7372,6 +7915,7 @@ def rl_train_step(
                         ),
                         combo_state_loss_weight=cfg.combo_state_loss_weight,
                         expanded_head_weights=cfg.expanded_head_loss_weights,
+                        archetype_residual_weights=cfg.archetype_residual_loss_weights,
                         pure_rl=bool(cfg.pure_rl),
                         awr_beta=float(cfg.awr_beta),
                         awr_weight_max=float(cfg.awr_weight_max),
@@ -7653,41 +8197,42 @@ def rl_train_step(
                 parent_predictions, candidate_predictions
             )
         ) / float(parent_rows)
-    prior_adapter_optimizer_state = None
-    prior_adapter_fit = None
-    if learner_ckpt is not None:
-        prior_adapter_optimizer_state = dict(
-            (learner_ckpt.get("extra") or {}).get(
-                "dormant_matchup_adapter_optimizer_state"
-            )
-            or {}
-        )
-        prior_adapter_fit = dict(
-            (learner_ckpt.get("extra") or {}).get(
-                "dormant_matchup_adapter_fit"
-            )
-            or {}
-        )
-    dormant_adapter_fit, dormant_adapter_optimizer_state = (
-        _train_dormant_matchup_adapter_phase(
-            model,
-            agreement_sequences,
-            cfg=cfg,
-            base_rl_iteration=base_rl_iteration,
-            target_rl_iteration=(
-                int(training_provenance["iteration"])
-                if training_provenance is not None
-                and training_provenance.get("iteration") is not None
-                else int(base_rl_iteration) + 1
-            ),
-            awr_baseline_cache=awr_baseline_cache,
-            seed=seed,
-            prior_optimizer_state=prior_adapter_optimizer_state,
-            prior_fit=prior_adapter_fit,
-        )
-        if int(cfg.dormant_matchup_adapter_epochs) > 0
-        else ({}, {})
+    prior_adapter_fit, prior_adapter_optimizer_state = (
+        _inherited_dormant_matchup_adapter_continuation(learner_ckpt)
     )
+    if int(cfg.dormant_matchup_adapter_epochs) > 0:
+        dormant_adapter_fit, dormant_adapter_optimizer_state = (
+            _train_dormant_matchup_adapter_phase(
+                model,
+                agreement_sequences,
+                cfg=cfg,
+                base_rl_iteration=base_rl_iteration,
+                target_rl_iteration=(
+                    int(training_provenance["iteration"])
+                    if training_provenance is not None
+                    and training_provenance.get("iteration") is not None
+                    else int(base_rl_iteration) + 1
+                ),
+                awr_baseline_cache=awr_baseline_cache,
+                seed=seed,
+                prior_optimizer_state=prior_adapter_optimizer_state,
+                prior_fit=prior_adapter_fit,
+            )
+        )
+    else:
+        # A pure-RL phase may intentionally leave an already trained dormant
+        # adapter bank frozen (family-shadow studies are one example).  The
+        # adapter tensors are loaded from the parent and remain unchanged, so
+        # their isolated-fit proof and continuation optimizer state must remain
+        # attached to the child checkpoint.  Dropping this metadata would make
+        # an otherwise exact frozen continuation indistinguishable from an
+        # unaudited non-zero bank, which build_checkpoint correctly rejects.
+        # Malformed or incomplete inherited metadata is deliberately preserved
+        # as-is so the checkpoint validator still fails closed.
+        dormant_adapter_fit = copy.deepcopy(prior_adapter_fit or {})
+        dormant_adapter_optimizer_state = copy.deepcopy(
+            prior_adapter_optimizer_state or {}
+        )
     rl_metrics = dict(last.__dict__)
     rl_metrics["policy_prev_agreement"] = policy_prev_agreement
     rl_metrics["optimizer_samples_per_second"] = last_epoch_optimizer_sps
@@ -7708,10 +8253,26 @@ def rl_train_step(
         validation_total = dict(validation_expanded.get("total") or {})
         train_losses = dict(train_expanded.get("losses") or {})
         validation_losses = dict(validation_expanded.get("losses") or {})
+        effective_expanded_loss_weights = dict(cfg.expanded_head_loss_weights)
+        residuals = canonical_residual_weights(
+            cfg.archetype_residual_loss_weights
+        )
+        effective_expanded_loss_weights["action_resource"] = float(
+            effective_expanded_loss_weights.get("action_resource", 0.0)
+        ) + residuals["resource_attack_readiness"]
+        effective_expanded_loss_weights["resource_forecast"] = float(
+            effective_expanded_loss_weights.get("resource_forecast", 0.0)
+        ) + residuals["resource_attack_readiness"]
+        effective_expanded_loss_weights["outcome_distribution"] = float(
+            effective_expanded_loss_weights.get("outcome_distribution", 0.0)
+        ) + residuals["long_horizon_prize_pressure"]
+        effective_expanded_loss_weights["remaining_turns"] = float(
+            effective_expanded_loss_weights.get("remaining_turns", 0.0)
+        ) + residuals["long_horizon_prize_pressure"]
         gradient_enabled = [
             name
             for name in EXPANDED_HEAD_IDS
-            if float(cfg.expanded_head_loss_weights.get(name, 0.0)) > 0.0
+            if float(effective_expanded_loss_weights.get(name, 0.0)) > 0.0
         ]
         prior_trained = {
             str(name)
@@ -7765,7 +8326,7 @@ def rl_train_step(
                 "gradient_enabled": name in gradient_enabled,
                 "runtime_enabled": False,
                 "loss_weight": float(
-                    cfg.expanded_head_loss_weights.get(name, 0.0)
+                    effective_expanded_loss_weights.get(name, 0.0)
                 ),
                 "train_loss": train_losses.get(name),
                 "validation_loss": validation_losses.get(name),
@@ -7790,6 +8351,8 @@ def rl_train_step(
             "gradient_enabled_heads": gradient_enabled,
             "runtime_enabled_heads": [],
             "loss_weights": dict(cfg.expanded_head_loss_weights),
+            "effective_loss_weights": effective_expanded_loss_weights,
+            "archetype_residual_loss_weights": residuals,
             "loss_weight_migration": (
                 {
                     "reason": cfg.expanded_head_weight_migration_reason,
@@ -7826,14 +8389,10 @@ def rl_train_step(
                 "fused_policy" if fused_action_path else "flat_policy"
             ),
         }
-    strategic_training_record = (
-        _strategic_curriculum_training_record(
-            cfg=cfg,
-            train_metrics=last,
-            validation_metrics=validation_metrics,
-        )
-        if cfg.current_deck_guide_training_mode in GUIDE_TRAINING_MODES
-        else {}
+    strategic_training_record = _maybe_strategic_curriculum_training_record(
+        cfg=cfg,
+        train_metrics=last,
+        validation_metrics=validation_metrics,
     )
 
     delta_sq = 0.0

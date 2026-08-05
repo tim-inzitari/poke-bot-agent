@@ -1,0 +1,65 @@
+{
+  "schema": "poke_bot.marnie_postactivation_family_monitor_stage/v1",
+  "owner_decision_revisions": [120, 126, 130, 133, 134, 137],
+  "created_at": "2026-08-04T03:21:58Z",
+  "status": "armed_runtime_inert_waiting_first_activated_iteration_commit",
+  "boundary": {
+    "first_new_system_collection_iteration": 10,
+    "pause_exit_status": 78,
+    "pause_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/family_activation/monitor_pause_after_iter_00010.json",
+    "next_collection_started_before_resolution": false
+  },
+  "managed_chain": {
+    "monitor_service": "pokebot-marnie-postactivation-family-monitor-r137.service",
+    "monitor_timer": "pokebot-marnie-postactivation-family-monitor-r137.timer",
+    "monitor_timer_enabled_and_active": true,
+    "resolution_service": "pokebot-marnie-postactivation-family-resolve-r137.service",
+    "monitor_pass_behavior": "preserve_family_runtime_and_managed_resume",
+    "monitor_fail_behavior": "restore_parent_checkpoint_authority_and_exact_list_runtime_then_managed_resume",
+    "trainer_control": "declared_systemd_service_manager_only"
+  },
+  "bindings": {
+    "runtime_root": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136",
+    "monitor_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/post-activation-monitor.json",
+    "rollback_request": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/rollback-request.json",
+    "rollback_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/rollback-receipt.json",
+    "resolution_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/post-activation-resolution.json",
+    "family_activation_module_sha256": "sha256:d2cf3555fa0b1765b808a89ae10938ec0e2b40d19dafcc52074e9588496bf54a",
+    "monitor_script_sha256": "sha256:1c637ad9f14c08dae05a9a3515365a8727fe7e0640c9549d58b5036e25327baf",
+    "resolution_script_sha256": "sha256:7bbd1579034aa24f5b16216941109f4fb996bb4d23c97e5f7c93384576103fe0",
+    "rollback_script_sha256": "sha256:d916dbbe4b700f021cdbdf5524ab7847ef2d653af779c366716208b69d1b0225",
+    "monitor_service_sha256": "sha256:defb8eb69c851d803e11f7a29478168ffcc8f152e0ee0739b537c37ed15162d9",
+    "monitor_timer_sha256": "sha256:a6ed2fde7351c15f2214e68788b7c538eaf6fac4957546df4b79c9a463550f78",
+    "resolution_service_sha256": "sha256:8177acac098e3208b70be37270176abf0f368f4f14004928179ecad61da1d9e5"
+  },
+  "verified_invariants": {
+    "fresh_locked_paired_units": 4284,
+    "fresh_package_paired_units": 1020,
+    "monitor_training_eligible": false,
+    "monitor_replay_eligible": false,
+    "kaggle_evidence_used_for_training_or_tuning": false,
+    "passed_monitor_reused_at_later_boundaries": true,
+    "rollback_restores_learner_champion_and_heldout_champion": true,
+    "resolution_precedes_managed_resume": true,
+    "focused_tests_passed": 39,
+    "systemd_units_verified": true
+  },
+  "runtime_non_interference": {
+    "active_iteration": 9,
+    "active_trainer_pid": 1880257,
+    "active_trainer_restarts": 0,
+    "active_trainer_restarted_by_this_stage": false,
+    "iteration8_boundary_restart_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-iteration9-upload-pause-hook-activation-r135.json",
+    "scheduler_changed": false,
+    "fleet_changed": false,
+    "tail_rule_changed": false,
+    "family_sampler_runtime_authority": false,
+    "new_loss_vector_runtime_authority": false
+  },
+  "canonical_sha256": {
+    "GOAL.md": "sha256:f53bce6cef37a34da40bf0c62f18b17b4cf764a92c212113145215e3f62d03be",
+    "config/rl_protocol.yaml": "sha256:e393900d05dc1153ca22b646de97a65ea4e4dce954cb99b660089557bbcfd451",
+    "state/specialists.yaml": "sha256:a1ebfa2c3814fb9ae2eacfdb96b3cdee86608255be66dbdf6a03492432df4d5d",
+    "ops/current_goal_requirements.json": "sha256:0651b2ced8d804b370affb7256b9e3b1ba142d18a11b374f71b6e993725f8c24"
+  }
+}

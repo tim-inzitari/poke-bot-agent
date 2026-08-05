@@ -1,0 +1,35 @@
+{
+  "schema": "poke_bot.post_marnie_crustle_completion_import_repair/v1",
+  "status": "activated_dormant_handoff_preflight_repaired",
+  "recorded_at_utc": "2026-08-05T01:18:00Z",
+  "owner_revision": 154,
+  "defect": {
+    "managed_completion_script": "/home/inzi/poke-bot-agent/scripts/complete_final_format_marnie_refresh.py",
+    "configured_working_directory": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104",
+    "configured_pythonpath": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104",
+    "missing_import": "scripts.managed_runtime_registry",
+    "pre_repair_result": "ModuleNotFoundError"
+  },
+  "repair": {
+    "method": "script-relative canonical repository bootstrap",
+    "script": "scripts/complete_final_format_marnie_refresh.py",
+    "script_sha256": "sha256:22fb9d7c5f6f6ae5f0ec3e7557388f9f7eddd7ee012af0110dc8dd642da2f9bf",
+    "managed_registry_module_sha256": "sha256:e9aa42e9a121e88c5b3d44ea331c59230f40c1efa5592521b6cc4beb1fb79f74"
+  },
+  "validation": {
+    "focused_tests": "12 passed",
+    "exact_managed_execstartpre": "passed",
+    "runtime_registry_sha256": "sha256:e28dfbdeba7f751ae1c863b2ec5064e7cff7a5780fe456d5ead001648e5234b8",
+    "specialist_state_validation": "parsed_and_exact_preflight_passed",
+    "next_crustle_unit_sha256": "sha256:3f2698e791fd9964752f12153f88b174f3f879f930d7fdbb42d51e5816646d62",
+    "completion_preflight_marker": "FINAL_FORMAT_MARNIE_COMPLETION_OK"
+  },
+  "runtime_non_interference": {
+    "marnie_training_service_restarted": false,
+    "marnie_training_pid": 138326,
+    "marnie_training_restart_count": 0,
+    "scheduler_changed": false,
+    "fleet_changed": false,
+    "crustle_units_started": false
+  }
+}

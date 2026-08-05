@@ -1,0 +1,81 @@
+{
+  "schema": "poke_bot.marnie_iteration11_family_rollback_resume/v1",
+  "status": "active_iteration_11_self_play",
+  "recorded_at_utc": "2026-08-05T00:57:48Z",
+  "owner_revision": 150,
+  "service": "pokebot-final-format-marnie-r104-h10-rl.service",
+  "managed_state": {
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid": 138326,
+    "n_restarts": 0,
+    "result": "success"
+  },
+  "iteration": {
+    "last_completed": 10,
+    "active": 11,
+    "phase": "collect_self_play",
+    "observed_progress": "73/1024",
+    "observed_games_per_second": 3.21,
+    "blackwell_workers": 96,
+    "elmo_workers": 36,
+    "bert_workers": 16,
+    "remote_live_sockets": 52,
+    "remote_outstanding_games": 52
+  },
+  "family_monitor": {
+    "path": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/post-activation-monitor.json",
+    "sha256": "sha256:84887e6bcce992e9f62da5bab7b6d92564d0b637c2ef05ad25faaa327f8eabf6",
+    "status": "rollback_required",
+    "locked_valid_pairs": 4284,
+    "package_valid_pairs": 1020,
+    "current_package_delta_lb95": -0.08252427913112725
+  },
+  "family_resolution": {
+    "path": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/post-activation-resolution.json",
+    "sha256": "sha256:7a0533a96803bb927e57ede772d503c1b49b066eced34682105062c8ae8ab1db",
+    "status": "rollback_applied_resume_parent"
+  },
+  "repairs": {
+    "guide_shadow_overlay_v2": {
+      "path": "/home/inzi/poke-bot-agent/outputs/state/marnie-family-rollback-guide-shadow-repair-r148-v2.json",
+      "sha256": "sha256:c369c8d4fa044c4fb6da94fdea1e22d4b5882da169e8a715895579d71260be37"
+    },
+    "postupload_runtime_rebind": {
+      "path": "/home/inzi/poke-bot-agent/outputs/state/marnie-family-rollback-guide-shadow-runtime-rebind-r149.json",
+      "sha256": "sha256:c69612397f76da661d5abf48fbb585194b9807bb4f2751c0d215cc5c3e004646"
+    },
+    "heldout_evidence": {
+      "path": "/home/inzi/poke-bot-agent/outputs/state/marnie-family-rollback-heldout-evidence-repair-r150.json",
+      "sha256": "sha256:2cf0c2ccd1718fd6d39b85c02f79bd96525c19e95bf9b28891a8d4c27dfbe4d2"
+    }
+  },
+  "effective_runtime": {
+    "registry": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r149_family_rollback_guide_shadow.json",
+    "registry_sha256": "sha256:e28dfbdeba7f751ae1c863b2ec5064e7cff7a5780fe456d5ead001648e5234b8",
+    "guide_shadow_overlay_sha256": "sha256:912660fd838ccccaaacea39d57ebe30ee6337ad01c21e9e4439fbc16f603b0d3",
+    "guide_weight": 0.0,
+    "guide_shadow_only": true,
+    "guide_action_influence": false,
+    "guide_blocking": false,
+    "family_sampler_active": false,
+    "rollback_parent_checkpoint_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381"
+  },
+  "design_migrations": [
+    {
+      "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/design_migrations/migration_0027.json",
+      "sha256": "sha256:c1afd1ec5ba017bd8cbbcafdc3f3b4b11ce2042f281510f10e5775ea866c96c6"
+    },
+    {
+      "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/design_migrations/migration_0028.json",
+      "sha256": "sha256:f7e1811e5b03453833bdf9e984f77488aabc66f321866e4aec1fd5fdb8a81330"
+    }
+  ],
+  "proof": {
+    "iteration_11_collection_started_only_after_monitor_resolution": true,
+    "failed_family_design_not_used_for_iteration_11": true,
+    "guide_remains_optional_shadow_only": true,
+    "guide_has_zero_training_runtime_gate_submission_or_blocking_authority": true,
+    "no_iteration_11_recollection_or_replay_rewrite_occurred_during_repair": true
+  }
+}

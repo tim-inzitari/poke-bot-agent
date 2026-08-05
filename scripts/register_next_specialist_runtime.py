@@ -251,6 +251,26 @@ def _guide_weight_policy(
     }
 
 
+def _persistent_crustle_guide_policy() -> dict[str, Any]:
+    """Return Crustle's owner-pinned training-only held-weight exception."""
+
+    return {
+        "schema": "poke_bot.crustle_persistent_guide_hold/v1",
+        "owner_decision_revision": 165,
+        "scope": "crustle_persistent_training_only",
+        "held_weight": 0.05,
+        "automatic_review_after_each_five_iteration_commit": False,
+        "automatic_ramp_allowed": False,
+        "automatic_decay_allowed": False,
+        "change_requires_explicit_owner_decision": True,
+        "change_requires_checksum_bound_boundary_receipt": True,
+        "direct_policy_cross_entropy_allowed": False,
+        "runtime_action_override_allowed": False,
+        "serving_authority": False,
+        "gate_authority": False,
+    }
+
+
 def _read(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -805,6 +825,8 @@ def register(
     matchup_target_ids: tuple[str, ...] | None = None,
     decision_fusion_required_heads: tuple[str, ...] | None = None,
     receipt_suffix: str = "",
+    guide_retired_after_bootstrap: bool = False,
+    expert_practice_anchor: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     specialist_id = specialist_id.strip().lower()
     if not specialist_id or not all(
@@ -834,7 +856,7 @@ def register(
         if guide_contract is not None
         else None
     )
-    if guide_loss_weight > 0.0 and (
+    if (guide_loss_weight > 0.0 or guide_retired_after_bootstrap) and (
         guide_id != specialist_id
         or resolved_guide_contract is None
         or not resolved_guide_contract.is_file()
@@ -849,7 +871,9 @@ def register(
         if requested_training_mode not in GUIDE_TRAINING_MODES:
             raise RuntimeError("unknown guide training mode")
         resolved_training_mode = requested_training_mode
-    elif existing_legacy_row or guide_loss_weight == 0.0:
+    elif existing_legacy_row or (
+        guide_loss_weight == 0.0 and not guide_retired_after_bootstrap
+    ):
         resolved_training_mode = GUIDE_TRAINING_MODE_LEGACY
     else:
         raise RuntimeError(
@@ -876,7 +900,10 @@ def register(
         GUIDE_TRAINING_MODE_DIRECTIONAL,
     }
     if strategic_training:
-        if guide_loss_weight <= 0.0 or resolved_guide_contract is None:
+        if (
+            (guide_loss_weight <= 0.0 and not guide_retired_after_bootstrap)
+            or resolved_guide_contract is None
+        ):
             raise RuntimeError(
                 "strategic curriculum requires a positive checksum-bound guide"
             )
@@ -1006,8 +1033,10 @@ def register(
         _atomic_json(authorization_path, authorization)
 
     guide_weight_policy = (
-        _guide_weight_policy(runtime_root, resolved_training_mode)
-        if strategic_training
+        _persistent_crustle_guide_policy()
+        if specialist_id == "crustle" and strategic_training and not guide_retired_after_bootstrap
+        else _guide_weight_policy(runtime_root, resolved_training_mode)
+        if strategic_training and not guide_retired_after_bootstrap
         else None
     )
     strategic_decision_fusion = strategic_training
@@ -1045,6 +1074,11 @@ def register(
         "expert_manifest_sha256": sha256(expert).removeprefix("sha256:"),
         "expert_minimum_decisions": int(minimum_decisions),
         "expert_required_target_coverage": list(required_target_coverage),
+        **(
+            {"expert_practice_anchor": dict(expert_practice_anchor)}
+            if expert_practice_anchor is not None
+            else {}
+        ),
         "matchup_runtime_tree": str(runtime_tree),
         "matchup_runtime_tree_sha256": sha256(runtime_tree).removeprefix("sha256:"),
         "matchup_adapter_authorization": str(authorization_path),
@@ -1081,6 +1115,17 @@ def register(
         "guide_training_mode": resolved_training_mode,
         "strategic_curriculum": strategic_curriculum,
         "guide_weight_policy": guide_weight_policy,
+        **(
+            {
+                "guide_retired": True,
+                "guide_retirement_revision": 161,
+                "guide_target_generation_required": False,
+                "guide_conditioned_losses_enabled": False,
+                "guide_action_influence": False,
+            }
+            if guide_retired_after_bootstrap
+            else {}
+        ),
         "terminal_gate_marker": f"SPECIALIST_GATE_PASSED.{specialist_id}-splus-v1",
         "pass_handler": {
             "family": f"{specialist_id}-protocol-gate-pass-v1",

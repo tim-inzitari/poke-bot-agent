@@ -409,15 +409,21 @@ def resident_expanded_strategic_losses(
     weights: Mapping[str, Any] | None,
     sample_row_weights: torch.Tensor | None = None,
     decision_row_weights: torch.Tensor | None = None,
+    allow_repeated_target_ids: bool = False,
 ) -> tuple[torch.Tensor, ExpandedStrategicLossMetrics]:
     """Compute exact masked V6 losses without moving targets off the device.
 
     ``option_outputs`` and ``target_indices`` are aligned with ``sample_ids``.
     Each sample id addresses the sample-aligned tensors in the resident corpus.
-    ``state_outputs`` is aligned one-to-one with the unique ``decision_ids``;
+    ``state_outputs`` is aligned one-to-one with the ``decision_ids``;
     each decision id addresses a decision-aligned resident target tensor.  This
     explicit two-space contract prevents factorized policy stages from
     multiplying state-head loss.
+
+    Importance sampling may deliberately repeat a whole game inside a batch.
+    In that explicitly authorized mode, repeated ids represent distinct
+    sampled rows and are valid; the default remains fail-closed for every
+    unweighted caller.
 
     The resident pack owns the final-stage rule for action utility: only final
     canonical action stages may have a nonzero utility mask.  This function
@@ -498,9 +504,17 @@ def resident_expanded_strategic_losses(
         int(indices.numel()) == int(counts.numel()) == sample_rows
     ):
         raise ValueError("resident expanded option-row alignment mismatch")
-    if sample_rows and int(torch.unique(sample_ids).numel()) != sample_rows:
+    if (
+        not allow_repeated_target_ids
+        and sample_rows
+        and int(torch.unique(sample_ids).numel()) != sample_rows
+    ):
         raise ValueError("resident expanded sample_ids contain duplicates")
-    if decision_rows and int(torch.unique(decision_ids).numel()) != decision_rows:
+    if (
+        not allow_repeated_target_ids
+        and decision_rows
+        and int(torch.unique(decision_ids).numel()) != decision_rows
+    ):
         raise ValueError("resident expanded decision_ids contain duplicates")
     if bool((sample_ids < 0).any()) or bool((decision_ids < 0).any()):
         raise ValueError("resident expanded target index is negative")

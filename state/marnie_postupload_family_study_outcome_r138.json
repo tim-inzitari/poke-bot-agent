@@ -1,0 +1,49 @@
+{
+  "schema": "poke_bot.marnie_postupload_family_study_outcome/v1",
+  "recorded_at": "2026-08-04T08:54:08Z",
+  "owner_revision": 138,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "status": "failed_closed_inconclusive_after_two_rounds",
+  "study": {
+    "path": "/home/inzi/poke-bot-agent/outputs/studies/marnie-archetype-family-r136/study.json",
+    "sha256": "sha256:fce0f28ba69310aa15a1d677fe469a3674b0040bd38cd9c6d6cbc19ac056d9b3",
+    "passed": false,
+    "training_eligible": false,
+    "replay_eligible": false
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "status": "inconclusive",
+      "paired_units": 1020,
+      "rows": 2040,
+      "invalid_rows": 0,
+      "causal_integrity_failures": 0,
+      "development_sha256": "sha256:a1bb1e450c70560941bb6e3132d4b0715c2d7a3c9b067e6de9ca8e30208d07be"
+    },
+    {
+      "round": 2,
+      "status": "inconclusive",
+      "paired_units": 1020,
+      "rows": 2040,
+      "invalid_rows": 0,
+      "causal_integrity_failures": 0,
+      "development_sha256": "sha256:ecad48a9e0a25be13393f9d29f6f22d5f3d07cb1292114729e6e4d7b9549808e"
+    }
+  ],
+  "same_parent_checkpoint_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+  "managed_service": {
+    "unit": "pokebot-marnie-postupload-family-study-r136.service",
+    "result": "exit_code",
+    "exit_status": 76,
+    "exit_semantics": "protocol_fail_closed"
+  },
+  "activation_request_created": false,
+  "family_sampler_and_loss_vector_runtime_authority": false,
+  "weighted_bootstrap_started": false,
+  "bootstrap_submission_started": false,
+  "old_system_collection_allowed": false,
+  "required_behavior": "pause_before_iteration_10_collection_without_weakening_the_study_gate",
+  "revision_138_importance_index_remains_ready": true,
+  "revision_134_exact_25_epoch_bootstrap_status": "pending_not_started"
+}

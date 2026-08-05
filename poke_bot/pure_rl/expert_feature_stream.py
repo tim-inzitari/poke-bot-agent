@@ -692,6 +692,53 @@ class EpisodeGroupedFeatureManifest:
             )
         return tuple(train), tuple(validation)
 
+    def partition_identity_rows(
+        self,
+    ) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
+        """Return immutable identity metadata in exact packed split order.
+
+        This deliberately exposes no replay actions or labels.  It is the
+        checksum-bound bridge used by external provenance materializers to
+        align one training-game weight with the resident temporal corpus.
+        """
+
+        train: list[dict[str, object]] = []
+        validation: list[dict[str, object]] = []
+        for index, (
+            episode_id,
+            archetype_id,
+            seat,
+            raw_decisions,
+            packed_decisions,
+        ) in enumerate(self._sequence_metadata):
+            if index not in self._selected_indices:
+                continue
+            row: dict[str, object] = {
+                "source_index": index,
+                "episode_id": episode_id,
+                "archetype_id": archetype_id,
+                "seat": seat,
+                "raw_decisions": raw_decisions,
+                "packed_decisions": packed_decisions,
+            }
+            target = (
+                validation
+                if episode_id in self._validation_episode_ids
+                else train
+            )
+            target.append(row)
+        if len(train) != self.train_sequences:
+            raise RuntimeError(
+                "training identity metadata count changed: "
+                f"expected={self.train_sequences} actual={len(train)}"
+            )
+        if len(validation) != self.val_sequences:
+            raise RuntimeError(
+                "validation identity metadata count changed: "
+                f"expected={self.val_sequences} actual={len(validation)}"
+            )
+        return tuple(train), tuple(validation)
+
     def exact_seat_split_evidence(self) -> dict[str, object]:
         """Return the immutable selection projection for receipt binding."""
 

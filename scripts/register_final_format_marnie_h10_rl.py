@@ -55,6 +55,16 @@ from scripts.register_next_specialist_runtime import (  # noqa: E402
 SPECIALIST_ID = "marnie-s-grimmsnarl-ex"
 READY_SCHEMA = "poke_bot.final_format_marnie_h10_bootstrap_ready/v1"
 RECEIPT_SCHEMA = "poke_bot.final_format_marnie_h10_runtime_registration/v1"
+SELECTOR_MIGRATION_SCHEMA = "poke_bot.marnie_selector_env_migration/v1"
+DEFAULT_SELECTOR_MIGRATION_RECEIPT = Path(
+    "/home/inzi/poke-bot-agent/outputs/state/"
+    "final-format-marnie-r104-selector-prefetch-r125.json"
+)
+DEFAULT_SELF_PLAY_SCHEDULER_DROPIN = Path(
+    "/home/inzi/.config/systemd/user/"
+    "pokebot-final-format-marnie-r104-h10-rl.service.d/"
+    "zzzz-self-play-elmo-tail-r119.conf"
+)
 AUTH_SCHEMA = "poke_bot.matchup_adapter_specialist_bootstrap_authorization/v1"
 ROUTER_V6_MIGRATION_SCHEMA = (
     "poke_bot.final_format_marnie_h10_router_v6_migration/v1"
@@ -213,6 +223,115 @@ def _validate_runtime_assets(deployment: Path) -> dict[str, str]:
     return assets
 
 
+def _selector_values(path: Path) -> dict[str, str]:
+    """Parse a selector while rejecting duplicate active assignments."""
+
+    values: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        row = raw.strip()
+        if not row or row.startswith("#") or "=" not in row:
+            continue
+        key, value = row.split("=", 1)
+        if key in values:
+            raise RuntimeError(f"duplicate selector assignment: {key}")
+        values[key] = value
+    return values
+
+
+def _unit_environment_values(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        row = raw.strip()
+        if not row.startswith("Environment=") or "=" not in row.removeprefix(
+            "Environment="
+        ):
+            continue
+        key, value = row.removeprefix("Environment=").split("=", 1)
+        if key in values:
+            raise RuntimeError(f"duplicate service environment assignment: {key}")
+        values[key] = value
+    return values
+
+
+def _selector_env_is_authorized(
+    *,
+    registration_receipt: Path,
+    selector_path: Path,
+    expected_digest: str,
+    deployment: Path,
+    migration_receipt: Path | None = None,
+    scheduler_dropin: Path | None = None,
+) -> bool:
+    """Accept the base selector or the one checksum-bound revision-125 repair."""
+
+    actual_digest = _sha256(selector_path)
+    if actual_digest == expected_digest:
+        return True
+    migration_path = Path(
+        migration_receipt
+        or os.environ.get(
+            "POKEBOT_MARNIE_SELECTOR_MIGRATION_RECEIPT",
+            str(DEFAULT_SELECTOR_MIGRATION_RECEIPT),
+        )
+    ).expanduser().resolve()
+    if not migration_path.is_file():
+        return False
+    migration = _read(migration_path)
+    exact_environment = {
+        "POKEBOT_ACTIVE_SPECIALIST": SPECIALIST_ID,
+        "POKEBOT_SPECIALIST_RUNTIME_ROOT": str(deployment),
+        "PYTHONPATH": str(deployment),
+        "POKEBOT_REMOTE_SOCKET_PREFETCH": "1",
+        "POKEBOT_REMOTE_SOCKET_PREFETCH_MAX": "1",
+    }
+    exact_service_environment = {
+        "POKEBOT_REMOTE_SOCKET_PREFETCH": "1",
+        "POKEBOT_REMOTE_SOCKET_PREFETCH_MAX": "1",
+        "POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY": "1",
+        "POKEBOT_SELF_PLAY_TAIL_WORK_STEAL_GAMES": "20",
+    }
+    selector_values = _selector_values(selector_path)
+    dropin_path = Path(
+        scheduler_dropin or DEFAULT_SELF_PLAY_SCHEDULER_DROPIN
+    ).expanduser().resolve()
+    if not dropin_path.is_file():
+        return False
+    service_values = _unit_environment_values(dropin_path)
+    return bool(
+        migration.get("schema") == SELECTOR_MIGRATION_SCHEMA
+        and migration.get("status") == "activated_at_stopped_uncommitted_boundary"
+        and int(migration.get("goal_revision") or 0) == 125
+        and migration.get("specialist_id") == SPECIALIST_ID
+        and migration.get("run_name")
+        == "final_format_marnie_r104_h10_i_v6_8k"
+        and Path(str(migration.get("base_registration_receipt") or "")).resolve()
+        == registration_receipt.resolve()
+        and migration.get("base_registration_sha256")
+        == _sha256(registration_receipt)
+        and migration.get("base_selector_env_sha256") == expected_digest
+        and Path(str(migration.get("selector_env") or "")).resolve()
+        == selector_path.resolve()
+        and migration.get("selector_env_sha256") == actual_digest
+        and migration.get("exact_environment") == exact_environment
+        and all(
+            selector_values.get(key) == value
+            for key, value in exact_environment.items()
+        )
+        and Path(str(migration.get("scheduler_dropin") or "")).resolve()
+        == dropin_path
+        and migration.get("scheduler_dropin_sha256") == _sha256(dropin_path)
+        and migration.get("exact_service_environment")
+        == exact_service_environment
+        and all(
+            service_values.get(key) == value
+            for key, value in exact_service_environment.items()
+        )
+        and migration.get("prior_attempt_rejected") is True
+        and int(migration.get("observed_remote_sockets") or 0) == 104
+        and int(migration.get("maximum_remote_sockets") or 0) == 52
+    )
+
+
 def _validate_selected_bootstrap_training(payload: dict[str, Any]) -> None:
     """Require the selected bootstrap child to carry full-head epoch evidence."""
 
@@ -226,7 +345,13 @@ def _validate_selected_bootstrap_training(payload: dict[str, Any]) -> None:
         != "poke_bot.final_format_marnie_h10_bootstrap_epoch/v1"
         or not 16 <= epoch <= 25
         or bootstrap.get("guide_mode") != GUIDE_TRAINING_MODE_DIRECTIONAL
-        or float(bootstrap.get("guide_weight") or -1.0) != 0.05
+        # This validator is also used by the immutable Router-6 registration
+        # receipt, whose checksum-pinned bootstrap predates guide retirement
+        # and therefore records the historical 0.05 training weight.  That
+        # metadata is audit-only: the active r142 registry and post-upload
+        # activation receipt independently require runtime/training authority
+        # to be zero.  Accept both exact historical and retired encodings here.
+        or float(bootstrap.get("guide_weight", -1.0)) not in {0.0, 0.05}
         or bootstrap.get("decision_fusion_schema") != DECISION_FUSION_V3_SCHEMA
         or expanded.get("schema") != "poke_bot.expanded_head_training/v1"
         or int(expanded.get("epoch") or 0) != epoch
@@ -566,11 +691,42 @@ def _materialize_marnie_gate(deployment: Path) -> tuple[Path, dict[str, Any]]:
     return output, derived
 
 
-def _validate_checkpoint(path: Path, expected_digest: str) -> dict[str, float]:
+def _validate_checkpoint(
+    path: Path,
+    expected_digest: str,
+    *,
+    require_bootstrap_training: bool = True,
+) -> dict[str, float]:
     if checkpoint.checkpoint_digest(path) != expected_digest:
         raise RuntimeError("Marnie bootstrap checkpoint digest changed")
     payload = checkpoint.load_checkpoint(path, map_location="cpu")
-    _validate_selected_bootstrap_training(payload)
+    try:
+        _validate_selected_bootstrap_training(payload)
+    except RuntimeError as exc:
+        if not require_bootstrap_training:
+            # The terminal RL learner is validated for architecture/runtime
+            # below; bootstrap epoch provenance belongs only to the separate
+            # expert-bootstrap checkpoint.
+            pass
+        else:
+        # The immutable H10 freeze intentionally removes optimizer/training
+        # extras from the serving payload. Preserve the exact full-head epoch
+        # proof by validating the checksum-bound source epoch named by the
+        # protected package manifest; never accept a free-standing sidecar or
+        # mutable dashboard claim as a substitute.
+            manifest_path = path.parent / "manifest.json"
+            manifest = _read(manifest_path) if manifest_path.is_file() else {}
+            provenance = dict(manifest.get("provenance") or {})
+            source_path = Path(str(provenance.get("source_checkpoint") or "")).expanduser()
+            source_path = source_path.resolve() if source_path else Path()
+            if not source_path.is_file():
+                raise exc
+            source_payload = checkpoint.load_checkpoint(source_path, map_location="cpu")
+            _validate_selected_bootstrap_training(source_payload)
+            source_digest = checkpoint.checkpoint_digest(source_path)
+            source_manifest_path = Path(str(provenance.get("source_checkpoint") or ""))
+            if source_manifest_path.resolve() != source_path or source_digest == expected_digest:
+                raise RuntimeError("Marnie source epoch evidence is not distinct and checksum-bound")
     route_reliabilities = _route_reliability_telemetry(payload)
     model = load_model_from_checkpoint(path, device=torch.device("cpu"))
     cfg = model.cfg
@@ -622,7 +778,8 @@ def register(args: argparse.Namespace) -> dict[str, Any]:
         or int(ready.get("learned_head_count") or 0) != 19
         or int(ready.get("learned_route_count") or 0) != 19
         or ready.get("guide_mode") != GUIDE_TRAINING_MODE_DIRECTIONAL
-        or float(ready.get("guide_weight") or -1.0) != 0.05
+        or float(ready.get("guide_weight", -1.0)) != 0.0
+        or ready.get("guide_enabled") is not False
         or ready.get("training_authority") is not False
         or ready.get("selector_authority") is not False
         or Path(str(ready.get("checkpoint") or "")).resolve()
@@ -752,7 +909,13 @@ def register(args: argparse.Namespace) -> dict[str, Any]:
             "matchup_adapter_authorization_sha256": _sha256(auth_path).removeprefix("sha256:"),
             "measurement_decks": SPECIALIST_ID,
             "guide_id": SPECIALIST_ID,
-            "guide_loss_weight": 0.05,
+            "guide_loss_weight": 0.0,
+            "guide_retired": True,
+            "guide_retirement_revision": 140,
+            "guide_target_generation_required": False,
+            "guide_conditioned_losses_enabled": False,
+            "guide_action_influence": False,
+            "guide_historical_artifacts": "audit_only",
             "guide_contract": str(guide),
             "guide_contract_sha256": _sha256(guide).removeprefix("sha256:"),
             "guide_version": "marnie-grimmsnarl-north-star-v1",
@@ -854,7 +1017,8 @@ def register(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def check(args: argparse.Namespace) -> dict[str, Any]:
-    receipt = _read(args.receipt.expanduser().resolve())
+    receipt_path = args.receipt.expanduser().resolve()
+    receipt = _read(receipt_path)
     registry_path = Path(str(receipt.get("runtime_registry") or "")).resolve()
     gate_path = Path(str(receipt.get("active_gate") or "")).resolve()
     selector_path = Path(str(receipt.get("selector_env") or "")).resolve()
@@ -874,7 +1038,12 @@ def check(args: argparse.Namespace) -> dict[str, Any]:
         or _sha256(args.router_v6_receipt.expanduser().resolve())
         != receipt.get("router_v6_migration_receipt_sha256")
         or _sha256(registry_path) != receipt.get("runtime_registry_sha256")
-        or _sha256(selector_path) != receipt.get("selector_env_sha256")
+        or not _selector_env_is_authorized(
+            registration_receipt=receipt_path,
+            selector_path=selector_path,
+            expected_digest=str(receipt.get("selector_env_sha256") or ""),
+            deployment=deployment,
+        )
         or checkpoint.checkpoint_digest(checkpoint_path) != receipt.get("checkpoint_sha256")
     ):
         raise RuntimeError("Marnie managed-RL registration receipt changed")

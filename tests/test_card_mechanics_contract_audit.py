@@ -392,6 +392,21 @@ def test_omitted_state_fields_are_metamorphically_invisible(monkeypatch) -> None
     assert _sparse_signature(first) == _sparse_signature(second)
 
 
+def test_own_deck_multiset_is_order_invariant_and_count_sensitive(monkeypatch) -> None:
+    _install_fake_runtime(monkeypatch)
+    observation = _obs([])
+    ordered = [1] * 30 + [2] * 30
+    permuted = list(reversed(ordered))
+    count_changed = [1] * 29 + [2] * 31
+    first = features.build_board_tokens(observation, ordered)
+    second = features.build_board_tokens(observation, permuted)
+    changed = features.build_board_tokens(observation, count_changed)
+    # Word 21 is the own-deck EmbeddingBag token. Sparse insertion order may
+    # differ, while the aggregated bag consumed by the model must not.
+    assert _signature(first, 21) == _signature(second, 21)
+    assert _signature(first, 21) != _signature(changed, 21)
+
+
 def test_every_legal_composite_binding_tuple_has_a_unique_row(monkeypatch) -> None:
     _install_fake_runtime(monkeypatch)
     rows = set()

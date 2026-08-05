@@ -41,6 +41,7 @@ REMOTE_WORKER_CAPABILITIES = (
     "portable_baseline_spec_v1",
     "matchup_runtime_worker_probe_v1",
     "controlled_rotation_v1",
+    "checkpoint_digest_verify_v1",
 )
 REMOTE_WORKER_SAFETY_VERSION = "20260717"
 REMOTE_WORKER_ARM_FILE = REPO_ROOT / "outputs" / "state" / "REMOTE_WORKER_ARMED"
@@ -62,6 +63,35 @@ def _raw_sha256_digest(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return f"sha256:{digest.hexdigest()}"
+
+
+def _verify_checkpoint_digest_request(
+    path: str | Path,
+    *,
+    checkpoint_root: str | Path,
+) -> dict[str, Any]:
+    """Hash one regular checkpoint file inside the configured storage root."""
+
+    try:
+        root = Path(checkpoint_root).expanduser().resolve(strict=True)
+        candidate = Path(path).expanduser().resolve(strict=True)
+        candidate.relative_to(root)
+        if not candidate.is_file():
+            raise ValueError(f"checkpoint is not a regular file: {candidate}")
+        digest = _raw_sha256_digest(candidate)
+        return {
+            "type": "verify_checkpoint_ok",
+            "ok": True,
+            "path": str(candidate),
+            "checkpoint_digest": digest,
+            "size": int(candidate.stat().st_size),
+        }
+    except (OSError, ValueError) as exc:
+        return {
+            "type": "verify_checkpoint_ok",
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def _apply_matchup_runtime_environment(runtime: dict) -> None:
@@ -1629,6 +1659,22 @@ def main(argv: Optional[list[str]] = None) -> int:
             with ctrl_lock:
                 health = _current_leaf_health()
                 return {"type": "health_ok", **hello(), **health}
+        if mtype == "verify_checkpoint":
+            checkpoint_root = os.environ.get(
+                REMOTE_CHECKPOINT_ROOT_ENV, ""
+            ).strip()
+            if not checkpoint_root:
+                return {
+                    "type": "verify_checkpoint_ok",
+                    "ok": False,
+                    "error": (
+                        f"{REMOTE_CHECKPOINT_ROOT_ENV} is not configured"
+                    ),
+                }
+            return _verify_checkpoint_digest_request(
+                str(msg.get("path") or ""),
+                checkpoint_root=checkpoint_root,
+            )
         if mtype == "reload":
             with ctrl_lock:
                 if state["terminal_reload_failure"]:

@@ -76,7 +76,12 @@ def receipt_schema(specialist_id: str) -> str:
     return SCHEMA if specialist_id == "alakazam" else GENERIC_SCHEMA
 
 
-def validate_commit(run_dir: Path, iteration: int) -> tuple[Path, Path, str]:
+def validate_commit(
+    run_dir: Path,
+    iteration: int,
+    *,
+    prefer_committed_learner: bool = False,
+) -> tuple[Path, Path, str, str]:
     commit_path = run_dir / "commits" / f"iter_{iteration:05d}.json"
     checkpoint = run_dir / "checkpoints" / f"iter_{iteration:05d}.pt"
     commit = read_json(commit_path)
@@ -93,6 +98,21 @@ def validate_commit(run_dir: Path, iteration: int) -> tuple[Path, Path, str]:
         or not checkpoint.is_file()
     ):
         raise RuntimeError(f"iteration {iteration} has no exact durable commit")
+    checkpoint_role = "iteration_candidate"
+    if prefer_committed_learner:
+        learner = dict(commit.get("learner") or {})
+        learner_path = Path(str(learner.get("path") or "")).expanduser().resolve()
+        learner_digest = str(learner.get("digest") or "")
+        if (
+            not learner_path.is_file()
+            or not learner_digest.startswith("sha256:")
+            or sha256(learner_path) != learner_digest
+        ):
+            raise RuntimeError(
+                f"iteration {iteration} committed learner is missing or digest-mismatched"
+            )
+        checkpoint = learner_path
+        checkpoint_role = "committed_learner"
     digest = sha256(checkpoint)
     candidate = dict(rows[0].get("candidate") or {})
     known_digests = {
@@ -103,19 +123,43 @@ def validate_commit(run_dir: Path, iteration: int) -> tuple[Path, Path, str]:
     known_digests.discard("")
     if known_digests and digest not in known_digests:
         raise RuntimeError(f"iteration {iteration} checkpoint digest is not commit-bound")
-    return commit_path, checkpoint, digest
+    return commit_path, checkpoint, digest, checkpoint_role
 
 
 def stage_one(args: argparse.Namespace, iteration: int) -> dict[str, Any]:
     schema = receipt_schema(args.specialist_id)
     receipt = args.receipts / f"iter_{iteration:05d}.json"
+    prefer_committed_learner = (
+        args.specialist_id == "marnie-s-grimmsnarl-ex" and iteration == 9
+    )
     if receipt.is_file():
         existing = read_json(receipt)
         if existing.get("schema") != schema or existing.get("status") != "queued":
             raise RuntimeError(f"invalid existing milestone receipt: {receipt}")
+        if prefer_committed_learner:
+            _, learner_path, learner_digest, learner_role = validate_commit(
+                args.run_dir,
+                iteration,
+                prefer_committed_learner=True,
+            )
+            if (
+                Path(str(existing.get("checkpoint") or "")).resolve()
+                != learner_path
+                or str(existing.get("checkpoint_sha256") or "")
+                != learner_digest
+                or existing.get("checkpoint_role") != learner_role
+            ):
+                raise RuntimeError(
+                    "existing Marnie iteration-9 milestone does not bind the "
+                    "exact committed learner"
+                )
         return existing
 
-    commit, checkpoint, checkpoint_digest = validate_commit(args.run_dir, iteration)
+    commit, checkpoint, checkpoint_digest, checkpoint_role = validate_commit(
+        args.run_dir,
+        iteration,
+        prefer_committed_learner=prefer_committed_learner,
+    )
     root = args.submission_root / f"iter-{iteration:05d}"
     deck = materialize_pinned_specialist_deck(
         run_dir=args.run_dir,
@@ -161,6 +205,7 @@ def stage_one(args: argparse.Namespace, iteration: int) -> dict[str, Any]:
         "commit_sha256": sha256(commit),
         "checkpoint": str(checkpoint.resolve()),
         "checkpoint_sha256": checkpoint_digest,
+        "checkpoint_role": checkpoint_role,
         "bundle": bundle,
         "queue_entry": queued[0],
         "training_stop_or_freeze_authority": False,

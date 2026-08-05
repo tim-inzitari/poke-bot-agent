@@ -42,12 +42,14 @@ from scripts.dashboard_snapshot import (
     competition_gate_program_state,
     effective_design_contract_for_run,
     expert_rehearsal_state,
+    infer_post_train_gate_progress,
     learner_model_state,
     latest_committed_active_gate_result,
     latest_committed_formal_holdout_state,
     latest_committed_official_heldout_state,
     latest_committed_research_control_result,
     iteration_timing_state,
+    marnie_shadow_guide_projection,
     matchup_runtime_collection_state,
     parse_curriculum_progress,
     prestage_receipt_is_current,
@@ -65,6 +67,48 @@ from scripts.dashboard_snapshot import (
     strong_public_practice_plan_state,
     strong_public_gate_runtime_state,
 )
+
+
+def test_marnie_shadow_guide_projection_survives_bootstrap_service_exit() -> None:
+    boundary = {
+        "current": False,
+        "active": False,
+        "guide": {
+            "status": "shadow_only_non_authoritative",
+            "enabled": False,
+            "loss_weight": 0.0,
+            "gradient_authority": False,
+            "action_authority": False,
+            "blocking_authority": False,
+            "shadow_optional": True,
+        },
+    }
+
+    projected = marnie_shadow_guide_projection(boundary)
+
+    assert projected["status"] == "shadow_only_non_authoritative"
+    assert projected["loss_weight"] == 0.0
+    assert projected["gradient_authority"] is False
+    assert projected["action_authority"] is False
+    assert projected["blocking_authority"] is False
+    assert projected["active_specialist"] == "marnie-s-grimmsnarl-ex"
+    assert projected["guide_archetype"] == "marnie-s-grimmsnarl-ex"
+    assert projected["parameterized_head"] is False
+
+
+def test_marnie_shadow_guide_projection_fails_closed_on_authority() -> None:
+    boundary = {
+        "guide": {
+            "status": "shadow_only_non_authoritative",
+            "enabled": False,
+            "loss_weight": 0.0,
+            "gradient_authority": False,
+            "action_authority": True,
+            "blocking_authority": False,
+        }
+    }
+
+    assert marnie_shadow_guide_projection(boundary) == {}
 
 
 def test_canonical_v6_prestage_blocks_legacy_v5_ready_projection() -> None:
@@ -629,6 +673,30 @@ def test_truncated_live_tqdm_remains_current_and_splits_queue_grain() -> None:
     assert parsed["remotes"] == 64
     assert parsed["metrics"]["remote_request_sockets"] == 128
     assert parsed["metrics"]["remote_queue_capacity"] == 64
+
+
+def test_curriculum_progress_separates_sockets_from_remote_owned_games() -> None:
+    parsed = parse_curriculum_progress(
+        "",
+        "pure_rl collect:self_play iter=6:  12%|x| 123/1024 "
+        "[00:42<05:08, 2.91game/s, rsock=52, rout=52, eout=36, "
+        "bout=16, sps=226.7]",
+        iteration_hint=6,
+    )
+
+    assert parsed["remotes"] == 52
+    assert parsed["metrics"]["remote_request_sockets"] == 52
+    assert parsed["metrics"]["remote_queue_capacity"] == 0
+    assert parsed["metrics"]["remote_outstanding"] == 52
+    assert parsed["metrics"]["remote_outstanding_elmo"] == 36
+    assert parsed["metrics"]["remote_outstanding_bert"] == 16
+
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+    assert "remote sockets / owned games" in html
+    assert "remoteOwnedElmo" in html
+    assert "remoteOwnedBert" in html
 
 
 def test_self_play_reserve_progress_is_labeled_as_attempts_not_training_games() -> None:
@@ -1793,6 +1861,24 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     )["status"] == "passed_frozen"
     assert "Continue live Alakazam" in refresh_state["next_action"]
 
+    marnie_refresh_state = specialist_protocol_state(
+        path,
+        runtime_specialist_id="marnie-s-grimmsnarl-ex",
+        runtime_run_name="final_format_marnie_r104_h10_i_v6_8k",
+        runtime_service_state="active/running",
+    )
+    assert marnie_refresh_state["active_specialist"] == "marnie-s-grimmsnarl-ex"
+    assert "Continue live Marnie S Grimmsnarl Ex" in (
+        marnie_refresh_state["next_action"]
+    )
+    assert "Do not collect iteration 21" in marnie_refresh_state["next_action"]
+    assert "staged new H10 Crustle specialist" in (
+        marnie_refresh_state["next_action"]
+    )
+    assert "public package remains an inference-only baseline" in (
+        marnie_refresh_state["next_action"]
+    )
+
     activating_refresh_state = specialist_protocol_state(
         path,
         runtime_specialist_id="alakazam",
@@ -1801,6 +1887,22 @@ def test_specialist_protocol_state_validates_roster_and_restart(
     )
     assert activating_refresh_state["active_specialist"] == "alakazam"
     assert activating_refresh_state["active_runtime_refresh"]["active"] is True
+
+    stopped_refresh_state = specialist_protocol_state(
+        path,
+        runtime_specialist_id="alakazam",
+        runtime_run_name="final_format_alakazam_r79_h10_i_v6_8k",
+        runtime_service_state="failed/failed",
+    )
+    assert stopped_refresh_state["active_specialist"] == "alakazam"
+    assert stopped_refresh_state["active_runtime_refresh"] == {
+        "active": False,
+        "specialist_id": "alakazam",
+        "run_name": "final_format_alakazam_r79_h10_i_v6_8k",
+        "service_state": "failed/failed",
+        "historical_specialist_row_remains_frozen": True,
+        "policy_scope": "refresh_lineage_not_cumulative_core_generation",
+    }
 
     payload["current"]["phase"] = "specialist_core_refresh_handoff"
 
@@ -4828,6 +4930,74 @@ def test_completed_epoch_line_advances_stale_validation_tqdm() -> None:
     assert updated["metrics"]["acc"] == 90.08
 
 
+def test_dashboard_exposes_rejected_candidate_checkpoint_staging() -> None:
+    stale = {
+        "stage": "train:policy",
+        "iteration": 6,
+        "percent": 100.0,
+        "line": "[rl-train] epoch=3 val_loss=1.3",
+    }
+    log = "\n".join(
+        (
+            "[pure_rl] train begin iter=6 seqs=16588",
+            "[pure_rl] promotion begin iter=6 candidate=sha256:abc",
+            "[pure_rl] REJECTED iter=6 candidate retained=/tmp/iter6.pt",
+        )
+    )
+    staged = infer_post_train_gate_progress(
+        stale, log, iteration_hint=6
+    )
+    assert staged["stage"] == "heldout:checkpoint_staging"
+    assert staged["eta"] == "publishing candidate weights"
+    assert staged["metrics"]["candidate_checkpoint_publication"] is True
+
+    promoted_staging = infer_post_train_gate_progress(
+        stale,
+        "\n".join(
+            (
+                "[pure_rl] train begin iter=6 seqs=16588",
+                "[pure_rl] promotion begin iter=6 candidate=sha256:abc",
+                "[pure_rl] BETWEEN_ITER_HARD_GATE begin iter=6 "
+                "digest=sha256:abc version=71 (before next collect)",
+            )
+        ),
+        iteration_hint=6,
+    )
+    assert promoted_staging["stage"] == "heldout:checkpoint_staging"
+    assert promoted_staging["eta"] == "publishing candidate weights"
+    assert (
+        promoted_staging["metrics"]["candidate_checkpoint_publication"]
+        is True
+    )
+
+    starting = infer_post_train_gate_progress(
+        staged,
+        log + "\n[pure_rl] BETWEEN_ITER_HARD_GATE ok digest=sha256:abc",
+        iteration_hint=6,
+    )
+    assert starting["stage"] == "heldout:starting"
+    assert starting["eta"] == "starting formal games"
+
+    research_controls = {
+        "stage": "measure:research_controls",
+        "iteration": 6,
+        "percent": 28.0,
+        "current": 280,
+        "total": 1000,
+        "line": "pure_rl measure:research_controls iter=6: 28% 280/1000",
+    }
+    assert infer_post_train_gate_progress(
+        research_controls,
+        log + "\n[pure_rl] BETWEEN_ITER_HARD_GATE ok digest=sha256:abc",
+        iteration_hint=6,
+    ) == research_controls
+
+    html = (
+        Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
+    ).read_text(encoding="utf-8")
+    assert "schedulerStage.startsWith('heldout')" in html
+
+
 def test_dashboard_holds_scheduler_sps_through_collection_ingest_tail() -> None:
     html = (
         Path(__file__).resolve().parents[1] / "dashboard/lan/index.html"
@@ -6049,6 +6219,31 @@ def test_completed_trevenant_handoff_is_not_current_during_starmie() -> None:
     assert result["historical_source_specialist_id"] is None
 
 
+def test_active_marnie_refresh_handoff_projects_exact_crustle_boundary() -> None:
+    result = dashboard_snapshot_module.reconcile_current_specialist_handoff(
+        {
+            "available": True,
+            "active": False,
+            "phase": "waiting_for_active_specialist_gate",
+            "source_specialist_id": "archaludon-ex",
+            "next_specialist_id": "slowking",
+        },
+        active_specialist="marnie-s-grimmsnarl-ex",
+        program_progress={"completed_frozen": 14, "remaining_after_active": 1},
+        next_specialist="slowking",
+        active_runtime_refresh=True,
+    )
+
+    assert result["label"] == "Marnie's Grimmsnarl ex refresh → H10 Crustle"
+    assert result["next_specialist_id"] == "crustle"
+    assert result["refresh_terminal_iteration"] == 20
+    assert result["next_collection_forbidden"] == 21
+    assert "iter_00020" in result["latest_line"]
+    assert "iter_00021" in result["latest_line"]
+    assert result["historical_next_specialist_id"] == "slowking"
+    assert result["historical_source_suppressed"] is True
+
+
 def test_inactive_receipt_backed_successor_handoff_remains_current() -> None:
     result = dashboard_snapshot_module.reconcile_current_specialist_handoff(
         {
@@ -6830,6 +7025,151 @@ def test_dashboard_source_integrity_accepts_receipt_backed_marnie_bootstrap() ->
     assert protocol["current"] is True
 
 
+def test_dashboard_source_integrity_accepts_selected_stopped_final_refresh() -> None:
+    specialist = "marnie-s-grimmsnarl-ex"
+    run = "final_format_marnie_r104_h10_i_v6_8k"
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": False,
+            "active_state": "failed",
+            "sub_state": "failed",
+            "pid": 0,
+            "restart_count": 0,
+            "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+        },
+        "training": {
+            "status": "stopped",
+            "mode": "final_format_marnie_h10_rl",
+            "run": run,
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": False,
+            "runtime_active_specialist": specialist,
+            "canonical_active_specialist": "",
+            "canonical_active_refresh_specialist": specialist,
+            "active_specialist": specialist,
+            "active_runtime_refresh": {
+                "active": False,
+                "specialist_id": specialist,
+                "run_name": run,
+                "service_state": "failed/failed",
+            },
+            "required_target_count": 1,
+            "specialists": [
+                {
+                    "id": specialist,
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                }
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": specialist, "inference_only": True}
+            ],
+            "program_progress": {"completed_specialist_ids": [specialist]},
+            "source": "/state/specialists.yaml",
+        },
+        "model": {"checkpoint_structure": {}},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    protocol = payload["source_integrity"]["rows"]["protocol"]
+    assert protocol["checks"]["specialist_roster"] is True
+    assert protocol["checks"]["live_runtime_identity"] is True
+    assert protocol["current"] is True
+
+
+def test_dashboard_source_integrity_accepts_active_marnie_postupload_boundary() -> None:
+    specialist = "marnie-s-grimmsnarl-ex"
+    run = "final_format_marnie_r104_h10_i_v6_8k"
+    source = "/outputs/final_format_marnie_r104/logs/postupload_family_study_r136.log"
+    boundary = {
+        "active": True,
+        "current": True,
+        "authoritative": True,
+        "run": run,
+        "specialist_id": specialist,
+        "source": source,
+        "service": {
+            "name": "pokebot-marnie-postupload-family-study-r136.service",
+            "pid": 2148341,
+        },
+    }
+    training = {
+        **boundary,
+        "mode": "marnie_postupload_family_shadow_study",
+        "phase": "family-shadow:sealed-training",
+    }
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": False,
+            "pid": 0,
+            "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+        },
+        "managed_boundary": boundary,
+        "training": training,
+        "bootstrap": {
+            **training,
+            "compatibility_alias": True,
+            "alias_of": "training",
+        },
+        "curriculum": {
+            "active": True,
+            "source_current": True,
+            "run": run,
+            "iteration": 9,
+            "stage": "family-shadow:sealed-training",
+            "progress_source": source,
+            "progress": {
+                "stage": "family-shadow:sealed-training",
+                "iteration": 9,
+                "current": 2399,
+                "total": 7168,
+            },
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": False,
+            "runtime_active_specialist": specialist,
+            "canonical_active_specialist": "",
+            "canonical_active_refresh_specialist": specialist,
+            "active_specialist": specialist,
+            "active_runtime_refresh": {
+                "active": False,
+                "specialist_id": specialist,
+                "run_name": run,
+            },
+            "required_target_count": 1,
+            "specialists": [
+                {
+                    "id": specialist,
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                }
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": specialist, "inference_only": True}
+            ],
+            "program_progress": {"completed_specialist_ids": [specialist]},
+            "source": "/state/specialists.yaml",
+        },
+        "model": {"checkpoint_structure": {}},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    rows = payload["source_integrity"]["rows"]
+    for key in ("stage", "progress", "bootstrap", "throughput", "curriculum", "pure"):
+        assert rows[key]["current"] is True
+    assert rows["stage"]["source"] == source
+    assert rows["protocol"]["current"] is True
+
+
 def test_dashboard_source_integrity_counts_explicit_failed_experiment_slot() -> None:
     specialist = "marnie-s-grimmsnarl-ex"
     run = "final_format_marnie_r104_h10_i_v6_8k"
@@ -6893,6 +7233,98 @@ def test_dashboard_source_integrity_counts_explicit_failed_experiment_slot() -> 
     assert protocol["checks"]["specialist_roster"] is True
     assert protocol["checks"]["live_runtime_identity"] is True
     assert protocol["current"] is True
+
+
+def test_dashboard_source_integrity_accepts_paused_inconclusive_marnie_boundary() -> None:
+    specialist = "marnie-s-grimmsnarl-ex"
+    run = "final_format_marnie_r104_h10_i_v6_8k"
+    outcome = "/outputs/studies/marnie-archetype-family-r136/study.json"
+    boundary = {
+        "active": False,
+        "paused": True,
+        "current": True,
+        "authoritative": True,
+        "status": "paused_inconclusive",
+        "run": run,
+        "specialist_id": specialist,
+        "source": "/outputs/final_format_marnie_r104/logs/postupload_family_study_r136.log",
+        "outcome_source": outcome,
+        "service": {
+            "name": "pokebot-marnie-postupload-family-study-r136.service",
+            "pid": 0,
+        },
+    }
+    payload = {
+        "dashboard_sampled_at": time.time(),
+        "service": {
+            "active": False,
+            "pid": 0,
+            "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+        },
+        "managed_boundary": boundary,
+        "training": {
+            **boundary,
+            "mode": "marnie_postupload_family_shadow_study",
+            "phase": "family-shadow:failed-closed-inconclusive",
+        },
+        "bootstrap": {
+            **boundary,
+            "mode": "marnie_postupload_family_shadow_study",
+            "phase": "family-shadow:failed-closed-inconclusive",
+            "compatibility_alias": True,
+            "alias_of": "training",
+        },
+        "curriculum": {
+            "active": False,
+            "source_current": True,
+            "run": run,
+            "iteration": 9,
+            "stage": "family-shadow:failed-closed-inconclusive",
+            "progress_source": outcome,
+            "progress": {
+                "stage": "family-shadow:failed-closed-inconclusive",
+                "iteration": 9,
+                "current": 2,
+                "total": 2,
+            },
+        },
+        "specialist_protocol": {
+            "available": True,
+            "canonical_pointer_stale": False,
+            "runtime_active_specialist": specialist,
+            "canonical_active_specialist": "",
+            "canonical_active_refresh_specialist": specialist,
+            "active_specialist": specialist,
+            "active_runtime_refresh": {
+                "active": False,
+                "specialist_id": specialist,
+                "run_name": run,
+            },
+            "required_target_count": 1,
+            "specialists": [
+                {
+                    "id": specialist,
+                    "active": False,
+                    "frozen": True,
+                    "public_mix_eligible": True,
+                }
+            ],
+            "frozen_inference_opponents": [
+                {"specialist_id": specialist, "inference_only": True}
+            ],
+            "program_progress": {"completed_specialist_ids": [specialist]},
+            "source": "/state/specialists.yaml",
+        },
+        "model": {"checkpoint_structure": {}},
+    }
+
+    SnapshotCache._annotate_source_integrity(payload)
+
+    rows = payload["source_integrity"]["rows"]
+    for key in ("stage", "progress", "bootstrap", "throughput", "curriculum", "pure"):
+        assert rows[key]["current"] is True
+    assert rows["stage"]["source"] == outcome
+    assert rows["protocol"]["current"] is True
 
 
 def test_dashboard_uses_training_environment_for_checkpoint_snapshot() -> None:
@@ -9489,7 +9921,6 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
         "dragapult",
         "dragapult-blaziken",
         "dragapult-dudunsparce",
-        "crustle",
         "walrein",
     }
     assert removed_ids.isdisjoint(required_ids)
@@ -9500,14 +9931,17 @@ def test_dashboard_renders_owner_pinned_post_spidops_goal_contract() -> None:
     assert protocol["canonical_active_refresh_specialist"] == (
         "marnie-s-grimmsnarl-ex"
     )
-    assert protocol["status_counts"]["failed_experiment"] == 1
+    assert protocol["status_counts"] == {"passed_frozen": 14}
+    assert protocol["program_progress"][
+        "terminal_failed_experiment_specialist_ids"
+    ] == ["slowking"]
     assert protocol["training_priority"]["strict_post_spidops_prefix"][
         "ids"
     ] == strict_ids
     assert set(
         protocol["training_priority"]["owner_removal"]["specialist_ids"]
     ) == removed_ids
-    assert len(protocol["specialists"]) == 15
+    assert len(protocol["specialists"]) == 14
     assert "crustle" not in {
         row["id"] for row in protocol["specialists"]
     }
@@ -10819,3 +11253,229 @@ def test_final_format_marnie_progress_uses_rl_progress_after_handoff(
     assert result["remote_workers"] == 52
     assert result["model_parameters"] == 10_674_448
     assert result["learned_head_count"] == 19
+
+
+def test_final_format_marnie_progress_retains_stopped_rl_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "run"
+    root.mkdir()
+    (root / "loop_state.json").write_text(
+        json.dumps(
+            {
+                "next_iteration": 6,
+                "last_completed_iteration": 5,
+                "learner": {
+                    "path": str(tmp_path / "iter5.pt"),
+                    "digest": "sha256:" + "9" * 64,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = tmp_path / "rl.status"
+    status.write_text(
+        "pure_rl collect:self_play iter=6:  9%|x| 97/1024 "
+        "[00:56<08:42, 2.10game/s, remotes=52, sps=226.7]\n",
+        encoding="utf-8",
+    )
+    progress = tmp_path / "rl.progress"
+    progress.write_text(status.read_text(encoding="utf-8"), encoding="utf-8")
+    log = tmp_path / "rl.log"
+    log.write_text("stopped after scheduler canary\n", encoding="utf-8")
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "common_trainer_args": [
+                    "--remote-worker-endpoints",
+                    "192.168.1.143:8765,192.168.1.158:8766",
+                ],
+                "specialists": {
+                    "marnie-s-grimmsnarl-ex": {
+                        "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+                        "decision_fusion": {
+                            "schema": "poke_bot.causal_decision_fusion/v3",
+                            "required_heads": [str(i) for i in range(19)],
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_RUN_DIR", root
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS",
+        status,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG",
+        progress,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_LOG", log
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "FINAL_FORMAT_MARNIE_H10_REGISTRY", registry
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_READY",
+        tmp_path / "missing-ready",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "FINAL_FORMAT_MARNIE_H10_VALIDATION",
+        tmp_path / "missing-validation",
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "checkpoint_structure_telemetry",
+        lambda *args, **kwargs: {"verified": True, "model_parameters": 10_674_448},
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, user=False: {
+            "name": name,
+            "active": False,
+            "active_state": "failed",
+            "sub_state": "failed",
+            "pid": 0,
+        },
+    )
+
+    result = dashboard_snapshot_module.final_format_marnie_progress()
+
+    assert result["status"] == "stopped"
+    assert result["mode"] == "final_format_marnie_h10_rl"
+    assert result["phase"] == "stopped:collect:self_play"
+    assert result["iteration"] == 6
+    assert result["current"] == 97
+    assert result["total"] == 1024
+    assert result["iterations_target"] == 21
+    assert result["fresh"] is False
+    assert result["remote_workers"] == 0
+    assert result["games_per_second"] == 0.0
+    assert result["scheduler_queues"]["mode"] == "stopped"
+    assert result["latest_line"].startswith("STOPPED · last progress:")
+
+
+def test_marnie_postupload_bootstrap_separates_epoch_from_rl_iteration(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    log = tmp_path / "postupload-bootstrap.log"
+    log.write_text(
+        "expert rehearsal before iter11 ep1/1:  37%|###| "
+        "1241/3355 [05:00<08:00, 4.12batch/s, guide=off]\n",
+        encoding="utf-8",
+    )
+    request = tmp_path / "activation-request.json"
+    _write_json(
+        request,
+        {"schema": "poke_bot.marnie_family_activation_request/v1"},
+    )
+    request_digest = hashlib.sha256(request.read_bytes()).hexdigest()
+    migration = tmp_path / "migration.json"
+    _write_json(
+        migration,
+        {
+            "schema": "poke_bot.marnie_family_design_migration/v1",
+            "status": "activated_atomically",
+            "request_sha256": f"sha256:{request_digest}",
+        },
+    )
+    guide_shadow = tmp_path / "guide-shadow.json"
+    _write_json(
+        guide_shadow,
+        {
+            "schema": "poke_bot.marnie_guide_shadow_non_authority/v1",
+            "status": "active_nonblocking_shadow_only",
+            "guide_loss_weight": 0.0,
+            "authority": {"blocking": False},
+        },
+    )
+    guide_runtime = tmp_path / "guide-runtime.json"
+    _write_json(
+        guide_runtime,
+        {
+            "schema": "poke_bot.marnie_family_guide_shadow_runtime/v1",
+            "status": "active_next_start_overlay",
+            "owner_revision": 142,
+            "proof": {
+                "guide_weight": 0.0,
+                "guide_runtime_authority": False,
+                "guide_blocking_authority": False,
+                "family_and_typed_loss_system_preserved": True,
+            },
+            "merged_registry": {"path": "/runtime/guide-shadow.json"},
+        },
+    )
+    recovery = tmp_path / "epoch-recovery.json"
+    _write_json(
+        recovery,
+        {
+            "schema": "poke_bot.marnie_postupload_epoch_recovery/v1",
+            "status": "validated_resume_without_retraining",
+            "guide_weight": 0.0,
+            "guide_enabled": False,
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "MARNIE_POSTUPLOAD_BOOTSTRAP_LOG", log
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "MARNIE_POSTUPLOAD_FAMILY_ACTIVATION_REQUEST",
+        request,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "MARNIE_POSTUPLOAD_FAMILY_MIGRATION",
+        migration,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "MARNIE_GUIDE_SHADOW_NONAUTHORITY", guide_shadow
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "MARNIE_FAMILY_GUIDE_SHADOW_RUNTIME",
+        guide_runtime,
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module, "MARNIE_EPOCH_RECOVERY", recovery
+    )
+    monkeypatch.setattr(
+        dashboard_snapshot_module,
+        "unit_state",
+        lambda name, user=False: {
+            "name": name,
+            "active": True,
+            "active_state": "activating",
+            "sub_state": "start",
+            "pid": 123,
+        },
+    )
+
+    result = dashboard_snapshot_module.marnie_postupload_bootstrap_state()
+
+    assert result["iteration"] == 9
+    assert result["target_iteration"] == 10
+    assert result["bootstrap_epoch"] == 11
+    assert result["bootstrap_epochs_target"] == 25
+    assert result["bootstrap_epochs_completed"] == 10
+    assert result["progress"]["iteration"] == 9
+    assert result["progress"]["rl_iteration"] == 9
+    assert result["progress"]["target_rl_iteration"] == 10
+    assert result["progress"]["epoch"] == 11
+    assert result["progress"]["epochs"] == 25
+    assert result["progress"]["bootstrap_epochs_completed"] == 10
+    assert result["progress"]["epoch_percent"] == 37.0
+    assert result["progress"]["percent"] == pytest.approx(41.48)

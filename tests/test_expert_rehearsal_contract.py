@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from poke_bot.pure_rl.expert_rehearsal import (
+    ARCHETYPE_FAMILY_REHEARSAL_RECEIPT_SCHEMA_VERSION,
     EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
     OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION,
     REHEARSAL_RECEIPT_SCHEMA_VERSION,
@@ -428,3 +429,94 @@ def test_option_conditioned_checkpoint_and_receipt_bind_combo_weight(
         option_conditioned_loss_weights={"combo_state": 0.025},
         corpus_split_seed=5_000_123,
     )["reused"] is True
+
+
+def test_family_residual_receipt_binds_effective_expanded_heads(
+    tmp_path: Path,
+) -> None:
+    _pointer, identity = _protected_manifest(tmp_path)
+    output = tmp_path / "family-residual-expert.pt"
+    output.write_bytes(b"immutable-family-residual-checkpoint")
+    expanded = canonical_expanded_rehearsal_contract(
+        _expanded_schedule_contract()
+    )
+    residuals = {
+        "core_setup_continuity": 0.0,
+        "resource_attack_readiness": 0.0125,
+        "long_horizon_prize_pressure": 0.0,
+    }
+    effective = dict(expanded["loss_weights"])
+    effective["action_resource"] += 0.0125
+    effective["resource_forecast"] += 0.0125
+    enabled = [
+        name for name, weight in effective.items() if float(weight) > 0.0
+    ]
+    heads = {
+        name: {
+            "present": True,
+            "trained_this_epoch": True,
+            "gradient_enabled": True,
+            "train_loss": 0.4,
+            "validation_loss": 0.5,
+            "train_labeled_rows": 400,
+            "validation_labeled_rows": 100,
+        }
+        for name in enabled
+    }
+    training = {
+        "schema": "poke_bot.expanded_head_training/v1",
+        "target_schema_version": expanded["target_schema"],
+        "target_schema_digest": expanded["target_schema_digest"],
+        "schedule_digest": expanded["schedule_digest"],
+        "loss_weights": expanded["loss_weights"],
+        "effective_loss_weights": effective,
+        "archetype_residual_loss_weights": residuals,
+        "gradient_enabled_heads": enabled,
+        "runtime_enabled_heads": [],
+        "heads": heads,
+    }
+    receipt = {
+        "schema": ARCHETYPE_FAMILY_REHEARSAL_RECEIPT_SCHEMA_VERSION,
+        "before_iteration": 10,
+        "parent_digest": "sha256:" + "a" * 64,
+        "checkpoint": str(output),
+        "checkpoint_digest": _sha256(output),
+        "manifest": identity.as_dict(),
+        "epochs": 5,
+        "learning_rate": 2e-5,
+        "loss_weights": _loss_weights(),
+        "archetype_residual_loss_weights": residuals,
+        "corpus_split_seed": 5_000_123,
+        "expanded_head_training": training,
+    }
+    assert _validate_receipt(
+        receipt,
+        before_iteration=10,
+        parent_digest=receipt["parent_digest"],
+        epochs=5,
+        learning_rate=2e-5,
+        manifest_identity=identity,
+        loss_weights=_loss_weights(),
+        corpus_split_seed=5_000_123,
+        expanded_head_contract=expanded,
+        archetype_residual_loss_weights=residuals,
+    )["reused"] is True
+
+    drifted = dict(receipt)
+    drifted["archetype_residual_loss_weights"] = {
+        **residuals,
+        "resource_attack_readiness": 0.025,
+    }
+    with pytest.raises(RuntimeError, match="residual"):
+        _validate_receipt(
+            drifted,
+            before_iteration=10,
+            parent_digest=receipt["parent_digest"],
+            epochs=5,
+            learning_rate=2e-5,
+            manifest_identity=identity,
+            loss_weights=_loss_weights(),
+            corpus_split_seed=5_000_123,
+            expanded_head_contract=expanded,
+            archetype_residual_loss_weights=residuals,
+        )

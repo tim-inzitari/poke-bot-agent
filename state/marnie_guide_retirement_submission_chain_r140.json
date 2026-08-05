@@ -1,0 +1,41 @@
+{
+  "schema": "poke_bot.marnie_guide_retirement_submission_chain/v1",
+  "status": "validated_and_deployed_without_training_interruption",
+  "recorded_at_utc": "2026-08-04T13:30:30Z",
+  "owner_revision": 140,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "active_bootstrap_unchanged": true,
+  "latent_policy_continuity_receipt": "state/marnie_postupload_latent_policy_continuity_r140.json",
+  "latent_policy_continuity_receipt_sha256": "sha256:dc2cb24a198f32b266bb695456abbc834de60f735d965ded2546b32a6c2be157",
+  "submission_stager": "scripts/stage_marnie_postupload_bootstrap_submission.py",
+  "submission_stager_sha256": "sha256:805049ddc8973ca916b1e45bf1a8bc9cc44175eaf83b05ec2104e27989e180e1",
+  "submission_service_unit": "deploy/systemd/pokebot-marnie-postupload-bootstrap-submit-r135.service",
+  "submission_service_unit_sha256": "sha256:97911a9d48ba60395f52610de4d2259d911cb0a45049ccb1bff2e693ee431d2d",
+  "bootstrap_activator": "scripts/activate_marnie_postupload_bootstrap.py",
+  "bootstrap_activator_sha256": "sha256:8524fc4c187ce9763401a2794da5bf10606d0f1c380599a311f3b4c86fec86d4",
+  "activation_service_unit": "deploy/systemd/pokebot-marnie-postupload-bootstrap-activate-r135.service",
+  "activation_service_unit_sha256": "sha256:31374959dea8b9802117a5ee9b35e7fbedf82421e3f99bc1b6cf365878c82efe",
+  "guide_retirement_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-guide-retirement-r140.json",
+  "guide_retirement_receipt_sha256": "sha256:c8a4efa35aff64eb833cb06454ee5bac12ef14c0dfbf4fcfbb1af6aed1a13670",
+  "guide_retired_runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r140_guide_retired.json",
+  "guide_retired_runtime_registry_sha256": "sha256:6960318b4d93819fa8112ee6e90161a8545b981cff1055c92adb42c33e809ae6",
+  "managed_rl_unit_sha256": "sha256:37669d4a2f6d9a4e00427444fab9249e53cc028746be2a29886250e586116da4",
+  "managed_launcher_sha256": "sha256:f6cb59a0dbbafe724588d99735f73b784f806963784a56daf6b165a9d9846b1d",
+  "validated_contract": {
+    "ready_receipt_requires_guide_weight_zero": true,
+    "ready_receipt_requires_guide_disabled": true,
+    "submission_requires_revision_140_continuity": true,
+    "submission_requires_immutable_guide_retirement_receipt": true,
+    "activation_requires_immutable_guide_retirement_receipt": true,
+    "iteration_10_launch_omits_guide_target_and_curriculum_arguments": true,
+    "iteration_10_launch_clears_guide_environment": true,
+    "old_system_collection_allowed": false
+  },
+  "systemd_verify_passed": true,
+  "focused_test": {
+    "path": "tests/test_marnie_postupload_bootstrap_chain.py",
+    "sha256": "sha256:af6fd1bfc3b6adec763950e2e6bbb7580390781efbd242baa4cbd49077f5f538",
+    "result": "3 passed",
+    "duration_seconds": 0.8
+  }
+}

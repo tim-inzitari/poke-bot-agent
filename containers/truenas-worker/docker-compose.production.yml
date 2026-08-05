@@ -15,7 +15,7 @@ name: poke-bot-truenas-worker
 
 services:
   worker:
-    image: ${POKEBOT_ELMO_IMAGE:-poke-bot-truenas-worker:archaludon-fusion-v2-r74-memory-v1}
+    image: ${POKEBOT_ELMO_IMAGE:-poke-bot-truenas-worker:r125-checkpoint-digest-verify-v2}
     command: ["production"]
     restart: "on-failure:3"
     init: true

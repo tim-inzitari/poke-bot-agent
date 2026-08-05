@@ -1,0 +1,11 @@
+[Unit]
+Description=Queue exact Marnie post-upload epoch-25 bootstrap checkpoint
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-ready.json
+ConditionPathExists=/home/inzi/poke-bot-agent/state/marnie_postupload_latent_policy_continuity_r140.json
+After=pokebot-marnie-postupload-weighted-bootstrap-r135.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/stage_marnie_postupload_bootstrap_submission.py --runtime-root /home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136 --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k --representatives /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/data/training_mixes/specialist_representatives.v1.json --matchup-tree /home/inzi/poke-bot-agent/outputs/state/slowking-public-matchup-tree-v33.json --submission-root /home/inzi/poke-bot-agent/outputs/submissions/marnie-postupload-bootstrap-r138 --queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --ready /home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-ready.json --trigger /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json --activation-request /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/activation-request.json --activation-migration /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/migration-receipt.json --pilot-importance-index /home/inzi/poke-bot-agent/outputs/state/marnie-r138-expert-pilot-importance.json --latent-policy-continuity-receipt /home/inzi/poke-bot-agent/state/marnie_postupload_latent_policy_continuity_r140.json --guide-retirement-receipt /home/inzi/poke-bot-agent/outputs/state/marnie-guide-retirement-r140.json --epoch-recovery-receipt /home/inzi/poke-bot-agent/state/marnie_postupload_epoch1_recovery_r141.json --receipt /home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-submission.json

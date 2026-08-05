@@ -1,0 +1,69 @@
+{
+  "schema": "poke_bot.marnie_postupload_family_study_stage/v1",
+  "owner_decision_revisions": [120, 126, 130, 132, 134, 136, 137],
+  "created_at": "2026-08-04T02:51:08Z",
+  "status": "armed_runtime_inert_waiting_exact_iteration9_upload_boundary",
+  "managed_service": "pokebot-marnie-postupload-family-study-r136.service",
+  "managed_timer": "pokebot-marnie-postupload-family-study-r136.timer",
+  "activation_order": [
+    "successful_checksum_exact_iteration9_upload_trigger",
+    "status75_pause_before_iteration10_collection",
+    "family_shadow_study",
+    "passing_activation_request",
+    "atomic_family_sampler_and_loss_vector_activation",
+    "revision137_weighted_25_epoch_expert_bootstrap",
+    "checksum_exact_bootstrap_submission",
+    "successful_bootstrap_upload_receipt",
+    "first_new_system_self_play_collection"
+  ],
+  "deployment": {
+    "root": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136",
+    "relative_baseline_symlink_resolves": true,
+    "relative_deck_symlink_resolves": true,
+    "relative_kaggle_symlink_resolves": true,
+    "previous_external_isolation_root_has_no_authority": true,
+    "candidate_registry_atomically_selects_this_runtime_root": true
+  },
+  "static_preflight": {
+    "status": "passed",
+    "observed_variants": 66,
+    "swap_distance_clusters": 39,
+    "minimum_non_package_clusters": 12,
+    "exact_gate_opponents": 17,
+    "development_paired_units": 1020,
+    "locked_paired_units": 4284,
+    "package_guard_paired_units": 1020,
+    "workers": 96,
+    "device": "cuda:1",
+    "focused_tests_passed": 39,
+    "systemd_units_verified": true
+  },
+  "bindings": {
+    "family_manifest_path": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/manifest.json",
+    "family_manifest_file_sha256": "sha256:c1f1ef7605b83e801d61ab60cdbc69f989e52d2c390858b60739fe33cb2f691f",
+    "family_manifest_artifact_sha256": "sha256:ccc0185f6f93295e6886da3a7c61a508db29c2b5d390ba8fd7fd700d3348475c",
+    "loss_contract_path": "/home/inzi/poke-bot-agent/config/archetype_loss_contracts/marnie-s-grimmsnarl-ex.v1.json",
+    "loss_contract_sha256": "sha256:e09f1dba99d455e382d56cc87d86de1914450af27ede6dd74087ac46b5f2b5d0",
+    "study_script_sha256": "sha256:f589857de4cce513eb0b6cecdf0aba37b77fc0ec53f71486eff89745a20afcc4",
+    "study_service_sha256": "sha256:73f7f23ba6fae28e8c870b35fcdac74c8da40ab0cc8fa8a4c4c71fb09560de70",
+    "study_timer_sha256": "sha256:e9a155acf3d4b71261b19ac64a93163997106dcdae149913f6e1a2867922786b",
+    "expert_importance_index_sha256": "sha256:50928fe4ab7f467ebf03a7c555073a48df5bf62176cf41cf825a9601933b86a2"
+  },
+  "runtime_non_interference": {
+    "active_trainer_pid": 1471079,
+    "active_trainer_restarts": 0,
+    "active_iteration_modified": false,
+    "active_trainer_restarted": false,
+    "scheduler_changed": false,
+    "fleet_changed": false,
+    "tail_rule_changed": false,
+    "family_sampler_runtime_authority": false,
+    "new_loss_vector_runtime_authority": false
+  },
+  "canonical_sha256": {
+    "GOAL.md": "sha256:c6a1d03cd692a44c2eb1d3a68ec104b1d239acaed3a04a81318821e56d11b46d",
+    "config/rl_protocol.yaml": "sha256:df60b4cbfd00a4986fd87e8f1bd9ab12d16a3799a6982b04e24bfb8a9f22252e",
+    "ops/current_goal_requirements.json": "sha256:848bd4d5f15ca57d6766dc889f7f52b032ea4d5006dcdd6b16c98e7d2937a861",
+    "state/specialists.yaml": "sha256:44ca980aedb5392b7fb83abeddc356b3185e5cb7aa653418e4b11b6eb149fcce"
+  }
+}

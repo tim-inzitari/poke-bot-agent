@@ -15,6 +15,7 @@ from poke_bot.remote_jobs import (
     RemoteJobClient,
     RemoteResultError,
     RemoteWorkerInfo,
+    cache_exact_resident_remote_checkpoint,
     digest_addressed_basename,
     iter_additive_results,
     iter_scheduled_additive_results,
@@ -41,6 +42,256 @@ def test_digest_addressed_basename_embeds_content_digest(tmp_path: Path) -> None
     assert dig_b.split(":", 1)[-1][:16] in name_b
     # Same logical trainer filename, distinct remote objects.
     assert name_a.split(".", 1)[0] == name_b.split(".", 1)[0]
+
+
+def test_local_checkpoint_digest_cache_rehashes_only_after_identity_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from poke_bot import checkpoint as checkpoint_module
+
+    path = tmp_path / "parent.pt"
+    path.write_bytes(b"first immutable weights")
+    remote_jobs._LOCAL_CHECKPOINT_DIGEST_CACHE.clear()
+    original = checkpoint_module.checkpoint_digest
+    calls = 0
+
+    def counted(candidate, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_module, "checkpoint_digest", counted)
+    first = remote_jobs._cached_local_checkpoint_digest(path)
+    assert remote_jobs._cached_local_checkpoint_digest(path) == first
+    assert calls == 1
+
+    path.write_bytes(b"second and different immutable weights")
+    second = remote_jobs._cached_local_checkpoint_digest(path)
+    assert second != first
+    assert calls == 2
+
+
+def test_initial_remote_slot_connections_fan_out_concurrently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("POKEBOT_REMOTE_CONNECT_FANOUT", "64")
+    monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH", "1")
+    active = 0
+    peak = 0
+    counter_lock = threading.Lock()
+
+    class Template:
+        def __init__(self, host: str, port: int) -> None:
+            self.host = host
+            self.port = port
+            self.endpoint = f"{host}:{port}"
+            self.timeout_s = 30.0
+            self.connect_timeout_s = 60.0
+            self.control_timeout_s = 300.0
+            self.info = RemoteWorkerInfo(
+                endpoint=self.endpoint,
+                workers=4,
+                leaf_servers=1,
+                gpu_name="test",
+                device="cpu",
+                checkpoint_digest="sha256:test",
+                hostname=host,
+                max_workers=4,
+                default_workers=4,
+            )
+
+        def ensure_alive(self) -> None:
+            return None
+
+    def clone(template):
+        nonlocal active, peak
+        with counter_lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.03)
+        with counter_lock:
+            active -= 1
+        return SimpleNamespace(
+            host=template.host,
+            port=template.port,
+            endpoint=template.endpoint,
+        )
+
+    monkeypatch.setattr(remote_jobs, "_clone_remote_client", clone)
+    elmo = Template("192.168.1.143", 8765)
+    bert = Template("192.168.1.158", 8766)
+    slots, owned = remote_jobs._parallel_remote_slots(
+        [elmo, bert],
+        demand_by_endpoint={elmo.endpoint: 4, bert.endpoint: 4},
+    )
+
+    assert len(slots) == 8
+    assert len(owned) == 6
+    assert peak >= 4
+
+
+def test_exact_resident_health_seeds_elmo_mapping_without_payload_rehash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "trainer" / "model.pt"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"verified resident weights")
+    digest = checkpoint_digest(source)
+    smb = tmp_path / "smb"
+    smb.mkdir()
+    destination = smb / digest_addressed_basename(source, digest=digest)
+    # Same byte size is intentional: only the caller's strict live health proof
+    # authorizes caching, so this test proves no redundant payload rehash occurs.
+    destination.write_bytes(b"x" * source.stat().st_size)
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: smb)
+    monkeypatch.setattr(
+        remote_jobs, "_ELMO_STAGE_RECEIPT_ROOT", tmp_path / "receipts"
+    )
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+
+    mapped = cache_exact_resident_remote_checkpoint(
+        "192.168.1.143",
+        str(source),
+        digest=digest,
+    )
+    assert mapped == f"/workspace/checkpoint/{destination.name}"
+    assert (
+        remote_jobs.resolve_remote_checkpoint_path(
+            "192.168.1.143", str(source)
+        )
+        == mapped
+    )
+
+
+def test_persistent_elmo_stage_receipt_skips_payload_rehash_after_cache_reset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from poke_bot import checkpoint as checkpoint_module
+
+    source = tmp_path / "trainer" / "parent.pt"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"immutable parent weights")
+    digest = checkpoint_digest(source)
+    smb = tmp_path / "smb"
+    smb.mkdir()
+    destination = smb / digest_addressed_basename(source, digest=digest)
+    destination.write_bytes(source.read_bytes())
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: smb)
+    monkeypatch.setattr(
+        remote_jobs, "_ELMO_STAGE_RECEIPT_ROOT", tmp_path / "receipts"
+    )
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+    cache_exact_resident_remote_checkpoint(
+        "192.168.1.143", str(source), digest=digest
+    )
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+
+    original_digest = checkpoint_module.checkpoint_digest
+
+    def _digest_without_remote_payload(path, *args, **kwargs):
+        if Path(path).resolve() == destination.resolve():
+            raise AssertionError("valid receipt must bypass SMB payload rehash")
+        return original_digest(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        checkpoint_module, "checkpoint_digest", _digest_without_remote_payload
+    )
+    assert remote_jobs.resolve_remote_checkpoint_path(
+        "192.168.1.143", str(source)
+    ).endswith(destination.name)
+
+
+def test_elmo_stage_receipt_is_content_addressed_across_source_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from poke_bot import checkpoint as checkpoint_module
+
+    source_a = tmp_path / "trainer-a" / "iter_00002.pt"
+    source_b = tmp_path / "trainer-b" / "population_parent.pt"
+    source_a.parent.mkdir()
+    source_b.parent.mkdir()
+    payload = b"same immutable historical checkpoint"
+    source_a.write_bytes(payload)
+    source_b.write_bytes(payload)
+    digest = checkpoint_digest(source_a)
+    smb = tmp_path / "smb"
+    smb.mkdir()
+    destination = smb / digest_addressed_basename(source_a, digest=digest)
+    destination.write_bytes(payload)
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: smb)
+    monkeypatch.setattr(
+        remote_jobs, "_ELMO_STAGE_RECEIPT_ROOT", tmp_path / "receipts"
+    )
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+    remote_jobs._write_elmo_stage_receipt(source_a, destination, digest)
+
+    original_digest = checkpoint_module.checkpoint_digest
+
+    def _digest_without_remote_payload(path, *args, **kwargs):
+        if Path(path).resolve() == destination.resolve():
+            raise AssertionError("source alias must reuse content receipt")
+        return original_digest(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        checkpoint_module, "checkpoint_digest", _digest_without_remote_payload
+    )
+    mapped = remote_jobs.resolve_remote_checkpoint_path(
+        "192.168.1.143", str(source_b)
+    )
+    assert mapped.endswith(destination.name)
+
+
+def test_elmo_missing_receipt_uses_storage_local_digest_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from poke_bot import checkpoint as checkpoint_module
+
+    source = tmp_path / "trainer" / "iter_00003.pt"
+    source.parent.mkdir()
+    source.write_bytes(b"historical checkpoint without an old receipt")
+    digest = checkpoint_digest(source)
+    smb = tmp_path / "smb"
+    smb.mkdir()
+    destination = smb / digest_addressed_basename(source, digest=digest)
+    destination.write_bytes(source.read_bytes())
+
+    monkeypatch.setattr(remote_jobs, "_smb_checkpoint_dir", lambda: smb)
+    monkeypatch.setattr(
+        remote_jobs, "_ELMO_STAGE_RECEIPT_ROOT", tmp_path / "receipts"
+    )
+    monkeypatch.setattr(
+        remote_jobs,
+        "_elmo_remote_checkpoint_digest",
+        lambda _host, _path: digest,
+    )
+    remote_jobs._ELMO_STAGE_CACHE.clear()
+    original_digest = checkpoint_module.checkpoint_digest
+
+    def _digest_without_remote_payload(path, *args, **kwargs):
+        if Path(path).resolve() == destination.resolve():
+            raise AssertionError("SMB payload must not be hashed")
+        return original_digest(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        checkpoint_module, "checkpoint_digest", _digest_without_remote_payload
+    )
+    mapped = remote_jobs.resolve_remote_checkpoint_path(
+        "192.168.1.143", str(source)
+    )
+    assert mapped.endswith(destination.name)
+    assert remote_jobs._elmo_stage_receipt_is_exact(
+        source, destination, digest
+    )
 
 
 def test_runtime_checkpoint_staging_builds_all_route_companions(
@@ -1270,6 +1521,93 @@ def test_low_water_refills_elmo_and_bert_in_the_same_probe_round(
     assert "bert.test:8766 LOW_WATER_REFILL" in output
     assert output.count("fill=high_water") >= 2
     assert output.count("added=3") >= 2
+
+
+def test_self_play_execution_wave_never_low_water_refills_second_socket_wave(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("POKEBOT_REMOTE_ONLY", "1")
+    monkeypatch.setenv("POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY", "1")
+    monkeypatch.setenv("POKEBOT_SELF_PLAY_TAIL_WORK_STEAL_GAMES", "20")
+    monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH", "1")
+    # Even a stale higher generic ceiling may not override the self-play hard cap.
+    monkeypatch.setenv("POKEBOT_REMOTE_SOCKET_PREFETCH_MAX", "4")
+    monkeypatch.setenv("POKEBOT_REMOTE_QUEUE_PROBE_S", "0.05")
+
+    endpoints = ["elmo.test:8765", "bert.test:8766"]
+    clone_submissions: list[str] = []
+    slot_updates: list[dict[str, int]] = []
+
+    class EndpointRemote(_ScheduledRemote):
+        timeout_s = 5.0
+        connect_timeout_s = 5.0
+        control_timeout_s = 5.0
+
+        def __init__(self, endpoint: str) -> None:
+            super().__init__(fail=False)
+            self.endpoint = endpoint
+            self.host, port = endpoint.split(":")
+            self.port = int(port)
+            self.info = RemoteWorkerInfo(
+                endpoint=endpoint,
+                workers=1,
+                leaf_servers=0,
+                gpu_name="",
+                device="cpu",
+                checkpoint_digest=None,
+                hostname=self.host,
+                max_workers=1,
+                default_workers=1,
+            )
+
+        def submit_job(self, job, *, kind="play"):
+            threading.Event().wait(0.01)
+            return {"job_index": job["job_index"], "source": self.endpoint}
+
+    class ProbeOrCloneClient(EndpointRemote):
+        def __init__(self, host, port, **_kwargs) -> None:
+            super().__init__(f"{host}:{port}")
+
+        def connect(self):
+            return self.info
+
+        def health(self):
+            return {"active_jobs": 0}
+
+        def submit_job(self, job, *, kind="play"):
+            clone_submissions.append(self.endpoint)
+            return {"job_index": job["job_index"], "source": self.endpoint}
+
+    class Decision(_ScheduledDecision):
+        remote_demand = {endpoint: 1 for endpoint in endpoints}
+
+    class Scheduler(_ScheduledScheduler):
+        def decision(self):
+            return Decision()
+
+        def remote_demand(self):
+            return dict(Decision.remote_demand)
+
+    monkeypatch.setattr(remote_jobs, "RemoteJobClient", ProbeOrCloneClient)
+    rows = list(
+        iter_scheduled_additive_results(
+            local_pool=_ScheduledPool(),
+            local_fn=lambda job: {"job_index": job["job_index"]},
+            jobs=[{"job_index": index} for index in range(80)],
+            remote_clients=[EndpointRemote(endpoint) for endpoint in endpoints],  # type: ignore[list-item]
+            kind="self_play",
+            scheduler=Scheduler(),
+            local_workers=1,
+            remote_workers=2,
+            on_remote_slots=slot_updates.append,
+        )
+    )
+
+    assert len(rows) == 80
+    assert clone_submissions == []
+    assert max(int(row.get("active", 0)) for row in slot_updates) <= 2
+    assert "LOW_WATER_REFILL" not in capsys.readouterr().out
 
 
 def test_endpoint_credit_keeps_slow_bert_fed_across_a_long_wave() -> None:

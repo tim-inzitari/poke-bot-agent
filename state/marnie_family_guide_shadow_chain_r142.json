@@ -1,0 +1,26 @@
+{
+  "schema": "poke_bot.marnie_family_guide_shadow_chain/v1",
+  "status": "armed_fail_closed",
+  "recorded_at_utc": "2026-08-04T14:34:00Z",
+  "owner_revision": 142,
+  "base_epoch_recovery_chain": "state/marnie_epoch_recovery_submission_chain_r141.json",
+  "base_epoch_recovery_chain_sha256": "sha256:401344d07388234722b1dd3fdbcc6805af2aa499b3c80280ea09ef6cdc590f11",
+  "runtime_receipt": "state/marnie_family_guide_shadow_runtime_r142.json",
+  "runtime_receipt_sha256": "sha256:1ea409b8315b8d5fe1c3b0ad2d2e5245f4c7e3ceb2907f3e59a4fd7f343fc88a",
+  "stage_script": "scripts/stage_marnie_family_guide_shadow_runtime_r142.py",
+  "stage_script_sha256": "sha256:bc4c92acb01e7d76d3745d3b0496dd37c8bb14dbc81236b2abf6bc76f91c7251",
+  "activation_script": "scripts/activate_marnie_postupload_bootstrap.py",
+  "activation_script_sha256": "sha256:7ac543fac169b8ce2114c6dba8de353f87fd92a8237cacc79d90bbc2a2e8d3fb",
+  "monitor_resolution_script": "scripts/resolve_marnie_archetype_family_monitor.py",
+  "monitor_resolution_script_sha256": "sha256:ccd41e239e4da9fd5fe064fc0f771c28241798638382ec9dd118be64829d989f",
+  "activation_unit": "deploy/systemd/pokebot-marnie-postupload-bootstrap-activate-r135.service",
+  "activation_unit_sha256": "sha256:d830db2d250ed23d415d148f5f9720a18706a8a1860e23bdd840382d2c911d71",
+  "monitor_resolution_unit": "deploy/systemd/pokebot-marnie-postactivation-family-resolve-r137.service",
+  "monitor_resolution_unit_sha256": "sha256:fbb11f86b0bab0d4fa7d49eb9ff805eca9ebd34971c64bba60b7072b56c200cd",
+  "proof": {
+    "epoch_25_activation_requires_exact_overlay": true,
+    "family_monitor_pass_keeps_guide_off": true,
+    "family_monitor_rollback_keeps_guide_off": true,
+    "active_bootstrap_unchanged": true
+  }
+}

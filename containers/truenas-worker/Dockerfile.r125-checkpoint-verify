@@ -1,0 +1,14 @@
+FROM poke-bot-truenas-worker:final-format-alakazam-h10-r79-full
+
+LABEL org.opencontainers.image.version="r125-checkpoint-digest-verify-v2" \
+      org.opencontainers.image.description="H10 worker with storage-local checkpoint verification and digest-addressed Elmo staging"
+
+COPY run_remote_worker.py /workspace/scripts/run_remote_worker.py
+COPY poke_bot/ /workspace/poke_bot/
+
+RUN chmod 0755 /workspace/scripts/run_remote_worker.py \
+    && python -m py_compile \
+        /workspace/scripts/run_remote_worker.py \
+        /workspace/poke_bot/remote_jobs.py \
+        /workspace/poke_bot/model.py \
+        /workspace/poke_bot/train.py

@@ -9,13 +9,19 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any, Mapping
 
 import yaml
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
 from poke_bot import checkpoint
 from poke_bot.pure_rl.model_registry import verify_frozen_model
 from scripts.register_final_format_marnie_h10_rl import _validate_checkpoint
+from scripts.managed_runtime_registry import registry_from_managed_service
 
 
 SPECIALIST_ID = "marnie-s-grimmsnarl-ex"
@@ -51,12 +57,10 @@ def _read(path: Path) -> dict[str, Any]:
 def _validated_population_inputs(
     *,
     handler: Mapping[str, Any],
-    runtime_registration: Mapping[str, Any],
     checkpoint_digest: str,
+    current_registry_path: Path,
 ) -> dict[str, str]:
-    registry_path = Path(
-        str(runtime_registration.get("runtime_registry") or "")
-    ).resolve()
+    registry_path = current_registry_path.resolve()
     registry = _read(registry_path)
     runtime_row = dict(
         (registry.get("specialists") or {}).get(SPECIALIST_ID) or {}
@@ -69,8 +73,6 @@ def _validated_population_inputs(
     bundle_digest = str(queued.get("file_sha256") or "")
     if (
         registry.get("schema") != "poke_bot.specialist_runtime_registry/v1"
-        or _sha256(registry_path)
-        != runtime_registration.get("runtime_registry_sha256")
         or runtime_row.get("status") != "ready"
         or not expert.is_file()
         or _sha256(expert).removeprefix("sha256:")
@@ -95,6 +97,8 @@ def _validated_population_inputs(
         "matchup_runtime_tree_sha256": _sha256(tree),
         "submission_bundle": str(bundle_path),
         "submission_bundle_sha256": bundle_digest,
+        "runtime_registry": str(registry_path),
+        "runtime_registry_sha256": _sha256(registry_path),
     }
 
 
@@ -227,11 +231,21 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         or not manifest.is_file()
     ):
         raise RuntimeError("Marnie final frozen identity is invalid")
-    _validate_checkpoint(final_checkpoint, final_digest)
+    # The terminal RL learner is not the 25-epoch expert-bootstrap artifact;
+    # validate its H10/Fusion-v3 serving contract without incorrectly
+    # requiring bootstrap-only per-epoch evidence in its payload.
+    _validate_checkpoint(
+        final_checkpoint,
+        final_digest,
+        require_bootstrap_training=False,
+    )
 
     bootstrap = _read(args.bootstrap_ready.expanduser().resolve())
     boundary = _read(args.core_boundary.expanduser().resolve())
     runtime_registration = _read(args.runtime_registration.expanduser().resolve())
+    current_registry_path = registry_from_managed_service(
+        args.runtime_registry_service
+    )
     bootstrap_checkpoint = Path(str(bootstrap.get("checkpoint") or "")).resolve()
     if (
         bootstrap.get("schema") != BOOTSTRAP_SCHEMA
@@ -249,16 +263,20 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         != bootstrap.get("core_checkpoint_sha256")
         or runtime_registration.get("schema") != RUNTIME_REGISTRATION_SCHEMA
         or runtime_registration.get("status") != "registered_ready_for_managed_rl"
-        or runtime_registration.get("checkpoint_sha256")
+        # Managed RL serves the checksum-bound Router-6 descendant, while
+        # ``bootstrap_checkpoint`` records the exact 25-epoch expert parent.
+        # Bind the latter here; requiring ``checkpoint`` itself to equal the
+        # expert artifact would reject the intended migration lineage.
+        or runtime_registration.get("bootstrap_checkpoint_sha256")
         != bootstrap.get("checkpoint_sha256")
-        or Path(str(runtime_registration.get("checkpoint") or "")).resolve()
+        or Path(str(runtime_registration.get("bootstrap_checkpoint") or "")).resolve()
         != bootstrap_checkpoint
     ):
         raise RuntimeError("Marnie H10 bootstrap/runtime lineage is invalid")
     population = _validated_population_inputs(
         handler=handler,
-        runtime_registration=runtime_registration,
         checkpoint_digest=final_digest,
+        current_registry_path=current_registry_path,
     )
 
     registry_path = args.refresh_registry.expanduser().resolve()
@@ -352,6 +370,9 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         "learned_route_count": 19,
         "package_preference": "first_if_allowed",
         "historical_marnie_rewritten": False,
+        "runtime_registry": population["runtime_registry"],
+        "runtime_registry_sha256": population["runtime_registry_sha256"],
+        "runtime_registry_service": args.runtime_registry_service,
     }
     gate_receipt = str(completion["gate_receipt_sha256"])
     if not gate_receipt.startswith("sha256:"):
@@ -411,6 +432,10 @@ def main() -> int:
     parser.add_argument("--bootstrap-ready", type=Path, required=True)
     parser.add_argument("--core-boundary", type=Path, required=True)
     parser.add_argument("--runtime-registration", type=Path, required=True)
+    parser.add_argument(
+        "--runtime-registry-service",
+        default="pokebot-final-format-marnie-r104-h10-rl.service",
+    )
     parser.add_argument("--original-checkpoint", type=Path, required=True)
     parser.add_argument("--protocol", type=Path, required=True)
     parser.add_argument("--specialist-state", type=Path, required=True)
@@ -422,6 +447,8 @@ def main() -> int:
     args = parser.parse_args()
     static = _validate_static(args)
     if args.check:
+        registry = registry_from_managed_service(args.runtime_registry_service)
+        static["runtime_registry"] = _sha256(registry)
         print("FINAL_FORMAT_MARNIE_COMPLETION_OK " + json.dumps(static, sort_keys=True))
         return 0
     print(json.dumps(complete(args), sort_keys=True))

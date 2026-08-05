@@ -1,0 +1,45 @@
+{
+  "schema": "poke_bot.marnie_family_dormant_adapter_continuity_repair/v1",
+  "created_at": "2026-08-04T06:48:45Z",
+  "owner_revision": 138,
+  "scope": "post_iteration9_family_shadow_only",
+  "failure": {
+    "type": "ValueError",
+    "message": "ordinary pure-RL checkpoint cannot persist non-zero dormant adapters without a complete isolated fit receipt and continuation optimizer state",
+    "stage": "round1-plus_checkpoint_seal_after_epoch5_agreement"
+  },
+  "root_cause": "rl_train_step discarded valid parent dormant-adapter fit and continuation optimizer metadata when dormant_matchup_adapter_epochs was zero, even though the frozen non-zero adapter tensors were inherited unchanged",
+  "repair": {
+    "behavior": "deep-copy the parent's dormant matchup adapter fit receipt and continuation optimizer state when the isolated adapter phase is intentionally skipped",
+    "fail_closed": "missing, incomplete, or malformed inherited metadata remains unchanged and is still rejected by checkpoint.build_checkpoint",
+    "adapter_tensor_authority_changed": false,
+    "adapter_runtime_authority_enabled": false,
+    "checkpoint_guard_weakened": false,
+    "production_directional_guide_contract_changed": false
+  },
+  "parent_evidence": {
+    "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00007.pt",
+    "sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+    "fit_schema": "poke_bot.dormant_matchup_adapter_fit/v1",
+    "runtime_enabled": false,
+    "base_frozen": true,
+    "optimizer_scope": "matchup_adapter_bank_only",
+    "epochs": 6,
+    "steps": 2189,
+    "rows": 4784301,
+    "routed_decisions": 4376803,
+    "optimizer_state_present": true,
+    "optimizer_state_entries": 60
+  },
+  "deployment": {
+    "path": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/poke_bot/train.py",
+    "before_sha256": "sha256:3582e358022bac51c1a0edd96d9fb849b8ab370838e3e28a7d9471dcfc35888d",
+    "after_sha256": "sha256:755ec6a4faada48bf8cc675bfa9a9f5392ba49a4e612d5761870f5b2e0318907"
+  },
+  "validation": {
+    "python_compile": "passed",
+    "targeted_test": "1 passed, 29 deselected",
+    "targeted_test_name": "test_frozen_adapter_continuation_preserves_parent_proof_and_state",
+    "worktree_diff_check": "passed"
+  }
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Materialize exact successful Marnie bootstrap upload receipt
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-submission.json
+ConditionPathExists=!/home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-upload.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/materialize_marnie_postupload_bootstrap_upload.py --queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --submission-receipt /home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-submission.json --attempt-receipts /home/inzi/.local/state/pokebot/kaggle-submission-attempts --output /home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-upload.json

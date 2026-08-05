@@ -29,8 +29,12 @@ from poke_bot.strategic_losses import (
 )
 from poke_bot.strategic_schedule import EXPANDED_HEAD_IDS
 from poke_bot.train import (
+    BatchMetrics,
+    GUIDE_TRAINING_MODE_LEGACY,
     GUIDE_TRAINING_MODE_DIRECTIONAL,
     GUIDE_TRAINING_MODE_STRATEGIC,
+    TrainConfig,
+    _maybe_strategic_curriculum_training_record,
     batch_losses,
     device_temporal_batch_losses,
 )
@@ -169,6 +173,18 @@ def test_curriculum_weights_cover_only_observed_outcome_heads() -> None:
         name for name, weight in weights.items() if weight > 0.0
     } == set(GUIDE_OUTCOME_BACKED_HEAD_IDS)
     assert sum(weights.values()) == pytest.approx(1.0)
+
+
+def test_guide_off_legacy_mode_omits_strategic_record_without_blocking_save() -> None:
+    cfg = TrainConfig(
+        current_deck_guide_training_mode=GUIDE_TRAINING_MODE_LEGACY,
+        alakazam_guide_loss_weight=0.0,
+    )
+    assert _maybe_strategic_curriculum_training_record(
+        cfg=cfg,
+        train_metrics=BatchMetrics(),
+        validation_metrics=BatchMetrics(),
+    ) == {}
 
 
 def test_curriculum_confidence_scales_observed_losses_not_factor_imitation() -> None:
@@ -339,6 +355,51 @@ def test_directional_v2_guides_typed_routes_without_policy_ce() -> None:
     first = route_gradient(0)
     second = route_gradient(1)
     assert not torch.equal(first, second)
+
+
+def test_directional_v2_zero_weight_shadow_cannot_change_loss_or_gradients() -> None:
+    """A retained guide may emit telemetry, but weight zero has no authority."""
+
+    torch.manual_seed(20260804)
+    model = _future_model()
+
+    def compute(guide_target_index: int):
+        model.zero_grad(set_to_none=True)
+        loss, metrics = batch_losses(
+            model,
+            [_sequence(guide_target_index)],
+            aux_weight=0.0,
+            opp_hand_weight=0.0,
+            opp_remainder_weight=0.0,
+            alakazam_guide_weight=0.0,
+            current_deck_guide_training_mode=GUIDE_TRAINING_MODE_DIRECTIONAL,
+            setup_board_outcome_loss_weight=0.025,
+            expanded_head_weights={},
+        )
+        loss.backward()
+        gradients = {
+            name: parameter.grad.detach().clone()
+            for name, parameter in model.named_parameters()
+            if parameter.grad is not None
+        }
+        return loss.detach(), metrics, gradients
+
+    first_loss, first_metrics, first_gradients = compute(0)
+    second_loss, second_metrics, second_gradients = compute(1)
+
+    # Shadow diagnostics may still observe the guide target, but the optimized
+    # objective and every resulting gradient must remain exactly unchanged.
+    assert first_metrics.guide_strategic_curriculum_loss > 0.0
+    assert second_metrics.guide_strategic_curriculum_loss > 0.0
+    torch.testing.assert_close(first_loss, second_loss, rtol=0, atol=0)
+    assert set(first_gradients) == set(second_gradients)
+    for name in first_gradients:
+        torch.testing.assert_close(
+            first_gradients[name],
+            second_gradients[name],
+            rtol=0,
+            atol=0,
+        )
 
 
 def _sha256(path: Path) -> str:

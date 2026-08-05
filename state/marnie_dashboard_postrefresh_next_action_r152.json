@@ -1,0 +1,40 @@
+{
+  "schema": "poke_bot.marnie_dashboard_postrefresh_next_action/v1",
+  "status": "activated",
+  "recorded_at_utc": "2026-08-05T01:14:00Z",
+  "owner_revision": 152,
+  "dashboard": {
+    "managed_service": "com.pokebot.training-dashboard",
+    "host": "bert",
+    "pid_after_restart": 41337,
+    "state_after_restart": "running",
+    "api_ok": true,
+    "source_integrity_current": true,
+    "source_integrity_required_current": 19,
+    "source_integrity_required_total": 19
+  },
+  "implementation": {
+    "snapshot_script": "scripts/dashboard_snapshot.py",
+    "snapshot_script_sha256": "sha256:47c86241158d6e3a658de96c83f39e09131671246615deac10c4f35fac3d724b",
+    "dashboard_server": "/Users/tsinzitari/pokebot-dashboard/v1/server.py",
+    "dashboard_server_sha256": "sha256:04f0f3a57e362631bbb58697280255d50d59c72737a32c13776bbedb8345637c",
+    "focused_test": "tests/test_dashboard_regressions.py -k specialist_protocol",
+    "focused_test_result": "1 passed, 234 deselected"
+  },
+  "rendered_contract": {
+    "active_refresh": "marnie-s-grimmsnarl-ex",
+    "terminal_iteration": 20,
+    "iteration_21_collection_forbidden": true,
+    "next_specialist": "crustle",
+    "public_crustle_package_role": "inference_only_baseline",
+    "population_blocked_until_marnie_and_crustle_complete": true,
+    "historical_roster_count_appended_to_refresh_action": false
+  },
+  "runtime_non_interference": {
+    "training_service_restarted": false,
+    "training_pid_changed": false,
+    "scheduler_changed": false,
+    "fleet_changed": false,
+    "checkpoint_changed": false
+  }
+}

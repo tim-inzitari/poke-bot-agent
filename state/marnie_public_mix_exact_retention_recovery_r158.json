@@ -1,0 +1,53 @@
+{
+  "schema": "poke_bot.public_mix_exact_retention_recovery/v1",
+  "goal_revision": 158,
+  "status": "staged_next_managed_interpreter_start",
+  "recorded_at_utc": "2026-08-05T11:12:21Z",
+  "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+  "running_pid_preserved": 1295559,
+  "restart_count_at_stage": 1,
+  "failed_attempt": {
+    "iteration": 16,
+    "self_play_retained": 1024,
+    "self_play_required": 1024,
+    "public_mix_retained": 7167,
+    "public_mix_required": 7168,
+    "total_retained": 8191,
+    "total_required": 8192,
+    "failure": "exact collection contract failed",
+    "quarantine_receipt": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/quarantine/iter_00016/attempt_0001/failure.json",
+    "quarantined_shard_sha256": "sha256:13382d4db50815eae0fb9f4e5ee880479809a8253134cec6703f8f01156e3b80"
+  },
+  "repair": {
+    "scope": "public_mix_only",
+    "historical_retry_seed_lanes": 4,
+    "repaired_retry_seed_lanes": 32,
+    "preserves_historical_first_four_seed_lanes": true,
+    "additional_seed_namespace": "deterministic_high_disjoint",
+    "preserves_exact_schedule_contract": true,
+    "promotes_at_most_one_record_per_missing_primary_cell": true,
+    "accepts_short_collection": false,
+    "final_shortfall_reports_missing_job_indices": true,
+    "self_play_tail_policy_changed": false,
+    "fleet_allocation_changed": false,
+    "public_mix_weights_changed": false,
+    "active_interpreter_restarted": false
+  },
+  "artifacts": {
+    "prior_train_pure_rl_sha256": "sha256:a43a3a784f72179aa852a785939f39ab3cfee05d6c8da9e76ebd56b9d0930f1d",
+    "train_pure_rl_sha256": "sha256:a2e03ec8b441486348078acaae40d5d4edb97499ea0f8df3a592ce1e213d2a04",
+    "focused_test_sha256": "sha256:d6256d5870f85e3a2c660f82a7f186e68060da41f2c66ea8a7fcd50c237151a4",
+    "active_deployment_source_matches": true
+  },
+  "validation": {
+    "focused_test_file": "tests/test_pure_rl_recovery_and_scheduling.py",
+    "passed": 96,
+    "failed": 0,
+    "syntax_compile_passed": true
+  },
+  "activation": {
+    "boundary": "next_managed_interpreter_start",
+    "active_iteration_interrupted": false,
+    "live_exact_retention_receipt_required": true
+  }
+}

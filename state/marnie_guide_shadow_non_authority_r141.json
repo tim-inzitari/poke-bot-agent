@@ -1,0 +1,45 @@
+{
+  "schema": "poke_bot.marnie_guide_shadow_non_authority/v1",
+  "status": "active_nonblocking_shadow_only",
+  "recorded_at_utc": "2026-08-04T13:33:14Z",
+  "owner_revision": 141,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "active_bootstrap_unchanged": true,
+  "live_guide_target_generation_enabled": false,
+  "shadow_diagnostics_optional": true,
+  "shadow_artifact_authority": "offline_diagnostics_only",
+  "guide_loss_weight": 0.0,
+  "authority": {
+    "gradient": false,
+    "loss": false,
+    "fusion": false,
+    "action_logit": false,
+    "action_selection": false,
+    "serving": false,
+    "promotion_gate": false,
+    "checkpoint_selection": false,
+    "submission": false,
+    "self_play_authorization": false,
+    "family_monitor": false,
+    "blocking": false
+  },
+  "failure_behavior": {
+    "missing_shadow_labels": "mark_shadow_unavailable_and_continue",
+    "invalid_shadow_labels": "mark_shadow_unavailable_and_continue",
+    "missing_shadow_artifact": "continue_without_shadow",
+    "shadow_diagnostic_failure": "record_nonblocking_diagnostic_only"
+  },
+  "evaluation_isolation": {
+    "kaggle_replays_training_eligible": false,
+    "formal_evaluation_replays_training_eligible": false,
+    "shadow_outputs_may_change_training": false
+  },
+  "latent_policy_continuity_receipt": "state/marnie_postupload_latent_policy_continuity_r140.json",
+  "latent_policy_continuity_receipt_sha256": "sha256:dc2cb24a198f32b266bb695456abbc834de60f735d965ded2546b32a6c2be157",
+  "guide_retirement_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-guide-retirement-r140.json",
+  "guide_retirement_receipt_sha256": "sha256:c8a4efa35aff64eb833cb06454ee5bac12ef14c0dfbf4fcfbb1af6aed1a13670",
+  "submission_chain_receipt": "state/marnie_guide_retirement_submission_chain_r140.json",
+  "submission_chain_receipt_sha256": "sha256:47758999c5290f806defa0401c1b6e3431e112032d20c7a165e4c75e6211ac24",
+  "guide_retired_runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r140_guide_retired.json",
+  "guide_retired_runtime_registry_sha256": "sha256:6960318b4d93819fa8112ee6e90161a8545b981cff1055c92adb42c33e809ae6"
+}

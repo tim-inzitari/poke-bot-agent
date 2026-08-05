@@ -39,7 +39,7 @@ def _argv(tmp_path: Path, *, epochs: int) -> list[str]:
 
 
 def test_specialist_bootstrap_rejects_non_exact_epoch_count(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="exactly 25 epochs"):
+    with pytest.raises(ValueError, match="locked to 25 epochs"):
         bootstrap.main(_argv(tmp_path, epochs=24))
 
 

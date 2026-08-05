@@ -120,7 +120,8 @@ def test_leaf_reload_deadline_is_global_and_preserves_old_identity(
     control_messages: list[dict] = []
 
     class ControlQueue:
-        def put(self, value):
+        def put(self, value, *, timeout):
+            assert timeout == pytest.approx(5.0)
             control_messages.append(value)
 
     class FirstMissingStatus:
@@ -142,7 +143,7 @@ def test_leaf_reload_deadline_is_global_and_preserves_old_identity(
         "expected_digest": leaf.digest,
         "expected_version": leaf.version,
     }
-    clock = iter((0.0, 0.0, 240.1))
+    clock = iter((0.0, 0.0, 0.0, 0.0, 240.1))
     monkeypatch.setattr(mod.time, "monotonic", lambda: next(clock))
 
     with pytest.raises(RuntimeError, match="global reload deadline exceeded"):
@@ -264,9 +265,18 @@ def test_hard_gate_skips_redundant_reload_from_exact_leaf_health(
         host = "worker.local"
         port = 8765
 
+        def __init__(self):
+            self.reconnects = 0
+
         def reconnect(self):
             calls.append("reconnect")
-            return SimpleNamespace(checkpoint_digest=digest)
+            self.reconnects += 1
+            # A first hello may land during leaf recycle and advertise no
+            # primary identity. The following complete health proof is newer;
+            # the final hello still has to confirm the exact digest.
+            return SimpleNamespace(
+                checkpoint_digest=digest if self.reconnects > 1 else None
+            )
 
         def health(self):
             calls.append("health")

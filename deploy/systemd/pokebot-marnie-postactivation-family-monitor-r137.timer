@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll for Marnie family status-78 post-activation boundary
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=30s
+Unit=pokebot-marnie-postactivation-family-monitor-r137.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

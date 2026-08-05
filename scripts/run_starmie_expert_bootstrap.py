@@ -28,9 +28,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from poke_bot import archetypes, checkpoint, device as device_mod
+from poke_bot.archetype_loss_contract import canonical_residual_weights
 from poke_bot.guide_evidence_rebind import (
     validation_or_evidence_only_rebind,
 )
+from poke_bot.expert_pilot_importance import load_training_weights_for_corpus
 from poke_bot.model import (
     COMBO_STATE_HEAD_NAME,
     DECISION_FUSION_REQUIRED_HEADS,
@@ -62,6 +64,7 @@ from poke_bot.slowking_candidate_validation import (
 from poke_bot.train import (
     GUIDE_TRAINING_MODE_LEGACY,
     GUIDE_TRAINING_MODE_STRATEGIC,
+    GUIDE_TRAINING_MODE_DIRECTIONAL,
     belief_card_vocab_from_state,
     supervised_rehearsal_step,
 )
@@ -356,6 +359,7 @@ def current_deck_guide_handoff_contract(
     if guide_mode not in {
         GUIDE_TRAINING_MODE_LEGACY,
         GUIDE_TRAINING_MODE_STRATEGIC,
+        GUIDE_TRAINING_MODE_DIRECTIONAL,
     }:
         raise RuntimeError("current-deck guide training mode is invalid")
     supplied_strategic = any(
@@ -369,7 +373,10 @@ def current_deck_guide_handoff_contract(
         )
     )
     strategic_bundle = None
-    if guide_mode == GUIDE_TRAINING_MODE_STRATEGIC:
+    if guide_mode in {
+        GUIDE_TRAINING_MODE_STRATEGIC,
+        GUIDE_TRAINING_MODE_DIRECTIONAL,
+    }:
         from scripts.register_next_specialist_runtime import (
             _validate_strategic_curriculum_bundle,
         )
@@ -377,6 +384,7 @@ def current_deck_guide_handoff_contract(
         strategic_bundle = _validate_strategic_curriculum_bundle(
             specialist_id=specialist_id,
             guide_contract_sha256=contract_digest.removeprefix("sha256:"),
+            training_mode=guide_mode,
             curriculum_spec=strategic_curriculum_spec,
             curriculum_spec_sha256=(
                 expected_strategic_curriculum_spec_sha256
@@ -402,7 +410,10 @@ def current_deck_guide_handoff_contract(
         "corpus_ready_receipt_sha256": ready_digest,
         "policy_target": (
             "observed_causal_strategic_heads_only"
-            if guide_mode == GUIDE_TRAINING_MODE_STRATEGIC
+            if guide_mode in {
+                GUIDE_TRAINING_MODE_STRATEGIC,
+                GUIDE_TRAINING_MODE_DIRECTIONAL,
+            }
             else "shared_flat_policy"
         ),
         "training_mode": guide_mode,
@@ -448,6 +459,32 @@ def current_deck_guide_epoch_weight(
         return end_weight
     fraction = float(epoch - start_epoch) / float(end_epoch - start_epoch)
     return start_weight + fraction * (end_weight - start_weight)
+
+
+def specialist_bootstrap_guide_weight(
+    contract: dict[str, Any],
+    epoch: int,
+    *,
+    active_through_epoch: int = 0,
+) -> float:
+    """Resolve guide pressure for an owner-scoped extended bootstrap.
+
+    The ordinary specialist contract remains the exact 25-epoch guide
+    schedule.  Crustle's post-Marnie refresh keeps guide pressure active for
+    the entire 35-epoch bootstrap so the expert games stay grounded in its
+    north-star strategy.
+    """
+
+    active_through_epoch = int(active_through_epoch)
+    epoch = int(epoch)
+    if active_through_epoch > 0 and epoch > active_through_epoch:
+        return 0.0
+    # The canonical guide schedule reaches its held weight by epoch 5 and is
+    # defined through epoch 25.  Extended Crustle epochs remain at that same
+    # held weight rather than being silently converted to guide-free training.
+    return current_deck_guide_epoch_weight(
+        contract, min(epoch, int((contract.get("bootstrap_schedule") or {}).get("hold_through_epoch", 25)))
+    )
 
 
 def validate_expanded_handoff_training_contract(
@@ -595,6 +632,8 @@ def validate_expanded_epoch_checkpoint(
     identity: dict[str, Any],
     train_metrics: Any,
     validation_metrics: Any,
+    epochs_total: int = 25,
+    archetype_residual_loss_weights: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Verify one epoch trained exactly the cumulative scheduled head set."""
 
@@ -620,7 +659,12 @@ def validate_expanded_epoch_checkpoint(
         for value in contract.get("architecture_present_heads") or ()
     }
     trained = {
-        str(value) for value in contract.get("trained_heads") or ()
+        str(value)
+        for value in (
+            contract.get("trained_this_epoch")
+            or contract.get("trained_heads")
+            or ()
+        )
     }
     gradient = {
         str(value)
@@ -629,6 +673,32 @@ def validate_expanded_epoch_checkpoint(
     weights = {
         str(name): float(weight)
         for name, weight in dict(contract.get("loss_weights") or {}).items()
+    }
+    residuals = canonical_residual_weights(archetype_residual_loss_weights)
+    recorded_residuals = canonical_residual_weights(
+        contract.get("archetype_residual_loss_weights")
+    )
+    effective_weights = dict(plan.loss_weights)
+    effective_weights["action_resource"] += residuals[
+        "resource_attack_readiness"
+    ]
+    effective_weights["resource_forecast"] += residuals[
+        "resource_attack_readiness"
+    ]
+    effective_weights["outcome_distribution"] += residuals[
+        "long_horizon_prize_pressure"
+    ]
+    effective_weights["remaining_turns"] += residuals[
+        "long_horizon_prize_pressure"
+    ]
+    recorded_effective_weights = {
+        str(name): float(weight)
+        for name, weight in dict(
+            contract.get("effective_loss_weights") or weights
+        ).items()
+    }
+    expected_gradient_heads = {
+        name for name, weight in effective_weights.items() if float(weight) > 0.0
     }
     target_schema = contract.get(
         "target_schema", contract.get("target_schema_version")
@@ -644,12 +714,14 @@ def validate_expanded_epoch_checkpoint(
         or schedule_schema != identity["schedule_schema"]
         or contract.get("schedule_digest") != identity["schedule_digest"]
         or int(contract.get("epoch", -1)) != int(plan.epoch)
-        or int(contract.get("epochs_total", -1)) != 25
+        or int(contract.get("epochs_total", -1)) != int(epochs_total)
         or declared != set(EXPANDED_HEAD_IDS)
-        or trained != set(plan.enabled_heads)
-        or gradient != set(plan.enabled_heads)
+        or trained != expected_gradient_heads
+        or gradient != expected_gradient_heads
         or contract.get("runtime_enabled_heads") != []
         or weights != dict(plan.loss_weights)
+        or recorded_residuals != residuals
+        or recorded_effective_weights != effective_weights
     ):
         raise RuntimeError(
             f"expanded-head epoch {plan.epoch} checkpoint contract changed"
@@ -1310,11 +1382,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=25)
+    parser.add_argument(
+        "--owner-crustle-guide-active-epochs",
+        type=int,
+        default=0,
+    )
+    parser.add_argument(
+        "--owner-crustle-guide-free-refresh-epochs",
+        type=int,
+        default=0,
+    )
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--min-delta", type=float, default=1e-4)
     parser.add_argument("--min-decisions", type=int, default=100_000)
     parser.add_argument("--batch-size", type=int, default=12288)
     parser.add_argument("--split-seed", type=int, default=20260722)
+    parser.add_argument("--pilot-importance-index", type=Path)
     parser.add_argument("--cpu-pack-root", type=Path, required=True)
     parser.add_argument("--required-target", action="append", default=[])
     parser.add_argument("--expanded-heads", action="store_true")
@@ -1384,8 +1467,21 @@ def main(argv: list[str] | None = None) -> int:
     archetype = str(args.archetype).strip().casefold()
     if not archetype or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789-" for char in archetype):
         raise ValueError("specialist archetype must be a non-empty lowercase slug")
-    if int(args.epochs) != 25:
-        raise ValueError("specialist bootstrap is locked to exactly 25 epochs")
+    crustle_extended_refresh = (
+        archetype == "crustle"
+        and int(args.owner_crustle_guide_active_epochs) == 35
+        and int(args.owner_crustle_guide_free_refresh_epochs) == 0
+        and int(args.epochs) == 35
+    )
+    if not crustle_extended_refresh and (
+        int(args.epochs) != 25
+        or int(args.owner_crustle_guide_active_epochs) != 0
+        or int(args.owner_crustle_guide_free_refresh_epochs) != 0
+    ):
+        raise ValueError(
+            "specialist bootstrap is locked to 25 epochs except for the "
+            "owner-scoped Crustle all-guide 35-epoch bootstrap"
+        )
     retained_h10_combo = bool(args.retain_inherited_h10_combo_state_head)
     combo_state_architecture = bool(args.combo_state_head or retained_h10_combo)
     if retained_h10_combo and (
@@ -1471,10 +1567,35 @@ def main(argv: list[str] | None = None) -> int:
         if all(value not in {None, ""} for value in guide_arguments)
         else None
     )
+    if crustle_extended_refresh:
+        if args.pilot_importance_index is None:
+            raise ValueError(
+                "Crustle extended refresh requires checksum-bound expert-pilot "
+                "importance for all 35 epochs"
+            )
+        if guide_identity is None:
+            raise ValueError("Crustle extended refresh requires its guide")
+        guide_identity = {
+            **guide_identity,
+            "owner_epoch_schedule": {
+                "schema": "poke_bot.crustle_guide_all_epochs/v1",
+                "owner_decision_revision": 163,
+                "guide_active_epochs": [1, 35],
+                "guide_free_expert_refresh_epochs": [],
+                "guide_free_expert_refresh_epoch_count": 0,
+                "final_selection_eligible_epochs": [1, 35],
+                "expert_pilot_importance_epochs": [1, 35],
+            },
+        }
+    elif args.pilot_importance_index is not None:
+        raise ValueError(
+            "generic specialist bootstrap pilot weighting is currently scoped "
+            "to the owner-authorized Crustle 35-epoch run"
+        )
     strategic_curriculum = (
         guide_identity is not None
         and guide_identity.get("training_mode")
-        == GUIDE_TRAINING_MODE_STRATEGIC
+        in {GUIDE_TRAINING_MODE_STRATEGIC, GUIDE_TRAINING_MODE_DIRECTIONAL}
     )
     if strategic_curriculum and not args.decision_fusion:
         raise ValueError(
@@ -1680,6 +1801,13 @@ def main(argv: list[str] | None = None) -> int:
         if expanded_identity is not None
         else None
     )
+    pilot_importance_digest = (
+        checkpoint.checkpoint_digest(
+            args.pilot_importance_index.expanduser().resolve()
+        )
+        if args.pilot_importance_index is not None
+        else None
+    )
     family_dir = args.registry_root.expanduser().resolve() / family_name
     if args.ready.is_file() and family_dir.is_dir():
         ready = json.loads(args.ready.read_text(encoding="utf-8"))
@@ -1713,6 +1841,8 @@ def main(argv: list[str] | None = None) -> int:
             and ready.get("expert_manifest_sha256") == identity.digest
             and ready.get("acting_seat_archetype") == archetype
             and ready.get("current_deck_guide") == guide_identity
+            and ready.get("expert_pilot_importance_index_sha256")
+            == pilot_importance_digest
             and existing_combo_valid
             and (
                 expanded_identity is None
@@ -1754,6 +1884,11 @@ def main(argv: list[str] | None = None) -> int:
             != core.get("checkpoint_digest")
             or state.get("manifest_digest") != identity.digest
             or state.get("hot_start_checkpoint_digest") != hot_start_digest
+            or (
+                args.pilot_importance_index is not None
+                and state.get("expert_pilot_importance_index_sha256")
+                != pilot_importance_digest
+            )
             or (
                 expanded_identity is not None
                 and (
@@ -1821,6 +1956,27 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(
             "specialist bootstrap corpus lost required all-head targets"
         )
+    pilot_weights: torch.Tensor | None = None
+    pilot_contract: dict[str, Any] | None = None
+    if args.pilot_importance_index is not None:
+        loaded_weights, pilot_contract = load_training_weights_for_corpus(
+            args.pilot_importance_index.expanduser().resolve(),
+            expected_manifest_digest=identity.digest,
+            split_seed=int(args.split_seed),
+            validation_fraction=0.10,
+            max_context=320,
+            train_games=corpus.train_games,
+            validation_games=corpus.val_games,
+        )
+        pilot_weights = torch.tensor(
+            loaded_weights, device=corpus.device, dtype=torch.float32
+        )
+        if (
+            pilot_contract.get("actions_and_labels_unchanged") is not True
+            or pilot_contract.get("validation_unweighted") is not True
+            or int(pilot_contract.get("matched_top_100_train_games", 0)) <= 0
+        ):
+            raise RuntimeError("Crustle weighted expert contract is not usable")
     history = list(state.get("history") or [])
     best_metric = float(state.get("best_metric", math.inf))
     best_path = str(state.get("best_path") or "")
@@ -1839,12 +1995,23 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for epoch in range(start_epoch, int(args.epochs) + 1):
             guide_weight = (
-                current_deck_guide_epoch_weight(guide_identity, epoch)
+                specialist_bootstrap_guide_weight(
+                    guide_identity,
+                    epoch,
+                    active_through_epoch=(
+                        int(args.owner_crustle_guide_active_epochs)
+                        if crustle_extended_refresh
+                        else 0
+                    ),
+                )
                 if guide_identity is not None
                 else 0.0
             )
             plan = (
-                expanded_head_epoch_plan(expanded_raw, epoch)
+                expanded_head_epoch_plan(
+                    expanded_raw,
+                    min(epoch, 25) if crustle_extended_refresh else epoch,
+                )
                 if expanded_raw is not None
                 else None
             )
@@ -1869,6 +2036,15 @@ def main(argv: list[str] | None = None) -> int:
                         if guide_identity is not None
                         else None
                     )
+                    or extra.get("expert_pilot_importance")
+                    != rehearsal.get("expert_pilot_importance")
+                    or (
+                        pilot_importance_digest is not None
+                        and dict(
+                            rehearsal.get("expert_pilot_importance") or {}
+                        ).get("importance_index_sha256")
+                        != pilot_importance_digest
+                    )
                     or (
                         plan is not None
                         and (
@@ -1889,6 +2065,9 @@ def main(argv: list[str] | None = None) -> int:
                     "reused": True,
                 }
             else:
+                guide_training_active = bool(
+                    guide_identity is not None and guide_weight > 0.0
+                )
                 specialist_bootstrap_extra = {
                     "schema": epoch_schema,
                     "epoch": epoch,
@@ -1910,6 +2089,7 @@ def main(argv: list[str] | None = None) -> int:
                         if guide_identity is not None
                         else None
                     ),
+                    "expert_pilot_importance": pilot_contract,
                     **(
                         {"decision_fusion": fusion_identity}
                         if fusion_identity is not None
@@ -1977,7 +2157,7 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     "current_deck_guide_training_mode": (
                         str(guide_identity["training_mode"])
-                        if guide_identity is not None
+                        if guide_training_active
                         else GUIDE_TRAINING_MODE_LEGACY
                     ),
                     "current_deck_guide_curriculum_spec": (
@@ -1986,7 +2166,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "curriculum_spec"
                             ]
                         )
-                        if strategic_curriculum
+                        if strategic_curriculum and guide_training_active
                         else ""
                     ),
                     "current_deck_guide_head_role_map": (
@@ -1995,7 +2175,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "head_role_map"
                             ]
                         )
-                        if strategic_curriculum
+                        if strategic_curriculum and guide_training_active
                         else ""
                     ),
                     "current_deck_guide_curriculum_validation_receipt": (
@@ -2004,7 +2184,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "validation_receipt"
                             ]
                         )
-                        if strategic_curriculum
+                        if strategic_curriculum and guide_training_active
                         else ""
                     ),
                     "output_archetype_id": archetype,
@@ -2012,6 +2192,8 @@ def main(argv: list[str] | None = None) -> int:
                     "extra_updates": {
                         "specialist_bootstrap": specialist_bootstrap_extra,
                     },
+                    "training_game_sampling_weights": pilot_weights,
+                    "training_game_importance_contract": pilot_contract,
                 }
                 if plan is not None:
                     rehearsal_kwargs.update(
@@ -2040,7 +2222,7 @@ def main(argv: list[str] | None = None) -> int:
             metric = float((result.get("validation_metrics") or {}).get("total_loss", math.inf))
             if not math.isfinite(metric):
                 raise RuntimeError("specialist validation metric is not finite")
-            if guide_identity is not None and (
+            if guide_identity is not None and guide_weight > 0.0 and (
                 int(
                     (result.get("train_metrics") or {}).get(
                         "n_alakazam_guide_rows", 0
@@ -2102,8 +2284,15 @@ def main(argv: list[str] | None = None) -> int:
             }
             history.append(row)
             selection_eligible = (
-                plan is None
-                or set(plan.enabled_heads) == set(EXPANDED_HEAD_IDS)
+                (
+                not crustle_extended_refresh
+                or int(args.owner_crustle_guide_free_refresh_epochs) == 0
+                or epoch > int(args.owner_crustle_guide_active_epochs)
+                )
+                and (
+                    plan is None
+                    or set(plan.enabled_heads) == set(EXPANDED_HEAD_IDS)
+                )
             )
             if selection_eligible:
                 if metric < best_metric - float(args.min_delta):
@@ -2127,6 +2316,12 @@ def main(argv: list[str] | None = None) -> int:
                 "manifest": identity.as_dict(),
                 "manifest_digest": identity.digest,
                 "current_deck_guide": guide_identity,
+                "expert_pilot_importance": pilot_contract,
+                "expert_pilot_importance_index_sha256": (
+                    pilot_contract.get("importance_index_sha256")
+                    if pilot_contract is not None
+                    else None
+                ),
                 **(
                     {
                         "expanded_target_schema": expanded_identity[
@@ -2164,7 +2359,8 @@ def main(argv: list[str] | None = None) -> int:
             }
             atomic_json(state_path, state)
             print(
-                f"[specialist-bootstrap:{archetype}] epoch={epoch}/25 "
+                f"[specialist-bootstrap:{archetype}] "
+                f"epoch={epoch}/{int(args.epochs)} "
                 f"val_loss={metric:.6f} "
                 f"best={best_metric:.6f} patience={bad_epochs}/{int(args.patience)}",
                 flush=True,
@@ -2173,10 +2369,10 @@ def main(argv: list[str] | None = None) -> int:
         cache.release()
 
     if [int(row.get("epoch", -1)) for row in history] != list(
-        range(1, 26)
+        range(1, int(args.epochs) + 1)
     ):
         raise RuntimeError(
-            "specialist bootstrap did not complete exact epochs 1..25"
+            "specialist bootstrap did not complete its exact epoch contract"
         )
     best = Path(best_path).resolve()
     if not best.is_file() or checkpoint.checkpoint_digest(best) != best_digest:
@@ -2282,8 +2478,14 @@ def main(argv: list[str] | None = None) -> int:
             pretraining=combo_pretraining,
             output=combo_receipt_path,
             expanded_head_weights=dict(final_plan.loss_weights),
-            guide_loss_weight=current_deck_guide_epoch_weight(
-                guide_identity, int(args.epochs)
+            guide_loss_weight=specialist_bootstrap_guide_weight(
+                guide_identity,
+                int(args.epochs),
+                active_through_epoch=(
+                    int(args.owner_crustle_guide_active_epochs)
+                    if crustle_extended_refresh
+                    else 0
+                ),
             ),
         )
         combo_receipt_digest = checkpoint.checkpoint_digest(
@@ -2321,6 +2523,7 @@ def main(argv: list[str] | None = None) -> int:
             "early_stop_patience": int(args.patience),
             "history": history,
             "current_deck_guide": guide_identity,
+            "expert_pilot_importance": pilot_contract,
             "slowking_combo_state_validation": (
                 {
                     "receipt": str(combo_receipt_path),
@@ -2401,6 +2604,8 @@ def main(argv: list[str] | None = None) -> int:
         "best_metric": best_metric,
         "trained_target_coverage": list(required_targets),
         "current_deck_guide": guide_identity,
+        "expert_pilot_importance": pilot_contract,
+        "expert_pilot_importance_index_sha256": pilot_importance_digest,
         "slowking_combo_state_validation": (
             {
                 "receipt": str(combo_receipt_path),

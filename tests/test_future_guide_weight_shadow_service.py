@@ -76,6 +76,67 @@ def test_queue_processor_exactly_bypasses_active_teal(tmp_path: Path) -> None:
     }
 
 
+def test_queue_processor_bypasses_crustle_persistent_guide_hold(
+    tmp_path: Path,
+) -> None:
+    selector = tmp_path / "selector.env"
+    selector.write_text(
+        "\n".join(
+            (
+                "POKEBOT_ACTIVE_SPECIALIST=crustle",
+                "POKEBOT_FUTURE_GUIDE_WEIGHT_POLICY_REVISION=44",
+                "POKEBOT_GUIDE_LEARNING_SEMANTICS_REVISION=46",
+            )
+        )
+        + "\n"
+    )
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "runtime_root": str(tmp_path),
+                "specialists": {
+                    "crustle": {
+                        "run_name": "crustle",
+                        "guide_loss_weight": 0.05,
+                        "guide_weight_policy": {
+                            "scope": "crustle_persistent_training_only",
+                            "automatic_decay_allowed": False,
+                        },
+                    }
+                },
+            }
+        )
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/process_future_guide_weight_review_queue.py"),
+            "--selector",
+            str(selector),
+            "--registry",
+            str(registry),
+            "--baseline-manifest",
+            str(tmp_path / "missing-baselines.json"),
+            "--output-root",
+            str(tmp_path / "output"),
+            "--lock",
+            str(tmp_path / "queue.lock"),
+            "--training-unit",
+            "not-used.service",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=ROOT,
+    )
+    assert json.loads(result.stdout) == {
+        "ok": True,
+        "specialist_id": "crustle",
+        "status": "not_an_eligible_future_specialist",
+    }
+
+
 def test_queue_processor_runs_eligible_future_review_through_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

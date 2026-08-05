@@ -254,6 +254,9 @@ def test_temporal_resident_path_trains_all_enabled_expanded_heads_once() -> None
         torch.tensor([0], dtype=torch.long),
         expanded_head_weights={name: 1.0 for name in EXPANDED_HEAD_IDS},
     )
+    assert bool(torch.isfinite(total))
+    assert metrics.total_loss == pytest.approx(float(total.detach().item()))
+    assert metrics.alakazam_guide_loss == 0.0
     expanded = metrics.expanded_head_metrics
     assert expanded["labeled"] == {
         "action_q": 2,

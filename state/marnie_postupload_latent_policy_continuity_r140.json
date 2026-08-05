@@ -1,0 +1,61 @@
+{
+  "schema": "poke_bot.marnie_postupload_latent_policy_continuity/v1",
+  "status": "validated_runtime_inert_until_post_iteration_9_bootstrap",
+  "owner_decision_revision": 140,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "accepted_policy_generation": 15,
+  "active_evidence_checkpoint_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+  "required_checkpoint_inventory": {
+    "schema": "poke_bot.action_conditioned_latent_lookahead/v1",
+    "enabled": true,
+    "action_authority_enabled": true,
+    "width": 512,
+    "policy_aid_cap": 0.25,
+    "parameters": 412130
+  },
+  "validated_boundaries": [
+    "successfully_uploaded_iteration_9_parent",
+    "every_expert_bootstrap_epoch",
+    "selected_epoch_25_checkpoint",
+    "frozen_bootstrap_provenance",
+    "bootstrap_ready_receipt"
+  ],
+  "family_activation_authority": {
+    "mode": "owner_ceiling_after_inconclusive_shadow_study",
+    "measured_study_passed": false,
+    "owner_acceptance_sha256": "sha256:db96035fa64f44910ed073bc2032260f3596e17e79b2ea070082b99ebe8d3a86",
+    "migration_receipt_sha256": "sha256:ba3f27534c4fe74fe383c90b79a7ddb5eac705d41e70360cab5345829eef241e"
+  },
+  "guide_override": {
+    "enabled": false,
+    "weight": 0.0,
+    "reason": "owner_revision_140_permanent_marnie_guide_retirement_to_allow_policy_improvement_beyond_hand_authored_scaffolding",
+    "long_term_retired": true,
+    "applies_to_bootstrap_and_all_later_marnie_training": true,
+    "guide_conditioned_loss_enabled": false,
+    "guide_target_generation_required": false,
+    "guide_action_influence": false,
+    "historical_guide_artifacts_are_audit_only": true,
+    "all_non_guide_objectives_and_family_training_remain_active": true,
+    "exact_weighted_corpus_games": 73082,
+    "exact_weighted_corpus_decisions": 6828373
+  },
+  "failure_behavior": "fail_closed_before_bootstrap_submission_or_self_play",
+  "bootstrap_script": "scripts/run_final_format_marnie_h10_bootstrap.py",
+  "bootstrap_script_sha256": "sha256:4221db2196fd5bb497f081760238167e342d508134c3fb2ca960a0506f841824",
+  "submission_stager": "scripts/stage_marnie_postupload_bootstrap_submission.py",
+  "submission_stager_sha256": "sha256:a8785b326acb7b57f9ca5d8b2496279c997b50343b53056be3aa9b6a6d005978",
+  "bootstrap_activator": "scripts/activate_marnie_postupload_bootstrap.py",
+  "bootstrap_activator_sha256": "sha256:13f2373e2473c7c3f8699377f25921e636aaef8d47bd56227bdbd454f8f6b99f",
+  "managed_service_unit": "deploy/systemd/pokebot-marnie-postupload-weighted-bootstrap-r135.service",
+  "managed_service_unit_sha256": "sha256:2e0927b6419fe25ed5ca77d724f39d511e09f1701514d7bf08a041e04f86eee7",
+  "submission_service_unit": "deploy/systemd/pokebot-marnie-postupload-bootstrap-submit-r135.service",
+  "submission_service_unit_sha256": "sha256:464d9f140b19d079bdc486510969757ed7687a0f6eaad801c34330e57d26321f",
+  "regression_test": "tests/test_final_format_marnie_h10_bootstrap.py",
+  "regression_test_sha256": "sha256:8ad1afbc42bc5c02fb64af7d3b7fe32ad02ceb2829cab67a113b694552cef116",
+  "chain_regression_test": "tests/test_marnie_postupload_bootstrap_chain.py",
+  "chain_regression_test_sha256": "sha256:1b303a3b3a5dfbf9b3a0bbcc0f3b1a9933ada986f61b035df4712735ae641ded",
+  "active_training_modified": true,
+  "scheduler_modified": false,
+  "fleet_modified": false
+}

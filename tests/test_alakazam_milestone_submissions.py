@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from scripts.handle_passed_gate import queue_submission_copies
 from scripts.stage_final_format_alakazam_milestone_submissions import (
     eligible_iterations,
     receipt_schema,
+    validate_commit,
 )
 
 
@@ -35,6 +37,51 @@ def test_marnie_milestone_cadence_includes_iteration_zero(
     assert receipt_schema("marnie-s-grimmsnarl-ex") == (
         "poke_bot.final_format_milestone_submission/v1"
     )
+
+
+def test_marnie_iteration9_uses_exact_committed_learner_after_gate_rollback(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    commits = run_dir / "commits"
+    checkpoints = run_dir / "checkpoints"
+    commits.mkdir(parents=True)
+    checkpoints.mkdir(parents=True)
+    candidate = checkpoints / "iter_00009.pt"
+    candidate.write_bytes(b"promoted candidate later rejected by exact gate")
+    learner = checkpoints / "iter_00007.pt"
+    learner.write_bytes(b"stronger exact-gate learner")
+    learner_digest = "sha256:" + hashlib.sha256(learner.read_bytes()).hexdigest()
+    (commits / "iter_00009.json").write_text(
+        json.dumps(
+            {
+                "last_completed_iteration": 9,
+                "next_iteration": 10,
+                "learner": {"path": str(learner), "digest": learner_digest},
+                "history": [
+                    {
+                        "iteration": 9,
+                        "completed": True,
+                        "candidate": {
+                            "path": str(candidate),
+                            "digest": "sha256:"
+                            + hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _, selected, digest, role = validate_commit(
+        run_dir,
+        9,
+        prefer_committed_learner=True,
+    )
+    assert selected == learner.resolve()
+    assert digest == learner_digest
+    assert role == "committed_learner"
 
 
 def test_marnie_managed_watcher_is_registration_gated_and_nonblocking() -> None:

@@ -606,6 +606,16 @@ tail after local completion. It does not batch network results: each completed
 game still streams independently into the bounded result queue. Job identity,
 seed, seat, replay-row, retry, checksum, and producer-drain audits remain exact.
 
+Public-mix exact retention has a separate bounded recovery rule. If a completed
+planned public game produces no compactable training record, the controller
+must retry the same exact seat/opponent/archetype/training-group schedule cell
+with deterministic disjoint seeds and promote at most one usable replacement.
+Revision 158 preserves the historical four seed lanes and adds 28 bounded high-
+namespace lanes. It never substitutes another schedule contract or accepts a
+short collection: after all 32 lanes, any remaining cell fails closed with its
+job index and retry count. This rule changes neither self-play tail allocation
+nor the 96+36+16 fleet, public-mix weights, or gate composition.
+
 Beginning at the immutable Marnie iteration-5→6 boundary, the shared
 public-mix/formal-holdout roster uses architecture-aware tier weights. Every
 eligible non-active H10 specialist is `S`/`2.0`; every other frozen specialist
@@ -1363,3 +1373,84 @@ to be processed asynchronously.
   append-only evidence.
 - Any process that cannot prove research/training separation or frozen-model
   immutability must fail closed before an optimizer step.
+
+## 8. Marnie observed-list family staging
+
+Marnie's Grimmsnarl ex may train across multiple lists only from the typed
+`poke_bot.specialist_archetype_families/v1` manifest. Every list must be an
+exact observed legal 60-card list, classify to the existing logical specialist,
+and retain immutable provenance and ordered/multiset digests. Swap-distance
+clusters stay wholly within train, development, or locked evaluation. The
+current package list remains the sole package and measurement list and receives
+exactly 20% of activated training-list probability; the remaining mass is
+equal by train cluster and then exact list. Replay and rehearsal use the same
+macro weighting and reject development, locked, ambiguous legacy, Kaggle, and
+research rows.
+
+The separately typed `poke_bot.archetype_loss_contract/v1` reweights only
+existing objectives and authorizes guide gradient by explicit head name. The
+family sampler and selected loss vector are one atomic design migration. They
+remain inert unless at least twelve non-package clusters exist, the isolated
+same-parent two-round SPSA study passes every gameplay/gradient/policy gate, and
+an immutable successful iteration-9 Kaggle upload attempt is bound to its
+consumed one-shot authorization, checkpoint, package, deck, label, competition,
+and uploaded bytes. A queued row or score is never a trigger.
+
+After an immutable commit and before the next collection, the trainer may honor
+an explicitly configured activation request by writing an idempotent pause
+receipt and exiting with restart-prevent status 75. Only the declared managed
+one-shot activator may then install the manifest and loss vector together. If
+collection has started, evidence is incomplete, or any digest differs, the
+current exact-list recipe continues unchanged. Rollback is likewise scheduled
+only for a later clean boundary; evidence is never deleted or rewritten.
+
+## 9. Marnie guide-shadow runtime precedence
+
+Marnie's current-deck guide is optional offline shadow evidence only. Its
+effective training weight is `0.0`; it supplies no target-generation, loss,
+gradient, Fusion-v3, action, serving, checkpoint-selection, gate, submission,
+self-play-authorization, or blocking authority. Missing or failed shadow
+diagnostics are recorded as unavailable and the non-guide path continues.
+
+The post-upload Marnie runtime must combine this zero-authority guide contract
+with the activated archetype-family sampler and typed loss vector. The
+family-study registry that predates guide retirement is never a valid direct
+next-start registry. Use the checksum-bound merged registry from
+`state/marnie_family_guide_shadow_runtime_r142.json`. Epoch-25 activation fails
+closed unless that exact merged registry is selected. At the status-78 family
+monitor boundary, a pass retains the merged family/guide-off registry; a
+family rollback selects the checksum-bound pre-family guide-retired registry.
+Neither branch may restore a nonzero guide weight or guide authority.
+
+## 10. Post-Marnie Crustle registry binding
+
+The dormant Marnie-to-Crustle handoff resolves the effective registry from the
+managed Marnie service at the immutable iteration-20 completion boundary.  The
+Marnie completion receipt binds that path and SHA-256; Crustle registration
+must consume the receipt rather than a statically pinned pre-Generation-15
+registry.  Before constructing the Crustle runtime it removes Marnie-only
+family sampling, selected-loss-vector, and guide-retirement/shadow fields while
+preserving the current H10/Fusion-v3 implementation and Router Format 6
+structures.  The completion service must execute
+`complete_final_format_marnie_refresh.py`; relaunching Marnie from that service
+is forbidden.  Revision-143 evidence is recorded in
+`state/post_marnie_crustle_runtime_rebind_r143.json`.
+
+Crustle's revision-161 bootstrap is an exact two-stage continuation of that
+handoff. Epochs 1--10 retain the checksum-bound Crustle strategic guide under
+its bounded bootstrap schedule. Epochs 11--35 are an exact 25-epoch expert
+refresh with guide weight, guide gradients, guide target generation, and every
+guide runtime/action/gate authority set to zero/off. Only epochs 11--35 may be
+selected as the frozen bootstrap winner. The Marnie completion receipt binds
+the exact iteration-20 H10 checkpoint as the predecessor and required
+expert/practice opponent anchor. Grimmsnarl actions are never relabelled as
+Crustle acting-seat expert targets. Missing schedule or predecessor evidence
+blocks Crustle bootstrap registration and RL launch without changing Marnie.
+
+All 35 epochs use the checksum-pinned bounded expert-pilot importance index for
+the exact protected Crustle acting-seat corpus. The deterministic training
+partition is sampled with the validated top-100 same-split support tiers;
+validation remains unweighted, unmatched or unverifiable pilots remain `1.0x`,
+and replay actions and causal labels are never rewritten. The index digest and
+effective weight contract are present in every epoch checkpoint, frozen model
+provenance, and readiness receipt.

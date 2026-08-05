@@ -21,6 +21,7 @@ CRUSTLE_UNITS = (
     "pokebot-final-format-crustle-r113-h10-gate-handler.service",
     "pokebot-final-format-crustle-r113-completion.service",
 )
+MINIMUM_CRUSTLE_RECORDS = 16_639
 
 
 def sha256(path: Path) -> str:
@@ -48,6 +49,99 @@ def require(text: str, *needles: str) -> None:
         raise RuntimeError(f"managed handoff invariant missing: {missing}")
 
 
+def require_equal(actual: Any, expected: Any, label: str) -> None:
+    if actual != expected:
+        raise RuntimeError(f"{label} mismatch: expected {expected!r}, got {actual!r}")
+
+
+def validate_corpus_import(path: Path) -> dict[str, Any]:
+    import_path = path.resolve()
+    if not import_path.is_file():
+        raise RuntimeError(f"Crustle v2 corpus import receipt missing: {import_path}")
+    receipt = json.loads(import_path.read_text(encoding="utf-8"))
+    expected = {
+        "schema": "poke_bot.prestaged_specialist_corpus_import/v1",
+        "status": "ready",
+        "specialist_id": "crustle",
+        "guide_version": "crustle-north-star-v2",
+        "active_training_modified": False,
+    }
+    for key, value in expected.items():
+        require_equal(receipt.get(key), value, f"corpus import {key}")
+    records = int(receipt.get("records", 0))
+    if records < MINIMUM_CRUSTLE_RECORDS:
+        raise RuntimeError(
+            f"Crustle v2 corpus has {records} records; "
+            f"requires at least {MINIMUM_CRUSTLE_RECORDS}"
+        )
+
+    destination = Path(str(receipt["destination"])).resolve()
+    artifact_names = {
+        "guide_ready": "CURRENT_DECK_GUIDE_CORPUS_READY.json",
+        "protected_expert": "PROTECTED_EXPERT_CORPUS.json",
+        "manifest": "manifest.json",
+        "finalization": str(receipt["finalization_receipt_name"]),
+    }
+    artifacts = {name: destination / filename for name, filename in artifact_names.items()}
+    for artifact in artifacts.values():
+        if not artifact.is_file():
+            raise RuntimeError(f"Crustle v2 corpus artifact missing: {artifact}")
+
+    expected_digests = {
+        "guide_ready": receipt["ready_receipt_sha256"],
+        "protected_expert": receipt["protected_pointer_sha256"],
+        "manifest": receipt["manifest_sha256"],
+        "finalization": receipt["finalization_receipt_sha256"],
+    }
+    actual_digests = {name: sha256(artifact) for name, artifact in artifacts.items()}
+    for name, expected_digest in expected_digests.items():
+        require_equal(actual_digests[name], expected_digest, f"corpus artifact {name} sha256")
+
+    guide_ready = json.loads(artifacts["guide_ready"].read_text(encoding="utf-8"))
+    finalization = json.loads(artifacts["finalization"].read_text(encoding="utf-8"))
+    for document_name, document, schema, status in (
+        (
+            "guide ready",
+            guide_ready,
+            "poke_bot.current_deck_guide_corpus_ready/v1",
+            "ready",
+        ),
+        (
+            "finalization",
+            finalization,
+            "poke_bot.crustle_guide_corpus_validation/v1",
+            "ready_checksum_validated",
+        ),
+    ):
+        require_equal(document.get("schema"), schema, f"{document_name} schema")
+        require_equal(document.get("status"), status, f"{document_name} status")
+        require_equal(document.get("specialist_id"), "crustle", f"{document_name} specialist")
+        require_equal(
+            document.get("guide_version"),
+            "crustle-north-star-v2",
+            f"{document_name} guide version",
+        )
+        for count_name in ("records", "decisions", "guide_rows"):
+            require_equal(
+                int(document.get(count_name, -1)),
+                int(receipt[count_name]),
+                f"{document_name} {count_name}",
+            )
+
+    return {
+        "status": "ready_checksum_validated_imported",
+        "import_receipt": str(import_path),
+        "import_receipt_sha256": sha256(import_path),
+        "destination": str(destination),
+        "guide_version": receipt["guide_version"],
+        "records": records,
+        "decisions": int(receipt["decisions"]),
+        "guide_rows": int(receipt["guide_rows"]),
+        "artifact_sha256": actual_digests,
+        "active_training_modified": False,
+    }
+
+
 def write_once(path: Path, value: dict[str, Any]) -> None:
     body = json.dumps(value, indent=2, sort_keys=True) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +165,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--unit-root", type=Path, required=True)
     parser.add_argument("--effective-marnie-completion", type=Path, required=True)
+    parser.add_argument("--corpus-import", type=Path)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
     receipt_path = args.receipt.resolve()
@@ -142,9 +237,19 @@ def main() -> int:
     ):
         raise RuntimeError(f"active Marnie training changed during handoff staging: {marnie_state}")
 
+    corpus = validate_corpus_import(args.corpus_import) if args.corpus_import else None
+
     receipt = {
-        "schema": "poke_bot.post_marnie_crustle_handoff_stage/v1",
-        "status": "staged_inactive_waiting_for_marnie_iteration_20_and_v2_corpus",
+        "schema": (
+            "poke_bot.post_marnie_crustle_handoff_stage/v2"
+            if corpus
+            else "poke_bot.post_marnie_crustle_handoff_stage/v1"
+        ),
+        "status": (
+            "staged_inactive_corpus_ready_waiting_for_marnie_iteration_20"
+            if corpus
+            else "staged_inactive_waiting_for_marnie_iteration_20_and_v2_corpus"
+        ),
         "owner_decision_revision": 113,
         "created_at_utc": (
             prior_receipt["created_at_utc"]
@@ -158,6 +263,8 @@ def main() -> int:
         "marnie_completion_next_service": CRUSTLE_UNITS[0],
         "crustle_service_state": service_state,
         "unit_sha256": {name: sha256(path) for name, path in paths.items()},
+        "crustle_v2_corpus": corpus,
+        "then_current_h10_registry_rebind_required_at_handoff": True,
         "crustle_training_or_selector_authority": False,
         "population_release_requires_crustle_completion": True,
     }

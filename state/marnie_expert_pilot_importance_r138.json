@@ -1,0 +1,67 @@
+{
+  "schema": "poke_bot.expert_pilot_importance_activation/v1",
+  "owner_decision_revision": 138,
+  "created_at": "2026-08-04T05:27:19Z",
+  "status": "ready_runtime_inert_until_post_iteration_9_bootstrap",
+  "supersedes_upper_tiers_from_revision": 137,
+  "support_evidence": {
+    "top_100_pilots_with_512_or_more_training_games": 22,
+    "top_100_pilots_with_1024_or_more_training_games": 9,
+    "top_100_pilots_with_2048_or_more_training_games": 4,
+    "highest_band_minimum_observed_games": 2094,
+    "highest_band_maximum_observed_games": 2539
+  },
+  "tiers": [
+    {"minimum_games": 1, "maximum_games": 31, "weight": 1.5},
+    {"minimum_games": 32, "maximum_games": 127, "weight": 2.0},
+    {"minimum_games": 128, "maximum_games": 511, "weight": 3.0},
+    {"minimum_games": 512, "maximum_games": 1023, "weight": 4.0},
+    {"minimum_games": 1024, "maximum_games": 2047, "weight": 7.0},
+    {"minimum_games": 2048, "maximum_games": null, "weight": 10.0}
+  ],
+  "weight_index": {
+    "path": "/home/inzi/poke-bot-agent/outputs/state/marnie-r138-expert-pilot-importance.json",
+    "sha256": "sha256:1d9ee77af9b9d5f916037b69475471c0a20602c6ea4ba186b59deb8fc07371dc",
+    "training_games": 65774,
+    "validation_games_unweighted": 7308,
+    "matched_top_100_training_games": 33156,
+    "unmatched_training_games": 32618,
+    "effective_training_weight_mass": 237330.0,
+    "analytical_effective_sample_size": 36169.671830335166,
+    "analytical_effective_sample_fraction": 0.5499083502650769,
+    "minimum_weight": 1.0,
+    "maximum_weight": 10.0,
+    "tier_counts": {
+      "1.0x": 32618,
+      "1.5x": 206,
+      "2.0x": 1648,
+      "3.0x": 4120,
+      "4.0x": 9697,
+      "7.0x": 8297,
+      "10.0x": 9188
+    }
+  },
+  "validation": {
+    "focused_tests_passed": 2,
+    "loader_exact_mass_verified": true,
+    "loader_exact_bounds_verified": true,
+    "validation_partition_unweighted": true
+  },
+  "runtime_non_interference": {
+    "old_system_iteration_10_collection_started": false,
+    "active_trainer_restarted": false,
+    "scheduler_changed": false,
+    "fleet_changed": false,
+    "tail_rule_changed": false,
+    "kaggle_evaluation_replays_training_eligible": false
+  },
+  "canonical_sha256": {
+    "GOAL.md": "sha256:cd394668a8e95bf5db71224c42e88ef6c1b6d051968eae676c73e50ff5a5ae6b",
+    "config/rl_protocol.yaml": "sha256:00919058034670a2307cf7c29de64d75868cf3234cbf043dcc49b3fd20a0e9cd",
+    "ops/current_goal_requirements.json": "sha256:8ab0d7e0efd588105ef77ad44e050020a7bc79cb68fdea815675c118e26d4d89",
+    "state/specialists.yaml": "sha256:1facdf42d1726a5894be9f126a6d419f68cacbe5900e4a84caa60caa00b7e6c6",
+    "poke_bot/expert_pilot_importance.py": "sha256:d3aed6c2fc5d7ab0b0132bf0610b3a96ec8c091397e5457f0b93cb8159f2b64b",
+    "scripts/run_final_format_marnie_h10_bootstrap.py": "sha256:4b793971a6b51c7fc86a0c089578ff203c3363b99801fdbd7b2935bb01b9456f",
+    "deploy/systemd/pokebot-marnie-postupload-weighted-bootstrap-r135.service": "sha256:0bd8ea505bac2da67e70b33f8dc49bd5f184f93cdda4ff7896c55aa7f9dc5752"
+  }
+}

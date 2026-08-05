@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll for exact Marnie post-upload family activation evidence
+
+[Timer]
+OnActiveSec=10
+OnUnitActiveSec=60
+Unit=pokebot-marnie-postupload-family-activate-r135.service
+
+[Install]
+WantedBy=timers.target
+

@@ -89,6 +89,7 @@ services:
           i=c.connect(); h=c.health(); c.close();
           assert i.workers == int(os.environ['SIM_DEFAULT_WORKERS']), (i.workers, os.environ['SIM_DEFAULT_WORKERS']);
           assert 0 < (i.max_workers or i.workers) <= int(os.environ['ELMO_SIM_WORKER_CEILING']), (i.max_workers, i.workers);
+          assert 'checkpoint_digest_verify_v1' in set(i.capabilities), i.capabilities;
           assert h.get('ok') is True and h.get('controller_healthy') is True and h.get('leaf_alive') is True and h.get('leaf_identity_ok') is True, h
       interval: 60s
       timeout: 12s

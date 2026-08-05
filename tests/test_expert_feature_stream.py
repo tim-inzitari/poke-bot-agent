@@ -277,6 +277,43 @@ def test_stream_plan_exposes_archetypes_in_exact_packed_split_order(
     )
 
 
+def test_stream_plan_exposes_identity_rows_in_exact_packed_split_order(
+    tmp_path: Path,
+) -> None:
+    source = [
+        _game("a", 0, archetype="alakazam", decisions=2),
+        _game("b", 1, archetype="starmie", decisions=3),
+        _game("a", 1, archetype="alakazam", decisions=4),
+        _game("c", 0, archetype="dudunsparce", decisions=5),
+    ]
+    manifest, digest = _write_manifest(tmp_path, [source[:2], source[2:]])
+    plan = EpisodeGroupedFeatureManifest.open(
+        manifest,
+        expected_manifest_digest=digest,
+        val_frac=0.25,
+        seed=9,
+        max_context=8,
+        expected_compact_mode=COMPACT_MODE_TEMPORAL_EXPERT,
+    )
+    train, validation = plan.splits()
+    train_rows, validation_rows = plan.partition_identity_rows()
+
+    assert [
+        (row["episode_id"], row["seat"], row["archetype_id"])
+        for row in train_rows
+    ] == [(row.episode_id, row.seat, row.archetype) for row in train]
+    assert [
+        (row["episode_id"], row["seat"], row["archetype_id"])
+        for row in validation_rows
+    ] == [
+        (row.episode_id, row.seat, row.archetype)
+        for row in validation
+    ]
+    assert [row["source_index"] for row in train_rows] == sorted(
+        row["source_index"] for row in train_rows
+    )
+
+
 def test_stream_plan_is_reiterable_bounded_and_rejects_changed_shard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

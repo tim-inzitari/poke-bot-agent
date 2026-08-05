@@ -1,0 +1,59 @@
+{
+  "schema": "poke_bot.marnie_family_replay_seed_recovery/v1",
+  "goal_revision": 147,
+  "recorded_at_utc": "2026-08-04T22:56:36Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "iteration": 10,
+  "status": "active_recovery_passed_immutable_seat_receipt_boundary",
+  "defect": {
+    "cause": "family replay resampling used the mutable recovery source fingerprint instead of the sealed collection design fingerprint",
+    "observed_source_game_split": {
+      "seat0": 4096,
+      "seat1": 4096,
+      "unchanged": true
+    },
+    "sealed_replay_projection": {
+      "seat0": 8554,
+      "seat1": 8170,
+      "total": 16724
+    },
+    "incorrect_recovery_projection": {
+      "seat0": 8547,
+      "seat1": 8177,
+      "total": 16724
+    }
+  },
+  "repair": {
+    "family_replay_seed_source": "collection_receipt.design_fingerprint_at_collection",
+    "current_source_fingerprint_fallback_allowed_only_without_a_collection_fingerprint": true,
+    "immutable_source_seat_gate_weakened": false,
+    "immutable_replay_projection_rewritten": false,
+    "collection_reused_without_recollection": true,
+    "expert_rehearsal_reused_without_retraining": true,
+    "atomic_runtime_sync": true,
+    "train_launcher_sha256": "sha256:a43a3a784f72179aa852a785939f39ab3cfee05d6c8da9e76ebd56b9d0930f1d",
+    "train_module_sha256": "sha256:051d5a42e5f03b86bb212e2d7abe5e830557f4dce2c7cb267524750de17b3e6e"
+  },
+  "evidence": {
+    "collection_receipt": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/collection_receipts/iter_00010.json",
+    "collection_receipt_sha256": "sha256:0985c21e001d5e7483210aab661a5cdb7df39005808294e09a4d6555b2a1a4ed",
+    "seat_index_receipt": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/seat_split_receipts/iter_00010.index.json",
+    "seat_index_receipt_sha256": "sha256:a209150005479823be2905c8f3e2d377ac63a6f34070189f1ffc4fa384c84b61",
+    "focused_tests": "7 passed, 88 deselected",
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "managed_main_pid": 4097074,
+    "managed_restart_count": 2,
+    "post_repair_stage": "rl-prep baseline"
+  },
+  "guide_non_authority": {
+    "shadow_artifact_may_exist": true,
+    "loss_weight": 0.0,
+    "targets_enabled": false,
+    "gradient_authority": false,
+    "fusion_authority": false,
+    "action_authority": false,
+    "gate_authority": false,
+    "submission_authority": false,
+    "blocking_authority": false
+  }
+}

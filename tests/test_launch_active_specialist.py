@@ -25,9 +25,32 @@ from scripts.launch_active_specialist import (
     _required_runtime_fusion_heads,
     _resolve,
     _sha256,
+    _validate_crustle_persistent_guide_policy,
     _validate_guide_training_contract,
     _validate_guide_weight_policy,
 )
+
+
+def test_crustle_persistent_guide_policy_is_fail_closed() -> None:
+    policy = {
+        "schema": "poke_bot.crustle_persistent_guide_hold/v1",
+        "owner_decision_revision": 165,
+        "scope": "crustle_persistent_training_only",
+        "held_weight": 0.05,
+        "automatic_review_after_each_five_iteration_commit": False,
+        "automatic_ramp_allowed": False,
+        "automatic_decay_allowed": False,
+        "change_requires_explicit_owner_decision": True,
+        "change_requires_checksum_bound_boundary_receipt": True,
+        "direct_policy_cross_entropy_allowed": False,
+        "runtime_action_override_allowed": False,
+        "serving_authority": False,
+        "gate_authority": False,
+    }
+    _validate_crustle_persistent_guide_policy(policy)
+    policy["automatic_decay_allowed"] = True
+    with pytest.raises(RuntimeError, match="Crustle persistent guide policy"):
+        _validate_crustle_persistent_guide_policy(policy)
 
 
 def _fixture(tmp_path: Path, *, status: str = "ready") -> Path:
@@ -724,6 +747,22 @@ def test_future_strategic_curriculum_is_checksum_and_route_bound(
             },
             "archaludon-ex",
         )
+
+    assert (
+        _validate_guide_training_contract(
+            {
+                "guide_training_mode": "strategic_directional_v2",
+                "guide_loss_weight": 0.0,
+                "guide_retired": True,
+                "guide_retirement_revision": 140,
+                "guide_target_generation_required": False,
+                "guide_conditioned_losses_enabled": False,
+                "guide_action_influence": False,
+            },
+            "marnie-s-grimmsnarl-ex",
+        )
+        == "strategic_directional_v2"
+    )
 
     row = _strategic_training_row(tmp_path)
     assert (

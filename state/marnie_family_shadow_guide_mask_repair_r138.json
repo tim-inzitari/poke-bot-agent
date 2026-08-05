@@ -1,0 +1,45 @@
+{
+  "schema": "poke_bot.marnie_family_shadow_guide_mask_repair/v1",
+  "status": "activated_and_cleared_original_failure_point",
+  "recorded_at_utc": "2026-08-04T06:20:51Z",
+  "owner_decision_revision": 138,
+  "failure": {
+    "stage": "round1-plus pretraining validation",
+    "exception": "ValueError: nonzero current-deck guide loss has no usable guide rows",
+    "cause": "The isolated observed-list family shadow rows intentionally contain no current-deck guide targets, but the study-only TrainConfig requested a nonzero guide objective."
+  },
+  "repair": {
+    "shadow_guide_loss_weight": 0.0,
+    "production_directional_guide_loss_weight": 0.05,
+    "production_directional_guide_contract_unchanged": true,
+    "family_sampler_or_loss_vector_activated": false,
+    "sealed_collection_reused": true,
+    "games_recollected": 0,
+    "script": {
+      "path": "scripts/run_marnie_archetype_family_study.py",
+      "sha256": "86cf6de6c7aabc9ee95ba53075408519ced3a0a2575349ed0584d737b6434a9e"
+    }
+  },
+  "sealed_input": {
+    "receipt": "/home/inzi/poke-bot-agent/outputs/studies/marnie-archetype-family-r136/sealed_training_rows.receipt.json",
+    "receipt_sha256": "d2744e99a36f60a11ed6183fcf6cbda48ae23a9baf4335898fc7b4ce8e01148f",
+    "source_games": 7168
+  },
+  "validation": {
+    "python_compile": true,
+    "exact_zero_mask_guard": true,
+    "nonzero_mask_guard_rejected": true,
+    "repaired_managed_pid": 2230164,
+    "managed_restart_count_after_repair": 0,
+    "former_guide_row_failure_check_passed": true,
+    "observed_training_stage": "round1-plus rl-train ep0",
+    "observed_guide_telemetry": "off"
+  },
+  "authority": {
+    "serving_allowed": false,
+    "promotion_allowed": false,
+    "training_replay_eligible": false,
+    "activation_still_requires_complete_family_gate": true,
+    "bootstrap_still_requires_atomic_family_activation": true
+  }
+}

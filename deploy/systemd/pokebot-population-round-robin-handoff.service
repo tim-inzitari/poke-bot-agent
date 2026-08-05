@@ -1,5 +1,5 @@
 [Unit]
-Description=Verify 14 frozen own-model identities plus both refreshes and authorize population round-robin
+Description=Verify 14 historical specialists plus three refreshes and authorize the 15-member population
 ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/post_refresh_sequence_complete_for_capacity_v2.json
 Wants=network-online.target
 After=network-online.target

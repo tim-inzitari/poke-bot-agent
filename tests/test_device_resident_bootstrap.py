@@ -25,6 +25,7 @@ from poke_bot.train import (
     device_temporal_batch_losses,
     device_exact_batch_losses,
     device_exact_value_predictions,
+    load_model_from_checkpoint,
     supervised_rehearsal_step,
     temporal_batches_for_game_ids,
 )
@@ -278,6 +279,54 @@ def test_device_resident_temporal_loss_matches_full_game_reference_path() -> Non
     )
 
 
+def test_temporal_importance_sampling_is_bounded_deterministic_and_train_only() -> None:
+    games = []
+    for index in range(8):
+        game = _game()
+        game.episode_id = f"importance-{index}"
+        games.append(game)
+    corpus = DeviceResidentBootstrapCorpus.from_splits(
+        games, [_game()], device=torch.device("cpu")
+    )
+    weights = torch.tensor([1.0] * 7 + [4.0])
+    first = corpus.temporal_batches(
+        train=True,
+        batch_size=1000,
+        shuffle=True,
+        seed=135,
+        epoch=3,
+        sampling_weights=weights,
+    )[0]
+    second = corpus.temporal_batches(
+        train=True,
+        batch_size=1000,
+        shuffle=True,
+        seed=135,
+        epoch=3,
+        sampling_weights=weights,
+    )[0]
+    assert first.tolist() == second.tolist()
+    assert len(first) == corpus.train_games
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(135 + 3 * 10007)
+    expected = torch.multinomial(
+        weights,
+        num_samples=corpus.train_games,
+        replacement=True,
+        generator=generator,
+    )
+    assert first.tolist() == expected.tolist()
+    with pytest.raises(ValueError, match="train/shuffle only"):
+        corpus.temporal_batches(
+            train=False,
+            batch_size=1000,
+            shuffle=False,
+            seed=135,
+            epoch=3,
+            sampling_weights=torch.ones(corpus.val_games),
+        )
+
+
 def test_temporal_resident_rehearsal_trains_every_available_head() -> None:
     model = _history_model(seed=23)
     model.eval()
@@ -470,6 +519,12 @@ def test_expert_rehearsal_materializes_and_trains_legacy_missing_heads(
         belief_card_vocab=card_vocab,
     )
     payload = checkpoint.build_checkpoint(model=legacy, model_config=cfg)
+    payload.setdefault("extra", {}).update(
+        {
+            "update_norm_l2": 123.0,
+            "relative_update_norm_l2": 0.5,
+        }
+    )
     payload["model_state_dict"] = {
         key: value
         for key, value in payload["model_state_dict"].items()
@@ -515,6 +570,16 @@ def test_expert_rehearsal_materializes_and_trains_legacy_missing_heads(
     ):
         assert f"{name}.weight" in state
     rehearsal = saved["extra"]["expert_rehearsal"]
+    saved_model = load_model_from_checkpoint(output, device=torch.device("cpu"))
+    assert saved["extra"]["param_count"] == sum(
+        parameter.numel() for parameter in saved_model.parameters()
+    )
+    assert "update_norm_l2" not in saved["extra"]
+    assert "relative_update_norm_l2" not in saved["extra"]
+    assert saved["extra"]["update_norm_provenance"] == {
+        "status": "not_measured_for_supervised_rehearsal",
+        "parent_digest": checkpoint.checkpoint_digest(base),
+    }
     assert set(rehearsal["warm_started_belief_heads_before"]) == {
         "opp_hand_head",
         "opp_remainder_head",

@@ -1,0 +1,55 @@
+{
+  "schema": "poke_bot.post_crustle_population_materialization_repair/v1",
+  "status": "activated_dormant_boundary",
+  "owner_revision": 144,
+  "created_at_utc": "2026-08-04T16:36:03Z",
+  "population_identity": {
+    "trainable_logical_member_count": 15,
+    "historical_frozen_registry_member_count": 14,
+    "historical_frozen_registry_modified": false,
+    "refresh_ids": [
+      "alakazam",
+      "marnie-s-grimmsnarl-ex",
+      "crustle"
+    ],
+    "refreshed_originals_selected_history_ids": [
+      "alakazam",
+      "marnie-s-grimmsnarl-ex"
+    ],
+    "crustle_selected_history": [],
+    "public_crustle_agent_training_eligible": false
+  },
+  "crustle_refresh_artifacts_required": [
+    "submission_bundle",
+    "expert_manifest",
+    "matchup_runtime_tree",
+    "runtime_registry"
+  ],
+  "deployed_files": {
+    "/home/inzi/poke-bot-agent/scripts/complete_post_marnie_crustle_h10.py": "sha256:5d81b712eb58cf1f5b4ef142bb17a4cc48c2fee3dca1ca666ebaa98b9e1ca3a8",
+    "/home/inzi/poke-bot-agent/scripts/prepare_population_round_robin.py": "sha256:8123ef08265764f8968873ca696b763ed4e50481b52f076a0d0e8ef10390d187",
+    "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/scripts/prepare_population_round_robin.py": "sha256:8123ef08265764f8968873ca696b763ed4e50481b52f076a0d0e8ef10390d187",
+    "/home/inzi/.config/systemd/user/pokebot-population-round-robin-handoff.service": "sha256:c551f2d9df863b77e22a42a14ff814254f5e01ee521c78dcee5972fd32694893"
+  },
+  "validation": {
+    "focused_tests": 16,
+    "focused_tests_passed": 16,
+    "python_compile_passed": true,
+    "systemd_verify_passed": true,
+    "handoff_service_state": "inactive",
+    "handoff_condition_result": false
+  },
+  "active_training": {
+    "service": "pokebot-marnie-postupload-weighted-bootstrap-r135.service",
+    "main_pid": 3052596,
+    "restart_count": 0,
+    "modified_or_restarted": false,
+    "guide_weight": 0.0,
+    "guide_authority": false
+  },
+  "flattened_deployment_recovery": {
+    "status": "corrected_before_activation",
+    "recoverable_quarantine": "/home/inzi/poke-bot-agent/outputs/quarantine/r144-flattened-deploy-20260804T1235",
+    "runtime_paths_affected": false
+  }
+}

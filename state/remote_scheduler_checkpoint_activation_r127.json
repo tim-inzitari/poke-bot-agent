@@ -1,0 +1,98 @@
+{
+  "schema": "poke_bot.remote_scheduler_checkpoint_activation/v1",
+  "goal_revision": 127,
+  "activated_at_utc": "2026-08-03T22:24:51Z",
+  "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+  "iteration": 6,
+  "managed_service": {
+    "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "main_pid": 1267326,
+    "active_state": "active",
+    "sub_state": "running",
+    "restart_count": 0
+  },
+  "checkpoint_staging": {
+    "identity": "immutable_sha256_digest",
+    "local_digest_cache_identity": [
+      "resolved_path",
+      "size",
+      "mtime_ns",
+      "inode"
+    ],
+    "persistent_receipt_reuse_across_source_aliases": true,
+    "missing_receipt_verifier": "Elmo storage-local checkpoint_digest_verify_v1",
+    "smb_payload_rehash_on_capable_worker": false,
+    "historical_checkpoint_probe": {
+      "local_path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00003.pt",
+      "remote_path": "/workspace/checkpoint/iter_00003.563277f8af8a581d.pt",
+      "digest": "sha256:563277f8af8a581dd6277a5704d51057ba45172f58f7eed956d6e13271c43e26",
+      "bytes": 127865769,
+      "storage_local_verify_seconds": 0.075,
+      "complete_resolve_seconds": 1.097
+    },
+    "historical_iter_0_through_5_max_resolve_seconds": 0.972,
+    "same_digest_active_reload": {
+      "skipped_exact_health": true,
+      "seconds": 0.02063631871715188
+    }
+  },
+  "remote_worker": {
+    "host": "elmo",
+    "image": "poke-bot-truenas-worker:r125-checkpoint-digest-verify-v2",
+    "image_id": "sha256:0bcf2305438f8feecd9420cc37af8da4e3a2d81986e112597ad38fbe1e3f1aa3",
+    "health": "healthy",
+    "restart_count": 0,
+    "workers": 36,
+    "leaf_servers": 4,
+    "capability": "checkpoint_digest_verify_v1",
+    "active_checkpoint_digest": "sha256:9ff2a8bcaf9ee51db1f6bb7dd86fb5d480a1737d80859140323f9b6fcab36cc5"
+  },
+  "self_play_canary": {
+    "endpoint": "192.168.1.143:8765",
+    "games_requested": 1,
+    "games_completed": 1,
+    "steps": 213,
+    "decisions": 117,
+    "trajectories": 1,
+    "resource_error": false,
+    "our_failed": false
+  },
+  "initial_socket_fanout": {
+    "requested_clones": 50,
+    "connected_clones": 50,
+    "failed_clones": 0,
+    "wall_seconds": 0.199,
+    "connect_concurrency": 64,
+    "connect_timeout_seconds": 3.0,
+    "hello_timeout_seconds": 10.0,
+    "one_request_socket_per_execution_worker": true
+  },
+  "live_dispatch_proof": {
+    "dashboard_sampled_at_epoch": 1785795887.2990139,
+    "progress_current": 320,
+    "progress_total": 1024,
+    "progress_gps": 3.32,
+    "elmo_executing": 36,
+    "elmo_server_admitted": 36,
+    "bert_executing": 16,
+    "bert_server_admitted": 16,
+    "remote_outstanding": 52,
+    "remote_request_sockets": 52,
+    "dashboard_source_integrity_current": true,
+    "dashboard_failed_sources": []
+  },
+  "implementation": {
+    "remote_jobs_sha256": "sha256:e013ae5bd7e8ba539d88f487367b7ecd597a9fde426ce920d065a6027d0a5a1b",
+    "remote_worker_sha256": "sha256:348c6ba0bfab6f32f724a3b6b10d90c2d5a974ec43f3ed6c51cf10590597b439",
+    "worker_dockerfile_sha256": "sha256:adc5537c521b044fcb2ca91acf819cab5c0fe2523e9bdd294e6d02b94d74b0b8",
+    "production_compose_sha256": "sha256:6b2ab81a44ec699f116ceebb3f119f281af45da22c0fcf84d806c773fff80f1c",
+    "boundary_migration": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/design_migrations/migration_0018.json",
+    "boundary_migration_sha256": "sha256:1a6da648eaa80a2fdddb6f87390d64feb1d630a4cdec42a377b9b8455d307f5d"
+  },
+  "validation": {
+    "checkpoint_staging_regressions_on_blackwell": 40,
+    "fanout_and_digest_focused_regressions_on_blackwell": 10,
+    "real_elmo_self_play_canary_passed": true,
+    "live_full_fleet_dispatch_passed": true
+  }
+}

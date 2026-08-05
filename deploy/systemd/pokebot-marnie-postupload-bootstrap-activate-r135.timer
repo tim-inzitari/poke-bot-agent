@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll for successful Marnie bootstrap upload activation
+
+[Timer]
+OnActiveSec=15
+OnUnitActiveSec=60
+Unit=pokebot-marnie-postupload-bootstrap-activate-r135.service
+
+[Install]
+WantedBy=timers.target
+

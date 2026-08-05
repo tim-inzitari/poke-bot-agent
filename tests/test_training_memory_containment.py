@@ -204,6 +204,8 @@ def test_leaf_reload_uses_one_global_fail_closed_deadline() -> None:
     leaf = src[src.index("class _LeafFarm:") : src.index("def run_smoke_loop(")]
     reload_src = leaf[leaf.index("    def reload(") : leaf.index("    def stop(")]
     assert "reload_deadline = time.monotonic() + 240.0" in reload_src
+    assert reload_src.index("reload_deadline =") < reload_src.index("cq.put(")
+    assert "timeout=min(5.0, remaining)" in reload_src
     assert "remaining = reload_deadline - time.monotonic()" in reload_src
     assert "status = sq.get(timeout=remaining)" in reload_src
     assert "sq.get(timeout=240)" not in reload_src

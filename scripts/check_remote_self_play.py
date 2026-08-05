@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 from poke_bot.checkpoint import checkpoint_digest
 from poke_bot.remote_jobs import (
     RemoteJobClient,
+    cache_exact_resident_remote_checkpoint,
     parse_endpoint,
     prepare_remote_play_job,
 )
@@ -43,7 +44,40 @@ def _args() -> argparse.Namespace:
         action="store_true",
         help="Verify reload + active-digest pin without playing a game.",
     )
+    parser.add_argument(
+        "--force-reload",
+        action="store_true",
+        help=(
+            "Reload even when every live leaf already proves the exact healthy "
+            "checkpoint digest. Intended only for explicit reload testing."
+        ),
+    )
     return parser.parse_args()
+
+
+def _exact_resident_checkpoint(
+    health: dict[str, object],
+    digest: str,
+) -> bool:
+    """Return true only for a complete, healthy proof of the resident digest."""
+
+    leaves = list(health.get("leaves") or [])
+    pinned = {str(value) for value in health.get("pinned_digests") or ()}
+    return bool(
+        health.get("ok") is True
+        and health.get("controller_healthy") is True
+        and health.get("leaf_alive") is True
+        and health.get("leaf_identity_ok") is True
+        and health.get("checkpoint_digest") == digest
+        and digest in pinned
+        and leaves
+        and all(
+            isinstance(row, dict)
+            and row.get("healthy") is True
+            and row.get("checkpoint_digest") == digest
+            for row in leaves
+        )
+    )
 
 
 def main() -> int:
@@ -68,13 +102,69 @@ def main() -> int:
         try:
             info = client.connect()
             control_t0 = time.perf_counter()
-            reload_reply = client.reload_checkpoint(
-                str(current), digest=current_digest, version=90_000 + endpoint_i
+            resident_health = client.health()
+            reload_skipped_exact_health = bool(
+                not args.force_reload
+                and _exact_resident_checkpoint(
+                    resident_health,
+                    current_digest,
+                )
             )
-            reload_s = time.perf_counter() - control_t0
-            pin_t0 = time.perf_counter()
-            pin_reply = client.pin_checkpoint(str(current), digest=current_digest)
-            pin_s = time.perf_counter() - pin_t0
+            if not reload_skipped_exact_health and not args.force_reload:
+                raise RuntimeError(
+                    "resident checkpoint health is incomplete or mismatched; "
+                    "refusing an implicit multi-minute reload (use "
+                    "--force-reload only for an intentional reload test): "
+                    + json.dumps(
+                        {
+                            "checkpoint_digest": resident_health.get(
+                                "checkpoint_digest"
+                            ),
+                            "checkpoint_version": resident_health.get(
+                                "checkpoint_version"
+                            ),
+                            "controller_healthy": resident_health.get(
+                                "controller_healthy"
+                            ),
+                            "leaf_alive": resident_health.get("leaf_alive"),
+                            "leaf_identity_ok": resident_health.get(
+                                "leaf_identity_ok"
+                            ),
+                            "pinned_digests": resident_health.get(
+                                "pinned_digests"
+                            ),
+                        },
+                        sort_keys=True,
+                    )
+                )
+            if reload_skipped_exact_health:
+                # Seed the process-local digest-addressed mapping from the
+                # strict leaf proof. This prevents prepare_remote_play_job from
+                # re-reading the already verified SMB object for ~141 seconds.
+                cache_exact_resident_remote_checkpoint(
+                    host,
+                    str(current),
+                    digest=current_digest,
+                )
+            if reload_skipped_exact_health:
+                reload_reply = {
+                    "ok": True,
+                    "checkpoint_digest": current_digest,
+                    "version": resident_health.get("checkpoint_version"),
+                }
+                pin_reply = {"ok": True, "checkpoint_digest": current_digest}
+                reload_s = time.perf_counter() - control_t0
+                pin_s = 0.0
+            else:
+                reload_reply = client.reload_checkpoint(
+                    str(current), digest=current_digest, version=90_000 + endpoint_i
+                )
+                reload_s = time.perf_counter() - control_t0
+                pin_t0 = time.perf_counter()
+                pin_reply = client.pin_checkpoint(
+                    str(current), digest=current_digest
+                )
+                pin_s = time.perf_counter() - pin_t0
             our_arch, our_deck = decks[endpoint_i % len(decks)]
             opp_arch, opp_deck = decks[(endpoint_i + 1) % len(decks)]
             job = {
@@ -83,7 +173,9 @@ def main() -> int:
                 "checkpoint_digest": current_digest,
                 "opponent_checkpoint": str(opponent),
                 "opponent_id": f"canary:{opponent.name}",
-                "model_generation": 90_000 + endpoint_i,
+                "model_generation": int(
+                    reload_reply.get("version") or 90_000 + endpoint_i
+                ),
                 "model_max_context": 320,
                 "our_deck": list(our_deck),
                 "opp_deck": list(opp_deck),
@@ -117,6 +209,7 @@ def main() -> int:
                     "pin_digest": pin_reply.get("checkpoint_digest"),
                     "reload_s": reload_s,
                     "pin_s": pin_s,
+                    "reload_skipped_exact_health": reload_skipped_exact_health,
                     "mapped_checkpoint": mapped.get("checkpoint"),
                     "mapped_opponent_checkpoint": mapped.get(
                         "opponent_checkpoint"
@@ -177,6 +270,7 @@ def main() -> int:
                 "pin_digest": pin_reply.get("checkpoint_digest"),
                 "reload_s": reload_s,
                 "pin_s": pin_s,
+                "reload_skipped_exact_health": reload_skipped_exact_health,
                 "mapped_checkpoint": mapped.get("checkpoint"),
                 "mapped_opponent_checkpoint": mapped.get("opponent_checkpoint"),
                 "winner": result.get("winner"),

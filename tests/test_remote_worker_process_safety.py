@@ -7,6 +7,7 @@ from scripts.run_remote_worker import (
     _parse_args,
     _remote_worker_arm_error,
     _shutdown_leaf_servers,
+    _verify_checkpoint_digest_request,
     _worker_capacity_watchdog_update,
 )
 
@@ -69,6 +70,33 @@ def test_queue_cleanup_cancels_feeder_before_close() -> None:
     queue = _Queue()
     _close_mp_queue(queue)
     assert queue.calls == ["cancel", "close"]
+
+
+def test_checkpoint_digest_verification_is_storage_local_and_root_bounded(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "checkpoint"
+    root.mkdir()
+    checkpoint = root / "iter_00003.digest.pt"
+    checkpoint.write_bytes(b"checkpoint bytes")
+
+    result = _verify_checkpoint_digest_request(
+        checkpoint,
+        checkpoint_root=root,
+    )
+    assert result["ok"] is True
+    assert result["type"] == "verify_checkpoint_ok"
+    assert str(result["checkpoint_digest"]).startswith("sha256:")
+    assert result["size"] == checkpoint.stat().st_size
+
+    outside = tmp_path / "outside.pt"
+    outside.write_bytes(b"not allowed")
+    rejected = _verify_checkpoint_digest_request(
+        outside,
+        checkpoint_root=root,
+    )
+    assert rejected["ok"] is False
+    assert "ValueError" in str(rejected["error"])
 
 
 def test_remote_worker_has_signal_watchdog_and_full_cleanup() -> None:

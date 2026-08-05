@@ -33,6 +33,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REGISTRY = ROOT / "ops/specialist_runtime_registry_v1.json"
 SELECTOR_ENV = "POKEBOT_ACTIVE_SPECIALIST"
 GUIDE_WEIGHT_POLICY_SCHEMA = "poke_bot.current_deck_guide_weight_policy/v1"
+CRUSTLE_PERSISTENT_GUIDE_POLICY_SCHEMA = (
+    "poke_bot.crustle_persistent_guide_hold/v1"
+)
 GUIDE_TRAINING_MODE_LEGACY = "legacy_policy_ce_v1"
 GUIDE_TRAINING_MODE_STRATEGIC = "strategic_curriculum_v1"
 GUIDE_TRAINING_MODE_DIRECTIONAL = "strategic_directional_v2"
@@ -330,6 +333,28 @@ def _validate_implementation_artifacts(receipt: dict[str, Any]) -> None:
         raise RuntimeError("strategic curriculum implementation evidence is incomplete")
 
 
+def _validate_crustle_persistent_guide_policy(policy: dict[str, Any]) -> None:
+    """Fail closed unless Crustle retains its owner-pinned guide exception."""
+
+    exact = {
+        "schema": CRUSTLE_PERSISTENT_GUIDE_POLICY_SCHEMA,
+        "owner_decision_revision": 165,
+        "scope": "crustle_persistent_training_only",
+        "held_weight": 0.05,
+        "automatic_review_after_each_five_iteration_commit": False,
+        "automatic_ramp_allowed": False,
+        "automatic_decay_allowed": False,
+        "change_requires_explicit_owner_decision": True,
+        "change_requires_checksum_bound_boundary_receipt": True,
+        "direct_policy_cross_entropy_allowed": False,
+        "runtime_action_override_allowed": False,
+        "serving_authority": False,
+        "gate_authority": False,
+    }
+    if policy != exact:
+        raise RuntimeError("Crustle persistent guide policy is incomplete")
+
+
 def _validate_guide_training_contract(
     row: dict[str, Any],
     specialist_id: str,
@@ -342,6 +367,30 @@ def _validate_guide_training_contract(
     raw_mode = str(row.get("guide_training_mode") or "").strip()
     policy = row.get("guide_weight_policy")
     bundle = row.get("strategic_curriculum")
+    if row.get("guide_retired") is True:
+        permitted_retirement = (
+            (
+                specialist_id == "marnie-s-grimmsnarl-ex"
+                and int(row.get("guide_retirement_revision") or 0) == 140
+            )
+            or (
+                specialist_id == "crustle"
+                and int(row.get("guide_retirement_revision") or 0) == 161
+            )
+        )
+        if (
+            not permitted_retirement
+            or float(row.get("guide_loss_weight") or 0.0) != 0.0
+            or row.get("guide_target_generation_required") is not False
+            or row.get("guide_conditioned_losses_enabled") is not False
+            or row.get("guide_action_influence") is not False
+            or raw_mode != GUIDE_TRAINING_MODE_DIRECTIONAL
+        ):
+            raise RuntimeError("retired specialist guide contract is incomplete")
+        # Keep the checksum-bound historical curriculum metadata so the full
+        # 19-head Fusion-v3 inventory remains validated. Weight zero and the
+        # cleared launch environment make the guide an exact training bypass.
+        return raw_mode
     if not raw_mode:
         if policy is not None or bundle is not None:
             raise RuntimeError(
@@ -375,6 +424,8 @@ def _validate_guide_training_contract(
             or bundle.get("final_policy_logits_are_guide_targets") is not False
         ):
             raise RuntimeError("directional guide training contract is incomplete")
+        if specialist_id == "crustle":
+            _validate_crustle_persistent_guide_policy(policy)
         role_path = _required_file(
             bundle, "head_role_map", "head_role_map_sha256"
         )
@@ -1068,7 +1119,7 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
                 f"active specialist checkpoint mismatch: {opponent_id}"
             )
         if tier_policy:
-            is_h10 = (
+            is_h10 = bool(frozen_row.get("final_format_h10_refresh")) or (
                 opponent_id
                 == "specialist-alakazam-final-format-h10-02c014ad7c33"
                 and gate_row.get("frozen_checkpoint_digest")
@@ -1096,6 +1147,48 @@ def _gate_runtime(active_gate: Path, frozen_registry: Path) -> tuple[str, int]:
         ):
             raise RuntimeError("active specialist public tier policy changed")
     return gate_id, games_total
+
+
+def _validate_expert_practice_anchor(
+    row: dict[str, Any],
+    frozen_registry: Path,
+) -> None:
+    anchor = row.get("expert_practice_anchor")
+    if anchor is None:
+        return
+    if not isinstance(anchor, dict):
+        raise RuntimeError("expert/practice anchor is malformed")
+    checkpoint_digest = str(anchor.get("checkpoint_digest") or "")
+    completion = Path(str(anchor.get("completion_receipt") or "")).resolve()
+    bundle = Path(str(anchor.get("submission_bundle") or "")).resolve()
+    if (
+        anchor.get("schema")
+        != "poke_bot.crustle_marnie_expert_practice_anchor/v1"
+        or anchor.get("owner_decision_revision") != 161
+        or anchor.get("specialist_id") != "marnie-s-grimmsnarl-ex"
+        or anchor.get("actions_relabelled_as_crustle_expert_targets") is not False
+        or not completion.is_file()
+        or _sha256(completion) != str(anchor.get("completion_receipt_sha256") or "")
+        or not bundle.is_file()
+        or _sha256(bundle) != str(anchor.get("submission_bundle_sha256") or "")
+        or not checkpoint_digest.startswith("sha256:")
+    ):
+        raise RuntimeError("Crustle Marnie expert/practice anchor changed")
+    frozen = _read_json_object(frozen_registry, label="frozen specialist registry")
+    matches = [
+        dict(candidate)
+        for candidate in frozen.get("specialists") or ()
+        if candidate.get("specialist_id") == "marnie-s-grimmsnarl-ex"
+    ]
+    if (
+        len(matches) != 1
+        or matches[0].get("checkpoint_digest") != checkpoint_digest
+        or matches[0].get("public_mix_eligible") is not True
+        or matches[0].get("final_format_h10_refresh") is not True
+    ):
+        raise RuntimeError(
+            "completed Marnie H10 is absent from Crustle practice/holdout"
+        )
 
 
 def _without_valued_options(
@@ -1136,6 +1229,7 @@ def _build_command(
         if not path.is_file():
             raise RuntimeError(f"runtime contract is missing: {path}")
     gate_id, heldout_games = _gate_runtime(active_gate, frozen)
+    _validate_expert_practice_anchor(row, frozen)
     common_trainer_args = [
         str(value) for value in registry.get("common_trainer_args") or []
     ]
@@ -1265,7 +1359,10 @@ def _build_command(
                     ]
                 ),
             ]
-            if row.get("guide_training_mode") in GUIDE_STRATEGIC_TRAINING_MODES
+            if (
+                row.get("guide_training_mode") in GUIDE_STRATEGIC_TRAINING_MODES
+                and row.get("guide_retired") is not True
+            )
             else []
         ),
         *(

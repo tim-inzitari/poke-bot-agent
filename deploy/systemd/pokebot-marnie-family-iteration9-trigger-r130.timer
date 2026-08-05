@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll for immutable Marnie iteration-9 upload evidence
+
+[Timer]
+OnActiveSec=5
+OnUnitActiveSec=60
+Unit=pokebot-marnie-family-iteration9-trigger-r130.service
+
+[Install]
+WantedBy=timers.target

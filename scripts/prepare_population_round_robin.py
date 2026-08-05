@@ -83,36 +83,44 @@ def _population_roster(
         str(row.get("specialist_id") or ""): dict(row)
         for row in (refresh_registry.get("refreshes") or [])
     }
+    historical_ids = set(by_id)
+    refresh_ids = set(refresh_rows)
+    population_ids = historical_ids | refresh_ids
     if (
         frozen.get("schema") != "poke_bot.frozen_specialist_registry/v1"
-        or set(by_id) != passed_ids
-        or len(frozen_rows) != 15
+        or historical_ids != passed_ids
+        or len(frozen_rows) != 14
         or refresh_registry.get("schema")
         != "poke_bot.post_fleet_refresh_registry/v1"
         or list(refresh_registry.get("ordered_refresh_ids") or [])
         != ["alakazam", "marnie-s-grimmsnarl-ex", "crustle"]
         or set(refresh_rows)
         != {"alakazam", "marnie-s-grimmsnarl-ex", "crustle"}
+        or population_ids != passed_ids | {"crustle"}
+        or len(population_ids) != 15
+        or "crustle" in historical_ids
     ):
         raise RuntimeError("complete 15-specialist population identity failed")
     roster: list[dict[str, Any]] = []
-    for specialist_id in sorted(passed_ids):
-        frozen_row = by_id[specialist_id]
-        package = (
-            baseline_root
-            / str(frozen_row["baseline_group"])
-            / str(frozen_row["baseline_dir"])
-        )
-        checkpoint = package / "model.pt"
-        historical = {
-            "opponent_id": frozen_row["opponent_id"],
-            "baseline_group": frozen_row["baseline_group"],
-            "baseline_dir": frozen_row["baseline_dir"],
-            "baseline_package": str(package),
-            "checkpoint": str(checkpoint),
-            "checkpoint_digest": frozen_row["checkpoint_digest"],
-            "content_digest": frozen_row["content_digest"],
-        }
+    for specialist_id in sorted(population_ids):
+        frozen_row = by_id.get(specialist_id)
+        historical = None
+        if frozen_row is not None:
+            package = (
+                baseline_root
+                / str(frozen_row["baseline_group"])
+                / str(frozen_row["baseline_dir"])
+            )
+            checkpoint = package / "model.pt"
+            historical = {
+                "opponent_id": frozen_row["opponent_id"],
+                "baseline_group": frozen_row["baseline_group"],
+                "baseline_dir": frozen_row["baseline_dir"],
+                "baseline_package": str(package),
+                "checkpoint": str(checkpoint),
+                "checkpoint_digest": frozen_row["checkpoint_digest"],
+                "content_digest": frozen_row["content_digest"],
+            }
         refresh = refresh_rows.get(specialist_id)
         runtime_row = dict(runtime_rows.get(specialist_id) or {})
         if refresh is not None:
@@ -129,6 +137,10 @@ def _population_roster(
             expert_digest = str(refresh.get("expert_manifest_sha256") or "")
             tree_digest = str(refresh.get("matchup_runtime_tree_sha256") or "")
         else:
+            if historical is None:
+                raise RuntimeError(
+                    f"population member has neither refresh nor history: {specialist_id}"
+                )
             current = historical
             expert = Path(str(runtime_row.get("expert_manifest") or "")).resolve()
             tree = Path(str(runtime_row.get("matchup_runtime_tree") or "")).resolve()
@@ -138,13 +150,16 @@ def _population_roster(
             tree_digest = "sha256:" + str(
                 runtime_row.get("matchup_runtime_tree_sha256") or ""
             )
+        historical_is_valid = historical is None or (
+            frozen_row is not None
+            and frozen_row.get("frozen") is True
+            and frozen_row.get("public_mix_eligible") is True
+            and checkpoint.is_file()
+            and sha256(checkpoint) == frozen_row.get("checkpoint_digest")
+            and baseline_content_digest(package) == frozen_row.get("content_digest")
+        )
         if (
-            frozen_row.get("frozen") is not True
-            or frozen_row.get("public_mix_eligible") is not True
-            or not checkpoint.is_file()
-            or sha256(checkpoint) != frozen_row.get("checkpoint_digest")
-            or baseline_content_digest(package)
-            != frozen_row.get("content_digest")
+            not historical_is_valid
             or not expert.is_file()
             or sha256(expert) != expert_digest
             or not tree.is_file()
@@ -173,7 +188,10 @@ def _population_roster(
                     if refresh is not None
                     else "immutable_baseline_history"
                 ),
-                "selected_history": [historical],
+                # Crustle has no historical own-model specialist.  Its public
+                # agent remains research/holdout-only and cannot enter the
+                # trainable population through selected history.
+                "selected_history": [] if historical is None else [historical],
                 "expert_manifest": str(expert),
                 "expert_manifest_digest": sha256(expert),
                 "matchup_runtime_tree": str(tree),

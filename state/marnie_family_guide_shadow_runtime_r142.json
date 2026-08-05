@@ -1,0 +1,33 @@
+{
+  "environment_drop_in": {
+    "path": "/home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zzzzzzz-guide-shadow-r142.conf",
+    "rollback_controller_owned": true,
+    "sha256": "sha256:79ca2b9469997db33b813fb9126bc3ad65d490d6cd368debdb3c8e02f1edc526"
+  },
+  "family_registry": {
+    "path": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r136_family.json",
+    "sha256": "sha256:22f53258b8699d757958db413a98f8a47cb67969f99c48e6381d98bfde719002"
+  },
+  "guide_retired_registry": {
+    "path": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r140_guide_retired.json",
+    "sha256": "sha256:6960318b4d93819fa8112ee6e90161a8545b981cff1055c92adb42c33e809ae6"
+  },
+  "merged_registry": {
+    "path": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r142_family_guide_shadow.json",
+    "sha256": "sha256:88b105452dec02fb9f798a78011ef0abb213ae8c2598d92c4aa9fc81b51f53f5"
+  },
+  "owner_revision": 142,
+  "proof": {
+    "active_bootstrap_interrupted": false,
+    "all_non_guide_registry_fields_unchanged": true,
+    "family_and_typed_loss_system_preserved": true,
+    "guide_blocking_authority": false,
+    "guide_runtime_authority": false,
+    "guide_shadow_only": true,
+    "guide_weight": 0.0,
+    "latent_policy_and_fusion_preserved": true
+  },
+  "recorded_at_utc": "2026-08-04T14:20:27.753480+00:00",
+  "schema": "poke_bot.marnie_family_guide_shadow_runtime/v1",
+  "status": "active_next_start_overlay"
+}

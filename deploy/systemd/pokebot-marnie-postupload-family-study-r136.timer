@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll for exact Marnie post-upload family shadow-study boundary
+
+[Timer]
+OnActiveSec=15
+OnUnitActiveSec=60
+Unit=pokebot-marnie-postupload-family-study-r136.service
+
+[Install]
+WantedBy=timers.target

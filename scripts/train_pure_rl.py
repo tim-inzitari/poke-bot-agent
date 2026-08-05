@@ -2387,6 +2387,7 @@ def _design_contract(
     decks: list[tuple[str, list[int]]],
     measurement_decks: list[tuple[str, list[int]]],
     ladder_contract: Optional[dict[str, Any]],
+    family_training_contract: Optional[dict[str, Any]],
     endpoints: list[str],
     collect_specs: list[Any],
     research_control_specs: list[Any],
@@ -2784,6 +2785,40 @@ def _design_contract(
         "measurement_deck_distribution": _deck_distribution_contract(
             measurement_decks, ladder_contract=None
         ),
+        "archetype_family": (
+            {
+                "schema": "poke_bot.activated_archetype_family/v1",
+                "family_id": str(
+                    family_training_contract["manifest"]["family_id"]
+                ),
+                "manifest": {
+                    "path": str(family_training_contract["manifest_path"]),
+                    "sha256": str(
+                        family_training_contract["manifest_sha256"]
+                    ),
+                },
+                "loss_contract": {
+                    "path": str(family_training_contract["loss_contract_path"]),
+                    "sha256": str(
+                        family_training_contract["loss_contract_sha256"]
+                    ),
+                },
+                "loss_vector": {
+                    "path": str(family_training_contract["loss_vector_path"]),
+                    "sha256": str(
+                        family_training_contract["loss_vector_sha256"]
+                    ),
+                },
+                "residual_objectives": dict(
+                    family_training_contract["residual_objectives"]
+                ),
+                "sampler": "deterministic_hamilton_family_macro_v1",
+                "package_probability": 0.20,
+                "measurement_deck_remains_singular": True,
+            }
+            if family_training_contract is not None
+            else None
+        ),
         "opponents": {
             "collect": _opponent_specs_contract(collect_specs),
             "research_controls": _opponent_specs_contract(
@@ -2966,6 +3001,129 @@ _LATENT_LOOKAHEAD_R118_ACTIVATION_PATHS = frozenset(
         "learner.trainable_parameters",
     }
 )
+
+
+_MARNIE_GUIDE_SHADOW_RETIREMENT_MIGRATION_PATHS = frozenset(
+    {
+        "learner.alakazam_guide_loss_weight",
+        "learner.current_deck_guide_archetype",
+        "learner.current_deck_guide_loss_weight",
+        "learner.current_deck_guide_strategic_curriculum",
+        "learner.current_deck_guide_targets_enabled",
+        "learner.current_deck_guide_version",
+        "learner.setup_board_outcome_loss_weight",
+    }
+)
+
+
+def _safe_marnie_family_design_migration(
+    *,
+    stored: dict[str, Any],
+    current: dict[str, Any],
+    changed: Sequence[str],
+    reason: Optional[str],
+) -> bool:
+    """Authorize only atomic family-sampler/loss activation or its rollback."""
+    reason = str(reason or "").strip()
+    if reason not in {
+        "receipt_backed_marnie_family_activation_r133",
+        "owner_ceiling_marnie_family_activation_r139",
+        "receipt_backed_marnie_family_rollback_r133",
+    }:
+        return False
+    non_source = {path for path in changed if not path.startswith("source.")}
+    owner_ceiling_activation = (
+        reason == "owner_ceiling_marnie_family_activation_r139"
+    )
+    independently_migratable = {
+        path
+        for path in non_source
+        if any(
+            path == allowed or path.startswith(allowed + ".")
+            for allowed in _BOUNDARY_MIGRATABLE_DESIGN_PATHS
+        )
+    }
+    family_scoped_paths = non_source - independently_migratable
+    family_paths = {
+        path
+        for path in family_scoped_paths
+        if path == "archetype_family"
+        or path.startswith("archetype_family.")
+        or path == "deck_distribution"
+        or path.startswith("deck_distribution.")
+    }
+    guide_retirement_paths = family_scoped_paths - family_paths
+    if not family_scoped_paths or not all(
+        path == "archetype_family"
+        or path.startswith("archetype_family.")
+        or path == "deck_distribution"
+        or path.startswith("deck_distribution.")
+        or (
+            owner_ceiling_activation
+            and path in _MARNIE_GUIDE_SHADOW_RETIREMENT_MIGRATION_PATHS
+        )
+        for path in family_scoped_paths
+    ):
+        return False
+    if not any(path.startswith("archetype_family") for path in non_source):
+        return False
+    if not any(path.startswith("deck_distribution") for path in non_source):
+        return False
+    if stored.get("measurement_deck_distribution") != current.get(
+        "measurement_deck_distribution"
+    ):
+        return False
+    before = stored.get("archetype_family")
+    after = current.get("archetype_family")
+    if reason in {
+        "receipt_backed_marnie_family_activation_r133",
+        "owner_ceiling_marnie_family_activation_r139",
+    }:
+        if before is not None or not isinstance(after, dict):
+            return False
+        if (
+            after.get("schema") != "poke_bot.activated_archetype_family/v1"
+            or after.get("family_id") != "marnie-s-grimmsnarl-ex"
+            or after.get("sampler")
+            != "deterministic_hamilton_family_macro_v1"
+            or float(after.get("package_probability", -1.0)) != 0.20
+            or after.get("measurement_deck_remains_singular") is not True
+        ):
+            return False
+        for key in ("manifest", "loss_contract", "loss_vector"):
+            row = after.get(key) or {}
+            path = Path(str(row.get("path", ""))).expanduser().resolve()
+            if (
+                not path.is_file()
+                or _sha256_file(path) != str(row.get("sha256", ""))
+            ):
+                return False
+        if owner_ceiling_activation:
+            learner = dict(current.get("learner") or {})
+            rehearsal_weights = dict(
+                ((current.get("expert_rehearsal") or {}).get("loss_weights"))
+                or {}
+            )
+            if (
+                guide_retirement_paths
+                != _MARNIE_GUIDE_SHADOW_RETIREMENT_MIGRATION_PATHS
+                or float(learner.get("alakazam_guide_loss_weight", -1.0))
+                != 0.0
+                or float(
+                    learner.get("current_deck_guide_loss_weight", -1.0)
+                )
+                != 0.0
+                or learner.get("current_deck_guide_targets_enabled") is not False
+                or float(rehearsal_weights.get("alakazam_guide", -1.0))
+                != 0.0
+            ):
+                return False
+        return True
+    return bool(
+        isinstance(before, dict)
+        and after is None
+        and before.get("family_id") == "marnie-s-grimmsnarl-ex"
+    )
 
 
 def _safe_latent_lookahead_r118_activation(
@@ -3464,6 +3622,14 @@ def _validate_or_migrate_design_fingerprint(
             reason=migration_reason,
         )
     )
+    safe_marnie_family_design_migration = (
+        _safe_marnie_family_design_migration(
+            stored=stored,
+            current=current,
+            changed=changed,
+            reason=migration_reason,
+        )
+    )
     disallowed = [
         path
         for path in changed
@@ -3500,6 +3666,21 @@ def _validate_or_migrate_design_fingerprint(
         and not (
             safe_latent_lookahead_r118_activation
             and path in _LATENT_LOOKAHEAD_R118_ACTIVATION_PATHS
+        )
+        and not (
+            safe_marnie_family_design_migration
+            and (
+                path == "archetype_family"
+                or path.startswith("archetype_family.")
+                or path == "deck_distribution"
+                or path.startswith("deck_distribution.")
+                or (
+                    str(migration_reason).strip()
+                    == "owner_ceiling_marnie_family_activation_r139"
+                    and path
+                    in _MARNIE_GUIDE_SHADOW_RETIREMENT_MIGRATION_PATHS
+                )
+            )
         )
     ]
     if disallowed:
@@ -3930,6 +4111,20 @@ def _assert_valid_replay_seat_projection(stage: dict[str, Any]) -> None:
         )
 
 
+def _replay_sampling_design_fingerprint(
+    *, current_design_fingerprint: str, collection_receipt: dict[str, Any]
+) -> str:
+    """Keep replay resampling stable across recovery-only source migrations."""
+
+    fingerprint = str(
+        collection_receipt.get("design_fingerprint_at_collection")
+        or current_design_fingerprint
+    )
+    if not fingerprint.startswith("sha256:"):
+        raise RuntimeError("replay sampling lacks a valid design fingerprint")
+    return fingerprint
+
+
 def _commit_training_seat_split_receipt(
     *,
     run_dir: Path,
@@ -4030,31 +4225,57 @@ def _commit_training_seat_split_receipt(
         migrated_replay_evidence_valid = bool(
             migrated_recovery
             and str(sealed_shard.get("sha256") or "").startswith("sha256:")
-            and int(sealed_shard.get("games", -1))
-            == int(actual.get("total", -2))
+            # Family sampling can emit more replay sequences than the exact
+            # scheduled source-game population (for example, both self-play
+            # perspectives).  The cache must match the sealed shard, not the
+            # independently audited assigned/retained source-game count.
+            and int(sealed_shard.get("games", 0)) > 0
             and int(sealed_replay.get("sequences", -1))
-            == int(actual.get("total", -2))
+            == int(sealed_shard.get("games", -2))
+            and int(consumed.get("total", -1))
+            >= int(sealed_replay.get("sequences", 0))
         )
         expected_populations = {
             "assigned_source_games": assigned,
             "retained_source_games": actual,
             "replay_sequences_consumed": consumed,
         }
-        if (
-            existing.get("schema")
-            != "poke_bot.alakazam_refresh_seat_split_index/v1"
-            or int(existing.get("iteration", -1)) != int(iteration)
-            or existing.get("design_fingerprint") != receipt_design_fingerprint
-            or existing.get("policy") != "exact_50_50_first_second_training"
-            or existing.get("second_seat_priority") is not False
-            or existing.get("passed") is not True
-            or (not sequence_digest_matches and not migrated_replay_evidence_valid)
-            or any(
-                existing.get(key) != value
-                for key, value in expected_populations.items()
+        recovery_mismatches = {
+            key: {"sealed": existing.get(key), "recovered": value}
+            for key, value in expected_populations.items()
+            if existing.get(key) != value
+        }
+        invariant_mismatches = {
+            "schema": existing.get("schema")
+            != "poke_bot.alakazam_refresh_seat_split_index/v1",
+            "iteration": int(existing.get("iteration", -1)) != int(iteration),
+            "design_fingerprint": existing.get("design_fingerprint")
+            != receipt_design_fingerprint,
+            "policy": existing.get("policy")
+            != "exact_50_50_first_second_training",
+            "second_seat_priority": existing.get("second_seat_priority") is not False,
+            "passed": existing.get("passed") is not True,
+            "sequence_identity": not sequence_digest_matches
+            and not migrated_replay_evidence_valid,
+        }
+        invariant_mismatches = {
+            key: value for key, value in invariant_mismatches.items() if value
+        }
+        if invariant_mismatches or recovery_mismatches:
+            raise RuntimeError(
+                "immutable training-seat receipt changed on recovery: "
+                + json.dumps(
+                    {
+                        "invariants": invariant_mismatches,
+                        "populations": recovery_mismatches,
+                        "sequence_digest_matches": sequence_digest_matches,
+                        "migrated_replay_evidence_valid": (
+                            migrated_replay_evidence_valid
+                        ),
+                    },
+                    sort_keys=True,
+                )
             )
-        ):
-            raise RuntimeError("immutable training-seat receipt changed on recovery")
         bound_collection = dict(existing.get("collection_receipt") or {})
         if bound_collection.get("sha256") != _sha256_file(collection_receipt_path):
             raise RuntimeError(
@@ -6266,7 +6487,10 @@ class _TqdmProgress:
             print(
                 f"[pure_rl] heartbeat stage={self.stage} iter={self.iteration} "
                 f"games={self._done}/{self.total} "
-                f"gps={gps:.2f} sps={sps:.1f} remotes={self.remotes}{dem}",
+                f"gps={gps:.2f} sps={sps:.1f} rsock={self.remotes} "
+                f"rout={self.remote_outstanding if self.remote_outstanding is not None else '-'} "
+                f"eout={self.remote_outstanding_elmo if self.remote_outstanding_elmo is not None else '-'} "
+                f"bout={self.remote_outstanding_bert if self.remote_outstanding_bert is not None else '-'}{dem}",
                 flush=True,
             )
 
@@ -6713,22 +6937,42 @@ class _LeafFarm:
         if not self.ctrl_qs:
             return
         requested = self.version + 1
-        for cq in self.ctrl_qs:
-            cq.put(
-                {
-                    "cmd": "reload",
-                    "path": str(ckpt),
-                    "digest": digest,
-                    "version": requested,
-                }
-            )
         mismatches: list[str] = []
         # One fail-closed deadline covers the entire fan-out.  A separate
-        # 240-second wait per status queue can serialize multiple missing
-        # acknowledgements into an hour-long boundary stall even though every
-        # reload command was issued concurrently.
+        # wait per queue can serialize missing acknowledgements into an
+        # hour-long boundary stall.  The deadline must begin before control
+        # publication as well: ``multiprocessing.Queue.put`` can block when a
+        # stale/full leaf control queue never drains.
         reload_deadline = time.monotonic() + 240.0
+        sent: list[bool] = []
+        for i, cq in enumerate(self.ctrl_qs):
+            remaining = reload_deadline - time.monotonic()
+            if remaining <= 0.0:
+                mismatches.append(
+                    f"leaf[{i}] control publish timeout/error: "
+                    "global reload deadline exceeded"
+                )
+                sent.append(False)
+                continue
+            try:
+                cq.put(
+                    {
+                        "cmd": "reload",
+                        "path": str(ckpt),
+                        "digest": digest,
+                        "version": requested,
+                    },
+                    timeout=min(5.0, remaining),
+                )
+                sent.append(True)
+            except Exception as exc:
+                mismatches.append(
+                    f"leaf[{i}] control publish timeout/error: {exc}"
+                )
+                sent.append(False)
         for i, sq in enumerate(self.status_qs):
+            if i >= len(sent) or not sent[i]:
+                continue
             remaining = reload_deadline - time.monotonic()
             if remaining <= 0.0:
                 mismatches.append(
@@ -7179,6 +7423,100 @@ def _planned_collection_group_counts(
     return result
 
 
+def _active_archetype_family_training_contract(
+    *, specialist_archetype: str,
+) -> Optional[dict[str, Any]]:
+    """Resolve the atomically activated family manifest and loss vector."""
+    names = {
+        "manifest": "POKEBOT_ARCHETYPE_FAMILY_MANIFEST",
+        "loss_contract": "POKEBOT_ARCHETYPE_LOSS_CONTRACT",
+        "loss_vector": "POKEBOT_ARCHETYPE_LOSS_VECTOR",
+    }
+    supplied = {key: str(os.environ.get(env, "")).strip() for key, env in names.items()}
+    if not any(supplied.values()):
+        return None
+    if not all(supplied.values()):
+        raise RuntimeError("archetype family activation is not atomic")
+    from poke_bot.archetype_loss_contract import (
+        canonical_residual_weights,
+        validate_loss_contract,
+    )
+    from poke_bot.specialist_archetype_family import (
+        FamilyDeckMix,
+        SPECIALIST_ID,
+        validate_manifest,
+    )
+
+    if str(specialist_archetype) != SPECIALIST_ID:
+        raise RuntimeError("Marnie family contract selected for another specialist")
+    paths = {key: Path(value).expanduser().resolve() for key, value in supplied.items()}
+    payloads = {
+        key: json.loads(path.read_text(encoding="utf-8"))
+        for key, path in paths.items()
+    }
+    manifest = validate_manifest(payloads["manifest"], require_activation_ready=True)
+    loss_contract = validate_loss_contract(payloads["loss_contract"])
+    vector = payloads["loss_vector"]
+    vector_status = str(vector.get("status") or "")
+    owner_ceiling_vector = (
+        vector_status
+        == "selected_by_owner_ceiling_after_inconclusive_study"
+    )
+    vector_without_digest = dict(vector)
+    declared_vector_digest = str(
+        vector_without_digest.pop("artifact_sha256", "")
+    )
+    if (
+        vector.get("schema") != "poke_bot.archetype_loss_vector/v1"
+        or vector.get("specialist_id") != SPECIALIST_ID
+        or vector_status
+        not in {
+            "selected_by_passing_shadow_study",
+            "selected_by_owner_ceiling_after_inconclusive_study",
+        }
+        or vector.get("manifest_sha256") != _sha256_file(paths["manifest"])
+        or vector.get("loss_contract_sha256") != _sha256_file(paths["loss_contract"])
+        or vector.get("activates_only_with_family_sampler") is not True
+        or vector.get("serving_authority") is not False
+        or declared_vector_digest != _canonical_digest(vector_without_digest)
+        or (
+            owner_ceiling_vector
+            and (
+                vector.get("measured_study_passed") is not False
+                or not str(
+                    vector.get("activation_authority_sha256") or ""
+                ).startswith("sha256:")
+            )
+        )
+        or (
+            not owner_ceiling_vector
+            and "activation_authority_sha256" in vector
+        )
+    ):
+        raise RuntimeError("selected archetype loss vector identity is invalid")
+    residuals = canonical_residual_weights(vector.get("residual_objectives"))
+    mix = FamilyDeckMix.from_manifest(manifest)
+    by_id = {str(row["variant_id"]): row for row in manifest["variants"]}
+    decks = [
+        (entry.deck_id, list(by_id[entry.deck_id]["card_ids"]))
+        for entry in mix.decks
+    ]
+    return {
+        "manifest": manifest,
+        "manifest_path": str(paths["manifest"]),
+        "manifest_sha256": _sha256_file(paths["manifest"]),
+        "loss_contract": loss_contract,
+        "loss_contract_path": str(paths["loss_contract"]),
+        "loss_contract_sha256": _sha256_file(paths["loss_contract"]),
+        "loss_vector": vector,
+        "loss_vector_path": str(paths["loss_vector"]),
+        "loss_vector_sha256": _sha256_file(paths["loss_vector"]),
+        "residual_objectives": residuals,
+        "mix": mix,
+        "decks": decks,
+    }
+
+
 def _assert_seed_namespace_contract(
     *,
     root_seed: int,
@@ -7619,6 +7957,7 @@ def _build_collect_jobs(
     self_play_frac: Optional[float] = None,
     balanced_eval: bool = False,
     ladder_mix: Any = None,
+    family_manifest: Optional[Mapping[str, Any]] = None,
     iteration: int = 0,
     priority_specs: Optional[list[Any]] = None,
     priority_frac: float = 0.0,
@@ -7662,6 +8001,40 @@ def _build_collect_jobs(
         str(opponent_id) for opponent_id in (official_exploit_opponents or ())
     )
     ladder_wave_provenance: dict[str, Any] = {}
+    family_variants: dict[str, dict[str, Any]] = {}
+    family_id = ""
+    family_manifest_digest = ""
+    if family_manifest is not None:
+        from poke_bot.specialist_archetype_family import validate_manifest
+
+        validated_family = validate_manifest(
+            family_manifest, require_activation_ready=True
+        )
+        if ladder_mix is None:
+            raise RuntimeError("family collection requires its bound deck mix")
+        family_id = str(validated_family["family_id"])
+        family_manifest_digest = str(validated_family["artifact_sha256"])
+        family_variants = {
+            str(row["variant_id"]): dict(row)
+            for row in validated_family["variants"]
+            if str(row.get("split")) == "train"
+        }
+
+    def family_provenance(variant_id: str) -> dict[str, Any]:
+        if not family_variants:
+            return {}
+        row = family_variants.get(str(variant_id))
+        if row is None:
+            raise RuntimeError(
+                f"scheduled family variant is not train-admitted: {variant_id}"
+            )
+        return {
+            "family_id": family_id,
+            "variant_id": str(variant_id),
+            "manifest_digest": family_manifest_digest,
+            "ordered_digest": str(row["ordered_digest"]),
+            "multiset_digest": str(row["multiset_digest"]),
+        }
     if ladder_mix is not None:
         if balanced_eval:
             raise ValueError("ladder-weighted collection is not a formal eval sampler")
@@ -7702,6 +8075,14 @@ def _build_collect_jobs(
             "self_play_our_quotas": ladder_mix.quotas(n_self),
             "self_play_opp_quotas": ladder_mix.quotas(n_self),
             "public_our_quotas": ladder_mix.quotas(n_games - n_self),
+            **(
+                {
+                    "family_id": family_id,
+                    "manifest_digest": family_manifest_digest,
+                }
+                if family_variants
+                else {}
+            ),
         }
     if n_games > n_self and float(priority_frac) > 0.0:
         public_spec_schedule = _interleaved_opponent_schedule(
@@ -7764,6 +8145,7 @@ def _build_collect_jobs(
     if not pool:
         pool = [{"path": str(ckpt), "digest": str(digest)}]
     for game_i in range(n_games):
+        our_variant_id = ""
         if balanced_eval and specs:
             # Adjacent games are the same deck/opponent with candidate seat
             # flipped. This removes the old opponent↔seat parity confound.
@@ -7777,7 +8159,9 @@ def _build_collect_jobs(
                 scheduled_id = self_our_schedule[game_i]
             else:
                 scheduled_id = public_our_schedule[game_i - n_self]
-            arch, deck = ladder_catalog[scheduled_id]
+            scheduled_arch, deck = ladder_catalog[scheduled_id]
+            our_variant_id = str(scheduled_id) if family_variants else ""
+            arch = family_id if family_variants else scheduled_arch
             # The family schedule is already SHA-256 permuted. Alternating the
             # seat keeps global balance without pinning a family to one seat.
             our_seat = (game_i + int(seed)) % 2
@@ -7809,19 +8193,26 @@ def _build_collect_jobs(
         if ladder_mix is not None:
             common["deck_mix"] = {
                 **ladder_wave_provenance,
-                "scheduled_our_deck_id": arch,
+                "scheduled_our_deck_id": our_variant_id or arch,
                 "stream": (
                     "self_play_our" if game_i < n_self else "public_our"
                 ),
             }
+        if our_variant_id:
+            common.update(family_provenance(our_variant_id))
         if game_i < n_self or not has_public_specs:
             opp_identity = pool[game_i % len(pool)]
             opp_ckpt = opp_identity["path"]
             opp_digest = opp_identity["digest"]
             if ladder_mix is not None:
-                opp_arch = self_opp_schedule[game_i]
-                _opp_name, opp_deck = ladder_catalog[opp_arch]
+                scheduled_opp_id = self_opp_schedule[game_i]
+                _opp_name, opp_deck = ladder_catalog[scheduled_opp_id]
+                opp_variant_id = (
+                    str(scheduled_opp_id) if family_variants else ""
+                )
+                opp_arch = family_id if family_variants else scheduled_opp_id
             elif len(decks) > 1:
+                opp_variant_id = ""
                 our_i = game_i % len(decks)
                 matchup_round = game_i // len(decks)
                 opp_i = (
@@ -7829,6 +8220,7 @@ def _build_collect_jobs(
                 ) % len(decks)
                 opp_arch, opp_deck = decks[opp_i]
             else:
+                opp_variant_id = ""
                 opp_arch, opp_deck = arch, deck
             self_jobs.append(
                 {
@@ -7853,12 +8245,30 @@ def _build_collect_jobs(
                         "opponent_checkpoint_digest": str(opp_digest),
                         "mcts_sims": 0,
                         "action_temperature": float(collect_temperature),
+                        **family_provenance(our_variant_id),
+                        **(
+                            {
+                                "opponent_variant_id": opp_variant_id,
+                                "opponent_ordered_digest": str(
+                                    family_variants[opp_variant_id][
+                                        "ordered_digest"
+                                    ]
+                                ),
+                                "opponent_multiset_digest": str(
+                                    family_variants[opp_variant_id][
+                                        "multiset_digest"
+                                    ]
+                                ),
+                            }
+                            if opp_variant_id
+                            else {}
+                        ),
                         **(
                             {
                                 "deck_mix": {
                                     **ladder_wave_provenance,
-                                    "scheduled_our_deck_id": arch,
-                                    "scheduled_opp_deck_id": opp_arch,
+                                    "scheduled_our_deck_id": our_variant_id or arch,
+                                    "scheduled_opp_deck_id": opp_variant_id or opp_arch,
                                     "stream": "self_play",
                                 }
                             }
@@ -7965,6 +8375,7 @@ def _build_collect_jobs(
                         "behavior_checkpoint_digest": str(digest),
                         "mcts_sims": 0,
                         "action_temperature": behavior_temperature,
+                        **family_provenance(our_variant_id),
                         "behavior_mode": (
                             "strong_public_sampled_practice_v1"
                             if is_priority and priority_temperature is not None
@@ -7996,7 +8407,7 @@ def _build_collect_jobs(
                             {
                                 "deck_mix": {
                                     **ladder_wave_provenance,
-                                    "scheduled_our_deck_id": arch,
+                                    "scheduled_our_deck_id": our_variant_id or arch,
                                     "stream": "public_our",
                                 }
                             }
@@ -8308,6 +8719,29 @@ def _replacement_schedule_contract_from_result(
     }
 
 
+_PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS = 32
+
+
+def _targeted_replacement_seed_offset(retry_round: int) -> int:
+    """Return a deterministic seed lane disjoint from ordinary collections.
+
+    The first four lanes preserve the historical 60k/70k/80k/90k identity.
+    Later public-mix recovery lanes live in a high, bounded namespace so a
+    one-game compaction failure cannot force an otherwise exact 8,192-game
+    iteration to be recollected.  The high namespace remains below signed
+    32-bit seed limits and is never used by ordinary iteration seeds.
+    """
+
+    if retry_round < 0 or retry_round >= _PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS:
+        raise ValueError(
+            "targeted replacement retry_round must be in "
+            f"[0, {_PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS - 1}]"
+        )
+    if retry_round < 4:
+        return 60_000 + (10_000 * int(retry_round))
+    return 1_000_000_000 + (10_000 * (int(retry_round) - 4))
+
+
 def _targeted_replacement_jobs(
     primary_jobs: list[dict[str, Any]],
     *,
@@ -8323,8 +8757,7 @@ def _targeted_replacement_jobs(
     assigned to the original missing cell and uses a disjoint seed.
     """
 
-    if retry_round < 0 or retry_round > 3:
-        raise ValueError("targeted replacement retry_round must be in [0, 3]")
+    seed_offset = _targeted_replacement_seed_offset(retry_round)
     by_index = {int(job.get("job_index", -1)): job for job in primary_jobs}
     by_contract: dict[str, list[dict[str, Any]]] = {}
     for job in primary_jobs:
@@ -8338,7 +8771,6 @@ def _targeted_replacement_jobs(
         raise RuntimeError(
             f"missing replacement source jobs: {absent[:16]}"
         )
-    seed_offset = 60_000 + (10_000 * int(retry_round))
     out: list[dict[str, Any]] = []
     for offset, source_index in enumerate(missing):
         target = by_index[source_index]
@@ -8461,6 +8893,118 @@ def _dataset_from_replay_window(
         )
         seqs.extend(list(ds.sequences))
     return BootstrapDataset(sequences=seqs)
+
+
+def _macro_resample_family_sequences(
+    dataset: Any,
+    *,
+    manifest: Mapping[str, Any],
+    checksum_seed: str,
+) -> tuple[Any, dict[str, Any]]:
+    """Apply deterministic equal-cluster family weights to the replay window.
+
+    Rows produced before family activation are admitted only when their exact
+    60-card multiset is the singular package variant.  Current family rows must
+    carry the checksum-bound variant provenance emitted by collection.  Dev and
+    locked variants fail closed through ``validate_training_row``.
+    """
+    from collections import Counter, defaultdict
+
+    from poke_bot.specialist_archetype_family import (
+        family_probabilities,
+        hamilton_quotas,
+        multiset_digest,
+        validate_manifest,
+        validate_training_row,
+    )
+
+    validated = validate_manifest(manifest, require_activation_ready=True)
+    source = list(dataset.sequences)
+    if not source:
+        raise RuntimeError("family replay weighting received no sequences")
+    buckets: dict[str, list[Any]] = defaultdict(list)
+    source_counts: Counter[str] = Counter()
+    legacy_package_rows = 0
+    for sequence in source:
+        raw = dict(getattr(sequence, "target_provenance", {}) or {})
+        had_variant = bool(raw.get("variant_id"))
+        row = {
+            **raw,
+            "multiset_digest": str(
+                raw.get("multiset_digest")
+                or multiset_digest(list(getattr(sequence, "deck", ()) or ()))
+            ),
+        }
+        normalized = validate_training_row(validated, row)
+        variant_id = str(normalized["variant_id"])
+        sequence = replace(
+            sequence,
+            target_provenance={
+                **raw,
+                **normalized,
+                "family_macro_replay": True,
+            },
+        )
+        buckets[variant_id].append(sequence)
+        source_counts[variant_id] += 1
+        legacy_package_rows += int(not had_variant)
+
+    probabilities = family_probabilities(validated)
+    quotas = hamilton_quotas(len(source), probabilities)
+    selected: list[Any] = []
+    duplicate_draws = 0
+    for variant_id, quota in sorted(quotas.items()):
+        bucket = list(buckets.get(variant_id) or ())
+        if quota and not bucket:
+            raise RuntimeError(
+                "family macro replay lacks an admitted train variant: "
+                f"{variant_id}"
+            )
+        bucket.sort(
+            key=lambda sequence: hashlib.sha256(
+                (
+                    f"{checksum_seed}|{variant_id}|"
+                    f"{getattr(sequence, 'episode_id', '')}|"
+                    f"{getattr(sequence, 'seat', -1)}|"
+                    f"{getattr(sequence, 'source', '')}"
+                ).encode("utf-8")
+            ).digest()
+        )
+        duplicate_draws += max(0, int(quota) - len(bucket))
+        for index in range(int(quota)):
+            selected.append(bucket[index % len(bucket)])
+    selected.sort(
+        key=lambda sequence: hashlib.sha256(
+            (
+                f"{checksum_seed}|final|"
+                f"{getattr(sequence, 'episode_id', '')}|"
+                f"{getattr(sequence, 'seat', -1)}|"
+                f"{(getattr(sequence, 'target_provenance', {}) or {}).get('variant_id', '')}"
+            ).encode("utf-8")
+        ).digest()
+    )
+    selected_counts = Counter(
+        str(sequence.target_provenance["variant_id"])
+        for sequence in selected
+    )
+    if dict(selected_counts) != {key: int(value) for key, value in quotas.items()}:
+        raise RuntimeError("family macro replay quota realization changed")
+    receipt = {
+        "schema": "poke_bot.archetype_family_replay_weighting/v1",
+        "family_id": str(validated["family_id"]),
+        "manifest_digest": str(validated["artifact_sha256"]),
+        "checksum_seed": str(checksum_seed),
+        "source_sequences": len(source),
+        "selected_sequences": len(selected),
+        "legacy_package_sequences": int(legacy_package_rows),
+        "source_variant_counts": dict(sorted(source_counts.items())),
+        "selected_variant_counts": dict(sorted(selected_counts.items())),
+        "target_probabilities": dict(sorted(probabilities.items())),
+        "duplicate_draws": int(duplicate_draws),
+        "development_or_locked_rows": 0,
+        "passed": True,
+    }
+    return BootstrapDataset(sequences=selected), receipt
 
 
 def _consume_results(
@@ -8803,7 +9347,11 @@ def _hard_gate_publish_weights(
     report ``checkpoint_digest == digest``. Soft WARN-and-continue is forbidden
     at this boundary — workers must not dispatch on mixed digests.
     """
-    from poke_bot.remote_jobs import RemoteJobsError, parse_endpoint
+    from poke_bot.remote_jobs import (
+        RemoteJobsError,
+        cache_exact_resident_remote_checkpoint,
+        parse_endpoint,
+    )
 
     proof: dict[str, Any] = {
         "digest": digest,
@@ -8936,10 +9484,7 @@ def _hard_gate_publish_weights(
             # proof; anything missing or mismatched retains the normal reload.
             exact_health = None
             health_call = getattr(client, "health", None)
-            if (
-                getattr(initial_info, "checkpoint_digest", None) == dig
-                and callable(health_call)
-            ):
+            if callable(health_call):
                 try:
                     candidate_health = health_call()
                     leaves = list(candidate_health.get("leaves") or [])
@@ -8963,6 +9508,19 @@ def _hard_gate_publish_weights(
                     ):
                         exact_health = candidate_health
                 except Exception:
+                    exact_health = None
+
+            if exact_health is not None:
+                try:
+                    cache_exact_resident_remote_checkpoint(
+                        str(getattr(client, "host", "")),
+                        str(ckpt),
+                        digest=dig,
+                    )
+                except RemoteJobsError:
+                    # A health-exact worker with no matching staged object is
+                    # not enough to prepare future jobs. Fall back to the
+                    # ordinary verified staging/reload transaction.
                     exact_health = None
 
             if exact_health is not None:
@@ -10113,7 +10671,7 @@ def _collect_wave(
             + 1
             + int(stats.get("targeted_self_play_retry_attempts", 0))
         )
-        for retry_round in range(4):
+        for retry_round in range(_PUBLIC_MIX_TARGETED_REPLACEMENT_ROUNDS):
             if not missing_public:
                 break
             retry_jobs = _targeted_replacement_jobs(
@@ -10183,7 +10741,10 @@ def _collect_wave(
                 f"{len(primary_self_play_jobs)} "
                 f"public_mix={len(retained_public_indices)}/"
                 f"{len(baseline_jobs)} "
-                f"retained={stats.get('with_record', 0)}/{expected_retained}"
+                f"retained={stats.get('with_record', 0)}/{expected_retained} "
+                f"missing_public_job_indices={sorted(missing_public)[:16]} "
+                f"targeted_public_mix_retry_attempts="
+                f"{stats.get('targeted_public_mix_retry_attempts', 0)}"
             )
     if practice_record_contracts:
         expected_indices = set(practice_record_contracts)
@@ -12117,9 +12678,28 @@ def run_full_loop(args: argparse.Namespace) -> int:
             ladder_representatives,
             ladder_contract,
         ) = _core_ladder_decks()
+        family_training_contract = None
     else:
-        decks = _our_decks(args.mode, args.specialist_archetype)
-    measurement_decks = _select_measurement_decks(decks, args.measurement_decks)
+        package_decks = _our_decks(args.mode, args.specialist_archetype)
+        family_training_contract = _active_archetype_family_training_contract(
+            specialist_archetype=str(args.specialist_archetype or ""),
+        )
+        if family_training_contract is None:
+            decks = package_decks
+        else:
+            decks = list(family_training_contract["decks"])
+            ladder_mix = family_training_contract["mix"]
+            print(
+                "[pure_rl] ARCHETYPE_FAMILY_ACTIVE "
+                f"manifest={family_training_contract['manifest_sha256']} "
+                f"loss_vector={family_training_contract['loss_vector_sha256']} "
+                f"train_variants={len(decks)}",
+                flush=True,
+            )
+    measurement_decks = _select_measurement_decks(
+        package_decks if args.mode != "core" else decks,
+        args.measurement_decks,
+    )
     deck_names = [n for n, _ in decks]
     measurement_deck_names = [n for n, _ in measurement_decks]
     print(
@@ -12258,6 +12838,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
         decks=decks,
         measurement_decks=measurement_decks,
         ladder_contract=ladder_contract,
+        family_training_contract=family_training_contract,
         endpoints=endpoints,
         collect_specs=collect_specs,
         research_control_specs=research_control_specs,
@@ -12871,6 +13452,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 opponent_pool=recent,
                 self_play_frac=float(getattr(config.PURE_RL, "self_play_frac", 0.85)),
                 ladder_mix=ladder_mix,
+                family_manifest=(
+                    family_training_contract["manifest"]
+                    if family_training_contract is not None
+                    else None
+                ),
                 iteration=int(it),
                 priority_specs=(
                     practice_specs
@@ -13258,6 +13844,11 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 "prize_race": float(args.prize_race_loss_weight),
                 "alakazam_guide": float(args.alakazam_guide_loss_weight),
             }
+            family_residual_loss_weights = (
+                dict(family_training_contract["residual_objectives"])
+                if family_training_contract is not None
+                else {}
+            )
             corpus_split_seed = int(args.seed) + 5_000_000
 
             trusted_parent = checkpoint_mod.assert_trusted_policy_checkpoint(
@@ -13440,6 +14031,7 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 corpus_split_seed=corpus_split_seed,
                 expanded_head_contract=expanded_head_contract,
                 option_conditioned_loss_weights=option_conditioned_loss_weights,
+                archetype_residual_loss_weights=family_residual_loss_weights,
                 training_seat_split_receipt=training_seat_split_receipt,
             )
             if record is None:
@@ -13480,6 +14072,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         expanded_head_contract=expanded_head_contract,
                         option_conditioned_loss_weights=(
                             option_conditioned_loss_weights
+                        ),
+                        archetype_residual_loss_weights=(
+                            family_residual_loss_weights
                         ),
                         training_seat_split_receipt=(
                             training_seat_split_receipt
@@ -13539,6 +14134,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     expanded_head_loss_weights=dict(
                         expanded_head_contract.get("loss_weights") or {}
                     ),
+                    archetype_residual_loss_weights=(
+                        family_residual_loss_weights
+                    ),
                     expanded_head_schedule=expanded_head_contract,
                     output_archetype_id=(
                         "core"
@@ -13565,6 +14163,9 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     expanded_head_contract=expanded_head_contract,
                     option_conditioned_loss_weights=(
                         option_conditioned_loss_weights
+                    ),
+                    archetype_residual_loss_weights=(
+                        family_residual_loss_weights
                     ),
                     training_seat_split_receipt=(
                         training_seat_split_receipt
@@ -13704,6 +14305,33 @@ def run_full_loop(args: argparse.Namespace) -> int:
                 it,
                 initial_replay_shards=initial_replay_shards,
             )
+            family_replay_weighting: Optional[dict[str, Any]] = None
+            if family_training_contract is not None:
+                family_sampling_design_fingerprint = (
+                    _replay_sampling_design_fingerprint(
+                        current_design_fingerprint=design_fingerprint,
+                        collection_receipt=collect_bundle,
+                    )
+                )
+                dataset, family_replay_weighting = (
+                    _macro_resample_family_sequences(
+                        dataset,
+                        manifest=family_training_contract["manifest"],
+                        checksum_seed=(
+                            f"{family_sampling_design_fingerprint}|{int(it)}|"
+                            f"{family_training_contract['manifest_sha256']}|"
+                            f"{family_training_contract['loss_vector_sha256']}"
+                        ),
+                    )
+                )
+                print(
+                    "[pure_rl] ARCHETYPE_FAMILY_REPLAY_WEIGHTED "
+                    f"iter={it} sequences={len(dataset.sequences)} "
+                    f"variants={len(family_replay_weighting['selected_variant_counts'])} "
+                    f"legacy_package={family_replay_weighting['legacy_package_sequences']} "
+                    f"duplicate_draws={family_replay_weighting['duplicate_draws']}",
+                    flush=True,
+                )
             training_seat_split_receipt: Optional[dict[str, Any]] = None
             if bool(args.require_exact_training_seat_split):
                 training_seat_split_receipt = _commit_training_seat_split_receipt(
@@ -13827,6 +14455,10 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     args.dormant_matchup_adapter_activation_receipt or ""
                 ),
             )
+            if family_training_contract is not None:
+                train_cfg.archetype_residual_loss_weights = dict(
+                    family_training_contract["residual_objectives"]
+                )
             if args.tactical_outcome_loss_weight_override is not None:
                 from poke_bot import checkpoint as checkpoint_mod
 
@@ -13898,6 +14530,36 @@ def run_full_loop(args: argparse.Namespace) -> int:
                         ],
                         "design_fingerprint": design_fingerprint,
                         "dormant_matchup_adapter_ticketing": adapter_ticketing,
+                        "archetype_family": (
+                            {
+                                "manifest_path": family_training_contract[
+                                    "manifest_path"
+                                ],
+                                "manifest_sha256": family_training_contract[
+                                    "manifest_sha256"
+                                ],
+                                "loss_contract_path": family_training_contract[
+                                    "loss_contract_path"
+                                ],
+                                "loss_contract_sha256": family_training_contract[
+                                    "loss_contract_sha256"
+                                ],
+                                "loss_vector_path": family_training_contract[
+                                    "loss_vector_path"
+                                ],
+                                "loss_vector_sha256": family_training_contract[
+                                    "loss_vector_sha256"
+                                ],
+                                "residual_objectives": dict(
+                                    family_training_contract[
+                                        "residual_objectives"
+                                    ]
+                                ),
+                                "replay_weighting": family_replay_weighting,
+                            }
+                            if family_training_contract is not None
+                            else None
+                        ),
                         "append_only": True,
                     },
                     replace_existing=False,
@@ -14926,6 +15588,58 @@ def run_full_loop(args: argparse.Namespace) -> int:
                     f"iteration={it} next_collection_blocked=false",
                     flush=True,
                 )
+            family_request = str(
+                os.environ.get("POKEBOT_MARNIE_FAMILY_ACTIVATION_REQUEST", "")
+            ).strip()
+            family_upload_trigger = str(
+                os.environ.get("POKEBOT_MARNIE_ITERATION9_UPLOAD_TRIGGER", "")
+            ).strip()
+            if (
+                (family_request or family_upload_trigger)
+                and args.mode == "specialist"
+                and str(args.specialist_archetype) == "marnie-s-grimmsnarl-ex"
+                and next_it < int(args.iterations)
+            ):
+                from poke_bot.archetype_family_activation import boundary_pause_hook
+
+                family_decision = boundary_pause_hook(
+                    request_path=(
+                        Path(family_request).expanduser().resolve()
+                        if family_request
+                        else None
+                    ),
+                    trigger_path=(
+                        Path(family_upload_trigger).expanduser().resolve()
+                        if family_upload_trigger
+                        else None
+                    ),
+                    run_dir=run_dir,
+                    committed_iteration=int(it),
+                    learner_digest=learner_after.digest,
+                    next_collection_started=False,
+                )
+                print(
+                    "[pure_rl] MARNIE_FAMILY_BOUNDARY "
+                    f"action={family_decision['action']} "
+                    f"target={family_decision.get('target_iteration')}",
+                    flush=True,
+                )
+                if family_decision["action"] in {
+                    "pause_for_atomic_activation",
+                    "pause_for_required_evidence",
+                    "already_paused",
+                }:
+                    # launch_pure_rl treats 75 as a deliberate monitor-stop
+                    # boundary and will not restart the old selector.
+                    raise SystemExit(75)
+                if family_decision["action"] in {
+                    "pause_for_post_activation_monitor",
+                    "pause_for_required_rollback",
+                }:
+                    # Status 78 is the separate post-activation monitor and
+                    # rollback boundary. It cannot be mistaken for the
+                    # pre-activation evidence pause at status 75.
+                    raise SystemExit(78)
             if next_it < int(args.iterations):
                 print(
                     f"[pure_rl] kick collect iter={next_it} on continuous learner "

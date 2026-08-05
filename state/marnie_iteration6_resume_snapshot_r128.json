@@ -1,0 +1,49 @@
+{
+  "schema": "poke_bot.marnie_iteration_resume_snapshot/v1",
+  "goal_revision": 128,
+  "observed_at_utc": "2026-08-03T22:31:42Z",
+  "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+  "iteration": 6,
+  "managed_service": {
+    "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid": 1267326,
+    "restart_count": 0
+  },
+  "active_specialist": "marnie-s-grimmsnarl-ex",
+  "accepted_policy_generation": 15,
+  "learner_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/challengers/marnie-latent-lookahead-r118-active/model.pt",
+  "learner_checkpoint_sha256": "sha256:9ff2a8bcaf9ee51db1f6bb7dd86fb5d480a1737d80859140323f9b6fcab36cc5",
+  "runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r118_generation15.json",
+  "runtime_registry_sha256": "sha256:72b61af5e788b71ef74caa8922f3ce4d2cca51fca11170de4b34b4e348381814",
+  "selector": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_h10_r104.env",
+  "selector_sha256": "sha256:f08af5f57d1e24ffd0ec7058588cf94f1595e9d2b2db212390fe3d21a466e998",
+  "phase": {
+    "name": "collect:public_mix",
+    "current": 1227,
+    "total": 7168,
+    "games_per_second": 6.6,
+    "self_play_completed_games": 1024
+  },
+  "fleet": {
+    "blackwell_local_workers": 96,
+    "elmo_execution_workers": 36,
+    "bert_execution_workers": 16,
+    "remote_request_sockets": 52,
+    "elmo_executing_at_post_resume_sample": 36,
+    "bert_executing_at_post_resume_sample": 16
+  },
+  "dashboard_source_integrity": {
+    "current": true,
+    "failed": []
+  },
+  "scheduler_contract": {
+    "changed_by_this_reconciliation": false,
+    "self_play_tail_entry_unclaimed_games": 20,
+    "self_play_tail_behavior_preserved": true,
+    "public_mix_allocation_preserved": true
+  },
+  "activation_parent": "state/remote_scheduler_checkpoint_activation_r127.json",
+  "activation_parent_sha256": "sha256:24baf059954708861a18c3598f6b9acd9d3c2ee4feeef50a5fa99a047f512b62"
+}

@@ -91,11 +91,12 @@ def test_active_core_fallback_matches_latest_accepted_v9_receipt() -> None:
     assert namespaces["cumulative_core"] == {
         "display_namespace": "Accepted Policy Generation",
         "latest_accepted_version": 9,
-            "latest_attempted_version": 13,
+        "latest_attempted_version": 14,
         "v10_status": "rejected_gameplay_regression",
         "v11_status": "rejected_pretraining_validation",
-            "v12_status": "rejected_pretraining_validation",
-            "v13_status": "rejected_pretraining_validation",
+        "v12_status": "rejected_pretraining_validation",
+        "v13_status": "rejected_pretraining_validation",
+        "v14_status": "rejected_pretraining_validation",
     }
     assert namespaces["matchup_adapter"]["checkpoint_format_version"] == 6
     assert namespaces["runtime_modified"] is False
@@ -139,7 +140,7 @@ def test_active_core_fallback_matches_latest_accepted_v9_receipt() -> None:
     assert current_profile["minimum_host_available_ram_gib"] == 12
     assert current_profile["memory_high_gib"] == 100
     active_run = state["current"]["active_run"]
-    assert active_run["active_specialist"] == "marnie-s-grimmsnarl-ex"
+    assert active_run["active_specialist"] == "crustle"
     assert active_run["decision_fusion_schema"] == (
         "poke_bot.causal_decision_fusion/v3"
     )
@@ -398,12 +399,11 @@ def test_spidops_is_the_fail_closed_successor_after_thwackey() -> None:
         )
     )
 
-    assert "Revision: `117`" in goal
+    goal_revision = int(goal.split("Revision: `", 1)[1].split("`", 1)[0])
+    assert goal_revision >= 117
     assert "mandatory and sole successor after Thwackey" in goal
     assert state["current"]["active_specialist"] is None
-    assert state["current"]["active_run"]["active_specialist"] == (
-        "marnie-s-grimmsnarl-ex"
-    )
+    assert state["current"]["active_run"]["active_specialist"] == "crustle"
     assert state["current"]["transition_source_specialist"] == "slowking"
     assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
@@ -470,9 +470,7 @@ def test_owner_required_plan_and_post_spidops_order_cannot_regress() -> None:
     assert "Remove `dragapult-blaziken` and `dragapult-dudunsparce`" in goal
     assert state["current"]["program_progress"]["required_specialists_total"] == 15
     assert state["current"]["active_specialist"] is None
-    assert state["current"]["active_run"]["active_specialist"] == (
-        "marnie-s-grimmsnarl-ex"
-    )
+    assert state["current"]["active_run"]["active_specialist"] == "crustle"
     assert state["current"]["transition_source_specialist"] == "slowking"
     assert state["current"]["staged_successor_specialist"] is None
     assert priority["ordered_unfinished_ids_after_active"] == []
@@ -554,7 +552,8 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
     ]
     mutable = state["post_fleet_refresh"]
 
-    assert "Revision: `117`" in goal
+    goal_revision = int(goal.split("Revision: `", 1)[1].split("`", 1)[0])
+    assert goal_revision >= 117
     assert "new separately versioned refreshes in strict order" in goal
     assert protocol["allowed_phases"][-3] == (
         "post_fleet_specialist_refresh"
@@ -662,11 +661,9 @@ def test_post_fleet_refresh_is_ordered_versioned_and_non_intrusive() -> None:
     assert state["current"]["program_progress"][
         "required_specialists_total"
     ] == 15
-    assert len(state["specialists"]) == 16
+    assert len(state["specialists"]) == 17
     assert state["current"]["active_specialist"] is None
-    assert state["current"]["active_run"]["active_specialist"] == (
-        "marnie-s-grimmsnarl-ex"
-    )
+    assert state["current"]["active_run"]["active_specialist"] == "crustle"
     assert state["current"]["staged_successor_specialist"] is None
     assert state["training_priority"][
         "ordered_unfinished_ids_after_active"
@@ -1211,7 +1208,8 @@ def test_production_selector_uses_owner_pinned_96_worker_scheduler() -> None:
     assert "PURE_RL_REBALANCE_MIN_WORKERS=96\n" in selector
     assert "PURE_RL_MID_ITER_SCHEDULER=1\n" in selector
     assert "POKEBOT_REMOTE_SOCKET_PREFETCH=1\n" in selector
-    assert "POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=2\n" in selector
+    # Revision 124 deliberately removed the speculative second socket wave.
+    assert "POKEBOT_REMOTE_SOCKET_PREFETCH_MAX=1\n" in selector
     assert "POKEBOT_RELEASE_LOCAL_POOL_BEFORE_RESULT_DRAIN=1\n" in selector
     assert "PURE_RL_REBALANCE_RAM_FLOOR_GB=12\n" in selector
     assert "MemoryHigh=100G\n" in unit
@@ -1255,3 +1253,51 @@ def test_future_result_drains_release_phase_owned_simulators() -> None:
         "release_phase_owned_local_pool_before_buffer_compaction"
     ] is True
     assert projected["next_iteration_activation_required"] == 5
+
+
+def test_marnie_iteration9_upload_is_immutable_new_system_boundary() -> None:
+    protocol = yaml.safe_load(
+        (ROOT / "config/rl_protocol.yaml").read_text(encoding="utf-8")
+    )
+    state = yaml.safe_load(
+        (ROOT / "state/specialists.yaml").read_text(encoding="utf-8")
+    )
+    compatibility = json.loads(
+        (ROOT / "ops/current_goal_requirements.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    activation = protocol["marnie_archetype_family_generalization"]["activation"]
+    projected = compatibility["current_owner_overrides"][
+        "marnie_archetype_family_generalization"
+    ]
+    mutable = state["post_fleet_refresh"]["active_refresh_new_system_boundary"]
+    for contract in (activation, projected, mutable):
+        assert contract["successful_upload_is_last_old_system_boundary"] is True
+        assert contract["first_post_upload_training_collection_system"] == (
+            "new_system"
+        )
+        assert contract["old_system_collection_after_successful_upload_allowed"] is False
+        assert contract["boundary_is_owner_immutable"] is True
+        assert contract["activation_inputs_must_be_prepared_before_trigger"] is True
+        assert contract["missing_or_inconclusive_evidence_after_successful_upload"] == (
+            "pause_before_next_collection"
+        )
+    assert activation["owner_boundary_revision"] == 130
+    assert activation["trigger_iteration"] == 9
+    assert projected["activation_trigger"] == (
+        "successful_checksum_exact_iteration_9_kaggle_upload_receipt"
+    )
+    assert mutable["trigger"] == (
+        "successful_checksum_exact_iteration_9_kaggle_upload_receipt"
+    )
+    assert mutable["current_iteration_modified"] is False
+    assert mutable["operational_reconciliation_revision"] == 131
+    assert mutable["hook_activation_boundary"] == (
+        "after_iteration_6_before_iteration_7_collection"
+    )
+    assert projected["operational_reconciliation_revision"] == 131
+    assert projected["scheduler_changed"] is False
+    assert projected["fleet_allocation_changed"] is False
+    assert projected["self_play_tail_rule_changed"] is False

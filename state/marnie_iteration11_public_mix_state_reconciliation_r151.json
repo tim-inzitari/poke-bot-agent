@@ -1,0 +1,48 @@
+{
+  "schema": "poke_bot.marnie_iteration11_public_mix_state_reconciliation/v1",
+  "status": "reconciled_without_runtime_mutation",
+  "recorded_at_utc": "2026-08-05T01:06:50Z",
+  "owner_revision": 151,
+  "service": {
+    "name": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "active_state": "active",
+    "sub_state": "running",
+    "main_pid": 138326,
+    "restart_count": 0,
+    "result": "success"
+  },
+  "progress": {
+    "run_name": "final_format_marnie_r104_h10_i_v6_8k",
+    "last_completed_iteration": 10,
+    "active_iteration": 11,
+    "stage": "collect:public_mix",
+    "observed_games": 1424,
+    "total_games": 7168,
+    "observed_games_per_second": 5.96,
+    "remote_request_sockets": 52
+  },
+  "runtime": {
+    "learner_checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00007.pt",
+    "learner_checkpoint_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+    "runtime_registry": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r149_family_rollback_guide_shadow.json",
+    "runtime_registry_sha256": "sha256:e28dfbdeba7f751ae1c863b2ec5064e7cff7a5780fe456d5ead001648e5234b8",
+    "selector": "/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_h10_r104.env",
+    "selector_sha256": "sha256:f08af5f57d1e24ffd0ec7058588cf94f1595e9d2b2db212390fe3d21a466e998",
+    "family_sampler_active": false,
+    "guide_loss_weight": 0.0,
+    "guide_shadow_only": true
+  },
+  "projection_changes": [
+    "state/specialists.yaml current active-run identity",
+    "state/specialists.yaml family-monitor resolution",
+    "ops/current_goal_requirements.json verified snapshot phase"
+  ],
+  "proof": {
+    "managed_service_restarted": false,
+    "scheduler_changed": false,
+    "fleet_allocation_changed": false,
+    "checkpoint_changed": false,
+    "selector_changed": false,
+    "training_interrupted": false
+  }
+}

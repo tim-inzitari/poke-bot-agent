@@ -25,6 +25,7 @@ from typing import Any, Optional
 REHEARSAL_RECEIPT_SCHEMA_VERSION = 2
 EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION = 3
 OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION = 4
+ARCHETYPE_FAMILY_REHEARSAL_RECEIPT_SCHEMA_VERSION = 5
 REHEARSAL_LOSS_WEIGHT_KEYS = (
     "value",
     "archetype",
@@ -62,6 +63,7 @@ def canonical_checkpoint_rehearsal_loss_weights(
     values: dict[str, Any],
     expanded_head_contract: Optional[dict[str, Any]] = None,
     option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
+    archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
 ) -> dict[str, float]:
     """Validate checkpoint/result loss metadata and return its base losses.
 
@@ -74,6 +76,17 @@ def canonical_checkpoint_rehearsal_loss_weights(
 
     raw = dict(values)
     embedded_expanded = raw.pop("expanded_strategic", None)
+    embedded_residuals = raw.pop("archetype_residuals", None)
+    from poke_bot.archetype_loss_contract import canonical_residual_weights
+
+    expected_residuals = canonical_residual_weights(
+        archetype_residual_loss_weights
+    )
+    actual_residuals = canonical_residual_weights(embedded_residuals)
+    if actual_residuals != expected_residuals:
+        raise ValueError(
+            "archetype-family rehearsal residual weights mismatch"
+        )
     expected_option_conditioned = {
         str(name): float(weight)
         for name, weight in dict(option_conditioned_loss_weights or {}).items()
@@ -171,6 +184,7 @@ def canonical_expanded_rehearsal_contract(
 def _validate_expanded_training_record(
     record: dict[str, Any],
     expected: dict[str, Any],
+    archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Validate a checkpoint-bound expanded record against its requested pass."""
 
@@ -195,15 +209,45 @@ def _validate_expanded_training_record(
         ) from exc
     if actual_weights != expected["loss_weights"]:
         raise RuntimeError("expanded rehearsal checkpoint weights mismatch")
+    from poke_bot.archetype_loss_contract import canonical_residual_weights
+
+    residuals = canonical_residual_weights(archetype_residual_loss_weights)
+    actual_residuals = canonical_residual_weights(
+        record.get("archetype_residual_loss_weights")
+    )
+    if actual_residuals != residuals:
+        raise RuntimeError(
+            "expanded rehearsal checkpoint residual weights mismatch"
+        )
+    effective = dict(expected["loss_weights"])
+    effective["action_resource"] += residuals["resource_attack_readiness"]
+    effective["resource_forecast"] += residuals["resource_attack_readiness"]
+    effective["outcome_distribution"] += residuals[
+        "long_horizon_prize_pressure"
+    ]
+    effective["remaining_turns"] += residuals[
+        "long_horizon_prize_pressure"
+    ]
+    actual_effective = dict(
+        record.get("effective_loss_weights") or actual_weights
+    )
+    if actual_effective != effective:
+        raise RuntimeError(
+            "expanded rehearsal checkpoint effective weights mismatch"
+        )
     gradient = {
         str(name) for name in record.get("gradient_enabled_heads") or ()
     }
-    if gradient != set(expected["enabled_heads"]):
+    if gradient != {
+        name for name, weight in effective.items() if float(weight) > 0.0
+    }:
         raise RuntimeError("expanded rehearsal gradient-head set mismatch")
     if record.get("runtime_enabled_heads") != []:
         raise RuntimeError("expanded rehearsal unexpectedly enabled runtime heads")
     heads = dict(record.get("heads") or {})
-    for name in expected["enabled_heads"]:
+    for name in (
+        name for name, weight in effective.items() if float(weight) > 0.0
+    ):
         row = dict(heads.get(name) or {})
         train_rows = int(row.get("train_labeled_rows", 0))
         validation_rows = int(row.get("validation_labeled_rows", 0))
@@ -462,6 +506,7 @@ def _validate_receipt(
     corpus_split_seed: int,
     expanded_head_contract: Optional[dict[str, Any]] = None,
     option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
+    archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     from poke_bot.promotion import CheckpointIdentity
@@ -473,13 +518,23 @@ def _validate_receipt(
         str(name): float(weight)
         for name, weight in dict(option_conditioned_loss_weights or {}).items()
     }
+    from poke_bot.archetype_loss_contract import canonical_residual_weights
+
+    expected_residuals = canonical_residual_weights(
+        archetype_residual_loss_weights
+    )
+    residuals_enabled = any(value > 0.0 for value in expected_residuals.values())
     expected_schema = (
-        OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-        if expected_option_conditioned
+        ARCHETYPE_FAMILY_REHEARSAL_RECEIPT_SCHEMA_VERSION
+        if residuals_enabled
         else (
-            EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-            if expected_expanded
-            else REHEARSAL_RECEIPT_SCHEMA_VERSION
+            OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if expected_option_conditioned
+            else (
+                EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+                if expected_expanded
+                else REHEARSAL_RECEIPT_SCHEMA_VERSION
+            )
         )
     )
     if int(receipt.get("schema", -1)) != expected_schema:
@@ -519,6 +574,13 @@ def _validate_receipt(
         raise RuntimeError(
             "expert receipt option-conditioned loss-weight contract mismatch"
         )
+    actual_residuals = canonical_residual_weights(
+        receipt.get("archetype_residual_loss_weights")
+    )
+    if actual_residuals != expected_residuals:
+        raise RuntimeError(
+            "expert receipt archetype-family residual contract mismatch"
+        )
     if int(receipt.get("corpus_split_seed", -1)) != int(corpus_split_seed):
         raise RuntimeError("expert receipt corpus split-seed mismatch")
     expected_seat_receipt = dict(training_seat_split_receipt or {})
@@ -541,6 +603,7 @@ def _validate_receipt(
         _validate_expanded_training_record(
             dict(receipt.get("expanded_head_training") or {}),
             expected_expanded,
+            expected_residuals,
         )
     return {**receipt, "checkpoint_identity": output.as_dict(), "reused": True}
 
@@ -557,6 +620,7 @@ def recover_rehearsal(
     corpus_split_seed: int,
     expanded_head_contract: Optional[dict[str, Any]] = None,
     option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
+    archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
 ) -> Optional[dict[str, Any]]:
     """Reuse a receipt, or reconstruct it after checkpoint-before-receipt crash."""
@@ -577,6 +641,7 @@ def recover_rehearsal(
             corpus_split_seed=corpus_split_seed,
             expanded_head_contract=expanded_head_contract,
             option_conditioned_loss_weights=option_conditioned_loss_weights,
+            archetype_residual_loss_weights=archetype_residual_loss_weights,
             training_seat_split_receipt=training_seat_split_receipt,
         )
     if not checkpoint_path.is_file():
@@ -602,6 +667,7 @@ def recover_rehearsal(
             dict(record.get("loss_weights") or {}),
             expected_expanded,
             option_conditioned_loss_weights,
+            archetype_residual_loss_weights,
         )
         expected_loss_weights = canonical_rehearsal_loss_weights(loss_weights)
     except ValueError as exc:
@@ -619,20 +685,30 @@ def recover_rehearsal(
     expanded_training = dict(
         (payload.get("extra") or {}).get("expanded_head_training") or {}
     )
+    from poke_bot.archetype_loss_contract import canonical_residual_weights
+
+    expected_residuals = canonical_residual_weights(
+        archetype_residual_loss_weights
+    )
     if expected_expanded:
         _validate_expanded_training_record(
             expanded_training,
             expected_expanded,
+            expected_residuals,
         )
     identity = CheckpointIdentity.from_path(checkpoint_path)
     receipt = {
         "schema": (
-            OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-            if option_conditioned_loss_weights
+            ARCHETYPE_FAMILY_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if any(value > 0.0 for value in expected_residuals.values())
             else (
-                EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-                if expected_expanded
-                else REHEARSAL_RECEIPT_SCHEMA_VERSION
+                OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+                if option_conditioned_loss_weights
+                else (
+                    EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+                    if expected_expanded
+                    else REHEARSAL_RECEIPT_SCHEMA_VERSION
+                )
             )
         ),
         "before_iteration": int(before_iteration),
@@ -643,6 +719,11 @@ def recover_rehearsal(
         "epochs": int(epochs),
         "learning_rate": float(learning_rate),
         "loss_weights": expected_loss_weights,
+        **(
+            {"archetype_residual_loss_weights": expected_residuals}
+            if any(value > 0.0 for value in expected_residuals.values())
+            else {}
+        ),
         **(
             {
                 "option_conditioned_loss_weights": {
@@ -689,6 +770,7 @@ def recover_rehearsal(
         corpus_split_seed=corpus_split_seed,
         expanded_head_contract=expanded_head_contract,
         option_conditioned_loss_weights=option_conditioned_loss_weights,
+        archetype_residual_loss_weights=archetype_residual_loss_weights,
         training_seat_split_receipt=training_seat_split_receipt,
     )
 
@@ -706,6 +788,7 @@ def commit_rehearsal_receipt(
     result: dict[str, Any],
     expanded_head_contract: Optional[dict[str, Any]] = None,
     option_conditioned_loss_weights: Optional[dict[str, Any]] = None,
+    archetype_residual_loss_weights: Optional[dict[str, Any]] = None,
     training_seat_split_receipt: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Commit the small durable receipt after the immutable checkpoint exists."""
@@ -724,11 +807,17 @@ def commit_rehearsal_receipt(
     expected_expanded = canonical_expanded_rehearsal_contract(
         expanded_head_contract
     )
+    from poke_bot.archetype_loss_contract import canonical_residual_weights
+
+    expected_residuals = canonical_residual_weights(
+        archetype_residual_loss_weights
+    )
     try:
         actual_loss_weights = canonical_checkpoint_rehearsal_loss_weights(
             dict(rehearsal.get("loss_weights") or {}),
             expected_expanded,
             option_conditioned_loss_weights,
+            expected_residuals,
         )
     except ValueError as exc:
         raise RuntimeError(
@@ -747,15 +836,20 @@ def commit_rehearsal_receipt(
         _validate_expanded_training_record(
             expanded_training,
             expected_expanded,
+            expected_residuals,
         )
     receipt = {
         "schema": (
-            OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-            if option_conditioned_loss_weights
+            ARCHETYPE_FAMILY_REHEARSAL_RECEIPT_SCHEMA_VERSION
+            if any(value > 0.0 for value in expected_residuals.values())
             else (
-                EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
-                if expected_expanded
-                else REHEARSAL_RECEIPT_SCHEMA_VERSION
+                OPTION_CONDITIONED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+                if option_conditioned_loss_weights
+                else (
+                    EXPANDED_REHEARSAL_RECEIPT_SCHEMA_VERSION
+                    if expected_expanded
+                    else REHEARSAL_RECEIPT_SCHEMA_VERSION
+                )
             )
         ),
         "before_iteration": int(before_iteration),
@@ -766,6 +860,11 @@ def commit_rehearsal_receipt(
         "epochs": int(epochs),
         "learning_rate": float(learning_rate),
         "loss_weights": expected_loss_weights,
+        **(
+            {"archetype_residual_loss_weights": expected_residuals}
+            if any(value > 0.0 for value in expected_residuals.values())
+            else {}
+        ),
         **(
             {
                 "option_conditioned_loss_weights": {
@@ -812,6 +911,7 @@ def commit_rehearsal_receipt(
         corpus_split_seed=corpus_split_seed,
         expanded_head_contract=expanded_head_contract,
         option_conditioned_loss_weights=option_conditioned_loss_weights,
+        archetype_residual_loss_weights=archetype_residual_loss_weights,
         training_seat_split_receipt=training_seat_split_receipt,
     )
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=Atomically activate Marnie family system after exact iter-9 upload
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/family_activation/await_upload_after_iter_00009.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/activation-request.json
+ConditionPathExists=!/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/migration-receipt.json
+After=pokebot-final-format-marnie-r104-h10-rl.service pokebot-marnie-family-iteration9-trigger-r130.service
+OnSuccess=pokebot-marnie-postupload-weighted-bootstrap-r135.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+ExecStartPre=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/materialize_marnie_postupload_activation_pause.py --service pokebot-final-format-marnie-r104-h10-rl.service --wait-pause /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/family_activation/await_upload_after_iter_00009.json --trigger /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json --request /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/activation-request.json --output /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/postupload-activation-pause-r135.json
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/activate_marnie_archetype_family_from_request.py --pause /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/postupload-activation-pause-r135.json --request /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/activation-request.json --output-registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r136_family.json --environment-drop-in /home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zzzzzz-family-active-r136.conf --receipt /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/migration-receipt.json --python-executable /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --launcher /home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/scripts/launch_active_specialist.py
+ExecStartPost=/usr/bin/systemctl --user daemon-reload

@@ -1,0 +1,44 @@
+{
+  "schema": "poke_bot.marnie_dashboard_guide_shadow_projection/v1",
+  "status": "activated_display_only",
+  "goal_revision": 155,
+  "recorded_at_utc": "2026-08-05T01:41:03Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "repair": {
+    "problem": "The live RL model card collapsed the durable retired-guide shadow state into the generic absent state after the post-upload bootstrap service stopped being current.",
+    "projection_status": "shadow_only_non_authoritative",
+    "enabled": false,
+    "loss_weight": 0.0,
+    "gradient_authority": false,
+    "fusion_authority": false,
+    "action_authority": false,
+    "serving_authority": false,
+    "gate_authority": false,
+    "blocking_authority": false,
+    "runtime_or_selector_changed": false,
+    "training_restarted": false
+  },
+  "artifacts": {
+    "dashboard_snapshot": {
+      "path": "scripts/dashboard_snapshot.py",
+      "sha256": "sha256:cff1c4c3024b9dc8d2e792d32b77fa62ffbd3cb9ed5fafbef840b0e9696bc110"
+    },
+    "regression_tests": {
+      "path": "tests/test_dashboard_regressions.py",
+      "sha256": "sha256:0ee5f0dab375fd73a5f838f056d458b2e96c4a5577ab89397661a89ce150caa0",
+      "result": "4 passed, 233 deselected"
+    },
+    "canonical_remote_snapshot": "/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py",
+    "selector_owned_remote_snapshot": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/scripts/dashboard_snapshot.py"
+  },
+  "live_validation": {
+    "dashboard_source_integrity_current": true,
+    "required_sources_current": 18,
+    "required_sources_total": 18,
+    "training_status": "running",
+    "training_iteration": 11,
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "managed_pid": 138326,
+    "managed_restart_count": 0
+  }
+}

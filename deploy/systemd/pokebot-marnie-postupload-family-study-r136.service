@@ -1,0 +1,40 @@
+[Unit]
+Description=Run exact Marnie post-upload family shadow study
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/family_activation/await_upload_after_iter_00009.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/manifest.json
+ConditionPathExists=/home/inzi/poke-bot-agent/config/archetype_loss_contracts/marnie-s-grimmsnarl-ex.v1.json
+ConditionPathExists=!/home/inzi/poke-bot-agent/outputs/studies/marnie-archetype-family-r136/study.json
+After=pokebot-final-format-marnie-r104-h10-rl.service pokebot-marnie-family-iteration9-trigger-r130.service
+OnSuccess=pokebot-marnie-postupload-family-activate-r135.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg
+Environment=POKEBOT_H10_CAPACITY_ENABLED=1
+Environment=POKEBOT_EXPANDED_HEADS_ENABLED=1
+Environment=POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_HEAD_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_TYPED_OUTPUT_CENTERED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ACTION_TYPE_RELIABILITY_CAP=0.25
+Environment=POKEBOT_LATENT_LOOKAHEAD_ENABLED=1
+Environment=POKEBOT_LATENT_LOOKAHEAD_ACTION_AUTHORITY_ENABLED=1
+Environment=POKEBOT_LATENT_LOOKAHEAD_WIDTH=512
+Environment=POKEBOT_LATENT_LOOKAHEAD_POLICY_AID_CAP=0.25
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/run_marnie_archetype_family_study.py --trigger /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json --pause /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/family_activation/await_upload_after_iter_00009.json --manifest /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/manifest.json --loss-contract /home/inzi/poke-bot-agent/config/archetype_loss_contracts/marnie-s-grimmsnarl-ex.v1.json --loop-state /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/loop_state.json --run-manifest /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/manifest.json --active-gate-contract /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/runtime/final_format_marnie_gate_r111_h10_s_other_a.json --before-registry /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r118_generation15.json --selector /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_h10_r104.env --curriculum-spec /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-r104.json --head-role-map /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-head-roles-r104.json --curriculum-validation /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-validation-r104.json --output-dir /home/inzi/poke-bot-agent/outputs/studies/marnie-archetype-family-r136 --activation-request /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/activation-request.json --device cuda:1 --workers 96 --game-timeout-seconds 600 --seed 130009 --seed-book marnie-family-r136-v1
+Restart=on-failure
+RestartPreventExitStatus=76
+RestartSec=60
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/postupload_family_study_r136.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/postupload_family_study_r136.log

@@ -89,9 +89,35 @@ training_hardware_throughput:
       retries: true
       producer_complete_drain: true
     current_iteration_5_mutated: false
+  public_mix_exact_retention_recovery:
+    goal_revision: 158
+    status: staged_next_managed_interpreter_start
+    applies_to: public_mix_only
+    required_retained_source_games: 7168
+    historical_retry_seed_lanes: 4
+    repaired_retry_seed_lanes: 32
+    additional_seed_namespace: deterministic_high_disjoint
+    preserve_exact_schedule_contract:
+      - seat
+      - opponent_id
+      - archetype
+      - opponent_archetype
+      - opponent_checkpoint_digest
+      - opponent_content_digest
+      - opponent_training_group
+    promote_at_most_one_record_per_missing_primary_cell: true
+    final_shortfall_behavior: fail_closed_with_missing_cell_diagnostics
+    self_play_tail_policy_changed: false
+    public_mix_weights_changed: false
+    fleet_allocation_changed: false
+    active_interpreter_restarted: false
+    receipt: state/marnie_public_mix_exact_retention_recovery_r158.json
   self_play_elmo_tail_policy:
     goal_revision: 124
-    status: full_remote_execution_resync_and_live_canary_pending
+    activation_revision: 127
+    status: activated_full_remote_execution_live_verified
+    activation_receipt: state/remote_scheduler_checkpoint_activation_r127.json
+    activation_receipt_sha256: sha256:24baf059954708861a18c3598f6b9acd9d3c2ee4feeef50a5fa99a047f512b62
     required_local_only_environment: POKEBOT_SELF_PLAY_LOCAL_ONLY=0
     self_play_remote_claims: full_36_plus_16_execution_targets
     self_play_remote_execution_caps: unchanged_full_fleet
@@ -101,6 +127,13 @@ training_hardware_throughput:
       speculative_low_water_socket_wave: 0
       elmo_execution_workers: 36
       bert_execution_workers: 16
+      initial_clone_fanout_concurrency: 64
+      initial_connect_timeout_seconds: 3
+      initial_hello_timeout_seconds: 10
+      live_fanout_requested_clones: 50
+      live_fanout_connected_clones: 50
+      live_fanout_failed_clones: 0
+      live_fanout_wall_seconds: 0.199
     blackwell_local_workers: 96
     public_mix_and_evaluation_remotes_unchanged: true
     required_environment: POKEBOT_SELF_PLAY_ELMO_TAIL_ONLY=1
@@ -128,6 +161,40 @@ training_hardware_throughput:
       - specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1
       - specialist-hammer-pult-gate-iter15-c256a0ababee
     deleted_dragapult_specialist_targets_restored: false
+  remote_checkpoint_residency:
+    goal_revision: 125
+    activation_revision: 127
+    status: activated_storage_local_verification_live_dispatch_proven
+    activation_receipt: state/remote_scheduler_checkpoint_activation_r127.json
+    activation_receipt_sha256: sha256:24baf059954708861a18c3598f6b9acd9d3c2ee4feeef50a5fa99a047f512b62
+    identity_key: immutable_checkpoint_digest
+    same_digest_reload_policy: skip_only_with_fresh_complete_exact_health
+    exact_health_seeds_process_digest_addressed_staging_cache: true
+    repeat_full_smb_payload_rehash_for_same_resident_digest: false
+    persistent_receipt_reuse_across_source_aliases: true
+    missing_receipt_verification: elmo_storage_local_checkpoint_digest_verify_v1
+    local_digest_cache_identity:
+      - resolved_path
+      - size
+      - mtime_ns
+      - inode
+    historical_iter3_storage_local_verify_seconds: 0.075
+    historical_iter0_through5_max_resolve_seconds: 0.972
+    required_health:
+      controller_healthy: true
+      leaf_alive: true
+      leaf_identity_ok: true
+      every_leaf_healthy: true
+      every_leaf_digest_exact: true
+      primary_digest_exact: true
+      digest_pinned: true
+    production_missing_or_mismatched_health: perform_verified_reload
+    canary_missing_or_mismatched_health: refuse_implicit_reload
+    genuinely_new_digest: reload_exactly_once_per_endpoint
+    applies_to:
+      - production_hard_gate
+      - remote_self_play_canary
+    canary_force_reload_allowed_only_for_explicit_reload_testing: true
   active_teal_local_profile:
     simulator_workers: 48
     environments_per_worker: 4
@@ -910,6 +977,27 @@ specialist_training:
       matchup_adapters_required: true
       exact_representative_required: true
       current_deck_guide_contract: config/deck_guides/crustle.yaml
+      bootstrap_contract:
+        schema: poke_bot.crustle_guide_all_epochs/v1
+        owner_decision_revision: 164
+        total_epochs: 35
+        guide_active_epochs: [1, 35]
+        guide_free_expert_refresh_epochs: []
+        guide_free_expert_refresh_epoch_count: 0
+        final_selection_eligible_epochs: [1, 35]
+        expert_pilot_importance_epochs: [1, 35]
+        expert_pilot_importance_policy_revision: 138
+        expert_pilot_importance_required: true
+        expert_pilot_importance_validation_unweighted: true
+        expert_pilot_importance_actions_and_labels_unchanged: true
+        guide_weight_after_epoch_10: 0.05
+        guide_target_generation_after_epoch_10: true
+        guide_gradient_authority_after_epoch_10: true
+        guide_fusion_or_action_authority: false
+        post_bootstrap_guide_weight_lifecycle: owner_pinned_persistent_hold_0_05
+        automatic_guide_review_or_decay_allowed: false
+        exact_marnie_iteration20_checkpoint_required_as_expert_practice_anchor: true
+        marnie_actions_may_be_relabelled_as_crustle_targets: false
       exact_corpus_manifest: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/crustle-v2/PROTECTED_EXPERT_CORPUS.json
       terminal_preflight_required_before_launch: true
       freeze_register_and_submission_required: true
@@ -1024,6 +1112,20 @@ specialist_training:
       - official_or_premium_holdouts
       - gate_thresholds
       - checkpoint_acceptance
+    explicit_training_exceptions:
+      - owner_decision_revision: 138
+        scope: marnie_post_iteration_9_expert_bootstrap_sample_importance_only
+        source_rows: public_expert_replays_only
+        support_and_weight_tiers:
+          - {minimum_games: 1, maximum_games: 31, weight: 1.5}
+          - {minimum_games: 32, maximum_games: 127, weight: 2.0}
+          - {minimum_games: 128, maximum_games: 511, weight: 3.0}
+          - {minimum_games: 512, maximum_games: 1023, weight: 4.0}
+          - {minimum_games: 1024, maximum_games: 2047, weight: 7.0}
+          - {minimum_games: 2048, maximum_games: null, weight: 10.0}
+        unmatched_or_unverifiable_weight: 1.0
+        actions_and_labels_unchanged: true
+        kaggle_evaluation_replays_excluded: true
     refresh_before_specialist_handoff: true
     immutable_snapshot_receipt_required: true
     authoritative_runtime_snapshot: state/specialists.yaml#/training_priority/source
@@ -1936,6 +2038,189 @@ baseline_phase_iteration:
     game_plans: even_as_integer_counts_permit
     going_first_second: even_as_integer_counts_permit
 
+marnie_archetype_family_generalization:
+  schema: poke_bot.specialist_archetype_families/v1
+  status: staged_runtime_inert
+  specialist_id: marnie-s-grimmsnarl-ex
+  observed_exact_legal_lists_only: true
+  synthetic_swaps_allowed: false
+  swap_distance_cluster_maximum: 2
+  minimum_non_package_clusters: 12
+  split_targets: {train: 0.60, dev: 0.20, locked: 0.20}
+  package_variant_probability: 0.20
+  other_probability_equal_by_cluster: 0.80
+  singular_package_and_measurement_deck: true
+  loss_contract_schema: poke_bot.archetype_loss_contract/v1
+  residual_initial_weight: 0.0125
+  residual_weight_bounds: [0.0, 0.05]
+  spsa_log_space_perturbations: [0.20, 0.10]
+  maximum_spsa_rounds: 2
+  development_paired_units: 1020
+  locked_paired_units: 4284
+  package_guard_pairs: 1020
+  activation:
+    owner_boundary_revision: 130
+    owner_reaffirmed_revision: 132
+    operational_activation_revision: 133
+    post_upload_bootstrap_revision: 134
+    expert_pilot_importance_revision: 138
+    trigger_iteration: 9
+    trigger_schema: poke_bot.kaggle_submission_attempt/v1
+    successful_upload_returncode: 0
+    queued_submission_or_score_is_authority: false
+    successful_upload_is_last_old_system_boundary: true
+    current_system_required_through_successful_upload: true
+    prepared_or_passing_artifacts_may_activate_early: false
+    hook_status: activated_after_iteration_6_before_iteration_7_collection
+    hook_activation_receipt: state/marnie_new_system_hook_activation_r130.json
+    hook_activation_receipt_sha256: sha256:f26796f6776c48cdac4e63e6e5ddd7045bc747c59a3dec1fbf8acf54b455e9c1
+    family_sampler_and_loss_vector_runtime_authority: true
+    family_activation_authority:
+      owner_revision: 139
+      mode: owner_ceiling_after_inconclusive_shadow_study
+      measured_study_passed: false
+      measured_study_status: failed_closed_inconclusive_after_two_rounds
+      preserve_measured_study_immutable: true
+      selected_round: 1
+      selected_direction: plus
+      activation_request_requires_checksum_bound_owner_ceiling_receipt: true
+      ordinary_manifest_loss_contract_same_parent_isolation_and_atomicity_checks_required: true
+      post_activation_monitor_required: true
+      activated_at_boundary: post_iteration_9_pre_bootstrap
+      activation_request_sha256: sha256:66717a6c2060a1a38227c35ea903ddea4c793a395cf3aeaa9dc187d322df2f75
+      migration_receipt_sha256: sha256:ba3f27534c4fe74fe383c90b79a7ddb5eac705d41e70360cab5345829eef241e
+    first_post_upload_training_collection_system: new_system
+    old_system_collection_after_successful_upload_allowed: false
+    boundary_is_owner_immutable: true
+    activation_inputs_must_be_prepared_before_trigger: true
+    sampler_and_loss_vector_atomic: true
+    clean_boundary_restart_prevent_status: 75
+    missing_or_inconclusive_evidence_before_trigger: continue_exact_list_recipe
+    missing_or_inconclusive_evidence_after_successful_upload: pause_before_next_collection
+    first_new_system_training_sequence:
+      order:
+        - activate_family_sampler_and_loss_vector_atomically
+        - bootstrap_exact_iteration_9_parent_on_expert_corpus
+        - submit_exact_bootstrap_checkpoint_to_kaggle
+        - begin_first_new_system_self_play_collection
+      parent: checksum_exact_successfully_uploaded_iteration_9_learner
+      expert_corpus: /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-14-2026-08-02-roster18-v6-strategic-r109/marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json
+      expert_corpus_records: 73082
+      expert_corpus_decisions: 6828373
+      epochs: 25
+      checkpoint_selection: final_epoch_25
+      bootstrap_checkpoint_submission_required: true
+      successful_checksum_exact_bootstrap_upload_required_before_self_play: true
+      failed_or_pending_bootstrap_or_upload: pause_before_self_play
+      old_system_fallback_collection_allowed: false
+      accepted_policy_continuity:
+        generation: 15
+        receipt: state/marnie_postupload_latent_policy_continuity_r140.json
+        receipt_sha256: sha256:dc2cb24a198f32b266bb695456abbc834de60f735d965ded2546b32a6c2be157
+        latent_lookahead_enabled: true
+        latent_lookahead_action_authority_enabled: true
+        latent_lookahead_width: 512
+        latent_lookahead_policy_aid_cap: 0.25
+        latent_lookahead_parameters: 412130
+        validate_uploaded_parent_every_epoch_and_selected_checkpoint: true
+        failure_behavior: fail_closed_before_bootstrap_submission_or_self_play
+        epoch_1_recovery_receipt: state/marnie_postupload_epoch1_recovery_r141.json
+        epoch_1_recovery_receipt_sha256: sha256:c08284d1d53f39bd804f588c172a768d99b23888ee9e1a61653ed428197f4fe7
+        epoch_1_recovery_submission_chain_receipt: state/marnie_epoch_recovery_submission_chain_r141.json
+        epoch_1_recovery_submission_chain_receipt_sha256: sha256:401344d07388234722b1dd3fdbcc6805af2aa499b3c80280ea09ef6cdc590f11
+      guide_retirement:
+        owner_revision: 142
+        status: non_authoritative_optional_shadow_for_marnie_lineage
+        guide_weight: 0.0
+        applies_to_bootstrap_and_all_later_marnie_training: true
+        guide_target_generation_required: false
+        guide_conditioned_losses_enabled: false
+        guide_action_influence: false
+        historical_artifacts: audit_or_offline_shadow_only
+        shadow_diagnostics_optional: true
+        live_shadow_target_generation_enabled: false
+        shadow_gradient_authority: false
+        shadow_loss_authority: false
+        shadow_fusion_authority: false
+        shadow_serving_authority: false
+        shadow_gate_authority: false
+        shadow_checkpoint_selection_authority: false
+        shadow_submission_authority: false
+        shadow_self_play_authority: false
+        shadow_blocking_authority: false
+        missing_or_invalid_shadow_behavior: mark_unavailable_and_continue
+        all_non_guide_training_objectives_unchanged: true
+        runtime_registry: /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r142_family_guide_shadow.json
+        runtime_registry_sha256: sha256:88b105452dec02fb9f798a78011ef0abb213ae8c2598d92c4aa9fc81b51f53f5
+        pre_family_rollback_registry: /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r140_guide_retired.json
+        pre_family_rollback_registry_sha256: sha256:6960318b4d93819fa8112ee6e90161a8545b981cff1055c92adb42c33e809ae6
+        family_guide_shadow_runtime_receipt: state/marnie_family_guide_shadow_runtime_r142.json
+        family_guide_shadow_runtime_receipt_sha256: sha256:1ea409b8315b8d5fe1c3b0ad2d2e5245f4c7e3ceb2907f3e59a4fd7f343fc88a
+        family_guide_shadow_chain_receipt: state/marnie_family_guide_shadow_chain_r142.json
+        family_guide_shadow_chain_receipt_sha256: sha256:5fa2a96582d454a2cdf80e667bcfd6657f121af76e0577759dbd67bcff8da320
+        family_guide_shadow_dashboard_receipt: state/marnie_family_guide_shadow_dashboard_r142.json
+        family_guide_shadow_dashboard_receipt_sha256: sha256:59bc2843c5017c096cfd4a3a1e16e7c4406157d9306eea1dedd8dc47b02e5faa
+        monitor_pass_runtime: merged_family_guide_shadow
+        monitor_rollback_runtime: pre_family_guide_retired
+        retirement_receipt: /home/inzi/poke-bot-agent/outputs/state/marnie-guide-retirement-r140.json
+        retirement_receipt_sha256: sha256:c8a4efa35aff64eb833cb06454ee5bac12ef14c0dfbf4fcfbb1af6aed1a13670
+        submission_chain_receipt: state/marnie_guide_retirement_submission_chain_r140.json
+        submission_chain_receipt_sha256: sha256:47758999c5290f806defa0401c1b6e3431e112032d20c7a165e4c75e6211ac24
+        shadow_non_authority_receipt: state/marnie_guide_shadow_non_authority_r141.json
+        shadow_non_authority_receipt_sha256: sha256:fe0d43ce38eab29c6ee49a5b6047b8b4059fb50dca10b3e832612f100379222b
+        shadow_dashboard_receipt: state/marnie_guide_shadow_dashboard_r141.json
+        shadow_dashboard_receipt_sha256: sha256:5d14e5ef522a39684c1873aa81ae7572f1dcd9a29a3ae7fc20d4df11885816b7
+      expert_pilot_importance:
+        status: ready_runtime_inert_until_post_iteration_9_bootstrap
+        source: checksum_pinned_ptcgreplay_top_100_snapshot
+        snapshot: /home/inzi/poke-bot-agent/outputs/state/marnie-r135-ptcgreplay-top100.json
+        snapshot_sha256: sha256:fea4394a59d9a8d2d3c4ecac8e8be025c7928a40a70e0ee53240513b396e5884
+        split_identity_targets: /home/inzi/poke-bot-agent/outputs/state/marnie-r135-expert-pilot-targets.json
+        split_identity_targets_sha256: sha256:1b89c9d3fa9169ebbdc5458d876369e98769fee220f150ee6c3a563fc778b8d3
+        pilot_map: /home/inzi/poke-bot-agent/outputs/state/marnie-r135-expert-pilot-map.json
+        pilot_map_sha256: sha256:b158d0ad3a8a39961fd27715b70e3eaf91baf31badf72546158bd69a9ce70516
+        weight_index: /home/inzi/poke-bot-agent/outputs/state/marnie-r138-expert-pilot-importance.json
+        weight_index_sha256: sha256:1d9ee77af9b9d5f916037b69475471c0a20602c6ea4ba186b59deb8fc07371dc
+        training_games: 65774
+        validation_games_unweighted: 7308
+        resolved_pilot_rows: 73082
+        unverifiable_pilot_rows: 0
+        matched_top_100_training_games: 33156
+        unmatched_training_games: 32618
+        effective_training_weight_mass: 237330.0
+        analytical_effective_sample_size: 36169.671830335166
+        tier_counts: {1.0x: 32618, 1.5x: 206, 2.0x: 1648, 3.0x: 4120, 4.0x: 9697, 7.0x: 8297, 10.0x: 9188}
+        support_partition: training_only
+        join_key: [episode_id, seat, exact_team_name]
+        support_and_weight_tiers:
+          - {minimum_games: 1, maximum_games: 31, weight: 1.5}
+          - {minimum_games: 32, maximum_games: 127, weight: 2.0}
+          - {minimum_games: 128, maximum_games: 511, weight: 3.0}
+          - {minimum_games: 512, maximum_games: 1023, weight: 4.0}
+          - {minimum_games: 1024, maximum_games: 2047, weight: 7.0}
+          - {minimum_games: 2048, maximum_games: null, weight: 10.0}
+        unmatched_or_unverifiable_weight: 1.0
+        applies_to: post_iteration_9_bootstrap_only
+        modifies_actions_or_labels: false
+        kaggle_evaluation_replays_training_eligible: false
+        immutable_snapshot_and_weight_index_required: true
+    post_activation_monitor:
+      status: armed_runtime_inert_waiting_first_activated_iteration_commit
+      first_new_system_collection_iteration: 10
+      pause_exit_status: 78
+      fresh_locked_paired_units: 4284
+      fresh_package_paired_units: 1020
+      training_eligible: false
+      replay_eligible: false
+      monitor_pass_behavior: preserve_family_runtime_and_managed_resume
+      monitor_fail_behavior: restore_parent_checkpoint_authority_and_exact_list_runtime_then_managed_resume
+      restored_checkpoint_authority_fields: [learner, champion, heldout_champion]
+      resolution_required_before_next_collection: true
+      managed_service: pokebot-marnie-postactivation-family-monitor-r137.service
+      managed_timer: pokebot-marnie-postactivation-family-monitor-r137.timer
+      resolution_service: pokebot-marnie-postactivation-family-resolve-r137.service
+      stage_receipt: state/marnie_postactivation_family_monitor_stage_r137.json
+
 research_evaluations:
   training_eligible: false
   permitted_uses:
@@ -2141,15 +2426,53 @@ kaggle:
       - representatives_checksum
       - matchup_tree_checksum
 
+post_marnie_crustle_handoff:
+  owner_revision: 161
+  status: dormant_boundary_repaired_waiting_for_marnie_iteration_20
+  marnie_completion_exec: complete_final_format_marnie_refresh.py
+  stale_relaunch_exec_allowed: false
+  source_registry_resolution: effective_managed_marnie_execstart_at_completion
+  completion_receipt_binds_source_registry_path_and_sha256: true
+  crustle_registration_requires_completion_bound_registry: true
+  marnie_guide_weight_required: 0.0
+  marnie_fusion_schema_required: poke_bot.causal_decision_fusion/v3
+  marnie_only_family_runtime_fields_inherited_by_crustle: false
+  crustle_bootstrap_total_epochs: 35
+  crustle_guide_active_epochs: [1, 35]
+  crustle_guide_free_expert_refresh_epochs: []
+  crustle_final_selection_eligible_epochs: [1, 35]
+  crustle_expert_pilot_importance_epochs: [1, 35]
+  crustle_expert_pilot_importance_required: true
+  exact_completed_marnie_h10_expert_practice_anchor_required: true
+  marnie_actions_relabelled_as_crustle_expert_actions: false
+  active_before_marnie_iteration_20: false
+  receipt: state/post_marnie_crustle_runtime_rebind_r143.json
+  receipt_sha256: sha256:ddd25f2ad7c42182cec5e858ec8c48377b9ca1ff00fe9ebd0e0fc5ff652b0539
+
 population_phase:
+  owner_revision: 144
+  materialization_repair_status: activated_dormant_boundary
+  materialization_repair_receipt: state/post_crustle_population_materialization_r144.json
+  materialization_repair_receipt_sha256: sha256:fb11c4a211d5598a35d9ae68b9ad5caa59a59a8119827028b85bc5159a87a8c9
   starts_after_all_specialists_pass: false
   requires_all_specialists_pass: true
   requires_post_fleet_refresh_complete: true
   requires_post_marnie_crustle_complete: true
   starts_after_alakazam_marnie_and_crustle_complete: true
   trainable_logical_member_count: 15
+  historical_frozen_registry_member_count: 14
+  historical_frozen_registry_modified: false
+  trainable_member_identity_union: historical_14_union_refresh_alakazam_marnie_crustle
+  refreshed_current_member_ids: [alakazam, marnie-s-grimmsnarl-ex, crustle]
+  refreshed_originals_selected_history_ids: [alakazam, marnie-s-grimmsnarl-ex]
   crustle_member_source: newly_completed_h10_specialist
   public_crustle_agent_training_eligible: false
+  public_crustle_agent_selected_history_eligible: false
+  crustle_refresh_required_artifacts:
+    - submission_bundle
+    - expert_manifest
+    - matchup_runtime_tree
+    - runtime_registry
   unfreeze_population: true
   local_round_robin_self_play: true
   include_current_versions: true

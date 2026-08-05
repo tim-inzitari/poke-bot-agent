@@ -2166,8 +2166,16 @@ class DeviceResidentBootstrapCorpus:
         shuffle: bool,
         seed: int,
         epoch: int,
+        sampling_weights: torch.Tensor | None = None,
     ) -> list[torch.Tensor]:
-        """Batch whole games under a decision/stage activation budget."""
+        """Batch whole games under a decision/stage activation budget.
+
+        ``sampling_weights`` is training-only importance sampling over the
+        packed train-game order.  It draws exactly ``train_games`` games with
+        replacement, so higher-weight public experts are seen more often
+        without duplicating the resident tensors or changing any action/label.
+        Validation never accepts a weighted sampler.
+        """
         if not self.has_temporal_layout:
             raise ValueError("resident corpus has no temporal game layout")
         assert self.game_decision_offset is not None
@@ -2176,7 +2184,33 @@ class DeviceResidentBootstrapCorpus:
         start = 0 if train else self.train_games
         if count <= 0:
             return []
-        if shuffle:
+        if sampling_weights is not None:
+            if not train or not shuffle:
+                raise ValueError(
+                    "temporal importance sampling is train/shuffle only"
+                )
+            weights = sampling_weights.reshape(-1).to(
+                device=self.device, dtype=torch.float32
+            )
+            if int(weights.numel()) != int(count):
+                raise ValueError(
+                    "temporal importance weights do not align with train games"
+                )
+            if not bool(torch.isfinite(weights).all()) or bool(
+                (weights <= 0.0).any()
+            ):
+                raise ValueError(
+                    "temporal importance weights must be finite and positive"
+                )
+            generator = torch.Generator(device=self.device)
+            generator.manual_seed(int(seed) + int(epoch) * 10007)
+            order = torch.multinomial(
+                weights,
+                num_samples=int(count),
+                replacement=True,
+                generator=generator,
+            ) + start
+        elif shuffle:
             generator = torch.Generator(device=self.device)
             generator.manual_seed(int(seed) + int(epoch) * 10007)
             order = (

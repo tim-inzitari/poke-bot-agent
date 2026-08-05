@@ -9,6 +9,25 @@ from poke_bot.matchup_adapters import EXPERT_IDS
 from scripts import register_next_specialist_runtime as register
 
 
+def test_crustle_persistent_guide_policy_forbids_automatic_decay() -> None:
+    policy = register._persistent_crustle_guide_policy()
+    assert policy == {
+        "schema": "poke_bot.crustle_persistent_guide_hold/v1",
+        "owner_decision_revision": 165,
+        "scope": "crustle_persistent_training_only",
+        "held_weight": 0.05,
+        "automatic_review_after_each_five_iteration_commit": False,
+        "automatic_ramp_allowed": False,
+        "automatic_decay_allowed": False,
+        "change_requires_explicit_owner_decision": True,
+        "change_requires_checksum_bound_boundary_receipt": True,
+        "direct_policy_cross_entropy_allowed": False,
+        "runtime_action_override_allowed": False,
+        "serving_authority": False,
+        "gate_authority": False,
+    }
+
+
 def _json(path: Path, value: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value), encoding="utf-8")

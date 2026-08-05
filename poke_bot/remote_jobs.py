@@ -74,7 +74,21 @@ _BERT_HOSTS = frozenset(
 )
 _BERT_SSH = os.environ.get("POKEBOT_BERT_SSH", "tsinzitari@bert.local")
 _ELMO_STAGE_LOCK = threading.RLock()
-_ELMO_STAGE_CACHE: dict[tuple[str, str, str], str] = {}
+# A digest identifies checkpoint bytes regardless of which immutable local
+# alias named them.  Keying this cache by source path made every historical
+# self-play checkpoint alias re-enter the SMB verification path; the first
+# thread then held this lock while the other Elmo request sockets sat idle.
+_ELMO_STAGE_CACHE: dict[tuple[str, str], str] = {}
+_LOCAL_CHECKPOINT_DIGEST_LOCK = threading.RLock()
+_LOCAL_CHECKPOINT_DIGEST_CACHE: dict[
+    str, tuple[int, int, int, str]
+] = {}
+_ELMO_STAGE_RECEIPT_ROOT = Path(
+    os.environ.get(
+        "POKEBOT_ELMO_STAGE_RECEIPT_DIR",
+        str(Path.home() / ".cache" / "pokebot" / "elmo-checkpoint-stage"),
+    )
+).expanduser()
 _BERT_STAGE_LOCK = threading.RLock()
 _BERT_STAGE_CACHE: dict[tuple[str, str], str] = {}
 _MATCHUP_RUNTIME_MARKER_NAME = "matchup-runtime-activation.json"
@@ -861,6 +875,46 @@ def _needs_stage(src: Path, dest: Path) -> bool:
         return True
 
 
+def _cached_local_checkpoint_digest(src: Path) -> str:
+    """Hash immutable local checkpoint bytes once per exact file identity.
+
+    Remote jobs still fail closed when a path is replaced or modified: size,
+    nanosecond mtime, and inode must all match. The lock intentionally covers
+    the first hash so 36 request threads do not concurrently read the same
+    128 MiB parent before discovering the shared Elmo mapping cache.
+    """
+
+    from .checkpoint import checkpoint_digest
+
+    resolved = Path(src).expanduser().resolve()
+    with _LOCAL_CHECKPOINT_DIGEST_LOCK:
+        before = resolved.stat()
+        identity = (
+            int(before.st_size),
+            int(before.st_mtime_ns),
+            int(before.st_ino),
+        )
+        cached = _LOCAL_CHECKPOINT_DIGEST_CACHE.get(str(resolved))
+        if cached is not None and cached[:3] == identity:
+            return cached[3]
+        digest = checkpoint_digest(resolved)
+        after = resolved.stat()
+        after_identity = (
+            int(after.st_size),
+            int(after.st_mtime_ns),
+            int(after.st_ino),
+        )
+        if after_identity != identity:
+            raise RemoteJobsError(
+                f"checkpoint changed while hashing: {resolved}"
+            )
+        _LOCAL_CHECKPOINT_DIGEST_CACHE[str(resolved)] = (
+            *identity,
+            digest,
+        )
+        return digest
+
+
 def digest_addressed_basename(src: Path, digest: Optional[str] = None) -> str:
     """Stable remote filename that cannot collide across distinct checkpoint bytes.
 
@@ -868,10 +922,8 @@ def digest_addressed_basename(src: Path, digest: Optional[str] = None) -> str:
     ``iter_00001.pt`` overwrote prior digests and broke pin/reload on the
     long-lived worker (expected old sha, file had new sha).
     """
-    from .checkpoint import checkpoint_digest
-
     resolved = Path(src).expanduser()
-    dig = digest or checkpoint_digest(resolved)
+    dig = digest or _cached_local_checkpoint_digest(resolved)
     short = str(dig).split(":", 1)[-1][:16]
     if not short:
         raise RemoteJobsError(f"empty checkpoint digest for {resolved}")
@@ -898,6 +950,152 @@ def _gvfs_safe_copy(src: Path, dest: Path) -> None:
         except TypeError:
             if local_tmp.exists():
                 local_tmp.unlink()
+
+
+def _elmo_stage_receipt_path(dest: Path) -> Path:
+    key = hashlib.sha256(str(dest).encode("utf-8")).hexdigest()
+    return _ELMO_STAGE_RECEIPT_ROOT / f"{key}.json"
+
+
+def _write_elmo_stage_receipt(src: Path, dest: Path, digest: str) -> Path:
+    """Persist one exact content-addressed SMB verification."""
+
+    source_stat = src.stat()
+    destination_stat = dest.stat()
+    payload = {
+        "schema": "poke_bot.elmo_checkpoint_stage_receipt/v1",
+        "checkpoint_digest": str(digest),
+        "source_path": str(src),
+        "source_size": int(source_stat.st_size),
+        "destination_path": str(dest),
+        "destination_name": dest.name,
+        "destination_size": int(destination_stat.st_size),
+        "destination_mtime_ns": int(destination_stat.st_mtime_ns),
+        "verified_at_unix": time.time(),
+    }
+    receipt = _elmo_stage_receipt_path(dest)
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    temporary = receipt.with_name(receipt.name + f".tmp.{os.getpid()}")
+    temporary.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, receipt)
+    return receipt
+
+
+def _elmo_stage_receipt_is_exact(src: Path, dest: Path, digest: str) -> bool:
+    """Validate a content receipt plus current SMB metadata, not payload.
+
+    ``source_path`` remains recorded for provenance, but it is not identity.
+    Two immutable local aliases with the same SHA-256 and size are the same
+    checkpoint and may safely reuse one digest-addressed remote object.
+    """
+
+    try:
+        payload = json.loads(
+            _elmo_stage_receipt_path(dest).read_text(encoding="utf-8")
+        )
+        source_stat = src.stat()
+        destination_stat = dest.stat()
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
+    return bool(
+        payload.get("schema") == "poke_bot.elmo_checkpoint_stage_receipt/v1"
+        and payload.get("checkpoint_digest") == str(digest)
+        and int(payload.get("source_size", -1)) == int(source_stat.st_size)
+        and payload.get("destination_path") == str(dest)
+        and payload.get("destination_name") == dest.name
+        and int(payload.get("destination_size", -1))
+        == int(destination_stat.st_size)
+        and int(payload.get("destination_mtime_ns", -1))
+        == int(destination_stat.st_mtime_ns)
+        and int(destination_stat.st_size) == int(source_stat.st_size)
+    )
+
+
+def _elmo_receipt_destination_for_digest(
+    src: Path,
+    smb: Path,
+    digest: str,
+) -> Optional[Path]:
+    """Return any still-exact content-addressed object for ``digest``.
+
+    The source stem is deliberately irrelevant. A population snapshot may
+    refer to identical bytes as ``iter_00002.pt`` and ``parent.pt``; retaining
+    both remote copies would defeat content addressing and reintroduce SMB
+    verification on process restart.
+    """
+
+    try:
+        receipts = tuple(_ELMO_STAGE_RECEIPT_ROOT.glob("*.json"))
+        source_size = int(src.stat().st_size)
+        resolved_smb = smb.resolve()
+    except OSError:
+        return None
+    for receipt in receipts:
+        try:
+            payload = json.loads(receipt.read_text(encoding="utf-8"))
+            if (
+                payload.get("schema")
+                != "poke_bot.elmo_checkpoint_stage_receipt/v1"
+                or payload.get("checkpoint_digest") != str(digest)
+                or int(payload.get("source_size", -1)) != source_size
+            ):
+                continue
+            candidate = Path(str(payload.get("destination_path") or ""))
+            candidate_stat = candidate.stat()
+            if candidate.parent.resolve() != resolved_smb:
+                continue
+            if (
+                not candidate.is_file()
+                or candidate.name != payload.get("destination_name")
+                or int(candidate_stat.st_size)
+                != int(payload.get("destination_size", -1))
+                or int(candidate_stat.st_mtime_ns)
+                != int(payload.get("destination_mtime_ns", -1))
+                or int(candidate_stat.st_size) != source_size
+            ):
+                continue
+            return candidate
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+    return None
+
+
+def _elmo_remote_checkpoint_digest(host: str, remote_path: str) -> Optional[str]:
+    """Hash an Elmo checkpoint on TrueNAS storage, never through SMB.
+
+    Old content-addressed objects can predate local stage receipts.  Reading a
+    100+ MiB file back over gvfs merely to prove bytes already resident on
+    TrueNAS took roughly 141 seconds and serialized every Elmo dispatch thread.
+    A capability-gated control call performs the same SHA-256 next to storage.
+    Returning ``None`` preserves the fail-safe legacy verifier for older
+    workers rather than trusting a filename or size alone.
+    """
+
+    client = RemoteJobClient(
+        host,
+        DEFAULT_PORT,
+        timeout_s=30.0,
+        connect_timeout_s=min(
+            5.0, _env_float("POKEBOT_REMOTE_CONNECT_TIMEOUT_S", 60.0)
+        ),
+        control_timeout_s=min(
+            30.0, _env_float("POKEBOT_REMOTE_CONTROL_TIMEOUT_S", 300.0)
+        ),
+    )
+    try:
+        info = client.connect()
+        if "checkpoint_digest_verify_v1" not in set(info.capabilities):
+            return None
+        reply = client.verify_checkpoint(remote_path)
+        digest = str(reply.get("checkpoint_digest") or "")
+        return digest if digest.startswith("sha256:") else None
+    except (TimeoutError, OSError, RemoteJobsError):
+        return None
+    finally:
+        client.close()
 
 
 def _bert_remote_digest(remote_native: Path) -> Optional[str]:
@@ -1144,9 +1342,7 @@ def _stage_bert_checkpoint(src: Path) -> str:
         raise RemoteJobsError(
             f"bert path remap requires path under {_TRAIN_ROOT}, got {src}"
         ) from exc
-    from .checkpoint import checkpoint_digest
-
-    digest = checkpoint_digest(src)
+    digest = _cached_local_checkpoint_digest(src)
     remote_native = (_BERT_ROOT / rel).with_name(
         digest_addressed_basename(src, digest=digest)
     )
@@ -1217,10 +1413,10 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
         # Digest-addressed basename: pins/reloads stay valid across iters/runs.
         from .checkpoint import checkpoint_digest
 
-        digest = checkpoint_digest(src)
+        digest = _cached_local_checkpoint_digest(src)
         dest_name = digest_addressed_basename(src, digest=digest)
         dest = smb / dest_name
-        cache_key = (str(src), digest, str(smb))
+        cache_key = (digest, str(smb))
         with _ELMO_STAGE_LOCK:
             cached = _ELMO_STAGE_CACHE.get(cache_key)
             if cached is not None:
@@ -1228,16 +1424,42 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
                 # entry was published. Re-hashing the SMB files on every game
                 # serializes all remote request sockets and starves Elmo.
                 return cached
-            destination_valid = False
+            receipt_destination = _elmo_receipt_destination_for_digest(
+                src, smb, digest
+            )
+            if receipt_destination is not None:
+                _stage_elmo_runtime_companions(smb)
+                result = (
+                    f"/workspace/checkpoint/{receipt_destination.name}"
+                )
+                _ELMO_STAGE_CACHE[cache_key] = result
+                return result
+            destination_verified = False
             if dest.is_file() and dest.stat().st_size == src.stat().st_size:
-                try:
-                    destination_valid = checkpoint_digest(dest) == digest
-                except OSError:
-                    destination_valid = False
-            if not destination_valid:
+                if _elmo_stage_receipt_is_exact(src, dest, digest):
+                    destination_verified = True
+                else:
+                    remote_path = f"/workspace/checkpoint/{dest_name}"
+                    remote_digest = _elmo_remote_checkpoint_digest(
+                        host, remote_path
+                    )
+                    if remote_digest is not None:
+                        destination_verified = remote_digest == digest
+                    else:
+                        # Compatibility fallback for an older worker. This is
+                        # intentionally safe but slow and disappears once the
+                        # advertised verify capability is deployed.
+                        try:
+                            destination_verified = (
+                                checkpoint_digest(dest) == digest
+                            )
+                        except OSError:
+                            destination_verified = False
+            if not destination_verified:
                 _gvfs_safe_copy(src, dest)
-            if checkpoint_digest(dest) != digest:
-                raise RemoteJobsError("Elmo gvfs checkpoint digest mismatch")
+                if checkpoint_digest(dest) != digest:
+                    raise RemoteJobsError("Elmo gvfs checkpoint digest mismatch")
+            _write_elmo_stage_receipt(src, dest, digest)
             _stage_elmo_runtime_companions(smb)
             result = f"/workspace/checkpoint/{dest_name}"
             _ELMO_STAGE_CACHE[cache_key] = result
@@ -1245,6 +1467,51 @@ def resolve_remote_checkpoint_path(host: str, local_path: str) -> str:
     if host_l in _BERT_HOSTS:
         return _stage_bert_checkpoint(src)
     return str(src)
+
+
+def cache_exact_resident_remote_checkpoint(
+    host: str,
+    local_path: str,
+    *,
+    digest: str,
+) -> Optional[str]:
+    """Cache an Elmo mapping after a complete remote resident-health proof.
+
+    The caller must have just verified that the controller and every leaf are
+    healthy on ``digest`` and that the digest is pinned. That proof is stronger
+    and newer than re-reading the same digest-addressed object over SMB. We
+    still require the expected object and exact byte size before caching its
+    deterministic path. A new digest or missing object continues through the
+    ordinary copy-and-checksum staging path.
+    """
+
+    host_l = host.strip().lower()
+    if host_l not in _ELMO_HOSTS:
+        return None
+    dig = str(digest)
+    if not dig.startswith("sha256:"):
+        raise RemoteJobsError(f"invalid resident checkpoint digest: {dig!r}")
+    src = Path(local_path).expanduser().resolve()
+    if not src.is_file():
+        raise RemoteJobsError(f"resident checkpoint source is missing: {src}")
+    smb = _smb_checkpoint_dir()
+    if smb is None:
+        raise RemoteJobsError(
+            "TrueNAS SMB checkpoint dir not mounted for resident mapping"
+        )
+    dest_name = digest_addressed_basename(src, digest=dig)
+    dest = smb / dest_name
+    if not dest.is_file() or dest.stat().st_size != src.stat().st_size:
+        raise RemoteJobsError(
+            "resident checkpoint object is missing or has the wrong byte size: "
+            f"{dest}"
+        )
+    result = f"/workspace/checkpoint/{dest_name}"
+    cache_key = (dig, str(smb))
+    with _ELMO_STAGE_LOCK:
+        _ELMO_STAGE_CACHE[cache_key] = result
+        _write_elmo_stage_receipt(src, dest, dig)
+    return result
 
 
 def resolve_remote_workdir_path(host: str, local_path: str) -> str:
@@ -1688,6 +1955,26 @@ class RemoteJobClient:
             raise RemoteJobsError(f"unexpected health reply: {reply!r}")
         return reply
 
+    def verify_checkpoint(self, path: str) -> dict[str, Any]:
+        """Return a storage-local SHA-256 proof for one checkpoint object."""
+
+        reply = self._control_call(
+            {"type": "verify_checkpoint", "path": str(path)}
+        )
+        if reply.get("type") != "verify_checkpoint_ok" or not reply.get(
+            "ok", False
+        ):
+            raise RemoteJobsError(
+                "remote checkpoint verification failed: "
+                f"{reply.get('error') or reply!r}"
+            )
+        digest = str(reply.get("checkpoint_digest") or "")
+        if not digest.startswith("sha256:"):
+            raise RemoteJobsError(
+                f"remote checkpoint verification returned invalid digest: {digest!r}"
+            )
+        return reply
+
     def submit_job(self, job: dict[str, Any], *, kind: str = "play") -> dict[str, Any]:
         """Submit one game job; blocks until the remote result frame arrives.
 
@@ -1922,12 +2209,24 @@ def _is_remote_hangup_error(exc: BaseException) -> bool:
 
 def _clone_remote_client(template: RemoteJobClient) -> RemoteJobClient:
     """Open an extra TCP session to the same endpoint (one in-flight game each)."""
+    fanout_connect_timeout_s = max(
+        0.5,
+        _env_float("POKEBOT_REMOTE_FANOUT_CONNECT_TIMEOUT_S", 3.0),
+    )
+    fanout_hello_timeout_s = max(
+        fanout_connect_timeout_s,
+        _env_float("POKEBOT_REMOTE_FANOUT_HELLO_TIMEOUT_S", 10.0),
+    )
     client = RemoteJobClient(
         template.host,
         template.port,
         timeout_s=template.timeout_s,
-        connect_timeout_s=template.connect_timeout_s,
-        control_timeout_s=template.control_timeout_s,
+        connect_timeout_s=min(
+            float(template.connect_timeout_s), fanout_connect_timeout_s
+        ),
+        control_timeout_s=min(
+            float(template.control_timeout_s), fanout_hello_timeout_s
+        ),
     )
     client.connect()
     return client
@@ -1947,11 +2246,11 @@ def _parallel_remote_slots(
     Returns ``(all_slots, owned_clones)`` where ``owned_clones`` must be closed
     by the caller (slot 0 per endpoint reuses the farm session).
     """
-    slots: list[RemoteJobClient] = []
-    owned: list[RemoteJobClient] = []
+    ordered_slots: list[tuple[int, int, RemoteJobClient, bool]] = []
+    clone_requests: list[tuple[int, int, RemoteJobClient]] = []
     # POKEBOT_REMOTE_SLOT_DIVISOR>1 shares farm capacity across concurrent trainers.
     divisor = max(1, int(os.environ.get("POKEBOT_REMOTE_SLOT_DIVISOR", "1") or "1"))
-    for template in remote_clients:
+    for endpoint_index, template in enumerate(remote_clients):
         # Heal farm templates that went idle-dead across train/promo gaps before
         # we stamp out N worker clones against a half-closed socket.
         ensure_alive = getattr(template, "ensure_alive", None)
@@ -2012,11 +2311,63 @@ def _parallel_remote_slots(
                 f"{remote_socket_prefetch_factor()})",
                 flush=True,
             )
-        slots.append(template)
-        for _ in range(n - 1):
-            clone = _clone_remote_client(template)
-            slots.append(clone)
-            owned.append(clone)
+        ordered_slots.append((endpoint_index, 0, template, False))
+        for clone_index in range(1, n):
+            clone_requests.append((endpoint_index, clone_index, template))
+
+    # Open every endpoint's request sockets concurrently. The old serial loop
+    # opened all Elmo sockets, then waited on each Bert TCP handshake before it
+    # started *any* emitter thread. One slow SYN therefore left a fully ready
+    # Elmo at 0 jobs while the dashboard misleadingly showed 36 reservations.
+    # A bounded LAN connect/hello deadline makes one unhealthy slot reduce only
+    # that endpoint's realized capacity instead of freezing the whole wave.
+    failed = 0
+    fanout_started = time.monotonic()
+    if clone_requests:
+        configured_workers = int(
+            os.environ.get("POKEBOT_REMOTE_CONNECT_FANOUT", "64") or "64"
+        )
+        fanout_workers = min(
+            len(clone_requests), max(1, min(128, configured_workers))
+        )
+        with ThreadPoolExecutor(
+            max_workers=fanout_workers,
+            thread_name_prefix="remote-initial-connect",
+        ) as connector_pool:
+            futures = {
+                connector_pool.submit(_clone_remote_client, template): (
+                    endpoint_index,
+                    clone_index,
+                    template,
+                )
+                for endpoint_index, clone_index, template in clone_requests
+            }
+            for future in as_completed(futures):
+                endpoint_index, clone_index, template = futures[future]
+                try:
+                    clone = future.result()
+                except (TimeoutError, OSError, RemoteJobsError) as exc:
+                    failed += 1
+                    print(
+                        f"[remote] {template.endpoint} initial slot "
+                        f"{clone_index} failed "
+                        f"({type(exc).__name__}: {exc}); continuing with "
+                        "remaining live slots",
+                        flush=True,
+                    )
+                    continue
+                ordered_slots.append(
+                    (endpoint_index, clone_index, clone, True)
+                )
+    ordered_slots.sort(key=lambda row: (row[0], row[1]))
+    slots = [row[2] for row in ordered_slots]
+    owned = [row[2] for row in ordered_slots if row[3]]
+    print(
+        "[remote] parallel_slot_fanout "
+        f"requested={len(clone_requests)} connected={len(owned)} "
+        f"failed={failed} wall_s={time.monotonic() - fanout_started:.3f}",
+        flush=True,
+    )
     return slots, owned
 
 
@@ -2669,7 +3020,11 @@ def iter_scheduled_additive_results(
             # transition while a low-water refill is being admitted. This
             # ceiling exists only for device/file-descriptor safety and is not
             # used as the ordinary refill target.
-            endpoint_queue_safety_ceiling[ep] = high_water + execution
+            endpoint_queue_safety_ceiling[ep] = (
+                execution
+                if self_play_elmo_tail_only
+                else high_water + execution
+            )
             endpoint_credits.set_target(
                 ep, endpoint_queue_safety_ceiling[ep]
             )
@@ -3598,6 +3953,21 @@ def iter_scheduled_additive_results(
                 with grow_lock:
                     have = int(slots_by_endpoint.get(template.endpoint, 0))
                 max_slots = remote_socket_max_target(execution)
+                if self_play_elmo_tail_only:
+                    # Self-play request sockets are the execution wave. They
+                    # persist and claim one next game after each return; a
+                    # low-water probe must never manufacture a second wave.
+                    max_slots = min(
+                        max_slots,
+                        max(
+                            0,
+                            int(
+                                endpoint_queue_safety_ceiling.get(
+                                    template.endpoint, execution
+                                )
+                            ),
+                        ),
+                    )
                 # A protected controller queue may exceed the number of
                 # requests that the remote server can admit. Treat both values
                 # as soft high-water targets and leave the extra work on the

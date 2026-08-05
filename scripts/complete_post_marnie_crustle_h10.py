@@ -79,6 +79,61 @@ def validate_static(args: argparse.Namespace) -> dict[str, str]:
     return {name: sha256(path) for name, path in paths.items()}
 
 
+def validated_population_inputs(
+    *,
+    handler: Mapping[str, Any],
+    checkpoint_digest: str,
+    runtime_registry_path: Path,
+) -> dict[str, str]:
+    """Bind the exact Crustle package and causal training-side assets.
+
+    The population phase materializes the newly completed H10 Crustle from its
+    final-format submission bundle.  The historical public Crustle agent is
+    deliberately not used as a population member or selected-history entry.
+    """
+
+    registry_path = runtime_registry_path.resolve()
+    registry = read(registry_path)
+    runtime_row = dict(
+        (registry.get("specialists") or {}).get(SPECIALIST_ID) or {}
+    )
+    expert = Path(str(runtime_row.get("expert_manifest") or "")).resolve()
+    tree = Path(str(runtime_row.get("matchup_runtime_tree") or "")).resolve()
+    bundle = dict(handler.get("submission_bundle") or {})
+    queued = dict((handler.get("queued_submissions") or [{}])[0])
+    bundle_path = Path(str(queued.get("file") or "")).resolve()
+    bundle_digest = str(queued.get("file_sha256") or "")
+    if (
+        registry.get("schema") != "poke_bot.specialist_runtime_registry/v1"
+        or runtime_row.get("status") != "ready"
+        or not expert.is_file()
+        or sha256(expert).removeprefix("sha256:")
+        != str(runtime_row.get("expert_manifest_sha256") or "")
+        or not tree.is_file()
+        or sha256(tree).removeprefix("sha256:")
+        != str(runtime_row.get("matchup_runtime_tree_sha256") or "")
+        or bundle.get("specialist_id") != SPECIALIST_ID
+        or bundle.get("turn_order_preference") != "first_if_allowed"
+        or str((bundle.get("contents") or {}).get("model_sha256") or "")
+        != checkpoint_digest
+        or str(bundle.get("sha256") or "") != bundle_digest
+        or queued.get("checkpoint_checksum") != checkpoint_digest
+        or not bundle_path.is_file()
+        or sha256(bundle_path) != bundle_digest
+    ):
+        raise RuntimeError("Crustle population runtime/package identity is invalid")
+    return {
+        "expert_manifest": str(expert),
+        "expert_manifest_sha256": sha256(expert),
+        "matchup_runtime_tree": str(tree),
+        "matchup_runtime_tree_sha256": sha256(tree),
+        "submission_bundle": str(bundle_path),
+        "submission_bundle_sha256": bundle_digest,
+        "runtime_registry": str(registry_path),
+        "runtime_registry_sha256": sha256(registry_path),
+    }
+
+
 def disposition(gate: Mapping[str, Any]) -> dict[str, Any]:
     authority = str(gate.get("completion_authority") or "")
     if authority == "measured_both_gates_pass":
@@ -146,6 +201,11 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         != 19
     ):
         raise RuntimeError("Crustle H10 runtime contract is invalid")
+    population = validated_population_inputs(
+        handler=handler,
+        checkpoint_digest=digest,
+        runtime_registry_path=args.runtime_registry,
+    )
 
     registry_path = args.refresh_registry.resolve()
     registry = read(registry_path)
@@ -177,6 +237,7 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         "learned_head_count": 19,
         "learned_route_count": 19,
         "public_baseline_substituted": False,
+        **population,
     }
     if len(rows) == 3 and rows[2] != row:
         raise RuntimeError("a different Crustle completion is already registered")

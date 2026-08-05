@@ -38,6 +38,15 @@ FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_SERVICE = (
 FINAL_FORMAT_MARNIE_H10_RL_SERVICE = (
     "pokebot-final-format-marnie-r104-h10-rl.service"
 )
+FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_SERVICE = (
+    "pokebot-final-format-crustle-r113-h10-bootstrap.service"
+)
+MARNIE_POSTUPLOAD_FAMILY_STUDY_SERVICE = (
+    "pokebot-marnie-postupload-family-study-r136.service"
+)
+MARNIE_POSTUPLOAD_BOOTSTRAP_SERVICE = (
+    "pokebot-marnie-postupload-weighted-bootstrap-r135.service"
+)
 STRONG_PUBLIC_GATE_SERVICE = "pokebot-alakazam-strong-public-gate.service"
 ROOT = Path("/home/inzi/poke-bot-agent")
 
@@ -115,6 +124,13 @@ FINAL_FORMAT_ALAKAZAM_MODEL_INVENTORY = (
     / "receipts/final_format_alakazam_model_inventory_r79.json"
 )
 FINAL_FORMAT_MARNIE_ROOT = ROOT / "outputs/final_format_marnie_r104"
+FINAL_FORMAT_CRUSTLE_ROOT = ROOT / "outputs/final_format_crustle_r113"
+FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_LOG = (
+    FINAL_FORMAT_CRUSTLE_ROOT / "logs/bootstrap.log"
+)
+FINAL_FORMAT_CRUSTLE_TRAINING_FREEZE = (
+    ROOT / "outputs/state/marnie-canonical-training-freeze-r163.json"
+)
 FINAL_FORMAT_MARNIE_H10_BOOTSTRAP_LOG = (
     FINAL_FORMAT_MARNIE_ROOT / "logs/h10_bootstrap.log"
 )
@@ -124,6 +140,44 @@ FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG = (
 )
 FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS = (
     FINAL_FORMAT_MARNIE_ROOT / "logs/h10_rl.progress.status"
+)
+MARNIE_POSTUPLOAD_FAMILY_STUDY_LOG = (
+    FINAL_FORMAT_MARNIE_ROOT / "logs/postupload_family_study_r136.log"
+)
+MARNIE_POSTUPLOAD_BOOTSTRAP_LOG = (
+    FINAL_FORMAT_MARNIE_ROOT / "logs/postupload_bootstrap_r138.log"
+)
+MARNIE_POSTUPLOAD_FAMILY_STUDY_ROOT = (
+    ROOT / "outputs/studies/marnie-archetype-family-r136"
+)
+MARNIE_POSTUPLOAD_FAMILY_ACTIVATION_REQUEST = (
+    ROOT
+    / "outputs/state/marnie-archetype-family-r130"
+    / "activation-request.json"
+)
+MARNIE_POSTUPLOAD_FAMILY_MIGRATION = (
+    ROOT
+    / "outputs/state/marnie-archetype-family-r130"
+    / "migration-receipt.json"
+)
+MARNIE_GUIDE_SHADOW_NONAUTHORITY = (
+    ROOT / "state/marnie_guide_shadow_non_authority_r141.json"
+)
+MARNIE_FAMILY_GUIDE_SHADOW_RUNTIME = (
+    ROOT / "state/marnie_family_guide_shadow_runtime_r142.json"
+)
+MARNIE_EPOCH_RECOVERY = (
+    ROOT / "state/marnie_postupload_epoch1_recovery_r141.json"
+)
+MARNIE_POSTUPLOAD_PAUSE = (
+    ROOT
+    / "outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k"
+    / "family_activation/await_upload_after_iter_00009.json"
+)
+MARNIE_ITERATION9_UPLOAD_TRIGGER = (
+    ROOT
+    / "outputs/state/marnie-archetype-family-r130"
+    / "iteration9-upload-trigger.json"
 )
 FINAL_FORMAT_MARNIE_H10_RUN_DIR = (
     ROOT / "outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k"
@@ -2508,6 +2562,7 @@ def reconcile_current_specialist_handoff(
     active_specialist: str,
     program_progress: dict[str, Any] | None = None,
     next_specialist: str | None = None,
+    active_runtime_refresh: bool = False,
 ) -> dict[str, Any]:
     """Do not present a successful historical handoff as the current one."""
 
@@ -2570,6 +2625,37 @@ def reconcile_current_specialist_handoff(
     label_name = active_specialist.replace("-", " ").title() or "Active specialist"
     historical_source = handoff.get("source_specialist_id")
     historical_next = handoff.get("next_specialist_id")
+    if active_runtime_refresh and active_specialist == "marnie-s-grimmsnarl-ex":
+        return {
+            **handoff,
+            "available": True,
+            "active": False,
+            "phase": "waiting_for_active_specialist_gate",
+            "stage": "waiting_for_active_specialist_gate",
+            "label": "Marnie's Grimmsnarl ex refresh → H10 Crustle",
+            "latest_line": (
+                "Marnie's Grimmsnarl ex refresh is training through exact "
+                "iteration 20. Freeze and register iter_00020 without "
+                "collecting iter_00021; then begin the staged new H10 "
+                "Crustle specialist."
+            ),
+            "current": None,
+            "total": None,
+            "percent": None,
+            "epoch": None,
+            "epochs_target": None,
+            "rate": None,
+            "rate_unit": None,
+            "completed_specialists": int(progress.get("completed_frozen") or 0),
+            "remaining_specialists_after_active": 1,
+            "source_specialist_id": active_specialist,
+            "next_specialist_id": "crustle",
+            "refresh_terminal_iteration": 20,
+            "next_collection_forbidden": 21,
+            "historical_source_specialist_id": historical_source,
+            "historical_next_specialist_id": historical_next,
+            "historical_source_suppressed": True,
+        }
     return {
         **handoff,
         "available": True,
@@ -4108,6 +4194,128 @@ def alakazam_bootstrap_progress() -> dict[str, Any]:
     }
 
 
+def final_format_crustle_progress() -> dict[str, Any]:
+    """Project the managed all-guide Crustle H10 bootstrap."""
+
+    service = unit_state(FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_SERVICE, user=True)
+    active = bool(
+        (
+            service.get("active")
+            or service.get("active_state") == "activating"
+        )
+        and (
+            int(service.get("pid") or 0) > 0
+            or service.get("sub_state") in {"running", "start"}
+        )
+    )
+    if not active:
+        return {"status": "waiting", "available": False}
+    raw = read_tail(FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_LOG, 2_000_000)
+    clean = ANSI_RE.sub("", raw).replace("\r", "\n")
+    lines = [line.strip() for line in clean.splitlines() if line.strip()]
+    latest = ""
+    for line in reversed(lines):
+        if re.search(
+            r"(?:train|val) ep\d+:.*?\d+/\d+"
+            r"|expert rehearsal before iter\d+ ep\d+/\d+:.*?\d+/\d+",
+            line,
+        ):
+            latest = line
+            break
+    if not latest:
+        for line in reversed(lines):
+            if "pack Blackwell corpus" in line or "loading protected" in line:
+                latest = line
+                break
+    phase = "loading"
+    epoch = current = total = None
+    percent = rate = None
+    eta = None
+    match = re.search(
+        r"(?:train|val) ep(\d+):\s*(\d+)%.*?\s(\d+)/(\d+)\s*\[([^]]*)\]",
+        latest,
+    )
+    if not match:
+        match = re.search(
+            r"expert rehearsal before iter(\d+) ep\d+/\d+:\s*"
+            r"(\d+)%.*?\s(\d+)/(\d+)\s*\[([^]]*)\]",
+            latest,
+        )
+    if match:
+        epoch_raw, percent_raw, current_raw, total_raw, timing = match.groups()
+        phase = "training"
+        epoch = int(epoch_raw)
+        percent = float(percent_raw)
+        current = int(current_raw)
+        total = int(total_raw)
+        rate_match = re.search(r"([0-9.]+)batch/s", timing)
+        rate = float(rate_match.group(1)) if rate_match else None
+        eta_match = re.search(r"<([^,]+),", timing)
+        eta = eta_match.group(1) if eta_match else None
+    elif "pack Blackwell corpus" in latest:
+        phase = "packing"
+        pack = re.search(r"(\d+)%.*?\s(\d+)/(\d+)\s", latest)
+        if pack:
+            percent, current, total = (
+                float(pack.group(1)), int(pack.group(2)), int(pack.group(3))
+            )
+    freeze = read_json(FINAL_FORMAT_CRUSTLE_TRAINING_FREEZE)
+    checkpoint = freeze.get("checkpoint")
+    digest = freeze.get("checkpoint_sha256")
+    structure = checkpoint_structure_telemetry(
+        checkpoint,
+        digest,
+        cache_path=ROOT / "outputs/state/dashboard-crustle-h10-parent-structure-cache.json",
+    )
+    updated = (
+        FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_LOG.stat().st_mtime
+        if FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_LOG.is_file()
+        else None
+    )
+    return {
+        "available": True,
+        "authoritative": True,
+        "source": str(FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_LOG),
+        "log": str(FINAL_FORMAT_CRUSTLE_H10_BOOTSTRAP_LOG),
+        "latest_line": latest,
+        "updated_at": updated,
+        "fresh": bool(updated and time.time() - updated < 30),
+        "status": "running",
+        "mode": "final_format_crustle_h10_bootstrap",
+        "phase": phase,
+        "run": "final_format_crustle_r113_h10_bootstrap",
+        "specialist_id": "crustle",
+        "epoch": epoch,
+        "epochs_target": 35,
+        "current": current,
+        "total": total,
+        "percent": percent,
+        "rate": rate,
+        "rate_unit": "batch/s" if rate is not None else None,
+        "eta": eta,
+        "metrics": {
+            name: parse_metric(latest, name)
+            for name in (
+                "acc", "loss", "p", "policy", "v", "value", "aux",
+                "hand", "rem", "lethal", "prize", "guide", "step",
+            )
+        },
+        "corpus_games": 26932,
+        "corpus_decisions": 1428142,
+        "checkpoint": checkpoint,
+        "checkpoint_digest": digest,
+        "checkpoint_structure": structure,
+        "model_parameters": int(structure.get("model_parameters") or 0),
+        "capacity_profile": "H10-I/v1",
+        "learned_head_count": 19,
+        "learned_route_count": 19,
+        "decision_fusion_schema": "poke_bot.causal_decision_fusion/v3",
+        "guide_state": "active_all_35_epochs",
+        "pilot_weighting": "active_all_35_epochs",
+        "service": service,
+    }
+
+
 def final_format_marnie_progress() -> dict[str, Any]:
     """Return the current receipt-bound Marnie H10 bootstrap state."""
 
@@ -4132,17 +4340,34 @@ def final_format_marnie_progress() -> dict[str, Any]:
     )
     ready = read_json(FINAL_FORMAT_MARNIE_H10_READY)
     validation = read_json(FINAL_FORMAT_MARNIE_H10_VALIDATION)
-    if not (bootstrap_active or rl_active or ready or validation):
+    status_text = read_tail(FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS, 20_000)
+    progress_log = read_tail(FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG, 2_000_000)
+    loop_state = read_json(FINAL_FORMAT_MARNIE_H10_RUN_DIR / "loop_state.json")
+    registry = read_json(FINAL_FORMAT_MARNIE_H10_REGISTRY)
+    rl_history = bool(
+        loop_state
+        and registry
+        and (
+            status_text.strip()
+            or FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG.is_file()
+            or FINAL_FORMAT_MARNIE_H10_LOG.is_file()
+        )
+    )
+    if not (bootstrap_active or rl_active or rl_history or ready or validation):
         return {"status": "waiting", "available": False}
 
-    if rl_active:
-        status_text = read_tail(FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS, 20_000)
-        progress_log = read_tail(FINAL_FORMAT_MARNIE_H10_PROGRESS_LOG, 2_000_000)
-        loop_state = read_json(FINAL_FORMAT_MARNIE_H10_RUN_DIR / "loop_state.json")
-        registry = read_json(FINAL_FORMAT_MARNIE_H10_REGISTRY)
+    # A live bootstrap owns the display until its own managed boundary
+    # completes. Historical RL files from a later/other fixture must never
+    # preempt an actually active bootstrap.
+    if rl_active or (rl_history and not bootstrap_active):
         progress = parse_curriculum_progress(
             status_text,
             progress_log,
+            iteration_hint=int(loop_state.get("next_iteration") or 0),
+        )
+        progress = infer_post_train_gate_progress(
+            progress,
+            read_tail(FINAL_FORMAT_MARNIE_H10_LOG, 500_000),
             iteration_hint=int(loop_state.get("next_iteration") or 0),
         )
         updated = max(
@@ -4196,49 +4421,80 @@ def final_format_marnie_progress() -> dict[str, Any]:
             ]
         except (ValueError, IndexError):
             pass
-        scheduler_queues = scheduler_queue_state(
-            specialist.get("run_name")
-            or "final_format_marnie_r104_h10_i_v6_8k",
-            log_path=FINAL_FORMAT_MARNIE_H10_LOG,
-        )
-        scheduler_queues = scope_scheduler_queues_to_progress(
-            progress,
-            scheduler_queues,
-        )
-        drain_projection = result_drain_projection(progress, scheduler_queues)
+        if rl_active:
+            scheduler_queues = scheduler_queue_state(
+                specialist.get("run_name")
+                or "final_format_marnie_r104_h10_i_v6_8k",
+                log_path=FINAL_FORMAT_MARNIE_H10_LOG,
+            )
+            scheduler_queues = scope_scheduler_queues_to_progress(
+                progress,
+                scheduler_queues,
+            )
+            drain_projection = result_drain_projection(progress, scheduler_queues)
+        else:
+            scheduler_queues = {
+                "available": False,
+                "mode": "stopped",
+                "local": {"active_or_claimed": 0},
+                "endpoints": {},
+                "unassigned": 0,
+                "results": {"waiting_ingest": 0},
+            }
+            drain_projection = {}
         progress_metrics = dict(progress.get("metrics") or {})
         progress_metrics.update(drain_projection.get("metrics") or {})
+        last_phase = drain_projection.get(
+            "phase", progress.get("stage") or "collect"
+        )
+        latest_line = drain_projection.get(
+            "latest_line", progress.get("line")
+        )
+        if not rl_active:
+            last_phase = f"stopped:{last_phase}"
+            latest_line = f"STOPPED · last progress: {latest_line or '—'}"
+        phase_fresh_window_s = (
+            20 * 60
+            if progress.get("stage") == "heldout:checkpoint_staging"
+            else 30
+        )
         return {
             "available": True,
             "authoritative": True,
             "source": str(FINAL_FORMAT_MARNIE_H10_PROGRESS_STATUS),
             "log": str(FINAL_FORMAT_MARNIE_H10_LOG),
-            "latest_line": drain_projection.get("latest_line", progress.get("line")),
+            "latest_line": latest_line,
             "raw_latest_line": progress.get("line"),
             "updated_at": updated,
-            "fresh": bool(updated and time.time() - updated < 30),
-            "status": "running",
-            "mode": "final_format_marnie_h10_rl",
-            "phase": drain_projection.get(
-                "phase", progress.get("stage") or "collect"
+            "fresh": bool(
+                rl_active
+                and updated
+                and time.time() - updated < phase_fresh_window_s
             ),
+            "status": "running" if rl_active else "stopped",
+            "mode": "final_format_marnie_h10_rl",
+            "phase": last_phase,
             "run": specialist.get("run_name") or "final_format_marnie_r104_h10_i_v6_8k",
             "specialist_id": "marnie-s-grimmsnarl-ex",
             "iteration": progress.get("iteration", loop_state.get("next_iteration")),
-            "iterations_target": 16,
+            "iterations_target": 21,
             "current": progress.get("current"),
             "total": progress.get("total"),
             "percent": progress.get("percent"),
             "rate": progress.get("rate"),
             "rate_unit": progress.get("rate_unit"),
-            "games_per_second": drain_projection.get(
-                "games_per_second", progress.get("gps")
+            "games_per_second": (
+                drain_projection.get("games_per_second", progress.get("gps"))
+                if rl_active
+                else 0.0
             ),
-            "samples_per_second": progress.get("sps"),
-            "eta": progress.get("eta"),
+            "samples_per_second": progress.get("sps") if rl_active else 0.0,
+            "eta": progress.get("eta") if rl_active else None,
             "metrics": progress_metrics,
-            "remote_workers": drain_projection.get(
-                "remote_workers", progress.get("remotes")
+            "remote_workers": (
+                drain_projection.get("remote_workers", progress.get("remotes"))
+                if rl_active
+                else 0
             ),
             "remote_endpoints": remote_endpoints,
             "scheduler_queues": scheduler_queues,
@@ -4420,6 +4676,388 @@ def final_format_marnie_progress() -> dict[str, Any]:
         "learned_route_count": int(validation.get("learned_route_count") or 19),
         "decision_fusion_schema": validation.get("decision_fusion_schema"),
         "service": service,
+    }
+
+
+def marnie_postupload_family_study_state() -> dict[str, Any]:
+    """Project the managed status-75 boundary as the active pipeline phase.
+
+    Iteration 9 intentionally stops the ordinary trainer before iteration-10
+    collection.  The checksum-bound family study then owns the managed work
+    while producing training-ineligible shadow evidence.  Treating the stopped
+    trainer as the only possible live service makes this safe boundary look
+    degraded even while its successor unit is healthy and making progress.
+    """
+
+    service = unit_state(MARNIE_POSTUPLOAD_FAMILY_STUDY_SERVICE, user=True)
+    pause = read_json(MARNIE_POSTUPLOAD_PAUSE)
+    trigger = read_json(MARNIE_ITERATION9_UPLOAD_TRIGGER)
+    study = read_json(MARNIE_POSTUPLOAD_FAMILY_STUDY_ROOT / "study.json")
+    active = bool(
+        service.get("active")
+        and int(service.get("pid") or 0) > 0
+        and str(service.get("active_state") or "") in {"active", "activating"}
+    )
+    pause_digest = str(pause.get("learner_sha256") or "")
+    trigger_digest = str(
+        ((trigger.get("bindings") or {}).get("checkpoint") or {}).get("sha256")
+        or ""
+    )
+    boundary_valid = bool(
+        pause.get("schema") == "poke_bot.marnie_family_boundary_pause/v1"
+        and int(pause.get("committed_iteration") or -1) == 9
+        and int(pause.get("target_iteration") or -1) == 10
+        and int(pause.get("restart_prevent_status") or -1) == 75
+        and pause.get("next_collection_started") is False
+        and trigger.get("schema")
+        == "poke_bot.marnie_family_iteration9_upload_trigger/v1"
+        and int(trigger.get("iteration") or -1) == 9
+        and pause_digest
+        and pause_digest == trigger_digest
+    )
+    paused_inconclusive = bool(
+        boundary_valid
+        and study.get("schema")
+        == "poke_bot.marnie_archetype_family_shadow_study/v1"
+        and study.get("status")
+        == "failed_closed_inconclusive_after_two_rounds"
+        and study.get("passed") is False
+        and study.get("training_eligible") is False
+        and study.get("replay_eligible") is False
+        and len(study.get("rounds") or []) == 2
+        and int(service.get("exit_status") or -1) == 76
+        and not MARNIE_POSTUPLOAD_FAMILY_ACTIVATION_REQUEST.exists()
+    )
+    raw_log = read_tail(MARNIE_POSTUPLOAD_FAMILY_STUDY_LOG, 2_000_000)
+    progress = parse_curriculum_progress("", raw_log, iteration_hint=9)
+    study_round = progress.get("iteration")
+    if str(progress.get("stage") or "").startswith("family-shadow:"):
+        progress = {
+            **progress,
+            "iteration": 9,
+            "metrics": {
+                **(progress.get("metrics") or {}),
+                "study_round": study_round,
+                "training_eligible": False,
+            },
+        }
+    updated = max(
+        (
+            path.stat().st_mtime
+            for path in (
+                MARNIE_POSTUPLOAD_FAMILY_STUDY_LOG,
+                MARNIE_POSTUPLOAD_FAMILY_STUDY_ROOT
+                / "sealed_training_rows.jsonl",
+                MARNIE_POSTUPLOAD_FAMILY_STUDY_ROOT / "study.json",
+            )
+            if path.is_file()
+        ),
+        default=None,
+    )
+    progress_stage = str(progress.get("stage") or "")
+    fresh = bool(
+        active
+        and boundary_valid
+        and updated is not None
+        and time.time() - updated <= 35.0
+        # This isolated service owns a sequence of run-bound phases: sealed
+        # shadow collection, policy training/validation, and locked/package
+        # confirmation.  The ordinary progress parser intentionally names
+        # those phases differently, so require a fresh recognized frame rather
+        # than hard-coding only the initial ``family-shadow:*`` prefix.
+        and bool(progress_stage)
+    )
+    current = bool(fresh or paused_inconclusive)
+    if paused_inconclusive:
+        progress_stage = "family-shadow:failed-closed-inconclusive"
+        progress = {
+            "line": "Two valid antithetic rounds were inconclusive; paused before iteration 10.",
+            "stage": progress_stage,
+            "iteration": 9,
+            "current": 2,
+            "total": 2,
+            "percent": 100.0,
+            "unit": "study rounds",
+            "rate": None,
+            "rate_unit": None,
+            "eta": "owner-authorized passing activation boundary required",
+            "metrics": {
+                "study_status": study.get("status"),
+                "training_eligible": False,
+                "replay_eligible": False,
+                "activation_request_created": False,
+            },
+        }
+    return {
+        "available": bool(active or pause or trigger),
+        "active": active,
+        "current": current,
+        "paused": paused_inconclusive,
+        "authoritative": boundary_valid,
+        "status": (
+            "running"
+            if active
+            else "paused_inconclusive"
+            if paused_inconclusive
+            else "waiting"
+        ),
+        "mode": "marnie_postupload_family_shadow_study",
+        "phase": progress_stage or "family-shadow:starting",
+        "run": "final_format_marnie_r104_h10_i_v6_8k",
+        "specialist_id": "marnie-s-grimmsnarl-ex",
+        "iteration": 9,
+        "target_iteration": 10,
+        "latest_line": progress.get("line"),
+        "updated_at": updated,
+        "source": str(MARNIE_POSTUPLOAD_FAMILY_STUDY_LOG),
+        "outcome_source": str(
+            MARNIE_POSTUPLOAD_FAMILY_STUDY_ROOT / "study.json"
+        ),
+        "progress": progress,
+        "service": service,
+        "boundary": {
+            "valid": boundary_valid,
+            "pause": str(MARNIE_POSTUPLOAD_PAUSE),
+            "upload_trigger": str(MARNIE_ITERATION9_UPLOAD_TRIGGER),
+            "checkpoint_digest": pause_digest or None,
+            "trainer_exit_status": 75,
+            "next_collection_started": pause.get("next_collection_started"),
+        },
+    }
+
+
+def marnie_postupload_bootstrap_state() -> dict[str, Any]:
+    """Project the activated family system's exact 25-epoch bootstrap."""
+
+    service = unit_state(MARNIE_POSTUPLOAD_BOOTSTRAP_SERVICE, user=True)
+    request = read_json(MARNIE_POSTUPLOAD_FAMILY_ACTIVATION_REQUEST)
+    migration = read_json(MARNIE_POSTUPLOAD_FAMILY_MIGRATION)
+    guide_shadow = read_json(MARNIE_GUIDE_SHADOW_NONAUTHORITY)
+    guide_shadow_runtime = read_json(MARNIE_FAMILY_GUIDE_SHADOW_RUNTIME)
+    epoch_recovery = read_json(MARNIE_EPOCH_RECOVERY)
+    active = bool(
+        str(service.get("active_state") or "") in {"active", "activating"}
+        and int(service.get("pid") or 0) > 0
+    )
+    authoritative = bool(
+        migration.get("schema") == "poke_bot.marnie_family_design_migration/v1"
+        and migration.get("status") == "activated_atomically"
+        and _file_sha256_matches(
+            MARNIE_POSTUPLOAD_FAMILY_ACTIVATION_REQUEST,
+            migration.get("request_sha256"),
+        )
+        and request.get("schema") == "poke_bot.marnie_family_activation_request/v1"
+    )
+    raw_log = read_tail(MARNIE_POSTUPLOAD_BOOTSTRAP_LOG, 2_000_000)
+    progress = parse_curriculum_progress("", raw_log, iteration_hint=9)
+    stage = str(progress.get("stage") or "")
+    if not stage or stage.startswith("stopped:"):
+        stage = (
+            "bootstrap:expert-cpu-pack"
+            if "[expert-cpu-pack]" in raw_log
+            else "bootstrap:family-weighted-25-epoch"
+        )
+        pack_matches = re.findall(
+            r"pack Blackwell corpus:\s*(\d+)%[^\r\n]*?(\d+)/(\d+)",
+            raw_log,
+        )
+        pack_percent, pack_current, pack_total = (
+            tuple(int(value) for value in pack_matches[-1])
+            if pack_matches
+            else (0, 0, 25)
+        )
+        progress = {
+            "line": (
+                raw_log.rstrip().splitlines()[-1]
+                if raw_log.rstrip().splitlines()
+                else "Starting exact family-weighted 25-epoch bootstrap."
+            ),
+            "stage": stage,
+            "iteration": 9,
+            "epoch": 0,
+            "current": pack_current,
+            "total": pack_total,
+            "percent": float(pack_percent),
+            "unit": "games" if pack_matches else "epochs",
+            "rate": None,
+            "rate_unit": None,
+            "eta": "building exact expert pack" if "cpu-pack" in stage else None,
+            "metrics": {
+                "family_sampler_active": authoritative,
+                "typed_family_loss_active": authoritative,
+                "owner_ceiling_authority": True,
+            },
+        }
+    progress = {
+        **progress,
+        "metrics": {
+            **dict(progress.get("metrics") or {}),
+            "guide": 0.0,
+            "guide_status": "shadow_only_non_authoritative",
+        },
+    }
+    # ``supervised_rehearsal_step`` uses its historical
+    # ``before iterN`` label for the rehearsal counter.  In this managed
+    # phase that counter is the 1..25 bootstrap epoch, not the pure-RL
+    # iteration.  Keep the immutable raw line, but expose the two clocks
+    # separately so the dashboard cannot imply that iterations 10+ have
+    # already collected or committed.
+    bootstrap_epoch = int(progress.get("iteration") or 0)
+    if bootstrap_epoch > 0 and str(progress.get("stage") or "").startswith(
+        "train:"
+    ):
+        epoch_percent = float(progress.get("percent") or 0.0)
+        overall_percent = 100.0 * (
+            (bootstrap_epoch - 1) + epoch_percent / 100.0
+        ) / 25.0
+        progress = {
+            **progress,
+            "iteration": 9,
+            "epoch": bootstrap_epoch,
+            "epochs": 25,
+            "bootstrap_epoch": bootstrap_epoch,
+            "bootstrap_epochs_target": 25,
+            "bootstrap_epochs_completed": bootstrap_epoch - 1,
+            "epoch_percent": epoch_percent,
+            "percent": overall_percent,
+            "rl_iteration": 9,
+            "target_rl_iteration": 10,
+        }
+    guide_shadow_valid = bool(
+        guide_shadow.get("schema")
+        == "poke_bot.marnie_guide_shadow_non_authority/v1"
+        and guide_shadow.get("status") == "active_nonblocking_shadow_only"
+        and float(guide_shadow.get("guide_loss_weight", -1.0)) == 0.0
+        and (guide_shadow.get("authority") or {}).get("blocking") is False
+    )
+    guide_shadow_runtime_valid = bool(
+        guide_shadow_runtime.get("schema")
+        == "poke_bot.marnie_family_guide_shadow_runtime/v1"
+        and guide_shadow_runtime.get("status") == "active_next_start_overlay"
+        and int(guide_shadow_runtime.get("owner_revision", -1)) == 142
+        and (guide_shadow_runtime.get("proof") or {}).get("guide_weight") == 0.0
+        and (guide_shadow_runtime.get("proof") or {}).get(
+            "guide_runtime_authority"
+        )
+        is False
+        and (guide_shadow_runtime.get("proof") or {}).get(
+            "guide_blocking_authority"
+        )
+        is False
+        and (guide_shadow_runtime.get("proof") or {}).get(
+            "family_and_typed_loss_system_preserved"
+        )
+        is True
+    )
+    recovery_valid = bool(
+        epoch_recovery.get("schema")
+        == "poke_bot.marnie_postupload_epoch_recovery/v1"
+        and epoch_recovery.get("status") == "validated_resume_without_retraining"
+        and float(epoch_recovery.get("guide_weight", -1.0)) == 0.0
+        and epoch_recovery.get("guide_enabled") is False
+    )
+    updated = max(
+        (
+            path.stat().st_mtime
+            for path in (
+                MARNIE_POSTUPLOAD_BOOTSTRAP_LOG,
+                MARNIE_POSTUPLOAD_FAMILY_MIGRATION,
+            )
+            if path.is_file()
+        ),
+        default=None,
+    )
+    return {
+        "available": bool(active or migration),
+        "active": active,
+        "current": bool(active and authoritative),
+        "paused": False,
+        "authoritative": authoritative,
+        "status": "running" if active else "waiting",
+        "mode": "marnie_postupload_family_weighted_bootstrap",
+        "phase": str(progress.get("stage") or stage),
+        "run": "marnie_r138_postupload_weighted_bootstrap",
+        "specialist_id": "marnie-s-grimmsnarl-ex",
+        "iteration": 9,
+        "target_iteration": 10,
+        "bootstrap_epoch": bootstrap_epoch,
+        "bootstrap_epochs_target": 25,
+        "bootstrap_epochs_completed": max(bootstrap_epoch - 1, 0),
+        "latest_line": progress.get("line"),
+        "updated_at": updated,
+        "source": str(MARNIE_POSTUPLOAD_BOOTSTRAP_LOG),
+        "outcome_source": str(MARNIE_POSTUPLOAD_FAMILY_MIGRATION),
+        "progress": progress,
+        "service": service,
+        "guide": {
+            "status": "shadow_only_non_authoritative",
+            "enabled": False,
+            "shadow_available": guide_shadow_valid,
+            "runtime_merge_valid": guide_shadow_runtime_valid,
+            "owner_revision": 142,
+            "shadow_optional": True,
+            "live_target_generation_enabled": False,
+            "loss_weight": 0.0,
+            "gradient_authority": False,
+            "fusion_authority": False,
+            "action_authority": False,
+            "serving_authority": False,
+            "gate_authority": False,
+            "blocking_authority": False,
+            "missing_shadow_behavior": "mark_unavailable_and_continue",
+            "receipt": str(MARNIE_GUIDE_SHADOW_NONAUTHORITY),
+            "runtime_receipt": str(MARNIE_FAMILY_GUIDE_SHADOW_RUNTIME),
+            "runtime_registry": str(
+                (guide_shadow_runtime.get("merged_registry") or {}).get("path")
+                or ""
+            ),
+        },
+        "epoch_recovery": {
+            "valid": recovery_valid,
+            "epoch": 1,
+            "retrained": False,
+            "receipt": str(MARNIE_EPOCH_RECOVERY),
+        },
+        "boundary": {
+            "valid": authoritative,
+            "migration": str(MARNIE_POSTUPLOAD_FAMILY_MIGRATION),
+            "checkpoint_digest": str(
+                (request.get("bindings") or {}).get("learner_sha256") or ""
+            )
+            or None,
+            "trainer_exit_status": 75,
+            "next_collection_started": False,
+        },
+    }
+
+
+def marnie_shadow_guide_projection(
+    postupload_boundary: dict[str, Any],
+) -> dict[str, Any]:
+    """Return Marnie's durable guide-shadow state for every live RL phase.
+
+    The post-upload bootstrap owns the checksum-backed guide authority facts,
+    but those facts do not expire when the bootstrap service stops.  Marnie's
+    later RL phases must continue to render the retired guide as shadow-only,
+    weight zero, and nonblocking rather than collapsing that third state into
+    the generic ``absent`` fallback.
+    """
+
+    guide = dict(postupload_boundary.get("guide") or {})
+    if (
+        guide.get("status") != "shadow_only_non_authoritative"
+        or guide.get("enabled") is not False
+        or float(guide.get("loss_weight", -1.0)) != 0.0
+        or guide.get("blocking_authority") is not False
+        or guide.get("action_authority") is not False
+        or guide.get("gradient_authority") is not False
+    ):
+        return {}
+    return {
+        **guide,
+        "active_specialist": "marnie-s-grimmsnarl-ex",
+        "guide_archetype": "marnie-s-grimmsnarl-ex",
+        "parameterized_head": False,
     }
 
 
@@ -9699,6 +10337,103 @@ def reconcile_completed_train_epoch(
     return updated
 
 
+def infer_post_train_gate_progress(
+    progress: dict[str, Any],
+    raw_training_log: str,
+    *,
+    iteration_hint: int | None,
+) -> dict[str, Any]:
+    """Expose checkpoint publication between promotion and formal holdout.
+
+    A newly trained candidate has a unique digest even when promotion rejects
+    it, because the formal gate must evaluate that exact candidate rather than
+    substitute the incumbent. Remote digest publication can take minutes and
+    previously left the dashboard showing a completed training bar as if the
+    service were degraded.
+    """
+    if iteration_hint is None:
+        return progress
+    stage = str(progress.get("stage") or "")
+    if (
+        stage.startswith("heldout")
+        and stage not in {
+            "heldout:checkpoint_staging",
+            "heldout:starting",
+        }
+    ) or stage.startswith("measure:") or stage in {
+        "promotion",
+        "research_controls",
+    }:
+        return progress
+    clean = ANSI_RE.sub("", raw_training_log).replace("\r", "\n")
+    train_marker = f"[pure_rl] train begin iter={int(iteration_hint)}"
+    offset = clean.rfind(train_marker)
+    if offset < 0:
+        return progress
+    marker_kind = ""
+    marker_line = ""
+    for line in (value.strip() for value in clean[offset:].splitlines()):
+        if re.search(
+            rf"\[pure_rl\] BETWEEN_ITER_HARD_GATE begin iter={int(iteration_hint)}(?:\s|$)",
+            line,
+        ):
+            # A promoted candidate is published before the trainer can emit
+            # its PROMOTED line. Reloading a genuinely new digest across the
+            # local leaves and remotes can take several minutes, so this begin
+            # marker is itself the authoritative active phase.
+            marker_kind, marker_line = "checkpoint_staging", line
+        elif re.search(
+            rf"\[pure_rl\] (?:REJECTED|PROMOTED) iter={int(iteration_hint)}(?:\s|$)",
+            line,
+        ):
+            marker_kind, marker_line = "checkpoint_staging", line
+        elif re.search(
+            r"\[pure_rl\] BETWEEN_ITER_HARD_GATE ok\b", line
+        ):
+            marker_kind, marker_line = "heldout_starting", line
+        elif re.search(r"\[pure_rl\] heldout local worker cap=", line):
+            marker_kind, marker_line = "heldout_starting", line
+    if not marker_kind:
+        return progress
+    updated = dict(progress)
+    updated.update(
+        stage=(
+            "heldout:checkpoint_staging"
+            if marker_kind == "checkpoint_staging"
+            else "heldout:starting"
+        ),
+        iteration=int(iteration_hint),
+        epoch=None,
+        percent=None,
+        current=0,
+        total=None,
+        unit="games",
+        rate=None,
+        rate_unit=None,
+        eta=(
+            "publishing candidate weights"
+            if marker_kind == "checkpoint_staging"
+            else "starting formal games"
+        ),
+        gps=None,
+        sps=None,
+        remotes=0,
+        metrics={
+            "candidate_checkpoint_publication": bool(
+                marker_kind == "checkpoint_staging"
+            ),
+            "formal_holdout": True,
+        },
+        line=(
+            f"[pure_rl] heldout checkpoint staging iter={int(iteration_hint)}: "
+            "publishing the exact candidate digest to evaluation endpoints"
+            if marker_kind == "checkpoint_staging"
+            else marker_line
+        ),
+    )
+    return updated
+
+
 def _expert_rehearsal_exclusion_seconds(
     run_dir: Path | None,
     iteration: int,
@@ -10853,6 +11588,11 @@ def curriculum_state() -> dict[str, Any]:
         raw_training_log,
         iteration_hint=iteration_hint,
         train_epochs=2,
+    )
+    progress = infer_post_train_gate_progress(
+        progress,
+        raw_training_log,
+        iteration_hint=iteration_hint,
     )
     progress = annotate_expert_optimizer_sps(progress, raw_training_log)
     replay_window = replay_window_state(
@@ -13666,13 +14406,19 @@ def specialist_protocol_state(
                         )
                     ),
                     "role_label": (
+                        "FROZEN S-TIER H10 TRAINING MODEL"
+                        if raw.get("training_use_only") is True
+                        else (
                         "NEXT H10 SPECIALIST AFTER MARNIE"
                         if post_fleet_required
                         else (
                             "PUBLIC OPPONENT + ACTIVE ROUTE, "
                             "NO SPECIALIST TRAIN"
-                        )
+                        ))
                     ),
+                    "premium_holdout_tier": raw.get("premium_holdout_tier"),
+                    "frozen": raw.get("frozen") is True,
+                    "public_mix_eligible": raw.get("public_mix_eligible") is True,
                     "required_specialist": False,
                     "selection_eligible": (
                         raw.get("selector_eligible") is True
@@ -14693,17 +15439,20 @@ def specialist_protocol_state(
     runtime_service_active = runtime_service_state.startswith(
         ("active", "activating")
     )
+    selected_runtime_refresh = bool(
+        runtime_specialist_id
+        and runtime_run_name.startswith("final_format_")
+    )
     active_runtime_refresh = bool(
         runtime_service_active
-        and runtime_specialist_id
-        and runtime_run_name.startswith("final_format_")
+        and selected_runtime_refresh
     )
     # A post-fleet refresh reuses an archetype whose historical specialist row
     # is already frozen.  Keep that immutable row frozen, but do not erase the
     # separately versioned live refresh from the operator-facing active card.
     display_active_id = (
         program_active_id
-        or (runtime_specialist_id if active_runtime_refresh else "")
+        or (runtime_specialist_id if selected_runtime_refresh else "")
     )
     planning_frozen_ids = [
         specialist_id
@@ -14801,6 +15550,25 @@ def specialist_protocol_state(
                 "training remains blocked until both refreshes are truthfully "
                 "complete, frozen, and registered."
             )
+        elif active_runtime_refresh and display_active_id == "marnie-s-grimmsnarl-ex":
+            terminal_iteration = int(
+                (post_fleet_refresh or {}).get(
+                    "terminal_ceiling_completed_iteration", 20
+                )
+            )
+            effective_next_action = (
+                f"Continue live {active_label} iteration "
+                f"{int(live_execution['next_iteration'])} through the exact "
+                f"iteration-{terminal_iteration} refresh boundary. Freeze and "
+                f"register exact iteration {terminal_iteration}: retain a "
+                "measured pass when every gate passes, otherwise record owner "
+                "ceiling acceptance while preserving the failed gate evidence. "
+                f"Do not collect iteration {terminal_iteration + 1}. Then launch "
+                "the staged new H10 Crustle specialist; its public package remains "
+                "an inference-only baseline. Population training remains blocked "
+                "until the Marnie refresh and new Crustle specialist are both "
+                "truthfully complete, frozen, and registered."
+            )
         else:
             effective_next_action = (
                 f"Continue live {active_label} iteration "
@@ -14893,11 +15661,11 @@ def specialist_protocol_state(
         "active_runtime_refresh": {
             "active": active_runtime_refresh,
             "specialist_id": (
-                runtime_specialist_id if active_runtime_refresh else None
+                runtime_specialist_id if selected_runtime_refresh else None
             ),
-            "run_name": runtime_run_name if active_runtime_refresh else None,
+            "run_name": runtime_run_name if selected_runtime_refresh else None,
             "service_state": (
-                runtime_service_state if active_runtime_refresh else None
+                runtime_service_state if selected_runtime_refresh else None
             ),
             "historical_specialist_row_remains_frozen": True,
             "policy_scope": "refresh_lineage_not_cumulative_core_generation",
@@ -15282,13 +16050,30 @@ def main() -> None:
         curriculum = curriculum_state()
         final_alakazam = final_format_alakazam_progress()
         final_marnie = final_format_marnie_progress()
+        final_crustle = final_format_crustle_progress()
+        postupload_bootstrap = marnie_postupload_bootstrap_state()
+        postupload_family = marnie_postupload_family_study_state()
+        postupload_boundary = (
+            postupload_bootstrap
+            if postupload_bootstrap.get("current") is True
+            else postupload_family
+        )
         active_final_refresh = (
-            final_marnie
-            if final_marnie.get("status") in {"running", "complete"}
-            else final_alakazam
+            final_crustle
+            if final_crustle.get("status") == "running"
+            else (
+                final_marnie
+                if final_marnie.get("status")
+                in {"running", "complete", "stopped"}
+                else final_alakazam
+            )
         )
         final_alakazam_models = final_format_alakazam_model_inventory()
-        if active_final_refresh.get("status") in {"running", "complete"}:
+        if active_final_refresh.get("status") in {
+            "running",
+            "complete",
+            "stopped",
+        }:
             final_service = active_final_refresh.get("service") or {}
             final_stage = (
                 active_final_refresh.get("phase")
@@ -15302,7 +16087,7 @@ def main() -> None:
                 final_service.get("name")
                 or FINAL_FORMAT_ALAKAZAM_SERVICE
             )
-            if active_final_refresh.get("status") == "running":
+            if active_final_refresh.get("status") in {"running", "stopped"}:
                 service = final_service
             curriculum = {
                 **curriculum,
@@ -15357,6 +16142,59 @@ def main() -> None:
                 },
                 "final_format_refresh": active_final_refresh,
             }
+        if postupload_boundary.get("current") is True:
+            boundary_service = dict(postupload_boundary.get("service") or {})
+            boundary_progress = dict(postupload_boundary.get("progress") or {})
+            boundary_active = postupload_boundary.get("active") is True
+            boundary_stage = str(
+                postupload_boundary.get("phase") or "family-shadow:starting"
+            )
+            curriculum = {
+                **curriculum,
+                "active": boundary_active,
+                "active_units": (
+                    [
+                        str(
+                            boundary_service.get("name")
+                            or MARNIE_POSTUPLOAD_FAMILY_STUDY_SERVICE
+                        )
+                    ]
+                    if boundary_active
+                    else []
+                ),
+                "active_pids": (
+                    [int(boundary_service.get("pid") or 0)]
+                    if boundary_active
+                    else []
+                ),
+                "run": postupload_boundary.get("run"),
+                "iteration": 9,
+                "stage": boundary_stage,
+                "progress": boundary_progress,
+                "progress_source": postupload_boundary.get("source"),
+                "progress_status_source": postupload_boundary.get("source"),
+                "progress_log_source": postupload_boundary.get("source"),
+                "progress_updated_at": postupload_boundary.get("updated_at"),
+                "source_current": True,
+                "remote_workers": 0,
+                "remote_endpoints": [],
+                "scheduler_queues": {
+                    "available": False,
+                    "mode": (
+                        "isolated_shadow_study"
+                        if boundary_active
+                        else "protocol_pause"
+                    ),
+                },
+                "worker": {
+                    **(curriculum.get("worker") or {}),
+                    "active": boundary_active,
+                    "rss_bytes": boundary_service.get("memory_bytes"),
+                    "source": "systemd-user-cgroup",
+                    "command": boundary_service.get("command"),
+                },
+                "managed_boundary": postupload_boundary,
+            }
         gpus = gpu_state()
         elmo = elmo_future.result()
         latest10 = latest10_future.result()
@@ -15387,8 +16225,7 @@ def main() -> None:
     # service is selected; falling back to the old production command makes a
     # live Marnie refresh look like the historical Slowking/Alakazam runtime.
     if (
-        runtime_service_selected
-        and active_final_refresh.get("status") == "running"
+        active_final_refresh.get("status") in {"running", "stopped"}
         and str(active_final_refresh.get("specialist_id") or "").strip()
     ):
         runtime_specialist_id = str(
@@ -15397,11 +16234,17 @@ def main() -> None:
         runtime_run_name = str(
             active_final_refresh.get("run") or runtime_run_name or ""
         ).strip() or None
+    protocol_service = (
+        active_final_refresh.get("service") or service
+        if active_final_refresh.get("status") in {"running", "stopped"}
+        else service
+    )
     specialist_protocol = specialist_protocol_state(
         runtime_specialist_id=runtime_specialist_id,
         runtime_run_name=runtime_run_name,
         runtime_service_state=(
-            f"{service.get('active_state')}/{service.get('sub_state')}"
+            f"{protocol_service.get('active_state')}/"
+            f"{protocol_service.get('sub_state')}"
         ),
     )
     post_starmie_handoff = post_starmie_specialist_handoff_state()
@@ -15435,6 +16278,11 @@ def main() -> None:
                 or [None]
             )[0]
         ),
+        active_runtime_refresh=bool(
+            (specialist_protocol.get("active_runtime_refresh") or {}).get(
+                "active"
+            )
+        ),
     )
     specialist_protocol = reconcile_protocol_with_active_handoff(
         specialist_protocol,
@@ -15457,8 +16305,46 @@ def main() -> None:
     training = authoritative_training_state(
         curriculum, transition, specialist_handoff
     )
-    if active_final_refresh.get("status") in {"running", "complete"}:
+    if active_final_refresh.get("status") in {
+        "running",
+        "complete",
+        "stopped",
+    }:
         training = active_final_refresh
+    if postupload_boundary.get("current") is True:
+        boundary_progress = dict(postupload_boundary.get("progress") or {})
+        training = {
+            **postupload_boundary,
+            "current": boundary_progress.get("current"),
+            "total": boundary_progress.get("total"),
+            "percent": boundary_progress.get("percent"),
+            "rate": boundary_progress.get("rate"),
+            "rate_unit": boundary_progress.get("rate_unit"),
+            "games_per_second": boundary_progress.get("gps"),
+            "samples_per_second": boundary_progress.get("sps"),
+            "metrics": boundary_progress.get("metrics") or {},
+        }
+        guide_modes = specialist_protocol.setdefault(
+            "current_deck_guide_training_modes", {}
+        )
+        guide_modes["active_started_lineage"] = {
+            "is_active": True,
+            "specialist_id": "marnie-s-grimmsnarl-ex",
+            "display_name": "Marnie's Grimmsnarl ex",
+            "owner_revision": 141,
+            "mode": "optional_offline_shadow_non_authoritative",
+            "guide_weight": 0.0,
+            "shadow_available": bool(
+                (postupload_boundary.get("guide") or {}).get("shadow_available")
+            ),
+            "live_target_generation_enabled": False,
+            "gradient_authority": False,
+            "fusion_authority": False,
+            "action_authority": False,
+            "serving_authority": False,
+            "gate_authority": False,
+            "blocking_authority": False,
+        }
     expert_refresh = active_expert_corpus_state(
         curriculum,
         expert_refresh,
@@ -15669,6 +16555,68 @@ def main() -> None:
                 "independent_checks": final_alakazam.get("rating_gate_separate"),
             },
         }
+    if active_final_refresh.get("mode") == "final_format_crustle_h10_bootstrap":
+        crustle_heads = (
+            *DECISION_FUSION_REQUIRED_HEADS,
+            "setup_board_outcome",
+            "combo_state",
+        )
+        crustle_parameters = int(active_final_refresh.get("model_parameters") or 0)
+        crustle_structure = dict(
+            active_final_refresh.get("checkpoint_structure") or {}
+        )
+        final_model_override = {
+            "implementation": "TemporalCabtTransformer",
+            "architecture": "Crustle H10-I Fusion v3 bootstrap",
+            "run": active_final_refresh.get("run"),
+            "profile_id": "H10-I/v1",
+            "heads": {name: {"enabled": True} for name in crustle_heads},
+            "trainable_parameters": crustle_parameters,
+            "active_checkpoint": active_final_refresh.get("checkpoint"),
+            "active_checkpoint_digest": active_final_refresh.get(
+                "checkpoint_digest"
+            ),
+            "parameter_source": active_final_refresh.get("source"),
+            "parameter_breakdown": {
+                "optimizer_active_current": crustle_parameters,
+                "current_non_active": 0,
+                "staged_non_active": 0,
+                "current_checkpoint_total": crustle_parameters,
+                "staged_architecture_total": crustle_parameters,
+            },
+            "checkpoint_structure": crustle_structure,
+            "dormant_modules": [],
+            "matchup_adapter_v6": {
+                "active": True,
+                "format": 6,
+                "physical_slot_capacity": 64,
+            },
+            "training_schedule": {
+                "phase": "weighted_all-guide_expert_bootstrap",
+                "epoch": active_final_refresh.get("epoch"),
+                "epochs_target": 35,
+                "guide_active_epochs": [1, 35],
+                "pilot_weighting_epochs": [1, 35],
+            },
+            "decision_fusion": {
+                "schema": "poke_bot.causal_decision_fusion/v3",
+                "available": True,
+                "verified": True,
+                "phase": "bootstrap_training",
+                "runtime_enabled": True,
+                "training_enabled": True,
+                "required_heads": list(crustle_heads),
+                "required_head_count": len(crustle_heads),
+            },
+            "runtime_identity": {
+                "active_learner": "crustle",
+                "runtime_build": "final-format-crustle-r113-h10",
+                "runtime_root": str(SPECIALIST_RUNTIME_ROOT),
+                "service_active": True,
+                "service_state": "active/start",
+                "frozen_inference_opponents": frozen_runtime_rows,
+            },
+        }
     if active_final_refresh.get("mode") in {
         "final_format_marnie_h10_bootstrap",
         "final_format_marnie_h10_rl",
@@ -15814,6 +16762,23 @@ def main() -> None:
                 "frozen_inference_opponents": [],
             },
         }
+    # ``postupload_boundary`` intentionally selects only the currently active
+    # managed phase.  The durable guide-shadow authority is owned by the
+    # bootstrap projection even after that phase completes, so source it from
+    # ``postupload_bootstrap`` rather than from the inactive phase selector.
+    marnie_guide_state = marnie_shadow_guide_projection(postupload_bootstrap)
+    if (
+        active_final_refresh.get("mode")
+        in {"final_format_marnie_h10_bootstrap", "final_format_marnie_h10_rl"}
+        and marnie_guide_state
+    ):
+        final_model_override = {
+            **final_model_override,
+            "training_targets": {
+                **dict(final_model_override.get("training_targets") or {}),
+                "current_deck_guide": marnie_guide_state,
+            },
+        }
     baseline_eval = baseline_eval_state()
     # Retain compatibility payloads for old dashboard clients, but label every
     # superseded or aliased view so it cannot masquerade as current evidence.
@@ -15876,6 +16841,7 @@ def main() -> None:
                 "matchup_pipeline": matchup_pipeline,
                 "specialist_protocol": specialist_protocol,
                 "specialist_handoff": specialist_handoff,
+                "managed_boundary": postupload_boundary,
                 "curriculum": curriculum,
                 "gpus": gpus,
                 "fleet": {

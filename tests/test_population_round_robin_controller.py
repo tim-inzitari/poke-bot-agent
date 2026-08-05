@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from scripts.prepare_population_round_robin import _readiness_identity, prepare
+from scripts.prepare_population_round_robin import (
+    _population_roster,
+    _readiness_identity,
+    prepare,
+)
 from scripts.run_population_round_robin import (
     _member_command,
     validate_contract,
@@ -151,3 +155,152 @@ def test_population_readiness_identity_binds_complete_canonical_payload() -> Non
 
     assert _readiness_identity(left) == _readiness_identity(reordered)
     assert _readiness_identity(left) != _readiness_identity(changed)
+
+
+def test_population_roster_adds_new_h10_crustle_without_public_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.prepare_population_round_robin as module
+
+    historical_ids = [f"member-{index:02d}" for index in range(11)] + [
+        "alakazam",
+        "marnie-s-grimmsnarl-ex",
+        "starmie",
+    ]
+    state_path = tmp_path / "specialists.yaml"
+    state_path.write_text(
+        "specialists:\n"
+        + "".join(
+            f"  - id: {specialist_id}\n"
+            "    status: passed_frozen\n"
+            "    frozen: true\n"
+            for specialist_id in historical_ids
+        ),
+        encoding="utf-8",
+    )
+    baseline_root = tmp_path / "baselines"
+    frozen_rows = []
+    runtime_rows = {}
+    for specialist_id in historical_ids:
+        package = baseline_root / "specialists" / specialist_id
+        package.mkdir(parents=True)
+        (package / "model.pt").write_bytes(b"model")
+        expert = tmp_path / f"{specialist_id}-expert.json"
+        tree = tmp_path / f"{specialist_id}-tree.json"
+        expert.write_text("{}", encoding="utf-8")
+        tree.write_text("{}", encoding="utf-8")
+        frozen_rows.append(
+            {
+                "specialist_id": specialist_id,
+                "opponent_id": f"specialist-{specialist_id}",
+                "baseline_group": "specialists",
+                "baseline_dir": specialist_id,
+                "checkpoint_digest": "sha256:file",
+                "content_digest": "sha256:package",
+                "frozen": True,
+                "public_mix_eligible": True,
+            }
+        )
+        runtime_rows[specialist_id] = {
+            "expert_manifest": str(expert),
+            "expert_manifest_sha256": "file",
+            "matchup_runtime_tree": str(tree),
+            "matchup_runtime_tree_sha256": "file",
+        }
+
+    frozen_registry = tmp_path / "frozen.json"
+    frozen_registry.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.frozen_specialist_registry/v1",
+                "specialists": frozen_rows,
+            }
+        ),
+        encoding="utf-8",
+    )
+    runtime_registry = tmp_path / "runtime.json"
+    runtime_registry.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.specialist_runtime_registry/v1",
+                "specialists": runtime_rows,
+            }
+        ),
+        encoding="utf-8",
+    )
+    refreshes = []
+    for specialist_id in ("alakazam", "marnie-s-grimmsnarl-ex", "crustle"):
+        expert = tmp_path / f"{specialist_id}-refresh-expert.json"
+        tree = tmp_path / f"{specialist_id}-refresh-tree.json"
+        bundle = tmp_path / f"{specialist_id}.tar.gz"
+        expert.write_text("{}", encoding="utf-8")
+        tree.write_text("{}", encoding="utf-8")
+        bundle.write_bytes(b"bundle")
+        refreshes.append(
+            {
+                "specialist_id": specialist_id,
+                "checkpoint_checksum": "sha256:file",
+                "submission_bundle": str(bundle),
+                "submission_bundle_sha256": "sha256:file",
+                "expert_manifest": str(expert),
+                "expert_manifest_sha256": "sha256:file",
+                "matchup_runtime_tree": str(tree),
+                "matchup_runtime_tree_sha256": "sha256:file",
+            }
+        )
+    refresh_registry = tmp_path / "refresh.json"
+    refresh_registry.write_text(
+        json.dumps(
+            {
+                "schema": "poke_bot.post_fleet_refresh_registry/v1",
+                "ordered_refresh_ids": [
+                    "alakazam",
+                    "marnie-s-grimmsnarl-ex",
+                    "crustle",
+                ],
+                "refreshes": refreshes,
+            }
+        ),
+        encoding="utf-8",
+    )
+    baseline_manifest = tmp_path / "manifest.json"
+    baseline_manifest.write_text('{"agents": []}', encoding="utf-8")
+
+    monkeypatch.setattr(module, "sha256", lambda _path: "sha256:file")
+    monkeypatch.setattr(
+        module, "baseline_content_digest", lambda _path: "sha256:package"
+    )
+
+    def fake_materialize(**kwargs: object) -> dict[str, str]:
+        specialist_id = str(kwargs["specialist_id"])
+        package = baseline_root / "population-refresh" / specialist_id
+        package.mkdir(parents=True, exist_ok=True)
+        model = package / "model.pt"
+        model.write_bytes(b"model")
+        return {
+            "opponent_id": f"refresh-{specialist_id}",
+            "baseline_group": "population-refresh",
+            "baseline_dir": specialist_id,
+            "baseline_package": str(package),
+            "checkpoint": str(model),
+            "checkpoint_digest": "sha256:file",
+            "content_digest": "sha256:package",
+        }
+
+    monkeypatch.setattr(module, "materialize_refresh_bundle", fake_materialize)
+    roster = _population_roster(
+        state_path=state_path,
+        frozen_registry_path=frozen_registry,
+        runtime_registry_path=runtime_registry,
+        baseline_root=baseline_root,
+        baseline_manifest=baseline_manifest,
+        refresh_registry_path=refresh_registry,
+    )
+
+    assert len(roster) == 15
+    crustle = next(row for row in roster if row["specialist_id"] == "crustle")
+    assert crustle["current_role"] == "current_post_fleet_refresh"
+    assert crustle["selected_history"] == []
+    assert crustle["trainable_in_population"] is True
+    assert all("public" not in row["opponent_id"] for row in roster)

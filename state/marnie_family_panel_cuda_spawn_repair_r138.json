@@ -1,0 +1,67 @@
+{
+  "schema": "poke_bot.marnie_family_panel_cuda_spawn_repair/v1",
+  "created_at": "2026-08-04T07:46:06Z",
+  "owner_revision": 138,
+  "scope": "post_iteration9_family_shadow_panels_only",
+  "observed_failure": {
+    "stage": "round1_development_panel_first_treatment",
+    "requested_workers": 96,
+    "zombie_workers": 70,
+    "workers_with_unintended_cuda_contexts": 29,
+    "unintended_gpu_total_bytes": 12479758336,
+    "allocator_warning": "expandable_segments memory mapping failed with OOM on device 0",
+    "result_tail_risk": "local multiprocessing workers died after accepting jobs, leaving imap results permanently absent"
+  },
+  "root_cause": "spawn children import the main module and CUDA-capable dependencies before WorkerPool's initializer applies POKEBOT_WORKER_CPU_ONLY, so the initializer-time CUDA_VISIBLE_DEVICES mask was too late",
+  "repair": {
+    "behavior": "set CUDA_VISIBLE_DEVICES to the empty string and POKEBOT_WORKER_CPU_ONLY to 1 in the parent for the complete panel WorkerPool spawn-and-run lifetime, then restore both parent environment values exactly",
+    "panel_job_device": "cpu",
+    "gpu_leaf_backend_enabled": false,
+    "training_checkpoint_changed": false,
+    "panel_schedule_changed": false,
+    "panel_seed_changed": false,
+    "gate_changed": false,
+    "production_runtime_changed": false
+  },
+  "preserved_training_receipts": {
+    "round1_plus_checkpoint_sha256": "sha256:9811dfb22e77c70eaa11e2b1c9c992c5a868febc40cfe6ce8523ba4816f38325",
+    "round1_minus_checkpoint_sha256": "sha256:8ffdc33ffd94029ca7504c4163ec80c828387e3dcd7c8a5c32c6400d286d8230"
+  },
+  "quarantined_invalid_outputs": {
+    "destination": "/home/inzi/poke-bot-agent/outputs/studies/marnie-archetype-family-r136/quarantine/panel-cuda-failure-r138",
+    "round1_development": {
+      "bytes": 5011928,
+      "sha256": "sha256:5e9c724866bf2e36fbe6daddd8834d52c3e3d8b5ed5459b38a3cdc2a96ee413b",
+      "rows": 2040,
+      "invalid_rows": 1427,
+      "causal_integrity_failures": 1427
+    },
+    "round1_receipt": {
+      "bytes": 1785,
+      "sha256": "sha256:74aa6e4e923b5d4df14fe793e5ae641653e87ac4f98e8da8702a278e241bbfd3",
+      "status": "failed",
+      "reason": "invalid_or_crashed_development_unit"
+    }
+  },
+  "deployment": {
+    "source": "/home/inzi/poke-bot-agent/scripts/run_marnie_archetype_family_study.py",
+    "runtime": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/scripts/run_marnie_archetype_family_study.py",
+    "before_sha256": "sha256:86cf6de6c7aabc9ee95ba53075408519ced3a0a2575349ed0584d737b6434a9e",
+    "after_sha256": "sha256:75e42bf742cdfb71c522972ffe763ed56531742ba61f9641799381bc71d9a1f4"
+  },
+  "validation": {
+    "python_compile": "passed",
+    "targeted_test": "1 passed, 17 deselected",
+    "targeted_test_name": "test_panel_spawn_environment_hides_cuda_and_restores_parent",
+    "worktree_diff_check": "passed",
+    "live_rerun": {
+      "observed_at": "2026-08-04T07:51:27Z",
+      "main_pid": 2411903,
+      "panel_workers": 96,
+      "resource_tracker_processes": 1,
+      "zombie_children": 0,
+      "gpu_processes": 0,
+      "service_restarts": 0
+    }
+  }
+}

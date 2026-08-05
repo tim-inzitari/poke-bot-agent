@@ -1,0 +1,41 @@
+{
+  "schema": "poke_bot.marnie_new_system_hook_monitor_stage/v1",
+  "status": "armed_waiting_for_clean_iteration_6_commit",
+  "recorded_at_utc": "2026-08-03T23:12:34Z",
+  "owner_boundary_revision": 130,
+  "operational_reconciliation_revision": 131,
+  "managed_boundary_service": "pokebot-marnie-family-hook-boundary-r130.service",
+  "managed_boundary_service_state": "activating/start",
+  "managed_boundary_service_main_pid": 1374045,
+  "active_training_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+  "active_training_service_state": "active/running",
+  "active_training_main_pid": 1267326,
+  "active_training_restart_count": 0,
+  "observed_loop_state": {
+    "last_completed_iteration": 5,
+    "next_iteration": 6
+  },
+  "activation_boundary": {
+    "after_completed_iteration": 6,
+    "before_collection_iteration": 7,
+    "managed_restart_required": true,
+    "purpose": "load_already_staged_revision_130_boundary_hook_only"
+  },
+  "boundary_hook_source_sha256": "sha256:b366b7d7c64b97abbbd5a288db9869a449a32a74736d13c30dcec3ce85e31eb1",
+  "boundary_unit_sha256": "sha256:5bf74ce7f0553c34c5e30e314272eced9c1efcc53e23b784b766d581499322f9",
+  "iteration9_trigger_timer": {
+    "unit": "pokebot-marnie-family-iteration9-trigger-r130.timer",
+    "state": "active/waiting",
+    "enabled": true
+  },
+  "successful_iteration9_upload_is_last_old_system_boundary": true,
+  "first_post_upload_training_collection_system": "new_system",
+  "old_system_collection_after_successful_upload_allowed": false,
+  "boundary_is_owner_immutable": true,
+  "current_iteration_modified": false,
+  "scheduler_changed": false,
+  "fleet_allocation_changed": false,
+  "self_play_tail_rule_changed": false,
+  "activation_receipt": "/home/inzi/poke-bot-agent/outputs/state/marnie-new-system-hook-activation-r130.json",
+  "activation_receipt_exists": false
+}

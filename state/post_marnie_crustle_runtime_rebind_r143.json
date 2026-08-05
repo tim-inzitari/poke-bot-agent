@@ -1,0 +1,61 @@
+{
+  "schema": "poke_bot.post_marnie_crustle_runtime_rebind_repair/v1",
+  "status": "activated_dormant_handoff_repaired",
+  "owner_revision": 143,
+  "created_at_utc": "2026-08-04T15:22:14Z",
+  "active_training_modified": false,
+  "active_bootstrap_interrupted": false,
+  "marnie_completion_service": "pokebot-final-format-marnie-r104-completion.service",
+  "marnie_runtime_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+  "successor_register_service": "pokebot-final-format-crustle-r113-h10-register.service",
+  "effective_completion_exec": "complete_final_format_marnie_refresh.py",
+  "stale_completion_exec_removed": "launch_active_specialist.py",
+  "handoff_registry_resolution": "effective_managed_marnie_execstart_at_completion",
+  "completion_receipt_binds_registry_path_and_sha256": true,
+  "crustle_registration_requires_completion_bound_registry": true,
+  "marnie_only_family_fields_removed_before_crustle_registration": [
+    "archetype_loss_contract",
+    "deck_family_distribution",
+    "family_activation_authority",
+    "family_manifest",
+    "marnie_family_guide_shadow_runtime",
+    "marnie_guide_retirement",
+    "replay_list_sampler",
+    "selected_loss_vector",
+    "variant_provenance"
+  ],
+  "marnie_guide_weight_required_at_handoff": 0.0,
+  "marnie_fusion_schema_required_at_handoff": "poke_bot.causal_decision_fusion/v3",
+  "marnie_fusion_runtime_required_at_handoff": true,
+  "artifacts": {
+    "managed_registry_resolver": {
+      "path": "scripts/managed_runtime_registry.py",
+      "sha256": "sha256:e9aa42e9a121e88c5b3d44ea331c59230f40c1efa5592521b6cc4beb1fb79f74"
+    },
+    "marnie_completion": {
+      "path": "scripts/complete_final_format_marnie_refresh.py",
+      "sha256": "sha256:9f910c9288c52e78b3685ee9d7bdc406289013dc78276fd8646dfe2af5bf5725"
+    },
+    "crustle_registration": {
+      "path": "scripts/register_post_marnie_crustle_h10.py",
+      "sha256": "sha256:149113f3c99f040dd9178c0c6b36a10a038426d53de1bc0df54291ad0e5df3e9"
+    },
+    "crustle_register_unit": {
+      "path": "deploy/systemd/pokebot-final-format-crustle-r113-h10-register.service",
+      "sha256": "sha256:b502cb34b7018b98db7ab59bd289ff007feecdd2d0ba07abd74c81a187104e47"
+    },
+    "completion_overlay": {
+      "path": "deploy/systemd/pokebot-final-format-marnie-r104-completion.service.d/zzzzzzz-crustle-handoff-r143.conf",
+      "sha256": "sha256:503fe05f464e59a9a2dbcd07d90dc28f90cb6dfde97de5b75a184251c90b38d1"
+    }
+  },
+  "validation": {
+    "systemd_analyze_verify": "passed",
+    "focused_tests": "11 passed",
+    "completion_preflight": "passed",
+    "completion_preflight_runtime_registry_sha256": "sha256:88b105452dec02fb9f798a78011ef0abb213ae8c2598d92c4aa9fc81b51f53f5",
+    "effective_completion_exec_count": 1,
+    "effective_completion_preflight_count": 1,
+    "dormant_crustle_units_remain_inactive": true
+  }
+}

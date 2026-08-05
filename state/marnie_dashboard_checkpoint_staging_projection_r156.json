@@ -1,0 +1,48 @@
+{
+  "schema": "poke_bot.marnie_dashboard_checkpoint_staging_projection/v1",
+  "status": "activated_display_only",
+  "goal_revision": 156,
+  "recorded_at_utc": "2026-08-05T02:21:50Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "repair": {
+    "problem": "The live Marnie dashboard ignored the authoritative BETWEEN_ITER_HARD_GATE begin marker for a promoted candidate, retained the completed adapter bar, and marked training stale while exact checkpoint publication was actively running.",
+    "begin_marker": "BETWEEN_ITER_HARD_GATE begin",
+    "projected_phase": "heldout:checkpoint_staging",
+    "projected_eta": "publishing candidate weights",
+    "bounded_freshness_seconds": 1200,
+    "freshness_bound_source": "existing managed trainer stall window",
+    "requires_active_managed_service": true,
+    "training_restarted": false,
+    "runtime_or_selector_changed": false
+  },
+  "artifacts": {
+    "dashboard_snapshot": {
+      "path": "scripts/dashboard_snapshot.py",
+      "sha256": "sha256:417383cf2f545574cfe39d8855aba880cfd65db6f2a08401b6de20484ec0de47"
+    },
+    "regression_tests": {
+      "path": "tests/test_dashboard_regressions.py",
+      "sha256": "sha256:25ef547c91663e348614739676c095263daa2cb1c4bb4f8d1968a54eac1ece66",
+      "focused_result": "13 passed, 224 deselected"
+    },
+    "canonical_remote_snapshot": "/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py",
+    "selector_owned_remote_snapshot": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/scripts/dashboard_snapshot.py"
+  },
+  "live_validation": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "managed_pid": 138326,
+    "managed_restart_count": 0,
+    "iteration": 11,
+    "candidate_checkpoint_sha256": "sha256:b1567e5c7a9c6f2d720e237e217035feb70856a90a900376d7d911a0aa01a3ff",
+    "promotion_win_rate": 0.575,
+    "promotion_interval_lower": 0.48750000000000004,
+    "hard_gate_local_endpoints": 1,
+    "hard_gate_remote_endpoints": 2,
+    "hard_gate_passed": true,
+    "next_phase": "heldout:strong_public_gate",
+    "formal_holdout_games": 4250,
+    "dashboard_source_integrity_current": true,
+    "required_sources_current": 19,
+    "required_sources_total": 19
+  }
+}

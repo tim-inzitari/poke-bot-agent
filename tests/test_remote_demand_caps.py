@@ -526,8 +526,8 @@ def test_worse_than_best_default_forces_shrink(
     assert sched._demand_probe.grow_ceiling == 30
 
 
-def test_tqdm_remotes_postfix_tracks_active_vs_demand() -> None:
-    """Bar shows live sockets; rdmd only when demand ≠ active (desync label)."""
+def test_tqdm_remote_postfix_separates_sockets_owned_games_and_demand() -> None:
+    """Capacity, ownership, and scheduler demand retain distinct labels."""
     import importlib.util
     import sys
     from pathlib import Path
@@ -552,9 +552,18 @@ def test_tqdm_remotes_postfix_tracks_active_vs_demand() -> None:
         prog.set_remotes(37, demand=37)
         assert prog.remotes == 37
         assert "rdmd" not in prog._postfix(sps="1")
-        prog.set_remotes(45, demand=60)
+        prog.set_remotes(
+            45,
+            demand=60,
+            outstanding=41,
+            outstanding_elmo=30,
+            outstanding_bert=11,
+        )
         pf = prog._postfix(sps="1")
-        assert pf["remotes"] == 45
+        assert pf["rsock"] == 45
+        assert pf["rout"] == 41
+        assert pf["eout"] == 30
+        assert pf["bout"] == 11
         assert pf["rdmd"] == 60
     finally:
         prog.close()

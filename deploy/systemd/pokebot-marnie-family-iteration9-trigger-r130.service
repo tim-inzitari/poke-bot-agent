@@ -1,0 +1,11 @@
+[Unit]
+Description=Materialize immutable Marnie iteration-9 family boundary trigger
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/final-format-marnie-milestone-submissions-r107/iter_00009.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/materialize_marnie_iteration9_upload_trigger.py --queue /home/inzi/poke-bot-agent/outputs/state/kaggle-submission-queue.json --milestone-receipt /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-milestone-submissions-r107/iter_00009.json --attempt-receipts /home/inzi/.local/state/pokebot/kaggle-submission-attempts --output /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json
+Nice=10
+IOSchedulingClass=idle

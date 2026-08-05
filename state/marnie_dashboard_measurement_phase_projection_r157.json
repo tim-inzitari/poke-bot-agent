@@ -1,0 +1,46 @@
+{
+  "schema": "poke_bot.marnie_dashboard_measurement_phase_projection/v1",
+  "status": "activated_display_only",
+  "goal_revision": 157,
+  "recorded_at_utc": "2026-08-05T02:41:00Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "repair": {
+    "problem": "Post-train gate inference could replace an authoritative live measure:* counter with an older heldout checkpoint-staging marker, making healthy research-control work appear stale or out of phase.",
+    "preserved_authoritative_phase_prefix": "measure:",
+    "post_train_inference_allowed_to_override_measurement": false,
+    "training_restarted": false,
+    "runtime_or_selector_changed": false
+  },
+  "artifacts": {
+    "dashboard_snapshot": {
+      "path": "scripts/dashboard_snapshot.py",
+      "sha256": "sha256:9598ca842f7ce7ecaab8090ab227396fd0a19e6e87e3903e87ae6b97ba05078a"
+    },
+    "regression_tests": {
+      "path": "tests/test_dashboard_regressions.py",
+      "sha256": "sha256:75c4411b342681c3d06d5c8c60d7a808f5e5049a72e32a2370fab6598d6ac9a8",
+      "focused_result": "13 passed, 224 deselected"
+    },
+    "canonical_remote_snapshot": "/home/inzi/poke-bot-agent/scripts/dashboard_snapshot.py",
+    "selector_owned_remote_snapshot": "/home/inzi/poke-bot-agent-deployments/specialist-handoff-plan-v30/scripts/dashboard_snapshot.py"
+  },
+  "live_validation": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "managed_pid": 138326,
+    "managed_restart_count": 0,
+    "iteration_11_checkpoint_sha256": "sha256:b1567e5c7a9c6f2d720e237e217035feb70856a90a900376d7d911a0aa01a3ff",
+    "iteration_11_commit_sha256": "sha256:d09b4eafcd3669bfb2ec6ad70a78a59984eb7d1a0178fa52abfd4a44f2553db4",
+    "formal_holdout_games": 4250,
+    "formal_holdout_win_rate": 0.734111111111111,
+    "formal_gate_passed": false,
+    "research_control_games": 1000,
+    "research_control_win_rate": 0.761,
+    "research_control_audit_passed": true,
+    "last_completed_iteration": 11,
+    "next_iteration": 12,
+    "observed_next_phase": "collect:public_mix",
+    "dashboard_source_integrity_current": true,
+    "required_sources_current": 19,
+    "required_sources_total": 19
+  }
+}

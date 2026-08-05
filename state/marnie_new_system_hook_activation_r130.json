@@ -1,0 +1,35 @@
+{
+  "activated_at_utc": "2026-08-03T23:57:16.456805+00:00",
+  "activation_inputs_sha256": {
+    "/home/inzi/.config/systemd/user/pokebot-final-format-marnie-r104-h10-rl.service.d/zzzzz-family-boundary-r130.conf": "sha256:56b3cf25024c81194ff392ff6158746a04b7e532e71c82002462ae2245d158fd",
+    "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/poke_bot/archetype_family_activation.py": "sha256:f59072443c1fc969e63adaa1db64a39b58e371768afa1f4692cbc6bc9604dd76",
+    "/home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/scripts/train_pure_rl.py": "sha256:e7658b5fc382d5c1ef222de4485c095467ee6a12d49b3c3c6b95be8b4d6265c4"
+  },
+  "boundary": {
+    "commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/commits/iter_00006.json",
+    "commit_sha256": "sha256:398541a434ed1df9c157084454eae6ced3d72cb6c84bc39c7892aaac215f256d",
+    "completed_iteration": 6,
+    "next_iteration": 7
+  },
+  "first_post_upload_collection_system": "new_system",
+  "fleet_allocation_changed": false,
+  "loaded_environment": {
+    "POKEBOT_MARNIE_FAMILY_ACTIVATION_REQUEST": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/activation-request.json",
+    "POKEBOT_MARNIE_ITERATION9_UPLOAD_TRIGGER": "/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json"
+  },
+  "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+  "new_main_pid": 1471079,
+  "old_main_pid": 1267326,
+  "old_system_collection_after_successful_upload_allowed": false,
+  "owner_boundary_revision": 130,
+  "scheduler_changed": false,
+  "schema": "poke_bot.marnie_new_system_hook_activation/v1",
+  "self_play_tail_rule_changed": false,
+  "status": "activated",
+  "successful_iteration9_upload_is_last_old_system_boundary": true,
+  "trigger_timer": {
+    "active_state": "active",
+    "sub_state": "waiting",
+    "unit": "pokebot-marnie-family-iteration9-trigger-r130.timer"
+  }
+}

@@ -35,6 +35,7 @@ from poke_bot.matchup_adapter_activation import (
 from poke_bot.model import build_model
 from poke_bot.train import (
     TrainConfig,
+    _inherited_dormant_matchup_adapter_continuation,
     _train_dormant_matchup_adapter_phase,
     assert_matchup_adapter_isolation_guard,
     assert_matchup_adapter_training_contract,
@@ -1014,6 +1015,41 @@ def test_live_dormant_phase_trains_lucario_and_mirror_only(
     assert validated["trained"] is True
     with pytest.raises(RuntimeError, match="frozen dormant bank"):
         validate_zero_dormant_checkpoint(trained_path)
+
+
+def test_frozen_adapter_continuation_preserves_parent_proof_and_state() -> None:
+    fit = {
+        "schema": "poke_bot.dormant_matchup_adapter_fit/v1",
+        "runtime_enabled": False,
+        "base_frozen": True,
+        "optimizer_scope": "matchup_adapter_bank_only",
+        "epochs": 3,
+        "steps": 11,
+        "rows": 29,
+        "route_decisions": {"alakazam": 29},
+    }
+    optimizer_state = {"state": {1: {"step": 11}}, "param_groups": []}
+    parent = {
+        "extra": {
+            "dormant_matchup_adapter_fit": fit,
+            "dormant_matchup_adapter_optimizer_state": optimizer_state,
+        }
+    }
+
+    inherited_fit, inherited_optimizer_state = (
+        _inherited_dormant_matchup_adapter_continuation(parent)
+    )
+
+    assert inherited_fit == fit
+    assert inherited_optimizer_state == optimizer_state
+    assert inherited_fit is not fit
+    assert inherited_optimizer_state is not optimizer_state
+    inherited_fit["route_decisions"]["alakazam"] = 0
+    inherited_optimizer_state["state"][1]["step"] = 0
+    assert fit["route_decisions"]["alakazam"] == 29
+    assert optimizer_state["state"][1]["step"] == 11
+    assert _inherited_dormant_matchup_adapter_continuation(None) == ({}, {})
+
 
 def test_checkpoint_resume_pins_route_order_and_rejects_mapping_drift(
     tmp_path: Path,

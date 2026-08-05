@@ -1,0 +1,42 @@
+{
+  "schema": "poke_bot.marnie_postupload_latent_policy_continuity/v1",
+  "status": "validated_runtime_inert_until_post_iteration_9_bootstrap",
+  "owner_decision_revision": 137,
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "accepted_policy_generation": 15,
+  "active_evidence_checkpoint_sha256": "sha256:b11f9a5db8b181c51328272d073e695324e8b76d1768d5bb5d9c10240f7018ad",
+  "required_checkpoint_inventory": {
+    "schema": "poke_bot.action_conditioned_latent_lookahead/v1",
+    "enabled": true,
+    "action_authority_enabled": true,
+    "width": 512,
+    "policy_aid_cap": 0.25,
+    "parameters": 412130
+  },
+  "validated_boundaries": [
+    "successfully_uploaded_iteration_9_parent",
+    "every_expert_bootstrap_epoch",
+    "selected_epoch_25_checkpoint",
+    "frozen_bootstrap_provenance",
+    "bootstrap_ready_receipt"
+  ],
+  "failure_behavior": "fail_closed_before_bootstrap_submission_or_self_play",
+  "bootstrap_script": "scripts/run_final_format_marnie_h10_bootstrap.py",
+  "bootstrap_script_sha256": "sha256:24cdf3636b1b30de79084b469b789ca7147cf58deae7d76af948ea699dfdb83e",
+  "submission_stager": "scripts/stage_marnie_postupload_bootstrap_submission.py",
+  "submission_stager_sha256": "sha256:b16fb311c324f3c0cd0df3cba39ac9c0f93ec7168e96785a4fcfb6a8d99404d4",
+  "bootstrap_activator": "scripts/activate_marnie_postupload_bootstrap.py",
+  "bootstrap_activator_sha256": "sha256:b89ab36e27de3e93da1e08825e112161cbc0fa4f428a12190b93ea2742bf392e",
+  "managed_service_unit": "deploy/systemd/pokebot-marnie-postupload-weighted-bootstrap-r135.service",
+  "managed_service_unit_sha256": "sha256:da336a7b92e459960b3fe815beac71a9e4cc1ee8a4474460652f7bf0b85ca639",
+  "submission_service_unit": "deploy/systemd/pokebot-marnie-postupload-bootstrap-submit-r135.service",
+  "submission_service_unit_sha256": "sha256:9cc789b33c223688f18e6bb5fb652288e51debe7eb557dae40aecb88a529390e",
+  "regression_test": "tests/test_final_format_marnie_h10_bootstrap.py",
+  "regression_test_sha256": "sha256:8ad1afbc42bc5c02fb64af7d3b7fe32ad02ceb2829cab67a113b694552cef116",
+  "chain_regression_test": "tests/test_marnie_postupload_bootstrap_chain.py",
+  "chain_regression_test_sha256": "sha256:0deea1c2a05294b0f4596d3bddbe96a2976d3e81c347c829928ce54e1da0c431",
+  "focused_tests_passed": 41,
+  "active_training_modified": false,
+  "scheduler_modified": false,
+  "fleet_modified": false
+}

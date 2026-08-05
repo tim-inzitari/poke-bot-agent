@@ -1,0 +1,43 @@
+{
+  "schema": "poke_bot.marnie_guide_off_rl_save_recovery/v1",
+  "owner_goal_revision": 146,
+  "recorded_at": "2026-08-04T22:28:42Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "iteration": 10,
+  "failure": {
+    "stage": "post_rl_matchup_adapter_candidate_save",
+    "exception": "ValueError: strategic curriculum record requested for legacy mode",
+    "cause": "the RL save path treated legacy guide-off mode as an active strategic curriculum mode",
+    "model_updates_completed_before_failure": true,
+    "iteration_commit_completed_before_failure": false
+  },
+  "repair": {
+    "canonical_train_py_sha256": "sha256:051d5a42e5f03b86bb212e2d7abe5e830557f4dce2c7cb267524750de17b3e6e",
+    "single_guard_helper": "_maybe_strategic_curriculum_training_record",
+    "legacy_or_guide_off_result": {},
+    "strategic_mode_behavior_preserved": true,
+    "guide_loss_weight": 0.0,
+    "guide_action_authority": false,
+    "guide_blocking_authority": false
+  },
+  "recovery": {
+    "managed_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "main_pid": 4042259,
+    "restart_count": 1,
+    "active_state": "active",
+    "sub_state": "running",
+    "collection_reused_without_recollection": true,
+    "expert_rehearsal_reused_without_retraining": true,
+    "collection_receipt_sha256": "sha256:0985c21e001d5e7483210aab661a5cdb7df39005808294e09a4d6555b2a1a4ed",
+    "rehearsal_receipt_sha256": "sha256:2ccb6d84b166ed2d707e31e1f41848ebf5519db83b0b283e9c383bbaddad387f",
+    "source_design_migration_sha256": "sha256:bf91f46a8e0bf7272649f83766ce30ebf4fe7e3d785cc34db1bdece77e8df785"
+  },
+  "validation": {
+    "focused_strategic_tests": "2 passed, 8 deselected",
+    "rl_train_step_integration": "1 passed",
+    "checkpoint_tensor_count_checked": 734,
+    "checkpoint_nonfinite_tensors": 0,
+    "rehearsal_checkpoint_sha256": "sha256:3876686d2f8c63832818621843964eb581945856fabf2e05ed5a54d59f7f00b4"
+  },
+  "downstream_authority_released": false
+}

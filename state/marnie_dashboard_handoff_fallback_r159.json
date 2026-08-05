@@ -1,0 +1,49 @@
+{
+  "schema": "poke_bot.marnie_dashboard_handoff_fallback_repair/v1",
+  "status": "activated_display_only",
+  "goal_revision": 159,
+  "recorded_at_utc": "2026-08-05T11:21:27Z",
+  "specialist_id": "marnie-s-grimmsnarl-ex",
+  "defect": {
+    "projection": "specialist_handoff",
+    "stale_historical_source_specialist_id": "archaludon-ex",
+    "stale_historical_next_specialist_id": "slowking",
+    "incorrect_label": "Marnie S Grimmsnarl Ex to next unfinished specialist",
+    "source_integrity_was_current": true,
+    "training_was_healthy": true
+  },
+  "repair": {
+    "active_refresh": "marnie-s-grimmsnarl-ex",
+    "label": "Marnie's Grimmsnarl ex refresh to H10 Crustle",
+    "terminal_iteration": 20,
+    "next_collection_forbidden": 21,
+    "next_specialist_id": "crustle",
+    "historical_fallback_suppressed": true,
+    "selector_changed": false,
+    "runtime_changed": false,
+    "training_restarted": false,
+    "fleet_changed": false
+  },
+  "artifacts": {
+    "dashboard_snapshot_sha256": "sha256:209cc43e599040e3f0c349ad322ccbdd0db7761cf6bf6830bcab7c58edb77d83",
+    "dashboard_regressions_sha256": "sha256:00c7ab9fa68dc9b3ccc04b53be5a26bf7f77b8dca1d9d7ae8035e0588a91bc9c",
+    "canonical_remote_snapshot_matches": true,
+    "selector_owned_remote_snapshot_matches": true
+  },
+  "validation": {
+    "focused_tests_passed": 3,
+    "full_dashboard_tests_passed": 238,
+    "full_dashboard_tests_failed": 0,
+    "api_ok": true,
+    "source_integrity_current": true,
+    "required_sources_current": 19,
+    "required_sources_total": 19,
+    "live_next_specialist_id": "crustle",
+    "live_terminal_iteration": 20,
+    "live_next_collection_forbidden": 21,
+    "managed_training_pid": 1295559,
+    "managed_training_restart_count": 1,
+    "managed_training_iteration": 16,
+    "managed_training_phase": "collect:public_mix"
+  }
+}

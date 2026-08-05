@@ -1,0 +1,32 @@
+[Unit]
+Description=Exact 25-epoch weighted Marnie post-upload bootstrap
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/migration-receipt.json
+ConditionPathExists=/home/inzi/poke-bot-agent/state/marnie_postupload_latent_policy_continuity_r140.json
+After=pokebot-marnie-postupload-family-activate-r135.service
+OnSuccess=pokebot-marnie-postupload-bootstrap-submit-r135.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136
+Environment=CG_LIB_PATH=/home/inzi/poke-bot-agent/kaggle/input/pokemon-tcg-ai-battle/sample_submission/sample_submission/cg
+Environment=POKEBOT_H10_CAPACITY_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_DEDICATED_ROUTES_RUNTIME_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_TYPED_OUTPUT_CENTERED_ROUTES_ENABLED=1
+Environment=POKEBOT_DECISION_FUSION_ACTION_TYPE_RELIABILITY_CAP=0.25
+Environment=POKEBOT_SETUP_BOARD_OUTCOME_HEAD_ENABLED=1
+Environment=POKEBOT_COMBO_STATE_HEAD_ENABLED=1
+Environment=POKEBOT_EXPANDED_HEADS_ENABLED=1
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u scripts/launch_marnie_postupload_weighted_bootstrap.py --service pokebot-final-format-marnie-r104-h10-rl.service --python /home/inzi/miniconda3/envs/poke-bot-agent/bin/python --bootstrap-script /home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/scripts/run_final_format_marnie_h10_bootstrap.py --trigger /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/iteration9-upload-trigger.json -- --prestage /home/inzi/poke-bot-agent/outputs/state/final-format-marnie-r79-prestage-r104-h10-19.json --role-route-receipt /home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/h10/marnie_r104_h10_i_fusion_v3_roles.json --expert-manifest /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-14-2026-08-02-roster18-v6-strategic-r109/marnie-s-grimmsnarl-ex/PROTECTED_EXPERT_CORPUS.json --curriculum-spec /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-r104.json --head-role-map /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-head-roles-r104.json --curriculum-validation /home/inzi/poke-bot-agent-deployments/final-format-marnie-h10-r104/state/final_format_marnie_curriculum_r104_h10_19/marnie-s-grimmsnarl-ex-strategic-curriculum-validation-r104.json --rl-protocol /home/inzi/poke-bot-agent/config/rl_protocol.yaml --run-name marnie_r138_postupload_weighted_bootstrap --run-dir /home/inzi/poke-bot-agent/outputs/bootstrap/marnie-r138-postupload-weighted --cpu-pack-root /home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/marnie-r138-postupload-weighted --registry-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models --family final-format-marnie-r138-postupload-expert-bootstrap-v1 --ready /home/inzi/poke-bot-agent/outputs/state/marnie-r138-postupload-bootstrap-ready.json --pilot-importance-index /home/inzi/poke-bot-agent/outputs/state/marnie-r138-expert-pilot-importance.json --latent-policy-continuity-receipt /home/inzi/poke-bot-agent/state/marnie_postupload_latent_policy_continuity_r140.json --continuity-repair-receipt /home/inzi/poke-bot-agent/state/marnie_postupload_epoch1_recovery_r141.json --family-activation-request /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/activation-request.json --family-activation-migration /home/inzi/poke-bot-agent/outputs/state/marnie-archetype-family-r130/migration-receipt.json --checkpoint-selection final_epoch_25 --epochs 25 --batch-size 2048 --guide-weight 0
+Restart=on-failure
+RestartSec=60
+MemoryHigh=64G
+MemoryMax=80G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/postupload_bootstrap_r138.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/logs/postupload_bootstrap_r138.log

@@ -1,7 +1,7 @@
 # Pokémon RL Goal Gateway
 
 Schema: `poke_bot.goal_gateway/v1`  
-Revision: `124`
+Revision: `165`
 
 Status: `authoritative`
 
@@ -86,6 +86,406 @@ models—Dragapult/Dusknoir and Hammer Pult—remain explicitly included in the
 replay-eligible public-practice roster. This opponent restoration does not
 restore plain Dragapult, Dragapult/Blaziken, or Dragapult/Dudunsparce as
 specialist-training targets.
+
+Revision 125 forbids redundant remote checkpoint loading or full SMB payload
+rehashing when the weights are already resident under a complete checksum-exact
+health proof. Both the
+production boundary and remote canary reuse the resident weights only when the
+controller, every live leaf, the freshly advertised primary identity, and the
+pinned digest all agree and are healthy. Production fails closed to the
+ordinary verified reload for a missing field, unhealthy leaf, identity
+mismatch, or genuinely new digest. A diagnostic canary instead refuses an
+implicit reload and requires an explicit `--force-reload`. A new checkpoint
+therefore loads exactly once per production endpoint; repeated checks of
+unchanged healthy weights seed the digest-addressed process staging cache and do
+not incur another multi-minute load or network rescan.
+
+Revision 126 completes the runtime-inert implementation contract for revision
+120: exact observed-list validation and clustering, family-macro collection and
+replay provenance, capability-masked existing-head loss aggregation, isolated
+two-round antithetic SPSA evidence, checksum-exact iteration-9 upload trigger
+validation, an idempotent post-commit pause hook, atomic managed activation,
+rollback scheduling, and owner-only future package switching.  No observed
+activation-ready manifest, successful iteration-9 upload trigger, passing
+shadow study, pause receipt, migration receipt, or selector change is asserted
+by this implementation revision.  Their absence keeps the exact-list recipe
+active and all new paths runtime-inert.
+
+Revision 127 closes the two verified causes of false Elmo reservation without
+execution at the stopped iteration-6 recovery boundary. Historical
+content-addressed checkpoint objects are verified by SHA-256 beside TrueNAS
+storage through the root-bounded `checkpoint_digest_verify_v1` worker
+capability; persistent receipts and an exact local-file identity cache prevent
+repeat SMB payload reads and repeat local checkpoint hashing. Initial remote
+request sockets are opened concurrently across Elmo and Bert with bounded LAN
+connect/hello deadlines, so a slow Bert SYN cannot keep a fully ready Elmo at
+zero admitted jobs. Activation is bound to
+`state/remote_scheduler_checkpoint_activation_r127.json`: all 50 clone sockets
+connected in `0.199` seconds with zero failures, Elmo admitted/executed `36`,
+Bert admitted/executed `16`, the dashboard resolved the live managed PID with
+all required sources current, and iteration 6 advanced under the unchanged
+96-worker Blackwell, 36-worker Elmo, and 16-worker Bert profile.
+
+Revision 128 records the post-resume runtime without changing its scheduling
+contract. Marnie iteration 6 completed its 1,024-game self-play phase and
+advanced into public mix under managed PID `1267326`, Accepted Policy
+Generation 15 checkpoint
+`sha256:9ff2a8bcaf9ee51db1f6bb7dd86fb5d480a1737d80859140323f9b6fcab36cc5`,
+and runtime registry
+`sha256:72b61af5e788b71ef74caa8922f3ce4d2cca51fca11170de4b34b4e348381814`.
+The post-resume snapshot is bound by
+`state/marnie_iteration6_resume_snapshot_r128.json`. The 96+36+16 fleet,
+one-game self-play request ownership, and exact 20-unclaimed-game self-play
+tail rule remain unchanged.
+
+Revision 129 closes Crustle's v2-corpus portion of the post-Marnie pre-stage
+without granting Crustle runtime authority. The checksum-bound imported corpus
+contains 26,932 exact games, 1,428,142 decisions, and 33,620 guide rows under
+`crustle-north-star-v2`; its ready receipt, protected pointer, manifest, and
+final validation receipt all match the import receipt. The dormant five-unit
+Crustle chain remains loaded and inactive, and the new handoff receipt is
+`/home/inzi/poke-bot-agent/outputs/state/post-marnie-crustle-r113-handoff-ready-v2.json`.
+Crustle still cannot bootstrap until Marnie's immutable iteration-20
+completion, and its register step must resolve and checksum-bind the
+then-current H10 runtime registry rather than silently inheriting a stale
+pre-Generation-15 registry.
+
+Revision 130 makes the Marnie new-system transition after the iteration-9
+Kaggle submission immutable. A successful checksum-exact iteration-9 upload is
+the final old-system boundary: the first later Marnie training collection must
+use the new system. No controller, fallback, missing-study path, or later
+metadata edit may start another old-system collection after that successful
+upload. All new-system manifests, studies, migration inputs, and service
+preflight must therefore be prepared before the trigger. If any required
+activation evidence is incomplete when the upload succeeds, fail closed by
+pausing before the next collection; do not weaken the new-system gates and do
+not silently continue the exact-list/old-system recipe. The currently active
+iteration remains unchanged.
+
+Revision 131 reconciles the resumed controller and arms the already-staged
+revision-130 hook without changing the live iteration or scheduler. The
+one-shot managed boundary service waits for the immutable iteration-6 commit,
+then restarts only the managed Marnie trainer before iteration-7 collection so
+the running process inherits the fail-closed iteration-9 upload hook. The
+iteration-9 submission remains the immutable final old-system boundary; this
+operational restart does not activate the new system early. The 96-worker
+Blackwell, 36-worker Elmo, 16-worker Bert allocation and exact 20-unclaimed-game
+self-play tail rule remain unchanged. The armed-state receipt is
+`state/marnie_new_system_hook_monitor_armed_r131.json`; the activation service
+must publish `/home/inzi/poke-bot-agent/outputs/state/marnie-new-system-hook-activation-r130.json`
+after it verifies the new PID and both boundary-hook environment paths.
+
+Revision 132 records the owner's immutable reaffirmation of the Marnie
+transition boundary. Marnie must train on the current system through iteration
+9 and through the successful checksum-exact iteration-9 Kaggle submission.
+Preparation, shadow study, hook arming, or an otherwise-ready new-system
+artifact never authorizes early activation. Only after that successful upload
+may Marnie begin training on the new system, starting with the first later
+collection. This order is not changeable by a controller, fallback, gate
+interpretation, or metadata reconciliation. The active iteration, scheduler,
+fleet allocation, and self-play tail behavior remain unchanged.
+
+Revision 133 records the receipt-backed completion of the revision-131
+operational hook. Iteration 6 committed at checkpoint
+`sha256:516ce12b1a2e984de62da9ea65cb52611ed0eceee40433d4de248b7f1a28472e`;
+the one-shot service then restarted only the managed Marnie trainer between
+iteration 6 and iteration 7. The new process loaded the two fail-closed
+iteration-9 boundary paths, while the archetype-family sampler and typed loss
+vector remain absent from its environment and therefore runtime-inert.
+Iteration 7 began on the current system. The 96+36+16 fleet, one-game socket
+ownership, and exact 20-unclaimed-game self-play tail rule are unchanged.
+Receipt: `state/marnie_new_system_hook_activation_r130.json`, byte-identical to
+the managed receipt at
+`/home/inzi/poke-bot-agent/outputs/state/marnie-new-system-hook-activation-r130.json`.
+
+Revision 134 fixes the first post-upload Marnie training sequence. After the
+successful checksum-exact iteration-9 Kaggle upload and atomic new-system
+activation, hot-start the exact uploaded iteration-9 learner and run exactly 25
+expert bootstrap epochs over the checksum-pinned active Marnie's Grimmsnarl ex
+corpus (73,082 acting-seat game records and 6,828,373 decisions). Package and
+submit that exact bootstrap checkpoint to Kaggle, and do not begin the first
+new-system self-play collection until the bootstrap submission has a successful
+checksum-exact upload receipt. A failed or pending bootstrap/upload pauses the
+new-system chain without reverting to an old-system collection. The currently
+running iteration, scheduler, 96+36+16 fleet, and exact 20-unclaimed-game
+self-play tail rule remain unchanged.
+
+Revision 135 explicitly authorizes one bounded leaderboard-provenance exception
+for that post-upload bootstrap. Public expert replay acting seats whose raw
+`TeamNames[seat]` exactly match a team in a checksum-pinned PTCGReplay top-100
+snapshot receive sample-size-tiered training importance from the same pinned
+Grimmsnarl corpus: `1.5x` for 1--31 acting-seat games, `2.0x` for 32--127,
+`3.0x` for 128--511, and `4.0x` for 512 or more. Every unmatched or
+unverifiable seat remains `1.0x`. The join key is exact
+`episode_id + seat + team_name`; the snapshot and derived weight index are
+immutable inputs, and the receipt reports matched/unmatched counts, per-team
+support, tier counts, and effective weight mass. This changes sample importance
+only: replay actions and causal labels are never rewritten, Kaggle evaluation
+replays remain training-ineligible, and no live pre-iteration-9 training or
+scheduler behavior changes.
+
+Revision 136 supersedes only revision 135's upper support bands after verifying
+the pinned training split contains 22 top-100 pilots with at least 512 games,
+nine with at least 1,024, and four with at least 2,048. Preserve the lower
+tiers, use `4.0x` for 512--1,023 acting-seat games, raise 1,024--2,047 to
+`5.0x`, and cap 2,048 or more at `6.0x`. Validation remains unweighted and all
+unmatched or unverifiable seats remain `1.0x`. This remains runtime-inert until
+the revision-134 post-iteration-9 bootstrap and does not alter active Marnie
+training, collection, evaluation, scheduler, fleet, or tail behavior.
+
+Revision 137 raises only the two highest same-training-split support bands in
+response to the owner's explicit higher-bound decision. Preserve every lower
+tier, use `6.0x` for 1,024--2,047 acting-seat games, and use a bounded `8.0x`
+for 2,048 or more. The pinned split contains nine top-100 pilots in the former
+band and four in the latter, so sparse pilots receive no additional
+amplification. Validation remains unweighted, unmatched or unverifiable seats
+remain `1.0x`, and the change remains runtime-inert until the revision-134
+post-iteration-9 expert bootstrap.
+
+Revision 138 raises those same evidence-backed bands one bounded step further:
+`7.0x` for 1,024--2,047 acting-seat games and `10.0x` for 2,048 or more.
+The lower tiers remain unchanged. The four pilots in the highest band each
+have 2,094--2,539 exact training games, so the higher ceiling is restricted to
+large-sample pilots; validation remains unweighted and all unmatched or
+unverifiable seats remain `1.0x`. This change applies only to the exact
+25-epoch post-iteration-9 expert bootstrap.
+
+Current runtime reconciliation: iteration 9 committed, the exact gate restored
+the stronger iteration-7 learner checkpoint
+`sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381`,
+and Kaggle submission `55230247` uploaded that exact learner. The managed
+family study then sealed
+`failed_closed_inconclusive_after_two_rounds`; revision 139 supplied distinct
+owner-ceiling authority without relabelling that measured result. Exact round-1
+`plus` was sealed in request
+`sha256:66717a6c2060a1a38227c35ea903ddea4c793a395cf3aeaa9dc187d322df2f75`,
+and the family sampler plus typed loss vector activated atomically. The exact
+revision-138 weighted, guide-off 25-epoch bootstrap subsequently completed and
+selected checkpoint
+`sha256:fe8a4a1ab94433e5f32cfcc194effdf0ce4f49745fd4bb26f1f3a20f7ecc2ae8`.
+Kaggle submission `55248489` uploaded that exact checkpoint successfully.
+The managed Marnie service now resumes at the iteration-10 boundary from that
+checkpoint under Accepted Policy Generation 15, the 48-variant family sampler,
+19-head Fusion-v3, and guide weight `0.0`. A new exact heldout gate is required;
+no evidence from the superseded checkpoint transfers to this learner. Outcome
+receipt: `state/marnie_postupload_family_study_outcome_r138.json`; bootstrap,
+upload, activation, and evidence-repair receipts remain checksum-bound on the
+training host. The post-activation status-78 monitor/resolution timer remains
+mandatory at the first new-system iteration-10 commit.
+
+Revision 139 records the owner's explicit decision to activate the family
+system because it is the purpose of this transition, despite the valid
+two-round shadow study remaining statistically inconclusive. Preserve
+`study.json` and every negative lower-bound result byte-for-byte and never call
+the measured study a pass. Owner ceiling authority selects round 1 `plus`, the
+only tested direction with a positive overall point estimate: increase
+`core_setup_continuity`, decrease `long_horizon_prize_pressure`, and increase
+`resource_attack_readiness` under its exact tested vector. Materialize a
+separate checksum-bound owner-ceiling receipt, selected loss vector, candidate
+registry, and activation request; validate the same parent, isolation,
+causality, manifest, loss-contract, sealed-state, and atomic-migration
+invariants as an ordinary passing activation. Then activate the family sampler
+and typed loss vector atomically, run the exact revision-138 weighted 25-epoch
+bootstrap, submit epoch 25, and keep iteration-10 collection forbidden until
+that upload succeeds. The unchanged post-activation status-78 monitor remains
+mandatory and must restore the exact-list parent path if its own gate fails.
+
+Revision 140 permanently retires the Marnie current-deck guide for this
+lineage. Its multiplier is exactly `0.0` for the exact 25-epoch bootstrap and
+every later Marnie RL or rehearsal update; guide target generation,
+guide-conditioned losses, and guide action influence are disabled. The guide
+contract, the failed zero-label epoch-1 attempt, and any derived labeled corpus
+remain immutable audit evidence only. This retirement does not disable or
+reduce the archetype-family sampler, Accepted Policy Generation 15 latent
+lookahead, policy/value learning, strategic heads, setup/combo heads, decision
+fusion, or matchup adapters. Resume the same checksum-exact 73,082-game,
+6,828,373-decision weighted bootstrap from the uploaded iteration-9 parent and
+retain the unchanged epoch-25 checksum-exact upload gate before iteration 10.
+The corrected r140 submission/activation path is bound by
+`state/marnie_guide_retirement_submission_chain_r140.json`; it requires the
+zero-guide ready receipt and immutable retirement receipt before queueing or
+activating, and the iteration-10 launch omits all guide target/curriculum
+arguments while preserving the 19-head Fusion-v3 path.
+
+Revision 141 clarifies that retirement means **non-authority**, not artifact
+deletion. The checksum-bound Marnie guide may remain available for optional
+offline shadow diagnostics, but live guide target generation stays disabled
+and its effective loss weight remains exactly `0.0`. Shadow outputs never
+receive gradients, contribute loss, enter Fusion-v3, alter action logits or
+action selection, serve at runtime, select a checkpoint, affect promotion or
+family-monitor gates, authorize self-play or submission, or block any phase.
+Missing, invalid, unlabeled, or failed shadow evidence is recorded as shadow
+unavailable and the authoritative non-guide path continues. Kaggle and formal
+evaluation replays remain evaluation-only. This clarification does not restart
+or otherwise alter the active 25-epoch bootstrap and is bound by
+`state/marnie_guide_shadow_non_authority_r141.json`.
+
+Runtime reconciliation under the same revision preserves the completed,
+checksum-exact guide-off epoch-1 checkpoint after its legacy validator omitted
+the newly active family-residual gradient heads. The repaired validator checks
+the full effective expanded-head weight vector and resumes from that immutable
+checkpoint without overwriting or retraining epoch 1. Receipt:
+`state/marnie_postupload_epoch1_recovery_r141.json`.
+The epoch-25 submission and iteration-10 activation services require that
+recovery identity end-to-end under
+`state/marnie_epoch_recovery_submission_chain_r141.json`; neither may discard
+it while packaging, uploading, or switching the learner.
+The live dashboard must render this third state explicitly as shadow-only,
+weight zero, and nonblocking rather than collapsing it to either active or
+absent; deployment evidence is
+`state/marnie_guide_shadow_dashboard_r141.json`.
+
+Revision 142 repairs the dormant iteration-10 next-start registry after the
+already-activated family drop-in was found to override the revision-140
+guide-retired registry with its older `0.05` family-study parent. The active
+25-epoch bootstrap remains uninterrupted and guide-off. A new immutable
+registry derivative preserves every family sampler, typed-loss, latent-policy,
+Fusion-v3, matchup, and other non-guide field while enforcing guide weight
+`0.0`, optional shadow-only availability, and zero runtime or blocking
+authority. A lexically final managed drop-in selects that merged registry;
+epoch-25 activation now fails closed unless its checksum-bound runtime receipt
+is valid. The status-78 resolver keeps the merged guide-off family registry on
+a monitor pass and selects the existing guide-off pre-family registry on a
+family rollback, so neither branch can restore guide authority. Receipt:
+`state/marnie_family_guide_shadow_runtime_r142.json`.
+
+Revision 143 repairs the dormant Marnie-to-Crustle terminal handoff without
+interrupting the active weighted bootstrap.  The effective Marnie completion
+service had inherited an older drop-in whose `ExecStart` relaunched Marnie
+instead of executing the completion transaction, and the Crustle register unit
+still copied the pre-Generation-15 revision-113 registry.  A lexically final
+completion overlay now runs the real checksum-bound completion transaction and
+resolves the exact registry selected by the managed Marnie service at handoff.
+The immutable Marnie completion receipt binds that registry path and digest;
+Crustle registration must consume that binding, require guide weight zero and
+Fusion-v3 runtime authority on the completed Marnie source, and remove every
+Marnie-only family/guide runtime field before constructing the Crustle runtime.
+The five Crustle units remain dormant and receive no selector, training, or
+gradient authority before Marnie's immutable iteration-20 completion.  Receipt:
+`state/post_marnie_crustle_runtime_rebind_r143.json`.
+
+Revision 144 records the completed post-upload activation and reaffirms the
+owner's guide-shadow boundary. The exact epoch-25 checkpoint is
+`sha256:fe8a4a1ab94433e5f32cfcc194effdf0ce4f49745fd4bb26f1f3a20f7ecc2ae8`;
+its ready, successful Kaggle upload (`55248489`), and activation receipts are
+`sha256:466c2e039692c22f227b75fcbe5a36173ef7207c0d4082ee75057edfddbd246d`,
+`sha256:f785d54b2578ad7a5446f4ed1278e85a19becc6b36f0ef9ad4bcecbf800f8258`,
+and `sha256:60d0fbd4277be52f32e2f2f34517dcd6450ca51721e2f078bff311867253451e`.
+The iteration-10 design migration activates the checksum-bound 48-variant
+family sampler and guide-retired registry. The Marnie guide artifact may remain
+available for offline shadow telemetry only: effective weight and target
+generation are zero/off, it never enters Fusion-v3 or action choice, and its
+absence, failure, or result cannot stop collection, promotion, submission,
+monitoring, or handoff. The activated epoch-25 checkpoint receives a fresh
+exact heldout evaluation; revision-153 repair receipt
+`sha256:8af9603909fa79af9b0b672f51b1faabd80cb6ef91c4bc8f36f94eece0eef377`
+proves that the superseded checkpoint's heldout evidence was cleared rather
+than inherited.
+
+Revision 145 repairs a finite-exact-bypass defect in Marnie's retired-guide
+expert-rehearsal path. Packed option padding uses negative-infinity logits, so
+the former inactive-loss expression `logits.sum() * 0` produced NaN loss
+telemetry even though its derivative and all enabled non-guide gradients stayed
+finite. Inactive guide, guide-curriculum, and setup placeholders now anchor to
+the finite causal policy/value state and therefore remain exactly zero and
+zero-gradient. The canonical tree and active deployment carry the repaired
+module checksum, while the already-running iteration-10 rehearsal remains
+uninterrupted because direct reproduction proved its real gradients finite.
+The repair becomes executable at the next managed interpreter start on or
+after a clean durable boundary. It does not restore guide targets, gradients,
+fusion/action authority, gates, submission authority, or blocking behavior.
+Receipt: `state/marnie_guide_shadow_finite_bypass_r145.json`
+(`sha256:4ddc5f2e8a449a880e0c3e43a5e808f0ddac1dc8dff27be2c45def7c44373b15`).
+
+Revision 146 repairs the iteration-10 RL candidate-save boundary after the
+completed matchup-adapter fit exposed a guard mismatch: the RL path treated
+legacy guide-off mode as an active strategic curriculum mode, then invoked a
+serializer that correctly rejects legacy mode. Rehearsal and RL now share one
+guard helper which returns no strategic-guide record for legacy/guide-off
+lineages and preserves the existing record for actual strategic modes. The
+managed service resumed from the immutable iteration-10 collection and
+rehearsal receipts without recollection or rehearsal retraining. Marnie's
+guide stays weight `0.0`, action-inert, gradient-inert, and nonblocking.
+Receipt: `state/marnie_guide_off_rl_save_recovery_r146.json`
+(`sha256:aa032e7f2e8e512c2c712bf1d7d72c166899545fe6d54c3f472fe901e56a12dc`).
+
+Revision 147 makes Marnie's family replay draw immutable across recovery-only
+source migrations. The family macro sampler must use the sealed collection's
+`design_fingerprint_at_collection`, not the current source-tree fingerprint,
+whenever a completed collection is being recovered. Iteration 10 therefore
+restores its original 16,724-sequence replay projection while retaining the
+independent exact 4,096/4,096 assigned and retained source-game split. No seat
+receipt, collection, rehearsal, guide authority, or gate is rewritten or
+weakened. The managed recovery passed the immutable seat-receipt boundary and
+continued into baseline preparation under the guide-shadow-only runtime.
+Receipt: `state/marnie_family_replay_seed_recovery_r147.json`
+(`sha256:4379636ca9e012dab0fbaea0fb7d4f00b1f097a9228f60f5f3282bf327b09824`).
+
+Revision 158 repairs a bounded public-mix exact-retention failure without
+weakening the exact collection contract or interrupting the recovered Marnie
+iteration 16. The first attempt completed all 1,024 self-play jobs and all
+7,168 planned public jobs, but only 7,167 public records remained usable after
+the historical four disjoint replacement seeds. It therefore failed closed at
+8,191/8,192 and quarantined the uncommitted shard. Public-mix recovery now
+retains the historical four seed lanes, adds 28 deterministic high-namespace
+lanes, preserves the missing cell's exact seat/opponent/archetype/training-group
+contract, promotes at most one usable record per missing primary cell, and
+still fails closed if the exact 8,192 records cannot be proven. Self-play tail
+allocation, the 96+36+16 fleet, public-mix weights, and every gate remain
+unchanged. The repaired source is staged in the active deployment but does not
+alter the already-running interpreter; it becomes executable only at a later
+managed interpreter start. Receipt:
+`state/marnie_public_mix_exact_retention_recovery_r158.json`
+(`sha256:360a077e85bfa9f82cfa6f04ea1b9340c9ef88670867ac4999a99f4a948f445b`).
+
+Revision 159 repairs the active-refresh handoff card after its generic
+historical fallback again projected Slowking and an ordinary unfinished-roster
+count beside the final-format Marnie learner. When the live runtime is the
+separately versioned Marnie refresh, the handoff projection now explicitly
+shows exact `iter_00020`, forbids `iter_00021`, and names the staged new H10
+Crustle specialist. The historical Archaludon-to-Slowking source remains audit
+evidence but cannot populate this active refresh card. This is display-only:
+the selector, managed trainer, fleet, checkpoint, and handoff services are
+unchanged. Receipt: `state/marnie_dashboard_handoff_fallback_r159.json`
+(`sha256:81e2a62e7db522e0d423ca55a1f5172f628be9690da1d3bebb3310cc6d876d28`).
+
+Revision 160 changes only the still-dormant post-Marnie Crustle bootstrap.
+Train epochs 1--10 with Crustle's checksum-bound strategic guide under its
+existing bounded ramp/hold schedule.  Then set guide loss, gradients, target
+generation, fusion/action influence, serving authority, and gate authority to
+exactly zero/off and run an exact 25-epoch expert refresh as epochs 11--35.
+Only epochs 11--35 are final-checkpoint-selection eligible.  The exact frozen
+Marnie iteration-20 H10 checkpoint must be checksum-bound as Crustle's
+predecessor and included in Crustle's expert/practice opponent contract; it may
+not be relabelled as a Crustle acting-seat action target.  Crustle bootstrap,
+registration, or RL launch fails closed unless the 35-epoch receipt proves the
+10+25 schedule and the completion-bound Grimmsnarl identity.  Active Marnie,
+its fleet, guide retirement, iterations 19--20, and the no-iteration-21
+boundary remain unchanged.
+
+Revision 161 adds checksum-pinned expert-pilot importance to the complete
+Crustle bootstrap, not only its guide-free refresh.  Every training epoch
+1--35 samples the exact Crustle acting-seat expert corpus with the same bounded
+top-100, same-training-split support tiers used for Marnie's expert bootstrap;
+validation remains unweighted, unmatched or unverifiable pilots remain at
+`1.0x`, and actions and causal labels are unchanged.  The guide remains active
+only for epochs 1--10 and exactly off for epochs 11--35.  The completed Marnie
+H10 checkpoint remains a weighted practice/holdout opponent anchor and is
+never relabelled into Crustle expert actions.
+
+The post-upload bootstrap now also fails closed unless Accepted Policy
+Generation 15's action-conditioned latent lookahead remains enabled and
+action-authoritative with its exact 512-wide, 0.25-capped, 412,130-parameter
+inventory in the uploaded iteration-9 parent, every bootstrap epoch, and the
+selected epoch-25 checkpoint. The frozen provenance and ready receipt carry
+the same inventory. This runtime-inert preflight is bound by
+The original runtime-inert preflight was bound by
+`state/marnie_postupload_latent_policy_continuity_r137.json`; revision 140
+supersedes it for the active bootstrap with
+`state/marnie_postupload_latent_policy_continuity_r140.json`, which binds the
+current bootstrap code, exact uploaded parent, owner-ceiling activation,
+atomic migration, and permanent Marnie guide retirement. Neither receipt
+alters the scheduler, fleet, or tail rule.
 
 Revision 120 stages Marnie archetype-family generalization only after all
 previously requested Generation-15 and fleet-tail changes.  The implementation
@@ -304,6 +704,47 @@ or workflow has changed:
 | 122 | 2026-08-03 | After five repeated final-return stalls, keep Elmo and Bert in self-play but restrict them to an early 16+4 execution wave: enter the no-new-remote-claim tail while 75% of jobs remain, cap the maximum remote-owned tail at 20, reserve control-plane connection headroom, and compress large JSON trajectory frames for the 100-Mb return path. Blackwell's exact 96-worker pool owns the long drain; public mix and evaluation retain their full remote caps. | Authorized for immediate recovery of the stopped, uncommitted iteration 6. Clear the abandoned remote generation, deploy the frame codec to both managed remote workers before the controller, activate with `POKEBOT_SELF_PLAY_LOCAL_ONLY=0`, and verify no more than 20 remote claims plus successful compressed returns. |
 | 123 | 2026-08-03 | Supersede revision 122's inferred 16+4 self-play cap. Keep the full 36-worker Elmo and 16-worker Bert execution targets for self-play, public mix, and evaluation. Fix the return path with compressed exact trajectory frames and truthful telemetry that separately reports live sockets and outstanding remote-owned games; do not hide a return/ownership defect by lowering usable fleet capacity. | Staged without restarting the active recovered iteration-6 attempt. The currently executing attempt keeps its already-loaded process environment; the no-cap runtime and corrected telemetry activate at the next safe managed process boundary. Public mix remains uncapped throughout because the discarded cap was self-play-scoped. |
 | 124 | 2026-08-03 | At the owner's immediate stop-and-full-resync boundary, correct the two verified self-play fleet defects without lowering capacity: negotiate compressed frames before either peer emits them, and force exactly one privately claimed self-play game per request socket so all 36 Elmo plus 16 Bert execution workers can work concurrently. Keep both remotes eligible until exactly 20 shared jobs remain; only then stop new Bert claims while all already-owned remote games finish and return. Dashboard telemetry must distinguish live request sockets from exact outstanding remote-owned games and split the latter by Elmo/Bert. | Trainer and its relaunching gate handler are runtime-masked during repair. Codec negotiation and complete-trajectory return canaries passed on both remotes; focused scheduler/wire tests passed. Activate only after the checksum-identical three-host resync, managed-unit preflight, and first live dispatch prove 52 sockets, 52 initial outstanding games, nonzero work on both remotes, and successful decrements on returned trajectories. |
+| 125 | 2026-08-03 | Do not repeat a multi-minute remote checkpoint load or full SMB payload checksum scan when the exact digest is already resident and a fresh strict health proof shows the controller and every leaf healthy, identity-exact, and pinned. Seed the process-local digest-addressed staging map from that proof. Production performs a verified stage/reload for incomplete or mismatched health and every genuinely new digest. A diagnostic canary must refuse implicit reload and require explicit `--force-reload`, so merely checking health can never cause another 141-second operation. | Authorized for immediate activation while the trainer remains stopped at the revision-124 repair boundary. Production hard-gate reuse is implemented; canary reuse and regression coverage must pass before managed restart. |
+| 126 | 2026-08-03 | Complete revision 120's local, runtime-inert family-generalization implementation and its fail-closed trainer boundary hook. Preserve the singular package deck, Router Format 6 identity, all serving/gate settings, and the exact-list production recipe until every upload, manifest, shadow-study, and clean-boundary receipt exists. | Implemented and locally validated; not activated. No real iteration-9 upload trigger or activation-ready observed-family manifest is present in this repository. |
+| 127 | 2026-08-03 | Eliminate false full-fleet reservations caused by serialized historical-checkpoint SMB verification and serial initial socket opening. Verify missing Elmo receipts beside TrueNAS storage with a root-bounded capability, reuse checkpoint identity by immutable digest, cache local hashes only across unchanged path/size/mtime/inode identity, and open initial Elmo/Bert request sockets concurrently under bounded LAN deadlines. Preserve exact games, seeds, seats, results, the 96+36+16 hardware profile, and revision-124's 20-game tail rule. | Activated for the restarted iteration 6. Receipt `state/remote_scheduler_checkpoint_activation_r127.json` (`sha256:24baf059954708861a18c3598f6b9acd9d3c2ee4feeef50a5fa99a047f512b62`) binds the storage-local 0.075-second iter-3 digest proof, one successful real Elmo self-play canary, durable H10 worker image `sha256:0bcf2305438f8feecd9420cc37af8da4e3a2d81986e112597ad38fbe1e3f1aa3`, 0.199-second 50/50 clone fan-out, live 36+16 admissions, managed PID 1267326, migration 0018, and current dashboard integrity. |
+| 128 | 2026-08-03 | Reconcile the goal gateway after the managed iteration-6 resume. Correct the compatibility projection to the checksum-exact Generation-15 runtime registry, record the completed self-play to public-mix transition, and preserve the current scheduler and 20-game self-play tail behavior exactly. | Activated as metadata-only state reconciliation. Receipt `state/marnie_iteration6_resume_snapshot_r128.json` (`sha256:68cfe56e687e4a322cac69c609038eb915f94d160a094811c44f0472ad3748de`) binds PID 1267326, checkpoint `9ff2a8bc…`, registry `72b61af5…`, the live public-mix phase, full 96+36+16 fleet, and current dashboard integrity. No managed service was restarted. |
+| 129 | 2026-08-03 | Reconcile the post-Marnie Crustle pre-stage after the v2 guide corpus completed and imported. Validate every imported corpus digest and keep the dormant managed chain authority-off until Marnie iteration 20; require a then-current H10 registry rebind at the actual handoff. | Corpus blocker resolved by `/home/inzi/poke-bot-agent/outputs/state/post-marnie-crustle-r113-handoff-ready-v2.json` (`sha256:ccd18d1b33feb2bc05ce5491dee51f95ee95db301da8433c43e96d6b123f978b`). It binds 26,932 games, 1,428,142 decisions, 33,620 guide rows, all five loaded/inactive Crustle services, and active unchanged Marnie PID 1267326. Marnie iteration-20 completion and the then-current H10 registry rebind remain hard blockers; no service was restarted. |
+| 130 | 2026-08-03 | Make the successful checksum-exact Marnie iteration-9 Kaggle submission the immutable last old-system boundary. The next Marnie training collection must use the new system; this boundary is not mutable. | Staged while iteration 6 remains healthy. Stage receipt `state/marnie_new_system_boundary_stage_r130.json` (`sha256:98e76bcde0277e36f2790ce1933ff38f3e57e16948e4c7bd1999ab714d1fe709`) binds the contract and unchanged PID 1267326. Prepare and validate every new-system activation artifact before the trigger. After the successful iteration-9 upload, missing or inconclusive activation evidence pauses before collection instead of continuing the old system. No current iteration, scheduler, selector, or managed service is changed by recording this boundary. |
+| 131 | 2026-08-03 | Reconcile the resumed goal and arm the revision-130 hook at the next clean commit, without changing the immutable post-iteration-9 transition or any scheduler behavior. | Armed under `pokebot-marnie-family-hook-boundary-r130.service`, waiting for the exact iteration-6 commit before a managed restart ahead of iteration-7 collection. Receipt `state/marnie_new_system_hook_monitor_armed_r131.json` (`sha256:193ec20f2e720ff7e989734abf940964227e27467cc4103a2996e6d2d1ab3152`) binds active PID 1267326, zero restarts, pending monitor PID 1374045, and unchanged 96+36+16 fleet/tail behavior. The successful iteration-9 upload remains the final old-system boundary; new-system training does not begin early. |
+| 132 | 2026-08-03 | Reaffirm as immutable that Marnie remains on the current system through iteration 9 and its successful checksum-exact Kaggle submission; only the first later collection may begin new-system training. Prepared or passing artifacts cannot activate it early. | Canonical immediately as an owner boundary clarification. No current training, scheduler, fleet, hook, or self-play behavior changes. Post-upload evidence still fails closed to a pause if activation is not ready. |
+| 133 | 2026-08-03 | Record completion of the already-authorized revision-131 boundary hook after the exact iteration-6 commit. This is operational reconciliation only and does not move the immutable post-iteration-9 activation boundary. | Activated at `2026-08-03T23:57:16.456805+00:00`. Managed PID `1267326` was replaced by PID `1471079` between iteration 6 and iteration 7; receipt `state/marnie_new_system_hook_activation_r130.json` is `sha256:f26796f6776c48cdac4e63e6e5ddd7045bc747c59a3dec1fbf8acf54b455e9c1`. Iteration 7 started with only the dormant trigger/request paths loaded; family sampler/loss authority remains off. Scheduler, 96+36+16 fleet, and exact 20-game tail rule are unchanged. |
+| 134 | 2026-08-04 | After the successful checksum-exact Marnie iteration-9 upload activates the new system, run exactly 25 expert bootstrap epochs over the checksum-pinned 73,082-record/6,828,373-decision Marnie's Grimmsnarl ex corpus, submit that exact bootstrap checkpoint, and begin new-system self-play only after its successful checksum-exact upload receipt. | Staged and runtime-inert while iteration 7 remains healthy on the current system. A missing, failed, or pending bootstrap/submission receipt pauses before self-play and never authorizes another old-system collection. No live scheduler, fleet, or tail behavior changes. |
+| 135 | 2026-08-04 | Give public expert replay acting seats from checksum-pinned PTCGReplay top-100 pilots higher post-upload-bootstrap importance, increasing only with adequate same-corpus pilot support: `1.5x` at 1--31 games, `2.0x` at 32--127, `3.0x` at 128--511, and `4.0x` at 512+; unmatched seats remain `1.0x`. Require an exact `episode_id + seat + TeamNames[seat]` join and immutable snapshot/index receipts. | Ready and runtime-inert for the revision-134 post-iteration-9 bootstrap only. All 73,082 pilot rows resolved with zero unverifiable records; 33,156/65,774 training rows match the pinned top 100. The immutable weight index is `sha256:d0c978ba12c0e758747a5d1ea185f668b579a0905ef9bed2609d998febe2ec05`, with tier counts `1.0x=32,618`, `1.5x=206`, `2.0x=1,648`, `3.0x=4,120`, `4.0x=27,182`. It does not alter current iteration 8, public collection, gates, or Kaggle evaluation replay isolation. |
+| 136 | 2026-08-04 | Supersede revision 135's upper support bands after verifying substantial same-training-split evidence: retain `1.5x` at 1--31, `2.0x` at 32--127, and `3.0x` at 128--511; use `4.0x` at 512--1,023, `5.0x` at 1,024--2,047, and a bounded `6.0x` at 2,048+. Unmatched seats remain `1.0x` and validation remains unweighted. | Ready and runtime-inert for the revision-134 post-iteration-9 bootstrap only. The pinned split has 22 top-100 pilots at 512+, nine at 1,024+, and four at 2,048+, supporting the higher ceiling without amplifying sparse pilots. Immutable r136 index `sha256:d7a0e6d60ec02edf2fa831eea7231bf663bf94b98105f28f31046566f8df26da` has effective mass `183,984` and tier counts `1.0x=32,618`, `1.5x=206`, `2.0x=1,648`, `3.0x=4,120`, `4.0x=9,697`, `5.0x=8,297`, `6.0x=9,188`. No active iteration, scheduler, fleet, tail, or evaluation behavior changes. |
+| 137 | 2026-08-04 | Raise the well-supported top-100 pilot bands again: preserve all tiers through 512--1,023, increase 1,024--2,047 from `5.0x` to `6.0x`, and increase 2,048+ from `6.0x` to a bounded `8.0x`. Validation and unmatched seats remain `1.0x`. | Ready and runtime-inert for the exact 25-epoch post-iteration-9 bootstrap. Nine pinned top-100 pilots have at least 1,024 training games and four have at least 2,048, so only large-sample pilots receive the higher bounds. Immutable r137 index `sha256:50928fe4ab7f467ebf03a7c555073a48df5bf62176cf41cf825a9601933b86a2` has effective mass `210,657` and tier counts `1.0x=32,618`, `1.5x=206`, `2.0x=1,648`, `3.0x=4,120`, `4.0x=9,697`, `6.0x=8,297`, `8.0x=9,188`. No active iteration, scheduler, fleet, tail, or evaluation behavior changes. |
+| 138 | 2026-08-04 | Raise only the large-sample top-100 pilot bands again: `7.0x` at 1,024--2,047 exact training games and a bounded `10.0x` at 2,048+, preserving all lower tiers, unweighted validation, and `1.0x` unmatched rows. | Ready and runtime-inert for the exact 25-epoch post-iteration-9 bootstrap. The highest four pilots each have 2,094--2,539 exact training games. Immutable r138 index `sha256:1d9ee77af9b9d5f916037b69475471c0a20602c6ea4ba186b59deb8fc07371dc` has effective mass `237,330`, an analytical effective sample size of `36,169.67` (`54.99%` of 65,774 training games), and tier counts `1.0x=32,618`, `1.5x=206`, `2.0x=1,648`, `3.0x=4,120`, `4.0x=9,697`, `7.0x=8,297`, `10.0x=9,188`. No scheduler, fleet, tail, label, action, or validation behavior changes. |
+| 139 | 2026-08-04 | Activate Marnie's archetype-family sampler and typed family-loss vector under explicit owner ceiling authority after the valid two-round study remained inconclusive. Preserve the failed measured study and select exact round-1 `plus`; never label it a measured pass. | Authorized for immediate checksum-bound managed activation at the existing status-75 post-upload boundary. Atomic migration, exact-parent/bootstrap continuity, epoch-25 submission, upload-before-iteration-10, and the post-activation status-78 monitor remain mandatory. |
+| 140 | 2026-08-04 | Permanently retire Marnie's guide for this lineage so learned policy and fused heads can improve beyond the hand-authored scaffold. Set its weight to exactly `0.0` for bootstrap and every later Marnie update; keep historical guide artifacts audit-only. | Activated at the existing post-iteration-9, pre-bootstrap receipt-backed boundary. Resume the exact weighted 25-epoch bootstrap from the uploaded parent with all non-guide objectives unchanged. Submission/activation repair receipt: `state/marnie_guide_retirement_submission_chain_r140.json` (`sha256:47758999c5290f806defa0401c1b6e3431e112032d20c7a165e4c75e6211ac24`). |
+| 141 | 2026-08-04 | Clarify that Marnie's retired guide may remain as an optional offline shadow diagnostic, while retaining exactly zero training and runtime authority. It cannot influence loss, gradients, fusion, actions, serving, checkpoint selection, gates, submission, self-play authorization, or blocking behavior. | Active immediately as a non-authoritative contract clarification. Missing, invalid, or failed shadow evidence is nonblocking. Shadow receipt: `state/marnie_guide_shadow_non_authority_r141.json` (`sha256:fe0d43ce38eab29c6ee49a5b6047b8b4059fb50dca10b3e832612f100379222b`). The epoch-1 family-residual validator repair resumes the immutable guide-off checkpoint without retraining under `state/marnie_postupload_epoch1_recovery_r141.json` (`sha256:c08284d1d53f39bd804f588c172a768d99b23888ee9e1a61653ed428197f4fe7`), and its end-to-end submission/activation binding is `state/marnie_epoch_recovery_submission_chain_r141.json` (`sha256:401344d07388234722b1dd3fdbcc6805af2aa499b3c80280ea09ef6cdc590f11`). Dashboard deployment: `state/marnie_guide_shadow_dashboard_r141.json` (`sha256:5d14e5ef522a39684c1873aa81ae7572f1dcd9a29a3ae7fc20d4df11885816b7`). |
+| 142 | 2026-08-04 | Repair the dormant iteration-10 registry precedence defect: merge the active family registry with Marnie's zero-authority shadow-guide contract, preserve every non-guide field, and ensure both post-monitor continuation and family rollback remain guide-off. | Activated as a next-start-only managed overlay without interrupting the active bootstrap. Receipt `state/marnie_family_guide_shadow_runtime_r142.json` (`sha256:1ea409b8315b8d5fe1c3b0ad2d2e5245f4c7e3ceb2907f3e59a4fd7f343fc88a`) binds family registry `sha256:22f53258…`, retired parent `sha256:6960318b…`, merged registry `sha256:88b10545…`, and the final drop-in. End-to-end activation/monitor chain: `state/marnie_family_guide_shadow_chain_r142.json` (`sha256:5fa2a96582d454a2cdf80e667bcfd6657f121af76e0577759dbd67bcff8da320`). Dashboard receipt: `state/marnie_family_guide_shadow_dashboard_r142.json` (`sha256:59bc2843c5017c096cfd4a3a1e16e7c4406157d9306eea1dedd8dc47b02e5faa`). |
+| 143 | 2026-08-04 | Repair the dormant Marnie→Crustle boundary so completion executes the actual transaction and Crustle binds the exact handoff-time H10 registry instead of the stale pre-Generation-15 r113 registry. Strip Marnie-only family and guide metadata before creating the Crustle runtime. | Activated for the dormant boundary without interrupting the active bootstrap. The effective completion service has one real completion `ExecStart`, the current managed registry is checksum-bound into the completion receipt, all five Crustle units remain inactive, and focused tests pass. Receipt: `state/post_marnie_crustle_runtime_rebind_r143.json` (`sha256:ddd25f2ad7c42182cec5e858ec8c48377b9ca1ff00fe9ebd0e0fc5ff652b0539`). |
+| 144 | 2026-08-04 | Repair the dormant post-Crustle population materialization boundary. Preserve the immutable 14-row historical frozen-specialist registry; form the 15-member trainable population from those 14 identities plus the three checksum-bound refresh rows, where refreshed Alakazam and Marnie replace their current versions and newly completed H10 Crustle adds member 15. Bind Crustle's exact final-format bundle, expert manifest, matchup tree, and runtime registry into its refresh row. The public Crustle baseline is not a trainable member and is not selected history. | Activated for the dormant boundary without interrupting the active guide-off bootstrap. Population preparation fails closed unless the union is exactly 15, all three refresh artifacts are checksum-exact, and Crustle has no historical/public training entry. Focused regression suite: 16 passed. Receipt: `state/post_crustle_population_materialization_r144.json` (`sha256:fb11c4a211d5598a35d9ae68b9ad5caa59a59a8119827028b85bc5159a87a8c9`). |
+| 145 | 2026-08-04 | Make Marnie's optional guide-shadow bypass finite as well as non-authoritative: inactive guide/setup placeholders must be exact zero-gradient tensors even when packed option padding contains negative-infinity logits. | Repaired in the canonical training tree and active deployment without interrupting iteration 10. The active process retains finite non-guide gradients and zero guide influence; the repaired implementation loads at the next clean managed interpreter start. Regression coverage requires finite expanded resident loss and guide loss exactly zero, and rehearsal now fails before backward on any non-finite total. Receipt: `state/marnie_guide_shadow_finite_bypass_r145.json` (`sha256:4ddc5f2e8a449a880e0c3e43a5e808f0ddac1dc8dff27be2c45def7c44373b15`). |
+| 146 | 2026-08-04 | Keep Marnie's retired guide from blocking RL candidate persistence: legacy/guide-off mode must not request a strategic-curriculum checkpoint record. | Repaired with one shared rehearsal/RL guard, synced to the active deployment, and loaded by the managed status-1 restart. Iteration 10 reused its immutable collection and rehearsal receipts without recollection. Focused strategic tests and an end-to-end `rl_train_step` test pass. Receipt: `state/marnie_guide_off_rl_save_recovery_r146.json` (`sha256:aa032e7f2e8e512c2c712bf1d7d72c166899545fe6d54c3f472fe901e56a12dc`). |
+| 147 | 2026-08-04 | Keep Marnie's family replay sampling checksum-stable during recovery-only source migrations by seeding from the sealed collection design fingerprint. | Activated in the managed iteration-10 recovery without recollection or rehearsal retraining. Exact source seats remain 4,096/4,096, the immutable replay projection is reused, seven focused tests pass, and training advanced into baseline preparation with the guide still shadow-only and nonblocking. Receipt: `state/marnie_family_replay_seed_recovery_r147.json` (`sha256:4379636ca9e012dab0fbaea0fb7d4f00b1f097a9228f60f5f3282bf327b09824`). |
+| 148 | 2026-08-04 | Complete the mandatory first-new-system family monitor after immutable iteration 10 and preserve Marnie's retired guide as optional shadow-only evidence through either monitor outcome. | The fresh 4,284 locked-pair plus 1,020 package-pair audit required rollback: package delta lower bound was `-0.0825242791`, with zero invalid games and passing causality/latency checks. The resolver restored the exact iteration-7 heldout parent before iteration-11 collection. Monitor `sha256:84887e6b…`; resolution `sha256:7a0533a9…`. |
+| 149 | 2026-08-04 | Repair the family-rollback resume registry without weakening the rollback gate: preserve the exact rollback migration reason, rebind only the operational runtime root to the already-deployed post-upload tree that implements it, and retain guide weight `0.0` with no guide authority. | Activated before iteration-11 collection. Effective registry `/home/inzi/poke-bot-agent/outputs/final_format_marnie_r104/runtime/specialist_runtime_registry_h10_r149_family_rollback_guide_shadow.json` is `sha256:e28dfbde…`; repair receipt `sha256:c6961239…`. The failed family sampler is off and all non-guide fields other than the source runtime root are preserved. |
+| 150 | 2026-08-04 | Reconcile the rollback parent's heldout evidence with its checksum-exact iteration-7 checkpoint before resume; do not allow stale iteration-10 evidence to block or misrepresent the restored parent. | Activated before iteration-11 collection. The 4,250-game iteration-7 heldout evidence and checkpoint both bind `sha256:f20efb20…`; migration receipts 0027/0028 are immutable. Marnie resumed managed iteration 11 under PID `138326`, zero restarts, full `96+36+16` fleet, and guide-shadow weight `0.0`. Receipt: `state/marnie_iteration11_family_rollback_resume_r150.json` (`sha256:4509f091fc62753aa4d4177d7696bc3041a5f46568872e821aa93610627a2e99`). |
+| 151 | 2026-08-05 | Reconcile the mutable specialist and dashboard compatibility projections to the already-running iteration-11 family-rollback runtime without changing production. | Activated metadata-only while iteration 11 continued from self-play into public mix. The managed PID, selector, checkpoint, scheduler, fleet, guide-shadow contract, and failed-family rollback authority were unchanged; only stale iteration-8/self-play projection fields were corrected. Receipt: `state/marnie_iteration11_public_mix_state_reconciliation_r151.json` (`sha256:fea9c0edd4ad7bf5316d0303f43d29cf963efaf7f5f13a054cb8d6135520657a`). |
+| 152 | 2026-08-05 | Render the active post-fleet Marnie refresh as a separately versioned iteration-20 boundary followed specifically by the new H10 Crustle specialist; do not append historical-roster unfinished counts to a refresh action. | Activated display-only through the managed Bert dashboard. The API reports the exact iteration-20/no-iteration-21/Marnie-to-Crustle contract and 19/19 current sources. Marnie training remained on PID `138326` without restart or scheduler mutation. Receipt: `state/marnie_dashboard_postrefresh_next_action_r152.json` (`sha256:4bd2f4246cf06e76ab9fefb67244a34306dbb2eb6f8b20cdaafa27d37aee4af1`). |
+| 153 | 2026-08-04 | Clear superseded iteration-7 heldout evidence when activating the exact post-upload epoch-25 checkpoint; require a fresh exact gate for the changed learner. | Activated before iteration-10 evaluation. No heldout evidence transferred between checkpoint digests and guide authority was unchanged. Managed receipt: `/home/inzi/poke-bot-agent/outputs/state/marnie-r153-postupload-heldout-evidence-repair.json` (`sha256:8af9603909fa79af9b0b672f51b1faabd80cb6ef91c4bc8f36f94eece0eef377`). Historical evidence remains immutable after the later family-monitor rollback restored iteration 7. |
+| 154 | 2026-08-05 | Repair the dormant Marnie-to-Crustle completion preflight so its absolute canonical completion script can resolve the checksum-bound managed-runtime-registry helper from any configured working directory. | Activated without restarting Marnie. The exact effective `ExecStartPre` now emits `FINAL_FORMAT_MARNIE_COMPLETION_OK` and resolves revision-149 registry `sha256:e28dfbde…`; 12 focused tests pass and all five Crustle units remain dormant. Receipt: `state/post_marnie_crustle_completion_import_repair_r154.json` (`sha256:93f470f0bfcd496ca53c072151f406a689b06b08eea83bab88b3deae49c42aac`). |
+| 155 | 2026-08-05 | Preserve Marnie's retired guide as an explicit third dashboard state throughout live RL: `shadow_only_non_authoritative`, weight `0.0`, and no gradient, fusion, action, serving, gate, or blocking authority. Do not collapse that durable state into the generic `absent` fallback when the completed post-upload bootstrap service is no longer current. | Activated display-only without restarting or changing Marnie. The selector-owned snapshot and canonical copy are checksum-identical, focused regressions pass, the live API renders the explicit shadow state, and all 18 required dashboard sources remain current while iteration 11 trains. Receipt: `state/marnie_dashboard_guide_shadow_projection_r155.json` (`sha256:5227718eeddeed918b69dff95b64abf3bd497c31863d5c90cdda978c43de73fb`). |
+| 156 | 2026-08-05 | Keep a promoted Marnie candidate's between-iteration checkpoint publication visible as active work. Treat the authoritative `BETWEEN_ITER_HARD_GATE begin` marker as `heldout:checkpoint_staging`, and keep that known bounded phase current for at most the existing 20-minute stall window while the managed service remains active; do not leave the completed adapter bar displayed as degraded during a required new-digest load. | Activated display-only without restarting or changing Marnie. The canonical and selector-owned dashboard snapshots are checksum-identical at `sha256:417383cf…`; 13 focused Marnie/dashboard regressions pass. Iteration 11 then completed the exact local+two-remote hard gate for promoted candidate `sha256:b1567e5c…` and entered the 4,250-game formal holdout under unchanged PID `138326`, zero restarts, with all 19 required dashboard sources current. Receipt: `state/marnie_dashboard_checkpoint_staging_projection_r156.json` (`sha256:8eb0715b0a9e21a65c007043540b27d44973927d0ba3b3a21bb10f0a533a0440`). |
+| 157 | 2026-08-05 | Preserve every authoritative live `measure:*` phase against post-train checkpoint-staging inference. A current research-control or other measurement counter must remain the dashboard phase until runtime advances it; an older hard-gate marker cannot replace it. | Activated display-only without restarting or changing Marnie. Canonical and selector-owned dashboard snapshots are checksum-identical at `sha256:9598ca84…`; 13 focused regressions pass. Iteration 11 completed and committed checkpoint `sha256:b1567e5c…` after 4,250 formal games and 1,000 audited research-control games, then iteration 12 began under unchanged PID `138326`, zero restarts. The live dashboard reports iteration 12 `collect:public_mix` with 19/19 required sources current. Receipt: `state/marnie_dashboard_measurement_phase_projection_r157.json` (`sha256:5a134791cbf89288bde0c70ab3f74fa63fe35d7321711a2bb0b1dc3d8cfdd22c`). |
+| 158 | 2026-08-05 | Preserve exact 8,192-game retention while preventing a single unusable public-mix record from forcing full recollection after only four replacement seeds. Extend only public-mix targeted replacement recovery to 32 deterministic disjoint lanes and report the exact missing schedule cells on final failure. | Staged source-only under running Marnie PID `1295559`; no restart or live-interpreter mutation. The first failed attempt remains quarantined at exact `1024/1024 + 7167/7168`. Active-deployment source `sha256:a2e03ec8…` matches canonical source and 96 focused recovery/scheduling tests pass. Activation is next managed interpreter start, followed by live exact-retention receipt validation. Receipt: `state/marnie_public_mix_exact_retention_recovery_r158.json` (`sha256:360a077e85bfa9f82cfa6f04ea1b9340c9ef88670867ac4999a99f4a948f445b`). |
+| 159 | 2026-08-05 | Keep the active final-format Marnie handoff card on the exact iteration-20/no-iteration-21 → new H10 Crustle contract even when the generic historical handoff source still names Archaludon→Slowking. Do not append historical unfinished-roster wording to the refresh. | Activated display-only without restarting Marnie or the dashboard. Canonical and selector-owned snapshots match `sha256:209cc43e…`; 238 dashboard regressions pass; the live API reports Crustle, terminal iteration 20, forbidden iteration 21, and 19/19 current sources. Receipt: `state/marnie_dashboard_handoff_fallback_r159.json` (`sha256:81e2a62e7db522e0d423ca55a1f5172f628be9690da1d3bebb3310cc6d876d28`). |
+| 160 | 2026-08-05 | For the dormant post-Marnie H10 Crustle bootstrap, use Crustle's guide only for epochs 1–10, then run an exact 25-epoch guide-zero expert refresh as epochs 11–35. Select the final bootstrap checkpoint only from epochs 11–35. Checksum-bind the newly completed Marnie/Grimmsnarl iteration-20 checkpoint into Crustle's expert/practice contract without relabelling its actions as Crustle expert actions. | Staged while Marnie iteration 19 remains active. This does not restart or mutate Marnie. Crustle bootstrap/register/launch must fail closed until the 10+25 schedule, guide-zero second phase, selection window, and completion-bound Grimmsnarl identity are implemented and validated at the Marnie iteration-20 handoff. |
+| 161 | 2026-08-05 | Weight the exact Crustle expert corpus during all 35 bootstrap epochs, including both the 10 guide-active epochs and the 25 guide-free refresh epochs, using the checksum-pinned bounded top-100 pilot-importance policy already validated for Marnie. Keep validation unweighted and preserve every replay action and causal label. | Staged with revision 160 at the Marnie iteration-20 handoff. Bootstrap fails closed unless the Crustle-specific importance index matches the protected corpus and deterministic split, contains supported top-100 matches, and is recorded in every epoch, frozen provenance, and ready receipt. Active Marnie is unchanged. |
+| 162 | 2026-08-05 | Supersede the Crustle guide-off refresh: keep Crustle's current-deck guide active for all 35 bootstrap epochs at its canonical held weight, with the weighted expert corpus applied throughout. Do not run a guide-free phase or turn the guide into direct action imitation; it remains a bounded strategic training influence while the learned heads and RL policy remain authoritative. Select the final checkpoint from the full 1--35 window and record the all-guide schedule in every epoch and completion receipt. | Activated before Crustle bootstrap training. The Crustle bootstrap launcher and registration validator now require `poke_bot.crustle_guide_all_epochs/v1`, guide-active epochs `[1,35]`, zero guide-free epochs, and revision 162. Existing Marnie completion and guide-retirement state are unchanged. |
+| 163 | 2026-08-05 | Select the exact Marnie's Grimmsnarl ex iteration-9 milestone checkpoint `sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381` (milestone copy 1/1, first-if-allowed) as the canonical Marnie freeze for Crustle training. Use it training-only; do not upload or submit it to Kaggle. Preserve the historical iteration-20 completion/freeze and all prior receipts byte-for-byte. | Activated at the Crustle pre-bootstrap boundary through `state/marnie-canonical-training-freeze-r163.json`; the Crustle practice/holdout anchor and staged opponent bind this checkpoint and bundle while retaining the immutable Marnie completion registry as the source runtime lineage. |
+| 164 | 2026-08-05 | Keep Crustle's checksum-bound strategic current-deck guide active after its 35-epoch bootstrap as well as during it. The registered Crustle RL lineage keeps the bounded `0.05` strategic-directional guide loss and its learned-head curriculum; the guide remains training-only with zero serving, direct policy-imitation, runtime-logit, action, and gate authority. | Staged for Crustle's checksum-backed bootstrap-to-RL registration boundary. The active bootstrap is not restarted or modified. The registration fails closed unless it binds the same guide contract, directional strategic curriculum, and 19-head Fusion-v3 route contract. |
+| 165 | 2026-08-05 | Make the Crustle guide exception persistent: do not enqueue generic guide-on/guide-off reviews, ramps, or decay for Crustle, and never reduce its registered strategic-directional guide weight from `0.05` automatically. Any future Crustle guide change requires a new explicit owner decision and a checksum-bound boundary receipt. | Staged for the same bootstrap-to-RL registration boundary. This corrects the generic prospective guide-policy inheritance without altering the active bootstrap or granting guide runtime/action authority. |
 
 ## Non-regression invariants
 
@@ -336,6 +777,11 @@ or workflow has changed:
   research-control, or formal-holdout result drain.
 - Never terminate or interfere with an interactive SSH, Codex, terminal,
   editor, Cursor, Grok, or Claude session.
+- Remote checkpoint publication is idempotent by immutable digest. A fresh,
+  complete controller-and-leaf health proof may reuse an already resident,
+  pinned exact digest without deserializing it again. Missing, unhealthy, or
+  mismatched evidence fails closed to the normal verified reload, and a new
+  digest must never be silently treated as resident.
 - Only the active specialist may receive gradients or model updates.
 - Completed specialists and original passing checkpoints remain immutable.
 - Continue cumulative distillation after every completed specialist. A failed
@@ -378,6 +824,11 @@ or workflow has changed:
 - The active specialist's expanded strategic heads receive gradients in every
   full-model RL or rehearsal update for which their exact causal labels are
   present; missing labels remain masked.
+- Marnie's retired current-deck guide is optional offline shadow evidence only.
+  Its live target generation and loss weight remain off/`0.0`; it has no
+  gradient, fusion, action, serving, selection, gate, submission, authorization,
+  or blocking authority. Missing or failed shadow evidence never blocks the
+  authoritative non-guide path.
 - Each newly prepared specialist has exactly one checksum-bound current-deck
   guide contract and generic training-only guide curriculum. Guide evidence is
   cited, signals are causal and specialist-specific, missing signals are
