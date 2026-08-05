@@ -29,7 +29,8 @@ This tree is for **isolated R&D only**. It is not a production training lane.
   `state/poke_rlm_redesign.yaml`. Docs: `docs/poke_rlm/`.
 - Slowking research (no training/serving authority): multi-day guide +
   reverse-engineered surrogate
-  (`poke_bot/slowking_reverse_engineered_policy.py`), plan
+  (`poke_bot/slowking_reverse_engineered_policy.py`), full distill pipeline
+  (`poke_bot/slowking_distill/`, `experiments/slowking-distill/`), plan
   `docs/SLOWKING_NEURAL_DISTILLATION_RESEARCH_PLAN.md`.
 
 Add new experiment folders beside these. Prefer small, receipt-backed probes

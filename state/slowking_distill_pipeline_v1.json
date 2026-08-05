@@ -1,0 +1,29 @@
+{
+  "schema": "poke_bot.slowking_distill.pipeline_status/v1",
+  "status": "implemented_research_only",
+  "authority": "none",
+  "training_authority": false,
+  "serving_authority": false,
+  "selector_authority": false,
+  "package": "poke_bot/slowking_distill",
+  "stages": {
+    "corpus_extract": "scripts/slowking_distill_build_corpus.py",
+    "multi_day_aggregate": "scripts/slowking_distill_aggregate_multi_day.py",
+    "day_split": "poke_bot/slowking_distill/day_split.py",
+    "stage_a_bc": "poke_bot/slowking_distill/bc_stage.py",
+    "stage_b_iql": "poke_bot/slowking_distill/iql.py",
+    "stage_c_search": "poke_bot/slowking_distill/critical_search.py",
+    "stage_e_distill": "poke_bot/slowking_distill/distill_search.py",
+    "eval_gate": "poke_bot/slowking_distill/eval_gate.py",
+    "orchestrator": "scripts/slowking_distill_run_pipeline.py"
+  },
+  "host_blocked_without_archives": [
+    "full_768_game_rescan",
+    "exact_belief_mcts_search_backend"
+  ],
+  "notes": [
+    "Pipeline never sets promoted=true.",
+    "Heuristic scores are offline features only; prior_logit_bias remains exact zero.",
+    "Replace mock_top_k_search with BeliefMCTS on a host with cg + checkpoint when running Stage C for real."
+  ]
+}
