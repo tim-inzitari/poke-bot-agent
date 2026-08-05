@@ -24,6 +24,9 @@ This tree is for **isolated R&D only**. It is not a production training lane.
 - `experiments/apple-optimization/` — Apple GPU telemetry / optimization plists
 - `experiments/recursive_turn_planner/` — lightweight Recursive Turn Planner
   (importable under `poke_bot/recursive_turn_planner/`)
+- `poke_bot/poke_rlm/` — full PokeRLM kit (phases 1–7) behind
+  `POKEBOT_POKE_RLM_*` flags; default disabled. Progress:
+  `state/poke_rlm_redesign.yaml`. Docs: `docs/poke_rlm/`.
 
 Add new experiment folders beside these. Prefer small, receipt-backed probes
 over broad production-path edits.
