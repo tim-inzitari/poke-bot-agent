@@ -7,14 +7,26 @@ across atomic actions with sparse repair.
 
 This package is intentionally isolated from production PolicyAgent defaults and
 online MCTS. It does not rewrite owner-contract authority.
+
+Sizing is profile-bound:
+- ``global_transformer`` → d_model=256, dynamics_width=512
+- ``pure_rl`` → d_model=96, dynamics_width=192
 """
 
 from .config import RTPConfig
-from .dynamics import LatentTransitionDynamics
+from .dynamics import LatentTransitionDynamics, LookaheadBackedDynamics
 from .executor import PlanExecutor, PlanStepResult
 from .legality import TypedLegalityVerifier
 from .memory import PersistentTurnMemory
 from .planner import PlanProposal, RecursiveTurnPlanner, TurnDecision
+from .profiles import (
+    GLOBAL_TRANSFORMER,
+    PURE_RL,
+    UNIT_TEST,
+    VERIFY_ABLATONS,
+    get_profile,
+    profile_inventory,
+)
 from .types import (
     NodeKind,
     ObservationPredicate,
@@ -24,9 +36,12 @@ from .types import (
 )
 
 __all__ = [
+    "GLOBAL_TRANSFORMER",
     "LatentTransitionDynamics",
+    "LookaheadBackedDynamics",
     "NodeKind",
     "ObservationPredicate",
+    "PURE_RL",
     "PersistentTurnMemory",
     "PlanExecutor",
     "PlanNode",
@@ -38,4 +53,8 @@ __all__ = [
     "TurnDecision",
     "TurnProgram",
     "TypedLegalityVerifier",
+    "UNIT_TEST",
+    "VERIFY_ABLATONS",
+    "get_profile",
+    "profile_inventory",
 ]

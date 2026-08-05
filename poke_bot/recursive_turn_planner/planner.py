@@ -65,6 +65,7 @@ class RecursiveTurnPlanner(nn.Module):
         self.dynamics = dynamics or LatentTransitionDynamics(
             self.config.d_model,
             width=self.config.dynamics_width,
+            prefer_option_hidden=self.config.prefer_option_hidden,
         )
         self.legality = legality or TypedLegalityVerifier()
         d = self.config.d_model
@@ -78,9 +79,9 @@ class RecursiveTurnPlanner(nn.Module):
         # Complexity controller: whether to recurse or use direct policy.
         self.complexity_head = nn.Sequential(
             nn.LayerNorm(d),
-            nn.Linear(d, d // 2),
+            nn.Linear(d, max(d // 2, 1)),
             nn.GELU(),
-            nn.Linear(d // 2, 1),
+            nn.Linear(max(d // 2, 1), 1),
         )
         # Subplanner: refine unresolved subgoals into short chunks.
         self.subgoal_head = nn.Sequential(
@@ -91,6 +92,38 @@ class RecursiveTurnPlanner(nn.Module):
         )
         self.subgoal_action_head = nn.Linear(d, 1)
         self._neural_passes = 0
+
+    def inventory(self) -> dict[str, object]:
+        dyn_inv = getattr(self.dynamics, "inventory", None)
+        return {
+            "schema": self.config.schema,
+            "sizing_profile": self.config.sizing_profile,
+            "d_model": self.config.d_model,
+            "dynamics_width": self.config.dynamics_width,
+            "num_plan_candidates": self.config.num_plan_candidates,
+            "max_recursion_depth": self.config.max_recursion_depth,
+            "max_neural_passes": self.config.max_neural_passes,
+            "max_plan_length": self.config.max_plan_length,
+            "complexity_option_threshold": self.config.complexity_option_threshold,
+            "skip_trivial_decisions": self.config.skip_trivial_decisions,
+            "online_sim_verify_budget": self.config.online_sim_verify_budget,
+            "option_batch_hint": self.config.option_batch_hint,
+            "prefer_option_hidden": self.config.prefer_option_hidden,
+            "policy_aid_cap": self.config.policy_aid_cap,
+            "mcts_allowed": False,
+            "beam_search_allowed": False,
+            "competition_time_simulator_search_allowed": (
+                self.config.online_sim_verify_budget > 0
+            ),
+            "parameters": int(sum(p.numel() for p in self.parameters())),
+            "dynamics": dyn_inv() if callable(dyn_inv) else {},
+            "reuse_targets": {
+                "option_hidden": "TemporalCabtTransformer.decode_options",
+                "latent_lookahead": "ActionConditionedLatentLookahead",
+                "complex_option_threshold": "SearchConfig.complex_option_threshold",
+                "trivial_gate": "submission_budget.forced_or_trivial",
+            },
+        }
 
     def reset_pass_counter(self) -> None:
         self._neural_passes = 0
@@ -108,6 +141,7 @@ class RecursiveTurnPlanner(nn.Module):
         *,
         legal_actions: Sequence[Sequence[int]],
         spatial_memory: Optional[Tensor] = None,
+        option_hidden: Optional[Tensor] = None,
         value_estimate: float = 0.0,
         remaining_resources: Optional[dict[str, Any]] = None,
         matchup_route: int = -1,
@@ -122,17 +156,26 @@ class RecursiveTurnPlanner(nn.Module):
         if state_vec.dim() != 1 or state_vec.numel() != self.config.d_model:
             raise ValueError("state_vec width must match RTPConfig.d_model")
         legal = tuple(tuple(int(x) for x in action) for action in legal_actions)
+        hidden = None
+        if option_hidden is not None:
+            if option_hidden.dim() == 3:
+                if option_hidden.size(0) != 1:
+                    raise ValueError("option_hidden batch must be 1 at encode")
+                option_hidden = option_hidden[0]
+            hidden = option_hidden.detach().clone()
         return PersistentTurnMemory(
             H=state_vec.detach().clone(),
             spatial_memory=(
                 None if spatial_memory is None else spatial_memory.detach().clone()
             ),
+            option_hidden=hidden,
             value_estimate=float(value_estimate),
             legal_actions=legal,
             remaining_resources=dict(remaining_resources or {}),
             matchup_route=int(matchup_route),
             turn_objective=str(turn_objective),
             observations=dict(observations or {}),
+            sizing_profile=self.config.sizing_profile,
         )
 
     def policy_entropy(self, logits: Tensor) -> float:
@@ -142,6 +185,16 @@ class RecursiveTurnPlanner(nn.Module):
         log_probs = torch.log(probs.clamp_min(1e-12))
         return float((-(probs * log_probs).sum()).item())
 
+    def is_trivial_decision(
+        self,
+        memory: PersistentTurnMemory,
+    ) -> tuple[bool, str]:
+        """Mirror submission_budget forced/trivial skips."""
+        n_options = len(memory.legal_actions)
+        if n_options <= 1:
+            return True, "forced_or_trivial"
+        return False, ""
+
     def should_recurse(
         self,
         memory: PersistentTurnMemory,
@@ -150,6 +203,17 @@ class RecursiveTurnPlanner(nn.Module):
     ) -> tuple[bool, dict[str, Any]]:
         """Complexity gate: simple positions use direct policy."""
         n_options = len(memory.legal_actions)
+        if self.config.skip_trivial_decisions:
+            trivial, reason = self.is_trivial_decision(memory)
+            if trivial:
+                return False, {
+                    "n_options": n_options,
+                    "trivial": True,
+                    "reason": reason,
+                    "by_options": False,
+                    "by_entropy": False,
+                    "by_head": False,
+                }
         entropy = (
             self.policy_entropy(policy_logits)
             if policy_logits is not None
@@ -166,6 +230,7 @@ class RecursiveTurnPlanner(nn.Module):
             "n_options": n_options,
             "entropy": entropy,
             "complexity_score": complexity_score,
+            "trivial": False,
             "by_options": by_options,
             "by_entropy": by_entropy,
             "by_head": by_head,
@@ -281,13 +346,16 @@ class RecursiveTurnPlanner(nn.Module):
         hidden = self.subgoal_head(
             torch.cat((memory.snapshot_latent(), subgoal_vec), dim=-1).unsqueeze(0)
         )
-        # Score legal actions as a batch for this subgoal.
-        embeds = self.dynamics.embed_action_ids(
-            memory.legal_actions, device=device, dtype=dtype
+        # Prefer encoder option_hidden; fall back to action-id embeds.
+        dyn = self.dynamics.score_actions(
+            hidden,
+            memory.legal_actions,
+            option_hidden=memory.option_hidden,
         )
-        # Broadcast subgoal hidden against action embeds via dynamics value.
-        dyn = self.dynamics(hidden, embeds)
-        scores = dyn["value"] - self.config.compute_cost_penalty * dyn["uncertainty"]
+        value = dyn["value"]
+        uncertainty = dyn["uncertainty"]
+        assert isinstance(value, Tensor) and isinstance(uncertainty, Tensor)
+        scores = value - self.config.compute_cost_penalty * uncertainty
         # Also mix a tiny learned bias from subgoal_action_head on hidden.
         bias = self.subgoal_action_head(hidden).squeeze()
         scores = scores + 0.05 * bias
@@ -384,10 +452,19 @@ class RecursiveTurnPlanner(nn.Module):
                 diagnostics={"illegal_reason": report.reason},
             )
         actions = report.kept_actions
+        if not actions:
+            return PlanProposal(
+                program=program,
+                legal=False,
+                score=float("-inf"),
+                uncertainty=1.0,
+                diagnostics={"illegal_reason": "no_scorable_actions"},
+            )
         rollout = self.dynamics.rollout_program_value(
             memory.snapshot_latent(),
             actions,
             max_horizon=min(len(actions), self.config.max_plan_length),
+            option_hidden_by_action=memory.option_hidden_map(),
         )
         compute_cost = float(program.compute_cost) + float(rollout["horizon"])
         score = (
@@ -407,6 +484,8 @@ class RecursiveTurnPlanner(nn.Module):
                 "rollout_value": rollout["value"],
                 "rollout_uncertainty": rollout["uncertainty"],
                 "rollout_horizon": rollout["horizon"],
+                "option_hidden_fraction": rollout.get("option_hidden_fraction", 0.0),
+                "sizing_profile": self.config.sizing_profile,
             },
         )
         return PlanProposal(
@@ -503,5 +582,7 @@ class RecursiveTurnPlanner(nn.Module):
                 "best_score": best.score,
                 "best_uncertainty": best.uncertainty,
                 "online_sim_verify_budget": self.config.online_sim_verify_budget,
+                "sizing_profile": self.config.sizing_profile,
+                "used_option_hidden": memory.option_hidden is not None,
             },
         )

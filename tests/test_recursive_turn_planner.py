@@ -5,8 +5,12 @@ from __future__ import annotations
 import torch
 import pytest
 
+from poke_bot.model import ActionConditionedLatentLookahead
 from poke_bot.recursive_turn_planner import (
+    GLOBAL_TRANSFORMER,
+    PURE_RL,
     LatentTransitionDynamics,
+    LookaheadBackedDynamics,
     NodeKind,
     ObservationPredicate,
     PersistentTurnMemory,
@@ -17,6 +21,9 @@ from poke_bot.recursive_turn_planner import (
     SubgoalKind,
     TurnProgram,
     TypedLegalityVerifier,
+    VERIFY_ABLATONS,
+    get_profile,
+    profile_inventory,
 )
 
 
@@ -244,3 +251,86 @@ def test_subgoal_kinds_are_explicit_vocabulary() -> None:
         subgoal_label="maximize_draw",
     )
     assert node.subgoal is SubgoalKind.MAXIMIZE_DRAW
+
+
+@pytest.mark.unit
+def test_sizing_profiles_match_in_repo_parents() -> None:
+    assert GLOBAL_TRANSFORMER.d_model == 256
+    assert GLOBAL_TRANSFORMER.dynamics_width == 512
+    assert PURE_RL.d_model == 96
+    assert PURE_RL.dynamics_width == 192
+    assert GLOBAL_TRANSFORMER.complexity_option_threshold == 8
+    assert PURE_RL.complexity_option_threshold == 8
+    cfg = get_profile("pure_rl").to_config(online_sim_verify_budget=8)
+    assert cfg.d_model == 96
+    assert cfg.online_sim_verify_budget == 8
+    inv = profile_inventory()
+    assert inv["reuse_targets"]["pure_rl_d_model"] == 96
+    assert VERIFY_ABLATONS["legacy_mcts_75"] == 75
+    default = RecursiveTurnPlanner()
+    assert default.config.d_model == 256
+    assert default.config.dynamics_width == 512
+    assert default.inventory()["sizing_profile"] == "global_transformer"
+
+
+@pytest.mark.unit
+def test_trivial_decisions_skip_recursion() -> None:
+    planner = RecursiveTurnPlanner(
+        RTPConfig(d_model=16, dynamics_width=32, skip_trivial_decisions=True)
+    )
+    memory = planner.encode_memory(torch.zeros(16), legal_actions=[(3,)])
+    decision = planner.plan_turn(
+        memory,
+        policy_logits=torch.tensor([1.0]),
+    )
+    assert decision.used_direct_policy is True
+    assert decision.diagnostics["complexity_gate"]["trivial"] is True
+
+
+@pytest.mark.unit
+def test_option_hidden_preferred_over_action_id_hash() -> None:
+    dyn = LatentTransitionDynamics(8, width=16, prefer_option_hidden=True)
+    actions = ((0,), (1,))
+    option_hidden = torch.randn(2, 8)
+    scored = dyn.score_actions(torch.randn(8), actions, option_hidden=option_hidden)
+    assert scored["action_embed_source"] == "option_hidden"
+    hashed = dyn.score_actions(torch.randn(8), actions, option_hidden=None)
+    assert hashed["action_embed_source"] == "action_id_hash"
+
+    planner = RecursiveTurnPlanner(
+        RTPConfig(
+            d_model=8,
+            dynamics_width=16,
+            num_plan_candidates=2,
+            max_neural_passes=6,
+            prefer_option_hidden=True,
+        )
+    )
+    legal = [(0,), (1,), (2,)]
+    memory = planner.encode_memory(
+        torch.randn(8),
+        legal_actions=legal,
+        option_hidden=torch.randn(3, 8),
+    )
+    decision = planner.plan_turn(memory, force_recurse=True)
+    assert decision.mode == "recursive_plan"
+    assert decision.diagnostics["used_option_hidden"] is True
+
+
+@pytest.mark.unit
+def test_lookahead_backed_dynamics_reuses_existing_module() -> None:
+    lookahead = ActionConditionedLatentLookahead(16, width=32, policy_aid_cap=0.25)
+    dyn = LookaheadBackedDynamics(lookahead, d_model=16)
+    state = torch.randn(1, 16)
+    options = torch.randn(3, 16)
+    out = dyn.score_actions(
+        state,
+        ((0,), (1,), (2,)),
+        option_hidden=options,
+    )
+    assert out["action_embed_source"] == "option_hidden"
+    assert isinstance(out["value"], torch.Tensor)
+    assert out["value"].shape == (3,)
+    inv = dyn.inventory()
+    assert inv["backed_by"] == "ActionConditionedLatentLookahead"
+    assert inv["lookahead_inventory"]["mcts_allowed"] is False
