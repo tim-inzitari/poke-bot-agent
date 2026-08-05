@@ -1,0 +1,89 @@
+{
+  "schema": "poke_bot.slowking_multi_day_replay_distillation/v1",
+  "status": "research_only_declared_boundary",
+  "authority": "none",
+  "training_authority": false,
+  "serving_authority": false,
+  "window": {
+    "start": "2026-07-06",
+    "end": "2026-08-04",
+    "scanned_dates": [
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-30",
+      "2026-07-31",
+      "2026-08-01",
+      "2026-08-02",
+      "2026-08-03",
+      "2026-08-04"
+    ]
+  },
+  "archive_scan": {
+    "daily_archives": 8,
+    "manifest_episode_count_sum": 37904,
+    "archive_json_members_sum": 37894,
+    "manifest_minus_archive_members": 10,
+    "episodes_scanned": 37894
+  },
+  "identity": {
+    "slowking_seats": 768,
+    "unique_team_names": ["vibechu", "ShumpeiNomura"],
+    "unique_deck_lists": 3,
+    "strata": [
+      {
+        "stratum_id": "vibechu_56ac56",
+        "team_name": "vibechu",
+        "fingerprint": "sha256:56ac56d0d2bf1ae0c2d18562422492cffbfafc04b7fe8292cf355809a84c1cf7",
+        "games": 311,
+        "dates": ["2026-07-06", "2026-07-07"],
+        "notes": "Older owner-style list with Boomerang Energy, Counter Gain, Secret Box; 2 Kangaskhan / 2 Conkeldurr / 2 Annihilape."
+      },
+      {
+        "stratum_id": "intermediate_d44f70",
+        "team_name": "ShumpeiNomura",
+        "fingerprint": "sha256:d44f701afb3101a0c0d5edca8fe81cb3ff68b4f2f1b733b87bc163a2c1a23d09",
+        "games": 17,
+        "dates": ["2026-07-31", "2026-08-01"],
+        "notes": "One Spectrier in place of the second Smoochum relative to the final list."
+      },
+      {
+        "stratum_id": "final_d3f092",
+        "team_name": "ShumpeiNomura",
+        "fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d",
+        "games": 440,
+        "dates": ["2026-08-02", "2026-08-03", "2026-08-04"],
+        "notes": "Current ladder list used for action-frequency sections of the multi-day guide."
+      }
+    ]
+  },
+  "final_list_outcomes": {
+    "games": 440,
+    "wins": 258,
+    "losses": 182,
+    "win_rate": 0.5863636363636363,
+    "wilson_95_overall": [0.54, 0.631],
+    "turn_order": {
+      "first": {"games": 216, "wins": 135, "win_rate": 0.625, "wilson_95": [0.559, 0.687]},
+      "second": {"games": 224, "wins": 123, "win_rate": 0.5491071428571429, "wilson_95": [0.484, 0.613]}
+    }
+  },
+  "available_daily_receipts_in_repo": [
+    {
+      "date": "2026-08-04",
+      "path": "state/slowking_top_replay_distillation_2026-08-04.json",
+      "games": 159,
+      "team_name": "ShumpeiNomura",
+      "fingerprint": "sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d"
+    }
+  ],
+  "regeneration": {
+    "daily_script": "scripts/distill_slowking_top_replays.py",
+    "note": "Host scan produced the aggregate boundary. Remaining daily receipts may be regenerated locally from the eight archives and folded into this schema without granting training authority."
+  },
+  "related_artifacts": [
+    "docs/deck_guides/slowking-shumpeinomura-multi-day-guide-2026-07-06_to_2026-08-04.md",
+    "docs/SLOWKING_NEURAL_DISTILLATION_RESEARCH_PLAN.md",
+    "poke_bot/slowking_reverse_engineered_policy.py",
+    "state/slowking_reverse_engineered_policy_audit_v1.json"
+  ]
+}

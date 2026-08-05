@@ -27,6 +27,10 @@ This tree is for **isolated R&D only**. It is not a production training lane.
 - `poke_bot/poke_rlm/` — full PokeRLM kit (phases 1–7) behind
   `POKEBOT_POKE_RLM_*` flags; default disabled. Progress:
   `state/poke_rlm_redesign.yaml`. Docs: `docs/poke_rlm/`.
+- Slowking research (no training/serving authority): multi-day guide +
+  reverse-engineered surrogate
+  (`poke_bot/slowking_reverse_engineered_policy.py`), plan
+  `docs/SLOWKING_NEURAL_DISTILLATION_RESEARCH_PLAN.md`.
 
 Add new experiment folders beside these. Prefer small, receipt-backed probes
 over broad production-path edits.

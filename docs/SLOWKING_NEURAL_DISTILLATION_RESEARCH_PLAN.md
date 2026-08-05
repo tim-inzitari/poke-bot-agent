@@ -7,8 +7,8 @@ training, serving, freeze, registration, or submission authority.
 ## Recommendation
 
 Do not rebuild the old sparse guide-loss system as the primary Slowking brain.
-Use the strong `ShumpeiNomura` policy as a behavior prior, add offline value
-learning so the student can improve rather than merely imitate, and use the
+Use all observed Slowking policies as an archetype-wide behavior prior, add
+offline value learning so the student can improve rather than merely imitate, and use the
 exact simulator for bounded belief-aware search at critical decisions. Distill
 the improved search policy back into a fast option-conditioned actor.
 
@@ -18,7 +18,26 @@ The proposed system has four parts:
 2. a hierarchical option-conditioned policy and distributional critic;
 3. exact-simulator policy improvement over top candidate actions; and
 4. a fast distilled actor for ordinary play, with search reserved for
-   high-value branch points.
+high-value branch points.
+
+The first executable heuristic surrogate is now available. It is valuable as
+a sparse teacher feature, confidence mask, and regression baseline—not as the
+brain. Across 768 games it matches 410/430 confirmed covered decisions (95.3%)
+and 226/228 on the `ShumpeiNomura` lineage, while abstaining on the overwhelming
+majority of the 25,917 nontrivial single-selection prompts. This is the desired
+shape: near-deterministic bot rules become explicit; strategy that needs prize,
+resource, target-subset, or future-turn reasoning remains a learned/search
+problem.
+
+### Recommended winning architecture
+
+1. Archetype-wide option-conditioned behavior cloning on all 768 games.
+2. Sparse heuristic scores/rule IDs as offline auxiliary features, never serving logits.
+3. Existing strategic, setup, combo-state, value, and distributional heads.
+4. IQL-style conservative offline improvement.
+5. Belief-aware exact-simulator search for payloads, targets, discards, pivots, and prize maps.
+6. Distillation of improved search distributions into the fast actor.
+7. RLM use for offline replay mining and counterexample discovery, not live control.
 
 RLMs are useful in this project, but chiefly as offline analysts and curriculum
 generators. A recursive language model is not the best live controller for a
@@ -28,20 +47,25 @@ structured, latency-sensitive game with an exact simulator.
 
 ### Pin the teacher lineage
 
-The 2026-08-04 index advertised 4,816 episodes but its archive contained 4,811;
-the 4,811 available files prove one team, one exact list, and 159 games. Before
-training, scan every available recent daily archive for the same exact deck
-fingerprint. Split by calendar day and opponent identity, never by individual
-frame, so near-duplicate games cannot leak across train and validation.
+The expanded audit confirms 768 Slowking games across two named teams and three
+exact lists: 311 `vibechu` games with the older list, 17 `ShumpeiNomura` games
+with a one-card intermediate list, and 440 `ShumpeiNomura` games with the final
+list. All 768 games are policy- and strategic-learning eligible. Deck contents
+and legal actions determine which card-specific routes are available; exact
+fingerprints remain optional conditioning and evaluation metadata rather than
+an eligibility gate. Split by calendar day—never by individual frame—so
+near-duplicate games and adjacent policy versions cannot leak across train and
+validation.
 
 Use three data strata:
 
-- exact-list `ShumpeiNomura` seats: full action-imitation and return targets;
-- other Slowking lists: shared representation/strategic targets only unless an
-  explicit deck-list conditioning token is present;
-- the project’s older exact-list corpus: transferable card mechanics, causal
-  heads, belief targets, and state representation, but no unconditional action
-  imitation for the changed 60.
+- final-list `ShumpeiNomura` seats (440 games): action imitation, return targets,
+  and final-list evaluation;
+- intermediate-list `ShumpeiNomura` seats (17 games): the same learning targets
+  plus explicit Spectrier-versus-second-Smoochum capability evidence;
+- older `vibechu` seats (311 games): the same archetype policy, value, and causal
+  head targets, with Boomerang Energy, Counter Gain, and Secret Box routes
+  enabled only when those cards are present.
 
 Preserve losses. Win-only cloning hides recovery failures and exaggerates
 actions correlated with already-winning states. Use outcome/advantage weighting
@@ -178,13 +202,29 @@ Primary RLM reference: <https://arxiv.org/abs/2512.24601>.
 
 ## Training stages
 
-### Stage A — exact teacher clone
+### Stage A — archetype-wide teacher clone
 
-Train the option-conditioned actor on exact-list replay decisions. Report
+Train the option-conditioned actor on all 768 replay games. Supply the submitted
+deck and exact legal option set so card-specific behavior is learned from state,
+not used as a dataset filter. Report
 episode-held-out action agreement overall and separately for setup, stacking,
 attack source, target subset, recovery, and pivot decisions. Calibrate entropy;
 high top-1 agreement on trivial prompts must not hide failure on decisive
 branches.
+
+Inject the frozen heuristic surrogate only as offline metadata:
+
+- rule id, option score, margin, and abstention mask become auxiliary features
+  or targets;
+- a learned residual actor predicts every legal action, including uncovered
+  prompts;
+- teacher agreement is reported separately from actor agreement;
+- the actor must operate with the heuristic channel zeroed as a mandatory
+  ablation; and
+- no heuristic score is added to serving logits.
+
+This makes the reverse-engineered rules useful for sample efficiency without
+placing a brittle rule system in the winning path.
 
 ### Stage B — causal heads and offline critic
 
@@ -202,7 +242,7 @@ version. Distill only valid, causal root targets.
 
 ### Stage D — population self-play
 
-Train against the exact teacher clone, frozen project specialists, public top
+Train against the archetype teacher clone, frozen project specialists, public top
 agents, and strategically different archetypes. Keep one active learner and
 freeze opponent checkpoints. Mix first/second seats exactly and keep replay
 evaluation isolated from training.
@@ -219,7 +259,7 @@ fast actor if the planner exceeds its bounded budget.
 Run paired ablations from the same data split and initialization:
 
 1. existing flat policy baseline;
-2. exact-list behavior cloning;
+2. archetype-wide behavior cloning over all 768 games;
 3. behavior cloning plus hierarchical macro targets;
 4. behavior cloning plus IQL critic/advantage weighting;
 5. actor plus exact-simulator critical-node search;
@@ -247,8 +287,8 @@ for wins.
 
 Reject or redesign the system if:
 
-- the exact-list corpus is too small after multi-day expansion;
-- list/policy identity changes across days without explicit conditioning;
+- archetype-wide coverage is too sparse at decisive action classes;
+- deck contents or legal actions fail to distinguish card-specific routes;
 - the critic improves offline metrics but lowers paired wins;
 - search gains disappear under hidden-state particles;
 - an RLM path adds latency without measured critical-node improvement;
