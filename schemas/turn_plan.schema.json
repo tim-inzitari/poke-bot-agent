@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/poke-rlm/turn-plan.schema.json",
+  "title": "PokeRLM TurnPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_id",
+    "schema_version",
+    "objective",
+    "root",
+    "budget"
+  ],
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objective": {
+      "$ref": "#/$defs/objectiveCode"
+    },
+    "root": {
+      "$ref": "#/$defs/planNode"
+    },
+    "expected_end_turn": {
+      "type": "object"
+    },
+    "value": {
+      "type": "object"
+    },
+    "uncertainty": {
+      "type": "number",
+      "minimum": 0
+    },
+    "budget": {
+      "$ref": "#/$defs/planBudget"
+    },
+    "provenance": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "objectiveCode": {
+      "type": "string",
+      "enum": [
+        "ESTABLISH_ATTACKER",
+        "FIND_RESOURCE_CLASS",
+        "ENABLE_EVOLUTION",
+        "REACH_DAMAGE_THRESHOLD",
+        "TAKE_KNOCKOUT",
+        "DEVELOP_BOARD",
+        "PRESERVE_ESCAPE_LINE",
+        "MAXIMIZE_DRAW_BEFORE_COMMIT",
+        "DISRUPT_OPPONENT",
+        "SET_UP_NEXT_TURN",
+        "END_TURN_SAFELY"
+      ]
+    },
+    "planBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_depth",
+        "max_nodes",
+        "max_subgoals",
+        "max_model_calls",
+        "max_simulator_calls"
+      ],
+      "properties": {
+        "max_depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "max_nodes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "max_subgoals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        },
+        "max_model_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "max_simulator_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 75
+        },
+        "deadline_ns": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "actionSelector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "fingerprint"
+          ],
+          "properties": {
+            "kind": {
+              "const": "fingerprint"
+            },
+            "fingerprint": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "category"
+          ],
+          "properties": {
+            "kind": {
+              "const": "typed_match"
+            },
+            "category": {
+              "type": "string",
+              "minLength": 1
+            },
+            "object_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "effect_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "destination": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "arguments": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "observed_result_class",
+            "legal_action_present",
+            "resource_threshold",
+            "board_slot_state",
+            "attack_available",
+            "target_state",
+            "once_per_turn_consumed",
+            "budget_reached"
+          ]
+        },
+        "value": {},
+        "operator": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "primitiveNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "selector",
+        "expected_group"
+      ],
+      "properties": {
+        "type": {
+          "const": "primitive"
+        },
+        "selector": {
+          "$ref": "#/$defs/actionSelector"
+        },
+        "planned_option_index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "expected_group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_delta": {
+          "type": "object"
+        },
+        "on_unresolvable": {
+          "$ref": "#/$defs/planNode"
+        }
+      }
+    },
+    "sequenceNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children"
+      ],
+      "properties": {
+        "type": {
+          "const": "sequence"
+        },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/planNode"
+          }
+        }
+      }
+    },
+    "conditionalNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "predicate",
+        "if_true",
+        "if_false"
+      ],
+      "properties": {
+        "type": {
+          "const": "conditional"
+        },
+        "predicate": {
+          "$ref": "#/$defs/predicate"
+        },
+        "if_true": {
+          "$ref": "#/$defs/planNode"
+        },
+        "if_false": {
+          "$ref": "#/$defs/planNode"
+        }
+      }
+    },
+    "subgoalNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "goal_code",
+        "constraints",
+        "fallback"
+      ],
+      "properties": {
+        "type": {
+          "const": "subgoal"
+        },
+        "goal_code": {
+          "$ref": "#/$defs/objectiveCode"
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16
+        },
+        "local_budget": {
+          "$ref": "#/$defs/planBudget"
+        },
+        "success_predicate": {
+          "$ref": "#/$defs/predicate"
+        },
+        "fallback": {
+          "$ref": "#/$defs/planNode"
+        }
+      }
+    },
+    "stopNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "const": "stop"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "PLAN_COMPLETE",
+            "ATTACK_DECLARED",
+            "END_TURN",
+            "NO_SAFE_CONTINUATION",
+            "BUDGET_EXHAUSTED",
+            "FALLBACK_REQUIRED"
+          ]
+        }
+      }
+    },
+    "planNode": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/primitiveNode"
+        },
+        {
+          "$ref": "#/$defs/sequenceNode"
+        },
+        {
+          "$ref": "#/$defs/conditionalNode"
+        },
+        {
+          "$ref": "#/$defs/subgoalNode"
+        },
+        {
+          "$ref": "#/$defs/stopNode"
+        }
+      ]
+    }
+  }
+}
