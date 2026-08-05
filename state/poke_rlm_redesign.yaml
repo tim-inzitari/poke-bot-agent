@@ -1,0 +1,136 @@
+schema_version: 1
+project: poke_rlm_redesign
+profile_target: pure_rl_96
+status: in_progress
+
+baseline:
+  checkpoint: null
+  commit: cursor/experimentation-026a
+  total_parameters:
+    alakazam_ordinary_receipt: 1680000
+    alakazam_h10i_receipt: 10350000
+    pure_rl_cap: 3000000
+    pure_rl_fail: 3500000
+  p50_turn_ms: null
+  p95_turn_ms: null
+  max_turn_ms: null
+  simulator_calls_per_turn: null
+  model_calls_per_turn: null
+  peak_memory_mb: null
+  evidence:
+    - docs/poke_rlm/09_REPOSITORY_MAPPING_TEMPLATE.md
+    - docs/poke_rlm/PARAMETER_ESTIMATE_OUTPUT.txt
+  blockers:
+    - "Whole-turn latency BLOCKED in cloud (cg runtime missing)"
+
+phases:
+  phase_0_repository_audit:
+    status: done
+    artifacts:
+      - docs/poke_rlm/09_REPOSITORY_MAPPING_TEMPLATE.md
+      - docs/poke_rlm/PARAMETER_ESTIMATE_OUTPUT.txt
+    commands:
+      - "python3 tools/estimate_poke_rlm_params.py"
+    evidence:
+      - "Filled repository mapping from kit prompt 01"
+    blockers:
+      - "Live CABT / cg latency measurement blocked in cloud pod"
+
+  phase_1_contracts_shadow:
+    status: done
+    artifacts:
+      - poke_bot/poke_rlm/config.py
+      - poke_bot/poke_rlm/observation.py
+      - poke_bot/poke_rlm/legal_action.py
+      - poke_bot/poke_rlm/plan_ir.py
+      - poke_bot/poke_rlm/budget.py
+      - poke_bot/poke_rlm/telemetry.py
+      - schemas/turn_plan.schema.json
+    evidence:
+      - tests/test_poke_rlm.py
+    blockers: []
+
+  phase_2_action_decoder_heads:
+    status: done
+    artifacts:
+      - poke_bot/poke_rlm/model_core.py
+    parameters_added: "see PokeRLMModelCore.parameter_inventory()"
+    evidence:
+      - tests/test_poke_rlm.py::test_parallel_decoder_scores_all_actions_once
+    blockers: []
+
+  phase_3_latent_dynamics:
+    status: done
+    artifacts:
+      - poke_bot/poke_rlm/model_core.py
+    evidence:
+      - tests/test_poke_rlm.py::test_latent_dynamics_shapes
+    blockers: []
+
+  phase_4_root_planner:
+    status: done
+    artifacts:
+      - poke_bot/poke_rlm/model_core.py
+      - poke_bot/poke_rlm/router.py
+    evidence:
+      - tests/test_poke_rlm.py::test_root_plan_proposer_and_static_validity
+    blockers: []
+
+  phase_5_recursive_refiner:
+    status: done
+    artifacts:
+      - poke_bot/poke_rlm/recursion.py
+    evidence:
+      - tests/test_poke_rlm.py::test_shared_recursive_cell_identity_across_depth
+    blockers: []
+
+  phase_6_execution_repair:
+    status: done
+    artifacts:
+      - poke_bot/poke_rlm/executor.py
+      - poke_bot/poke_rlm/controller.py
+      - poke_bot/poke_rlm/agent_hooks.py
+    evidence:
+      - tests/test_poke_rlm.py::test_executor_branch_and_repair
+      - tests/test_poke_rlm.py::test_controller_disabled_and_shadow
+    blockers: []
+
+  phase_7_training_teacher:
+    status: done
+    artifacts:
+      - poke_bot/poke_rlm/training/
+    evidence:
+      - tests/test_poke_rlm.py::test_training_losses_and_hard_states
+    blockers: []
+
+  phase_8_specialists_distillation:
+    status: scaffolded
+    artifacts:
+      - poke_bot/poke_rlm/specialists.py
+    evidence: []
+    blockers:
+      - "Awaiting phases 1–7 gate evidence on host with cg"
+
+latest_evaluation:
+  commit: null
+  checkpoint: null
+  adapter: null
+  variant: null
+  games: null
+  paired_win_rate: null
+  elo: null
+  p95_turn_ms: null
+  max_turn_ms: null
+  simulator_calls_p95: null
+  illegal_action_rate: null
+  invalid_plan_rate: null
+  repair_rate: null
+  fallback_rate: null
+  held_out_regressions: []
+  artifacts: []
+
+decisions:
+  - "Default poke_rlm enabled=false / mode=disabled preserves current policy behavior"
+  - "CABT remains legality and transition authority; plans are typed IR only"
+  - "No backbone-per-action; ParallelActionDecoder scores the full legal set in one pass"
+  - "Do not rewrite GOAL.md or RL protocol schedule numbers for this experiment"

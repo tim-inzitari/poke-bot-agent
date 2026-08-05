@@ -20,6 +20,12 @@ from .matchup_adapters import UNKNOWN_ROUTE
 from .public_matchup_router import RuntimePublicMatchupRouter
 from .mcts import GameClock, MCTS, MCTSResult
 from .model import TemporalCabtTransformer, TemporalKVCache
+from .poke_rlm import (
+    PokeRLMAgentBridge,
+    PokeRLMConfig,
+    load_poke_rlm_config_from_env,
+    resolve_poke_rlm_config_for_model,
+)
 from .recursive_turn_planner.agent_bridge import (
     RTPAgentBridge,
     resolve_rtp_config_for_model,
@@ -142,14 +148,17 @@ class PolicyAgent:
     #: never in trusted training/evaluation or deployment.
     opponent_deck: Optional[list[int]] = None
     use_mcts: bool = False
-    #: Experimental-branch default: non-MCTS decisions use the Recursive Turn
-    #: Planner when a local model is attached. Disable with
-    #: ``POKEBOT_USE_RECURSIVE_TURN_PLANNER=0`` or ``use_recursive_turn_planner=False``.
+    #: Lightweight RTP experiment path. Prefer ``poke_rlm_*`` for the full
+    #: kit implementation. Disable with ``POKEBOT_USE_RECURSIVE_TURN_PLANNER=0``.
     use_recursive_turn_planner: bool = True
     #: Optional sizing profile override: ``pure_rl`` / ``global_transformer``.
     rtp_sizing_profile: Optional[str] = None
     rtp_online_sim_verify_budget: int = 0
     rtp_max_action_combos: int = 256
+    #: Full PokeRLM kit attachment. Default disabled — preserves greedy/RTP/
+    #: MCTS behavior until explicitly enabled via config or env flags.
+    poke_rlm_config: Optional[PokeRLMConfig] = None
+    poke_rlm_max_action_combos: int = 256
     oracle_mode: bool = False
     belief_mcts: bool = False
     belief_posterior: Optional[EmpiricalDeckPosterior] = None
@@ -209,6 +218,12 @@ class PolicyAgent:
     _rtp_bridge: Optional[RTPAgentBridge] = field(
         default=None, init=False, repr=False
     )
+    _poke_rlm_bridge: Optional[PokeRLMAgentBridge] = field(
+        default=None, init=False, repr=False
+    )
+    last_poke_rlm_trace: Optional[dict[str, Any]] = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         if int(self.expected_search_decisions) < 1:
@@ -241,6 +256,13 @@ class PolicyAgent:
             pass
         if self.use_recursive_turn_planner and self.model is not None:
             self._init_rtp_bridge()
+        self.poke_rlm_config = load_poke_rlm_config_from_env(self.poke_rlm_config)
+        if (
+            self.poke_rlm_config is not None
+            and self.poke_rlm_config.runs_planner
+            and self.model is not None
+        ):
+            self._init_poke_rlm_bridge()
         env_runtime = os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip()
         if env_runtime:
             self.matchup_adapter_runtime = env_runtime.lower() in {
@@ -316,6 +338,27 @@ class PolicyAgent:
             max_action_combos=int(self.rtp_max_action_combos),
         )
 
+    def _init_poke_rlm_bridge(self) -> None:
+        if self.model is None or self.poke_rlm_config is None:
+            self._poke_rlm_bridge = None
+            return
+        cfg = resolve_poke_rlm_config_for_model(
+            self.model, base=self.poke_rlm_config
+        )
+        self.poke_rlm_config = cfg
+        self._poke_rlm_bridge = PokeRLMAgentBridge(
+            model=self.model,
+            deck=list(self.deck),
+            config=cfg,
+            get_matchup_route=self._matchup_model_route,
+            get_board_history=lambda: self.board_history,
+            get_previous_action_history=lambda: self.previous_action_history,
+            get_previous_action_token=lambda: self._previous_action_token,
+            get_kv_cache=lambda: self._kv_cache,
+            set_kv_cache=lambda cache: setattr(self, "_kv_cache", cache),
+            max_action_combos=int(self.poke_rlm_max_action_combos),
+        )
+
     def reset_game(self) -> None:
         if self.use_mcts:
             self.clock = GameClock(
@@ -342,6 +385,9 @@ class PolicyAgent:
         self._matchup_adapter_shadow_router.reset_for_new_game()
         if self._rtp_bridge is not None:
             self._rtp_bridge.reset_game()
+        if self._poke_rlm_bridge is not None:
+            self._poke_rlm_bridge.reset_game()
+        self.last_poke_rlm_trace = None
 
     def matchup_adapter_shadow_snapshot(self) -> dict[str, Any]:
         """Return the current shadow or activated causal route audit."""
@@ -722,6 +768,102 @@ class PolicyAgent:
                 )
         return selected
 
+    def _poke_rlm_shadow_after(
+        self, obs_dict: dict, selected: list[int]
+    ) -> None:
+        """Shadow telemetry after another policy chose ``selected``."""
+        cfg = self.poke_rlm_config
+        if cfg is None or not cfg.shadow_only or self.model is None:
+            return
+        if self._poke_rlm_bridge is None:
+            self._init_poke_rlm_bridge()
+        if self._poke_rlm_bridge is None:
+            return
+        board = (
+            self.board_history[-1]
+            if self.board_history
+            else features.build_board_tokens(obs_dict, self.deck)
+        )
+        try:
+            trace = self._poke_rlm_bridge.shadow(
+                obs_dict,
+                board=board,
+                selected_action=selected,
+                append_cache=False,
+            )
+            self.last_poke_rlm_trace = trace.to_json()
+        except Exception as exc:
+            self.last_poke_rlm_trace = {
+                "enabled": True,
+                "mode": cfg.mode.value,
+                "reason": "encode_failure",
+                "error": f"{type(exc).__name__}: {exc}",
+                "selected_action": list(selected),
+                "used_for_selection": False,
+            }
+
+    @torch.no_grad()
+    def poke_rlm_select(self, obs_dict: dict) -> list[int]:
+        """PokeRLM evaluate/active select with greedy fallback."""
+        go_first = forced_go_first_action(obs_dict)
+        if go_first is not None:
+            return self._record_go_first(obs_dict, go_first)
+        if self._poke_rlm_bridge is None:
+            if self.model is not None and self.poke_rlm_config is not None:
+                self._init_poke_rlm_bridge()
+            if self._poke_rlm_bridge is None:
+                return self.greedy_select(obs_dict)
+
+        board = self._append_decision_history(obs_dict)
+
+        def greedy_fallback(_obs: dict) -> list[int]:
+            return self._factorized_greedy_prepared(
+                obs_dict,
+                board,
+                target_source="poke_rlm_greedy_fallback",
+                extra_diagnostics={
+                    "poke_rlm_fallback_reason": (
+                        self._poke_rlm_bridge.last_diagnostics.fallback_reason
+                        if self._poke_rlm_bridge is not None
+                        else "bridge_missing"
+                    )
+                },
+            )
+
+        selected = self._poke_rlm_bridge.select(
+            obs_dict,
+            board=board,
+            greedy_fallback=greedy_fallback,
+        )
+        diag = self._poke_rlm_bridge.last_diagnostics
+        if diag.trace is not None:
+            self.last_poke_rlm_trace = diag.trace.to_json()
+        if diag.used_for_selection:
+            self._previous_action_token = features.build_option_tokens(
+                obs_dict, [selected]
+            )
+            if self.collect_targets:
+                self.targets.append(
+                    {
+                        "observation": obs_dict,
+                        "action": list(selected),
+                        "action_combos": [list(selected)],
+                        "policy": [1.0],
+                        "value": None,
+                        "visits": None,
+                        "diagnostics": {
+                            "target_source": "poke_rlm",
+                            "trusted": False,
+                            "history_length": len(self.board_history),
+                            "poke_rlm_mode": diag.mode,
+                            "poke_rlm_route": diag.route,
+                            "poke_rlm_reason": diag.reason,
+                            "poke_rlm_legal_count": diag.legal_count,
+                        },
+                    }
+                )
+        return selected
+
     def mcts_select(self, obs_dict: dict) -> list[int]:
         if self.belief_mcts:
             return self.belief_mcts_select(obs_dict)
@@ -886,14 +1028,27 @@ class PolicyAgent:
                         flush=True,
                     )
         try:
+            poke_cfg = self.poke_rlm_config
             if self.use_mcts:
                 action = self.mcts_select(obs_dict)
+            elif (
+                poke_cfg is not None
+                and poke_cfg.selects_actions
+                and (self._poke_rlm_bridge is not None or self.model is not None)
+            ):
+                action = self.poke_rlm_select(obs_dict)
             elif self.use_recursive_turn_planner and (
                 self._rtp_bridge is not None or self.model is not None
             ):
                 action = self.rtp_select(obs_dict)
             else:
                 action = self.greedy_select(obs_dict)
+            if (
+                poke_cfg is not None
+                and poke_cfg.shadow_only
+                and not poke_cfg.selects_actions
+            ):
+                self._poke_rlm_shadow_after(obs_dict, action)
         except RemoteLeafCancelled:
             # Parent-driven shutdown is not a search fault and must not emit a
             # fail-closed health violation while the iteration is aborting.
