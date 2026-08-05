@@ -23,6 +23,26 @@ PolicyAgent.__call__(obs)
         └─ else → greedy_select
 ```
 
+## Train multi-turn planner heads
+
+```bash
+# Synthetic smoke
+python3 scripts/train_recursive_turn_planner.py --out-dir outputs/rtp_smoke --synthetic --also-poke-rlm
+
+# Host: freeze CABT encoder, train RTP (+ optional PokeRLM) on shard features
+python3 scripts/train_recursive_turn_planner.py \
+  --out-dir outputs/rtp_host \
+  --checkpoint /path/to/parent.pt \
+  --shard /path/to/training_shard \
+  --also-poke-rlm
+```
+
+Load trained RTP weights at runtime (sidecar only; does not rewrite parent):
+
+```bash
+export POKEBOT_RTP_CHECKPOINT=outputs/rtp_host/rtp/rtp_shadow_planner.pt
+```
+
 ## Enable / disable
 
 On this branch the default is **on** when a local model is attached.
