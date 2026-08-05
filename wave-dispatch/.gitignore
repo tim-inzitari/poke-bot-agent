@@ -1,0 +1,17 @@
+build/
+build-py/
+cmake-build-*/
+.venv/
+.cache/
+compile_commands.json
+*.o
+*.a
+*.so
+*.pyd
+*.egg-info/
+dist/
+python/wave_dispatch/_native*.so
+python/wave_dispatch/__pycache__/
+python/tests/__pycache__/
+.DS_Store
+.pytest_cache/
