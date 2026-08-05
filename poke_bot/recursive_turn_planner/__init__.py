@@ -5,8 +5,9 @@ refines unresolved subgoals with shallow batched recursion, evaluates
 candidates through learned latent transitions, and persists a conditional plan
 across atomic actions with sparse repair.
 
-This package is intentionally isolated from production PolicyAgent defaults and
-online MCTS. It does not rewrite owner-contract authority.
+Training lives under ``recursive_turn_planner.training`` (shadow sidecar via
+``scripts/train_recursive_turn_planner.py``). Load trained weights with
+``POKEBOT_RTP_CHECKPOINT``. Does not rewrite owner-contract authority.
 
 Sizing is profile-bound:
 - ``global_transformer`` → d_model=256, dynamics_width=512

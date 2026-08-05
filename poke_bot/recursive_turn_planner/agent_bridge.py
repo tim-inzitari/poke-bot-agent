@@ -13,7 +13,9 @@ RTP cannot act.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
 import torch
@@ -118,19 +120,35 @@ class RTPAgentBridge:
 
     def __post_init__(self) -> None:
         if self.planner is None:
-            dynamics = None
-            lookahead = getattr(self.model, "latent_lookahead", None)
-            if (
-                lookahead is not None
-                and bool(getattr(self.model, "latent_lookahead_enabled", False))
-                and int(getattr(lookahead, "d_model", -1)) == self.config.d_model
-            ):
-                dynamics = LookaheadBackedDynamics(
-                    lookahead, d_model=self.config.d_model
+            ckpt = os.environ.get("POKEBOT_RTP_CHECKPOINT", "").strip()
+            if ckpt and Path(ckpt).is_file():
+                # Trained sidecar owns dynamics weights; do not wrap parent lookahead.
+                from .training.checkpoint import load_rtp_checkpoint
+
+                self.planner = load_rtp_checkpoint(
+                    ckpt, device=next(self.model.parameters()).device
                 )
-            self.planner = RecursiveTurnPlanner(
-                self.config, dynamics=dynamics
-            )
+                # Keep runtime config budgets from the live bridge binding.
+                if int(self.planner.config.d_model) != int(self.config.d_model):
+                    raise ValueError(
+                        f"RTP checkpoint d_model={self.planner.config.d_model} "
+                        f"does not match model d_model={self.config.d_model}"
+                    )
+                self.planner.eval()
+            else:
+                dynamics = None
+                lookahead = getattr(self.model, "latent_lookahead", None)
+                if (
+                    lookahead is not None
+                    and bool(getattr(self.model, "latent_lookahead_enabled", False))
+                    and int(getattr(lookahead, "d_model", -1)) == self.config.d_model
+                ):
+                    dynamics = LookaheadBackedDynamics(
+                        lookahead, d_model=self.config.d_model
+                    )
+                self.planner = RecursiveTurnPlanner(
+                    self.config, dynamics=dynamics
+                )
         if self.executor is None:
             self.executor = PlanExecutor(
                 self.config,

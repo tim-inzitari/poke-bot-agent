@@ -99,9 +99,18 @@ phases:
     status: done
     artifacts:
       - poke_bot/poke_rlm/training/
+      - poke_bot/poke_rlm/training/shadow_train.py
+      - poke_bot/recursive_turn_planner/training/
+      - scripts/train_recursive_turn_planner.py
     evidence:
       - tests/test_poke_rlm.py::test_training_losses_and_hard_states
-    blockers: []
+      - tests/test_recursive_turn_planner_training.py
+    commands:
+      - "python3 scripts/train_recursive_turn_planner.py --out-dir outputs/rtp_smoke --synthetic --also-poke-rlm"
+      - "python3 scripts/train_recursive_turn_planner.py --out-dir outputs/rtp_host --checkpoint CHECKPOINT.pt --shard SHARD.pt --also-poke-rlm"
+    blockers:
+      - "Host shard+checkpoint required for non-synthetic multi-turn train"
+      - "CABT teacher / counterfactual plan labels still deferred; v0 uses replay action + heuristic route"
 
   phase_8_specialists_distillation:
     status: scaffolded

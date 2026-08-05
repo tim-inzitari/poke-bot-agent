@@ -32,7 +32,13 @@ class PokeRLMLossBundle:
         }
 
 
-_ROUTE_TO_IDX = {"direct": 0, "root_plan": 1, "recursive": 2}
+# Router emits "root"; older labels may say "root_plan".
+_ROUTE_TO_IDX = {
+    "direct": 0,
+    "root": 1,
+    "root_plan": 1,
+    "recursive": 2,
+}
 
 
 def compute_poke_rlm_losses(

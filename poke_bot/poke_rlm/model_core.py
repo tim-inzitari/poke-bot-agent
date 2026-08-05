@@ -206,6 +206,20 @@ class PokeRLMModelCore(nn.Module):
         )
         self.stop_head = nn.Linear(d, 1)
         self.compute_cost_head = nn.Linear(d, 1)
+        # Learned complexity router (Phase-7 training); inference may still use
+        # the heuristic router until active mode opts into these heads.
+        self.route_head = nn.Sequential(
+            nn.LayerNorm(d),
+            nn.Linear(d, max(d // 2, 1)),
+            nn.GELU(),
+            nn.Linear(max(d // 2, 1), 3),
+        )
+        self.recurse_head = nn.Sequential(
+            nn.LayerNorm(d),
+            nn.Linear(d, max(d // 2, 1)),
+            nn.GELU(),
+            nn.Linear(max(d // 2, 1), 1),
+        )
 
     def parameter_inventory(self) -> dict[str, int]:
         def _n(module: nn.Module) -> int:
@@ -218,8 +232,20 @@ class PokeRLMModelCore(nn.Module):
             "recursive_cell": _n(self.recursive_cell),
             "stop_head": _n(self.stop_head),
             "compute_cost_head": _n(self.compute_cost_head),
+            "route_head": _n(self.route_head),
+            "recurse_head": _n(self.recurse_head),
             "total": _n(self),
         }
+
+    def route_logits(self, state_vec: Tensor) -> Tensor:
+        if state_vec.dim() == 1:
+            state_vec = state_vec.unsqueeze(0)
+        return self.route_head(state_vec)
+
+    def recurse_logits(self, state_vec: Tensor) -> Tensor:
+        if state_vec.dim() == 1:
+            state_vec = state_vec.unsqueeze(0)
+        return self.recurse_head(state_vec).squeeze(-1)
 
     def score_actions(
         self,
