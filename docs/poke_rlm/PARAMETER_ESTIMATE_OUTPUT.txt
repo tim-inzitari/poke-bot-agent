@@ -1,0 +1,61 @@
+
+
+PokeRLM approximate parameter budget: pilot_256
+  width / encoder layers: 256 / 8
+  embeddings               2.05M
+  state_encoder            6.33M
+  action_decoder           2.11M
+  recursive_planner        2.11M
+  latent_dynamics          0.79M
+  heads                    0.17M
+  ------------------------------
+  total                   13.55M
+  new_attachment           5.18M
+
+  BF16 weights: 27.1 MB
+  FP32 weights: 54.2 MB
+  Rough 16-byte/parameter training-state floor: 0.22 GB
+
+Confirm the real instantiated model with:
+  sum(p.numel() for p in model.parameters())
+  sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+PokeRLM approximate parameter budget: base_384
+  width / encoder layers: 384 / 10
+  embeddings               3.46M
+  state_encoder           17.76M
+  action_decoder           4.74M
+  recursive_planner        7.10M
+  latent_dynamics          2.37M
+  heads                    0.26M
+  ------------------------------
+  total                   35.68M
+  new_attachment          14.47M
+
+  BF16 weights: 71.4 MB
+  FP32 weights: 142.7 MB
+  Rough 16-byte/parameter training-state floor: 0.57 GB
+
+Confirm the real instantiated model with:
+  sum(p.numel() for p in model.parameters())
+  sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+PokeRLM approximate parameter budget: strong_512
+  width / encoder layers: 512 / 12
+  embeddings               5.12M
+  state_encoder           37.85M
+  action_decoder           8.41M
+  recursive_planner       12.62M
+  latent_dynamics          4.21M
+  heads                    0.34M
+  ------------------------------
+  total                   68.55M
+  new_attachment          25.58M
+
+  BF16 weights: 137.1 MB
+  FP32 weights: 274.2 MB
+  Rough 16-byte/parameter training-state floor: 1.10 GB
+
+Confirm the real instantiated model with:
+  sum(p.numel() for p in model.parameters())
+  sum(p.numel() for p in model.parameters() if p.requires_grad)

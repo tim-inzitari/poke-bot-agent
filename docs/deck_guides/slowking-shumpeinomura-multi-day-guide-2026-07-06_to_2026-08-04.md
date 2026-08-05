@@ -1,21 +1,22 @@
-# Slowking / ShumpeiNomura replay-distilled pilot guide
+# Slowking / ShumpeiNomura multi-day replay-distilled guide
 
-> Superseded for pilot planning by the multi-day guide:
-> `docs/deck_guides/slowking-shumpeinomura-multi-day-guide-2026-07-06_to_2026-08-04.md`
-> (768 seats; reverse-engineered surrogate audit). This file remains the
-> 2026-08-04 single-day stratum receipt companion.
+Status: research-only guide for the current Slowking list used by the
+`ShumpeiNomura` top-ladder bot. It does not reopen, register, serve, submit, or
+grant training authority to the terminally failed Slowking specialist.
 
-Status: research-only guide for the unique Slowking team in the 2026-08-04
-top-ladder replay archive. It does not reopen, register, serve, submit, or grant
-training authority to the terminally failed Slowking specialist.
+Evidence boundary: eight relevant daily archives were scanned across July 6–7
+and July 30–August 4. Their manifests advertised 37,904 episodes and the ZIPs
+contained 37,894 JSON members; all present files were scanned. This confirms
+768 Slowking seats across two named teams and three exact lists:
 
-Evidence boundary: the public index advertised 4,816 episodes, while 4,811 JSON
-episodes were present in the downloaded daily archive. All 4,811 present files
-were scanned; 159 contained Slowking SCR 58. All 159 Slowking seats used one exact
-60-card multiset and the team name `ShumpeiNomura`. The archive is pinned as
-`sha256:17cd9cd92f4ae3b293ee3fab3452657316362af134c6d4a7b5dbfda99c3d3d42`.
-The complete derived evidence is in
-`state/slowking_top_replay_distillation_2026-08-04.json`.
+- `vibechu`: 311 games with the older `56ac56…` list on July 6–7;
+- `ShumpeiNomura`: 17 games with an intermediate `d44f70…` list on July 31–August 1; and
+- `ShumpeiNomura`: 440 games with the final `d3f092…` list on August 2–4.
+
+The aggregate evidence is in
+`state/slowking_multi_day_replay_distillation_2026-07-06_to_2026-08-04.json`.
+This guide uses the 440 final-list games for action frequencies, while the 328
+earlier games are a separate transfer and list-evolution stratum.
 
 ## The reconstructed list
 
@@ -54,41 +55,64 @@ Energy — 8
 Exact multiset fingerprint:
 `sha256:d3f092b737c0990149541576444e767d34a7367576d15a8f1b39f7b15460645d`.
 
-This is not the older owner-shown list. The important changes are the third
+This is not the older `vibechu` list. The important changes are the third
 Mega Kangaskhan ex, real gust and switch outs, single-copy Conkeldurr and
 Annihilape, and the absence of Boomerang Energy, Counter Gain, and Secret Box.
+The 17-game intermediate build was one card away: one Spectrier in place of the
+second Smoochum.
 
 ## What the replay evidence says
 
-The team went 86–73 (54.1%) in this one daily opponent mix. It was 45–25
-(64.3%) when moving first and 41–48 (46.1%) when moving second. The intervals
-are wide enough that these are descriptive, not a causal turn-order experiment,
-but the direction agrees with the deck’s need to evolve and attach twice.
+The final list went 258–182 (58.6%) over three days. It was 135–81 (62.5%)
+when moving first and 123–101 (54.9%) when moving second. The 95% Wilson
+intervals are 54.0–63.1% overall, 55.9–68.7% first, and 48.4–61.3% second.
+These are descriptive, not a causal turn-order experiment, but the direction
+agrees with the deck’s need to evolve and attach twice.
 
 The strongest confirmed behavioral signals were:
 
-- Of 67 recovered Seek Inspiration source cards, 44 were Kyurem (65.7%), 11
-  Annihilape (16.4%), 10 Conkeldurr (14.9%), and 2 Slowking (3.0%).
-- Academy at Night produced almost the same confirmed payload mix: 25 Kyurem,
-  6 Annihilape, 5 Conkeldurr, and 3 Slowking. This directly supports the
+- Of 186 recovered Seek Inspiration source cards, 126 were Kyurem (67.7%), 31
+  Conkeldurr (16.7%), 23 Annihilape (12.4%), and 6 Slowking (3.2%).
+- Academy at Night produced a matching confirmed payload mix: 81 Kyurem, 18
+  Conkeldurr, 12 Annihilape, and 11 Slowking among 131 confirmed placements.
+  This directly supports the
   Academy → payload-on-top → Seek Inspiration sequence.
-- Telepath Psychic Energy searched 52 Slowpoke, 22 Latias ex, and 9 Smoochum
-  in 83 confirmed selections. Slowpoke was 62.7% of those targets.
-- Poké Pad selected Slowking 27 times and Slowpoke 24 times in 64 confirmed
-  selections. The evolution engine accounted for 79.7% of its targets.
-- Of 333 confirmed manual attachments, 100 went to Mega Kangaskhan ex, 78 to
-  Slowpoke, 54 to Smoochum, 46 to Latias ex, and 37 to Slowking. Only four
+- Telepath Psychic Energy searched 139 Slowpoke, 52 Latias ex, and 36 Smoochum
+  in 227 confirmed selections. Slowpoke was 61.2% of those targets.
+- Poké Pad selected Slowking 79 times and Slowpoke 62 times in 192 confirmed
+  selections. The evolution engine accounted for 73.4% of its targets.
+- Of 865 confirmed manual attachments, 279 went to Mega Kangaskhan ex, 196 to
+  Slowpoke, 136 to Latias ex, 117 to Smoochum, and 91 to Slowking. Only 14
   went to Kyurem. Energy is principally building the active engine or the next
   attacker; Kyurem is normally a copied-attack payload, not an attacker.
-- Among 108 confirmed attack actions, 67 came from Slowking, 40 from Smoochum,
-  and one from Slowpoke. Delightful Kiss is a material early-game line, not a
-  decorative attack.
-- In 127 opening-Active choices that could be confirmed from subsequent state
-  transitions, Mega Kangaskhan ex appeared 48 times, Smoochum 31, Slowpoke 21,
-  Latias ex 18, Kyurem 6, and Meowth ex 3. These are availability-conditioned
+- Among 301 confirmed attack actions, 186 came from Slowking, 107 from
+  Smoochum, seven from Slowpoke, and one from Kyurem. Delightful Kiss is a
+  material early-game line, not a decorative attack.
+- In 362 opening-Active choices that could be confirmed from subsequent state
+  transitions, Mega Kangaskhan ex appeared 129 times, Smoochum 88, Slowpoke 63,
+  Latias ex 48, Kyurem 20, Meowth ex 10, and Fezandipiti ex 4. These are availability-conditioned
   observations, not unconditional preference probabilities.
 
 ## Pilot plan
+
+### Recovered high-confidence opening rule
+
+The confirmed legal-option audit reveals a sharper opening heuristic than raw
+frequencies alone: choose the first available card in this priority order:
+
+1. Mega Kangaskhan ex;
+2. Smoochum;
+3. Latias ex;
+4. Slowpoke;
+5. Fezandipiti ex;
+6. Meowth ex;
+7. Kyurem.
+
+This ranking reproduced 332 of 337 confirmed, nontrivial opening-Active prompts
+(98.5%) across all three observed lists. It held in both turn orders; the bot's
+later plan branches by turn order even though its opening-Active ranking mostly
+does not. The five exceptions show that priority is not a complete strategic
+model, so use the ordering as the default and still inspect the hand.
 
 ### 1. Prefer the first-turn evolution clock
 
@@ -227,18 +251,45 @@ Before every attack, answer:
 
 Replay frequencies do not expose unchosen counterfactuals. They are conditional
 on the bot’s hand, its exact simulator observation, and the day’s opponent mix.
-The 54.1% daily win rate is not a formal superiority result, and team names are
+The 58.6% three-day final-list win rate is not a formal superiority result, and team names are
 not normalized matchup labels. Use the highly repeated causal patterns—engine
 development, final stacking, copied-attack distribution, Energy routing—as a
 teacher. Do not turn raw action frequency into unconditional rules.
 
+## Executable reverse-engineering audit
+
+The research-only surrogate in
+`poke_bot/slowking_reverse_engineered_policy.py` scores complete current legal
+option sets and abstains when its causal rule is unsupported or low-margin. It
+has an exact-zero serving-logit bypass. Its replay auditor verified all 768
+games and required a subsequent state/log transition before treating a replay
+choice as confirmed.
+
+The current post-hoc audit covers 430 confirmed decisions and agrees on 410
+(95.3%): opening Active 332/337, high-confidence Night Stretcher evolution
+recovery 6/6, and Academy-to-Seek top-deck choice 72/87. On the 457
+`ShumpeiNomura` games specifically it agrees on 226/228 covered decisions
+(99.1%). These are deliberately selective coverage numbers, not whole-policy
+accuracy, and the rules were refined using the aggregate corpus; the named
+calendar splits in the receipt are diagnostic strata, not an untouched final
+test.
+
+The remaining Academy errors and all copied-attack target, discard-combination,
+attachment, pivot, and long-horizon sequencing choices should be learned by the
+option-conditioned neural policy and improved with exact-simulator search. They
+should not be filled with lower-confidence hand rules.
+
 ## Sources paired into this guide
 
-- Kaggle daily top-ladder archive,
-  `pokemon-tcg-ai-battle-episodes-2026-08-04`.
-- Derived replay receipt,
-  `state/slowking_top_replay_distillation_2026-08-04.json`.
+- Kaggle daily top-ladder archives for July 6–7 and July 30–August 4.
+- Aggregate replay receipt,
+  `state/slowking_multi_day_replay_distillation_2026-07-06_to_2026-08-04.json`,
+  plus its eight checksum-bound daily receipts.
 - Existing card-text and strategy synthesis,
   `docs/deck_guides/slowking-expert-brief.txt`.
 - Existing causal/abstaining heuristic audit,
   `state/slowking_heuristic_research_v1.txt`.
+- Executable surrogate audit,
+  `state/slowking_reverse_engineered_policy_audit_v1.json`.
+- Single-day precursor guide,
+  `docs/deck_guides/slowking-shumpeinomura-distilled-guide-2026-08-04.md`.

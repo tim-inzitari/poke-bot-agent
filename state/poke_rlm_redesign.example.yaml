@@ -1,0 +1,85 @@
+schema_version: 1
+project: poke_rlm_redesign
+profile_target: base_384
+status: not_started
+
+baseline:
+  checkpoint: null
+  commit: null
+  total_parameters: null
+  p50_turn_ms: null
+  p95_turn_ms: null
+  max_turn_ms: null
+  simulator_calls_per_turn: null
+  model_calls_per_turn: null
+  peak_memory_mb: null
+  evidence: []
+
+phases:
+  phase_0_repository_audit:
+    status: not_started
+    artifacts: []
+    commands: []
+    evidence: []
+    blockers: []
+  phase_1_contracts_shadow:
+    status: not_started
+    artifacts: []
+    evidence: []
+    blockers: []
+  phase_2_action_decoder_heads:
+    status: not_started
+    artifacts: []
+    parameters_added: null
+    evidence: []
+    blockers: []
+  phase_3_latent_dynamics:
+    status: not_started
+    artifacts: []
+    evidence: []
+    blockers: []
+  phase_4_root_planner:
+    status: not_started
+    artifacts: []
+    evidence: []
+    blockers: []
+  phase_5_recursive_refiner:
+    status: not_started
+    artifacts: []
+    evidence: []
+    blockers: []
+  phase_6_execution_repair:
+    status: not_started
+    artifacts: []
+    evidence: []
+    blockers: []
+  phase_7_training_teacher:
+    status: not_started
+    artifacts: []
+    evidence: []
+    blockers: []
+  phase_8_specialists_distillation:
+    status: not_started
+    artifacts: []
+    evidence: []
+    blockers: []
+
+latest_evaluation:
+  commit: null
+  checkpoint: null
+  adapter: null
+  variant: null
+  games: null
+  paired_win_rate: null
+  elo: null
+  p95_turn_ms: null
+  max_turn_ms: null
+  simulator_calls_p95: null
+  illegal_action_rate: null
+  invalid_plan_rate: null
+  repair_rate: null
+  fallback_rate: null
+  held_out_regressions: []
+  artifacts: []
+
+decisions: []

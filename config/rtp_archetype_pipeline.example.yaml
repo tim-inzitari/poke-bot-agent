@@ -1,0 +1,61 @@
+# Archetype-generic RTP training registry.
+# Copy to rtp_archetype_pipeline.yaml and fill checkpoint/shard paths per specialist.
+#
+# Recipe (same for every new deck):
+#   1. Freeze specialist checkpoint
+#   2. Point parent_checkpoint + training_shard at that lineage
+#   3. python3 scripts/run_rtp_archetype_pipeline.py --registry ... --specialist <id>
+#   4. Paired bakeoff vs greedy before ladder use
+#
+# Does not grant selector/serving authority. Sidecars only.
+
+schema: poke_bot.recursive_turn_planner.archetype_registry/v1
+defaults:
+  profile: pure_rl
+  d_model: 96
+  epochs: 2
+  max_games: 256
+  also_poke_rlm: true
+  device: cuda
+
+archetypes:
+  - specialist_id: alakazam
+    display_name: Alakazam
+    enabled: true
+    parent_checkpoint: ""   # e.g. /home/inzi/.../checkpoints/iter_00020.pt
+    training_shard: ""      # e.g. /home/inzi/.../shards/iter_00019.pt or collection shard
+    parent_digest: ""       # optional sha256:… bind
+    profile: pure_rl
+    d_model: 96
+    also_poke_rlm: true
+    notes: Train first. Mainline ~900 bakeoff target.
+
+  - specialist_id: marnie-s-grimmsnarl-ex
+    display_name: "Marnie's Grimmsnarl ex"
+    enabled: true
+    parent_checkpoint: ""
+    training_shard: ""
+    profile: pure_rl
+    d_model: 96
+    also_poke_rlm: true
+    notes: After Alakazam RTP clears greedy bakeoff.
+
+  - specialist_id: crustle
+    display_name: Crustle
+    enabled: true
+    parent_checkpoint: ""
+    training_shard: ""
+    profile: pure_rl
+    d_model: 96
+    also_poke_rlm: true
+    notes: Fill only after Crustle freeze/register. Do not interrupt healthy training.
+
+  # Template for any future specialist — copy and rename:
+  # - specialist_id: my-new-archetype
+  #   display_name: My New Archetype
+  #   enabled: true
+  #   parent_checkpoint: /path/to/frozen.pt
+  #   training_shard: /path/to/shard
+  #   profile: pure_rl
+  #   d_model: 96
+  #   also_poke_rlm: true
