@@ -30,6 +30,12 @@ from .recursive_turn_planner.agent_bridge import (
     RTPAgentBridge,
     resolve_rtp_config_for_model,
 )
+from .slowking_distill import (
+    SlowkingDistillAgentBridge,
+    SlowkingDistillRuntimeConfig,
+    load_runtime_config_from_env as load_slowking_distill_config_from_env,
+)
+from .slowking_distill.belief_search_backend import BeliefSearchBundle
 
 
 def install_quiet_stdout(verbose: bool = False) -> None:
@@ -159,6 +165,10 @@ class PolicyAgent:
     #: MCTS behavior until explicitly enabled via config or env flags.
     poke_rlm_config: Optional[PokeRLMConfig] = None
     poke_rlm_max_action_combos: int = 256
+    #: Slowking distill research runtime. Default disabled — no production
+    #: authority; enable only via ``POKEBOT_SLOWKING_DISTILL_*`` env flags.
+    slowking_distill_config: Optional[SlowkingDistillRuntimeConfig] = None
+    slowking_distill_max_action_combos: int = 256
     oracle_mode: bool = False
     belief_mcts: bool = False
     belief_posterior: Optional[EmpiricalDeckPosterior] = None
@@ -224,6 +234,12 @@ class PolicyAgent:
     last_poke_rlm_trace: Optional[dict[str, Any]] = field(
         default=None, init=False, repr=False
     )
+    _slowking_distill_bridge: Optional[SlowkingDistillAgentBridge] = field(
+        default=None, init=False, repr=False
+    )
+    last_slowking_distill_trace: Optional[dict[str, Any]] = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         if int(self.expected_search_decisions) < 1:
@@ -263,6 +279,14 @@ class PolicyAgent:
             and self.model is not None
         ):
             self._init_poke_rlm_bridge()
+        self.slowking_distill_config = load_slowking_distill_config_from_env(
+            self.slowking_distill_config
+        )
+        if (
+            self.slowking_distill_config is not None
+            and self.slowking_distill_config.runs
+        ):
+            self._init_slowking_distill_bridge()
         env_runtime = os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip()
         if env_runtime:
             self.matchup_adapter_runtime = env_runtime.lower() in {
@@ -359,6 +383,49 @@ class PolicyAgent:
             max_action_combos=int(self.poke_rlm_max_action_combos),
         )
 
+    def _init_slowking_distill_bridge(self) -> None:
+        cfg = self.slowking_distill_config
+        if cfg is None or not cfg.runs:
+            self._slowking_distill_bridge = None
+            return
+        bundle = None
+        if (
+            cfg.use_belief_mcts
+            and self.model is not None
+            and self.belief_posterior is not None
+            and (self.checkpoint_digest or "").startswith("sha256:")
+        ):
+            bundle = BeliefSearchBundle(
+                model=self.model,
+                deck=list(self.deck),
+                posterior=self.belief_posterior,
+                checkpoint_digest=str(self.checkpoint_digest),
+                device=self.device,
+                max_sims=int(cfg.search_budget_sims),
+                move_time_s=float(cfg.search_move_time_s),
+                leaf_backend=self.leaf_backend,
+            )
+        self._slowking_distill_bridge = SlowkingDistillAgentBridge(
+            config=cfg,
+            search_bundle=bundle,
+            device=self.device,
+        )
+        if not self._slowking_distill_bridge.ready:
+            # Missing checkpoint → leave bridge unset (fail closed to RTP/greedy).
+            self._slowking_distill_bridge = None
+
+    def _slowking_distill_legal(
+        self, obs_dict: dict
+    ) -> list[list[int]]:
+        try:
+            combos = features.enumerate_action_combos(
+                obs_dict, max_combos=int(self.slowking_distill_max_action_combos)
+            )
+            return [list(c) for c in combos]
+        except features.ActionSpaceTooLarge:
+            stage = features.factorized_action_candidates(obs_dict, [])
+            return [list(c) for c in stage]
+
     def reset_game(self) -> None:
         if self.use_mcts:
             self.clock = GameClock(
@@ -388,6 +455,14 @@ class PolicyAgent:
         if self._poke_rlm_bridge is not None:
             self._poke_rlm_bridge.reset_game()
         self.last_poke_rlm_trace = None
+        if (
+            self._slowking_distill_bridge is not None
+            and self._slowking_distill_bridge.runtime is not None
+        ):
+            # Runtime has no game-level cache; clear decision counters only.
+            self._slowking_distill_bridge.runtime._decisions = 0
+            self._slowking_distill_bridge.runtime._search_calls = 0
+        self.last_slowking_distill_trace = None
 
     def matchup_adapter_shadow_snapshot(self) -> dict[str, Any]:
         """Return the current shadow or activated causal route audit."""
@@ -768,6 +843,114 @@ class PolicyAgent:
                 )
         return selected
 
+    def _slowking_distill_shadow_after(
+        self, obs_dict: dict, selected: list[int]
+    ) -> None:
+        """Shadow telemetry after another policy chose ``selected``."""
+        cfg = self.slowking_distill_config
+        if cfg is None or not cfg.shadow_only:
+            return
+        if self._slowking_distill_bridge is None:
+            self._init_slowking_distill_bridge()
+        if self._slowking_distill_bridge is None:
+            return
+        legal = self._slowking_distill_legal(obs_dict)
+        try:
+            decision = self._slowking_distill_bridge.shadow(
+                obs_dict,
+                legal,
+                committed_action=selected,
+            )
+            diag = self._slowking_distill_bridge.last_diagnostics
+            self.last_slowking_distill_trace = {
+                "enabled": True,
+                "mode": cfg.mode.value,
+                "used_for_selection": False,
+                "committed_action": list(selected),
+                "would_action": list(decision.action) if decision else [],
+                "source": diag.source,
+                "critical": diag.critical,
+                "search_used": diag.search_used,
+                "search_backend": diag.search_backend,
+                "reason": diag.reason,
+                "trace": diag.trace,
+            }
+        except Exception as exc:  # noqa: BLE001 — shadow must never raise
+            self.last_slowking_distill_trace = {
+                "enabled": True,
+                "mode": cfg.mode.value,
+                "reason": "shadow_failure",
+                "error": f"{type(exc).__name__}: {exc}",
+                "selected_action": list(selected),
+                "used_for_selection": False,
+            }
+
+    @torch.no_grad()
+    def slowking_distill_select(self, obs_dict: dict) -> list[int]:
+        """Slowking distill active select with greedy fallback."""
+        go_first = forced_go_first_action(obs_dict)
+        if go_first is not None:
+            return self._record_go_first(obs_dict, go_first)
+        if self._slowking_distill_bridge is None:
+            self._init_slowking_distill_bridge()
+        if self._slowking_distill_bridge is None:
+            return self.greedy_select(obs_dict)
+
+        board = self._append_decision_history(obs_dict)
+        legal = self._slowking_distill_legal(obs_dict)
+        selected = self._slowking_distill_bridge.select(obs_dict, legal)
+        diag = self._slowking_distill_bridge.last_diagnostics
+        if selected is None:
+            return self._factorized_greedy_prepared(
+                obs_dict,
+                board,
+                target_source="slowking_distill_greedy_fallback",
+                extra_diagnostics={
+                    "slowking_distill_fallback_reason": diag.fallback_reason
+                    or diag.reason
+                    or "bridge_unready",
+                },
+            )
+        self._previous_action_token = features.build_option_tokens(
+            obs_dict, [selected]
+        )
+        self.last_slowking_distill_trace = {
+            "enabled": True,
+            "mode": (
+                self.slowking_distill_config.mode.value
+                if self.slowking_distill_config is not None
+                else "unknown"
+            ),
+            "used_for_selection": True,
+            "action": list(selected),
+            "source": diag.source,
+            "critical": diag.critical,
+            "search_used": diag.search_used,
+            "search_backend": diag.search_backend,
+            "reason": diag.reason,
+            "trace": diag.trace,
+        }
+        if self.collect_targets:
+            self.targets.append(
+                {
+                    "observation": obs_dict,
+                    "action": list(selected),
+                    "action_combos": [list(selected)],
+                    "policy": [1.0],
+                    "value": None,
+                    "visits": None,
+                    "diagnostics": {
+                        "target_source": "slowking_distill",
+                        "trusted": False,
+                        "history_length": len(self.board_history),
+                        "slowking_distill_source": diag.source,
+                        "slowking_distill_critical": diag.critical,
+                        "slowking_distill_search_backend": diag.search_backend,
+                    },
+                }
+            )
+        return selected
+
     def _poke_rlm_shadow_after(
         self, obs_dict: dict, selected: list[int]
     ) -> None:
@@ -1029,6 +1212,7 @@ class PolicyAgent:
                     )
         try:
             poke_cfg = self.poke_rlm_config
+            distill_cfg = self.slowking_distill_config
             if self.use_mcts:
                 action = self.mcts_select(obs_dict)
             elif (
@@ -1037,6 +1221,15 @@ class PolicyAgent:
                 and (self._poke_rlm_bridge is not None or self.model is not None)
             ):
                 action = self.poke_rlm_select(obs_dict)
+            elif (
+                distill_cfg is not None
+                and distill_cfg.selects_actions
+                and (
+                    self._slowking_distill_bridge is not None
+                    or bool(distill_cfg.actor_checkpoint)
+                )
+            ):
+                action = self.slowking_distill_select(obs_dict)
             elif self.use_recursive_turn_planner and (
                 self._rtp_bridge is not None or self.model is not None
             ):
@@ -1049,6 +1242,12 @@ class PolicyAgent:
                 and not poke_cfg.selects_actions
             ):
                 self._poke_rlm_shadow_after(obs_dict, action)
+            if (
+                distill_cfg is not None
+                and distill_cfg.shadow_only
+                and not distill_cfg.selects_actions
+            ):
+                self._slowking_distill_shadow_after(obs_dict, action)
         except RemoteLeafCancelled:
             # Parent-driven shutdown is not a search fault and must not emit a
             # fail-closed health violation while the iteration is aborting.

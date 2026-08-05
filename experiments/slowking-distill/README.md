@@ -7,9 +7,11 @@ Research-only. No runtime / selector / serving / freeze / registration authority
 1. Archetype-wide option-conditioned BC (`bc_stage.py`)
 2. Sparse heuristic features, never serving logits (`heuristic_features.py` + surrogate)
 3. IQL expectile critic + gated AWR (`iql.py`)
-4. Critical-node search receipts (`critical_search.py`; mock locally, BeliefMCTS on host)
+4. Critical-node search receipts (`critical_search.py` + `belief_search_backend.py`; mock locally, BeliefMCTS on host)
 5. Search→actor distillation (`distill_search.py`)
-6. Paired win gate that cannot promote on agreement alone (`eval_gate.py`)
+6. Population self-play vs frozen opponents (`self_play.py`)
+7. Gated runtime + PolicyAgent bridge (`runtime.py`, `policy_bridge.py`; default off)
+8. Paired win gate + fail-closed promotion (`eval_gate.py`, `promotion.py`)
 
 ## CLIs
 
@@ -25,11 +27,28 @@ python3 scripts/slowking_distill_build_corpus.py \
   --archive-date /path/day.zip 2026-08-04 \
   --out-jsonl outputs/slowking_distill/decisions.jsonl
 
-# Run stages A→E (never self-promotes)
+# Run stages A→E (+ D self-play); never self-promotes
 python3 scripts/slowking_distill_run_pipeline.py \
   --decisions-jsonl outputs/slowking_distill/decisions.jsonl \
   --out-dir outputs/slowking_distill/run \
   --val-date 2026-08-04
+
+# Stage D only
+python3 scripts/slowking_distill_self_play.py \
+  --actor-checkpoint outputs/slowking_distill/run/stage_e/stage_e_search_distilled_actor.pt \
+  --out-dir outputs/slowking_distill/self_play
 ```
+
+## Runtime (default off)
+
+```bash
+export POKEBOT_SLOWKING_DISTILL_ENABLED=1
+export POKEBOT_SLOWKING_DISTILL_MODE=shadow   # or active
+export POKEBOT_SLOWKING_DISTILL_ACTOR_CKPT=/path/to/stage_e_actor.pt
+```
+
+Dispatch when `MODE=active`: MCTS → PokeRLM active → Slowking distill → RTP → greedy.
+Shadow records telemetry only. Heuristic scores never enter serving logits.
+`promotion.py` always leaves `promoted=false`.
 
 Package: `poke_bot/slowking_distill/`.

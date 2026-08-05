@@ -26,6 +26,8 @@ def main() -> int:
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--skip-search", action="store_true")
     parser.add_argument("--skip-distill", action="store_true")
+    parser.add_argument("--skip-self-play", action="store_true")
+    parser.add_argument("--self-play-games-per-opponent", type=int, default=2)
     parser.add_argument("--max-critical-search", type=int, default=0)
     parser.add_argument(
         "--eval-games-json",
@@ -52,6 +54,8 @@ def main() -> int:
             stage_b=IQLConfig(epochs=int(args.epochs)),
             run_search=not args.skip_search,
             run_distill=not args.skip_distill,
+            run_self_play=not args.skip_self_play,
+            self_play_games_per_opponent=int(args.self_play_games_per_opponent),
             max_critical_search=int(args.max_critical_search),
             eval_games=eval_games,
             eval_gate=EvalGateConfig(
