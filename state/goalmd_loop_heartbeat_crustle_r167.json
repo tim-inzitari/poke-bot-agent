@@ -1,14 +1,10 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_utc": "2026-08-06T06:57:31+00:00",
+  "created_at_utc": "2026-08-06T07:03:31+00:00",
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "iter2_collection_after_iter1_commit",
+  "phase": "iter2_public_mix",
   "commits": [
-    "iter_00000.json",
-    "iter_00001.json"
-  ],
-  "collection_receipts": [
     "iter_00000.json",
     "iter_00001.json"
   ],
@@ -22,11 +18,11 @@
   "nrestarts": 0,
   "oom": 0,
   "action": "supervise_only_no_restart",
-  "progress": "pure_rl collect:self_play iter=2: ~84%/1024 rsock=52",
+  "progress": "pure_rl collect:public_mix iter=2: 2862/7168 (~40%) rsock=52 ~11.5game/s",
   "overlays": [
     "adapter_auth",
     "promote_contract"
   ],
   "bert_rejoin": "held",
-  "notes": "Iter1 commit sealed (not promoted). Iter2 collecting. Leave healthy RL+RTP alone."
+  "notes": "Iter1 commit sealed (not promoted). Iter2 public_mix draining healthily. Leave RL+RTP alone."
 }
