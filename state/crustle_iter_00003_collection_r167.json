@@ -1,0 +1,22 @@
+{
+  "schema": "poke_bot.crustle_iter_00003_collection_r167/v1",
+  "created_at_utc": "2026-08-06T10:23:31Z",
+  "iteration": 3,
+  "source_games": 8192,
+  "trajectories": 8192,
+  "decisions": 360517,
+  "baseline_failed": 0,
+  "public_mix_refill_bars_after_patched_resume": 0,
+  "collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/collection_receipts/iter_00003.json",
+  "collection_receipt_sha256": "sha256:db1727c56479347bf763bdfbc02a1da58fb716654bdf9f723594f6ef28c2fb1e",
+  "seat_split_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/seat_split_receipts/iter_00003.index.json",
+  "seat_split_receipt_sha256": "sha256:f64bfc94dcbd419bfb8d5c04aec5a72b52c45d23dd948eb4f59885296578c3fb",
+  "shard": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/shards/iter_00003.jsonl",
+  "shard_sha256": "sha256:f36bd652c4dbdcf8908bc78cf99d7b5890fd6e0ca6d73df218a13105c07cce74",
+  "shard_bytes": 2249542624,
+  "trainer_pid": 212701,
+  "service_main_pid": 212552,
+  "nrestarts": 2,
+  "notes": "Sealed under builtins.exec promote-hook repair; zero public_mix_refill after resume",
+  "with_record": 8192
+}
