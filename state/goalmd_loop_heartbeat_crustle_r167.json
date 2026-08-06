@@ -1,30 +1,32 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_unix": 1785995647.3264894,
-  "created_at_utc": "2026-08-06T05:54:07.326490+00:00",
+  "created_at_utc": "2026-08-06T06:57:31+00:00",
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "iter1_learner_after_sealed_collection",
+  "phase": "iter2_collection_after_iter1_commit",
   "commits": [
-    "iter_00000.json"
+    "iter_00000.json",
+    "iter_00001.json"
   ],
   "collection_receipts": [
     "iter_00000.json",
     "iter_00001.json"
   ],
   "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+  "learner_digest": "sha256:4630b0317c6faf2ff241063fe4fb258bbe255a5d9364b0198f2a42688914c4b7",
+  "iter1_promoted": false,
   "rl_active": true,
   "rtp_active": true,
   "rl_main_pid": 3639395,
   "rtp_main_pid": 3025385,
   "nrestarts": 0,
   "oom": 0,
-  "action": "supervise_learner_no_restart",
-  "progress": "pure_rl collect:public_mix iter=1: 100%|████████████████████████████████████| 7168/7168 [14:01<00:00,  8.52game/s]",
+  "action": "supervise_only_no_restart",
+  "progress": "pure_rl collect:self_play iter=2: ~84%/1024 rsock=52",
   "overlays": [
     "adapter_auth",
     "promote_contract"
   ],
   "bert_rejoin": "held",
-  "notes": "Iter1 collection sealed without public_mix_refill promote failure; learner/replay-cache in progress. Do not recollect."
+  "notes": "Iter1 commit sealed (not promoted). Iter2 collecting. Leave healthy RL+RTP alone."
 }
