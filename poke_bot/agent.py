@@ -30,12 +30,35 @@ from .recursive_turn_planner.agent_bridge import (
     RTPAgentBridge,
     resolve_rtp_config_for_model,
 )
-from .slowking_distill import (
-    SlowkingDistillAgentBridge,
-    SlowkingDistillRuntimeConfig,
-    load_runtime_config_from_env as load_slowking_distill_config_from_env,
-)
-from .slowking_distill.belief_search_backend import BeliefSearchBundle
+
+# Slowking distill / reverse-engineered policy is Slowking-only research code.
+# Never import it at module load — Crustle and other specialists must not depend
+# on those packages. Lazy-load only when an explicit Slowking runtime arms it.
+
+
+def _runtime_is_slowking_specialist() -> bool:
+    """True only when the managed specialist/deck identity is Slowking."""
+    for key in (
+        "POKEBOT_CURRENT_DECK_GUIDE",
+        "POKEBOT_SPECIALIST_ARCHETYPE",
+        "PURE_RL_SPECIALIST_ARCHETYPE",
+        "POKEBOT_SPECIALIST_ID",
+    ):
+        if "slowking" in os.environ.get(key, "").strip().lower():
+            return True
+    return False
+
+
+def _slowking_distill_runtime_requested() -> bool:
+    """Any Slowking-distill env arming flag (still Slowking-gated below)."""
+    return any(
+        os.environ.get(name, "").strip()
+        for name in (
+            "POKEBOT_SLOWKING_DISTILL_ENABLED",
+            "POKEBOT_SLOWKING_DISTILL_MODE",
+            "POKEBOT_SLOWKING_DISTILL_ACTOR_CKPT",
+        )
+    )
 
 
 def install_quiet_stdout(verbose: bool = False) -> None:
@@ -166,9 +189,9 @@ class PolicyAgent:
     #: MCTS behavior until explicitly enabled via config or env flags.
     poke_rlm_config: Optional[PokeRLMConfig] = None
     poke_rlm_max_action_combos: int = 256
-    #: Slowking distill research runtime. Default disabled — no production
-    #: authority; enable only via ``POKEBOT_SLOWKING_DISTILL_*`` env flags.
-    slowking_distill_config: Optional[SlowkingDistillRuntimeConfig] = None
+    #: Slowking-only distill research runtime. Never arms for Crustle/other
+    #: specialists. Enable only via ``POKEBOT_SLOWKING_DISTILL_*`` on Slowking.
+    slowking_distill_config: Optional[Any] = None
     slowking_distill_max_action_combos: int = 256
     oracle_mode: bool = False
     belief_mcts: bool = False
@@ -235,7 +258,7 @@ class PolicyAgent:
     last_poke_rlm_trace: Optional[dict[str, Any]] = field(
         default=None, init=False, repr=False
     )
-    _slowking_distill_bridge: Optional[SlowkingDistillAgentBridge] = field(
+    _slowking_distill_bridge: Optional[Any] = field(
         default=None, init=False, repr=False
     )
     last_slowking_distill_trace: Optional[dict[str, Any]] = field(
@@ -290,14 +313,31 @@ class PolicyAgent:
             and self.model is not None
         ):
             self._init_poke_rlm_bridge()
-        self.slowking_distill_config = load_slowking_distill_config_from_env(
-            self.slowking_distill_config
-        )
+        # Slowking policy path: import/load only for Slowking specialists.
+        if self.slowking_distill_config is None and (
+            _runtime_is_slowking_specialist() and _slowking_distill_runtime_requested()
+        ):
+            from .slowking_distill import (
+                load_runtime_config_from_env as load_slowking_distill_config_from_env,
+            )
+
+            self.slowking_distill_config = load_slowking_distill_config_from_env(
+                self.slowking_distill_config
+            )
+        elif (
+            self.slowking_distill_config is not None
+            and not _runtime_is_slowking_specialist()
+        ):
+            # Refuse non-Slowking specialist identities (e.g. Crustle).
+            self.slowking_distill_config = None
         if (
             self.slowking_distill_config is not None
             and self.slowking_distill_config.runs
+            and _runtime_is_slowking_specialist()
         ):
             self._init_slowking_distill_bridge()
+        else:
+            self._slowking_distill_bridge = None
         env_runtime = os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip()
         if env_runtime:
             self.matchup_adapter_runtime = env_runtime.lower() in {
@@ -396,9 +436,12 @@ class PolicyAgent:
 
     def _init_slowking_distill_bridge(self) -> None:
         cfg = self.slowking_distill_config
-        if cfg is None or not cfg.runs:
+        if cfg is None or not cfg.runs or not _runtime_is_slowking_specialist():
             self._slowking_distill_bridge = None
             return
+        from .slowking_distill import SlowkingDistillAgentBridge
+        from .slowking_distill.belief_search_backend import BeliefSearchBundle
+
         bundle = None
         if (
             cfg.use_belief_mcts
@@ -1235,6 +1278,7 @@ class PolicyAgent:
             elif (
                 distill_cfg is not None
                 and distill_cfg.selects_actions
+                and _runtime_is_slowking_specialist()
                 and (
                     self._slowking_distill_bridge is not None
                     or bool(distill_cfg.actor_checkpoint)
