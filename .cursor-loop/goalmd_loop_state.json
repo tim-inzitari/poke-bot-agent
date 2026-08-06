@@ -1,0 +1,36 @@
+{
+  "schema": "poke_bot.cursor_loop_goalmd_crustle/v1",
+  "local_goal_revision": "167",
+  "updated_at_unix": 1785981070,
+  "watcher_primary": true,
+  "watcher_shell_pid": 35021,
+  "fallback_heartbeat_seconds": 900,
+  "sentinel": "AGENT_LOOP_WAKE_goalmd",
+  "resident": true,
+  "last_pass_summary": {
+    "healthy": true,
+    "rl": "inactive/overridden",
+    "rtp": "inactive/complete",
+    "fail": null,
+    "local_goal": "167",
+    "train_goal": "165",
+    "gate": "waiting_for_exact_gate_pass",
+    "delta": "dashboard projects crustle_rtp_r167 complete; ordinary RL superseded; sibling RTP pipeline finished success",
+    "dash": "crustle_rtp_r167 complete epoch3/n_steps22346"
+  },
+  "heartbeat_shell_pid": 31985,
+  "prior_pass_summary": {
+    "healthy": false,
+    "rl": "inactive/dead",
+    "fail": "remote_baseline_missing specialist-marnie-final-format-h10-f20efb20f5c3",
+    "local_goal": "167",
+    "train_goal": "165",
+    "gate": "activating/waiting_for_exact_gate_pass",
+    "delta": "watcher_damped_gate_receipt_mtime; RL unchanged; sibling idle on baseline fix",
+    "alakazam": "failed (untouched)"
+  },
+  "pass_count": 3,
+  "watcher_python_pids": [
+    34796
+  ]
+}

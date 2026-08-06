@@ -1,0 +1,50 @@
+{
+  "schema": "poke_bot.crustle_dashboard_active_rl_projection/v1",
+  "status": "superseded_by_rtp_override",
+  "superseded_by": "crustle_dashboard_rtp_projection",
+  "goal_revision": 167,
+  "recorded_at_utc": "2026-08-06T01:10:00Z",
+  "superseded_at_utc": "2026-08-06T01:50:00Z",
+  "specialist_id": "crustle",
+  "defect": {
+    "projection": "final_format_refresh_and_host_selector",
+    "stale_service": "pokebot-final-format-marnie-r104-h10-rl.service",
+    "stale_phase": "stopped:measure:research_controls",
+    "stale_iteration": 20,
+    "host_selector_value": "slowking",
+    "crustle_progress_watched_bootstrap_only": true,
+    "training_was_healthy": true
+  },
+  "repair": {
+    "active_service": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "run_name": "final_format_crustle_r113_h10_i_v6_8k",
+    "phase": "collect:self_play",
+    "iteration": 0,
+    "selector": "/home/inzi/poke-bot-agent/outputs/final_format_crustle_r113/runtime/specialist_runtime_h10_r113.env",
+    "selector_value": "crustle",
+    "runtime_root": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136",
+    "blackwell_simulator_workers": 96,
+    "elmo_remote_workers": 36,
+    "bert_remote_workers": 16,
+    "dual_marnie_roster_repair_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-dual-marnie-roster-repair-r167.json",
+    "dual_marnie_roster_repair_receipt_sha256": "sha256:86e4e6b63f7c635dc54463900cd2e82b63d7de4e8226c66b9f29a20dcfbf1fc1",
+    "training_restarted": false,
+    "runtime_changed": false,
+    "fleet_changed": false
+  },
+  "artifacts": {
+    "dashboard_snapshot": "scripts/dashboard_snapshot.py",
+    "mutable_program_state": "state/specialists.yaml",
+    "compatibility_projection": "ops/current_goal_requirements.json",
+    "host_selector": "/home/inzi/.config/pokebot/specialist_runtime.env"
+  },
+  "validation": {
+    "managed_training_service": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "managed_training_active_state": "active",
+    "managed_training_sub_state": "running",
+    "managed_training_pid": 2899989,
+    "managed_training_restart_count": 0,
+    "remotes_hard_gated": true,
+    "heldout_remote_capability_passed": true
+  }
+}
