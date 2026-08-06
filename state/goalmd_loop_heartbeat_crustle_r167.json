@@ -1,28 +1,32 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_utc": "2026-08-06T07:47:18+00:00",
+  "created_at_utc": "2026-08-06T08:08:50+00:00",
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "iter2_recollect_after_main_hook_repair",
+  "phase": "iter2_learner_after_sealed_collection",
   "commits": [
     "iter_00000.json",
     "iter_00001.json"
   ],
+  "collection_receipts": [
+    "iter_00000.json",
+    "iter_00001.json",
+    "iter_00002.json"
+  ],
   "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
   "learner_digest": "sha256:4630b0317c6faf2ff241063fe4fb258bbe255a5d9364b0198f2a42688914c4b7",
-  "iter1_promoted": false,
   "rl_active": true,
   "rtp_active": true,
   "rl_main_pid": 4031205,
   "rtp_main_pid": 3025385,
   "nrestarts": 1,
   "oom": 0,
-  "action": "supervise_only_no_restart",
-  "progress": "pure_rl collect:self_play iter=2 ~24%/1024 rsock=52 after fail-closed restart",
+  "action": "supervise_learner_no_restart",
+  "progress": "rl-agreement / ordinary learner iter=2 after sealed collection 8192/363042",
   "overlays": [
     "adapter_auth",
     "promote_contract_main_hook"
   ],
   "bert_rejoin": "held",
-  "notes": "Fail-closed after 32 unpatched refill cycles; systemd restarted onto SourceFileLoader promote hook. Iter1 commit preserved."
+  "notes": "Iter2 collection sealed with zero refill bars after __main__ hook repair. Supervise learner to commit."
 }

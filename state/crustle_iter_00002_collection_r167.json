@@ -1,0 +1,15 @@
+{
+  "schema": "poke_bot.crustle_iter_00002_collection_r167/v1",
+  "created_at_utc": "2026-08-06T08:08:50+00:00",
+  "goal_revision": 167,
+  "status": "collection_sealed",
+  "collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/collection_receipts/iter_00002.json",
+  "source_games": 8192,
+  "trajectories": 8192,
+  "decisions": 363042,
+  "post_restart_refill_bars": 0,
+  "rl_main_pid": 4031205,
+  "nrestarts": 1,
+  "do_not_recollect": true,
+  "notes": "Sealed after __main__ promote-hook repair restart; no public_mix_refill in this attempt. Learner in progress toward commits/iter_00002.json."
+}
