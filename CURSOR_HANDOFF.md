@@ -1,9 +1,33 @@
 # Cursor takeover handoff
 
-Updated: 2026-07-31  
+Updated: 2026-08-06  
 Repository: `/Users/tsinzitari/Documents/poke-agent-codex`  
-Current owner contract: `GOAL.md`, revision 89  
-Copy-paste task prompt: `CURSOR_PROMPT.md`
+Current owner contract: `GOAL.md`, revision **170** (authoritative on train)  
+Live training mode: **Slop Box H10 + RTP** (Crustle abandoned for now)
+
+## Revision 170 owner boundary (active)
+
+- Abandon Crustle H10 for now: preserve every shard/commit/quarantine/receipt; **no deletes**, **do not restart** Crustle RL/RTP.
+- Crustle units on train are runtime-masked + `Restart=no` (`99-owner-abandon-r170.conf`). Receipt: `outputs/state/crustle-owner-abandon-r170.json`.
+- Immediately activate separately versioned Slop Box H10 + RTP (`teal-mask-ogerpon-ex` / Raging Bolt Ogerpon), distinct from historical Teal/Slop Box.
+- Canonical identity: `state/slop_box_h10_rtp_prestage_identity_r170.json`. Bootstrap unit: `pokebot-final-format-slop-box-h10-rtp-bootstrap.service`.
+- Expert trajectory shard materialized (`42453` games / `2979468` decisions; receipt beside shard). Bootstrap unit **activating** (`pokebot-final-format-slop-box-h10-rtp-bootstrap.service`, MainPID live); currently running RTP cut pipeline then H10 expert bootstrap. Contract sync: `state/slop-box-h10-rtp-contract-sync-r170.json`.
+- Warm-start default parent: Marnie H10 freeze `sha256:f20efb20…`; optional Alakazam teacher `sha256:02c014ad…`. Never rewrite parents.
+- Dual pipeline: guide is RL-learner training-only (no fusion/serving/action authority); RTP is neural-only sidecar; expert bootstrap must also emit initial `rtp_shadow_planner.pt`.
+- Population waits on Alakazam + Marnie + Slop Box H10 RTP (Crustle not a blocker while abandoned).
+- Keep Bert Alakazam rejoin poller bootout until a CPU/MPS selector exists.
+
+## Preserved Crustle progress (do not recollect / do not delete)
+
+- Iter0–4 sealed as before; iter4 champion `sha256:7efd8d4113e7…` at `checkpoints/iter_00004.pt`.
+- **Iter5 collection sealed before abandon** via hide-for-kick + 4-cell refill + complete short-circuit:
+  - Shard `sha256:28fde5403a66…` size `2321704417`, games **8192**, decisions **370608**
+  - Receipt: `…/collection_receipts/iter_00005.json`
+  - Commit `commits/iter_00005.json` **absent** (learner interrupted by r170 abandon during corpus pack)
+  - Overlay repair: `overlays/crustle-adapter-auth-r167/crustle_iter5_corpus_restore_r167_patch.py` (hide shard for `_kick_collect`, seed missing cells, complete short-circuit)
+- Heartbeats: `state/goalmd_loop_heartbeat_slop_box_r170.json`, `outputs/state/goalmd-loop-heartbeat-slop-box-r170.json`
+
+---
 
 ## Read this first
 

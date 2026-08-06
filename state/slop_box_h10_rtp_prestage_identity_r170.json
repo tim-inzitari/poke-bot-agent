@@ -1,0 +1,148 @@
+{
+  "schema": "poke_bot.slop_box_h10_rtp_prestage_identity/v1",
+  "goal_revision": 170,
+  "status": "activation_authorized_bootstrap_launch_path",
+  "created_at_utc": "2026-08-06T14:50:00Z",
+  "owner_boundary": "abandon Crustle H10 for now; start Slop Box H10 RTP immediately",
+  "specialist": {
+    "logical_id": "teal-mask-ogerpon-ex",
+    "display_name": "Slop Box",
+    "physical_source_archetype": "slop-box",
+    "competitive_family_alias": "raging-bolt-ogerpon",
+    "lineage": "h10_rtp_separately_versioned_from_historical_teal_slop_box",
+    "historical_teal_run_immutable": true
+  },
+  "crustle_abandon": {
+    "receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-owner-abandon-r170.json",
+    "preserve_all_artifacts": true,
+    "deletes_forbidden": true,
+    "restore_must_not_stay_alive": true
+  },
+  "dual_pipeline": {
+    "h10_rl_guide": {
+      "mode": "strategic_directional_v2",
+      "authors_primary": ["James Cox & Henry Chao"],
+      "authors_secondary": ["MissingNo."],
+      "fusion_authority": false,
+      "serving_authority": false,
+      "action_authority": false,
+      "training_only": true,
+      "guide_head_inside_rtp_serving": false
+    },
+    "rtp_sidecar": {
+      "neural_only": true,
+      "guide_inputs_forbidden": true,
+      "artifact": "rtp_shadow_planner.pt",
+      "env": "POKEBOT_RTP_CHECKPOINT",
+      "serving_eligible_default": false,
+      "selector_authority": false,
+      "bootstrap_cut_required_during_expert_bootstrap": true,
+      "later_rl_shard_cotrain": "optional_after_rl_starts_does_not_replace_bootstrap_cut",
+      "guide_weighted_rtp_train_loss": "forbidden_until_new_explicit_owner_receipt"
+    }
+  },
+  "expert_bootstrap": {
+    "train_corpus_scope": "all_acting_seat_teal-mask-ogerpon-ex_archetype_games",
+    "train_corpus_not_cox_chao_only": true,
+    "historical_protected_corpus": {
+      "path": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/PROTECTED_EXPERT_CORPUS.json",
+      "records_kept": 1442,
+      "decisions_kept": 97762,
+      "manifest_sha256": "sha256:a761297904ea0e40409d09150e27443720201baf1aca2d61c066f8d2347f7d05",
+      "guide_ready": "/home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json",
+      "guide_version_historical": "teal-mask-ogerpon-ex-slop-box-north-star-v3",
+      "note": "Use as bootstrap floor; refresh with newest public episode days when sibling sync receipts land"
+    },
+    "pilot_inventory_partial": {
+      "source": "elmo episode-days TeamNames scan 2026-07-30..2026-08-02",
+      "james_cox_and_henry_chao_acting_seat_games": 659,
+      "missingno_acting_seat_games": 368,
+      "note": "Any-archetype acting seats in those days; Slop Box-filtered subset and newer public days still pending sync",
+      "full_recount_pending_latest_public_sync": true
+    },
+    "cox_chao_policy_accuracy_gate": {
+      "metric_id": "cox_chao_held_policy_acc",
+      "definition": "On the held evaluation split restricted to acting seats whose TeamNames[seat] is exactly 'James Cox & Henry Chao' (join episode_id+seat+TeamNames[seat]), compute mean(argmax(policy_logits) == expert_target_action_index) over legal-masked decisions — the same policy_acc / validation_accuracy quantity already emitted by poke_bot.train BatchMetrics.policy_acc and expert-bootstrap validation_accuracy.",
+      "threshold": 0.90,
+      "fail_closed": true,
+      "applies_to": "expert_bootstrap_checkpoint_selection_and_ready_receipt",
+      "training_rows_remain_full_archetype": true,
+      "missingno_not_in_gate_denominator": true
+    },
+    "epochs": 35,
+    "guide_mode": "strategic_directional_v2",
+    "batch_size": 2048
+  },
+  "primary_submission_list": {
+    "source_team": "James Cox & Henry Chao",
+    "ptcgreplay_rank_snapshot": 24,
+    "ptcgreplay_archetype_id": 67,
+    "ptcgreplay_archetype_name": "Slop Box",
+    "current_submission_id": 55188658,
+    "leaderboard_snapshot": "/home/inzi/poke-bot-agent/outputs/state/marnie-r135-ptcgreplay-top100.json",
+    "exact_60_card_digest": null,
+    "exact_60_card_status": "fail_closed_until_package_deck_csv_materialized",
+    "interim_packaging_list": {
+      "note": "Historical public archetype-151 Slop Box shell may package interim smoke only; Cox/Chao submission 55188658 remains the required primary representative once digest-bound",
+      "historical_deck_hash": "bcfc7b778a72d895",
+      "historical_cards_sha256": "sha256:10857495cddc95416052ff3b60e8686d2291da31de23ef064128534eb87cff28",
+      "historical_terminal_multiset_sha256": "sha256:f50fa3a23cdf21be7cf7d3f558b8ff0b82e8d4e7ba8f61b7b4cacc1a0080c16a"
+    },
+    "multi_deck_family_training_eligibility": "bound_separately_from_primary_submission_list"
+  },
+  "warm_start": {
+    "recipe": "sequential_h10_parent_reuse_then_optional_dual_teacher_distill",
+    "weight_average_init": "forbidden_without_new_owner_receipt",
+    "never_rewrite_parents": true,
+    "fail_closed_migration_and_step_zero_parity_before_bootstrap": true,
+    "recommended_primary_parent": {
+      "specialist_id": "marnie-s-grimmsnarl-ex",
+      "role": "primary_h10_parent_reuse",
+      "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00007.pt",
+      "checkpoint_sha256": "sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381",
+      "authority": "marnie-canonical-training-freeze-r163",
+      "live_digest_verified": true,
+      "owner_confirmation": "recommended_default_pending_explicit_override"
+    },
+    "secondary_teacher": {
+      "specialist_id": "alakazam",
+      "role": "optional_dual_teacher_distill_after_primary_reuse",
+      "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_alakazam_r79_h10_i_v6_8k/checkpoints/iter_00020.pt",
+      "checkpoint_sha256": "sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92",
+      "authority": "final-format-alakazam-r79-h10-completion-v1",
+      "live_digest_verified": true
+    },
+    "needs_owner_pick": [
+      "confirm_marnie_as_primary_warm_start_parent_or_name_alakazam_instead"
+    ]
+  },
+  "rtp_bootstrap_cut": {
+    "phase": "during_or_immediately_after_h10_expert_bootstrap",
+    "do_not_wait_for_pure_rl_shards_only": true,
+    "parent_binding": "slop_box_h10_bootstrap_seed_or_selected_bootstrap_checkpoint",
+    "training_shard": "expert_derived_or_bootstrap_trajectory_jsonl_shard",
+    "pipeline": "scripts/run_rtp_archetype_pipeline.py",
+    "out_dir": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10",
+    "live_checkpoint": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10.live/rtp_shadow_planner.pt",
+    "registry": "config/rtp_slop_box_h10_bootstrap_r170.yaml",
+    "orchestrator": "scripts/run_slop_box_h10_rtp_bootstrap.py",
+    "unit": "deploy/systemd/pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "guide_shaped_parent_encoder_frozen": true,
+    "guide_labels_not_fed_to_rtp": true
+  },
+  "launch_path": {
+    "bootstrap_script": "scripts/run_slop_box_h10_rtp_bootstrap.py",
+    "systemd_bootstrap": "deploy/systemd/pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "systemd_rtp_cotrain_later": "deploy/systemd/pokebot-slop-box-rtp-cotrain-r170.service",
+    "guide_contract": "config/deck_guides/slop-box-h10-rtp-north-star-v1.yaml",
+    "ready_receipt": "/home/inzi/poke-bot-agent/outputs/state/final-format-slop-box-h10-rtp-bootstrap-ready.json",
+    "rtp_bootstrap_receipt": "/home/inzi/poke-bot-agent/outputs/state/slop-box-h10-rtp-bootstrap-cut-r170.json"
+  },
+  "blockers": [
+    "exact_cox_chao_60_card_digest_from_submission_55188658",
+    "cox_chao_held_split_pilot_map_for_90pct_gate",
+    "expert_derived_jsonl_shard_for_rtp_bootstrap_cut_if_not_yet_materialized",
+    "optional_owner_confirm_primary_warm_start_parent"
+  ],
+  "aligned_with_sibling": "68c721f2"
+}

@@ -51,11 +51,36 @@ ADAPTER_REHEARSAL_AUTHORIZATION_SCHEMA = (
 SPECIALIST_BOOTSTRAP_AUTHORIZATION_SCHEMA = (
     "poke_bot.matchup_adapter_specialist_bootstrap_authorization/v1"
 )
+CRUSTLE_GUIDE_ALL_EPOCHS_SCHEMA = "poke_bot.crustle_guide_all_epochs/v1"
+DEFAULT_SPECIALIST_BOOTSTRAP_EPOCHS = 25
 CORPUS_MANIFEST_SCHEMA = "poke_bot.matchup_adapter_corpus/v1"
 TRAINING_TICKET_SCHEMA = "poke_bot.matchup_adapter_training_ticket/v1"
 PUBLIC_RECOGNIZER_SCHEMA = "poke_bot.public_matchup_recognizer/v1"
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def expected_specialist_bootstrap_epochs(
+    training_provenance: Mapping[str, Any],
+) -> int:
+    """Resolve the owner-authorized bootstrap epoch count for adapter auth.
+
+    Default specialists still use the historical 25-epoch bootstrap. Crustle's
+    revision-162 all-guide schedule (`poke_bot.crustle_guide_all_epochs/v1`)
+    authorizes the exact closed interval recorded in `guide_active_epochs`.
+    """
+
+    guide = dict(training_provenance.get("current_deck_guide") or {})
+    owner_schedule = dict(guide.get("owner_epoch_schedule") or {})
+    if owner_schedule.get("schema") == CRUSTLE_GUIDE_ALL_EPOCHS_SCHEMA:
+        active = list(owner_schedule.get("guide_active_epochs") or ())
+        if (
+            len(active) == 2
+            and int(active[0]) == 1
+            and int(active[1]) > 0
+        ):
+            return int(active[1])
+    return DEFAULT_SPECIALIST_BOOTSTRAP_EPOCHS
 
 
 def training_route_target_ids() -> tuple[str, ...]:
@@ -1060,6 +1085,9 @@ def validate_adapter_training_authorization(
             and len(required_target_coverage)
             == len(set(required_target_coverage))
         )
+        expected_epochs = expected_specialist_bootstrap_epochs(
+            training_provenance
+        )
         if (
             not specialist_id
             or payload.get("runtime_enabled") is not False
@@ -1080,8 +1108,10 @@ def validate_adapter_training_authorization(
                 training_provenance.get("acting_seat_archetype")
             )
             != specialist_id
-            or int(training_evidence.get("epochs_completed", -1)) != 25
-            or int(training_provenance.get("epochs_max", -1)) != 25
+            or int(training_evidence.get("epochs_completed", -1))
+            != expected_epochs
+            or int(training_provenance.get("epochs_max", -1))
+            != expected_epochs
             or (
                 training_provenance.get("all_auxiliary_heads_trained")
                 is not True

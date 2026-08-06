@@ -1,0 +1,38 @@
+[Unit]
+Description=Slop Box RTP co-train alongside H10 RL after bootstrap cut (r170)
+After=network-online.target
+Wants=network-online.target
+# Later RL-shard cotrain only; initial cut comes from expert-bootstrap unit.
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/slop-box-h10-rtp-bootstrap-cut-r170.json
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/run_rtp_cotrain_with_rl.py \
+  --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_slop_box_h10_rtp_i_v6_8k \
+  --specialist-id teal-mask-ogerpon-ex \
+  --out-dir /home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10_cotrain \
+  --live-checkpoint /home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10.live/rtp_shadow_planner.pt \
+  --seed-checkpoint /home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10/teal-mask-ogerpon-ex/rtp/rtp_shadow_planner.pt \
+  --parent-checkpoint /home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_h10_rtp/checkpoints/seed.pt \
+  --device cuda:0 \
+  --epochs 2 \
+  --max-games 512 \
+  --poll-seconds 60 \
+  --min-shard-bytes 1000000
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=0
+TimeoutStopSec=120
+MemoryHigh=24G
+MemoryMax=32G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10_cotrain_r170.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10_cotrain_r170.log
+
+[Install]
+WantedBy=default.target

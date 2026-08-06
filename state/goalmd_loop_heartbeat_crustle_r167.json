@@ -1,0 +1,25 @@
+{
+  "schema": "poke_bot.goalmd_loop_heartbeat_crustle_r167/v1",
+  "superseded_by": "poke_bot.goalmd_loop_heartbeat_slop_box_r170/v1",
+  "goal_revision": 170,
+  "created_at_utc": "2026-08-06T14:55:43Z",
+  "status": "crustle_abandoned_slop_box_prestage",
+  "crustle": {
+    "abandon_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-owner-abandon-r170.json",
+    "rl": "runtime-masked inactive",
+    "rtp": "runtime-masked inactive",
+    "iter5_collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/collection_receipts/iter_00005.json",
+    "iter5_shard_sha256": "sha256:28fde5403a66fdf331997f53c263a6f03d6251db2e7b245a03a1c3093596c1d3",
+    "iter5_games": 8192,
+    "iter5_decisions": 370608,
+    "iter5_commit": false,
+    "preserve_all": true,
+    "do_not_restart": true
+  },
+  "slop_box": {
+    "identity": "/home/inzi/poke-bot-agent/state/slop_box_h10_rtp_prestage_identity_r170.json",
+    "blocker": "expert_trajectory_shard.jsonl not materialized",
+    "bootstrap_unit": "pokebot-final-format-slop-box-h10-rtp-bootstrap.service",
+    "bootstrap_active": false
+  }
+}

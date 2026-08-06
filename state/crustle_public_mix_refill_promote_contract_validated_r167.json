@@ -1,0 +1,19 @@
+{
+  "schema": "poke_bot.crustle_public_mix_refill_promote_contract_validation_r167/v1",
+  "created_at_unix": 1785995647.3266468,
+  "goal_revision": 167,
+  "status": "validated_by_iter1_collection_seal",
+  "collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/collection_receipts/iter_00001.json",
+  "prior_failure_jobs": [
+    8075,
+    8186
+  ],
+  "public_mix": "7168/7168",
+  "source_games": 8192,
+  "decisions": 402530,
+  "baseline_failed": 0,
+  "seat_split_exact_50_50": true,
+  "service_main_pid": 3639395,
+  "nrestarts": 0,
+  "notes": "Recollect after promote-contract overlay sealed collection without the prior infinite refill on dual-Marnie b3307 jobs."
+}

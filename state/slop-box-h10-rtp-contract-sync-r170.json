@@ -1,0 +1,27 @@
+{
+  "aligned_with_sibling": "68c721f2",
+  "blocker_for_start": "expert_trajectory_shard.jsonl not yet materialized",
+  "bootstrap_unit_installed": true,
+  "bootstrap_unit_started": false,
+  "corpus_floor": {
+    "decisions": 97762,
+    "records": 1442
+  },
+  "cox_chao_gate": {
+    "metric": "held_policy_acc argmax match",
+    "threshold": 0.9
+  },
+  "created_at_utc": "2026-08-06T14:53:10.086799+00:00",
+  "crustle_abandon_present": true,
+  "crustle_rehold_at_utc": "2026-08-06T14:53:23.986833+00:00",
+  "crustle_rl_after_rehold": "inactive_or_masked",
+  "goal_revision": 170,
+  "guide_head_inside_rtp_serving": false,
+  "guide_rl_only": true,
+  "identity": "/home/inzi/poke-bot-agent/state/slop_box_h10_rtp_prestage_identity_r170.json",
+  "identity_sha256": "sha256:97aabafd0315d67691eaf03f87f1f668b83f88c53e8506873333290a7282f5d7",
+  "note_for_68c721f2": "contracts synced; start after expert_trajectory_shard.jsonl materializes; H10 bootstrap orchestrator also emits RTP cut",
+  "rtp_bootstrap_cut_required_during_expert_bootstrap": true,
+  "rtp_neural_only": true,
+  "schema": "poke_bot.slop_box_h10_rtp_contract_sync_r170/v1"
+}

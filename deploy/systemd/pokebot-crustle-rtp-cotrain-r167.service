@@ -1,0 +1,40 @@
+[Unit]
+Description=Crustle RTP co-train alongside H10 RL (r167)
+After=network-online.target
+Wants=network-online.target
+# Concurrent with RL; do not Conflict with the RL unit.
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+# Prefer 3080 so Blackwell stays free for RL collection/training.
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/run_rtp_cotrain_with_rl.py \
+  --run-dir /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k \
+  --specialist-id crustle \
+  --out-dir /home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle_cotrain \
+  --live-checkpoint /home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle.live/rtp_shadow_planner.pt \
+  --seed-checkpoint /home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle.pass1/rtp/rtp_shadow_planner.pt \
+  --seed-shard /home/inzi/poke-bot-agent/outputs/pure_rl/_quarantine_empty_design_drift_r167/final_format_crustle_r113_h10_i_v6_8k.20260806T015718Z/quarantine/iter_00000/attempt_0001/shards/iter_00000.jsonl \
+  --parent-checkpoint /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/seed.pt \
+  --device cuda:0 \
+  --epochs 2 \
+  --max-games 512 \
+  --poll-seconds 60 \
+  --min-shard-bytes 1000000 \
+  --also-poke-rlm
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=0
+TimeoutStopSec=120
+MemoryHigh=24G
+MemoryMax=32G
+MemorySwapMax=0
+OOMPolicy=stop
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle_cotrain_r167.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle_cotrain_r167.log
+
+[Install]
+WantedBy=default.target

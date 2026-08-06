@@ -1,0 +1,23 @@
+{
+  "schema": "poke_bot.crustle_promote_contract_main_hook_repair_r167/v1",
+  "created_at_utc": "2026-08-06T07:47:18+00:00",
+  "goal_revision": 167,
+  "status": "armed_after_fail_closed_restart",
+  "root_cause": "promote patch only hooked importlib.import_module(scripts.train_pure_rl); live trainer runs train_pure_rl.py as __main__ so patch never applied. Iter1 recollect luckily sealed without refill; iter2 hit refill and looped 32 cycles.",
+  "fix": {
+    "bootstrap": "SourceFileLoader.exec_module hook + sys.modules train_pure_rl.py patch including __main__",
+    "overlay": "/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167/crustle_promote_contract_r167_patch.py",
+    "site": "crustle_adapter_auth_r167.pth -> crustle_adapter_auth_r167_bootstrap.py"
+  },
+  "fail_closed": {
+    "refill_cycles": 32,
+    "service_result": "exit-code",
+    "old_main_pid": 3639395,
+    "new_main_pid": 4031205,
+    "nrestarts": 1,
+    "quarantine": "quarantine/iter_00002/attempt_0001"
+  },
+  "iter0_preserved": true,
+  "iter1_commit_preserved": true,
+  "notes": "Do not recollect sealed iter0/iter1. Supervise iter2 recollect under patched __main__ hook."
+}

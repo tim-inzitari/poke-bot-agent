@@ -1,0 +1,2711 @@
+{
+  "champion": {
+    "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+  },
+  "created_at_utc": "2026-08-06T02:12:49.115693+00:00",
+  "design_fingerprint": "sha256:62c5fada53b844621efcd8095a236ed79e922db700940b6cdb31d22679f7d9ee",
+  "dormant_matchup_adapter_fit": {
+    "activation_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-h10-matchup-adapter-bootstrap-r113.json",
+    "activation_receipt_digest": "sha256:d63f01151a013f98bf76cd61f7ad686c0556e2d63f28459ace680799fc0eabea",
+    "base_frozen": true,
+    "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+    "checkpoint_path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt",
+    "dormant_no_example_archetype_ids": [
+      "dragapult-dudunsparce",
+      "dragapult",
+      "walrein",
+      "dragapult-blaziken",
+      "slowking"
+    ],
+    "epochs": 7,
+    "last_metrics": {
+      "alakazam_guide_loss": -0.0,
+      "aux_loss": 0.0,
+      "awr_effective_sample_fraction": 0.25157622201224444,
+      "awr_effective_sample_size": 278.7464539895669,
+      "awr_weight_clip_frac": 0.1055956706404686,
+      "awr_weight_max_observed": 20.0,
+      "awr_weight_mean": 3.639975070953369,
+      "awr_weight_p50": 0.7615721821784973,
+      "awr_weight_p95": 20.0,
+      "awr_weight_sq_sum": 58353.5078125,
+      "awr_weight_sum": 4033.09228515625,
+      "combo_state_loss": 0.0,
+      "combo_state_metrics": {},
+      "expanded_head_metrics": {},
+      "guide_curriculum_head_metrics": {},
+      "guide_strategic_curriculum_loss": 0.0,
+      "history_identity_loss": -0.0,
+      "lethal_threat_loss": -0.0,
+      "mean_advantage": 0.5982194542884827,
+      "n_alakazam_guide_rows": 0,
+      "n_archetype_rows": 19,
+      "n_decisions": 1108,
+      "n_games": 19,
+      "n_lethal_threat_rows": 0,
+      "n_matchup_adapter_rows": 1108,
+      "n_opp_hand_rows": 0,
+      "n_opp_remainder_rows": 0,
+      "n_prize_race_rows": 0,
+      "n_teacher_policy_rows": 0,
+      "normalized_advantage_mean": -4.303584599796295e-09,
+      "normalized_advantage_mean_abs": 0.6673765778541565,
+      "normalized_advantage_mean_sq": 1.0,
+      "normalized_advantage_std": 1.0,
+      "opp_hand_loss": -0.0,
+      "opp_remainder_loss": -0.0,
+      "policy_acc": 0.7861010830324909,
+      "policy_kl": 0.0,
+      "policy_loss": 1.6552824974060059,
+      "policy_selected_nll": 0.5781863331794739,
+      "prize_race_loss": -0.0,
+      "raw_advantage_mean": 0.20360919833183289,
+      "raw_advantage_mean_abs": 0.5982194542884827,
+      "raw_advantage_mean_sq": 0.8384413719177246,
+      "raw_advantage_std": 0.89274001121521,
+      "setup_board_outcome_loss": 0.0,
+      "setup_board_outcome_metrics": {},
+      "target_value_mean": 0.6823104619979858,
+      "teacher_policy_loss": 0.0,
+      "total_loss": 1.8084896802902222,
+      "value_loss": 0.1532071977853775,
+      "value_pred_mean": 0.7081723809242249
+    },
+    "optimizer_scope": "matchup_adapter_bank_only",
+    "optimizer_state_restored": true,
+    "phase_epochs": 1,
+    "phase_route_decisions": {
+      "alakazam": 13532,
+      "archaludon-ex": 38802,
+      "crustle": 54918,
+      "dragapult": 0,
+      "dragapult-blaziken": 0,
+      "dragapult-dudunsparce": 0,
+      "dragapult-dusknoir": 10624,
+      "dudunsparce": 13088,
+      "garchomp": 11115,
+      "hammer-pult": 11333,
+      "hops-trevenant": 14850,
+      "lucario": 11993,
+      "marnie-s-grimmsnarl-ex": 21430,
+      "rockets-mewtwo": 14337,
+      "slowking": 0,
+      "starmie": 13579,
+      "teal-mask-ogerpon-ex": 10650,
+      "team-rockets-spidops": 13890,
+      "thwackey": 11750,
+      "walrein": 0
+    },
+    "phase_route_sequences": {
+      "alakazam": 255,
+      "archaludon-ex": 765,
+      "crustle": 1279,
+      "dragapult": 0,
+      "dragapult-blaziken": 0,
+      "dragapult-dudunsparce": 0,
+      "dragapult-dusknoir": 255,
+      "dudunsparce": 255,
+      "garchomp": 254,
+      "hammer-pult": 255,
+      "hops-trevenant": 255,
+      "lucario": 255,
+      "marnie-s-grimmsnarl-ex": 508,
+      "rockets-mewtwo": 254,
+      "slowking": 0,
+      "starmie": 255,
+      "teal-mask-ogerpon-ex": 255,
+      "team-rockets-spidops": 254,
+      "thwackey": 254,
+      "walrein": 0
+    },
+    "phase_rows": 288558,
+    "phase_steps": 132,
+    "route_decisions": {
+      "alakazam": 316451,
+      "archaludon-ex": 662653,
+      "crustle": 368723,
+      "dragapult": 0,
+      "dragapult-blaziken": 0,
+      "dragapult-dudunsparce": 0,
+      "dragapult-dusknoir": 144913,
+      "dudunsparce": 186980,
+      "garchomp": 245573,
+      "hammer-pult": 179463,
+      "hops-trevenant": 171021,
+      "lucario": 234760,
+      "marnie-s-grimmsnarl-ex": 1236021,
+      "rockets-mewtwo": 169100,
+      "slowking": 0,
+      "starmie": 186237,
+      "teal-mask-ogerpon-ex": 164870,
+      "team-rockets-spidops": 159901,
+      "thwackey": 216028,
+      "walrein": 0
+    },
+    "route_sequences": {
+      "alakazam": 4140,
+      "archaludon-ex": 7442,
+      "crustle": 4103,
+      "dragapult": 0,
+      "dragapult-blaziken": 0,
+      "dragapult-dudunsparce": 0,
+      "dragapult-dusknoir": 2480,
+      "dudunsparce": 2478,
+      "garchomp": 2910,
+      "hammer-pult": 2480,
+      "hops-trevenant": 2480,
+      "lucario": 2480,
+      "marnie-s-grimmsnarl-ex": 15768,
+      "rockets-mewtwo": 2478,
+      "slowking": 0,
+      "starmie": 2479,
+      "teal-mask-ogerpon-ex": 2480,
+      "team-rockets-spidops": 2478,
+      "thwackey": 3225,
+      "walrein": 0
+    },
+    "rows": 5072859,
+    "runtime_enabled": false,
+    "schema": "poke_bot.dormant_matchup_adapter_fit/v1",
+    "steps": 2321,
+    "trained_archetype_ids": [
+      "crustle",
+      "marnie-s-grimmsnarl-ex",
+      "garchomp",
+      "rockets-mewtwo",
+      "starmie",
+      "hammer-pult",
+      "alakazam",
+      "lucario",
+      "archaludon-ex",
+      "dudunsparce",
+      "hops-trevenant",
+      "dragapult-dusknoir",
+      "thwackey",
+      "team-rockets-spidops",
+      "teal-mask-ogerpon-ex"
+    ],
+    "zero_example_routes_remain_dormant": true
+  },
+  "heldout_champion": {
+    "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+  },
+  "heldout_champion_evidence": {
+    "audit": {
+      "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+      "duplicate_job_ids": [],
+      "exact_distribution": true,
+      "exact_weights": true,
+      "expected_games_per_opponent": 250,
+      "greedy_required": true,
+      "matchup_runtime": {
+        "accepted_roster_counts": {
+          "alakazam|archaludon-ex|crustle|dragapult|dragapult-blaziken|dragapult-dudunsparce|dragapult-dusknoir|dudunsparce|garchomp|hammer-pult|hops-trevenant|lucario|marnie-s-grimmsnarl-ex|rockets-mewtwo|slowking|starmie|teal-mask-ogerpon-ex|team-rockets-spidops|thwackey|walrein": 4500
+        },
+        "active_archetype_counts": {
+          "alakazam": 252,
+          "archaludon-ex": 745,
+          "crustle": 239,
+          "dragapult": 2,
+          "dragapult-dudunsparce": 2,
+          "dragapult-dusknoir": 211,
+          "dudunsparce": 245,
+          "garchomp": 250,
+          "hammer-pult": 129,
+          "hops-trevenant": 247,
+          "lucario": 251,
+          "marnie-s-grimmsnarl-ex": 499,
+          "rockets-mewtwo": 251,
+          "starmie": 249,
+          "teal-mask-ogerpon-ex": 113,
+          "team-rockets-spidops": 248,
+          "thwackey": 249
+        },
+        "active_final_route_games": 4182,
+        "all_games_audited": true,
+        "all_runtime_enabled": true,
+        "audited_games": 4500,
+        "contract_clean": true,
+        "exact_bypass_final_games": 318,
+        "field": "matchup_runtime_audit",
+        "final_route_counts": {
+          "-1": 318,
+          "0": 239,
+          "1": 499,
+          "10": 2,
+          "11": 245,
+          "12": 247,
+          "14": 211,
+          "16": 249,
+          "17": 248,
+          "18": 113,
+          "2": 250,
+          "3": 251,
+          "4": 249,
+          "5": 129,
+          "6": 252,
+          "7": 251,
+          "8": 745,
+          "9": 2
+        },
+        "games": 4500,
+        "initial_bypass_violations": 0,
+        "malformed_games": 0,
+        "missing_games": 0,
+        "mode_counts": {
+          "causal_public_tree": 4500
+        },
+        "observations": 201339,
+        "per_archetype_observations": {
+          "alakazam": 14958,
+          "archaludon-ex": 29512,
+          "crustle": 9355,
+          "dragapult": 425,
+          "dragapult-blaziken": 16,
+          "dragapult-dudunsparce": 81,
+          "dragapult-dusknoir": 3987,
+          "dudunsparce": 8515,
+          "garchomp": 9332,
+          "hammer-pult": 3861,
+          "hops-trevenant": 11587,
+          "lucario": 9611,
+          "marnie-s-grimmsnarl-ex": 16823,
+          "rockets-mewtwo": 13790,
+          "starmie": 11765,
+          "teal-mask-ogerpon-ex": 1952,
+          "team-rockets-spidops": 9484,
+          "thwackey": 10156
+        },
+        "per_route_observations": {
+          "0": 9355,
+          "1": 16823,
+          "10": 425,
+          "11": 8515,
+          "12": 11587,
+          "14": 3987,
+          "15": 16,
+          "16": 10156,
+          "17": 9484,
+          "18": 1952,
+          "2": 9332,
+          "3": 13790,
+          "4": 11765,
+          "5": 3861,
+          "6": 14958,
+          "7": 9611,
+          "8": 29512,
+          "9": 81
+        },
+        "recognized_observations": 165210,
+        "route_transitions": 5315,
+        "runtime_disabled_games": 0,
+        "runtime_enabled_games": 4500,
+        "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+        "schema_counts": {
+          "poke_bot.matchup_adapter_runtime_audit/v1": 4500
+        },
+        "transition_contract_violations": 0,
+        "tree_digest_counts": {
+          "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588": 4500
+        },
+        "unexpected_active_routes": {},
+        "zero_observation_games": 0
+      },
+      "missing_job_ids": [],
+      "passed": true,
+      "per_opponent": {
+        "archaludon-ex": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "lucifer19-battlecore": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "pilkwang-meta-20260708": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-alakazam-final-format-h10-02c014ad7c33": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-archaludon-ex-gate-iter5-251298117902": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-dudunsparce-gate-iter15-a1e944fcb4c4": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-garchomp-gate-iter5-61fbb254944f": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-hammer-pult-gate-iter15-c256a0ababee": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-marnie-final-format-h10-f20efb20f5c3": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        },
+        "specialist-thwackey-gate-iter5-0435f335fde6": {
+          "games": 250,
+          "seat0": 125,
+          "seat1": 125
+        }
+      },
+      "requested_games": 4500,
+      "rows": 4500,
+      "unexpected_job_ids": [],
+      "valid_games": 4500
+    },
+    "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+    "confidence_lower": 0.7497949999999999,
+    "confidence_upper": 0.7701,
+    "evidence_schema": 2,
+    "games": 4500,
+    "gate_id": "specialist-strong-public-roster-sw80-at-iter5-v1+h10-s-other-a-r111+marnie-h10-r163",
+    "iteration": 0,
+    "per_opponent": {
+      "archaludon-ex": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 69.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.724,
+        "wins": 181.0
+      },
+      "lucifer19-battlecore": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 76.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.696,
+        "wins": 174.0
+      },
+      "pilkwang-meta-20260708": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 31.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.876,
+        "wins": 219.0
+      },
+      "specialist-alakazam-final-format-h10-02c014ad7c33": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 46.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.816,
+        "wins": 204.0
+      },
+      "specialist-archaludon-ex-gate-iter5-251298117902": {
+        "draws": 1.0,
+        "games": 250.0,
+        "losses": 94.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.622,
+        "wins": 155.5
+      },
+      "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1": {
+        "draws": 3.0,
+        "games": 250.0,
+        "losses": 23.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.902,
+        "wins": 225.5
+      },
+      "specialist-dudunsparce-gate-iter15-a1e944fcb4c4": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 13.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.948,
+        "wins": 237.0
+      },
+      "specialist-garchomp-gate-iter5-61fbb254944f": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 32.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.872,
+        "wins": 218.0
+      },
+      "specialist-hammer-pult-gate-iter15-c256a0ababee": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 36.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.856,
+        "wins": 214.0
+      },
+      "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 107.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.572,
+        "wins": 143.0
+      },
+      "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5": {
+        "draws": 1.0,
+        "games": 250.0,
+        "losses": 36.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.854,
+        "wins": 213.5
+      },
+      "specialist-marnie-final-format-h10-f20efb20f5c3": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 50.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.8,
+        "wins": 200.0
+      },
+      "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 30.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.88,
+        "wins": 220.0
+      },
+      "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86": {
+        "draws": 1.0,
+        "games": 250.0,
+        "losses": 98.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.606,
+        "wins": 151.5
+      },
+      "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5": {
+        "draws": 5.0,
+        "games": 250.0,
+        "losses": 117.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.522,
+        "wins": 130.5
+      },
+      "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 12.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.952,
+        "wins": 238.0
+      },
+      "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 124.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.504,
+        "wins": 126.0
+      },
+      "specialist-thwackey-gate-iter5-0435f335fde6": {
+        "draws": 0.0,
+        "games": 250.0,
+        "losses": 105.0,
+        "seat0_games": 125.0,
+        "seat1_games": 125.0,
+        "win_rate": 0.58,
+        "wins": 145.0
+      }
+    },
+    "win_rate": 0.7599
+  },
+  "history": [
+    {
+      "active_gate_result": {
+        "audit": {
+          "both_seats": true,
+          "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+          "duplicate_job_ids": [],
+          "exact_distribution": true,
+          "exact_weights": true,
+          "expected_games_per_opponent": 250,
+          "fixed_seed_manifest": {
+            "gate_games": 4500,
+            "gate_seed": 19000000,
+            "mapping": "seed_base + job_index; adjacent job pair is same opponent with seats 0/1"
+          },
+          "fixed_seed_manifest_digest": "sha256:d91732c6f34d3bb8f7e5b848f57182ec2f29c9a17b124e6b1ad37a2882b61c0f",
+          "greedy": true,
+          "greedy_required": true,
+          "matchup_runtime": {
+            "accepted_roster_counts": {
+              "alakazam|archaludon-ex|crustle|dragapult|dragapult-blaziken|dragapult-dudunsparce|dragapult-dusknoir|dudunsparce|garchomp|hammer-pult|hops-trevenant|lucario|marnie-s-grimmsnarl-ex|rockets-mewtwo|slowking|starmie|teal-mask-ogerpon-ex|team-rockets-spidops|thwackey|walrein": 4500
+            },
+            "active_archetype_counts": {
+              "alakazam": 252,
+              "archaludon-ex": 745,
+              "crustle": 239,
+              "dragapult": 2,
+              "dragapult-dudunsparce": 2,
+              "dragapult-dusknoir": 211,
+              "dudunsparce": 245,
+              "garchomp": 250,
+              "hammer-pult": 129,
+              "hops-trevenant": 247,
+              "lucario": 251,
+              "marnie-s-grimmsnarl-ex": 499,
+              "rockets-mewtwo": 251,
+              "starmie": 249,
+              "teal-mask-ogerpon-ex": 113,
+              "team-rockets-spidops": 248,
+              "thwackey": 249
+            },
+            "active_final_route_games": 4182,
+            "all_games_audited": true,
+            "all_runtime_enabled": true,
+            "audited_games": 4500,
+            "contract_clean": true,
+            "exact_bypass_final_games": 318,
+            "field": "matchup_runtime_audit",
+            "final_route_counts": {
+              "-1": 318,
+              "0": 239,
+              "1": 499,
+              "10": 2,
+              "11": 245,
+              "12": 247,
+              "14": 211,
+              "16": 249,
+              "17": 248,
+              "18": 113,
+              "2": 250,
+              "3": 251,
+              "4": 249,
+              "5": 129,
+              "6": 252,
+              "7": 251,
+              "8": 745,
+              "9": 2
+            },
+            "games": 4500,
+            "initial_bypass_violations": 0,
+            "malformed_games": 0,
+            "missing_games": 0,
+            "mode_counts": {
+              "causal_public_tree": 4500
+            },
+            "observations": 201339,
+            "per_archetype_observations": {
+              "alakazam": 14958,
+              "archaludon-ex": 29512,
+              "crustle": 9355,
+              "dragapult": 425,
+              "dragapult-blaziken": 16,
+              "dragapult-dudunsparce": 81,
+              "dragapult-dusknoir": 3987,
+              "dudunsparce": 8515,
+              "garchomp": 9332,
+              "hammer-pult": 3861,
+              "hops-trevenant": 11587,
+              "lucario": 9611,
+              "marnie-s-grimmsnarl-ex": 16823,
+              "rockets-mewtwo": 13790,
+              "starmie": 11765,
+              "teal-mask-ogerpon-ex": 1952,
+              "team-rockets-spidops": 9484,
+              "thwackey": 10156
+            },
+            "per_route_observations": {
+              "0": 9355,
+              "1": 16823,
+              "10": 425,
+              "11": 8515,
+              "12": 11587,
+              "14": 3987,
+              "15": 16,
+              "16": 10156,
+              "17": 9484,
+              "18": 1952,
+              "2": 9332,
+              "3": 13790,
+              "4": 11765,
+              "5": 3861,
+              "6": 14958,
+              "7": 9611,
+              "8": 29512,
+              "9": 81
+            },
+            "recognized_observations": 165210,
+            "route_transitions": 5315,
+            "runtime_disabled_games": 0,
+            "runtime_enabled_games": 4500,
+            "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+            "schema_counts": {
+              "poke_bot.matchup_adapter_runtime_audit/v1": 4500
+            },
+            "transition_contract_violations": 0,
+            "tree_digest_counts": {
+              "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588": 4500
+            },
+            "unexpected_active_routes": {},
+            "zero_observation_games": 0
+          },
+          "missing_job_ids": [],
+          "passed": true,
+          "per_opponent": {
+            "archaludon-ex": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "lucifer19-battlecore": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "pilkwang-meta-20260708": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-alakazam-final-format-h10-02c014ad7c33": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-archaludon-ex-gate-iter5-251298117902": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-dudunsparce-gate-iter15-a1e944fcb4c4": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-garchomp-gate-iter5-61fbb254944f": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-hammer-pult-gate-iter15-c256a0ababee": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-marnie-final-format-h10-f20efb20f5c3": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-thwackey-gate-iter5-0435f335fde6": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            }
+          },
+          "requested_games": 4500,
+          "rows": 4500,
+          "unexpected_job_ids": [],
+          "valid_games": 4500
+        },
+        "bootstrap_resamples": 4000,
+        "candidate_safety_passed": true,
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt",
+        "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "checks": {
+          "accepted_official_holdout_non_regression": true,
+          "audit": true,
+          "individual_opponent_floor": true,
+          "s_plus_matchup_floor_allowance": true,
+          "s_tier_mean_floor": true,
+          "skill_weighted_confidence_lower": true,
+          "skill_weighted_win_rate": false
+        },
+        "confidence_level": 0.9,
+        "confidence_lower": 0.7497949999999999,
+        "confidence_method": "opponent-stratified matched-seat cluster nonparametric bootstrap",
+        "confidence_upper": 0.7701,
+        "games": 4500,
+        "gate_id": "specialist-strong-public-roster-sw80-at-iter5-v1+h10-s-other-a-r111+marnie-h10-r163",
+        "iteration": 0,
+        "matchups": [
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 31,
+            "opponent_id": "pilkwang-meta-20260708",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 219,
+            "wr": 0.876
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 69,
+            "opponent_id": "archaludon-ex",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 181,
+            "wr": 0.724
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 76,
+            "opponent_id": "lucifer19-battlecore",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 174,
+            "wr": 0.696
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 107,
+            "opponent_id": "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 143,
+            "wr": 0.572
+          },
+          {
+            "draws": 5,
+            "games": 250,
+            "losses": 117,
+            "opponent_id": "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 128,
+            "wr": 0.522
+          },
+          {
+            "draws": 1,
+            "games": 250,
+            "losses": 36,
+            "opponent_id": "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 213,
+            "wr": 0.854
+          },
+          {
+            "draws": 3,
+            "games": 250,
+            "losses": 23,
+            "opponent_id": "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 224,
+            "wr": 0.902
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 13,
+            "opponent_id": "specialist-dudunsparce-gate-iter15-a1e944fcb4c4",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 237,
+            "wr": 0.948
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 30,
+            "opponent_id": "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 220,
+            "wr": 0.88
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 50,
+            "opponent_id": "specialist-marnie-final-format-h10-f20efb20f5c3",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 200,
+            "wr": 0.8
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 32,
+            "opponent_id": "specialist-garchomp-gate-iter5-61fbb254944f",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 218,
+            "wr": 0.872
+          },
+          {
+            "draws": 1,
+            "games": 250,
+            "losses": 98,
+            "opponent_id": "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 151,
+            "wr": 0.606
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 105,
+            "opponent_id": "specialist-thwackey-gate-iter5-0435f335fde6",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 145,
+            "wr": 0.58
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 124,
+            "opponent_id": "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 126,
+            "wr": 0.504
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 36,
+            "opponent_id": "specialist-hammer-pult-gate-iter15-c256a0ababee",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 214,
+            "wr": 0.856
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 12,
+            "opponent_id": "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 238,
+            "wr": 0.952
+          },
+          {
+            "draws": 1,
+            "games": 250,
+            "losses": 94,
+            "opponent_id": "specialist-archaludon-ex-gate-iter5-251298117902",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 155,
+            "wr": 0.622
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 46,
+            "opponent_id": "specialist-alakazam-final-format-h10-02c014ad7c33",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 204,
+            "wr": 0.816
+          }
+        ],
+        "minimum_opponent_wr": 0.504,
+        "official_control_gate": {
+          "audit_passed": true,
+          "checkpoint_digest_matches": true,
+          "games": 1000,
+          "minimum_win_rate": 0.5,
+          "passed": true,
+          "replay_eligible": false,
+          "training_eligible": false,
+          "win_rate": 0.516
+        },
+        "passed": false,
+        "pipeline_gate_passed": false,
+        "pipeline_gate_reason": "active_gate_criteria_failed",
+        "promotion_blocks_specialist_transition": false,
+        "promotion_passed": true,
+        "s_plus_below_floor_allowance": 2,
+        "s_plus_below_floor_count": 0,
+        "s_plus_below_floor_opponent_ids": [],
+        "s_plus_individual_floor": 0.3,
+        "s_tier_mean": 0.808,
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "skill_weighted_wr": 0.7599
+      },
+      "candidate": {
+        "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+      },
+      "completed": true,
+      "eval": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/eval/iter_00000.json",
+      "expert_rehearsal": null,
+      "heldout_audit": {
+        "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "duplicate_job_ids": [],
+        "exact_distribution": true,
+        "exact_weights": true,
+        "expected_games_per_opponent": 250,
+        "greedy_required": true,
+        "matchup_runtime": {
+          "accepted_roster_counts": {
+            "alakazam|archaludon-ex|crustle|dragapult|dragapult-blaziken|dragapult-dudunsparce|dragapult-dusknoir|dudunsparce|garchomp|hammer-pult|hops-trevenant|lucario|marnie-s-grimmsnarl-ex|rockets-mewtwo|slowking|starmie|teal-mask-ogerpon-ex|team-rockets-spidops|thwackey|walrein": 4500
+          },
+          "active_archetype_counts": {
+            "alakazam": 252,
+            "archaludon-ex": 745,
+            "crustle": 239,
+            "dragapult": 2,
+            "dragapult-dudunsparce": 2,
+            "dragapult-dusknoir": 211,
+            "dudunsparce": 245,
+            "garchomp": 250,
+            "hammer-pult": 129,
+            "hops-trevenant": 247,
+            "lucario": 251,
+            "marnie-s-grimmsnarl-ex": 499,
+            "rockets-mewtwo": 251,
+            "starmie": 249,
+            "teal-mask-ogerpon-ex": 113,
+            "team-rockets-spidops": 248,
+            "thwackey": 249
+          },
+          "active_final_route_games": 4182,
+          "all_games_audited": true,
+          "all_runtime_enabled": true,
+          "audited_games": 4500,
+          "contract_clean": true,
+          "exact_bypass_final_games": 318,
+          "field": "matchup_runtime_audit",
+          "final_route_counts": {
+            "-1": 318,
+            "0": 239,
+            "1": 499,
+            "10": 2,
+            "11": 245,
+            "12": 247,
+            "14": 211,
+            "16": 249,
+            "17": 248,
+            "18": 113,
+            "2": 250,
+            "3": 251,
+            "4": 249,
+            "5": 129,
+            "6": 252,
+            "7": 251,
+            "8": 745,
+            "9": 2
+          },
+          "games": 4500,
+          "initial_bypass_violations": 0,
+          "malformed_games": 0,
+          "missing_games": 0,
+          "mode_counts": {
+            "causal_public_tree": 4500
+          },
+          "observations": 201339,
+          "per_archetype_observations": {
+            "alakazam": 14958,
+            "archaludon-ex": 29512,
+            "crustle": 9355,
+            "dragapult": 425,
+            "dragapult-blaziken": 16,
+            "dragapult-dudunsparce": 81,
+            "dragapult-dusknoir": 3987,
+            "dudunsparce": 8515,
+            "garchomp": 9332,
+            "hammer-pult": 3861,
+            "hops-trevenant": 11587,
+            "lucario": 9611,
+            "marnie-s-grimmsnarl-ex": 16823,
+            "rockets-mewtwo": 13790,
+            "starmie": 11765,
+            "teal-mask-ogerpon-ex": 1952,
+            "team-rockets-spidops": 9484,
+            "thwackey": 10156
+          },
+          "per_route_observations": {
+            "0": 9355,
+            "1": 16823,
+            "10": 425,
+            "11": 8515,
+            "12": 11587,
+            "14": 3987,
+            "15": 16,
+            "16": 10156,
+            "17": 9484,
+            "18": 1952,
+            "2": 9332,
+            "3": 13790,
+            "4": 11765,
+            "5": 3861,
+            "6": 14958,
+            "7": 9611,
+            "8": 29512,
+            "9": 81
+          },
+          "recognized_observations": 165210,
+          "route_transitions": 5315,
+          "runtime_disabled_games": 0,
+          "runtime_enabled_games": 4500,
+          "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+          "schema_counts": {
+            "poke_bot.matchup_adapter_runtime_audit/v1": 4500
+          },
+          "transition_contract_violations": 0,
+          "tree_digest_counts": {
+            "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588": 4500
+          },
+          "unexpected_active_routes": {},
+          "zero_observation_games": 0
+        },
+        "missing_job_ids": [],
+        "passed": true,
+        "per_opponent": {
+          "archaludon-ex": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "lucifer19-battlecore": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "pilkwang-meta-20260708": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-alakazam-final-format-h10-02c014ad7c33": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-archaludon-ex-gate-iter5-251298117902": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-dudunsparce-gate-iter15-a1e944fcb4c4": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-garchomp-gate-iter5-61fbb254944f": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-hammer-pult-gate-iter15-c256a0ababee": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-marnie-final-format-h10-f20efb20f5c3": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          },
+          "specialist-thwackey-gate-iter5-0435f335fde6": {
+            "games": 250,
+            "seat0": 125,
+            "seat1": 125
+          }
+        },
+        "requested_games": 4500,
+        "rows": 4500,
+        "unexpected_job_ids": [],
+        "valid_games": 4500
+      },
+      "heldout_champion": {
+        "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+      },
+      "heldout_champion_updated": true,
+      "incumbent_after": {
+        "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+      },
+      "iteration": 0,
+      "learner_after": {
+        "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+      },
+      "learner_before": {
+        "digest": "sha256:73443f9544471b25c13f5833847471f4d311b5640af3b2c6d6d3bef6ba2fdf95",
+        "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-crustle-r113-h10-expert-bootstrap-v2/model.pt"
+      },
+      "metrics": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/metrics/iter_00000.json",
+      "next_collection_publish": {
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt",
+        "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "local_ok": true,
+        "local_version": 2,
+        "remote_endpoints": [
+          {
+            "endpoint": "192.168.1.143:8765",
+            "hello_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "matchup_runtime": {
+              "accepted_archetype_ids": [
+                "alakazam",
+                "archaludon-ex",
+                "crustle",
+                "dragapult",
+                "dragapult-blaziken",
+                "dragapult-dudunsparce",
+                "dragapult-dusknoir",
+                "dudunsparce",
+                "garchomp",
+                "hammer-pult",
+                "hops-trevenant",
+                "lucario",
+                "marnie-s-grimmsnarl-ex",
+                "rockets-mewtwo",
+                "slowking",
+                "starmie",
+                "teal-mask-ogerpon-ex",
+                "team-rockets-spidops",
+                "thwackey",
+                "walrein"
+              ],
+              "adapter_format": "poke-bot-matchup-adapter-bank-v6",
+              "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "consecutive_required": 2,
+              "continuous_reevaluation": true,
+              "marker": "/workspace/checkpoint/matchup-runtime-activation.json",
+              "marker_digest": "sha256:7646cf82a466140142f857d043e4627ebeab8c50b56c80f713c6f040ca4da3f3",
+              "one_route_per_decision": true,
+              "physical_slot_capacity": 64,
+              "route_physical_slots": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19
+              ],
+              "route_target_ids": [
+                "crustle",
+                "marnie-s-grimmsnarl-ex",
+                "garchomp",
+                "rockets-mewtwo",
+                "starmie",
+                "hammer-pult",
+                "alakazam",
+                "lucario",
+                "archaludon-ex",
+                "dragapult-dudunsparce",
+                "dragapult",
+                "dudunsparce",
+                "hops-trevenant",
+                "walrein",
+                "dragapult-dusknoir",
+                "dragapult-blaziken",
+                "thwackey",
+                "team-rockets-spidops",
+                "teal-mask-ogerpon-ex",
+                "slowking"
+              ],
+              "slot_registry_digest": "sha256:444c42c1235c19d3d95b10e80a12a84f35c9fb803967096736446eac1a5e225a",
+              "tree": "/workspace/checkpoint/slowking-public-matchup-tree-v33.json",
+              "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588",
+              "unknown_route_exact_bypass": true,
+              "zero_materialized_adapters_allowed": true
+            },
+            "matchup_runtime_worker_probe": {
+              "accepted_archetype_ids": [
+                "alakazam",
+                "archaludon-ex",
+                "crustle",
+                "dragapult",
+                "dragapult-blaziken",
+                "dragapult-dudunsparce",
+                "dragapult-dusknoir",
+                "dudunsparce",
+                "garchomp",
+                "hammer-pult",
+                "hops-trevenant",
+                "lucario",
+                "marnie-s-grimmsnarl-ex",
+                "rockets-mewtwo",
+                "slowking",
+                "starmie",
+                "teal-mask-ogerpon-ex",
+                "team-rockets-spidops",
+                "thwackey",
+                "walrein"
+              ],
+              "runtime_enabled": true,
+              "tree": "/workspace/checkpoint/slowking-public-matchup-tree-v33.json",
+              "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+            },
+            "pin_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "reload_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "reload_skipped_exact_health": true,
+            "version": 0
+          },
+          {
+            "endpoint": "192.168.1.158:8766",
+            "hello_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "matchup_runtime": {
+              "accepted_archetype_ids": [
+                "alakazam",
+                "archaludon-ex",
+                "crustle",
+                "dragapult",
+                "dragapult-blaziken",
+                "dragapult-dudunsparce",
+                "dragapult-dusknoir",
+                "dudunsparce",
+                "garchomp",
+                "hammer-pult",
+                "hops-trevenant",
+                "lucario",
+                "marnie-s-grimmsnarl-ex",
+                "rockets-mewtwo",
+                "slowking",
+                "starmie",
+                "teal-mask-ogerpon-ex",
+                "team-rockets-spidops",
+                "thwackey",
+                "walrein"
+              ],
+              "adapter_format": "poke-bot-matchup-adapter-bank-v6",
+              "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "consecutive_required": 2,
+              "continuous_reevaluation": true,
+              "marker": "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/matchup-runtime-activation.json",
+              "marker_digest": "sha256:7646cf82a466140142f857d043e4627ebeab8c50b56c80f713c6f040ca4da3f3",
+              "one_route_per_decision": true,
+              "physical_slot_capacity": 64,
+              "route_physical_slots": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19
+              ],
+              "route_target_ids": [
+                "crustle",
+                "marnie-s-grimmsnarl-ex",
+                "garchomp",
+                "rockets-mewtwo",
+                "starmie",
+                "hammer-pult",
+                "alakazam",
+                "lucario",
+                "archaludon-ex",
+                "dragapult-dudunsparce",
+                "dragapult",
+                "dudunsparce",
+                "hops-trevenant",
+                "walrein",
+                "dragapult-dusknoir",
+                "dragapult-blaziken",
+                "thwackey",
+                "team-rockets-spidops",
+                "teal-mask-ogerpon-ex",
+                "slowking"
+              ],
+              "slot_registry_digest": "sha256:444c42c1235c19d3d95b10e80a12a84f35c9fb803967096736446eac1a5e225a",
+              "tree": "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/slowking-public-matchup-tree-v33.json",
+              "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588",
+              "unknown_route_exact_bypass": true,
+              "zero_materialized_adapters_allowed": true
+            },
+            "matchup_runtime_worker_probe": {
+              "accepted_archetype_ids": [
+                "alakazam",
+                "archaludon-ex",
+                "crustle",
+                "dragapult",
+                "dragapult-blaziken",
+                "dragapult-dudunsparce",
+                "dragapult-dusknoir",
+                "dudunsparce",
+                "garchomp",
+                "hammer-pult",
+                "hops-trevenant",
+                "lucario",
+                "marnie-s-grimmsnarl-ex",
+                "rockets-mewtwo",
+                "slowking",
+                "starmie",
+                "teal-mask-ogerpon-ex",
+                "team-rockets-spidops",
+                "thwackey",
+                "walrein"
+              ],
+              "runtime_enabled": true,
+              "tree": "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/slowking-public-matchup-tree-v33.json",
+              "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+            },
+            "pin_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "reload_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "reload_skipped_exact_health": true,
+            "version": 11
+          }
+        ],
+        "remote_ok": true,
+        "role": "continuous_learner",
+        "version": 14
+      },
+      "promoted": true,
+      "promotion": {
+        "candidate": {
+          "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+          "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+        },
+        "cluster_count": 40,
+        "config": {
+          "bootstrap_resamples": 2000,
+          "confidence": 0.9,
+          "min_complete_pairs": 40,
+          "min_games": 80,
+          "threshold": 0.45
+        },
+        "continuous_learner": {
+          "candidate_head_to_head_safe": true,
+          "carried_candidate": true,
+          "exact_gate_regression": {
+            "enabled": false,
+            "patience": 2,
+            "reason": "active_gate_or_anchor_unavailable",
+            "regression_margin": 0.01,
+            "streak": 0
+          },
+          "exploration": {
+            "eligible": false,
+            "reason": "heldout_contract_audit_failed"
+          },
+          "learner_after": {
+            "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+          },
+          "learner_before": {
+            "digest": "sha256:73443f9544471b25c13f5833847471f4d311b5640af3b2c6d6d3bef6ba2fdf95",
+            "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-crustle-r113-h10-expert-bootstrap-v2/model.pt"
+          },
+          "minimum_head_to_head_wr": 0.35,
+          "reason": "promoted_safety_carry",
+          "selection_objective": "gate_aligned_best_plus_bounded_continuous_learner_v4"
+        },
+        "deck_schedule": "paired_same_deck_both_candidate_seats",
+        "deployment": {
+          "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt",
+          "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+          "local_ok": true,
+          "local_version": 1,
+          "remote_endpoints": [
+            {
+              "endpoint": "192.168.1.143:8765",
+              "hello_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "matchup_runtime": {
+                "accepted_archetype_ids": [
+                  "alakazam",
+                  "archaludon-ex",
+                  "crustle",
+                  "dragapult",
+                  "dragapult-blaziken",
+                  "dragapult-dudunsparce",
+                  "dragapult-dusknoir",
+                  "dudunsparce",
+                  "garchomp",
+                  "hammer-pult",
+                  "hops-trevenant",
+                  "lucario",
+                  "marnie-s-grimmsnarl-ex",
+                  "rockets-mewtwo",
+                  "slowking",
+                  "starmie",
+                  "teal-mask-ogerpon-ex",
+                  "team-rockets-spidops",
+                  "thwackey",
+                  "walrein"
+                ],
+                "adapter_format": "poke-bot-matchup-adapter-bank-v6",
+                "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+                "consecutive_required": 2,
+                "continuous_reevaluation": true,
+                "marker": "/workspace/checkpoint/matchup-runtime-activation.json",
+                "marker_digest": "sha256:7646cf82a466140142f857d043e4627ebeab8c50b56c80f713c6f040ca4da3f3",
+                "one_route_per_decision": true,
+                "physical_slot_capacity": 64,
+                "route_physical_slots": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19
+                ],
+                "route_target_ids": [
+                  "crustle",
+                  "marnie-s-grimmsnarl-ex",
+                  "garchomp",
+                  "rockets-mewtwo",
+                  "starmie",
+                  "hammer-pult",
+                  "alakazam",
+                  "lucario",
+                  "archaludon-ex",
+                  "dragapult-dudunsparce",
+                  "dragapult",
+                  "dudunsparce",
+                  "hops-trevenant",
+                  "walrein",
+                  "dragapult-dusknoir",
+                  "dragapult-blaziken",
+                  "thwackey",
+                  "team-rockets-spidops",
+                  "teal-mask-ogerpon-ex",
+                  "slowking"
+                ],
+                "slot_registry_digest": "sha256:444c42c1235c19d3d95b10e80a12a84f35c9fb803967096736446eac1a5e225a",
+                "tree": "/workspace/checkpoint/slowking-public-matchup-tree-v33.json",
+                "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588",
+                "unknown_route_exact_bypass": true,
+                "zero_materialized_adapters_allowed": true
+              },
+              "matchup_runtime_worker_probe": {
+                "accepted_archetype_ids": [
+                  "alakazam",
+                  "archaludon-ex",
+                  "crustle",
+                  "dragapult",
+                  "dragapult-blaziken",
+                  "dragapult-dudunsparce",
+                  "dragapult-dusknoir",
+                  "dudunsparce",
+                  "garchomp",
+                  "hammer-pult",
+                  "hops-trevenant",
+                  "lucario",
+                  "marnie-s-grimmsnarl-ex",
+                  "rockets-mewtwo",
+                  "slowking",
+                  "starmie",
+                  "teal-mask-ogerpon-ex",
+                  "team-rockets-spidops",
+                  "thwackey",
+                  "walrein"
+                ],
+                "runtime_enabled": true,
+                "tree": "/workspace/checkpoint/slowking-public-matchup-tree-v33.json",
+                "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+              },
+              "pin_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "reload_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "reload_skipped_exact_health": false,
+              "version": 11
+            },
+            {
+              "endpoint": "192.168.1.158:8766",
+              "hello_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "matchup_runtime": {
+                "accepted_archetype_ids": [
+                  "alakazam",
+                  "archaludon-ex",
+                  "crustle",
+                  "dragapult",
+                  "dragapult-blaziken",
+                  "dragapult-dudunsparce",
+                  "dragapult-dusknoir",
+                  "dudunsparce",
+                  "garchomp",
+                  "hammer-pult",
+                  "hops-trevenant",
+                  "lucario",
+                  "marnie-s-grimmsnarl-ex",
+                  "rockets-mewtwo",
+                  "slowking",
+                  "starmie",
+                  "teal-mask-ogerpon-ex",
+                  "team-rockets-spidops",
+                  "thwackey",
+                  "walrein"
+                ],
+                "adapter_format": "poke-bot-matchup-adapter-bank-v6",
+                "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+                "consecutive_required": 2,
+                "continuous_reevaluation": true,
+                "marker": "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/matchup-runtime-activation.json",
+                "marker_digest": "sha256:7646cf82a466140142f857d043e4627ebeab8c50b56c80f713c6f040ca4da3f3",
+                "one_route_per_decision": true,
+                "physical_slot_capacity": 64,
+                "route_physical_slots": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19
+                ],
+                "route_target_ids": [
+                  "crustle",
+                  "marnie-s-grimmsnarl-ex",
+                  "garchomp",
+                  "rockets-mewtwo",
+                  "starmie",
+                  "hammer-pult",
+                  "alakazam",
+                  "lucario",
+                  "archaludon-ex",
+                  "dragapult-dudunsparce",
+                  "dragapult",
+                  "dudunsparce",
+                  "hops-trevenant",
+                  "walrein",
+                  "dragapult-dusknoir",
+                  "dragapult-blaziken",
+                  "thwackey",
+                  "team-rockets-spidops",
+                  "teal-mask-ogerpon-ex",
+                  "slowking"
+                ],
+                "slot_registry_digest": "sha256:444c42c1235c19d3d95b10e80a12a84f35c9fb803967096736446eac1a5e225a",
+                "tree": "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/slowking-public-matchup-tree-v33.json",
+                "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588",
+                "unknown_route_exact_bypass": true,
+                "zero_materialized_adapters_allowed": true
+              },
+              "matchup_runtime_worker_probe": {
+                "accepted_archetype_ids": [
+                  "alakazam",
+                  "archaludon-ex",
+                  "crustle",
+                  "dragapult",
+                  "dragapult-blaziken",
+                  "dragapult-dudunsparce",
+                  "dragapult-dusknoir",
+                  "dudunsparce",
+                  "garchomp",
+                  "hammer-pult",
+                  "hops-trevenant",
+                  "lucario",
+                  "marnie-s-grimmsnarl-ex",
+                  "rockets-mewtwo",
+                  "slowking",
+                  "starmie",
+                  "teal-mask-ogerpon-ex",
+                  "team-rockets-spidops",
+                  "thwackey",
+                  "walrein"
+                ],
+                "runtime_enabled": true,
+                "tree": "/Users/tsinzitari/workspace/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/slowking-public-matchup-tree-v33.json",
+                "tree_digest": "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588"
+              },
+              "pin_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "reload_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+              "reload_skipped_exact_health": false,
+              "version": 11
+            }
+          ],
+          "remote_ok": true,
+          "version": 11
+        },
+        "draws": 0,
+        "engine_seedable": false,
+        "failures": [],
+        "games": 80,
+        "games_per_seat": {
+          "seat0": 40,
+          "seat1": 40
+        },
+        "incumbent": {
+          "digest": "sha256:3a5aa88a75fa36d8d9e9682818ab2429325e7d0a5a56031fd2ee663c9b424b00",
+          "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/seed.pt"
+        },
+        "interval_center": 0.9875,
+        "interval_lower": 0.9625,
+        "interval_upper": 1.0,
+        "losses": 1,
+        "pairing_claimed": false,
+        "passed": true,
+        "reason": "passed",
+        "score": 79.0,
+        "search": false,
+        "skipped": false,
+        "uncertainty_method": "balanced_seat_cluster_nonparametric_bootstrap",
+        "valid": true,
+        "wins": 79,
+        "wr": 0.9875
+      },
+      "raw_heldout_gate": {
+        "audit": {
+          "both_seats": true,
+          "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+          "duplicate_job_ids": [],
+          "exact_distribution": true,
+          "exact_weights": true,
+          "expected_games_per_opponent": 250,
+          "fixed_seed_manifest": {
+            "gate_games": 4500,
+            "gate_seed": 19000000,
+            "mapping": "seed_base + job_index; adjacent job pair is same opponent with seats 0/1"
+          },
+          "fixed_seed_manifest_digest": "sha256:d91732c6f34d3bb8f7e5b848f57182ec2f29c9a17b124e6b1ad37a2882b61c0f",
+          "greedy": true,
+          "greedy_required": true,
+          "matchup_runtime": {
+            "accepted_roster_counts": {
+              "alakazam|archaludon-ex|crustle|dragapult|dragapult-blaziken|dragapult-dudunsparce|dragapult-dusknoir|dudunsparce|garchomp|hammer-pult|hops-trevenant|lucario|marnie-s-grimmsnarl-ex|rockets-mewtwo|slowking|starmie|teal-mask-ogerpon-ex|team-rockets-spidops|thwackey|walrein": 4500
+            },
+            "active_archetype_counts": {
+              "alakazam": 252,
+              "archaludon-ex": 745,
+              "crustle": 239,
+              "dragapult": 2,
+              "dragapult-dudunsparce": 2,
+              "dragapult-dusknoir": 211,
+              "dudunsparce": 245,
+              "garchomp": 250,
+              "hammer-pult": 129,
+              "hops-trevenant": 247,
+              "lucario": 251,
+              "marnie-s-grimmsnarl-ex": 499,
+              "rockets-mewtwo": 251,
+              "starmie": 249,
+              "teal-mask-ogerpon-ex": 113,
+              "team-rockets-spidops": 248,
+              "thwackey": 249
+            },
+            "active_final_route_games": 4182,
+            "all_games_audited": true,
+            "all_runtime_enabled": true,
+            "audited_games": 4500,
+            "contract_clean": true,
+            "exact_bypass_final_games": 318,
+            "field": "matchup_runtime_audit",
+            "final_route_counts": {
+              "-1": 318,
+              "0": 239,
+              "1": 499,
+              "10": 2,
+              "11": 245,
+              "12": 247,
+              "14": 211,
+              "16": 249,
+              "17": 248,
+              "18": 113,
+              "2": 250,
+              "3": 251,
+              "4": 249,
+              "5": 129,
+              "6": 252,
+              "7": 251,
+              "8": 745,
+              "9": 2
+            },
+            "games": 4500,
+            "initial_bypass_violations": 0,
+            "malformed_games": 0,
+            "missing_games": 0,
+            "mode_counts": {
+              "causal_public_tree": 4500
+            },
+            "observations": 201339,
+            "per_archetype_observations": {
+              "alakazam": 14958,
+              "archaludon-ex": 29512,
+              "crustle": 9355,
+              "dragapult": 425,
+              "dragapult-blaziken": 16,
+              "dragapult-dudunsparce": 81,
+              "dragapult-dusknoir": 3987,
+              "dudunsparce": 8515,
+              "garchomp": 9332,
+              "hammer-pult": 3861,
+              "hops-trevenant": 11587,
+              "lucario": 9611,
+              "marnie-s-grimmsnarl-ex": 16823,
+              "rockets-mewtwo": 13790,
+              "starmie": 11765,
+              "teal-mask-ogerpon-ex": 1952,
+              "team-rockets-spidops": 9484,
+              "thwackey": 10156
+            },
+            "per_route_observations": {
+              "0": 9355,
+              "1": 16823,
+              "10": 425,
+              "11": 8515,
+              "12": 11587,
+              "14": 3987,
+              "15": 16,
+              "16": 10156,
+              "17": 9484,
+              "18": 1952,
+              "2": 9332,
+              "3": 13790,
+              "4": 11765,
+              "5": 3861,
+              "6": 14958,
+              "7": 9611,
+              "8": 29512,
+              "9": 81
+            },
+            "recognized_observations": 165210,
+            "route_transitions": 5315,
+            "runtime_disabled_games": 0,
+            "runtime_enabled_games": 4500,
+            "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+            "schema_counts": {
+              "poke_bot.matchup_adapter_runtime_audit/v1": 4500
+            },
+            "transition_contract_violations": 0,
+            "tree_digest_counts": {
+              "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588": 4500
+            },
+            "unexpected_active_routes": {},
+            "zero_observation_games": 0
+          },
+          "missing_job_ids": [],
+          "passed": true,
+          "per_opponent": {
+            "archaludon-ex": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "lucifer19-battlecore": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "pilkwang-meta-20260708": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-alakazam-final-format-h10-02c014ad7c33": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-archaludon-ex-gate-iter5-251298117902": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-dudunsparce-gate-iter15-a1e944fcb4c4": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-garchomp-gate-iter5-61fbb254944f": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-hammer-pult-gate-iter15-c256a0ababee": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-marnie-final-format-h10-f20efb20f5c3": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "specialist-thwackey-gate-iter5-0435f335fde6": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            }
+          },
+          "requested_games": 4500,
+          "rows": 4500,
+          "unexpected_job_ids": [],
+          "valid_games": 4500
+        },
+        "bootstrap_resamples": 4000,
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt",
+        "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "checks": {
+          "accepted_official_holdout_non_regression": true,
+          "audit": true,
+          "individual_opponent_floor": true,
+          "s_plus_matchup_floor_allowance": true,
+          "s_tier_mean_floor": true,
+          "skill_weighted_confidence_lower": true,
+          "skill_weighted_win_rate": false
+        },
+        "confidence_level": 0.9,
+        "confidence_lower": 0.7497949999999999,
+        "confidence_method": "opponent-stratified matched-seat cluster nonparametric bootstrap",
+        "confidence_upper": 0.7701,
+        "games": 4500,
+        "gate_id": "specialist-strong-public-roster-sw80-at-iter5-v1+h10-s-other-a-r111+marnie-h10-r163",
+        "iteration": 0,
+        "matchups": [
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 31,
+            "opponent_id": "pilkwang-meta-20260708",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 219,
+            "wr": 0.876
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 69,
+            "opponent_id": "archaludon-ex",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 181,
+            "wr": 0.724
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 76,
+            "opponent_id": "lucifer19-battlecore",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 174,
+            "wr": 0.696
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 107,
+            "opponent_id": "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 143,
+            "wr": 0.572
+          },
+          {
+            "draws": 5,
+            "games": 250,
+            "losses": 117,
+            "opponent_id": "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 128,
+            "wr": 0.522
+          },
+          {
+            "draws": 1,
+            "games": 250,
+            "losses": 36,
+            "opponent_id": "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 213,
+            "wr": 0.854
+          },
+          {
+            "draws": 3,
+            "games": 250,
+            "losses": 23,
+            "opponent_id": "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 224,
+            "wr": 0.902
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 13,
+            "opponent_id": "specialist-dudunsparce-gate-iter15-a1e944fcb4c4",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 237,
+            "wr": 0.948
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 30,
+            "opponent_id": "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 220,
+            "wr": 0.88
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 50,
+            "opponent_id": "specialist-marnie-final-format-h10-f20efb20f5c3",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 200,
+            "wr": 0.8
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 32,
+            "opponent_id": "specialist-garchomp-gate-iter5-61fbb254944f",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 218,
+            "wr": 0.872
+          },
+          {
+            "draws": 1,
+            "games": 250,
+            "losses": 98,
+            "opponent_id": "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 151,
+            "wr": 0.606
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 105,
+            "opponent_id": "specialist-thwackey-gate-iter5-0435f335fde6",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 145,
+            "wr": 0.58
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 124,
+            "opponent_id": "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 126,
+            "wr": 0.504
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 36,
+            "opponent_id": "specialist-hammer-pult-gate-iter15-c256a0ababee",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 214,
+            "wr": 0.856
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 12,
+            "opponent_id": "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 238,
+            "wr": 0.952
+          },
+          {
+            "draws": 1,
+            "games": 250,
+            "losses": 94,
+            "opponent_id": "specialist-archaludon-ex-gate-iter5-251298117902",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 155,
+            "wr": 0.622
+          },
+          {
+            "draws": 0,
+            "games": 250,
+            "losses": 46,
+            "opponent_id": "specialist-alakazam-final-format-h10-02c014ad7c33",
+            "seat0": 125,
+            "seat1": 125,
+            "wins": 204,
+            "wr": 0.816
+          }
+        ],
+        "minimum_opponent_wr": 0.504,
+        "official_control_gate": {
+          "audit_passed": true,
+          "checkpoint_digest_matches": true,
+          "games": 1000,
+          "minimum_win_rate": 0.5,
+          "passed": true,
+          "replay_eligible": false,
+          "training_eligible": false,
+          "win_rate": 0.516
+        },
+        "passed": false,
+        "s_plus_below_floor_allowance": 2,
+        "s_plus_below_floor_count": 0,
+        "s_plus_below_floor_opponent_ids": [],
+        "s_plus_individual_floor": 0.3,
+        "s_tier_mean": 0.808,
+        "schema": "poke_bot.public_agent_gate_result/v1",
+        "skill_weighted_wr": 0.7599
+      },
+      "research_control_result": {
+        "action_selection": "greedy",
+        "audit": {
+          "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+          "duplicate_job_ids": [],
+          "exact_distribution": true,
+          "exact_weights": true,
+          "expected_games_per_opponent": 250,
+          "greedy_required": true,
+          "matchup_runtime": {
+            "accepted_roster_counts": {
+              "alakazam|archaludon-ex|crustle|dragapult|dragapult-blaziken|dragapult-dudunsparce|dragapult-dusknoir|dudunsparce|garchomp|hammer-pult|hops-trevenant|lucario|marnie-s-grimmsnarl-ex|rockets-mewtwo|slowking|starmie|teal-mask-ogerpon-ex|team-rockets-spidops|thwackey|walrein": 1000
+            },
+            "active_archetype_counts": {
+              "dragapult": 246,
+              "lucario": 249
+            },
+            "active_final_route_games": 495,
+            "all_games_audited": true,
+            "all_runtime_enabled": true,
+            "audited_games": 1000,
+            "contract_clean": true,
+            "exact_bypass_final_games": 505,
+            "field": "matchup_runtime_audit",
+            "final_route_counts": {
+              "-1": 505,
+              "10": 246,
+              "7": 249
+            },
+            "games": 1000,
+            "initial_bypass_violations": 0,
+            "malformed_games": 0,
+            "missing_games": 0,
+            "mode_counts": {
+              "causal_public_tree": 1000
+            },
+            "observations": 34384,
+            "per_archetype_observations": {
+              "dragapult": 6615,
+              "dragapult-dudunsparce": 9,
+              "lucario": 6680
+            },
+            "per_route_observations": {
+              "10": 6615,
+              "7": 6680,
+              "9": 9
+            },
+            "recognized_observations": 13304,
+            "route_transitions": 552,
+            "runtime_disabled_games": 0,
+            "runtime_enabled_games": 1000,
+            "schema": "poke_bot.matchup_runtime_collection_audit/v1",
+            "schema_counts": {
+              "poke_bot.matchup_adapter_runtime_audit/v1": 1000
+            },
+            "transition_contract_violations": 0,
+            "tree_digest_counts": {
+              "sha256:da223c4903dd37511e5cb7656fe405bc0baac085be4f131faef136b7056c4588": 1000
+            },
+            "unexpected_active_routes": {},
+            "zero_observation_games": 0
+          },
+          "measurement_plan": {
+            "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+            "diagnostic_only": true,
+            "formal_eval": false,
+            "games": 1000,
+            "greedy": true,
+            "iteration": 0,
+            "package_disjoint_from_active_gate": true,
+            "per_opponent": {
+              "dragapult-ex": {
+                "content_digest": "sha256:835dcbcc26366faa04d902db727620d4b12618b6a66d000dccb9c9b86e9d62a0",
+                "games": 250,
+                "seat0": 125,
+                "seat1": 125
+              },
+              "iono": {
+                "content_digest": "sha256:6ba8e818b698774b6e437364e9457600eda950fbefb663d8e4ad39cdaf0371e2",
+                "games": 250,
+                "seat0": 125,
+                "seat1": 125
+              },
+              "mega-abomasnow-ex": {
+                "content_digest": "sha256:57a9499b2bee493a830abaf5a3e19b8a73faea200faee87aeeb2864bab25c2fb",
+                "games": 250,
+                "seat0": 125,
+                "seat1": 125
+              },
+              "mega-lucario-ex": {
+                "content_digest": "sha256:98f20936d430c6cc60f3eb1da8230392bf6dce8ecacf97773bda4db63f56376a",
+                "games": 250,
+                "seat0": 125,
+                "seat1": 125
+              }
+            },
+            "registry_id": "alakazam-research-controls",
+            "registry_version": 1,
+            "replay_eligible": false,
+            "sample_actions": false,
+            "schedule_digest": "sha256:f558f1d717440cfea50d1bccb73840fa3a24b30606d280630b0a8b78f2cf335c",
+            "schema": "poke_bot.research_control_measurement_plan/v1",
+            "seed_disjoint": true,
+            "seed_namespace": "eval/research-controls-fixed-manifest-v1",
+            "seed_start": 39000000,
+            "training_eligible": false
+          },
+          "missing_job_ids": [],
+          "package_disjoint_from_active_gate": true,
+          "passed": true,
+          "per_opponent": {
+            "dragapult-ex": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "iono": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "mega-abomasnow-ex": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            },
+            "mega-lucario-ex": {
+              "games": 250,
+              "seat0": 125,
+              "seat1": 125
+            }
+          },
+          "replay_records_written": 0,
+          "requested_games": 1000,
+          "rows": 1000,
+          "seed_disjoint": true,
+          "unexpected_job_ids": [],
+          "valid_games": 1000
+        },
+        "checkpoint": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt",
+        "checkpoint_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+        "diagnostic_only": true,
+        "draws": 0,
+        "formal_eval": false,
+        "games": 1000,
+        "gate_weight": 0.0,
+        "included_in_gate_pass": false,
+        "iteration": 0,
+        "losses": 484,
+        "matchups": [
+          {
+            "content_digest": "sha256:6ba8e818b698774b6e437364e9457600eda950fbefb663d8e4ad39cdaf0371e2",
+            "draws": 0,
+            "games": 250,
+            "losses": 219,
+            "opponent_id": "iono",
+            "seat0": 125,
+            "seat1": 125,
+            "win_rate": 0.124,
+            "wins": 31.0
+          },
+          {
+            "content_digest": "sha256:835dcbcc26366faa04d902db727620d4b12618b6a66d000dccb9c9b86e9d62a0",
+            "draws": 0,
+            "games": 250,
+            "losses": 28,
+            "opponent_id": "dragapult-ex",
+            "seat0": 125,
+            "seat1": 125,
+            "win_rate": 0.888,
+            "wins": 222.0
+          },
+          {
+            "content_digest": "sha256:57a9499b2bee493a830abaf5a3e19b8a73faea200faee87aeeb2864bab25c2fb",
+            "draws": 0,
+            "games": 250,
+            "losses": 141,
+            "opponent_id": "mega-abomasnow-ex",
+            "seat0": 125,
+            "seat1": 125,
+            "win_rate": 0.436,
+            "wins": 109.0
+          },
+          {
+            "content_digest": "sha256:98f20936d430c6cc60f3eb1da8230392bf6dce8ecacf97773bda4db63f56376a",
+            "draws": 0,
+            "games": 250,
+            "losses": 96,
+            "opponent_id": "mega-lucario-ex",
+            "seat0": 125,
+            "seat1": 125,
+            "win_rate": 0.616,
+            "wins": 154.0
+          }
+        ],
+        "registry_id": "alakazam-research-controls",
+        "registry_version": 1,
+        "replay_eligible": false,
+        "result_path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/research_controls/iter_00000.json",
+        "schedule_digest": "sha256:f558f1d717440cfea50d1bccb73840fa3a24b30606d280630b0a8b78f2cf335c",
+        "schema": "poke_bot.research_control_measurement_result/v1",
+        "seed_namespace": "eval/research-controls-fixed-manifest-v1",
+        "seed_start": 39000000,
+        "training_eligible": false,
+        "win_rate": 0.516,
+        "wins": 516.0
+      },
+      "stage_gate": {
+        "confidence_lower": 0.7497949999999999,
+        "confidence_upper": 0.7701,
+        "draws": 11.0,
+        "forfeits_excluded": 0,
+        "games": 4500,
+        "losses": 1099.0,
+        "passed": false,
+        "per_opponent": {
+          "archaludon-ex": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 69.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.724,
+            "wins": 181.0
+          },
+          "lucifer19-battlecore": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 76.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.696,
+            "wins": 174.0
+          },
+          "pilkwang-meta-20260708": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 31.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.876,
+            "wins": 219.0
+          },
+          "specialist-alakazam-final-format-h10-02c014ad7c33": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 46.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.816,
+            "wins": 204.0
+          },
+          "specialist-archaludon-ex-gate-iter5-251298117902": {
+            "draws": 1.0,
+            "games": 250.0,
+            "losses": 94.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.622,
+            "wins": 155.5
+          },
+          "specialist-dragapult-dusknoir-gate-iter15-b6996ed641b1": {
+            "draws": 3.0,
+            "games": 250.0,
+            "losses": 23.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.902,
+            "wins": 225.5
+          },
+          "specialist-dudunsparce-gate-iter15-a1e944fcb4c4": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 13.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.948,
+            "wins": 237.0
+          },
+          "specialist-garchomp-gate-iter5-61fbb254944f": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 32.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.872,
+            "wins": 218.0
+          },
+          "specialist-hammer-pult-gate-iter15-c256a0ababee": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 36.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.856,
+            "wins": 214.0
+          },
+          "specialist-hops-trevenant-gate-iter10-462f201f8de6-roster18-v5": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 107.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.572,
+            "wins": 143.0
+          },
+          "specialist-lucario-gate-iter10-ffa401242b2c-roster18-v5": {
+            "draws": 1.0,
+            "games": 250.0,
+            "losses": 36.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.854,
+            "wins": 213.5
+          },
+          "specialist-marnie-final-format-h10-f20efb20f5c3": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 50.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.8,
+            "wins": 200.0
+          },
+          "specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 30.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.88,
+            "wins": 220.0
+          },
+          "specialist-rockets-mewtwo-gate-iter5-fc2f9a525a86": {
+            "draws": 1.0,
+            "games": 250.0,
+            "losses": 98.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.606,
+            "wins": 151.5
+          },
+          "specialist-starmie-gate-iter10-51ed1cc6ffe6-roster18-v5": {
+            "draws": 5.0,
+            "games": 250.0,
+            "losses": 117.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.522,
+            "wins": 130.5
+          },
+          "specialist-teal-mask-ogerpon-ex-gate-iter14-5c74cfb63626": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 12.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.952,
+            "wins": 238.0
+          },
+          "specialist-team-rockets-spidops-gate-iter5-4ab63dc94d5a": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 124.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.504,
+            "wins": 126.0
+          },
+          "specialist-thwackey-gate-iter5-0435f335fde6": {
+            "draws": 0.0,
+            "games": 250.0,
+            "losses": 105.0,
+            "seat0_games": 125.0,
+            "seat1_games": 125.0,
+            "win_rate": 0.58,
+            "wins": 145.0
+          }
+        },
+        "reason": "active_gate_criteria_failed",
+        "seat_games": {
+          "seat0": 2250,
+          "seat1": 2250
+        },
+        "win_rate": 0.7599,
+        "wins": 3395.5
+      }
+    }
+  ],
+  "last_completed_iteration": 0,
+  "learner": {
+    "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+  },
+  "lineage_base": {
+    "digest": "sha256:3a5aa88a75fa36d8d9e9682818ab2429325e7d0a5a56031fd2ee663c9b424b00",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/seed.pt"
+  },
+  "live_pool_last_seq": 0,
+  "mode": "specialist",
+  "next_iteration": 1,
+  "opponent_pool": [
+    {
+      "digest": "sha256:3a5aa88a75fa36d8d9e9682818ab2429325e7d0a5a56031fd2ee663c9b424b00",
+      "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/seed.pt"
+    },
+    {
+      "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+      "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+    }
+  ],
+  "policy_prev_agreement_history": [
+    0.8610558568197846
+  ],
+  "raw_advantage_history": [
+    0.5710449669879641
+  ],
+  "run_name": "final_format_crustle_r113_h10_i_v6_8k",
+  "updated_at_utc": "2026-08-06T04:16:36.491567+00:00",
+  "version": 2
+}

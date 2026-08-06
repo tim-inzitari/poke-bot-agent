@@ -1,0 +1,51 @@
+{
+  "schema": "poke_bot.crustle_promote_contract_main_poller_repair_r167/v1",
+  "revision": 167,
+  "created_at_utc": "2026-08-06T14:20:00Z",
+  "summary": "Add daemon __main__ poller + settrace patch-applied flag for Crustle promote-contract rebind under CPython script launch.",
+  "problem": {
+    "symptom": "public_mix_refill loops until 32-round fail-closed when dual-Marnie spare opp_archetype is a specialist-* baseline id",
+    "prior_repairs": [
+      "importlib.import_module hook (insufficient for script launch)",
+      "SourceFileLoader.exec_module + sys.modules (post-exec only)",
+      "builtins.exec wrap (script launch uses PyEval_EvalCode, not builtins.exec)",
+      "one-shot sys.settrace rebind (validated mid-body; live iter5 still looped under process started before poller install)"
+    ],
+    "root_cause_addendum": "settrace can be cleared by later imports/profilers before helper definition; daemon poll of sys.modules['__main__'] rebinds as soon as the helper exists and writes /tmp/crustle_promote_patch_applied_r167.json"
+  },
+  "repair": {
+    "overlay_dir": "/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167",
+    "bootstrap": "crustle_adapter_auth_r167_bootstrap.py",
+    "site_packages_pth": "crustle_adapter_auth_r167.pth",
+    "mechanisms": [
+      "sys.settrace one-shot rebind + patch flag source=settrace",
+      "daemon thread poll_main every 50ms up to ~10 minutes + patch flag source=poll_main",
+      "importlib.import_module / SourceFileLoader.exec_module / runpy._run_code / builtins.exec AST inject retained"
+    ],
+    "normalize_helper": "crustle_promote_contract_r167_patch.replacement_schedule_contract_from_result"
+  },
+  "activation_boundary": {
+    "waited_for": "iter5 attempt_0001 32-round public_mix_refill fail-closed",
+    "quarantine": "quarantine/iter_00005/attempt_0001/",
+    "reason": "interrupted_before_append_only_commit",
+    "systemd_restart": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "post_restart_patch_flag": {
+      "path": "/tmp/crustle_promote_patch_applied_r167.json",
+      "trainer_pid": 916044,
+      "source": "poll_main",
+      "note": "flag pid matches live train_pure_rl.py trainer"
+    }
+  },
+  "gate_handler_race": {
+    "unit": "pokebot-final-format-crustle-r113-h10-gate-handler.service",
+    "rl_onsuccess": "pokebot-final-format-crustle-r113-h10-gate-handler.service",
+    "observation": "After fail-closed auto-restart, an explicit stop at 10:18:10 EDT left RL failed; gate-handler was activating. Stopped gate-handler via systemctl and restarted RL. Gate marker SPECIALIST_GATE_PASSED.crustle-splus-v1 absent — terminal freeze not authorized.",
+    "action": "systemctl --user stop pokebot-final-format-crustle-r113-h10-gate-handler.service; restart RL only"
+  },
+  "do_not": [
+    "recollect sealed iter0-4",
+    "restart healthy RTP pokebot-crustle-rtp-cotrain-r167.service",
+    "restore Bert Alakazam rejoin poller without CPU/MPS selector",
+    "rewrite GOAL.md"
+  ]
+}

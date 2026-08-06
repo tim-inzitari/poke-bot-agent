@@ -1,0 +1,61 @@
+# Slop Box H10 + RTP lineage guide (separately versioned from historical Teal).
+# Training-only strategic_directional_v2 curriculum. No fusion/serving/action
+# authority. RTP sidecar must not consume guide labels.
+schema_version: poke_bot.current_deck_guide/v1
+specialist_id: teal-mask-ogerpon-ex
+display_name: "Slop Box (H10 RTP)"
+physical_source_archetype_id: slop-box
+physical_source_archetype_name: "Slop Box"
+deck_family_name: "Teal Mask Ogerpon ex / Mega Kangaskhan ex"
+secondary_search_alias: "Raging Bolt Ogerpon"
+competitive_family_alias: "Raging Bolt Ogerpon"
+ptcgreplay_public_archetype_id: 67
+ptcgreplay_public_archetype_name: "Slop Box"
+status: h10_rtp_activation_r170_guide_draft
+guide_version: slop-box-h10-rtp-north-star-v1
+teacher_module: poke_bot.teal_mask_ogerpon_heuristics
+implementation_status: cox_chao_distillation_pending_strategic_directional_v2
+deck_complexity: nonlinear
+
+lineage:
+  owner_goal_revision: 170
+  separately_versioned_from_historical_teal: true
+  historical_guide_version_immutable: teal-mask-ogerpon-ex-slop-box-north-star-v3
+
+guide_authors:
+  primary:
+    - "James Cox & Henry Chao"
+  secondary:
+    - "MissingNo."
+  primary_roles:
+    - current_deck_guide_distillation
+    - primary_submission_list
+    - bootstrap_policy_accuracy_gate_focus
+  secondary_roles:
+    - supplementary_distillation_and_practice_evidence
+
+policy_target:
+  type: strategic_directional_v2
+  parameterized_head: false
+  serving_authority: false
+  override_authoritative_policy: false
+  fusion_authority: false
+  rtp_sidecar_may_consume_guide: false
+
+project_representative_binding:
+  primary_submission_team: "James Cox & Henry Chao"
+  primary_submission_id: 55188658
+  exact_60_card_digest: null
+  exact_60_card_status: fail_closed_until_materialized
+  interim_historical_deck_hash: bcfc7b778a72d895
+  multi_deck_family_training: true
+
+strategy_sources:
+  - title: "James Cox & Henry Chao PTCGReplay Slop Box submission"
+    evidence_role: primary_heuristic_guide_and_list_source
+    submission_id: 55188658
+    reviewed_at_utc: 2026-08-06T14:50:00Z
+  - title: "MissingNo. PTCGReplay neural Slop Box signal"
+    evidence_role: secondary_supplementary_only
+    submission_id: 55196701
+    reviewed_at_utc: 2026-08-06T14:50:00Z

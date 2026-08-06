@@ -1,0 +1,12 @@
+{
+  "schema": "poke_bot.crustle_promote_contract_script_trace_repair_r167/v1",
+  "created_at_utc": "2026-08-06T11:55:35Z",
+  "status": "validated",
+  "defect": "CPython python script.py uses PyEval_EvalCode, not builtins.exec; post-exec wrap never rebound live trainer",
+  "fix": "one-shot sys.settrace rebinds _replacement_schedule_contract_from_result then disables; AST rewrite kept for explicit exec",
+  "bootstrap_sha256": "sha256:4b8d354687ab263f36b0aee1304f7b180481a5f78692dfa5281968b94306e649",
+  "validation": "python path/to/train_pure_rl.py MID_EXEC replacement_schedule_contract_from_result + normalize",
+  "live_pre_restart": {
+    "note": "iter4 public_mix_refill looping under defective post-exec wrap; systemd restart"
+  }
+}

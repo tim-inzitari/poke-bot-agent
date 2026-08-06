@@ -1,7 +1,7 @@
 # Pokémon RL Goal Gateway
 
 Schema: `poke_bot.goal_gateway/v1`  
-Revision: `165`
+Revision: `170`
 
 Status: `authoritative`
 
@@ -32,13 +32,19 @@ acceptance while preserving the failed measured-gate evidence and never
 calling it a pass. Then begin the separately versioned, up-to-date Marnie's
 Grimmsnarl ex refresh and continue it through the durable zero-indexed
 `iter_00020` boundary without collecting `iter_00021`. After that exact
-checkpoint is truthfully completed, frozen, and registered, train a new,
-separately versioned H10 Crustle specialist. Preserve Crustle's stable Matchup
-Router Format 6 slot and the public `pilkwang-meta-20260708` package as
-inference-only baseline/history; neither substitutes for the new trainable
-specialist. Transition to population round-robin only after Alakazam, Marnie's
-Grimmsnarl ex, and the new Crustle specialist are truthfully training-complete,
-frozen, and registered under their recorded completion authority.
+checkpoint is truthfully completed, frozen, and registered, a new separately
+versioned H10 Crustle specialist was started; under revision 170 the owner
+abandons Crustle for now (preserve all artifacts; no deletes) and immediately
+activates the separately versioned H10 + RTP Slop Box specialist
+(`teal-mask-ogerpon-ex` / Raging Bolt Ogerpon), distinct from historical
+Teal/Slop Box, under the dual-pipeline, Cox/Chao guide, full-archetype expert
+bootstrap, ≥90% Cox/Chao policy-accuracy gate, deck-agnostic Alakazam/Marnie
+warm-start, and expert-bootstrap RTP-cut contracts. Preserve Crustle's stable
+Matchup Router Format 6 slot and `pilkwang-meta-20260708` as inference-only
+baseline/history. Transition to population round-robin only after Alakazam,
+Marnie's Grimmsnarl ex, and Slop Box H10 RTP are truthfully training-complete,
+frozen, and registered (Crustle may rejoin later by explicit owner order; it is
+not a current population blocker while abandoned).
 
 Matchup Router Format 6 is active in the Teal Mask Ogerpon ex lineage. It uses 64 fixed
 physical slots so ordinary archetype additions, retirements, renames, and
@@ -745,6 +751,11 @@ or workflow has changed:
 | 163 | 2026-08-05 | Select the exact Marnie's Grimmsnarl ex iteration-9 milestone checkpoint `sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381` (milestone copy 1/1, first-if-allowed) as the canonical Marnie freeze for Crustle training. Use it training-only; do not upload or submit it to Kaggle. Preserve the historical iteration-20 completion/freeze and all prior receipts byte-for-byte. | Activated at the Crustle pre-bootstrap boundary through `state/marnie-canonical-training-freeze-r163.json`; the Crustle practice/holdout anchor and staged opponent bind this checkpoint and bundle while retaining the immutable Marnie completion registry as the source runtime lineage. |
 | 164 | 2026-08-05 | Keep Crustle's checksum-bound strategic current-deck guide active after its 35-epoch bootstrap as well as during it. The registered Crustle RL lineage keeps the bounded `0.05` strategic-directional guide loss and its learned-head curriculum; the guide remains training-only with zero serving, direct policy-imitation, runtime-logit, action, and gate authority. | Staged for Crustle's checksum-backed bootstrap-to-RL registration boundary. The active bootstrap is not restarted or modified. The registration fails closed unless it binds the same guide contract, directional strategic curriculum, and 19-head Fusion-v3 route contract. |
 | 165 | 2026-08-05 | Make the Crustle guide exception persistent: do not enqueue generic guide-on/guide-off reviews, ramps, or decay for Crustle, and never reduce its registered strategic-directional guide weight from `0.05` automatically. Any future Crustle guide change requires a new explicit owner decision and a checksum-bound boundary receipt. | Staged for the same bootstrap-to-RL registration boundary. This corrects the generic prospective guide-policy inheritance without altering the active bootstrap or granting guide runtime/action authority. |
+| 166 | 2026-08-05 | For Slowking research, learn the archetype from every confirmed public Slowking acting seat rather than requiring one exact 60-card fingerprint. All 768 currently recovered games across `vibechu` and `ShumpeiNomura` and all three observed list versions are policy- and strategic-learning eligible. Supply deck contents and legal actions to the learner; use exact-list identity only for optional conditioning, card-capability masking, drift analysis, and day/list-held-out evaluation. Reuse the existing expanded strategic heads, `setup_board_outcome`, `combo_state`, bounded option-conditioned decision fusion, expert feature/rehearsal path, and causal training-only Slowking guide. | Materialized as research-only contract `config/slowking_archetype_learning.v1.json`, validator/index code, and tests. This does not reopen the terminal failed experiment or grant training, checkpoint, selector, serving, registration, or submission authority. |
+| 167 | 2026-08-05 | Crustle's strong-public / frozen opponent roster must retain two distinct Marnie specialists: (1) historical old-format Marnie `specialist-marnie-s-grimmsnarl-ex-gate-iter5-52a5207e4c98` with package digest `sha256:ae9f3c31…` as tier A/1.0, and (2) H10-format Marnie `specialist-marnie-final-format-h10-f20efb20f5c3` bound to checkpoint `sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381` with package digest `sha256:f7c25cfd…` as tier S/2.0. Do not collapse them into one row or reuse the historical digest on the H10 identity. | Activated at the Crustle RL preflight boundary through checksum-bound gate/frozen-registry rebind; receipt `/home/inzi/poke-bot-agent/outputs/state/crustle-dual-marnie-roster-repair-r167.json` (`sha256:86e4e6b6…`) with gate `sha256:271c7c56…` (18 opponents / 4500 heldout). |
+| 168 | 2026-08-06 | Add the historical public Crustle-busting Lucario package `yaroslav-lucario-v2-crustle` (content digest `sha256:2738a2e4394155b0122eeaa68cec9bbe0cc7dbb4b79f5d055827778444b68bb3`) to Crustle's strong-public practice roster and formal premium holdout as tier A/weight 1.0 alongside the dual-Marnie A+S rows. This is an explicit owner retention of that public package despite frozen Lucario specialist supersession of other lucario externals. Expand the checksum roster from 18→19 opponents and formal games from 4,500→4,750 with exact 250/125/125 seats. Do not recollect iteration 5 or delete quarantine. | Staged for the next clean pre-collection / remaining-holdout boundary after the in-flight iteration-5 corpus restore. Live r163 gate/frozen registry digests remain bound to the restore fingerprint; staged artifacts are `runtime/final_format_crustle_gate_r168_lucario_a.json` (`sha256:611c67e6d4db1ae4995c307ec65180f49b4b2a9299c57c9eedcd66c7e8f1580a`) and `ops/frozen_specialist_registry_crustle_r168_lucario_a.json` (`sha256:7dc9768f8ec9b6a624519128d5fa202d51ad083f43d4d41023b4d7b10e803e32`). Receipt: `outputs/state/crustle-lucario-a-tier-roster-r168.json` (`sha256:325f55fde68272eda206911b9d9ea2ec371940932675066abd5365be96a2a95a`). |
+| 169 | 2026-08-06 | Prepare the next separately versioned H10 + RTP specialist after Crustle as Slop Box (`teal-mask-ogerpon-ex` / Raging Bolt Ogerpon), distinct from historical Teal/Slop Box. Distill the current-deck guide from James Cox & Henry Chao heuristic acting-seat play as primary authors; use MissingNo. only as supplementary neural evidence. Steal one Cox/Chao 60-card list as the checksum-bound primary submission representative while training on the multi-deck/family system. Use the Crustle-like dual pipeline: (1) Cox/Chao(+MissingNo.) guide on the H10 RL learner as `strategic_directional_v2` training-only with zero fusion/serving/action authority; (2) separate RTP cotrain sidecar on RL shards from a frozen guide-shaped parent encoder publishing `rtp_shadow_planner.pt` / `POKEBOT_RTP_CHECKPOINT`; no guide head inside RTP serving. Guide-weighted RTP train loss requires a later explicit owner receipt. Also stage a deck-agnostic H10 warm-start core from frozen final-format Alakazam H10 `sha256:02c014ad7c3318d9871a2b16b57b25adb721d5c88cacb2a3d23db3c2f3ca0d92` and Marnie H10 training freeze `sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381` via fail-closed compatibility migration and step-zero parity; recommended recipe is sequential primary-parent reuse (Marnie) then optional dual-teacher distill from Alakazam—not weight averaging—never rewriting parents. | Staged only in `state/slop_box_h10_rtp_prestage_identity_r169.json` for the post-Crustle receipt-backed boundary. Inactive: no Slop Box bootstrap/RL/RTP units started; does not interrupt Crustle iter5 restore or RTP cotrain. Exact Cox/Chao 60-card digest and owner confirmation of primary warm-start parent remain fail-closed blockers before bootstrap. |
+| 170 | 2026-08-06 | Abandon the in-flight Crustle H10 specialist for now: stop/hold its managed RL/RTP/restore units via systemd only, preserve every game, shard, commit, quarantine, and receipt byte-for-byte, and do not delete or recollect. Immediately activate the separately versioned Slop Box H10 + RTP specialist (`teal-mask-ogerpon-ex`). Bootstrap trains on the full teal-mask-ogerpon-ex / Slop Box acting-seat expert corpus (not Cox/Chao-only). Distill the `strategic_directional_v2` current-deck guide from James Cox & Henry Chao (MissingNo. secondary). Steal one Cox/Chao 60-card list as the primary submission representative. Bootstrap fail-closed gate: ≥90% policy accuracy on the Cox/Chao held evaluation split, measured as acting-seat next-action argmax match (`policy_acc` / `validation_accuracy` style: `mean(predictions == target_idx)` over Cox/Chao-only held rows after `episode_id+seat+TeamNames[seat]` join). Dual pipeline: guide is RL-learner training-only with zero fusion/serving/action authority; RTP is a neural-only sidecar with no guide head in RTP serving. H10 expert bootstrap must also produce the initial Slop Box RTP cut (`rtp_shadow_planner.pt`) bound to the Slop Box H10 parent from the bootstrap trajectory/expert-derived shard—not wait for later pure-RL cotrain only. Warm-start from checksum-bound Alakazam H10 `sha256:02c014ad…` and Marnie H10 freeze `sha256:f20efb20…` via sequential primary-parent reuse (recommended: Marnie) then optional dual-teacher distill; never rewrite parents; fail-closed migration/parity before bootstrap. | Activated for abandon+start. Canonical typed pre-stage/activation identity: `state/slop_box_h10_rtp_prestage_identity_r170.json`. Crustle abandon receipt: `outputs/state/crustle-owner-abandon-r170.json`. |
 
 ## Non-regression invariants
 
@@ -968,13 +979,13 @@ or workflow has changed:
   Direct migration must either validate completely or fail without producing a
   promotable partial child.
 - Population training remains blocked until both post-fleet refresh versions
-  and the new post-Marnie H10 Crustle specialist are truthfully
+  and the separately versioned H10 + RTP Slop Box specialist are truthfully
   training-complete under either a measured gate pass or an explicit owner
-  ceiling acceptance, then freeze and register. Ceiling
-  acceptance must preserve the failed gate evidence and must never be labeled
-  as a measured pass. Before that boundary neither
-  refresh has current selector, pre-stage, runtime, service, or gradient
-  authority.
+  ceiling acceptance, then freeze and register. Ceiling acceptance must
+  preserve the failed gate evidence and must never be labeled as a measured
+  pass. Abandoned Crustle is preserved but is not a current population
+  blocker until the owner restores it. Slop Box H10 + RTP bootstrap is the
+  active specialist path under revision 170.
 - The released own-model population has exactly 15 trainable logical members,
   derived from the checksum-bound frozen registry. Slowking is not a trainable
   population member. Crustle uses its newly completed H10 specialist rather

@@ -1,0 +1,9 @@
+{
+  "schema": "poke_bot.crustle_dashboard_rtp_projection/v1",
+  "status": "superseded_by_concurrent_rl_cotrain",
+  "superseded_by": "crustle_dashboard_active_rl_projection",
+  "goal_revision": 167,
+  "updated_at_utc": "2026-08-06T02:01:37.948427+00:00",
+  "specialist_id": "crustle",
+  "note": "Exclusive RTP override lifted; ordinary RL owns curriculum; RTP continues as cotrain sidecar"
+}

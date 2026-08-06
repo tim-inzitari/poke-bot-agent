@@ -1,0 +1,44 @@
+[Unit]
+Description=Bootstrap Slop Box H10 expert + initial RTP cut (r170)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/inzi/poke-bot-agent/state/slop_box_h10_rtp_prestage_identity_r170.json
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/state/crustle-owner-abandon-r170.json
+# Expert-derived RTP shard must exist before launch (fail closed).
+ConditionPathExists=/home/inzi/poke-bot-agent/outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.jsonl
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/inzi/poke-bot-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python -u /home/inzi/poke-bot-agent/scripts/run_slop_box_h10_rtp_bootstrap.py \
+  --identity /home/inzi/poke-bot-agent/state/slop_box_h10_rtp_prestage_identity_r170.json \
+  --parent /home/inzi/poke-bot-agent/outputs/pure_rl/final_format_marnie_r104_h10_i_v6_8k/checkpoints/iter_00007.pt \
+  --parent-digest sha256:f20efb20f5c30820c7e23004e529d326ec87f91b026c1fe3bbb431f9c8b44381 \
+  --guide /home/inzi/poke-bot-agent/config/deck_guides/slop-box-h10-rtp-north-star-v1.yaml \
+  --guide-ready /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/CURRENT_DECK_GUIDE_CORPUS_READY.json \
+  --expert /home/inzi/poke-bot-agent/data/bootstrap/expert-latest20-2026-07-04-2026-07-23-roster18-v6-strategic/teal-mask-ogerpon-ex/PROTECTED_EXPERT_CORPUS.json \
+  --protocol /home/inzi/poke-bot-agent/config/rl_protocol.yaml \
+  --registry-root /home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models \
+  --ready /home/inzi/poke-bot-agent/outputs/state/final-format-slop-box-h10-rtp-bootstrap-ready.json \
+  --run-dir /home/inzi/poke-bot-agent/outputs/bootstrap/final_format_slop_box_h10_rtp \
+  --cpu-pack-root /home/inzi/poke-bot-agent/outputs/bootstrap/cpu-packs/final_format_slop_box_h10_rtp \
+  --curriculum-root /home/inzi/poke-bot-agent/outputs/state/final_format_slop_box_curriculum_r170_h10_19 \
+  --family final-format-slop-box-h10-rtp-expert-bootstrap-v1 \
+  --batch-size 2048 \
+  --rtp-shard /home/inzi/poke-bot-agent/outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.jsonl \
+  --rtp-out-dir /home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10 \
+  --rtp-live-checkpoint /home/inzi/poke-bot-agent/outputs/rtp_fleet/slop-box-h10.live/rtp_shadow_planner.pt \
+  --rtp-cut-receipt /home/inzi/poke-bot-agent/outputs/state/slop-box-h10-rtp-bootstrap-cut-r170.json \
+  --rtp-device cuda:0
+Restart=on-failure
+RestartSec=60
+MemoryHigh=96G
+MemoryMax=112G
+MemorySwapMax=0
+StandardOutput=append:/home/inzi/poke-bot-agent/outputs/final_format_slop_box_h10_rtp/logs/bootstrap.log
+StandardError=append:/home/inzi/poke-bot-agent/outputs/final_format_slop_box_h10_rtp/logs/bootstrap.log
+
+[Install]
+WantedBy=default.target
