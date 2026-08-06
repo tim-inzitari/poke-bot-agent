@@ -1,0 +1,25 @@
+{
+  "blocker": "public_mix_refill staged valid dual-Marnie spares but promote rejected them due to opp_archetype specialist-id vs marnie-s-grimmsnarl-ex job contract mismatch",
+  "collection_receipt_iter1_present": false,
+  "created_at_unix": 1785994489.6199596,
+  "fail_closed_snippet": "_slots=52 remote_chunk=256 refill_games=1 demand={'192.168.1.143:8765': 36, '192.168.1.158:8766': 16} result_buffer=ram:296+disk:16.0GiB (chunked RTT amortize; metrics=wave_wall_clock_gps; remote_demand max\u226bdefault)\n[remote] tail_work_steal=start fraction=0.20 threshold_jobs=1 returned_to_shared=0 released_by_endpoint={} shared_remaining=0 remote_claim_games=1 local_pool_remains_eligible=true self_play_elmo_tail_only=False\n[remote] queue_refill_controller interval=1.000s low_water=50% action=fill_to_high_water endpoints=parallel ingest_coupled=false\n[pure_rl] mid_iter_rebalance=done scheduler=mid_iter local_share=0.50 remote_share=0.55 target_workers=96 leaf_gpu0_frac=0.30 remote_chunk=256 remote_demand=elmo=36,192.168.1.158=16 wave_gps=2.18 local_gps=1.07 remote_gps=1.12 wave_sps=102.1 lo",
+  "fix": {
+    "bootstrap": "crustle_adapter_auth_r167.pth -> crustle_adapter_auth_r167_bootstrap.py",
+    "normalization": "use matchup_runtime_audit.active_archetype_id when record opp_archetype echoes specialist id",
+    "overlay": "/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167/crustle_promote_contract_r167_patch.py"
+  },
+  "goal_revision": 167,
+  "iter0_preserved": true,
+  "missing_job_indices": [
+    8075,
+    8186
+  ],
+  "opponent_id": "specialist-marnie-final-format-h10-b3307cf1bd67",
+  "schema": "poke_bot.crustle_public_mix_refill_promote_contract_repair_r167/v1",
+  "service_failure": {
+    "cause": "bad builtins.__import__ bootstrap hung ExecStartPre; repaired before restart",
+    "nrestarts_observed": 4,
+    "result": "timeout"
+  },
+  "status": "armed_for_restart"
+}

@@ -1,21 +1,20 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_unix": 1785989848.625664,
+  "created_at_unix": 1785994523.5683029,
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "iter0_committed_iter1_live",
-  "collection": {
-    "games": 8192,
-    "decisions": 382294,
-    "baseline_failed": 0
-  },
+  "phase": "iter1_recollect_after_promote_contract_repair",
   "commits": [
     "iter_00000.json"
   ],
   "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
   "rl_active": true,
   "rtp_active": true,
+  "rl_main_pid": 3639395,
+  "nrestarts": 0,
   "oom": 0,
-  "action": "supervise_only_no_restart",
-  "progress": "pure_rl collect:self_play iter=1:  25%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258a                           | 251/1024 [00:50<02:03,  6.24game/s, bout=76, eout=36, rout=112, rsock=52, sps=0]"
+  "action": "supervise_recollect_with_promote_patch",
+  "progress": "pure_rl collect:self_play iter=1:   0%|                                    | 1/1024 [00:12<3:41:24, 12.99s/game, bout=207, eout=408, rout=615, rsock=52, sps=0.9]",
+  "repair_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-public-mix-refill-promote-contract-repair-r167.json",
+  "note": "Interrupted iter1 quarantined; promote contract overlay armed; do not recollect sealed iter0"
 }

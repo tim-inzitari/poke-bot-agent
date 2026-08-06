@@ -16,6 +16,7 @@ Live training mode: **concurrent Crustle RL + RTP co-train** (not exclusive RTP)
 - RTP sidecars remain `serving_eligible: false`.
 - **Iter0 committed.** Collection 8192/382294 (`baseline_failed=0`); champion `sha256:d7d278b9ebd0…` at `checkpoints/iter_00000.pt`. Loop `last=0 next=1`. Do not recollect iter0.
 - Adapter-auth repair (r167): code accepts Crustle 35-epoch `poke_bot.crustle_guide_all_epochs/v1`. Runtime uses overlay `/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167` + `crustle_adapter_auth_r167.pth` so the hashed deploy tree stays byte-identical.
+- **Iter1 promote-contract repair (r167):** first iter1 public_mix reached 7168/7168 then looped `public_mix_refill` on jobs 8075/8186 vs dual-Marnie `b3307…` because staged spares used specialist-id `opp_archetype` while primary job contracts use `marnie-s-grimmsnarl-ex`. Overlay now also patches `_replacement_schedule_contract_from_result` via `crustle_promote_contract_r167_patch.py`. Interrupted attempt quarantined; RL restarted under systemd and is recollecting iter1 (`self_play`). Receipt: `state/crustle_public_mix_refill_promote_contract_repair_r167.json`. Keep Bert Alakazam rejoin poller bootout until a CPU/MPS selector exists.
 
 ---
 
