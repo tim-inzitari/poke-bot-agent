@@ -11,7 +11,7 @@ Live training mode: **Slop Box H10 + RTP** (Crustle abandoned for now)
 - Crustle units on train are runtime-masked + `Restart=no` (`99-owner-abandon-r170.conf`). Receipt: `outputs/state/crustle-owner-abandon-r170.json`.
 - Immediately activate separately versioned Slop Box H10 + RTP (`teal-mask-ogerpon-ex` / Raging Bolt Ogerpon), distinct from historical Teal/Slop Box.
 - Canonical identity: `state/slop_box_h10_rtp_prestage_identity_r170.json`. Bootstrap unit: `pokebot-final-format-slop-box-h10-rtp-bootstrap.service`.
-- **Current blocker:** `outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.jsonl` not yet materialized (ConditionPathExists). Contract sync: `state/slop-box-h10-rtp-contract-sync-r170.json`.
+- Expert trajectory shard materialized (`42453` games / `2979468` decisions; receipt beside shard). Bootstrap unit **activating** (`pokebot-final-format-slop-box-h10-rtp-bootstrap.service`, MainPID live); currently running RTP cut pipeline then H10 expert bootstrap. Contract sync: `state/slop-box-h10-rtp-contract-sync-r170.json`.
 - Warm-start default parent: Marnie H10 freeze `sha256:f20efb20…`; optional Alakazam teacher `sha256:02c014ad…`. Never rewrite parents.
 - Dual pipeline: guide is RL-learner training-only (no fusion/serving/action authority); RTP is neural-only sidecar; expert bootstrap must also emit initial `rtp_shadow_planner.pt`.
 - Population waits on Alakazam + Marnie + Slop Box H10 RTP (Crustle not a blocker while abandoned).
