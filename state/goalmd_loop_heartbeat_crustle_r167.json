@@ -1,21 +1,21 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_unix": 1785985575.7577906,
+  "created_at_unix": 1785989848.625664,
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "learner_resume_after_adapter_auth_repair",
+  "phase": "iter0_committed_iter1_live",
   "collection": {
     "games": 8192,
     "decisions": 382294,
-    "baseline_failed": 0,
-    "preserved": true
+    "baseline_failed": 0
   },
-  "commits": [],
+  "commits": [
+    "iter_00000.json"
+  ],
+  "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
   "rl_active": true,
   "rtp_active": true,
   "oom": 0,
-  "recent_bad": 0,
-  "action": "repaired_adapter_auth_35_epochs_and_restarted_rl",
-  "progress": "replay-cache load iter_00000.jsonl:  64%|\u2588\u2588\u2588\u2588\u2588\u2588\u258d   | 23/36 [00:28<00:15,  1.22s/part]",
-  "repair_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-adapter-auth-epoch-repair-r167.json"
+  "action": "supervise_only_no_restart",
+  "progress": "pure_rl collect:self_play iter=1:  25%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258a                           | 251/1024 [00:50<02:03,  6.24game/s, bout=76, eout=36, rout=112, rsock=52, sps=0]"
 }

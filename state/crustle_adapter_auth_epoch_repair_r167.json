@@ -1,16 +1,22 @@
 {
   "schema": "poke_bot.crustle_adapter_auth_epoch_repair_r167/v1",
-  "created_at_unix": 1785985565.7667823,
+  "created_at_unix": 1785989848.6252668,
   "goal_revision": 167,
-  "blocker": "specialist bootstrap adapter authorization contract is invalid",
-  "root_cause": "validator hard-coded 25 epochs; Crustle r162 all-guide bootstrap completed 35",
-  "fix": "expected_specialist_bootstrap_epochs reads poke_bot.crustle_guide_all_epochs/v1 guide_active_epochs",
-  "deploy_module": "/home/inzi/poke-bot-agent-deployments/final-format-marnie-postupload-r136/poke_bot/matchup_adapter_activation.py",
-  "deploy_sha256": "sha256:c731bbc8212e72ee3ed46c42e3a0ce6747fab749d99c5c8cc503fe0f08e226fc",
-  "live_authorization": "/home/inzi/poke-bot-agent/outputs/state/crustle-h10-matchup-adapter-bootstrap-r113.json",
-  "live_validation": "passed",
-  "expected_epochs": 35,
+  "status": "resolved",
+  "blocker": "specialist bootstrap adapter authorization contract is invalid (25 vs 35 epochs)",
+  "secondary_blocker": "ActivationReceipt isinstance mismatch from dual module load",
+  "fix": {
+    "code": "expected_specialist_bootstrap_epochs from poke_bot.crustle_guide_all_epochs/v1",
+    "deploy_tree_file": "poke_bot/matchup_adapter_activation.py kept at sha256:d05e91bb79bd507983474238c62b9165ce5b4d6e79f98fb03249b5b7559111ea",
+    "runtime_patch": "/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167",
+    "site_pth": "crustle_adapter_auth_r167.pth"
+  },
   "collection_preserved": true,
-  "collection_receipt": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/collection_receipts/iter_00000.json",
-  "action": "systemctl --user stop/start pokebot-final-format-crustle-r113-h10-rl.service after deploy; no recollection"
+  "adapter_fit": {
+    "rows": 288558,
+    "epoch": 0
+  },
+  "iter0_commit": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/commits/iter_00000.json",
+  "iter0_commit_sha256": "sha256:36b73d43e9bb71d047573d2de40463dafcca29224def4e91d70b2d5b356a6490",
+  "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb"
 }

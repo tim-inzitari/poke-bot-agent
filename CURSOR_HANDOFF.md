@@ -12,10 +12,10 @@ Live training mode: **concurrent Crustle RL + RTP co-train** (not exclusive RTP)
 - Exclusive override lifted; do not restore `crustle-rtp-training-override-r167.json` unless owner orders exclusive RTP again.
 - Dual-Marnie public opponents require `specialist-marnie-final-format-h10-f20efb20f5c3` **and** `...-b3307cf1bd67` in each remote **`agents[]`** manifest. Elmo mount source is `/mnt/Main/Elmo/.../baseline-sync` (not `/mnt/Main/main/...`).
 - Slowking distill/reverse-engineered policy must not be hard-imported on the Crustle deploy path.
-- Receipts: `state/crustle_rtp_rl_cotrain_r167.json`, `state/crustle_agent_no_slowking_policy_r167.json`, `outputs/state/goalmd-loop-heartbeat-crustle-r167.json`, `state/crustle_adapter_auth_epoch_repair_r167.json`.
+- Receipts: `state/crustle_rtp_rl_cotrain_r167.json`, `state/crustle_agent_no_slowking_policy_r167.json`, `outputs/state/goalmd-loop-heartbeat-crustle-r167.json`, `state/crustle_adapter_auth_epoch_repair_r167.json`, `state/crustle_iter_00000_commit_r167.json`.
 - RTP sidecars remain `serving_eligible: false`.
-- Iter0 collection is committed (8192 games / 382294 decisions, `baseline_failed=0`). Do not recollect.
-- Adapter-auth repair (r167): validator no longer hard-codes 25 bootstrap epochs; Crustle `poke_bot.crustle_guide_all_epochs/v1` expects 35. Deployed to `final-format-marnie-postupload-r136` and RL restarted with corpus preserved.
+- **Iter0 committed.** Collection 8192/382294 (`baseline_failed=0`); champion `sha256:d7d278b9ebd0…` at `checkpoints/iter_00000.pt`. Loop `last=0 next=1`. Do not recollect iter0.
+- Adapter-auth repair (r167): code accepts Crustle 35-epoch `poke_bot.crustle_guide_all_epochs/v1`. Runtime uses overlay `/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167` + `crustle_adapter_auth_r167.pth` so the hashed deploy tree stays byte-identical.
 
 ---
 
