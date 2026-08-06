@@ -1,0 +1,21 @@
+# Slop Box H10 RTP bootstrap cut — expert-bootstrap phase (not RL-shard-only).
+# Guide remains RL-only; this sidecar is neural-only.
+schema: poke_bot.recursive_turn_planner.archetype_registry/v1
+archetypes:
+  - specialist_id: teal-mask-ogerpon-ex
+    display_name: "Slop Box H10 RTP"
+    enabled: true
+    profile: pure_rl
+    d_model: 96
+    epochs: 4
+    max_games: 512
+    lr: 0.001
+    seed: 0
+    device: cuda:0
+    also_poke_rlm: false
+    notes: >-
+      Initial RTP cut bound to Slop Box H10 parent during/after expert bootstrap.
+      Paths are filled by scripts/run_slop_box_h10_rtp_bootstrap.py.
+    parent_checkpoint: ""
+    parent_digest: ""
+    training_shard: ""

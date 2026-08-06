@@ -2,26 +2,30 @@
 
 Updated: 2026-08-06  
 Repository: `/Users/tsinzitari/Documents/poke-agent-codex`  
-Current owner contract: `GOAL.md`, revision 167 (Crustle H10; authoritative on train)  
-Live training mode: **concurrent Crustle RL + RTP co-train** (not exclusive RTP)
+Current owner contract: `GOAL.md`, revision **170** (authoritative on train)  
+Live training mode: **Slop Box H10 + RTP** (Crustle abandoned for now)
 
-## Live concurrent training (r167)
+## Revision 170 owner boundary (active)
 
-- RL: `pokebot-final-format-crustle-r113-h10-rl.service` — Blackwell collection; RTP opt-in via env when live checkpoint exists.
-- RTP co-train: `pokebot-crustle-rtp-cotrain-r167.service` — watches RL shards on `cuda:0` (3080); publishes `outputs/rtp_fleet/crustle.live/rtp_shadow_planner.pt`.
-- Exclusive override lifted; do not restore `crustle-rtp-training-override-r167.json` unless owner orders exclusive RTP again.
-- Dual-Marnie public opponents require `specialist-marnie-final-format-h10-f20efb20f5c3` **and** `...-b3307cf1bd67` in each remote **`agents[]`** manifest. Elmo mount source is `/mnt/Main/Elmo/.../baseline-sync` (not `/mnt/Main/main/...`).
-- Slowking distill/reverse-engineered policy must not be hard-imported on the Crustle deploy path.
-- Receipts: `state/crustle_rtp_rl_cotrain_r167.json`, `state/crustle_agent_no_slowking_policy_r167.json`, `outputs/state/goalmd-loop-heartbeat-crustle-r167.json`, `state/crustle_adapter_auth_epoch_repair_r167.json`, `state/crustle_iter_00000_commit_r167.json`, `state/crustle_iter_00001_collection_r167.json`, `state/crustle_iter_00001_commit_r167.json`, `state/crustle_iter_00002_collection_r167.json`, `state/crustle_iter_00002_commit_r167.json`, `state/crustle_iter_00003_collection_r167.json`, `state/crustle_iter_00003_commit_r167.json`, `state/crustle_public_mix_refill_promote_contract_validated_r167.json`, `state/crustle_promote_contract_main_hook_repair_r167.json`, `state/crustle_promote_contract_builtins_exec_repair_r167.json`, `state/crustle_promote_contract_script_trace_repair_r167.json`.
-- RTP sidecars remain `serving_eligible: false`.
-- **Iter0 committed.** Collection 8192/382294 (`baseline_failed=0`); champion `sha256:d7d278b9ebd0…` at `checkpoints/iter_00000.pt`. Do not recollect iter0.
-- Adapter-auth repair (r167): code accepts Crustle 35-epoch `poke_bot.crustle_guide_all_epochs/v1`. Runtime uses overlay `/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167` + `crustle_adapter_auth_r167.pth` so the hashed deploy tree stays byte-identical.
-- **Iter1 complete (not promoted).** Sealed collection 8192/402530 (`baseline_failed=0`). Ordinary+adapter ok; promotion rejected (`confidence_lower_bound_not_above_threshold`). Commit `commits/iter_00001.json` (`sha256:02e91357…`), champion remains iter0, continuous learner `sha256:4630b031…` carries. **Do not recollect iter1.**
-- **Promote-contract `__main__` hook repair (r167):** first patch only hooked `importlib.import_module("scripts.train_pure_rl")`, but the trainer is launched as `python …/train_pure_rl.py` (`__main__`), so the live process never got the patch. Iter2 attempt_0001 looped `public_mix_refill` for 32 cycles and fail-closed. Bootstrap now also patches via `SourceFileLoader.exec_module` + `sys.modules` for any `train_pure_rl.py` including `__main__`. Quarantine: `quarantine/iter_00002/attempt_0001/`. Receipt: `state/crustle_promote_contract_main_hook_repair_r167.json`.
-- **Iter2 complete (not promoted).** Collection sealed 8192/363042 (`baseline_failed=0`, zero refill). Commit `commits/iter_00002.json` (`sha256:2ad010e3…`), heldout WR 0.770, champion remains iter0, continuous learner `sha256:9eb58e4f…` carries. **Do not recollect.**
-- **`builtins.exec` / script-trace promote-hook repair (r167):** CPython `python path/to/train_pure_rl.py` uses `PyEval_EvalCode`, not `builtins.exec`, so post-exec monkeypatches never rebound the live trainer. Iter3 attempt_0001 and iter4 attempt_0001 both looped `public_mix_refill` under that defect. Bootstrap now installs a one-shot `sys.settrace` that rebinds `_replacement_schedule_contract_from_result` at definition time then disables; AST rewrite kept for explicit `exec`. Validated via `python …/train_pure_rl.py` mid-body check. Receipts: `state/crustle_promote_contract_builtins_exec_repair_r167.json`, `state/crustle_promote_contract_script_trace_repair_r167.json`.
-- **Iter3 complete (not promoted).** After first (insufficient) builtins.exec attempt, recollect sealed with zero refill (8192/360517, `baseline_failed=0`); heldout WR **0.781**. Commit `commits/iter_00003.json` (`sha256:5b8c3427…`), champion remains iter0, continuous learner `sha256:dc206caf…` carries. **Do not recollect iter3.**
-- **Iter4 complete (promoted).** Collection sealed under settrace fix with **zero** `public_mix_refill` (8192/365218, `baseline_failed=0`). Heldout WR **0.776**. Commit `commits/iter_00004.json` (`sha256:8817ad8592df…`), champion advanced to `sha256:7efd8d4113e7…` at `checkpoints/iter_00004.pt`, learner carry True. **Do not recollect iter4.** Live: next_iteration=5. RTP MainPID `3025385` left alone. Keep Bert Alakazam rejoin poller bootout until a CPU/MPS selector exists.
+- Abandon Crustle H10 for now: preserve every shard/commit/quarantine/receipt; **no deletes**, **do not restart** Crustle RL/RTP.
+- Crustle units on train are runtime-masked + `Restart=no` (`99-owner-abandon-r170.conf`). Receipt: `outputs/state/crustle-owner-abandon-r170.json`.
+- Immediately activate separately versioned Slop Box H10 + RTP (`teal-mask-ogerpon-ex` / Raging Bolt Ogerpon), distinct from historical Teal/Slop Box.
+- Canonical identity: `state/slop_box_h10_rtp_prestage_identity_r170.json`. Bootstrap unit: `pokebot-final-format-slop-box-h10-rtp-bootstrap.service`.
+- **Current blocker:** `outputs/bootstrap/slop-box-h10-rtp/expert_trajectory_shard.jsonl` not yet materialized (ConditionPathExists). Contract sync: `state/slop-box-h10-rtp-contract-sync-r170.json`.
+- Warm-start default parent: Marnie H10 freeze `sha256:f20efb20…`; optional Alakazam teacher `sha256:02c014ad…`. Never rewrite parents.
+- Dual pipeline: guide is RL-learner training-only (no fusion/serving/action authority); RTP is neural-only sidecar; expert bootstrap must also emit initial `rtp_shadow_planner.pt`.
+- Population waits on Alakazam + Marnie + Slop Box H10 RTP (Crustle not a blocker while abandoned).
+- Keep Bert Alakazam rejoin poller bootout until a CPU/MPS selector exists.
+
+## Preserved Crustle progress (do not recollect / do not delete)
+
+- Iter0–4 sealed as before; iter4 champion `sha256:7efd8d4113e7…` at `checkpoints/iter_00004.pt`.
+- **Iter5 collection sealed before abandon** via hide-for-kick + 4-cell refill + complete short-circuit:
+  - Shard `sha256:28fde5403a66…` size `2321704417`, games **8192**, decisions **370608**
+  - Receipt: `…/collection_receipts/iter_00005.json`
+  - Commit `commits/iter_00005.json` **absent** (learner interrupted by r170 abandon during corpus pack)
+  - Overlay repair: `overlays/crustle-adapter-auth-r167/crustle_iter5_corpus_restore_r167_patch.py` (hide shard for `_kick_collect`, seed missing cells, complete short-circuit)
+- Heartbeats: `state/goalmd_loop_heartbeat_slop_box_r170.json`, `outputs/state/goalmd-loop-heartbeat-slop-box-r170.json`
 
 ---
 

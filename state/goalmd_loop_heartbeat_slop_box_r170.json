@@ -1,6 +1,5 @@
 {
-  "schema": "poke_bot.goalmd_loop_heartbeat_crustle_r167/v1",
-  "superseded_by": "poke_bot.goalmd_loop_heartbeat_slop_box_r170/v1",
+  "schema": "poke_bot.goalmd_loop_heartbeat_slop_box_r170/v1",
   "goal_revision": 170,
   "created_at_utc": "2026-08-06T14:55:43Z",
   "status": "crustle_abandoned_slop_box_prestage",

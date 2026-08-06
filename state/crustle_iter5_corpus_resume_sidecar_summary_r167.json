@@ -1,0 +1,20 @@
+{
+  "schema": "poke_bot.crustle_iter5_corpus_resume_sidecar_summary_r167/v1",
+  "sidecar_schema": "poke_bot.crustle_iter5_corpus_resume_sidecar_r167/v1",
+  "iteration": 5,
+  "unique_games": 8188,
+  "unique_decisions": 370469,
+  "duplicate_lines_dropped": 341,
+  "missing_job_indices": [
+    8017,
+    8072,
+    8128,
+    8183
+  ],
+  "active_sha256": "sha256:1a4b0f420606e982c258ecb0df5f5c647976c3a479b50881b8c1c9b7b2763747",
+  "active_size": 2320791140,
+  "authorized_quarantine_sha256": "sha256:2de205bee91f8a3db37d4bc9a964c0a045dc15a70da794aa8247bdb6d0c3064a",
+  "mode": "resume_public_mix_refill_only",
+  "created_at_utc": "2026-08-06T14:28:55Z",
+  "retained_job_index_count": 8188
+}
