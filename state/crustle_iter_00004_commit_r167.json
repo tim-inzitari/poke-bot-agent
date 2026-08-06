@@ -1,0 +1,36 @@
+{
+  "schema": "poke_bot.crustle_iter_00004_commit_r167/v1",
+  "created_at_utc": "2026-08-06T13:10:17Z",
+  "commit_path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/commits/iter_00004.json",
+  "commit_sha256": "sha256:8817ad8592df90ff75eca919a1c8a8c0e838f1944d828ec6a2d885e2c3b38ba4",
+  "checkpoint_path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00004.pt",
+  "checkpoint_sha256": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+  "loop_last_completed_iteration": 4,
+  "loop_next_iteration": 5,
+  "champion": {
+    "digest": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00004.pt"
+  },
+  "learner": {
+    "digest": "sha256:7efd8d4113e736d28576bdbfa1c9d1c3f3a7cf1a31a0b3cfadd1e7f82cf08955",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00004.pt"
+  },
+  "heldout_champion": {
+    "digest": "sha256:dc206caf2cf8d871ad89c96a8fdfcd3b57831b6a8bc6765b5d313c808b536a6f",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00003.pt"
+  },
+  "heldout_wr": 0.776,
+  "promoted": true,
+  "learner_carry": true,
+  "awr_w": 2.935,
+  "source_games": 8192,
+  "sequences": 16384,
+  "collection": {
+    "source_games": 8192,
+    "decisions": 365218,
+    "baseline_failed": 0,
+    "public_mix_refill_bars_after_settrace_resume": 0
+  },
+  "log_line": "iter=4 games=8192 seqs=16384 awr_w=2.935 heldout_wr=0.776 (4500g) promoted=True learner_carry=True stage_gate=False audit=True abort=False gps=6.14",
+  "notes": "First promoted Crustle H10 iteration after settrace promote-hook repair; champion advances to iter4"
+}
