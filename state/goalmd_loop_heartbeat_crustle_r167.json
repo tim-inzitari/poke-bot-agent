@@ -1,0 +1,13 @@
+{
+  "schema": "poke_bot.goalmd_loop_heartbeat/v1",
+  "goal_revision": 167,
+  "specialist": "crustle",
+  "phase": "collect:public_mix iter=0",
+  "rl_service": "pokebot-final-format-crustle-r113-h10-rl.service",
+  "rtp_service": "pokebot-crustle-rtp-cotrain-r167.service",
+  "public_mix_baseline_failed": 0,
+  "elmo_fix": "agents[] entry for specialist-marnie-final-format-h10-b3307cf1bd67 on /mnt/Main/Elmo/.../baseline-sync",
+  "bert_fix": "agents[] entry on stage baselines/manifest.json",
+  "slowking_policy_on_crustle_deploy": false,
+  "action": "supervise_healthy_collection"
+}

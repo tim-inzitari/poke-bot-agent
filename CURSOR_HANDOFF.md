@@ -10,8 +10,9 @@ Live training mode: **concurrent Crustle RL + RTP co-train** (not exclusive RTP)
 - RL: `pokebot-final-format-crustle-r113-h10-rl.service` — Blackwell collection; RTP opt-in via env when live checkpoint exists.
 - RTP co-train: `pokebot-crustle-rtp-cotrain-r167.service` — watches RL shards on `cuda:0` (3080); publishes `outputs/rtp_fleet/crustle.live/rtp_shadow_planner.pt`.
 - Exclusive override lifted; do not restore `crustle-rtp-training-override-r167.json` unless owner orders exclusive RTP again.
-- Receipt: `state/crustle_rtp_rl_cotrain_r167.json` / train `outputs/state/crustle-rtp-rl-cotrain-r167.json`.
-- Empty design-drift run quarantined under `outputs/pure_rl/_quarantine_empty_design_drift_r167/`.
+- Dual-Marnie public opponents require `specialist-marnie-final-format-h10-f20efb20f5c3` **and** `...-b3307cf1bd67` in each remote **`agents[]`** manifest. Elmo mount source is `/mnt/Main/Elmo/.../baseline-sync` (not `/mnt/Main/main/...`).
+- Slowking distill/reverse-engineered policy must not be hard-imported on the Crustle deploy path.
+- Receipts: `state/crustle_rtp_rl_cotrain_r167.json`, `state/crustle_agent_no_slowking_policy_r167.json`, `outputs/state/goalmd-loop-heartbeat-crustle-r167.json`.
 - RTP sidecars remain `serving_eligible: false`.
 
 ---
