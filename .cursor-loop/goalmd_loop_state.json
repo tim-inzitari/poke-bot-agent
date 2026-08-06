@@ -1,0 +1,99 @@
+{
+  "schema": "poke_bot.cursor_loop_goalmd_crustle/v1",
+  "local_goal_revision": "167",
+  "updated_at_unix": 1785981125,
+  "watcher_primary": true,
+  "watcher_shell_pid": 35021,
+  "fallback_heartbeat_seconds": 900,
+  "sentinel": "AGENT_LOOP_WAKE_goalmd",
+  "resident": true,
+  "last_pass_summary": {
+    "healthy": true,
+    "rl": "inactive/overridden",
+    "rtp": "active/running",
+    "rtp_pid": 3012190,
+    "fail": null,
+    "local_goal": "167",
+    "train_goal": "165",
+    "gate": "waiting_for_exact_gate_pass",
+    "delta": "sibling restarted RTP after first complete; dash tracks pokebot-crustle-rtp-r167 pid 3012190 train:rtp_shadow",
+    "dash": "crustle_rtp_r167 running"
+  },
+  "heartbeat_shell_pid": 31985,
+  "prior_pass_summary": {
+    "healthy": true,
+    "rl": "inactive/overridden",
+    "rtp": "inactive/complete",
+    "fail": null,
+    "local_goal": "167",
+    "train_goal": "165",
+    "gate": "waiting_for_exact_gate_pass",
+    "delta": "dashboard projects crustle_rtp_r167 complete; ordinary RL superseded; sibling RTP pipeline finished success",
+    "dash": "crustle_rtp_r167 complete epoch3/n_steps22346"
+  },
+  "pass_count": 4,
+  "watcher_python_pids": [
+    34796
+  ],
+  "dash_sync": {
+    "updated_at_unix": 1785981649,
+    "fingerprint": "rl=active/running:3035259|rtp=inactive/dead:0|ct=active/running:3025385|ov=None|ctr=1785981438|sum=None|rec=None|helper=True/True|proj=running/final_format_crustle_h10_rl/collect:self_play/3035259|dash=running/final_format_crustle_h10_rl/collect:self_play/3035259",
+    "last_pass": {
+      "action": "noop",
+      "drift": false,
+      "rtp": {
+        "MainPID": "0",
+        "Result": "success",
+        "NRestarts": "0",
+        "ActiveState": "inactive",
+        "SubState": "dead"
+      },
+      "rl": null,
+      "cotrain": null,
+      "proj": {
+        "status": "running",
+        "mode": "final_format_crustle_h10_rl",
+        "phase": "collect:self_play",
+        "iteration": 0,
+        "percent": 0.0,
+        "latest_line": "pure_rl collect:self_play iter=0:   0%|                                    | 2/1024 [00:13<3:40:59, 12.97s/game, bout=205, eout=408, rout=613, rsock=52, sps=0] \u00b7 rtp_cotrain pid=30",
+        "run": "final_format_crustle_r113_h10_i_v6_8k",
+        "svc_name": "pokebot-final-format-crustle-r113-h10-rl.service",
+        "svc_active": true,
+        "svc_pid": 3035259,
+        "rtp_cotrain": {
+          "available": true,
+          "active": true,
+          "service": "pokebot-crustle-rtp-cotrain-r167.service",
+          "pid": 3025385,
+          "mode": "concurrent",
+          "live_checkpoint": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle.live/rtp_shadow_planner.pt",
+          "rtp_device": "cuda:0",
+          "epoch": 3.0,
+          "mean_loss": 1.4765798687217357,
+          "n_steps": 22346.0,
+          "serving_eligible": false,
+          "log": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle_cotrain_r167.log"
+        }
+      },
+      "dash": {
+        "active": true,
+        "stage": "collect:self_play",
+        "run": "final_format_crustle_r113_h10_i_v6_8k",
+        "units": [
+          "pokebot-final-format-crustle-r113-h10-rl.service"
+        ],
+        "pids": [
+          3035259
+        ],
+        "status": "running",
+        "mode": "final_format_crustle_h10_rl",
+        "phase": "collect:self_play",
+        "line": "pure_rl collect:self_play iter=0:   0%|                                    | 0/1024 [00:06<?, ?game/s, bout=208, eout=408, rout=616, rsock=52, sps=0] \u00b7 rtp_cotrain pid=3025385 epoc",
+        "svc_name": "pokebot-final-format-crustle-r113-h10-rl.service",
+        "svc_pid": 3035259,
+        "svc_active": true
+      }
+    }
+  }
+}
