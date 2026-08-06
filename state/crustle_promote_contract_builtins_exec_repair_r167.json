@@ -1,0 +1,33 @@
+{
+  "schema": "poke_bot.crustle_promote_contract_builtins_exec_repair_r167/v1",
+  "created_at_utc": "2026-08-06T09:46:33Z",
+  "status": "validated",
+  "launch_path": "python path/to/train_pure_rl.py -> builtins.exec(__main__)",
+  "bootstrap_path": "/home/inzi/miniconda3/envs/poke-bot-agent/lib/python3.11/site-packages/crustle_adapter_auth_r167_bootstrap.py",
+  "bootstrap_sha256": "sha256:87913bd4c846f63165b016f50ebd3720b760582747122d36bdb986df6389c218",
+  "overlay_patch_path": "/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167/crustle_promote_contract_r167_patch.py",
+  "overlay_patch_sha256": "sha256:86a0d72321a67d976382938199a4c517352283ac8a8094d649d74daed68b013a",
+  "validation": {
+    "inline_script_mode": "replacement_schedule_contract_from_result",
+    "subprocess_script_mode": "replacement_schedule_contract_from_result",
+    "normalize_opp_archetype": "marnie-s-grimmsnarl-ex"
+  },
+  "live_pre_restart": {
+    "service": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "main_pid": 4031205,
+    "trainer_pid": 4031398,
+    "note": "started before builtins.exec wrap; public_mix_refill iter=3 looping; restart required"
+  },
+  "live_post_restart": {
+    "service": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "main_pid": 212552,
+    "trainer_pid": 212701,
+    "nrestarts": 2,
+    "exec_main_start": "Thu 2026-08-06 05:48:47 EDT",
+    "quarantine": "quarantine/iter_00003/attempt_0001/",
+    "quarantine_reason": "interrupted_before_append_only_commit",
+    "progress": "collect:self_play iter=3",
+    "builtins_exec_wrap_autoload": true
+  },
+  "updated_at_utc": "2026-08-06T09:49:51Z"
+}

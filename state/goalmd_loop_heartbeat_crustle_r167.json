@@ -1,28 +1,27 @@
 {
-  "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_utc": "2026-08-06T09:04:51+00:00",
+  "schema": "poke_bot.goalmd_loop_heartbeat_crustle_r167/v1",
+  "updated_at_utc": "2026-08-06T09:49:51Z",
   "goal_revision": 167,
-  "specialist": "crustle",
-  "phase": "iter3_public_mix",
-  "commits": [
-    "iter_00000.json",
-    "iter_00001.json",
-    "iter_00002.json"
+  "mode": "concurrent_rl_rtp",
+  "rl_service": {
+    "unit": "pokebot-final-format-crustle-r113-h10-rl.service",
+    "active": "active",
+    "main_pid": 212552,
+    "nrestarts": 2,
+    "phase": "collect:self_play iter=3"
+  },
+  "rtp_service": {
+    "unit": "pokebot-crustle-rtp-cotrain-r167.service",
+    "active": "active",
+    "main_pid": 3025385,
+    "nrestarts": 0
+  },
+  "commits_present": [
+    "iter_00000",
+    "iter_00001",
+    "iter_00002"
   ],
-  "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
-  "learner_digest": "sha256:9eb58e4fc6d37615b276cc7f937b90850e7964e219ab8670574321b2ea95b9bc",
-  "rl_active": true,
-  "rtp_active": true,
-  "rl_main_pid": 4031205,
-  "rtp_main_pid": 3025385,
-  "nrestarts": 1,
-  "oom": 0,
-  "action": "supervise_only_no_restart",
-  "progress": "pure_rl collect:public_mix iter=3: 4272/7168 (~60%) rsock=52 ~12.2game/s",
-  "overlays": [
-    "adapter_auth",
-    "promote_contract_main_hook"
-  ],
-  "bert_rejoin": "held",
-  "notes": "Iter0-2 committed (1/2 not promoted). Iter3 public_mix draining. Leave healthy RL+RTP alone."
+  "champion": "sha256:d7d278b9ebd0\u2026",
+  "promote_contract_builtins_exec": "validated",
+  "notes": "iter3 attempt_0001 quarantined after public_mix_refill fail-closed; patched process recollecting iter3"
 }
