@@ -1,6 +1,6 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat_crustle_r167/v1",
-  "updated_at_utc": "2026-08-06T09:49:51Z",
+  "updated_at_utc": "2026-08-06T11:08:22Z",
   "goal_revision": 167,
   "mode": "concurrent_rl_rtp",
   "rl_service": {
@@ -8,7 +8,7 @@
     "active": "active",
     "main_pid": 212552,
     "nrestarts": 2,
-    "phase": "collect:self_play iter=3"
+    "phase": "collect:self_play iter=4"
   },
   "rtp_service": {
     "unit": "pokebot-crustle-rtp-cotrain-r167.service",
@@ -19,9 +19,23 @@
   "commits_present": [
     "iter_00000",
     "iter_00001",
-    "iter_00002"
+    "iter_00002",
+    "iter_00003"
   ],
-  "champion": "sha256:d7d278b9ebd0\u2026",
+  "champion": {
+    "digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00000.pt"
+  },
+  "learner": {
+    "digest": "sha256:dc206caf2cf8d871ad89c96a8fdfcd3b57831b6a8bc6765b5d313c808b536a6f",
+    "path": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/checkpoints/iter_00003.pt"
+  },
+  "iter3": {
+    "promoted": false,
+    "heldout_wr": 0.781,
+    "learner_carry": true,
+    "commit_sha256": "sha256:5b8c342740314f433aa29ee61ffa034eb4432ca3eb1c297219e7609fd002cffa"
+  },
   "promote_contract_builtins_exec": "validated",
-  "notes": "iter3 attempt_0001 quarantined after public_mix_refill fail-closed; patched process recollecting iter3"
+  "notes": "iter3 committed not promoted; zero refill after builtins.exec repair; collecting iter4"
 }
