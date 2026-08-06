@@ -1,12 +1,21 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
+  "created_at_unix": 1785985575.7577906,
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "collect:public_mix",
-  "public_mix_done": 6930,
-  "public_mix_total": 7168,
+  "phase": "learner_resume_after_adapter_auth_repair",
+  "collection": {
+    "games": 8192,
+    "decisions": 382294,
+    "baseline_failed": 0,
+    "preserved": true
+  },
+  "commits": [],
   "rl_active": true,
   "rtp_active": true,
+  "oom": 0,
   "recent_bad": 0,
-  "action": "supervise_only_no_restart"
+  "action": "repaired_adapter_auth_35_epochs_and_restarted_rl",
+  "progress": "replay-cache load iter_00000.jsonl:  64%|\u2588\u2588\u2588\u2588\u2588\u2588\u258d   | 23/36 [00:28<00:15,  1.22s/part]",
+  "repair_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-adapter-auth-epoch-repair-r167.json"
 }

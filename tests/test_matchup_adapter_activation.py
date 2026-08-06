@@ -489,6 +489,101 @@ def test_specialist_authorization_accepts_checksum_bound_v6_inherited_training(
         )
 
 
+def test_specialist_authorization_accepts_crustle_all_guide_35_epoch_bootstrap(
+    tmp_path: Path,
+) -> None:
+    family = tmp_path / "crustle-bootstrap"
+    family.mkdir()
+    parent = family / "model.pt"
+    parent.write_bytes(b"crustle-h10-bootstrap-35")
+    parent_digest = "sha256:" + hashlib.sha256(parent.read_bytes()).hexdigest()
+    manifest = family / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "checkpoint_digest": parent_digest,
+                "model_path": str(parent),
+                "provenance": {
+                    "acting_seat_archetype": "crustle",
+                    "all_auxiliary_heads_trained": True,
+                    "epochs_max": 35,
+                    "current_deck_guide": {
+                        "owner_epoch_schedule": {
+                            "schema": "poke_bot.crustle_guide_all_epochs/v1",
+                            "guide_active_epochs": [1, 35],
+                            "owner_decision_revision": 162,
+                        }
+                    },
+                },
+                "evidence": {"epochs_completed": 35},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest_digest = (
+        "sha256:" + hashlib.sha256(manifest.read_bytes()).hexdigest()
+    )
+    authorization = tmp_path / "crustle-authorization.json"
+    authorization.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "poke_bot.matchup_adapter_specialist_bootstrap_"
+                    "authorization/v1"
+                ),
+                "specialist_id": "crustle",
+                "runtime_enabled": False,
+                "parent_untouched": True,
+                "optimizer_scope": "matchup_adapter_bank_only",
+                "first_eligible_iteration": 0,
+                "completed_iteration": -1,
+                "parent_checkpoint": str(parent),
+                "parent_checkpoint_digest": parent_digest,
+                "protected_manifest": str(manifest),
+                "protected_manifest_digest": manifest_digest,
+                "required_target_coverage": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proof = validate_adapter_training_authorization(
+        authorization,
+        parent_checkpoint=parent,
+        permit_post_boundary_use=True,
+    )
+    assert proof.parent_checkpoint == parent.resolve()
+    assert proof.completed_iteration == -1
+    assert proof.first_eligible_iteration == 0
+
+    # A 25-epoch claim under the Crustle all-guide schedule must fail closed.
+    bad = json.loads(manifest.read_text(encoding="utf-8"))
+    bad["evidence"]["epochs_completed"] = 25
+    bad["provenance"]["epochs_max"] = 25
+    manifest.write_text(json.dumps(bad) + "\n", encoding="utf-8")
+    authorization.write_text(
+        json.dumps(
+            {
+                **json.loads(authorization.read_text(encoding="utf-8")),
+                "protected_manifest_digest": (
+                    "sha256:"
+                    + hashlib.sha256(manifest.read_bytes()).hexdigest()
+                ),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="authorization contract is invalid"):
+        validate_adapter_training_authorization(
+            authorization,
+            parent_checkpoint=parent,
+            permit_post_boundary_use=True,
+        )
+
+
 def test_activation_receipt_rejects_partial_ledger_drift_and_early_start_markers(
     tmp_path: Path,
 ) -> None:
