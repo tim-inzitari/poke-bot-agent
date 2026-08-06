@@ -2,6 +2,11 @@
   "schema": "poke_bot.crustle_agent_no_slowking_policy/v1",
   "specialist": "crustle",
   "change": "PolicyAgent no longer hard-imports Slowking distill/reverse-engineered policy; Slowking path lazy+identity-gated",
+  "deploy_removed": [
+    "poke_bot/slowking_distill",
+    "poke_bot/slowking_reverse_engineered_policy.py",
+    "poke_bot/slowking_archetype_learning.py"
+  ],
   "kept": [
     "poke_bot/recursive_turn_planner",
     "poke_bot/poke_rlm"
