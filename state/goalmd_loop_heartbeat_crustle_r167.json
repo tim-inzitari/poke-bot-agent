@@ -1,24 +1,30 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_unix": 1785994873.823722,
+  "created_at_unix": 1785995647.3264894,
+  "created_at_utc": "2026-08-06T05:54:07.326490+00:00",
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "iter1_recollect_in_progress",
+  "phase": "iter1_learner_after_sealed_collection",
   "commits": [
     "iter_00000.json"
+  ],
+  "collection_receipts": [
+    "iter_00000.json",
+    "iter_00001.json"
   ],
   "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
   "rl_active": true,
   "rtp_active": true,
   "rl_main_pid": 3639395,
+  "rtp_main_pid": 3025385,
   "nrestarts": 0,
   "oom": 0,
-  "action": "supervise_only_no_restart",
-  "progress": "pure_rl collect:public_mix iter=1:  15%|\u2588\u2588\u2588\u2588\u2588\u258c                              | 1096/7168 [02:16<13:47,  7.34game/s, bout=204, eout=182, rout=386, rsock=52, sps=0]",
+  "action": "supervise_learner_no_restart",
+  "progress": "pure_rl collect:public_mix iter=1: 100%|████████████████████████████████████| 7168/7168 [14:01<00:00,  8.52game/s]",
   "overlays": [
     "adapter_auth",
     "promote_contract"
   ],
   "bert_rejoin": "held",
-  "repair_receipt": "/home/inzi/poke-bot-agent/outputs/state/crustle-public-mix-refill-promote-contract-repair-r167.json"
+  "notes": "Iter1 collection sealed without public_mix_refill promote failure; learner/replay-cache in progress. Do not recollect."
 }

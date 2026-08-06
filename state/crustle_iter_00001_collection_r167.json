@@ -1,0 +1,27 @@
+{
+  "schema": "poke_bot.crustle_iter_00001_collection_r167/v1",
+  "created_at_unix": 1785995647.0,
+  "goal_revision": 167,
+  "status": "collection_sealed",
+  "run": "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k",
+  "collection_receipt": "collection_receipts/iter_00001.json",
+  "commit": null,
+  "source_games": 8192,
+  "trajectories": 8704,
+  "decisions": 402530,
+  "self_play": 1024,
+  "public_mix": 7168,
+  "baseline_failed": 0,
+  "retained_source_games": 8192,
+  "seat_split": {
+    "assigned_seat0": 4096,
+    "assigned_seat1": 4096,
+    "retained_seat0": 4096,
+    "retained_seat1": 4096,
+    "exact_50_50": true
+  },
+  "champion_parent_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
+  "rl_main_pid": 3639395,
+  "do_not_recollect": true,
+  "next": "supervise ordinary+adapter learner through commits/iter_00001.json"
+}

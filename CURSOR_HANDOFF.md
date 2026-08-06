@@ -1,8 +1,8 @@
 # Cursor takeover handoff
 
-Updated: 2026-08-05  
+Updated: 2026-08-06  
 Repository: `/Users/tsinzitari/Documents/poke-agent-codex`  
-Current owner contract: `GOAL.md`, revision 167 (Crustle H10)  
+Current owner contract: `GOAL.md`, revision 167 (Crustle H10; authoritative on train)  
 Live training mode: **concurrent Crustle RL + RTP co-train** (not exclusive RTP)
 
 ## Live concurrent training (r167)
@@ -12,11 +12,11 @@ Live training mode: **concurrent Crustle RL + RTP co-train** (not exclusive RTP)
 - Exclusive override lifted; do not restore `crustle-rtp-training-override-r167.json` unless owner orders exclusive RTP again.
 - Dual-Marnie public opponents require `specialist-marnie-final-format-h10-f20efb20f5c3` **and** `...-b3307cf1bd67` in each remote **`agents[]`** manifest. Elmo mount source is `/mnt/Main/Elmo/.../baseline-sync` (not `/mnt/Main/main/...`).
 - Slowking distill/reverse-engineered policy must not be hard-imported on the Crustle deploy path.
-- Receipts: `state/crustle_rtp_rl_cotrain_r167.json`, `state/crustle_agent_no_slowking_policy_r167.json`, `outputs/state/goalmd-loop-heartbeat-crustle-r167.json`, `state/crustle_adapter_auth_epoch_repair_r167.json`, `state/crustle_iter_00000_commit_r167.json`.
+- Receipts: `state/crustle_rtp_rl_cotrain_r167.json`, `state/crustle_agent_no_slowking_policy_r167.json`, `outputs/state/goalmd-loop-heartbeat-crustle-r167.json`, `state/crustle_adapter_auth_epoch_repair_r167.json`, `state/crustle_iter_00000_commit_r167.json`, `state/crustle_iter_00001_collection_r167.json`, `state/crustle_public_mix_refill_promote_contract_validated_r167.json`.
 - RTP sidecars remain `serving_eligible: false`.
-- **Iter0 committed.** Collection 8192/382294 (`baseline_failed=0`); champion `sha256:d7d278b9ebd0…` at `checkpoints/iter_00000.pt`. Loop `last=0 next=1`. Do not recollect iter0.
+- **Iter0 committed.** Collection 8192/382294 (`baseline_failed=0`); champion `sha256:d7d278b9ebd0…` at `checkpoints/iter_00000.pt`. Do not recollect iter0.
 - Adapter-auth repair (r167): code accepts Crustle 35-epoch `poke_bot.crustle_guide_all_epochs/v1`. Runtime uses overlay `/home/inzi/poke-bot-agent/overlays/crustle-adapter-auth-r167` + `crustle_adapter_auth_r167.pth` so the hashed deploy tree stays byte-identical.
-- **Iter1 promote-contract repair (r167):** first iter1 public_mix reached 7168/7168 then looped `public_mix_refill` on jobs 8075/8186 vs dual-Marnie `b3307…` because staged spares used specialist-id `opp_archetype` while primary job contracts use `marnie-s-grimmsnarl-ex`. Overlay now also patches `_replacement_schedule_contract_from_result` via `crustle_promote_contract_r167_patch.py`. Interrupted attempt quarantined; RL restarted under systemd and is recollecting iter1 (`self_play`). Receipt: `state/crustle_public_mix_refill_promote_contract_repair_r167.json`. Keep Bert Alakazam rejoin poller bootout until a CPU/MPS selector exists.
+- **Iter1 promote-contract repair validated:** first attempt failed closed at 7166/7168 on jobs 8075/8186 (specialist-id `opp_archetype` vs `marnie-s-grimmsnarl-ex`). Overlay `crustle_promote_contract_r167_patch.py` fixed promote; recollect sealed `collection_receipts/iter_00001.json` (8192 games / 402530 decisions, `baseline_failed=0`, exact 50/50 seats). Quarantined attempt remains under `quarantine/iter_00001/attempt_0001/`. **Do not recollect iter1.** RL is in learner/replay-cache toward `commits/iter_00001.json`. Keep Bert Alakazam rejoin poller bootout until a CPU/MPS selector exists.
 
 ---
 
