@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import ast
 import builtins
 import runpy
 import sys
+import types
 import importlib
 import importlib.machinery
 
@@ -38,6 +40,10 @@ def _load_replacement_fn():
         )
         fn = ns.get("replacement_schedule_contract_from_result")
         return fn if callable(fn) else None
+
+
+# Exposed for AST-injected script rebinding (avoids circular imports).
+sys._crustle_r167_load_promote_fn = _load_replacement_fn  # type: ignore[attr-defined]
 
 
 def _apply_promote_patch_to_mapping(mapping) -> bool:
@@ -79,6 +85,40 @@ def _apply_promote_patch() -> None:
         apply_train_pure_rl_promote_patch()
     except Exception:
         pass
+
+
+def _try_patch_frame_globals(frame) -> bool:
+    filename = str(getattr(frame.f_code, "co_filename", "") or "")
+    if "train_pure_rl.py" not in filename.replace("\\", "/"):
+        return False
+    return _apply_promote_patch_to_mapping(frame.f_globals)
+
+
+def _promote_trace(frame, event, arg):  # noqa: ANN001
+    """One-shot line tracer for CPython `python train_pure_rl.py` launches.
+
+    File runs use PyEval_EvalCode, not builtins.exec, so post-exec monkeypatches
+    never fire during the live training process. Trace until the promote helper
+    is defined, rebind it, then disable tracing so collection/training stay fast.
+    """
+    if event != "line":
+        return _promote_trace
+    try:
+        if _try_patch_frame_globals(frame):
+            current = frame.f_globals.get("_replacement_schedule_contract_from_result")
+            if getattr(current, "__name__", "") == "replacement_schedule_contract_from_result":
+                sys.settrace(None)
+                return None
+    except Exception:
+        pass
+    return _promote_trace
+
+
+if getattr(sys, "_crustle_r167_promote_trace", False) is not True:
+    sys._crustle_r167_promote_trace = True  # type: ignore[attr-defined]
+    # Only install when no trace is already active.
+    if sys.gettrace() is None:
+        sys.settrace(_promote_trace)
 
 
 _orig_import_module = importlib.import_module
@@ -141,11 +181,56 @@ if getattr(runpy._run_code, "_crustle_r167_promote", False) is not True:
     runpy._run_code = _run_code
 
 
-# Critical: `python path/to/train_pure_rl.py` uses builtins.exec on __main__, not runpy.
+def _rewrite_train_pure_rl_code(code: types.CodeType) -> types.CodeType:
+    """AST-inject promote rebind for explicit exec()/runpy paths."""
+    path = str(code.co_filename or "")
+    if "train_pure_rl.py" not in path.replace("\\", "/"):
+        return code
+    try:
+        source = Path(path).read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=path)
+    except Exception:
+        return code
+    inject = ast.parse(
+        "try:\n"
+        "    _crustle_r167_fn = getattr(__import__('sys'), '_crustle_r167_load_promote_fn', None)\n"
+        "    if callable(_crustle_r167_fn):\n"
+        "        _crustle_r167_loaded = _crustle_r167_fn()\n"
+        "        if _crustle_r167_loaded is not None:\n"
+        "            _replacement_schedule_contract_from_result = _crustle_r167_loaded\n"
+        "except Exception:\n"
+        "    pass\n"
+    ).body
+    new_body = []
+    injected = False
+    for node in tree.body:
+        new_body.append(node)
+        if (
+            not injected
+            and isinstance(node, ast.FunctionDef)
+            and node.name == "_replacement_schedule_contract_from_result"
+        ):
+            new_body.extend(inject)
+            injected = True
+    if not injected:
+        return code
+    tree.body = new_body
+    try:
+        ast.fix_locations(tree)
+    except Exception:
+        pass
+    try:
+        return compile(tree, path, "exec", dont_inherit=True)
+    except Exception:
+        return code
+
+
 _orig_exec = builtins.exec
 
 
 def _exec(object, globals=None, locals=None, /):  # noqa: A001
+    if isinstance(object, types.CodeType):
+        object = _rewrite_train_pure_rl_code(object)
     if globals is None and locals is None:
         _orig_exec(object)
         return
