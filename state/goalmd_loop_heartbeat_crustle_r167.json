@@ -1,9 +1,9 @@
 {
   "schema": "poke_bot.goalmd_loop_heartbeat/v1",
-  "created_at_utc": "2026-08-06T08:57:02+00:00",
+  "created_at_utc": "2026-08-06T09:04:51+00:00",
   "goal_revision": 167,
   "specialist": "crustle",
-  "phase": "iter3_collection_after_iter2_commit",
+  "phase": "iter3_public_mix",
   "commits": [
     "iter_00000.json",
     "iter_00001.json",
@@ -11,8 +11,6 @@
   ],
   "champion_digest": "sha256:d7d278b9ebd0ac5a5a339f935375c07655b05cab97915b6fecf36f04cc0ebbdb",
   "learner_digest": "sha256:9eb58e4fc6d37615b276cc7f937b90850e7964e219ab8670574321b2ea95b9bc",
-  "iter2_promoted": false,
-  "heldout_wr": 0.77,
   "rl_active": true,
   "rtp_active": true,
   "rl_main_pid": 4031205,
@@ -20,11 +18,11 @@
   "nrestarts": 1,
   "oom": 0,
   "action": "supervise_only_no_restart",
-  "progress": "pure_rl collect:self_play iter=3 ~90%/1024 rsock=52",
+  "progress": "pure_rl collect:public_mix iter=3: 4272/7168 (~60%) rsock=52 ~12.2game/s",
   "overlays": [
     "adapter_auth",
     "promote_contract_main_hook"
   ],
   "bert_rejoin": "held",
-  "notes": "Iter2 committed (not promoted). Iter3 collecting. Leave healthy RL+RTP alone."
+  "notes": "Iter0-2 committed (1/2 not promoted). Iter3 public_mix draining. Leave healthy RL+RTP alone."
 }
