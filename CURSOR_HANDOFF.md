@@ -1,9 +1,20 @@
 # Cursor takeover handoff
 
-Updated: 2026-07-31  
+Updated: 2026-08-05  
 Repository: `/Users/tsinzitari/Documents/poke-agent-codex`  
-Current owner contract: `GOAL.md`, revision 89  
-Copy-paste task prompt: `CURSOR_PROMPT.md`
+Current owner contract: `GOAL.md`, revision 167 (Crustle H10)  
+Live training mode: **concurrent Crustle RL + RTP co-train** (not exclusive RTP)
+
+## Live concurrent training (r167)
+
+- RL: `pokebot-final-format-crustle-r113-h10-rl.service` — Blackwell collection; RTP opt-in via env when live checkpoint exists.
+- RTP co-train: `pokebot-crustle-rtp-cotrain-r167.service` — watches RL shards on `cuda:0` (3080); publishes `outputs/rtp_fleet/crustle.live/rtp_shadow_planner.pt`.
+- Exclusive override lifted; do not restore `crustle-rtp-training-override-r167.json` unless owner orders exclusive RTP again.
+- Receipt: `state/crustle_rtp_rl_cotrain_r167.json` / train `outputs/state/crustle-rtp-rl-cotrain-r167.json`.
+- Empty design-drift run quarantined under `outputs/pure_rl/_quarantine_empty_design_drift_r167/`.
+- RTP sidecars remain `serving_eligible: false`.
+
+---
 
 ## Read this first
 

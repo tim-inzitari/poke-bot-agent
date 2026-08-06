@@ -1,0 +1,22 @@
+schema: poke_bot.recursive_turn_planner.archetype_registry/v1
+defaults:
+  profile: pure_rl
+  d_model: 96
+  epochs: 4
+  max_games: 512
+  also_poke_rlm: true
+  device: cuda
+archetypes:
+  - specialist_id: crustle
+    display_name: Crustle
+    enabled: true
+    parent_checkpoint: "/home/inzi/poke-bot-agent/outputs/pure_rl/_protected/models/final-format-crustle-r113-h10-expert-bootstrap-v2/model.pt"
+    training_shard: "/home/inzi/poke-bot-agent/outputs/pure_rl/final_format_crustle_r113_h10_i_v6_8k/quarantine/iter_00000/attempt_0001/shards/iter_00000.jsonl"
+    parent_digest: "sha256:73443f9544471b25c13f5833847471f4d311b5640af3b2c6d6d3bef6ba2fdf95"
+    profile: pure_rl
+    d_model: 96
+    epochs: 4
+    max_games: 512
+    also_poke_rlm: true
+    device: cuda
+    notes: Owner override — RTP owns Crustle training; ordinary H10 RL held.

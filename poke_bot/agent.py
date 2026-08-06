@@ -20,6 +20,22 @@ from .matchup_adapters import UNKNOWN_ROUTE
 from .public_matchup_router import RuntimePublicMatchupRouter
 from .mcts import GameClock, MCTS, MCTSResult
 from .model import TemporalCabtTransformer, TemporalKVCache
+from .poke_rlm import (
+    PokeRLMAgentBridge,
+    PokeRLMConfig,
+    load_poke_rlm_config_from_env,
+    resolve_poke_rlm_config_for_model,
+)
+from .recursive_turn_planner.agent_bridge import (
+    RTPAgentBridge,
+    resolve_rtp_config_for_model,
+)
+from .slowking_distill import (
+    SlowkingDistillAgentBridge,
+    SlowkingDistillRuntimeConfig,
+    load_runtime_config_from_env as load_slowking_distill_config_from_env,
+)
+from .slowking_distill.belief_search_backend import BeliefSearchBundle
 
 
 def install_quiet_stdout(verbose: bool = False) -> None:
@@ -130,7 +146,7 @@ def forced_go_first_action(obs_dict: dict) -> Optional[list[int]]:
 
 @dataclass
 class PolicyAgent:
-    """NN agent: greedy argmax or timed MCTS."""
+    """NN agent: greedy argmax, Recursive Turn Planner, or timed MCTS."""
 
     model: Optional[TemporalCabtTransformer]
     deck: list[int]
@@ -138,6 +154,22 @@ class PolicyAgent:
     #: never in trusted training/evaluation or deployment.
     opponent_deck: Optional[list[int]] = None
     use_mcts: bool = False
+    #: Lightweight RTP path. Default off for production RL; enable when possible
+    #: via ``POKEBOT_USE_RECURSIVE_TURN_PLANNER=1`` and a readable
+    #: ``POKEBOT_RTP_CHECKPOINT``. Missing checkpoint falls back to greedy.
+    use_recursive_turn_planner: bool = False
+    #: Optional sizing profile override: ``pure_rl`` / ``global_transformer``.
+    rtp_sizing_profile: Optional[str] = None
+    rtp_online_sim_verify_budget: int = 0
+    rtp_max_action_combos: int = 256
+    #: Full PokeRLM kit attachment. Default disabled — preserves greedy/RTP/
+    #: MCTS behavior until explicitly enabled via config or env flags.
+    poke_rlm_config: Optional[PokeRLMConfig] = None
+    poke_rlm_max_action_combos: int = 256
+    #: Slowking distill research runtime. Default disabled — no production
+    #: authority; enable only via ``POKEBOT_SLOWKING_DISTILL_*`` env flags.
+    slowking_distill_config: Optional[SlowkingDistillRuntimeConfig] = None
+    slowking_distill_max_action_combos: int = 256
     oracle_mode: bool = False
     belief_mcts: bool = False
     belief_posterior: Optional[EmpiricalDeckPosterior] = None
@@ -194,6 +226,21 @@ class PolicyAgent:
         init=False,
         repr=False,
     )
+    _rtp_bridge: Optional[RTPAgentBridge] = field(
+        default=None, init=False, repr=False
+    )
+    _poke_rlm_bridge: Optional[PokeRLMAgentBridge] = field(
+        default=None, init=False, repr=False
+    )
+    last_poke_rlm_trace: Optional[dict[str, Any]] = field(
+        default=None, init=False, repr=False
+    )
+    _slowking_distill_bridge: Optional[SlowkingDistillAgentBridge] = field(
+        default=None, init=False, repr=False
+    )
+    last_slowking_distill_trace: Optional[dict[str, Any]] = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         if int(self.expected_search_decisions) < 1:
@@ -213,6 +260,44 @@ class PolicyAgent:
                 self.device = torch.device("cpu")
         if self.model is not None:
             self.model.eval()
+        env_rtp = os.environ.get("POKEBOT_USE_RECURSIVE_TURN_PLANNER", "").strip().lower()
+        if env_rtp in {"1", "true", "yes", "on"}:
+            from pathlib import Path as _Path
+
+            ckpt = os.environ.get("POKEBOT_RTP_CHECKPOINT", "").strip()
+            allow_untrained = os.environ.get(
+                "POKEBOT_RTP_ALLOW_UNTRAINED", ""
+            ).strip().lower() in {"1", "true", "yes", "on"}
+            # "When possible": only arm RTP if a trained sidecar exists (or
+            # untrained is explicitly allowed). Otherwise keep greedy.
+            self.use_recursive_turn_planner = bool(
+                (ckpt and _Path(ckpt).is_file()) or allow_untrained
+            )
+        elif env_rtp in {"0", "false", "no", "off"}:
+            self.use_recursive_turn_planner = False
+        env_rtp_profile = os.environ.get("POKEBOT_RTP_SIZING_PROFILE", "").strip()
+        if env_rtp_profile and self.rtp_sizing_profile is None:
+            self.rtp_sizing_profile = env_rtp_profile
+        if self.use_recursive_turn_planner and self.use_mcts:
+            # Search remains an explicit override; RTP is the non-MCTS path.
+            pass
+        if self.use_recursive_turn_planner and self.model is not None:
+            self._init_rtp_bridge()
+        self.poke_rlm_config = load_poke_rlm_config_from_env(self.poke_rlm_config)
+        if (
+            self.poke_rlm_config is not None
+            and self.poke_rlm_config.runs_planner
+            and self.model is not None
+        ):
+            self._init_poke_rlm_bridge()
+        self.slowking_distill_config = load_slowking_distill_config_from_env(
+            self.slowking_distill_config
+        )
+        if (
+            self.slowking_distill_config is not None
+            and self.slowking_distill_config.runs
+        ):
+            self._init_slowking_distill_bridge()
         env_runtime = os.environ.get("POKEBOT_MATCHUP_ADAPTER_RUNTIME", "").strip()
         if env_runtime:
             self.matchup_adapter_runtime = env_runtime.lower() in {
@@ -266,6 +351,92 @@ class PolicyAgent:
                     ),
             )
 
+    def _init_rtp_bridge(self) -> None:
+        if self.model is None:
+            self._rtp_bridge = None
+            return
+        rtp_config = resolve_rtp_config_for_model(
+            self.model,
+            profile_name=self.rtp_sizing_profile,
+            online_sim_verify_budget=self.rtp_online_sim_verify_budget,
+        )
+        self._rtp_bridge = RTPAgentBridge(
+            model=self.model,
+            deck=list(self.deck),
+            config=rtp_config,
+            get_matchup_route=self._matchup_model_route,
+            get_board_history=lambda: self.board_history,
+            get_previous_action_history=lambda: self.previous_action_history,
+            get_previous_action_token=lambda: self._previous_action_token,
+            get_kv_cache=lambda: self._kv_cache,
+            set_kv_cache=lambda cache: setattr(self, "_kv_cache", cache),
+            max_action_combos=int(self.rtp_max_action_combos),
+        )
+
+    def _init_poke_rlm_bridge(self) -> None:
+        if self.model is None or self.poke_rlm_config is None:
+            self._poke_rlm_bridge = None
+            return
+        cfg = resolve_poke_rlm_config_for_model(
+            self.model, base=self.poke_rlm_config
+        )
+        self.poke_rlm_config = cfg
+        self._poke_rlm_bridge = PokeRLMAgentBridge(
+            model=self.model,
+            deck=list(self.deck),
+            config=cfg,
+            get_matchup_route=self._matchup_model_route,
+            get_board_history=lambda: self.board_history,
+            get_previous_action_history=lambda: self.previous_action_history,
+            get_previous_action_token=lambda: self._previous_action_token,
+            get_kv_cache=lambda: self._kv_cache,
+            set_kv_cache=lambda cache: setattr(self, "_kv_cache", cache),
+            max_action_combos=int(self.poke_rlm_max_action_combos),
+        )
+
+    def _init_slowking_distill_bridge(self) -> None:
+        cfg = self.slowking_distill_config
+        if cfg is None or not cfg.runs:
+            self._slowking_distill_bridge = None
+            return
+        bundle = None
+        if (
+            cfg.use_belief_mcts
+            and self.model is not None
+            and self.belief_posterior is not None
+            and (self.checkpoint_digest or "").startswith("sha256:")
+        ):
+            bundle = BeliefSearchBundle(
+                model=self.model,
+                deck=list(self.deck),
+                posterior=self.belief_posterior,
+                checkpoint_digest=str(self.checkpoint_digest),
+                device=self.device,
+                max_sims=int(cfg.search_budget_sims),
+                move_time_s=float(cfg.search_move_time_s),
+                leaf_backend=self.leaf_backend,
+            )
+        self._slowking_distill_bridge = SlowkingDistillAgentBridge(
+            config=cfg,
+            search_bundle=bundle,
+            device=self.device,
+        )
+        if not self._slowking_distill_bridge.ready:
+            # Missing checkpoint → leave bridge unset (fail closed to RTP/greedy).
+            self._slowking_distill_bridge = None
+
+    def _slowking_distill_legal(
+        self, obs_dict: dict
+    ) -> list[list[int]]:
+        try:
+            combos = features.enumerate_action_combos(
+                obs_dict, max_combos=int(self.slowking_distill_max_action_combos)
+            )
+            return [list(c) for c in combos]
+        except features.ActionSpaceTooLarge:
+            stage = features.factorized_action_candidates(obs_dict, [])
+            return [list(c) for c in stage]
+
     def reset_game(self) -> None:
         if self.use_mcts:
             self.clock = GameClock(
@@ -290,6 +461,19 @@ class PolicyAgent:
         self._matchup_shadow_failed_logged = False
         self.belief_history = PublicBeliefHistory()
         self._matchup_adapter_shadow_router.reset_for_new_game()
+        if self._rtp_bridge is not None:
+            self._rtp_bridge.reset_game()
+        if self._poke_rlm_bridge is not None:
+            self._poke_rlm_bridge.reset_game()
+        self.last_poke_rlm_trace = None
+        if (
+            self._slowking_distill_bridge is not None
+            and self._slowking_distill_bridge.runtime is not None
+        ):
+            # Runtime has no game-level cache; clear decision counters only.
+            self._slowking_distill_bridge.runtime._decisions = 0
+            self._slowking_distill_bridge.runtime._search_calls = 0
+        self.last_slowking_distill_trace = None
 
     def matchup_adapter_shadow_snapshot(self) -> dict[str, Any]:
         """Return the current shadow or activated causal route audit."""
@@ -402,43 +586,41 @@ class PolicyAgent:
             raise ValueError(f"history context limit must be positive, got {limit}")
         return limit
 
-    @torch.no_grad()
-    def greedy_select(self, obs_dict: dict) -> list[int]:
-        go_first = forced_go_first_action(obs_dict)
-        if go_first is not None:
-            # Preserve the setup decision in temporal history when the feature
-            # contract is available, but the explicit go-first choice itself
-            # must survive any optional telemetry/feature failure.
-            try:
-                features.assert_info_set(obs_dict)
-                board = features.build_board_tokens(obs_dict, self.deck)
-                self.board_history.append(board)
-                self.previous_action_history.append(self._previous_action_token)
-                max_context = self._history_context_limit()
-                self.board_history = self.board_history[-max_context:]
-                self.previous_action_history = self.previous_action_history[-max_context:]
-                self._previous_action_token = features.build_option_tokens(
-                    obs_dict, [go_first]
+    def _record_go_first(self, obs_dict: dict, go_first: list[int]) -> list[int]:
+        try:
+            features.assert_info_set(obs_dict)
+            board = features.build_board_tokens(obs_dict, self.deck)
+            self.board_history.append(board)
+            self.previous_action_history.append(self._previous_action_token)
+            max_context = self._history_context_limit()
+            self.board_history = self.board_history[-max_context:]
+            self.previous_action_history = self.previous_action_history[-max_context:]
+            self._previous_action_token = features.build_option_tokens(
+                obs_dict, [go_first]
+            )
+            if self.collect_targets:
+                self.targets.append(
+                    {
+                        "observation": obs_dict,
+                        "action": list(go_first),
+                        "action_combos": [list(go_first)],
+                        "policy": [1.0],
+                        "value": None,
+                        "visits": None,
+                        "diagnostics": {
+                            "target_source": "forced_go_first_contract",
+                            "trusted": True,
+                            "history_length": len(self.board_history),
+                        },
+                    }
                 )
-                if self.collect_targets:
-                    self.targets.append(
-                        {
-                            "observation": obs_dict,
-                            "action": list(go_first),
-                            "action_combos": [list(go_first)],
-                            "policy": [1.0],
-                            "value": None,
-                            "visits": None,
-                            "diagnostics": {
-                                "target_source": "forced_go_first_contract",
-                                "trusted": True,
-                                "history_length": len(self.board_history),
-                            },
-                        }
-                    )
-            except Exception:
-                pass
-            return go_first
+        except Exception:
+            pass
+        return go_first
+
+    def _append_decision_history(
+        self, obs_dict: dict
+    ) -> features.SparseVector:
         features.assert_info_set(obs_dict)
         board = features.build_board_tokens(obs_dict, self.deck)
         self.board_history.append(board)
@@ -449,6 +631,18 @@ class PolicyAgent:
             self.previous_action_history = self.previous_action_history[
                 -max_context:
             ]
+        return board
+
+    @torch.no_grad()
+    def _factorized_greedy_prepared(
+        self,
+        obs_dict: dict,
+        board: features.SparseVector,
+        *,
+        target_source: str = "history_policy",
+        extra_diagnostics: Optional[dict[str, Any]] = None,
+    ) -> list[int]:
+        """Factorized greedy assuming board history was already appended."""
         obs = cg_env.to_observation(obs_dict)
         if obs.current is None:
             raise ValueError("greedy inference requires post-setup observation")
@@ -538,7 +732,6 @@ class PolicyAgent:
             if self.sample_actions:
                 temp = float(self.action_temperature)
                 if temp > 0.0 and abs(temp - 1.0) > 1e-6:
-                    # Re-temperature from stored probs via log-space.
                     import math
 
                     logits = [math.log(max(p, 1e-12)) / temp for p in policy]
@@ -568,6 +761,13 @@ class PolicyAgent:
             obs_dict, [selected]
         )
         if self.collect_targets:
+            diagnostics = {
+                "target_source": target_source,
+                "trusted": True,
+                "history_length": len(self.board_history),
+            }
+            if extra_diagnostics:
+                diagnostics.update(extra_diagnostics)
             self.targets.append(
                 {
                     "observation": obs_dict,
@@ -577,13 +777,285 @@ class PolicyAgent:
                     "factorized_stages": factorized_stages,
                     "value": None,
                     "visits": None,
+                    "diagnostics": diagnostics,
+                }
+            )
+        return selected
+
+    @torch.no_grad()
+    def greedy_select(self, obs_dict: dict) -> list[int]:
+        go_first = forced_go_first_action(obs_dict)
+        if go_first is not None:
+            # Preserve the setup decision in temporal history when the feature
+            # contract is available, but the explicit go-first choice itself
+            # must survive any optional telemetry/feature failure.
+            return self._record_go_first(obs_dict, go_first)
+        board = self._append_decision_history(obs_dict)
+        return self._factorized_greedy_prepared(obs_dict, board)
+
+    @torch.no_grad()
+    def rtp_select(self, obs_dict: dict) -> list[int]:
+        """Recursive Turn Planner select with greedy fallback."""
+        go_first = forced_go_first_action(obs_dict)
+        if go_first is not None:
+            return self._record_go_first(obs_dict, go_first)
+        if self._rtp_bridge is None:
+            if self.model is not None and self.use_recursive_turn_planner:
+                self._init_rtp_bridge()
+            if self._rtp_bridge is None:
+                return self.greedy_select(obs_dict)
+
+        board = self._append_decision_history(obs_dict)
+
+        def greedy_fallback(_obs: dict) -> list[int]:
+            return self._factorized_greedy_prepared(
+                obs_dict,
+                board,
+                target_source="rtp_greedy_fallback",
+                extra_diagnostics={
+                    "rtp_fallback_reason": (
+                        self._rtp_bridge.last_diagnostics.fallback_reason
+                        if self._rtp_bridge is not None
+                        else "bridge_missing"
+                    )
+                },
+            )
+
+        selected = self._rtp_bridge.select(
+            obs_dict,
+            board=board,
+            greedy_fallback=greedy_fallback,
+        )
+        diag = self._rtp_bridge.last_diagnostics
+        # Fallback path already set the previous-action token inside greedy.
+        if diag.mode != "fallback":
+            self._previous_action_token = features.build_option_tokens(
+                obs_dict, [selected]
+            )
+            if self.collect_targets:
+                self.targets.append(
+                    {
+                        "observation": obs_dict,
+                        "action": list(selected),
+                        "action_combos": [list(selected)],
+                        "policy": [1.0],
+                        "value": None,
+                        "visits": None,
+                        "diagnostics": {
+                            "target_source": "recursive_turn_planner",
+                            "trusted": False,
+                            "history_length": len(self.board_history),
+                            "rtp_mode": diag.mode,
+                            "rtp_turn_key": list(diag.turn_key),
+                            "rtp_legal_count": diag.legal_count,
+                            "rtp_used_option_hidden": diag.used_option_hidden,
+                        },
+                    }
+                )
+        return selected
+
+    def _slowking_distill_shadow_after(
+        self, obs_dict: dict, selected: list[int]
+    ) -> None:
+        """Shadow telemetry after another policy chose ``selected``."""
+        cfg = self.slowking_distill_config
+        if cfg is None or not cfg.shadow_only:
+            return
+        if self._slowking_distill_bridge is None:
+            self._init_slowking_distill_bridge()
+        if self._slowking_distill_bridge is None:
+            return
+        legal = self._slowking_distill_legal(obs_dict)
+        try:
+            decision = self._slowking_distill_bridge.shadow(
+                obs_dict,
+                legal,
+                committed_action=selected,
+            )
+            diag = self._slowking_distill_bridge.last_diagnostics
+            self.last_slowking_distill_trace = {
+                "enabled": True,
+                "mode": cfg.mode.value,
+                "used_for_selection": False,
+                "committed_action": list(selected),
+                "would_action": list(decision.action) if decision else [],
+                "source": diag.source,
+                "critical": diag.critical,
+                "search_used": diag.search_used,
+                "search_backend": diag.search_backend,
+                "reason": diag.reason,
+                "trace": diag.trace,
+            }
+        except Exception as exc:  # noqa: BLE001 — shadow must never raise
+            self.last_slowking_distill_trace = {
+                "enabled": True,
+                "mode": cfg.mode.value,
+                "reason": "shadow_failure",
+                "error": f"{type(exc).__name__}: {exc}",
+                "selected_action": list(selected),
+                "used_for_selection": False,
+            }
+
+    @torch.no_grad()
+    def slowking_distill_select(self, obs_dict: dict) -> list[int]:
+        """Slowking distill active select with greedy fallback."""
+        go_first = forced_go_first_action(obs_dict)
+        if go_first is not None:
+            return self._record_go_first(obs_dict, go_first)
+        if self._slowking_distill_bridge is None:
+            self._init_slowking_distill_bridge()
+        if self._slowking_distill_bridge is None:
+            return self.greedy_select(obs_dict)
+
+        board = self._append_decision_history(obs_dict)
+        legal = self._slowking_distill_legal(obs_dict)
+        selected = self._slowking_distill_bridge.select(obs_dict, legal)
+        diag = self._slowking_distill_bridge.last_diagnostics
+        if selected is None:
+            return self._factorized_greedy_prepared(
+                obs_dict,
+                board,
+                target_source="slowking_distill_greedy_fallback",
+                extra_diagnostics={
+                    "slowking_distill_fallback_reason": diag.fallback_reason
+                    or diag.reason
+                    or "bridge_unready",
+                },
+            )
+        self._previous_action_token = features.build_option_tokens(
+            obs_dict, [selected]
+        )
+        self.last_slowking_distill_trace = {
+            "enabled": True,
+            "mode": (
+                self.slowking_distill_config.mode.value
+                if self.slowking_distill_config is not None
+                else "unknown"
+            ),
+            "used_for_selection": True,
+            "action": list(selected),
+            "source": diag.source,
+            "critical": diag.critical,
+            "search_used": diag.search_used,
+            "search_backend": diag.search_backend,
+            "reason": diag.reason,
+            "trace": diag.trace,
+        }
+        if self.collect_targets:
+            self.targets.append(
+                {
+                    "observation": obs_dict,
+                    "action": list(selected),
+                    "action_combos": [list(selected)],
+                    "policy": [1.0],
+                    "value": None,
+                    "visits": None,
                     "diagnostics": {
-                        "target_source": "history_policy",
-                        "trusted": True,
+                        "target_source": "slowking_distill",
+                        "trusted": False,
                         "history_length": len(self.board_history),
+                        "slowking_distill_source": diag.source,
+                        "slowking_distill_critical": diag.critical,
+                        "slowking_distill_search_backend": diag.search_backend,
                     },
                 }
             )
+        return selected
+
+    def _poke_rlm_shadow_after(
+        self, obs_dict: dict, selected: list[int]
+    ) -> None:
+        """Shadow telemetry after another policy chose ``selected``."""
+        cfg = self.poke_rlm_config
+        if cfg is None or not cfg.shadow_only or self.model is None:
+            return
+        if self._poke_rlm_bridge is None:
+            self._init_poke_rlm_bridge()
+        if self._poke_rlm_bridge is None:
+            return
+        board = (
+            self.board_history[-1]
+            if self.board_history
+            else features.build_board_tokens(obs_dict, self.deck)
+        )
+        try:
+            trace = self._poke_rlm_bridge.shadow(
+                obs_dict,
+                board=board,
+                selected_action=selected,
+                append_cache=False,
+            )
+            self.last_poke_rlm_trace = trace.to_json()
+        except Exception as exc:
+            self.last_poke_rlm_trace = {
+                "enabled": True,
+                "mode": cfg.mode.value,
+                "reason": "encode_failure",
+                "error": f"{type(exc).__name__}: {exc}",
+                "selected_action": list(selected),
+                "used_for_selection": False,
+            }
+
+    @torch.no_grad()
+    def poke_rlm_select(self, obs_dict: dict) -> list[int]:
+        """PokeRLM evaluate/active select with greedy fallback."""
+        go_first = forced_go_first_action(obs_dict)
+        if go_first is not None:
+            return self._record_go_first(obs_dict, go_first)
+        if self._poke_rlm_bridge is None:
+            if self.model is not None and self.poke_rlm_config is not None:
+                self._init_poke_rlm_bridge()
+            if self._poke_rlm_bridge is None:
+                return self.greedy_select(obs_dict)
+
+        board = self._append_decision_history(obs_dict)
+
+        def greedy_fallback(_obs: dict) -> list[int]:
+            return self._factorized_greedy_prepared(
+                obs_dict,
+                board,
+                target_source="poke_rlm_greedy_fallback",
+                extra_diagnostics={
+                    "poke_rlm_fallback_reason": (
+                        self._poke_rlm_bridge.last_diagnostics.fallback_reason
+                        if self._poke_rlm_bridge is not None
+                        else "bridge_missing"
+                    )
+                },
+            )
+
+        selected = self._poke_rlm_bridge.select(
+            obs_dict,
+            board=board,
+            greedy_fallback=greedy_fallback,
+        )
+        diag = self._poke_rlm_bridge.last_diagnostics
+        if diag.trace is not None:
+            self.last_poke_rlm_trace = diag.trace.to_json()
+        if diag.used_for_selection:
+            self._previous_action_token = features.build_option_tokens(
+                obs_dict, [selected]
+            )
+            if self.collect_targets:
+                self.targets.append(
+                    {
+                        "observation": obs_dict,
+                        "action": list(selected),
+                        "action_combos": [list(selected)],
+                        "policy": [1.0],
+                        "value": None,
+                        "visits": None,
+                        "diagnostics": {
+                            "target_source": "poke_rlm",
+                            "trusted": False,
+                            "history_length": len(self.board_history),
+                            "poke_rlm_mode": diag.mode,
+                            "poke_rlm_route": diag.route,
+                            "poke_rlm_reason": diag.reason,
+                            "poke_rlm_legal_count": diag.legal_count,
+                        },
+                    }
+                )
         return selected
 
     def mcts_select(self, obs_dict: dict) -> list[int]:
@@ -750,10 +1222,43 @@ class PolicyAgent:
                         flush=True,
                     )
         try:
+            poke_cfg = self.poke_rlm_config
+            distill_cfg = self.slowking_distill_config
             if self.use_mcts:
                 action = self.mcts_select(obs_dict)
+            elif (
+                poke_cfg is not None
+                and poke_cfg.selects_actions
+                and (self._poke_rlm_bridge is not None or self.model is not None)
+            ):
+                action = self.poke_rlm_select(obs_dict)
+            elif (
+                distill_cfg is not None
+                and distill_cfg.selects_actions
+                and (
+                    self._slowking_distill_bridge is not None
+                    or bool(distill_cfg.actor_checkpoint)
+                )
+            ):
+                action = self.slowking_distill_select(obs_dict)
+            elif self.use_recursive_turn_planner and (
+                self._rtp_bridge is not None or self.model is not None
+            ):
+                action = self.rtp_select(obs_dict)
             else:
                 action = self.greedy_select(obs_dict)
+            if (
+                poke_cfg is not None
+                and poke_cfg.shadow_only
+                and not poke_cfg.selects_actions
+            ):
+                self._poke_rlm_shadow_after(obs_dict, action)
+            if (
+                distill_cfg is not None
+                and distill_cfg.shadow_only
+                and not distill_cfg.selects_actions
+            ):
+                self._slowking_distill_shadow_after(obs_dict, action)
         except RemoteLeafCancelled:
             # Parent-driven shutdown is not a search fault and must not emit a
             # fail-closed health violation while the iteration is aborting.

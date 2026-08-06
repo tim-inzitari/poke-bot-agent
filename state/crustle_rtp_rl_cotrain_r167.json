@@ -1,0 +1,10 @@
+{
+  "schema": "poke_bot.crustle_rtp_rl_cotrain/v1",
+  "mode": "concurrent",
+  "rl_service": "pokebot-final-format-crustle-r113-h10-rl.service",
+  "rtp_service": "pokebot-crustle-rtp-cotrain-r167.service",
+  "live_checkpoint": "/home/inzi/poke-bot-agent/outputs/rtp_fleet/crustle.live/rtp_shadow_planner.pt",
+  "rtp_device": "cuda:0",
+  "serving_eligible": false,
+  "exclusive_override_lifted": true
+}

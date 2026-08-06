@@ -1,0 +1,99 @@
+# Design-reference configuration. Adapt to the repository's real config system.
+poke_rlm:
+  enabled: false
+  mode: shadow  # disabled | shadow | evaluate | active
+  profile: base_384
+
+  architecture:
+    d_model: 384
+    n_heads: 8
+    ffn_multiplier: 4
+    state_encoder_layers: 10
+    action_decoder_layers: 2
+    planner_layers: 3
+    share_planner_weights_across_depth: true
+    dynamics_blocks: 4
+    dynamics_hidden_multiplier: 2
+    plan_vocab_size: 256
+    max_plan_tokens_per_candidate: 24
+    root_plan_candidates: 6
+    q_bootstrap_heads: 4
+    q_quantiles: 32
+    value_horizons: 5
+    successor_dim: 128
+
+  routing:
+    enabled: true
+    routes: [direct, root, recursive]
+    direct_on_forced_action: true
+    direct_on_budget_pressure: true
+    entropy_threshold: null       # calibrate from audit data
+    top_two_margin_threshold: null
+    disagreement_threshold: null
+    compute_cost_weight: 0.01
+
+  recursion:
+    max_depth: 2
+    audit_max_depth: 3
+    max_subgoals: 8
+    max_plan_nodes: 32
+    batch_same_depth_subgoals: true
+    require_fallback_per_subgoal: true
+
+  inference:
+    encode_once_per_turn_when_safe: true
+    max_neural_planner_calls_per_turn: 4
+    use_state_cache: true
+    conservative_cache_invalidation: true
+    deterministic_fallback: current_policy
+    fused_output_projection: true
+    mixed_precision: bf16
+
+  simulator_budget:
+    measured_legacy_hard_cap_per_turn: 75
+    normal_target_cap_per_turn: 16
+    finalist_verification_calls: 8
+    repair_reserve_calls: 4
+    emergency_reserve_calls: 4
+    verify_only_when_uncertain: true
+
+  deadlines:
+    # Populate after repository/hardware audit.
+    whole_turn_ms: null
+    safety_margin_ms: null
+    stop_optional_compute_at_margin: true
+
+  validation:
+    validate_schema: true
+    validate_visibility: true
+    validate_resource_ledger: true
+    resolve_current_option_index_before_step: true
+    reject_ambiguous_selectors: true
+    reject_uncovered_stochastic_branch: false  # repair/fallback instead
+
+  adapters:
+    enabled: true
+    kind: bottleneck
+    bottleneck_ratio: 0.25
+    target_upper_encoder_blocks: 4
+    target_action_decoder_blocks: 2
+    target_planner_blocks: 2
+    freeze_completed_specialists: true
+
+  training:
+    # Existing RL_TRAINING_PROTOCOL/config values remain authoritative.
+    freeze_core_first: true
+    unfreeze_upper_core_fraction_after_head_signal: 0.25
+    plan_imitation_enabled: true
+    dynamics_enabled: true
+    invalid_plan_penalty_enabled: true
+    compute_cost_penalty_enabled: true
+    hard_state_relabeling_enabled: true
+    privileged_targets_separate_from_observation: true
+
+  logging:
+    log_component_latency: true
+    log_model_and_simulator_calls: true
+    log_plan_trace: true
+    log_predicted_vs_observed_delta: true
+    log_hidden_information: false
