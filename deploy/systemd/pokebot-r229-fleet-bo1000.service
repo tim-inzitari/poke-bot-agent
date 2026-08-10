@@ -1,0 +1,19 @@
+[Unit]
+Description=Pokemon r229 r228-MCTS versus r195 BO1000 fleet evaluation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/source
+Environment=PYTHONPATH=/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/source
+ExecStart=/home/inzi/miniconda3/envs/poke-bot-agent/bin/python /home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/source/scripts/run_r229_fleet_bo1000.py --config /home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/source/config/r229_fleet_bo1000.json --output-root /home/inzi/poke-bot-agent/outputs/evaluations/r229-fleet-bo1000-results
+Restart=on-failure
+RestartSec=60
+KillMode=control-group
+TimeoutStopSec=120
+Nice=10
+OOMPolicy=stop
+
+[Install]
+WantedBy=default.target
