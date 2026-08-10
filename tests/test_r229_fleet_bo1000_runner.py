@@ -101,8 +101,13 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
     assert result["status"] == "complete"
     attempts = sorted((tmp_path / "out" / "attempts").glob("*.json"))
     assert len(attempts) == 2
-    assert json.loads(attempts[0].read_text())["disposition"] == "failed_attempt_requeued"
-    assert json.loads(attempts[1].read_text())["disposition"] == "complete"
+    first = json.loads(attempts[0].read_text())
+    second = json.loads(attempts[1].read_text())
+    assert first["disposition"] == "failed_attempt_requeued"
+    assert second["disposition"] == "complete"
+    assert first["attempt"] == 1 and second["attempt"] == 2
+    assert first["attempt_wall_seconds"] >= 0
+    assert second["log_sha256"] is None
 
 
 def test_process_watchdog_bounds_only_its_spawned_child():
@@ -153,3 +158,14 @@ def test_failed_remote_child_runs_only_configured_exact_cleanup(monkeypatch, tmp
             tmp_path / "game.log",
         )
     assert calls[-1] == ["cleanup", f"pokebot-{job['game_id']}"]
+
+
+def test_resume_attempt_number_never_reuses_orphaned_log(tmp_path):
+    game_id = "r229-pair-0000-game-0"
+    logs = tmp_path / "logs"
+    attempts = tmp_path / "attempts"
+    logs.mkdir()
+    attempts.mkdir()
+    (attempts / f"{game_id}.attempt-001.json").write_text("{}\n")
+    (logs / f"{game_id}.attempt-004.log").write_text("orphaned\n")
+    assert runner._attempt_number(tmp_path, game_id) == 4

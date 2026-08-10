@@ -52,6 +52,16 @@ def _create_once(path: Path, payload: object) -> None:
         stream.write(encoded); stream.flush(); os.fsync(stream.fileno())
 
 
+def _attempt_number(root: Path, game_id: str) -> int:
+    numbers: list[int] = []
+    for parent, suffix in ((root / "attempts", ".json"), (root / "logs", ".log")):
+        for path in parent.glob(f"{game_id}.attempt-*{suffix}"):
+            token = path.name.removesuffix(suffix).rsplit("-", 1)[-1]
+            if token.isdigit():
+                numbers.append(int(token))
+    return max(numbers, default=0)
+
+
 def schedule() -> list[dict[str, int | str]]:
     return [
         {
@@ -220,11 +230,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not slots:
         raise R229FleetError("fleet has no configured slots")
     pending = list(jobs)
-    futures: dict[Future[dict[str, Any]], tuple[Mapping[str, Any], Mapping[str, Any], Path]] = {}
+    futures: dict[
+        Future[dict[str, Any]],
+        tuple[Mapping[str, Any], Mapping[str, Any], Path, Path, str, float, int],
+    ] = {}
     consecutive_failures = {str(host["id"]): 0 for host in hosts}
     quarantined: set[str] = set()
     attempt_counter: dict[str, int] = {
-        str(job["game_id"]): len(list((root / "attempts").glob(f"{job['game_id']}.attempt-*.json")))
+        str(job["game_id"]): _attempt_number(root, str(job["game_id"]))
         for job in schedule()
     }
     with ThreadPoolExecutor(max_workers=len(slots)) as pool:
@@ -238,13 +251,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 attempt_counter[str(job["game_id"])] = attempt_counter.get(str(job["game_id"]), 0) + 1
                 attempt = attempt_counter[str(job["game_id"])]
                 attempt_path = root / "attempts" / f"{job['game_id']}.attempt-{attempt:03d}.json"
-                future = pool.submit(_run, host, job, output, logs_dir / f"{job['game_id']}.attempt-{attempt:03d}.log")
-                futures[future] = (host, job, attempt_path)
+                log_path = logs_dir / f"{job['game_id']}.attempt-{attempt:03d}.log"
+                attempt_started_utc = _utc()
+                attempt_started = time.monotonic()
+                future = pool.submit(_run, host, job, output, log_path)
+                futures[future] = (
+                    host, job, attempt_path, log_path, attempt_started_utc,
+                    attempt_started, attempt,
+                )
             if not futures:
                 raise R229FleetError("every host refused admission while games remain")
             done, _ = wait(futures, return_when=FIRST_COMPLETED)
             for future in done:
-                host, job, attempt_path = futures.pop(future)
+                (
+                    host, job, attempt_path, log_path, attempt_started_utc,
+                    attempt_started, attempt,
+                ) = futures.pop(future)
                 host_id = str(host["id"])
                 try:
                     result = future.result()
@@ -266,7 +288,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         pending.append(job)
                 _create_once(attempt_path, {
                     "schema": "poke_bot.r229_fleet_game_attempt/v1",
-                    "at_utc": _utc(), "host": host_id, "game": dict(job), **result,
+                    "attempt": attempt,
+                    "started_at_utc": attempt_started_utc,
+                    "completed_at_utc": _utc(),
+                    "attempt_wall_seconds": time.monotonic() - attempt_started,
+                    "host": host_id,
+                    "game": dict(job),
+                    "log_path": str(log_path),
+                    "log_sha256": _sha(log_path) if log_path.is_file() else None,
+                    **result,
                 })
                 if host_id not in quarantined:
                     free.append(host)
