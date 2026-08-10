@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+SCRIPT = Path(__file__).parents[1] / "scripts/run_r229_fleet_bo1000.py"
+spec = importlib.util.spec_from_file_location("r229_runner", SCRIPT)
+assert spec and spec.loader
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+
+
+def test_schedule_is_exactly_500_seat_swapped_pairs():
+    rows = runner.schedule()
+    assert len(rows) == 1000
+    assert len({row["game_id"] for row in rows}) == 1000
+    for pair in range(500):
+        pair_rows = [row for row in rows if row["pair_index"] == pair]
+        assert {row["mcts_seat"] for row in pair_rows} == {0, 1}
+        assert {row["game_index"] for row in pair_rows} == {0, 1}
+
+
+def test_revision_230_fully_enumerates_observed_6720_action_prompt():
+    from poke_bot import features
+
+    observation = SimpleNamespace(
+        select=SimpleNamespace(option=[object()] * 8, minCount=5, maxCount=5)
+    )
+    actions = features.enumerate_action_combos(observation)
+    assert features.MAX_ACTION_COMBOS == 65536
+    assert actions.total_count == len(actions) == 6720
+
+
+def test_run_parses_remote_stdout_and_commits_exact_receipt(monkeypatch, tmp_path):
+    job = runner.schedule()[0]
+    receipt = {
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
+        "status": "complete", **job, "training_eligible": False,
+    }
+    monkeypatch.setattr(
+        runner.subprocess, "run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout="ADMITTED\n"),
+    )
+
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout):
+            return "noise\n" + json.dumps(receipt) + "\n", None
+
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *a, **k: FakeProcess())
+    output = tmp_path / "game.json"
+    result = runner._run(
+        {"id": "elmo", "admission_command": ["probe"], "command": ["worker", "{game_id}"], "slots": 1},
+        job, output, tmp_path / "game.log",
+    )
+    assert result["disposition"] == "complete"
+    assert json.loads(output.read_text())["game_id"] == job["game_id"]
+
+
+def test_host_admission_is_exact_and_fail_closed(monkeypatch):
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout="ADMITTED but busy\n"))
+    admitted, reason = runner._host_admitted({"admission_command": ["probe"]})
+    assert admitted is False
+    assert "admission_refused" in reason
+
+
+def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch, tmp_path):
+    job = runner.schedule()[0]
+    monkeypatch.setattr(runner, "schedule", lambda: [job])
+    monkeypatch.setattr(runner, "summarize_games", lambda rows, require_complete: {"throughput": {}})
+    calls = {"count": 0}
+
+    def fake_run(host, current, output, log):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise runner.R229FleetError("stuck worker")
+        runner._atomic(output, {
+            "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_game/v1",
+            "status": "complete", **current, "training_eligible": False,
+        })
+        return {"disposition": "complete", "host": host["id"], "wall_seconds": 1.0}
+
+    monkeypatch.setattr(runner, "_run", fake_run)
+    config = tmp_path / "fleet.json"
+    config.write_text(json.dumps({"hosts": [
+        {"id": "elmo-slot", "role": "elmo", "slots": 1},
+        {"id": "bert-slot", "role": "bert", "slots": 0},
+        {"id": "train-slot", "role": "train_inzi", "slots": 0},
+    ]}))
+    result = runner.run(SimpleNamespace(
+        config=config, output_root=tmp_path / "out",
+        admission_retry_seconds=0.0, quarantine_after_failures=3,
+    ))
+    assert result["status"] == "complete"
+    attempts = sorted((tmp_path / "out" / "attempts").glob("*.json"))
+    assert len(attempts) == 2
+    assert json.loads(attempts[0].read_text())["disposition"] == "failed_attempt_requeued"
+    assert json.loads(attempts[1].read_text())["disposition"] == "complete"
+
+
+def test_process_watchdog_bounds_only_its_spawned_child():
+    watchdog = Path(__file__).parents[1] / "scripts/run_r229_process_watchdog.py"
+    result = subprocess.run(
+        [
+            sys.executable, str(watchdog), "--timeout-seconds", "0.05",
+            "--grace-seconds", "0.05", "--", sys.executable, "-c",
+            "import time; time.sleep(60)",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=2,
+        check=False,
+    )
+    assert result.returncode == 124
+    assert "R229_GAME_WATCHDOG_TIMEOUT" in result.stdout
+
+
+def test_failed_remote_child_runs_only_configured_exact_cleanup(monkeypatch, tmp_path):
+    job = runner.schedule()[0]
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        stdout = "ADMITTED\n" if argv == ["probe"] else "removed exact child\n"
+        return SimpleNamespace(returncode=0, stdout=stdout)
+
+    class FailedProcess:
+        returncode = 124
+
+        def communicate(self, timeout):
+            return "R229_GAME_WATCHDOG_TIMEOUT\n", None
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *a, **k: FailedProcess())
+    with pytest.raises(runner.R229FleetError, match="cleanup_exit:0"):
+        runner._run(
+            {
+                "id": "elmo",
+                "admission_command": ["probe"],
+                "command": ["worker", "{game_id}"],
+                "failed_child_cleanup_command": ["cleanup", "pokebot-{game_id}"],
+            },
+            job,
+            tmp_path / "game.json",
+            tmp_path / "game.log",
+        )
+    assert calls[-1] == ["cleanup", f"pokebot-{job['game_id']}"]

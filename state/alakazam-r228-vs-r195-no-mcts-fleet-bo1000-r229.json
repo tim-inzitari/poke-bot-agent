@@ -1,0 +1,79 @@
+{
+  "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229/v1",
+  "owner_decision_revision": 229,
+  "owner_action_space_revision": 230,
+  "owner_worker_isolation_revision": 231,
+  "kaggle_hang_evidence_revision": 232,
+  "outer_game_watchdog_revision": 233,
+  "r228_kaggle_viability_evidence": {
+    "submission_id": 55416396,
+    "status": "SubmissionStatus.ERROR",
+    "description_evidence": "Hung process — 8-LANE SHARED-TREE VIABILITY",
+    "usable_claim_passed": false,
+    "failed_submission_must_be_preserved": true
+  },
+  "recorded_at_utc": "2026-08-10T21:31:12Z",
+  "status": "authorized_for_safe_implementation_tests_commit_preflight_and_receipt_backed_fleet_execution",
+  "objective": "complete a 500-pair 1000-game mirrored r228 MCTS versus standard r195 no-MCTS evaluation and determine whether MCTS strength and decision changes justify its throughput cost",
+  "frozen_identity": {
+    "checkpoint_sha256": "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a",
+    "r195_bundle_sha256": "sha256:dfa8bfccf9ee41d2205c7e30d817489391bb6295fa1ed1eff78c36fd8a8b7145",
+    "matchup_tree_sha256": "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe0194c9049",
+    "stock_libcg_sha256": "sha256:ffd89bf923525a3e6feb5e6201e96a866c0f456895499ed5c4a566303caae67c",
+    "same_model_package_deck_adapter_and_non_search_runtime_required_for_both_arms": true,
+    "only_allowed_arm_difference": "r228_async_eight_worker_shared_tree_mcts_action_selection"
+  },
+  "design": {
+    "pairs": 500,
+    "games": 1000,
+    "games_per_pair": 2,
+    "seat_swap_required": true,
+    "mcts_games_by_seat": {"seat_0": 500, "seat_1": 500},
+    "complete_all_games_without_early_best_of_stop": true,
+    "arms": ["r228_mcts_same_frozen_r195", "standard_r195_no_mcts"],
+    "complete_ordered_action_ceiling": 65536,
+    "same_action_ceiling_required_for_both_arms": true,
+    "observed_6720_action_prompt_must_be_fully_enumerated": true,
+    "sampling_threshold_pruning_or_arm_specific_fallback_allowed": false
+  },
+  "fleet": {
+    "required_hosts": ["elmo", "bert", "train_inzi"],
+    "existing_receipt_backed_scheduler_required": true,
+    "host_capacity_must_be_admitted_from_managed_service_state": true,
+    "healthy_protected_workload_stop_restart_reconfigure_or_worker_reduction_allowed": false,
+    "interactive_session_interference_allowed": false,
+    "durable_exactly_once_game_claims_results_and_resume_required": true,
+    "single_worker_failure_may_abort_or_cancel_the_fleet_run": false,
+    "failed_attempt_receipt_and_exact_game_requeue_required": true,
+    "host_or_slot_consecutive_failure_quarantine_threshold": 3,
+    "healthy_inflight_games_continue_during_worker_recovery": true
+  },
+  "decision_influence": {
+    "same_state_frozen_direct_counterfactual_required_for_every_branching_mcts_decision": true,
+    "required_fields": ["mcts_action", "direct_action", "action_changed", "mcts_action_direct_probability", "direct_action_probability", "mcts_action_direct_rank", "direct_probability_gap", "selected_action_visits", "root_visits", "completed_backups", "search_elapsed_seconds"],
+    "meaningful_change_definition": "action_changed and not probability-tied within the recorded tolerance, with at least one completed backup and a fully backed legal root action",
+    "invocation_alone_counts_as_meaningful_change": false
+  },
+  "required_review": {
+    "wins_losses_draws_overall_by_seat_and_by_pair": true,
+    "confidence_interval_and_effect_size": true,
+    "decisions_seen_total_and_per_game": true,
+    "branching_eligible_searched_forced_and_fallback_decision_counts": true,
+    "decision_means_medians_quantiles_and_distributions": true,
+    "raw_and_meaningful_choice_change_counts_and_rates": true,
+    "decision_changes_by_stage_seat_host_and_game_outcome": true,
+    "throughput_games_per_second_by_host_and_overall": true,
+    "search_latency_backup_and_microbatch_summary": true,
+    "worth_it_conclusion_considers_strength_influence_and_throughput": true
+  },
+  "safety": {
+    "content_addressed_source_preflight_output_and_final_receipts_required": true,
+    "fail_closed_on_identity_arm_scheduler_or_telemetry_drift": true,
+    "evaluation_games_training_eligible": false,
+    "training_or_gradient_authority": false,
+    "selector_serving_promotion_checkpoint_kaggle_rtp_or_iteration_authority": false,
+    "bo1000_launch_requires_fresh_hang_containment_and_clean_process_exit_preflight": true
+    ,"kaggle_specific_r228_lifecycle_may_be_changed_by_bo1000": false
+    ,"outer_watchdog_timeout_exit_code": 124
+  }
+}
