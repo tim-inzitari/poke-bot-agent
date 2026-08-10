@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import statistics
 from collections import Counter, defaultdict
+from datetime import datetime
 from typing import Any, Iterable, Mapping
 
 SCHEMA = "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_summary/v1"
@@ -52,6 +53,8 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
     wins = Counter()
     host_games = Counter()
     host_seconds: dict[str, float] = defaultdict(float)
+    host_started: dict[str, list[datetime]] = defaultdict(list)
+    host_completed: dict[str, list[datetime]] = defaultdict(list)
     decisions_per_game: list[float] = []
     eligible_per_game: list[float] = []
     searched_per_game: list[float] = []
@@ -85,6 +88,15 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             raise R229MetricsError("host and positive finite elapsed_seconds are required")
         host_games[host] += 1
         host_seconds[host] += elapsed
+        try:
+            host_started[host].append(
+                datetime.fromisoformat(str(row["started_at_utc"]).replace("Z", "+00:00"))
+            )
+            host_completed[host].append(
+                datetime.fromisoformat(str(row["completed_at_utc"]).replace("Z", "+00:00"))
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise R229MetricsError("game start/completion UTC timestamps are required") from exc
         metrics = row.get("decision_metrics")
         if not isinstance(metrics, Mapping):
             raise R229MetricsError("decision_metrics are required")
@@ -207,7 +219,19 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
         },
         "throughput": {
             "by_host": {
-                host: {"games": count, "summed_game_seconds": host_seconds[host], "games_per_second": count / host_seconds[host]}
+                host: {
+                    "games": count,
+                    "summed_game_seconds": host_seconds[host],
+                    "worker_time_games_per_second": count / host_seconds[host],
+                    "wall_span_seconds": max(
+                        1e-9,
+                        (max(host_completed[host]) - min(host_started[host])).total_seconds(),
+                    ),
+                    "wall_span_games_per_hour": count * 3600.0 / max(
+                        1e-9,
+                        (max(host_completed[host]) - min(host_started[host])).total_seconds(),
+                    ),
+                }
                 for host, count in sorted(host_games.items())
             },
             "aggregate_worker_games_per_second": len(games) / sum(host_seconds.values()),

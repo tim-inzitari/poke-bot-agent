@@ -32,6 +32,8 @@ def _rows():
                 "mcts_seat": mcts_seat, "winner_seat": mcts_seat,
                 "host": ("elmo", "bert", "train_inzi")[pair % 3],
                 "elapsed_seconds": 2.0,
+                "started_at_utc": "2026-08-10T20:00:00Z",
+                "completed_at_utc": "2026-08-10T20:00:02Z",
                 "decision_metrics": {"decisions_seen": 20, "mcts_eligible": 10, "searched": 8, "forced": 2, "fallback": 2, "action_changed": 3, "meaningful_choice_change": 2},
                 "mcts_decisions": decisions,
             })

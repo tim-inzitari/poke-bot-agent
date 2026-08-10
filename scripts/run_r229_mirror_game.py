@@ -11,6 +11,7 @@ import os
 import platform
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -21,6 +22,10 @@ MATCHUP_TREE = "sha256:e60efb2f31225c89dbd78169d26f54bc2014cb4ab0bb1587ac2a9fe01
 
 class R229GameError(RuntimeError):
     pass
+
+
+def _utc() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _sha256(path: Path) -> str:
@@ -90,6 +95,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
     if not getattr(direct_policy, "matchup_adapter_runtime", False):
         raise R229GameError("direct control lacks the frozen Matchup Adapter runtime")
 
+    started_at_utc = _utc()
     started = time.monotonic()
     decisions_seen = mcts_seen = forced = oversized = direct_seen = setup_seen = 0
     try:
@@ -161,6 +167,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
         changed = sum(bool(row.get("action_changed")) for row in receipts)
         meaningful = sum(bool(row.get("meaningful_choice_change")) for row in receipts)
         elapsed = max(1e-9, time.monotonic() - started)
+        completed_at_utc = _utc()
         return {
             "schema": SCHEMA,
             "status": "complete",
@@ -177,6 +184,8 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             "matchup_tree_sha256": MATCHUP_TREE,
             "stock_library": dict(runtime.stock_library_receipt),
             "elapsed_seconds": elapsed,
+            "started_at_utc": started_at_utc,
+            "completed_at_utc": completed_at_utc,
             "steps": steps,
             "decision_metrics": {
                 "decisions_seen": decisions_seen,
