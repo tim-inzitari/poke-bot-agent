@@ -105,7 +105,7 @@ def stage(*, source_root: Path, archive: Path, output: Path) -> dict:
             "package_payload_tree_sha256": tree_sha(temporary),
             "training_eligible": False,
         }
-        (temporary / "r230_fleet_evaluation_manifest.json").write_text(
+        (temporary / "r233_fleet_evaluation_manifest.json").write_text(
             json.dumps(manifest, sort_keys=True, indent=2) + "\n"
         )
         os.replace(temporary, output)
