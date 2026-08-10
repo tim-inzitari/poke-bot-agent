@@ -7,7 +7,7 @@
       "role": "train_inzi",
       "slots": 4,
       "game_timeout_seconds": 3600,
-      "admission_command": ["/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/scripts/r229_host_admission.py", "--train-host", "train", "--gpu-uuid", "GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6"],
+      "admission_command": ["/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/scripts/r229_host_admission.py", "--train-local", "--gpu-uuid", "GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6"],
       "admission_exact_stdout": "ADMITTED",
       "command": ["env", "CUDA_VISIBLE_DEVICES=GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6", "NVIDIA_VISIBLE_DEVICES=GPU-79cf504f-6573-0b8c-c90e-eb567b7bcfa6", "POKEBOT_R228_DECISION_SECONDS=8.0", "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/run_r229_mirror_game.py", "--stage", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/package", "--pair-index", "{pair_index}", "--game-index", "{game_index}", "--mcts-seat", "{mcts_seat}", "--host", "train_inzi_blackwell", "--output", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/host-results/{game_id}.json"]
     },
@@ -16,7 +16,7 @@
       "role": "train_inzi",
       "slots": 2,
       "game_timeout_seconds": 3600,
-      "admission_command": ["/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/scripts/r229_host_admission.py", "--train-host", "train", "--gpu-uuid", "GPU-72bf89ff-6e52-01d4-a49b-90a7addfd632"],
+      "admission_command": ["/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/scripts/r229_host_admission.py", "--train-local", "--gpu-uuid", "GPU-72bf89ff-6e52-01d4-a49b-90a7addfd632"],
       "admission_exact_stdout": "ADMITTED",
       "command": ["env", "CUDA_VISIBLE_DEVICES=GPU-72bf89ff-6e52-01d4-a49b-90a7addfd632", "NVIDIA_VISIBLE_DEVICES=GPU-72bf89ff-6e52-01d4-a49b-90a7addfd632", "POKEBOT_R228_DECISION_SECONDS=8.0", "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/run_r229_mirror_game.py", "--stage", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/package", "--pair-index", "{pair_index}", "--game-index", "{game_index}", "--mcts-seat", "{mcts_seat}", "--host", "train_inzi_3080ti", "--output", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/host-results/{game_id}.json"]
     },

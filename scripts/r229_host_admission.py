@@ -26,13 +26,18 @@ def _endpoint(endpoint: str) -> bool:
     )
 
 
-def _train(host: str, gpu_uuid: str) -> bool:
+def _train(host: str | None, gpu_uuid: str) -> bool:
     script = r'''set -eu
 state=$(systemctl --user show pokebot-pure-rl-specialist.service -p ActiveState --value 2>/dev/null || true)
 test "$state" != active
 nvidia-smi --query-gpu=uuid,memory.used,utilization.gpu --format=csv,noheader,nounits
 '''
-    result = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, script], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=15, check=False)
+    command = (
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, script]
+        if host
+        else ["bash", "-lc", script]
+    )
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=15, check=False)
     if result.returncode != 0:
         return False
     for line in result.stdout.splitlines():
@@ -47,10 +52,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--endpoint")
     group.add_argument("--train-host")
+    group.add_argument("--train-local", action="store_true")
     parser.add_argument("--gpu-uuid")
     args = parser.parse_args(argv)
     try:
-        admitted = _endpoint(args.endpoint) if args.endpoint else bool(args.gpu_uuid) and _train(args.train_host, args.gpu_uuid)
+        admitted = (
+            _endpoint(args.endpoint)
+            if args.endpoint
+            else bool(args.gpu_uuid) and _train(args.train_host, args.gpu_uuid)
+        )
     except Exception:
         admitted = False
     if admitted:

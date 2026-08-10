@@ -62,6 +62,10 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
     search_latencies: list[float] = []
     backups: list[float] = []
     microbatches: list[float] = []
+    influence_by_stage: dict[str, Counter[str]] = defaultdict(Counter)
+    influence_by_seat: dict[str, Counter[str]] = defaultdict(Counter)
+    influence_by_host: dict[str, Counter[str]] = defaultdict(Counter)
+    influence_by_outcome: dict[str, Counter[str]] = defaultdict(Counter)
 
     for row in games:
         pair = row.get("pair_index")
@@ -100,12 +104,47 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             target.append(float(value))
         if metrics["meaningful_choice_change"] > metrics["action_changed"] or metrics["action_changed"] > metrics["searched"]:
             raise R229MetricsError("decision influence counts are inconsistent")
-        for decision in row.get("mcts_decisions", []):
+        decision_rows = row.get("mcts_decisions", [])
+        if not isinstance(decision_rows, list):
+            raise R229MetricsError("mcts_decisions must be a list")
+        telemetry_searched = telemetry_changed = telemetry_meaningful = 0
+        for decision in decision_rows:
             if not isinstance(decision, Mapping):
                 raise R229MetricsError("malformed MCTS decision telemetry")
-            search_latencies.append(float(decision["search_elapsed_seconds"]))
-            backups.append(float(decision["completed_backups"]))
-            microbatches.extend(float(value) for value in decision.get("microbatch_sizes", []))
+            mode = str(decision.get("mode", ""))
+            changed_flag = bool(decision.get("action_changed"))
+            meaningful_flag = bool(decision.get("meaningful_choice_change"))
+            if meaningful_flag and not changed_flag:
+                raise R229MetricsError("meaningful decision change lacks raw action change")
+            stage = str(decision.get("selection_context", "unavailable"))
+            actor = str(decision.get("actor_seat", seat))
+            for bucket in (
+                influence_by_stage[stage], influence_by_seat[actor],
+                influence_by_host[host], influence_by_outcome[outcome],
+            ):
+                bucket["decisions"] += 1
+                bucket["action_changed"] += int(changed_flag)
+                bucket["meaningful_choice_change"] += int(meaningful_flag)
+            if mode == "shared_tree_mcts":
+                telemetry_searched += 1
+                latency = decision.get("search_elapsed_seconds")
+                completed = decision.get("completed_backups")
+                if latency is None or completed is None:
+                    raise R229MetricsError("searched decision lacks latency or backup telemetry")
+                search_latencies.append(float(latency))
+                backups.append(float(completed))
+                microbatches.extend(
+                    float(value) for value in decision.get("microbatch_sizes", [])
+                )
+            telemetry_changed += int(changed_flag)
+            telemetry_meaningful += int(meaningful_flag)
+        if (
+            len(decision_rows) != metrics["mcts_eligible"]
+            or telemetry_searched != metrics["searched"]
+            or telemetry_changed != metrics["action_changed"]
+            or telemetry_meaningful != metrics["meaningful_choice_change"]
+        ):
+            raise R229MetricsError("per-decision telemetry does not match game counters")
 
     if require_complete:
         if set(pairs) != set(range(EXPECTED_PAIRS)) or any(len(rows) != 2 for rows in pairs.values()):
@@ -134,6 +173,8 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
         "mcts_win_rate_effect_vs_even": win_rate - 0.5,
         "pair_outcomes": dict(pair_outcomes),
         "decisions": {
+            "seen_total": int(sum(decisions_per_game)),
+            "eligible_total": int(sum(eligible_per_game)),
             "seen_per_game": _quantiles(decisions_per_game),
             "eligible_per_game": _quantiles(eligible_per_game),
             "searched_per_game": _quantiles(searched_per_game),
@@ -146,6 +187,18 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             "meaningful_choice_change_total": meaningful,
             "action_change_rate_per_searched": changed / max(1, searched),
             "meaningful_change_rate_per_searched": meaningful / max(1, searched),
+            "influence_by_stage": {
+                key: dict(value) for key, value in sorted(influence_by_stage.items())
+            },
+            "influence_by_seat": {
+                key: dict(value) for key, value in sorted(influence_by_seat.items())
+            },
+            "influence_by_host": {
+                key: dict(value) for key, value in sorted(influence_by_host.items())
+            },
+            "influence_by_game_outcome": {
+                key: dict(value) for key, value in sorted(influence_by_outcome.items())
+            },
         },
         "search": {
             "latency_seconds": _quantiles(search_latencies),

@@ -115,6 +115,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 from poke_bot import features
                 decisions_seen += 1
                 mcts_seen += 1
+                receipt_count_before = len(runtime.decision_receipts)
                 try:
                     legal = features.enumerate_action_combos(obs)
                 except features.ActionSpaceTooLarge:
@@ -123,6 +124,21 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 if legal is not None and len(legal) <= 1:
                     forced += 1
                 action = list(module.agent(obs))
+                if len(runtime.decision_receipts) == receipt_count_before + 1:
+                    selection = obs.get("select") if isinstance(obs, Mapping) else None
+                    context = (
+                        selection.get("context")
+                        if isinstance(selection, Mapping)
+                        else None
+                    )
+                    runtime.decision_receipts[-1].update(
+                        {
+                            "actor_seat": int(seat),
+                            "selection_context": (
+                                context.name if hasattr(context, "name") else str(context)
+                            ),
+                        }
+                    )
             elif seat in (0, 1):
                 decisions_seen += 1
                 direct_seen += 1
