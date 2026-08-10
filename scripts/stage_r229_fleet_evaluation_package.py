@@ -21,7 +21,6 @@ OVERLAYS = {
     "main.py": "submission/r228_async_eight_worker_main.py",
     "poke_bot/r228_async_shared_tree_queue.py": "poke_bot/r228_async_shared_tree_queue.py",
     "poke_bot/r228_kaggle_async_runtime.py": "poke_bot/r228_kaggle_async_runtime.py",
-    "poke_bot/features.py": "poke_bot/features.py",
 }
 
 
@@ -49,6 +48,15 @@ def tree_sha(root: Path) -> str:
             for block in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(block)
     return "sha256:" + digest.hexdigest()
+
+
+def raise_packaged_action_cap(path: Path) -> None:
+    old = b"MAX_ACTION_COMBOS: int = 4096"
+    new = b"MAX_ACTION_COMBOS: int = 65536"
+    payload = path.read_bytes()
+    if payload.count(old) != 1 or new in payload:
+        raise StageError("base r228 feature cap is not the exact 4,096 contract")
+    path.write_bytes(payload.replace(old, new, 1))
 
 
 def safe_extract(archive: Path, destination: Path) -> None:
@@ -87,6 +95,9 @@ def stage(*, source_root: Path, archive: Path, output: Path) -> dict:
         if sha(temporary / "model.pt") != MODEL or sha(temporary / "matchup_tree.json") != TREE:
             raise StageError("r228 frozen r195 identity drifted")
         overlay_hashes = {}
+        feature_path = temporary / "poke_bot/features.py"
+        raise_packaged_action_cap(feature_path)
+        overlay_hashes["poke_bot/features.py"] = sha(feature_path)
         for destination, source in OVERLAYS.items():
             source_path = source_root / source
             if not source_path.is_file():

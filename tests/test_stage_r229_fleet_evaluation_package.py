@@ -42,3 +42,12 @@ def test_safe_extract_rejects_links(tmp_path):
     destination.mkdir()
     with pytest.raises(stage.StageError, match="link or special"):
         stage.safe_extract(archive, destination)
+
+
+def test_action_cap_transform_is_exact_and_single_use(tmp_path):
+    path = tmp_path / "features.py"
+    path.write_text("before\nMAX_ACTION_COMBOS: int = 4096\nafter\n")
+    stage.raise_packaged_action_cap(path)
+    assert "MAX_ACTION_COMBOS: int = 65536" in path.read_text()
+    with pytest.raises(stage.StageError, match="exact 4,096"):
+        stage.raise_packaged_action_cap(path)
