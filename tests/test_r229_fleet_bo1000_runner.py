@@ -226,3 +226,21 @@ def test_package_identity_rejects_mixed_libcg_manifest(tmp_path):
     manifest.write_text(json.dumps(payload))
     with pytest.raises(runner.R229FleetError, match="mixed or incomplete"):
         runner._package_identity({"package_manifest_path": str(manifest)})
+
+
+def test_fleet_config_uses_sealed_admission_script_for_every_host():
+    config = json.loads(
+        (Path(__file__).parents[1] / "config/r229_fleet_bo1000.json").read_text()
+    )
+    expected = (
+        "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/"
+        "source/scripts/r229_host_admission.py"
+    )
+    assert all(expected in row["admission_command"] for row in config["hosts"])
+    endpoint_rows = [
+        row for row in config["hosts"] if "--endpoint" in row["admission_command"]
+    ]
+    assert all(
+        "PYTHONPATH=/home/inzi/poke-bot-agent" in row["admission_command"]
+        for row in endpoint_rows
+    )

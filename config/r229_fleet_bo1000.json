@@ -26,7 +26,7 @@
       "role": "bert",
       "slots": 1,
       "game_timeout_seconds": 5400,
-      "admission_command": ["/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/scripts/r229_host_admission.py", "--endpoint", "bert.local:8766"],
+      "admission_command": ["env", "PYTHONPATH=/home/inzi/poke-bot-agent", "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/source/scripts/r229_host_admission.py", "--endpoint", "bert.local:8766"],
       "admission_exact_stdout": "ADMITTED",
       "command": ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "bert.local", "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/.venv/bin/python", "/Users/tsinzitari/.cache/pokebot/r229-r228-package/run_r229_process_watchdog.py", "--timeout-seconds", "5400", "--", "env", "PYTHONDONTWRITEBYTECODE=1", "POKEBOT_R228_DECISION_SECONDS=8.0", "nice", "-n", "10", "/Users/tsinzitari/workspace/poke-bot-agent-h10-r79-stage/.venv/bin/python", "/Users/tsinzitari/.cache/pokebot/r229-r228-package/run_r229_mirror_game.py", "--stage", "/Users/tsinzitari/.cache/pokebot/r229-r228-package/package", "--pair-index", "{pair_index}", "--game-index", "{game_index}", "--mcts-seat", "{mcts_seat}", "--host", "bert_mps", "--output", "/Users/tsinzitari/.cache/pokebot/r229-r228-package/results/{game_id}.json"]
     },
@@ -36,7 +36,7 @@
       "slots": 2,
       "game_timeout_seconds": 5400,
       "failed_child_cleanup_command": ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "elmo", "sudo", "-n", "docker", "rm", "-f", "pokebot-{game_id}"],
-      "admission_command": ["/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/scripts/r229_host_admission.py", "--endpoint", "192.168.1.143:8765"],
+      "admission_command": ["env", "PYTHONPATH=/home/inzi/poke-bot-agent", "/home/inzi/miniconda3/envs/poke-bot-agent/bin/python", "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/source/scripts/r229_host_admission.py", "--endpoint", "192.168.1.143:8765"],
       "admission_exact_stdout": "ADMITTED",
       "command": ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "elmo", "python3", "/mnt/Main/Elmo/poke-bot-agent/evaluations/r229-r228-package/run_r229_process_watchdog.py", "--timeout-seconds", "5400", "--", "sudo", "-n", "docker", "run", "--rm", "--name", "pokebot-{game_id}", "--gpus", "device=GPU-aeaa66ee-b50b-46ba-5ac9-b7aa80353de1", "--cpus=8", "--memory=20g", "--pids-limit=512", "--stop-timeout", "20", "--entrypoint", "/usr/local/bin/python", "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "POKEBOT_R228_DECISION_SECONDS=8.0", "-e", "CG_LIB_PATH=/eval/package", "-e", "POKEBOT_LIBCG_PATH=/eval/package/cg/libcg.so", "-v", "/mnt/Main/Elmo/poke-bot-agent/evaluations/r229-r228-package:/eval:rw", "poke-bot-truenas-worker:r125-checkpoint-digest-verify-v2", "/eval/run_r229_mirror_game.py", "--stage", "/eval/package", "--pair-index", "{pair_index}", "--game-index", "{game_index}", "--mcts-seat", "{mcts_seat}", "--host", "elmo_rtx3060", "--output", "/eval/results/{game_id}.json"]
     }
