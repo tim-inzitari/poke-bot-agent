@@ -21,6 +21,7 @@ from poke_bot.r229_fleet_mirror_metrics import summarize_games
 SCHEMA = "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_run/v1"
 PAIRS = 500
 GAMES = 1000
+CHECKPOINT = "sha256:261d367e131eeaacc62f86f8f0443250d187daf82bcbcaa88fafad7c9199cc3a"
 
 
 class R229FleetError(RuntimeError):
@@ -83,6 +84,31 @@ def _read(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise R229FleetError(f"receipt is not an object: {path}")
     return payload
+
+
+def _package_identity(config: Mapping[str, Any]) -> dict[str, str]:
+    raw_path = config.get("package_manifest_path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise R229FleetError("fleet config must bind package_manifest_path")
+    path = Path(raw_path)
+    manifest = _read(path)
+    if (
+        manifest.get("schema")
+        != "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r233_package/v1"
+        or manifest.get("status") != "sealed_evaluation_only"
+        or manifest.get("checkpoint_sha256") != CHECKPOINT
+        or manifest.get("complete_ordered_action_ceiling") != 65536
+        or manifest.get("training_eligible") is not False
+    ):
+        raise R229FleetError("sealed package manifest violates the r229 identity")
+    payload_sha = manifest.get("package_payload_tree_sha256")
+    if not isinstance(payload_sha, str) or not payload_sha.startswith("sha256:"):
+        raise R229FleetError("sealed package manifest lacks its payload digest")
+    return {
+        "package_manifest_path": str(path.resolve()),
+        "package_manifest_sha256": _sha(path),
+        "package_payload_tree_sha256": payload_sha,
+    }
 
 
 def _complete(path: Path, job: Mapping[str, Any]) -> bool:
@@ -197,6 +223,7 @@ def _run(host: Mapping[str, Any], job: Mapping[str, Any], output: Path, log: Pat
 def run(args: argparse.Namespace) -> dict[str, Any]:
     run_started = time.monotonic()
     config = _read(args.config)
+    package_identity = _package_identity(config)
     hosts = config.get("hosts")
     if not isinstance(hosts, list):
         raise R229FleetError("fleet config must contain a host list")
@@ -211,13 +238,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     run_identity = {
         "schema": SCHEMA, "created_at_utc": _utc(), "config_sha256": _sha(args.config),
         "runner_sha256": _sha(Path(__file__).resolve()), "total_pairs": PAIRS,
-        "total_games": GAMES, "training_eligible": False,
+        "total_games": GAMES, "training_eligible": False, **package_identity,
     }
     identity_path = root / "run-identity.json"
     if identity_path.exists() and _read(identity_path) != run_identity:
         # created_at is intentionally fixed by the first invocation.
         old = _read(identity_path)
-        for key in ("config_sha256", "runner_sha256", "total_pairs", "total_games"):
+        for key in (
+            "config_sha256", "runner_sha256", "total_pairs", "total_games",
+            "package_manifest_sha256", "package_payload_tree_sha256",
+        ):
             if old.get(key) != run_identity.get(key):
                 raise R229FleetError(f"resume identity drifted: {key}")
         run_identity = old

@@ -1,5 +1,6 @@
 {
   "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r229_fleet/v1",
+  "package_manifest_path": "/home/inzi/poke-bot-agent/outputs/evaluations/r229-sealed/package/r230_fleet_evaluation_manifest.json",
   "decision_seconds": 8.0,
   "hosts": [
     {

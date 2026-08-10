@@ -16,6 +16,19 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 
+def _package_manifest(tmp_path: Path) -> Path:
+    path = tmp_path / "package-manifest.json"
+    path.write_text(json.dumps({
+        "schema": "poke_bot.alakazam_r228_vs_r195_no_mcts_fleet_bo1000_r233_package/v1",
+        "status": "sealed_evaluation_only",
+        "checkpoint_sha256": runner.CHECKPOINT,
+        "complete_ordered_action_ceiling": 65536,
+        "package_payload_tree_sha256": "sha256:" + "a" * 64,
+        "training_eligible": False,
+    }))
+    return path
+
+
 def test_schedule_is_exactly_500_seat_swapped_pairs():
     rows = runner.schedule()
     assert len(rows) == 1000
@@ -89,7 +102,9 @@ def test_one_worker_failure_is_receipted_requeued_and_does_not_abort(monkeypatch
 
     monkeypatch.setattr(runner, "_run", fake_run)
     config = tmp_path / "fleet.json"
-    config.write_text(json.dumps({"hosts": [
+    config.write_text(json.dumps({
+        "package_manifest_path": str(_package_manifest(tmp_path)),
+        "hosts": [
         {"id": "elmo-slot", "role": "elmo", "slots": 1},
         {"id": "bert-slot", "role": "bert", "slots": 0},
         {"id": "train-slot", "role": "train_inzi", "slots": 0},
@@ -169,3 +184,12 @@ def test_resume_attempt_number_never_reuses_orphaned_log(tmp_path):
     (attempts / f"{game_id}.attempt-001.json").write_text("{}\n")
     (logs / f"{game_id}.attempt-004.log").write_text("orphaned\n")
     assert runner._attempt_number(tmp_path, game_id) == 4
+
+
+def test_package_identity_is_required_and_checksum_bound(tmp_path):
+    with pytest.raises(runner.R229FleetError, match="package_manifest_path"):
+        runner._package_identity({})
+    manifest = _package_manifest(tmp_path)
+    identity = runner._package_identity({"package_manifest_path": str(manifest)})
+    assert identity["package_manifest_sha256"].startswith("sha256:")
+    assert identity["package_payload_tree_sha256"] == "sha256:" + "a" * 64
