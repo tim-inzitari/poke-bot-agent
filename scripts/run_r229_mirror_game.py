@@ -98,6 +98,9 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
     started_at_utc = _utc()
     started = time.monotonic()
     decisions_seen = mcts_seen = forced = oversized = direct_seen = setup_seen = 0
+    mcts_latencies: list[float] = []
+    direct_latencies: list[float] = []
+    setup_latencies: list[float] = []
     try:
         observation, start_data = cg_env.battle_start(list(deck), list(deck))
         if observation is None:
@@ -108,6 +111,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
         first_player = None
         while not cg_env.is_finished(observation) and steps < max_steps:
             obs = observation
+            decision_started = time.monotonic()
             current = obs.get("current") if isinstance(obs, Mapping) else None
             seat = current.get("yourIndex") if isinstance(current, Mapping) else None
             first = current.get("firstPlayer") if isinstance(current, Mapping) else None
@@ -117,6 +121,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
             if turn_order is not None:
                 action = list(direct_module._fail_closed(obs, turn_order))
                 setup_seen += 1
+                setup_latencies.append(time.monotonic() - decision_started)
             elif seat == mcts_seat:
                 from poke_bot import features
                 decisions_seen += 1
@@ -130,6 +135,8 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 if legal is not None and len(legal) <= 1:
                     forced += 1
                 action = list(module.agent(obs))
+                decision_latency = time.monotonic() - decision_started
+                mcts_latencies.append(decision_latency)
                 if len(runtime.decision_receipts) == receipt_count_before + 1:
                     selection = obs.get("select") if isinstance(obs, Mapping) else None
                     context = (
@@ -140,6 +147,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                     runtime.decision_receipts[-1].update(
                         {
                             "actor_seat": int(seat),
+                            "wall_latency_seconds": decision_latency,
                             "selection_context": (
                                 context.name if hasattr(context, "name") else str(context)
                             ),
@@ -152,6 +160,7 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                     action = list(direct_policy.trusted_search_or_greedy_select(dict(obs), search=False))
                 except Exception:
                     action = list(direct_module._fail_closed(obs, []))
+                direct_latencies.append(time.monotonic() - decision_started)
             else:
                 raise R229GameError("engine emitted an invalid acting seat")
             _legal(obs, action)
@@ -199,6 +208,11 @@ def run_game(*, stage: Path, pair_index: int, game_index: int, mcts_seat: int, h
                 "fallback": sum(row.get("mode") != "shared_tree_mcts" for row in receipts),
                 "action_changed": changed,
                 "meaningful_choice_change": meaningful,
+            },
+            "decision_latency_seconds": {
+                "mcts_seat_all": mcts_latencies,
+                "direct_r195_seat_all": direct_latencies,
+                "deterministic_setup": setup_latencies,
             },
             "mcts_decisions": [
                 {

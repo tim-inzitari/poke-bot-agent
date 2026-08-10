@@ -34,7 +34,12 @@ def _rows():
                 "elapsed_seconds": 2.0,
                 "started_at_utc": "2026-08-10T20:00:00Z",
                 "completed_at_utc": "2026-08-10T20:00:02Z",
-                "decision_metrics": {"decisions_seen": 20, "mcts_eligible": 10, "searched": 8, "forced": 2, "fallback": 2, "action_changed": 3, "meaningful_choice_change": 2},
+                "decision_metrics": {"decisions_seen": 20, "mcts_seat_decisions_seen": 12, "direct_seat_decisions_seen": 8, "setup_decisions": 1, "mcts_eligible": 10, "searched": 8, "forced": 2, "fallback": 2, "action_changed": 3, "meaningful_choice_change": 2},
+                "decision_latency_seconds": {
+                    "mcts_seat_all": [2.0] * 12,
+                    "direct_r195_seat_all": [0.25] * 8,
+                    "deterministic_setup": [0.001],
+                },
                 "mcts_decisions": decisions,
             })
     return rows
@@ -50,6 +55,7 @@ def test_complete_summary_reports_decision_averages_changes_and_throughput():
     assert summary["decisions"]["meaningful_choice_change_total"] == 2000
     assert set(summary["throughput"]["by_host"]) == {"elmo", "bert", "train_inzi"}
     assert summary["decisions"]["influence_by_stage"]["SelectPokemon"]["decisions"] == 10000
+    assert summary["search"]["mean_mcts_to_direct_decision_latency_ratio"] == 8.0
 
 
 def test_duplicate_game_or_broken_influence_counts_fail_closed():

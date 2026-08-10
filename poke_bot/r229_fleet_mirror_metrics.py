@@ -65,6 +65,9 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
     search_latencies: list[float] = []
     backups: list[float] = []
     microbatches: list[float] = []
+    mcts_wall_latencies: list[float] = []
+    direct_wall_latencies: list[float] = []
+    setup_wall_latencies: list[float] = []
     influence_by_stage: dict[str, Counter[str]] = defaultdict(Counter)
     influence_by_seat: dict[str, Counter[str]] = defaultdict(Counter)
     influence_by_host: dict[str, Counter[str]] = defaultdict(Counter)
@@ -114,6 +117,33 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             if not isinstance(value, int) or value < 0:
                 raise R229MetricsError(f"invalid decision metric: {name}")
             target.append(float(value))
+        for name in (
+            "mcts_seat_decisions_seen", "direct_seat_decisions_seen",
+            "setup_decisions",
+        ):
+            if not isinstance(metrics.get(name), int) or metrics[name] < 0:
+                raise R229MetricsError(f"invalid decision metric: {name}")
+        if metrics["decisions_seen"] != (
+            metrics["mcts_seat_decisions_seen"]
+            + metrics["direct_seat_decisions_seen"]
+        ):
+            raise R229MetricsError("per-arm decisions do not match decisions_seen")
+        latency_rows = row.get("decision_latency_seconds")
+        if not isinstance(latency_rows, Mapping):
+            raise R229MetricsError("per-arm decision latency telemetry is required")
+        for name, expected_count, target in (
+            ("mcts_seat_all", metrics["mcts_seat_decisions_seen"], mcts_wall_latencies),
+            ("direct_r195_seat_all", metrics["direct_seat_decisions_seen"], direct_wall_latencies),
+            ("deterministic_setup", metrics["setup_decisions"], setup_wall_latencies),
+        ):
+            values = latency_rows.get(name)
+            if not isinstance(values, list) or len(values) != expected_count:
+                raise R229MetricsError(f"decision latency count mismatch: {name}")
+            for value in values:
+                clean = float(value)
+                if not math.isfinite(clean) or clean < 0.0:
+                    raise R229MetricsError(f"invalid decision latency: {name}")
+                target.append(clean)
         if metrics["meaningful_choice_change"] > metrics["action_changed"] or metrics["action_changed"] > metrics["searched"]:
             raise R229MetricsError("decision influence counts are inconsistent")
         decision_rows = row.get("mcts_decisions", [])
@@ -216,6 +246,21 @@ def summarize_games(rows: Iterable[Mapping[str, Any]], *, require_complete: bool
             "latency_seconds": _quantiles(search_latencies),
             "completed_backups": _quantiles(backups),
             "microbatch_size": _quantiles(microbatches),
+            "mcts_seat_wall_latency_seconds": _quantiles(mcts_wall_latencies),
+            "direct_r195_wall_latency_seconds": _quantiles(direct_wall_latencies),
+            "deterministic_setup_wall_latency_seconds": _quantiles(setup_wall_latencies),
+            "mcts_seat_decisions_per_second": (
+                len(mcts_wall_latencies) / max(1e-9, sum(mcts_wall_latencies))
+            ),
+            "direct_r195_decisions_per_second": (
+                len(direct_wall_latencies) / max(1e-9, sum(direct_wall_latencies))
+            ),
+            "mean_mcts_to_direct_decision_latency_ratio": (
+                statistics.fmean(mcts_wall_latencies)
+                / max(1e-9, statistics.fmean(direct_wall_latencies))
+                if mcts_wall_latencies and direct_wall_latencies
+                else None
+            ),
         },
         "throughput": {
             "by_host": {
